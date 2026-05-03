@@ -1,0 +1,37 @@
+// § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION · mixed scalar arith fixture
+//
+// Composite : exercises every newly-wired op in one file so a regression
+// in any one dispatch arm surfaces here. Real LoA-substrate use-cases
+// (KAN bias-update with sign flips, tile-pack via shift+or, distance
+// compare for LOD, hash mix via xor) all collapse to this op-family.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.scalar_arith.mixed
+
+pub fn step(x: f32, threshold: f32) -> i32 {
+    if x >= threshold { 1 } else { 0 }
+}
+
+pub fn sign_above(x: f32, zero: f32) -> i32 {
+    if x > zero {
+        1
+    } else {
+        -1
+    }
+}
+
+pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+pub fn morton2(x: i32, y: i32) -> i32 {
+    let x_spread: i32 = (x | (x << 8)) & 255 ;
+    let y_spread: i32 = (y | (y << 8)) & 255 ;
+    x_spread | (y_spread << 1)
+}
+
+pub fn fnv1a_step(hash: i32, byte: i32) -> i32 {
+    (hash ^ byte) * 16777619
+}

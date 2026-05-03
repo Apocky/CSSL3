@@ -1,0 +1,30 @@
+// § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION · float-literal-suffix fixture
+//
+// Pre-W18 : every `Float`-kind literal lowered as `MirType::Float(F32)`,
+// regardless of the trailing type-suffix. `let pi : f64 = 3.14159f64`
+// then required a coercion at use-site. W18 honors the suffix at
+// literal-lower time, so `3.14f32`, `3.14f64`, `3.14f16`, `3.14bf16`
+// each produce the corresponding `FloatWidth`.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.scalar_arith.float_lit_suffix
+
+pub fn pi_f32() -> f32 {
+    3.14159f32
+}
+
+pub fn pi_f64() -> f64 {
+    3.14159265358979f64
+}
+
+pub fn bare_default() -> f32 {
+    3.14
+}
+
+pub fn use_in_arith() -> f64 {
+    let two: f64 = 2.0f64 ;
+    let half: f64 = 0.5f64 ;
+    two * half
+}

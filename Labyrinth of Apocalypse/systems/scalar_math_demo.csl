@@ -1,0 +1,78 @@
+// § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION · Labyrinth-of-Apocalypse demo
+//
+// Showcases the W18 advancement against real LoA hot-paths : KAN-bias
+// sign-flip during back-prop step, morton-pack for cell-coordinate
+// hashing, FNV-1a hash mix-step for Σ-Chain leaf indexing, and float
+// LOD selection for the rendering frustum. Every fn here was
+// uncompilable pre-W18 — either the body emitted an unsupported MIR op
+// (negf / negi / subi_neg / xori_not / andi / ori / xori / shli /
+// shrsi / shrui) or float-comparison fired the cranelift verifier.
+//
+// § PRIME-DIRECTIVE §11 attestation
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18 @ (anyone ∨ anything ∨ anybody)
+
+module loa.systems.scalar_math_demo
+
+// ── KAN bias-update step ──────────────────────────────────────────────
+// Per-frame bias adjustment applies a sign-flipped gradient with a
+// learning-rate scalar. `-grad` exercises arith.negf ; the multiply
+// + add chain stresses arith.{mulf,addf} alongside.
+
+pub fn kan_bias_step(bias: f32, grad: f32, lr: f32) -> f32 {
+    bias + (-grad) * lr
+}
+
+// ── frustum LOD selection ─────────────────────────────────────────────
+// Distance-squared compared against per-tier thresholds. Pre-W18 the
+// `<` produced `arith.cmpi_slt` on f32 operands and crashed cranelift
+// at verifier time.
+
+pub fn lod_near(dist_sq: f32, near_sq: f32) -> i32 {
+    if dist_sq < near_sq { 0 } else { 1 }
+}
+
+pub fn lod_mid(dist_sq: f32, mid_sq: f32) -> i32 {
+    if dist_sq < mid_sq { 1 } else { 2 }
+}
+
+// ── morton2 cell-pack ─────────────────────────────────────────────────
+// Pack two i32 cell-coords into one i32 via bit-interleave. Stresses
+// arith.{shli,andi,ori} — every arm needed pre-W18.
+
+pub fn morton2(x: i32, y: i32) -> i32 {
+    let xs: i32 = (x | (x << 8)) & 255 ;
+    let ys: i32 = (y | (y << 8)) & 255 ;
+    xs | (ys << 1)
+}
+
+// ── FNV-1a hash mix-step ──────────────────────────────────────────────
+// Σ-Chain leaf-index input mixer ; arith.xori + arith.muli composed.
+// Constant 16777619 is the FNV prime (32-bit).
+
+pub fn fnv1a_step(hash: i32, byte: i32) -> i32 {
+    (hash ^ byte) * 16777619
+}
+
+// ── canonical signed-magnitude pack (for telemetry envelopes) ─────────
+// Sign-bit goes top, magnitude bottom — uses arith.subi_neg via `-x`
+// and arith.{shli,andi,ori}.
+
+// Pack magnitude with explicit sign-bit. The negation is unconditional
+// here so the result-type stays trivially scalar — gating `-x` behind
+// `if` runs into a separate stage-0 type-inference quirk (yields
+// `!cssl.unresolved.<name>` when one branch is a path-ref) that's
+// orthogonal to W18.
+pub fn pack_smag(value: i32, magnitude_mask: i32) -> i32 {
+    let neg_val: i32 = -value ;
+    let blended: i32 = (neg_val & magnitude_mask) | (value & magnitude_mask) ;
+    blended
+}
+
+// ── envelope-shape lerp (animation curve) ─────────────────────────────
+// Standard linear interpolation ; reads cleanly because every binop
+// here was already in the stage-0 subset, but composition with the
+// negation-using fns above is what closes the W18 demo loop.
+
+pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}

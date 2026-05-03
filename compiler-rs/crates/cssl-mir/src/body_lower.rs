@@ -2025,9 +2025,20 @@ fn lower_literal(ctx: &mut BodyLowerCtx<'_>, lit: &HirLiteral, span: Span) -> (V
             (MirType::Int(IntWidth::I32), val)
         }
         HirLiteralKind::Float => {
+            // § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION : honor the trailing
+            // type-suffix on float literals. `3.14f64` / `3.14f32` / `3.14f16`
+            // / `3.14bf16` resolve to the corresponding `FloatWidth`. Bare
+            // `3.14` defaults to `f32` (matches stage-0's i32-default for
+            // bare integer literals — both keep tests stable when no suffix
+            // is present). Subsequent passes (type-inference / coercion) may
+            // still re-tag the result based on use-site, but stage-0 emits
+            // the literal at the suffix-declared width so single-pass
+            // codegen can rely on the MIR type without needing post-hoc
+            // promotion.
             let parsed = slice.and_then(parse_float_literal);
             let val = parsed.map_or_else(|| "stage0_float".to_string(), |f| format!("{f:?}"));
-            (MirType::Float(FloatWidth::F32), val)
+            let width = slice.map_or(FloatWidth::F32, parse_float_literal_width);
+            (MirType::Float(width), val)
         }
         HirLiteralKind::Bool(b) => (MirType::Bool, b.to_string()),
         HirLiteralKind::Str => {
@@ -2110,6 +2121,27 @@ fn strip_float_type_suffix(raw: &str) -> &str {
         }
     }
     raw
+}
+
+/// § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION : extract the declared
+/// `FloatWidth` from a literal slice's trailing type-suffix. Returns
+/// `FloatWidth::F32` when no suffix is present (matches stage-0 default).
+/// Recognized suffixes : `f16`/`bf16`/`f32`/`f64` ; ordering matches
+/// `strip_float_type_suffix` so `bf16` is matched before `f16`.
+fn parse_float_literal_width(raw: &str) -> FloatWidth {
+    if raw.ends_with("bf16") {
+        FloatWidth::Bf16
+    } else if raw.ends_with("f64") {
+        FloatWidth::F64
+    } else if raw.ends_with("f16") {
+        FloatWidth::F16
+    } else {
+        // Bare `3.14` and explicit `3.14f32` both fall through to F32 — the
+        // explicit-suffix variant is handled by the suffix-strip path in
+        // `parse_float_literal`, so the width-suffix lookup here only needs
+        // to flag NON-default widths.
+        FloatWidth::F32
+    }
 }
 
 /// Strip surrounding `"..."` from a string-literal slice. Returns `None` if
@@ -2197,12 +2229,26 @@ fn lower_binary(
         (HirBinOp::Div, true) => "arith.divf",
         (HirBinOp::Rem, false) => "arith.remsi",
         (HirBinOp::Rem, true) => "arith.remf",
-        (HirBinOp::Eq, _) => "arith.cmpi_eq",
-        (HirBinOp::Ne, _) => "arith.cmpi_ne",
-        (HirBinOp::Lt, _) => "arith.cmpi_slt",
-        (HirBinOp::Le, _) => "arith.cmpi_sle",
-        (HirBinOp::Gt, _) => "arith.cmpi_sgt",
-        (HirBinOp::Ge, _) => "arith.cmpi_sge",
+        // § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION : float comparisons must use
+        // `arith.cmpf_o*` (ordered-predicate) variants so the cgen-cpu-cranelift
+        // body-emit subset routes them through `b.ins().fcmp(FloatCC::*)`. Prior
+        // to this fix `f32 < f32` produced `arith.cmpi_slt` with f32 operands,
+        // which fails Cranelift's verifier (icmp expects integer operands).
+        // Ordered predicates ("oeq" / "olt" / …) match Rust + Cranelift defaults
+        // for non-NaN-aware compares ; unordered variants ("uno" / "ugt" / …)
+        // are reserved for explicit NaN-handling intrinsics.
+        (HirBinOp::Eq, false) => "arith.cmpi_eq",
+        (HirBinOp::Eq, true) => "arith.cmpf_oeq",
+        (HirBinOp::Ne, false) => "arith.cmpi_ne",
+        (HirBinOp::Ne, true) => "arith.cmpf_one",
+        (HirBinOp::Lt, false) => "arith.cmpi_slt",
+        (HirBinOp::Lt, true) => "arith.cmpf_olt",
+        (HirBinOp::Le, false) => "arith.cmpi_sle",
+        (HirBinOp::Le, true) => "arith.cmpf_ole",
+        (HirBinOp::Gt, false) => "arith.cmpi_sgt",
+        (HirBinOp::Gt, true) => "arith.cmpf_ogt",
+        (HirBinOp::Ge, false) => "arith.cmpi_sge",
+        (HirBinOp::Ge, true) => "arith.cmpf_oge",
         (HirBinOp::And, _) => "arith.andi",
         (HirBinOp::Or, _) => "arith.ori",
         (HirBinOp::BitAnd, _) => "arith.andi",
@@ -2237,8 +2283,22 @@ fn lower_unary(
     span: Span,
 ) -> Option<(ValueId, MirType)> {
     let (in_id, in_ty) = lower_expr(ctx, operand)?;
+    // § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION : `!x` (logical-not) used to
+    // lower to a single-operand `arith.xori` op with the comment "xor x,
+    // true" — but only the operand was emitted, leaving downstream
+    // codegen-emit unable to bind a 2-operand cranelift `bxor`. Two valid
+    // lowerings exist : (a) emit a 2-operand xor against a constant
+    // (1 for bool ; -1 for int) ; (b) reuse the `bnot` codegen path
+    // (`arith.xori_not`) which is already a 1-operand op recognized by
+    // the body-emit subset. Path (b) is simpler and produces identical
+    // hardware — bnot on i1/i8/i32/i64 flips the bit-pattern, which for
+    // bool is the same as xor-with-1 and for int is the same as
+    // bitwise-not. We collapse `Not` + `BitNot` into the same MIR op so
+    // the codegen subset has one arm to maintain. The HIR-level
+    // distinction is preserved by the `op` parameter for any future
+    // pass that wants to distinguish them.
     let op_name = match op {
-        HirUnOp::Not => "arith.xori", // not x = xor x, true
+        HirUnOp::Not | HirUnOp::BitNot => "arith.xori_not",
         HirUnOp::Neg => {
             if matches!(in_ty, MirType::Float(_)) {
                 "arith.negf"
@@ -2246,7 +2306,6 @@ fn lower_unary(
                 "arith.subi_neg"
             }
         }
-        HirUnOp::BitNot => "arith.xori_not",
         HirUnOp::Ref => "cssl.borrow",
         HirUnOp::RefMut => "cssl.borrow_mut",
         HirUnOp::Deref => "cssl.deref",

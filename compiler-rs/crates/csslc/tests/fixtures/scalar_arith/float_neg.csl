@@ -1,0 +1,31 @@
+// § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION · float-negation fixture
+//
+// Pre-W18 : `-x` for `x : f32` lowered to `arith.negf` but the body-emit
+// subset had no dispatch arm, surfacing "MIR op `arith.negf` ; not in
+// stage-0 object-emit subset". W18 wires `arith.negf` → `b.ins().fneg(a)`
+// and `arith.subi_neg` → `b.ins().ineg(a)` via the new `unary_int` helper.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.scalar_arith.float_neg
+
+pub fn neg_f32(x: f32) -> f32 {
+    -x
+}
+
+pub fn neg_f64(x: f64) -> f64 {
+    -x
+}
+
+pub fn neg_i32(x: i32) -> i32 {
+    -x
+}
+
+pub fn neg_then_add(a: f32, b: f32) -> f32 {
+    -a + b
+}
+
+pub fn double_neg(x: f32) -> f32 {
+    -(-x)
+}
