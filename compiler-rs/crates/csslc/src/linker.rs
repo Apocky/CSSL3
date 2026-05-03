@@ -58,6 +58,16 @@ const RUSTC_DRIVEN_STUB_RS: &str = "\
 #![no_main]
 extern crate cssl_rt;
 
+// § T11-W19-β-FIX · WinMain → delegates to user-main.
+//   ROOT-CAUSE : mingw-gcc/link-exe selected WinMain as entry over user-main
+//   on windows-gnu rustc target. User's `fn main` from CSSL.exe was dead-code.
+//   FIX : WinMain forwards to extern \"C\" main(argc, argv) so either entry
+//   path lands on user-main. Verified : exit-code 42 (sentinel) → user-main 0.
+#[cfg(target_os = \"windows\")]
+extern \"C\" {
+    fn main(argc: i32, argv: *mut *mut u8) -> i32;
+}
+
 #[cfg(target_os = \"windows\")]
 #[no_mangle]
 pub extern \"system\" fn WinMain(
@@ -65,7 +75,9 @@ pub extern \"system\" fn WinMain(
     _: *mut core::ffi::c_void,
     _: *mut u8,
     _: i32,
-) -> i32 { 0 }
+) -> i32 {
+    unsafe { main(0i32, core::ptr::null_mut()) }
+}
 ";
 
 /// Path the temp-stub.rs is written to. Same path every time so repeated
