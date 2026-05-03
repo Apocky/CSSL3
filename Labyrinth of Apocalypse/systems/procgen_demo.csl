@@ -1,0 +1,84 @@
+module com.apocky.loa.systems.procgen_demo
+
+// § Labyrinth of Apocalypse · Procgen-Pipeline-Demo · canonical CSSL source
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W18-PROCGEN-PIPELINE · 2026-05-02 · Apocky-foundational
+//
+// § ROLE
+//   Demonstrates the runtime procgen-pipeline foundation landing in this
+//   slice (compiler-rs/crates/cssl-host-procgen-pipeline). This .csl file
+//   is the substrate-side smoke-test : three pure-fn entrypoints that
+//   model the SAME shape as the host-side parse_intent / generate /
+//   asset_fetch_stub trio, expressed in CSSL-native arithmetic so the
+//   pipeline contract is visible from inside the language as well as
+//   from outside it.
+//
+//   Same arithmetic invariants the host-side enforces are mirrored here :
+//     - intent_kind_tag(...)         ↔ parse_intent verb-discriminator
+//     - procgen_crystal_count(...)   ↔ generate crystal-count derivation
+//     - asset_fetch_status(...)      ↔ asset_fetch_stub URI-validation
+//
+// § PRIME-DIRECTIVE §11 attestation
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-PROCGEN-PIPELINE
+//        @ (anyone ∨ anything ∨ anybody)
+//   t∞: substrate = pure-arithmetic ¬ network ¬ filesystem ¬ side-effects
+//   t∞: same input → same output ; replay-determinism preserved
+//   t∞: this demo = HOST-CONTRACT-SHADOW ; canonical pipeline lives in
+//        compiler-rs/crates/cssl-host-procgen-pipeline/src/lib.rs
+
+// ── intent_kind_tag : verb-discriminator integer ──────────────────────
+//
+// Returns a stable u8 discriminator for an intent-verb encoded as an
+// integer (the host-side regex selects which one). Mirrors the
+// IntentSemantic enum-tag bytes (0x01 / 0x02 / 0x03 / 0x04) used inside
+// fingerprint_request.
+//
+//   verb=1 → CreateEntity
+//   verb=2 → ModifyEntity
+//   verb=3 → Query
+//   verb=4 → Other
+//   else   → 0  (rejected at host-side parse)
+//
+// Stresses arith.{cmpi_eq, andi} via an if/else cascade.
+
+pub fn intent_kind_tag(verb: i32) -> i32 {
+    if verb == 1 { 1 }
+    else if verb == 2 { 2 }
+    else if verb == 3 { 3 }
+    else if verb == 4 { 4 }
+    else { 0 }
+}
+
+// ── procgen_crystal_count : seed → 1..=4 crystals ─────────────────────
+//
+// Mirror of host-side `create_crystals` count-derivation :
+//
+//   count = ((seed >> 8) & 0b11) + 1
+//
+// Canonical replay-determinism : same seed (the BLAKE3-derived
+// fingerprint truncated to u64) → same crystal-count, regardless of
+// host CPU/OS. Stresses arith.{shrui, andi, addi}.
+
+pub fn procgen_crystal_count(seed: i32) -> i32 {
+    ((seed >> 8) & 3) + 1
+}
+
+// ── asset_fetch_status : URI-validation status code ───────────────────
+//
+// Mirror of host-side asset_fetch_stub : the host accepts only the
+// `procgen://` scheme in stage-0. Here we encode that as a small
+// integer-comparison over a host-supplied scheme-tag :
+//
+//   scheme=1 (procgen)  → 0   OK / proceed
+//   scheme=2 (https)    → 2   InvalidUri (F2 will widen this)
+//   scheme=0 (empty)    → 1   InvalidUri (empty)
+//   else                → 2   InvalidUri (unknown)
+//
+// Stresses arith.cmpi_eq + the if/else cascade fixed in T11-W18-CSSLC.
+
+pub fn asset_fetch_status(scheme: i32) -> i32 {
+    if scheme == 1 { 0 }
+    else if scheme == 0 { 1 }
+    else { 2 }
+}

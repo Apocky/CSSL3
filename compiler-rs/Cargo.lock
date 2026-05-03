@@ -1700,6 +1700,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-procgen-pipeline"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-substrate-omega-field",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "cssl-host-procgen-rooms"
 version = "0.1.0"
 dependencies = [

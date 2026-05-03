@@ -1,0 +1,64 @@
+[package]
+name                   = "cssl-host-procgen-pipeline"
+description            = "CSSLv3 — Runtime procedural-generation pipeline foundation : (text/voice/touch IntentInput) → (parse_intent semantic-decode) → (deterministic procgen seeded from BLAKE3 fingerprint) → (Crystal-emission + asset-URI plan). FOUNDATION-only — LLM-upgrade-path documented ; HTTP-fetch + GLTF-parser + ω-field-write are FOLLOW-ON slices."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+# § T11-W18-PROCGEN-PIPELINE
+# ═══════════════════════════════════════════════════════════════════════════
+# § Apocky-directive (verbatim · feedback_engine_is_runtime_procedural_gen.md)
+#   "LoA = (window+input+text/voice UI) → (intent translation) →
+#    (procgen + online asset fetch) → (in-game content) at runtime"
+#
+# § ROLE
+#   This crate is the SPINE of LoA's runtime-everything thesis. It
+#   normalizes ANY input source (Text · Voice · Touch) into an IntentSemantic
+#   discriminated enum, then spends a budget_ms slice deriving a deterministic
+#   ProcgenOutput (Crystal positions + asset URIs + BLAKE3 fingerprint).
+#   Same IntentInput + same ObserverCoord + same budget → bit-identical output
+#   ⇒ replay-determinism preserved across the procgen layer.
+#
+# § DEPENDENCIES (strict-foundation · no-LLM · no-HTTP · no-GLTF here)
+#   cssl-substrate-omega-field  — CANONICAL Ω-field substrate ; emitted
+#                                  Crystals can be projected into FieldCells
+#                                  by a downstream slice (NOT this one)
+#   serde                       — IntentInput · IntentSemantic · ProcgenRequest
+#                                  · ProcgenOutput round-trip JSON for
+#                                  cssl-edge / mycelium-net transport
+#   tokio (rt-only · no-net)    — async-fn signature compatibility for the
+#                                  asset_fetch_stub slot ; LATER slice will
+#                                  swap in reqwest/ureq behind the same shape
+#   blake3 (workspace ≥ 1.5)    — fingerprint-stability across
+#                                  IntentSemantic + ObserverCoord + budget
+#   thiserror (workspace)       — typed ParseErr · GenerateErr · FetchErr
+#
+# § FOLLOW-ON SLICES (NOT-IN-SCOPE here · documented for the dispatch-plan)
+#   F1 :: LLM-bridge · llama.cpp / candle local-inference reads regex-fallback
+#   F2 :: HTTP-fetch · ureq blocking-call OR reqwest behind same FetchErr
+#   F3 :: GLTF-parser · gltf-rs streaming for asset_uris.* binary payloads
+#   F4 :: ω-field-write · ProcgenOutput.crystals → OmegaField.set_cell loop
+[dependencies]
+cssl-substrate-omega-field = { path = "../cssl-substrate-omega-field" }
+# § serde · derive-only (no runtime serde-state) · workspace-pinned 1.x
+serde     = { workspace = true }
+# § tokio · default-features = false + features ["rt"] per Apocky-spec ;
+# we intentionally avoid the full tokio runtime for stage-0 — only the
+# rt-feature surface is needed so that the asset_fetch_stub fn signature
+# can be `async fn` from-day-zero, ready for ureq/reqwest swap-in
+# without churn on every callsite. NO net features ; NO macros.
+tokio     = { version = "1", default-features = false, features = ["rt"] }
+# § blake3 · workspace-pinned ≥ 1.5 (real-crypto-wire era ; matches
+# cssl-substrate-prime-directive Σ-chain hashing)
+blake3    = { workspace = true }
+# § thiserror · workspace-pinned 1.x ; typed errors only (no anyhow)
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# § dev-only — JSON round-trip for the serde-stability tests.
+serde_json = { workspace = true }
