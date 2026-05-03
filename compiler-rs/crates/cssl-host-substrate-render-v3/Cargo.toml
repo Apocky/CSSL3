@@ -16,9 +16,14 @@ name = "cssl_host_substrate_render_v3"
 #   `runtime` — pulls `ash` for the ash-direct vulkan-1.3 path. Tests
 #   #3, #4, #5 only run with `--features runtime` AND a vulkan-loader
 #   present on the host. Mirrors the v2 pattern : zero GPU pull at default.
+#   `present` — pulls `winit` + `raw-window-handle` so the host can hand
+#   us a Win32 window-handle for VkSurfaceKHR + VkSwapchainKHR creation.
+#   Implies `runtime`. Tests #6..#9 (swapchain present-path) only run with
+#   `--features present` AND a vulkan-loader present + a windowed display.
 [features]
 default = []
 runtime = ["dep:ash"]
+present = ["runtime", "dep:winit", "dep:raw-window-handle"]
 
 [dependencies]
 # § T11-W18-L7 : the SPIR-V emit path lives entirely in `cssl-cgen-gpu-spirv`
@@ -33,6 +38,13 @@ thiserror           = { workspace = true }
 # default build (and the SPIR-V-shape tests) can land on CI runners with no
 # Vulkan loader present. Mirrors the v2 wgpu/pollster gating pattern.
 ash = { workspace = true, optional = true }
+
+# § T11-W18-L7-PRESENT : the swapchain path needs a Win32 window-handle from
+# the host's winit::Window. Both deps are optional behind the `present`
+# feature so the default build and the headless `runtime` build never
+# pull a window-system dependency.
+winit              = { version = "0.30", optional = true }
+raw-window-handle  = { version = "0.6",  optional = true }
 
 [lints]
 workspace = true

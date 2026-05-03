@@ -32,7 +32,11 @@ runtime = [
     "dep:pollster",
     "cssl-host-substrate-resonance-gpu/runtime",
     "cssl-host-substrate-render-v2/runtime",
-    "cssl-host-substrate-render-v3/runtime",
+    # § T11-W18-L7-PRESENT : pull v3's `present` feature so the host can hand
+    # the AshSwapchainPresenter a real winit::Window for VkSurfaceKHR + Win32
+    # swapchain creation. `present` implies `runtime`, so headless V3 is
+    # still available via the same crate when the swapchain path errors out.
+    "cssl-host-substrate-render-v3/present",
 ]
 
 [dependencies]
