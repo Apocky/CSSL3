@@ -311,10 +311,30 @@ impl SubstrateRenderState {
         } else {
             self.tick(observer)
         };
+        // § T11-W18-CRYSTAL-ANIMATE · per-frame motion · crystals MOVE.
+        //   Apply animate_crystal(t_ms) motion-pose-delta (μm) → mm-offset
+        //   to each crystal's world_pos. Clone-then-mutate · base crystals
+        //   stay immutable · animation derives fresh each frame.
+        let t_ms: u64 = self.frame_count.saturating_mul(8); // ≈8ms/frame at 120Hz
+        let animated: Vec<Crystal> = self
+            .crystals
+            .iter()
+            .map(|base| {
+                let anim = cssl_host_crystallization::animate::animate_crystal(base, t_ms);
+                let mut c = base.clone();
+                c.world_pos = WorldPos::new(
+                    base.world_pos.x_mm.saturating_add(anim.motion_pose[0] / 1000),
+                    base.world_pos.y_mm.saturating_add(anim.motion_pose[1] / 1000),
+                    base.world_pos.z_mm.saturating_add(anim.motion_pose[2] / 1000),
+                );
+                c
+            })
+            .collect();
+
         // GPU path runs at panel-native 1440p · samples bound directly by
-        // compose-pass (W18-N).
+        // compose-pass (W18-N) · NOW with animated crystals (motion-pose-applied).
         if let Some(gpu) = self.gpu.as_mut() {
-            let _view = gpu.dispatch(device, queue, observer, &self.crystals);
+            let _view = gpu.dispatch(device, queue, observer, &animated);
         }
         out
     }
