@@ -220,14 +220,34 @@ impl<'a> BodyLowerCtx<'a> {
     /// Build a sub-context that inherits the source-file reference + the
     /// current `next_value_id`. Used by helpers that lower nested regions
     /// (match arms, scf.if branches, effect-handler bodies, etc.).
+    ///
+    /// § T11-W18-CSSLC-ADVANCE2 (sub-ctx-binding-inheritance) — INHERIT
+    /// `param_vars` + `vec_param_vars` + `local_vars` so bare-ident yields
+    /// inside an `scf.if` / match-arm / effect-handler body resolve against
+    /// the enclosing fn's bindings. Without this, expressions like
+    ///
+    ///   if cond1 { x } else if cond2 { y } else { z }
+    ///
+    /// where `x`, `y`, `z` are outer-scope params/locals would route through
+    /// `lower_path`'s "single-segment unresolved" fallback and emit
+    /// `cssl.path_ref` ops with `MirType::Opaque("!cssl.unresolved.x")`,
+    /// poisoning every downstream pass that walks types.
+    /// Cloning the maps gives the sub-ctx the same view as the parent, so
+    /// `lower_path` finds the binding on its first lookup tier.
+    ///
+    /// Bindings declared INSIDE the sub-region don't escape the sub-ctx —
+    /// after `lower_branch_region` finishes, only `next_value_id` is
+    /// written-back to the parent. That matches stage-0 single-pass scoping
+    /// and is consistent with how `local_cells` was already inherited under
+    /// T11-D318.
     fn sub(&self) -> BodyLowerCtx<'a> {
         BodyLowerCtx {
             interner: self.interner,
             source: self.source,
             trait_impl_table: self.trait_impl_table,
-            param_vars: HashMap::new(),
-            vec_param_vars: HashMap::new(),
-            local_vars: HashMap::new(),
+            param_vars: self.param_vars.clone(),
+            vec_param_vars: self.vec_param_vars.clone(),
+            local_vars: self.local_vars.clone(),
             // T11-D318 (W-CC-mut-assign) : INHERIT mutable-cell map so loop
             // bodies + branch arms can reach `let mut x` cells declared in
             // their parent scope. Reads/writes via `memref.load`/`memref.store`
@@ -5553,6 +5573,150 @@ mod tests {
         // Two func.return : the explicit early + the trailing implicit.
         let count = names.iter().filter(|n| **n == "func.return").count();
         assert!(count >= 1, "expected at least 1 func.return in {names:?}");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-W18-CSSLC-ADVANCE2 — sub-ctx-binding-inheritance regression set.
+    //
+    // Pre-fix : `BodyLowerCtx::sub()` started branch sub-contexts with EMPTY
+    // `param_vars` + `local_vars`, so a bare-ident yield inside an `scf.if`
+    // arm (the canonical `if/else if/else` cascade with `x`/`y`/`z` arms)
+    // routed through `lower_path`'s "single-segment unresolved" tail and
+    // emitted a `cssl.path_ref` op carrying `MirType::Opaque("!cssl.unresolved.<name>")`.
+    // Downstream codegen would then reject the unresolved type at lowering.
+    //
+    // Post-fix : sub() clones param_vars + local_vars (mirroring local_cells'
+    // existing inheritance), so each branch's `lower_expr(<bare ident>)` resolves
+    // against the same binding-table the parent sees. None of the regions emit
+    // `cssl.path_ref` for the yielded names ; the yielded value-ids are exactly
+    // the param-ids visible in the entry block.
+    //
+    // These three tests pin the contract from three directions :
+    //   1. else-branch with a bare-param yield (one-level if/else).
+    //   2. else-if cascade with bare-param yields in every arm.
+    //   3. local `let` binding yielded from a branch arm.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// One-level `if cond { x } else { y }` where both arms yield bare-param
+    /// references. Pre-fix this emitted `cssl.path_ref` ops with `unresolved.x`
+    /// / `unresolved.y` types ; post-fix the regions only emit `scf.yield`.
+    #[test]
+    fn if_else_bare_param_yield_resolves_outer_params() {
+        let (f, _) = lower_one("fn pick(c : bool, x : i32, y : i32) -> i32 { if c { x } else { y } }");
+        let if_op = f
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|o| o.name == "scf.if")
+            .expect("scf.if present");
+        // Walk both regions ; assert NO `cssl.path_ref` with an unresolved type.
+        for (idx, region) in if_op.regions.iter().enumerate() {
+            let blk = region.entry().unwrap_or_else(|| panic!("region #{idx} no entry"));
+            for op in &blk.ops {
+                assert_ne!(
+                    op.name, "cssl.path_ref",
+                    "region #{idx} emitted cssl.path_ref — bare ident not resolved against outer params (regression). ops = {:?}",
+                    blk.ops.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(),
+                );
+                for r in &op.results {
+                    if let crate::value::MirType::Opaque(s) = &r.ty {
+                        assert!(
+                            !s.starts_with("!cssl.unresolved."),
+                            "region #{idx} op `{}` produced unresolved type `{s}` — regression",
+                            op.name,
+                        );
+                    }
+                }
+            }
+            // Final op must be scf.yield with one operand.
+            let last = blk.ops.last().expect("region must have ops");
+            assert_eq!(last.name, "scf.yield", "region #{idx} terminator");
+            assert_eq!(last.operands.len(), 1);
+        }
+    }
+
+    /// Multi-arm `if/else if/else` cascade — the outer-else hosts an inner If
+    /// expression whose arms also yield bare-param refs. Pre-fix every arm's
+    /// sub-ctx had empty param_vars, so all three yielded `unresolved.<name>`.
+    /// Post-fix, all three resolve cleanly.
+    #[test]
+    fn if_else_if_cascade_bare_param_yield_resolves_all_arms() {
+        let (f, _) = lower_one(
+            "fn pick3(c1 : bool, c2 : bool, x : i32, y : i32, z : i32) -> i32 \
+             { if c1 { x } else if c2 { y } else { z } }",
+        );
+        let entry = f.body.entry().unwrap();
+        // Walk EVERY op (incl. nested regions) recursively and assert no
+        // unresolved-typed result ever appears.
+        fn walk_ops(ops: &[crate::MirOp], path: &mut Vec<String>) {
+            for op in ops {
+                path.push(op.name.clone());
+                assert_ne!(
+                    op.name, "cssl.path_ref",
+                    "found cssl.path_ref at path {path:?} — bare ident not resolved (regression)",
+                );
+                for r in &op.results {
+                    if let crate::value::MirType::Opaque(s) = &r.ty {
+                        assert!(
+                            !s.starts_with("!cssl.unresolved."),
+                            "op `{}` at path {path:?} produced unresolved type `{s}`",
+                            op.name,
+                        );
+                    }
+                }
+                for region in &op.regions {
+                    for blk in &region.blocks {
+                        walk_ops(&blk.ops, path);
+                    }
+                }
+                path.pop();
+            }
+        }
+        let mut path = Vec::new();
+        walk_ops(&entry.ops, &mut path);
+        // Sanity : must contain at least the outer scf.if (and the inner one
+        // is nested inside the outer's else region).
+        let outer_count = entry.ops.iter().filter(|o| o.name == "scf.if").count();
+        assert!(outer_count >= 1, "expected outer scf.if");
+    }
+
+    /// Mixed : the cascade arms yield a mix of bare-params AND bare-locals
+    /// (both via `let`-bindings declared before the if). Pre-fix the inner
+    /// branch's sub-ctx couldn't see either set ; post-fix both inhabit
+    /// sub-ctx via the cloned maps.
+    #[test]
+    fn if_else_cascade_with_bare_local_yield_resolves() {
+        let (f, _) = lower_one(
+            "fn pick(c1 : bool, c2 : bool, p : i32) -> i32 \
+             { let a : i32 = 1 ; let b : i32 = 2 ; if c1 { a } else if c2 { b } else { p } }",
+        );
+        let entry = f.body.entry().unwrap();
+        // No cssl.path_ref op anywhere in the body or nested regions.
+        fn no_path_ref(ops: &[crate::MirOp]) {
+            for op in ops {
+                assert_ne!(
+                    op.name, "cssl.path_ref",
+                    "found cssl.path_ref — local/param not resolved in branch arm (regression)",
+                );
+                for r in &op.results {
+                    if let crate::value::MirType::Opaque(s) = &r.ty {
+                        assert!(
+                            !s.starts_with("!cssl.unresolved."),
+                            "op `{}` produced unresolved type `{s}` (regression)",
+                            op.name,
+                        );
+                    }
+                }
+                for region in &op.regions {
+                    for blk in &region.blocks {
+                        no_path_ref(&blk.ops);
+                    }
+                }
+            }
+        }
+        no_path_ref(&entry.ops);
     }
 
     #[test]
