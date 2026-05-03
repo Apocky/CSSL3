@@ -552,7 +552,7 @@ fn compile_one_fn(
         .define_function(func_id, codegen_ctx)
         .map_err(|e| ObjectError::LoweringFailed {
             fn_name: mir_fn.name.clone(),
-            detail: format!("define_function : {e}"),
+            detail: format!("define_function : {e:?}"),
         })?;
 
     Ok(())
@@ -1211,14 +1211,47 @@ fn lower_one_op(
         "memref.load" => obj_lower_memref_load(op, builder, value_map, fn_name, ptr_ty),
         "memref.store" => obj_lower_memref_store(op, builder, value_map, fn_name),
         "func.return" => {
+            // § T11-W19 · int-literal-coercion at func.return
+            //   MIR int-literals default to I32 ; fn-signatures may declare
+            //   I64/I16/I8 returns. The verifier rejects the type mismatch
+            //   ("result N has type iX, must match function signature of iY").
+            //   Insert sextend/ireduce/etc. to bridge the gap. Float + scalar
+            //   mismatches surface unchanged so the verifier still catches
+            //   semantic bugs.
+            let sig_returns: Vec<cranelift_codegen::ir::Type> = builder
+                .func
+                .signature
+                .returns
+                .iter()
+                .map(|p| p.value_type)
+                .collect();
             let mut args = Vec::with_capacity(op.operands.len());
-            for vid in &op.operands {
-                let v = *value_map
+            for (idx, vid) in op.operands.iter().enumerate() {
+                let mut v = *value_map
                     .get(vid)
                     .ok_or_else(|| ObjectError::UnknownValueId {
                         fn_name: fn_name.to_string(),
                         value_id: vid.0,
                     })?;
+                if let Some(&expected_ty) = sig_returns.get(idx) {
+                    let actual_ty = builder.func.dfg.value_type(v);
+                    if actual_ty != expected_ty
+                        && expected_ty.is_int()
+                        && actual_ty.is_int()
+                    {
+                        let exp_bits = expected_ty.bits();
+                        let act_bits = actual_ty.bits();
+                        if exp_bits > act_bits {
+                            // Widen via sign-extend (cranelift IR is
+                            // signedness-erased ; sextend works for both
+                            // signed-positive and signed-negative literals
+                            // that fit in the source width).
+                            v = builder.ins().sextend(expected_ty, v);
+                        } else if exp_bits < act_bits {
+                            v = builder.ins().ireduce(expected_ty, v);
+                        }
+                    }
+                }
                 args.push(v);
             }
             builder.ins().return_(&args);
