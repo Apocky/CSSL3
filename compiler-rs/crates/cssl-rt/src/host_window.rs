@@ -204,8 +204,31 @@ use std::sync::{Mutex, OnceLock};
 // registry continues to satisfy the existing unit tests.
 use cssl_host_window::{
     spawn_window, RawWindowHandleKind, Window as HostWindow, WindowConfig as HostWindowConfig,
-    WindowEventKind,
 };
+
+// § T11-W19-β-FS-TRACE · file-write trace for diagnostics
+//   Writes to %TEMP%\cssl_trace.log (or /tmp on Linux) · survives process-exit ·
+//   always-readable post-mortem · concrete-data-vs-stderr-buffer-mystery.
+//   Each line : `<unix-millis> <message>`. Append-mode · creates if absent.
+//   Apocky : `Get-Content $env:TEMP\cssl_trace.log` to inspect.
+fn fs_trace(msg: &str) {
+    use std::io::Write as _;
+    let path = std::env::temp_dir().join("cssl_trace.log");
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "{} cssl-rt::host_window {}", now_ms, msg);
+        let _ = f.sync_data();
+    }
+}
+
+use cssl_host_window::WindowEventKind;
 
 // ───────────────────────────────────────────────────────────────────────
 // § ABI-locked constants — pinned by cssl-cgen-cpu-cranelift::cgen_window
@@ -485,22 +508,16 @@ pub unsafe fn cssl_window_spawn_impl(
     height: u32,
     flags: u32,
 ) -> u64 {
-    // § T11-W19-β-LIVE-TRACE : write directly to stderr handle to surface
-    // entry path during bring-up. Avoid eprintln! buffering issues by
-    // writing the bytes directly through a flush-on-drop handle.
-    {
-        use std::io::Write as _;
-        let mut e = std::io::stderr().lock();
-        let _ = writeln!(
-            e,
-            "[trace] cssl_window_spawn_impl called : tp={:p} tl={} w={} h={} flags={}",
-            title_ptr, title_len, width, height, flags
-        );
-        let _ = e.flush();
-    }
+    // § T11-W19-β-FS-TRACE : file-write to %TEMP%\cssl_trace.log
+    //   stderr-buffering on PowerShell-exe-exec is unreliable · file-write
+    //   survives-process-exit + always-readable post-mortem.
+    fs_trace(&format!(
+        "spawn_impl entry tp={:p} tl={} w={} h={} flags={}",
+        title_ptr, title_len, width, height, flags
+    ));
     // Validation gate-1 : dimensions.
     if width == 0 || height == 0 {
-        eprintln!("[trace] rejected : zero dim");
+        fs_trace("spawn_impl REJECT zero-dim");
         return INVALID_WINDOW_HANDLE;
     }
     // Validation gate-2 : flag bitset.
@@ -542,10 +559,10 @@ pub unsafe fn cssl_window_spawn_impl(
     // so the existing unit tests + non-host platforms keep working. The
     // production path on Apocky-host (Windows 11 + Arc A770) goes Real.
     let cfg = build_host_config(title.clone(), width, height, flags);
-    eprintln!("[trace] calling spawn_window cfg=({}, {}x{}, flags={:?})", title, width, height, flags);
+    fs_trace(&format!("spawn_impl call-spawn_window title='{}' {}x{} flags={}", title, width, height, flags));
     match spawn_window(&cfg) {
         Ok(real_win) => {
-            eprintln!("[trace] spawn_window OK · handle={}", handle);
+            fs_trace(&format!("spawn_impl OK handle={}", handle));
             REAL_REGISTRY.with(|reg| {
                 reg.borrow_mut().insert(
                     handle,
@@ -562,7 +579,7 @@ pub unsafe fn cssl_window_spawn_impl(
             return handle;
         }
         Err(e) => {
-            eprintln!("[trace] spawn_window FAILED · err={:?}", e);
+            fs_trace(&format!("spawn_impl FAIL err={:?}", e));
             // Fall through to stub on real-backend failure (LoaderMissing
             // on non-Windows ; OsFailure on hosts where Win32 rejected the
             // spawn). Stub keeps the FFI-shape testable.
@@ -601,10 +618,15 @@ pub unsafe fn cssl_window_pump_impl(
     events_out: *mut u8,
     max_events: usize,
 ) -> i64 {
-    PUMP_COUNT.fetch_add(1, Ordering::Relaxed);
+    let n = PUMP_COUNT.fetch_add(1, Ordering::Relaxed);
+    if n < 5 || n % 60 == 0 {
+        // Trace first-5-pumps + every-60th to avoid spam · still see start + cadence
+        fs_trace(&format!("pump_impl call#{} handle={} max_events={}", n, handle, max_events));
+    }
 
     // Buffer-validity gate.
     if max_events > 0 && events_out.is_null() {
+        fs_trace("pump_impl REJECT null-buf");
         return PUMP_ERR_NULL_BUF;
     }
 

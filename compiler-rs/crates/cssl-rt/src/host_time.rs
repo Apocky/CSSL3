@@ -238,11 +238,26 @@ pub fn cssl_time_wall_unix_ns_impl() -> i64 {
 ///   issue `nanosleep` (POSIX) / `WaitForSingleObject + timer-queue`
 ///   (Win32) directly via §§ 14 ASM intrinsics.
 pub fn cssl_time_sleep_ns_impl(ns: u64) -> i32 {
-    SLEEP_COUNT.fetch_add(1, Ordering::Relaxed);
+    let n = SLEEP_COUNT.fetch_add(1, Ordering::Relaxed);
+    // § T11-W19-β-FS-TRACE · log first-5 + every-60th sleep call
+    if n < 5 || n % 60 == 0 {
+        let path = std::env::temp_dir().join("cssl_trace.log");
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        use std::io::Write as _;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = writeln!(f, "{} cssl-rt::host_time sleep_ns call#{} ns={}", now_ms, n, ns);
+            let _ = f.sync_data();
+        }
+    }
     if ns == 0 {
         // Zero-duration sleep : skip the syscall, but DO count it.
-        // This matches POSIX `nanosleep(0, NULL)` semantics — a yield.
-        // Future stage-1 path may emit `sched_yield()` here.
         return TIME_OK;
     }
     TOTAL_SLEEP_NS.fetch_add(ns, Ordering::Relaxed);
