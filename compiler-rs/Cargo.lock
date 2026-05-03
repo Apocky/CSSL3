@@ -988,6 +988,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-cgen-gpu-dxil-wgsl"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-substrate-render-v3-d3d12",
+ "naga",
+ "thiserror 1.0.69",
+ "winapi-util",
+]
+
+[[package]]
 name = "cssl-cgen-gpu-msl"
 version = "0.1.0"
 dependencies = [

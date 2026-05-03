@@ -1,0 +1,42 @@
+[package]
+name                   = "cssl-cgen-gpu-dxil-wgsl"
+description            = "§ T11-W18-CGEN-DXIL · WGSL → naga → SPIR-V → DXBC-wrapped DXIL emit path · STUB-LABELED · embedded substrate-v2.wgsl source · zero-dxc · zero-LLVM-bindings · honest-attestation about real-vs-stub DXIL · sibling to `cssl-cgen-dxil` (from-scratch MirModule path) + `cssl-cgen-gpu-dxil` (HLSL+dxc path)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_cgen_gpu_dxil_wgsl"
+
+# § T11-W18-CGEN-DXIL — feature gates
+#   `default = []` — pulls naga (`wgsl-in` + `spv-out`) for the WGSL → SPIR-V
+#   roundtrip + the DXBC container writer. NO DXC binding · NO LLVM-sys ·
+#   NO d3dcompiler. Tests exercise the parse + emit + container-shape paths
+#   without requiring any GPU driver.
+[features]
+default = []
+
+[dependencies]
+# § T11-W18-CGEN-DXIL : the canonical L8 host (`cssl-host-substrate-render-v3-d3d12`)
+# exposes RootSignatureLayout structurally ; we depend on the host crate so the
+# `DxilArtifactDescriptor::root_sig_layout` field carries the host's exact
+# layout type without re-defining it (single source of truth · no drift).
+cssl-host-substrate-render-v3-d3d12 = { path = "../cssl-host-substrate-render-v3-d3d12" }
+thiserror = { workspace = true }
+
+# § naga 23 (workspace-pinned · already required by cssl-cgen-gpu-wgsl) — extended
+# with `spv-out` for the WGSL → SPIR-V emit path. The workspace pin only declares
+# `wgsl-in` ; we layer the additional feature here per cargo-feature-additivity.
+naga = { workspace = true, features = ["wgsl-in", "spv-out"] }
+
+# § T11-D154 : pin transitive winapi-util via direct-dep so cargo enforces
+# =0.1.10 and avoids dlltool.exe requirement (windows-sys 0.61.2). Mirrors
+# the `cssl-cgen-gpu-wgsl` rationale — naga's codespan-reporting → termcolor
+# → winapi-util chain resolves to 0.1.11 by default which pulls the broken
+# windows-sys 0.61.2 line.
+winapi-util = { workspace = true }
+
+[lints]
+workspace = true
