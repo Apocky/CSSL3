@@ -81,14 +81,40 @@ pub enum DisplayProfile {
 
 impl DisplayProfile {
     /// Per-profile (black_threshold, contrast) tuned defaults.
+    /// § T11-W18-L9-AMOLED-DEEP · re-tuned :
+    ///   - Amoled : 0.003 · pitch-black-er · matches AMOLED snap-to-zero physics
+    ///   - Oled : 0.008 · most OLED leaks BFI light at this floor
+    ///   - IpsLcd : 0.020 · no point lifting blacks below the LCD-floor
+    ///   - VaLcd : 0.012 · between OLED + IPS
+    ///   - HdrExt : 0.0001 · PQ EOTF zeros out below this anyway
+    /// Saturation-boost / snap-to-zero / peak-nits / is-HDR live on the
+    /// `DisplayProfileDeep` trait in `display_profile`.
     pub fn defaults(self) -> (f32, f32) {
         match self {
-            Self::Amoled => (DEFAULT_AMOLED_BLACK_THRESHOLD, DEFAULT_AMOLED_CONTRAST),
-            Self::Oled => (0.03, 0.30),
-            Self::IpsLcd => (0.0, 0.15), // do NOT crush blacks · IPS already gray
-            Self::VaLcd => (0.02, 0.25),
-            Self::HdrExt => (0.05, 0.40), // can afford strong S-curve
+            Self::Amoled => (0.003, 0.40),
+            Self::Oled => (0.008, 0.30),
+            Self::IpsLcd => (0.020, 0.15), // do NOT crush blacks · IPS already gray
+            Self::VaLcd => (0.012, 0.25),
+            Self::HdrExt => (0.0001, 0.45), // PQ EOTF preserves true-black
         }
+    }
+}
+
+/// § T11-W18-L9-AMOLED-DEEP — Per-profile deep-attribute triple
+/// `(snap_to_zero, saturation_boost, peak_nits)`. Held inline in
+/// `substrate_compose` to avoid a back-reference into `display_profile`
+/// (which depends on this module via `DisplayProfile`). The constants in
+/// `display_profile::*` are the canonical names callers should use ; the
+/// numbers here MUST stay in sync.
+#[must_use]
+pub fn deep_attributes_for(profile: DisplayProfile) -> (f32, f32, f32) {
+    match profile {
+        // (snap_to_zero, saturation_boost, peak_nits)
+        DisplayProfile::Amoled => (0.003, 1.15, 800.0),
+        DisplayProfile::Oled => (0.008, 1.08, 600.0),
+        DisplayProfile::IpsLcd => (0.020, 1.00, 400.0),
+        DisplayProfile::VaLcd => (0.012, 1.05, 500.0),
+        DisplayProfile::HdrExt => (0.0001, 1.20, 1000.0),
     }
 }
 
@@ -98,8 +124,17 @@ pub const SUBSTRATE_COMPOSE_WGSL: &str = include_str!("../shaders/substrate_comp
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct ComposeUniforms {
-    /// .x = overlay strength · .yzw = reserved.
+    /// .x = overlay strength
+    /// .y = AMOLED black-threshold (alpha gate)
+    /// .z = contrast S-curve strength
+    /// .w = display-profile-id (Amoled=0..HdrExt=4)
     compose_ctl: [f32; 4],
+    /// § T11-W18-L9-AMOLED-DEEP — extended per-profile attributes :
+    /// .x = snap-to-zero luminance threshold (pixels below → pure (0,0,0))
+    /// .y = saturation-boost (HSV-S × this · clamped 0..2)
+    /// .z = peak-nits (HDR PQ-encode target · ignored for SDR)
+    /// .w = is-hdr flag (1.0 = Rec.2020 + PQ encoding · 0.0 = SDR sRGB)
+    display_ctl: [f32; 4],
 }
 
 /// Owns the wgpu resources for the substrate-compose pass.
@@ -129,6 +164,12 @@ pub struct SubstrateComposePipeline {
     contrast: f32,
     /// Cached display-profile-id (matches compose_ctl.w in shader).
     display_profile: DisplayProfile,
+    /// § T11-W18-L9 — snap-to-zero luminance (display_ctl.x in shader).
+    snap_to_zero: f32,
+    /// § T11-W18-L9 — saturation-boost (display_ctl.y in shader).
+    saturation_boost: f32,
+    /// § T11-W18-L9 — peak-nits (display_ctl.z · HDR-only · ignored for SDR).
+    peak_nits: f32,
     /// Cached texture dimensions. Re-allocated by `ensure_size` if the
     /// host ever resizes the substrate pixel-field at runtime.
     width: u32,
@@ -183,13 +224,23 @@ impl SubstrateComposePipeline {
             ..Default::default()
         });
 
+        // § T11-W18-L9-AMOLED-DEEP · seed deep-attribute defaults from the
+        // Amoled profile (matches the existing display_profile = Amoled
+        // bootstrap). The host immediately overwrites these via
+        // `set_display_profile` once the auto-detect completes.
+        let initial_profile = DisplayProfile::Amoled;
+        let initial_snap = 0.003_f32;
+        let initial_sat = 1.15_f32;
+        let initial_nits = 800.0_f32;
+        let initial_hdr_flag = 0.0_f32; // Amoled is SDR
         let uniforms = ComposeUniforms {
             compose_ctl: [
                 DEFAULT_OVERLAY_STRENGTH,
                 DEFAULT_AMOLED_BLACK_THRESHOLD,
                 DEFAULT_AMOLED_CONTRAST,
-                DisplayProfile::Amoled as u32 as f32,
+                initial_profile as u32 as f32,
             ],
+            display_ctl: [initial_snap, initial_sat, initial_nits, initial_hdr_flag],
         };
         let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("loa-host/substrate-compose-uniforms"),
@@ -322,7 +373,10 @@ impl SubstrateComposePipeline {
             overlay_strength: DEFAULT_OVERLAY_STRENGTH,
             black_threshold: DEFAULT_AMOLED_BLACK_THRESHOLD,
             contrast: DEFAULT_AMOLED_CONTRAST,
-            display_profile: DisplayProfile::Amoled,
+            display_profile: initial_profile,
+            snap_to_zero: initial_snap,
+            saturation_boost: initial_sat,
+            peak_nits: initial_nits,
             width: COMPOSE_TEX_W,
             height: COMPOSE_TEX_H,
             target_format,
@@ -498,7 +552,8 @@ impl SubstrateComposePipeline {
         );
     }
 
-    /// Adopt a `DisplayProfile`. Updates `black_threshold` + `contrast` to
+    /// Adopt a `DisplayProfile`. Updates `black_threshold` + `contrast` +
+    /// the deep attributes (snap-to-zero · saturation-boost · peak-nits) to
     /// the profile's tuned defaults · re-uploads uniform on change. Call
     /// once at startup after detecting the panel + on monitor-change.
     pub fn set_display_profile(&mut self, queue: &wgpu::Queue, profile: DisplayProfile) {
@@ -506,17 +561,48 @@ impl SubstrateComposePipeline {
             return;
         }
         let (bt, ct) = profile.defaults();
+        let (snap, sat, nits) = deep_attributes_for(profile);
         self.display_profile = profile;
         self.black_threshold = bt;
         self.contrast = ct;
+        self.snap_to_zero = snap;
+        self.saturation_boost = sat;
+        self.peak_nits = nits;
         self.write_uniforms(queue);
         log_event(
             "INFO",
             "loa-host/substrate-compose",
             &format!(
-                "display-profile · {profile:?} · black_thresh={bt:.3} · contrast={ct:.3}"
+                "display-profile · {profile:?} · black_thresh={bt:.3} · contrast={ct:.3} · \
+                 snap={snap:.4} · sat={sat:.2} · peak-nits={nits}"
             ),
         );
+    }
+
+    /// § T11-W18-L9-AMOLED-DEEP — direct override of the deep-attribute
+    /// triple. Useful when the operator wants to override one profile-default
+    /// at runtime (e.g., bump saturation on a slightly-faded OLED). Re-uploads
+    /// only when at least one component differs from the current setting.
+    pub fn set_deep_attributes(
+        &mut self,
+        queue: &wgpu::Queue,
+        snap_to_zero: f32,
+        saturation_boost: f32,
+        peak_nits: f32,
+    ) {
+        let s = snap_to_zero.clamp(0.0, 1.0);
+        let b = saturation_boost.clamp(0.0, 2.0);
+        let n = peak_nits.clamp(50.0, 10000.0);
+        let unchanged = (s - self.snap_to_zero).abs() < f32::EPSILON
+            && (b - self.saturation_boost).abs() < f32::EPSILON
+            && (n - self.peak_nits).abs() < f32::EPSILON;
+        if unchanged {
+            return;
+        }
+        self.snap_to_zero = s;
+        self.saturation_boost = b;
+        self.peak_nits = n;
+        self.write_uniforms(queue);
     }
 
     /// Tweak black-threshold (AMOLED-aware true-black gate).
@@ -540,6 +626,11 @@ impl SubstrateComposePipeline {
     }
 
     fn write_uniforms(&self, queue: &wgpu::Queue) {
+        let is_hdr_flag = if matches!(self.display_profile, DisplayProfile::HdrExt) {
+            1.0
+        } else {
+            0.0
+        };
         let uniforms = ComposeUniforms {
             compose_ctl: [
                 self.overlay_strength,
@@ -547,8 +638,32 @@ impl SubstrateComposePipeline {
                 self.contrast,
                 self.display_profile as u32 as f32,
             ],
+            display_ctl: [
+                self.snap_to_zero,
+                self.saturation_boost,
+                self.peak_nits,
+                is_hdr_flag,
+            ],
         };
         queue.write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+    }
+
+    /// § T11-W18-L9 — current snap-to-zero threshold (display_ctl.x).
+    #[must_use]
+    pub fn snap_to_zero(&self) -> f32 {
+        self.snap_to_zero
+    }
+
+    /// § T11-W18-L9 — current saturation-boost (display_ctl.y).
+    #[must_use]
+    pub fn saturation_boost(&self) -> f32 {
+        self.saturation_boost
+    }
+
+    /// § T11-W18-L9 — current peak-nits (display_ctl.z).
+    #[must_use]
+    pub fn peak_nits(&self) -> f32 {
+        self.peak_nits
     }
 
     /// Current display-profile.
@@ -615,6 +730,83 @@ mod tests {
         assert!(SUBSTRATE_COMPOSE_WGSL.contains("vs_main"));
         assert!(SUBSTRATE_COMPOSE_WGSL.contains("fs_main"));
         assert!(SUBSTRATE_COMPOSE_WGSL.contains("substrate_tex"));
+        // § T11-W18-L9-AMOLED-DEEP — verify the new shader-stages are present.
+        assert!(
+            SUBSTRATE_COMPOSE_WGSL.contains("display_ctl"),
+            "extended display_ctl uniform must be present"
+        );
+        assert!(
+            SUBSTRATE_COMPOSE_WGSL.contains("rgb_to_hsv"),
+            "saturation-boost requires HSV conversion path"
+        );
+        assert!(
+            SUBSTRATE_COMPOSE_WGSL.contains("hdr_pq_encode"),
+            "HDR PQ encoding path must be present"
+        );
+        assert!(
+            SUBSTRATE_COMPOSE_WGSL.contains("rec709_to_rec2020"),
+            "Rec.2020 wide-gamut matrix must be present"
+        );
+        assert!(
+            SUBSTRATE_COMPOSE_WGSL.contains("snap_thr"),
+            "snap-to-zero gate must be present"
+        );
+    }
+
+    #[test]
+    fn deep_attributes_for_amoled_pitch_black() {
+        let (snap, sat, nits) = deep_attributes_for(DisplayProfile::Amoled);
+        assert!((snap - 0.003).abs() < 1e-6);
+        assert!((sat - 1.15).abs() < 1e-6);
+        assert!((nits - 800.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn deep_attributes_for_oled_below_amoled() {
+        let (a_snap, a_sat, _) = deep_attributes_for(DisplayProfile::Amoled);
+        let (o_snap, o_sat, _) = deep_attributes_for(DisplayProfile::Oled);
+        assert!(o_snap > a_snap, "OLED snap > AMOLED snap");
+        assert!(o_sat < a_sat, "OLED sat < AMOLED sat");
+    }
+
+    #[test]
+    fn deep_attributes_for_ips_no_crush_no_boost() {
+        let (snap, sat, nits) = deep_attributes_for(DisplayProfile::IpsLcd);
+        assert!((sat - 1.0).abs() < 1e-6, "IPS saturation = identity");
+        assert!(snap > 0.015, "IPS snap floor ≥ LCD-floor");
+        assert!((nits - 400.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn deep_attributes_for_va_between_ips_and_oled() {
+        let (snap, sat, _) = deep_attributes_for(DisplayProfile::VaLcd);
+        let (i_snap, _, _) = deep_attributes_for(DisplayProfile::IpsLcd);
+        let (o_snap, _, _) = deep_attributes_for(DisplayProfile::Oled);
+        assert!(snap < i_snap && snap > o_snap);
+        assert!((sat - 1.05).abs() < 1e-6);
+    }
+
+    #[test]
+    fn deep_attributes_for_hdr_max_punch() {
+        let (snap, sat, nits) = deep_attributes_for(DisplayProfile::HdrExt);
+        assert!(snap < 0.001, "HDR snap below 1/1000");
+        assert!(sat > 1.15, "HDR sat strongest");
+        assert!((nits - 1000.0).abs() < 1e-3, "HDR peak = 1000 nits");
+    }
+
+    #[test]
+    fn defaults_table_amoled_re_tuned_to_l9() {
+        // § T11-W18-L9-AMOLED-DEEP · re-tuned defaults table.
+        let (bt, ct) = DisplayProfile::Amoled.defaults();
+        assert!((bt - 0.003).abs() < 1e-6, "AMOLED black-thr re-tuned to 0.003");
+        assert!((ct - 0.40).abs() < 1e-6, "AMOLED contrast bumped to 0.40");
+    }
+
+    #[test]
+    fn defaults_table_hdr_pq_aware() {
+        let (bt, ct) = DisplayProfile::HdrExt.defaults();
+        assert!((bt - 0.0001).abs() < 1e-7, "HDR black-thr re-tuned to 0.0001");
+        assert!((ct - 0.45).abs() < 1e-6, "HDR contrast bumped to 0.45");
     }
 
     /// Construct a SubstrateComposePipeline against a real wgpu device.

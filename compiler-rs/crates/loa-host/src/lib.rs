@@ -391,6 +391,16 @@ pub mod substrate_compose;
 #[cfg(feature = "runtime")]
 pub mod display_detect;
 
+// § T11-W18-L9-AMOLED-DEEP — DEEP per-profile color-transform + auto-detect.
+// Sister-module to `display_detect` ; carries the per-profile saturation-
+// boost · snap-to-zero · peak-nits attributes the WGSL compose shader uses
+// to render true-black AMOLED · saturate-an-OLED · lift-blacks-on-IPS · or
+// PQ-encode for HdrExt. Also exposes `auto_detect_with_inputs` — a layered
+// env > DXGI > EDID > winit-heuristic > default fallthrough that returns
+// the chosen profile + the source-layer that won (for logs).
+#[cfg(feature = "runtime")]
+pub mod display_profile;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § FFI surface (T11-LOA-PURE-CSSL · pure-CSSL main.cssl entry-point)
 // ──────────────────────────────────────────────────────────────────────────
