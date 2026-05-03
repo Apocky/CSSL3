@@ -1,0 +1,393 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/time.cssl  —  Time-primitive surface (monotonic + wall + sleep + deadline)
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § time (lines 117-127)
+//        specs/24_HOST_FFI.csl § CSSL-SIDE WRAPPERS § Time (lines 155-159)
+//        specs/04_EFFECTS.csl  § BUILT-IN EFFECTS (NonDeterministic-via-DetRNG/PureDet
+//                                                   negation ; Time-class effect-row)
+//        specs/11_IFC.csl      § PRIME-DIRECTIVE ENCODING (NonDeterministic IFC label
+//                                                            on monotonic + wall reads)
+//        specs/12_CAPABILITIES.csl § THE SIX CAPABILITIES (Cap<Time> witness)
+// Slice : Wave-D1 stdlib companion (S1A) — paired with cssl-rt::host_time (Wave-D1).
+//
+// § PRIME_DIRECTIVE preserved : time-reads are the single-most non-deterministic
+//   primitive in the runtime. This module : (a) does no surveillance — the four
+//   ops fire only at explicit caller-invocation, (b) the cssl-rt counters are
+//   LOCAL — nothing escapes the process, (c) every read carries the
+//   {NonDeterministic} effect-row marker so callers cannot accidentally compose
+//   time with {PureDet}, (d) Cap<Time> witness consumption is the source-level
+//   gate per `specs/24_HOST_FFI.csl § CAPABILITY-MATRIX § Cap<Time>` —
+//   zero-cap = compile-error.
+//
+//   ‼ This module NEVER overrides PRIME_DIRECTIVE. Time-reads remain
+//     non-deterministic ; composing {NonDeterministic} ⊎ {PureDet} is a
+//     compile-error per the §§ 04 effect-row discipline. Sleep + deadline
+//     observations are bounded by the caller-supplied ns budget ; the
+//     wrappers do not introduce hidden side-channels.
+//
+// § STAGE-0 NOTES
+//   1. The four time verbs (`monotonic_ns` / `wall_unix_ns` / `sleep_ns` /
+//      `deadline_until`) are recognized syntactically by `cssl_mir::body_lower::
+//      lower_call`. The recognizer fires on a 2-segment path `time::<verb>`
+//      with the appropriate arity (monotonic = 0 args, wall = 0 args,
+//      sleep = 1 arg, deadline_until = 1 arg). Each call lowers to a
+//      `cssl.time.<verb>` op carrying the `(time_effect, "true")` attribute
+//      as the stage-0 marker for {NonDeterministic} effect-row threading
+//      (mirrors the {IO} / {Net} attribute pattern from T11-D76 / T11-D82).
+//      Real `MirEffectRow` structural threading is deferred (see DEFERRED
+//      below) ; until then the bare attribute is the source-of-truth.
+//   2. The `Cap<Time>` witness is enforced at the SOURCE-LEVEL wrapper :
+//      every wrapper-fn below takes a `cap : i64` parameter representing
+//      a packed Cap<Time> token (per specs/12 § THE SIX CAPABILITIES the
+//      witness lowers to a u64 gen-ref ; the i64 here is the host-width
+//      bit-pattern matching the existing fs/net File-handle convention).
+//      Bypassing the wrapper (calling `__cssl_time_*` directly from
+//      userland CSSL) is a directive-violation caught by the type-system
+//      at the source-level surface (effect-row + capability-witness).
+//   3. The four `__cssl_time_*` ABI-stable extern "C" symbols are declared
+//      in `cssl-rt::host_time` (Wave-D1 throwaway-Rust shim). The CSSL
+//      source below does NOT spell them with `extern "C" {}` blocks —
+//      the parser does not yet recognize that syntax (carried-forward
+//      from the fs/net precedent). Instead the wrappers invoke the
+//      bare 2-segment recognizer form `time::<verb>(...)` which lowers
+//      through `cssl_mir::body_lower` to `cssl.time.<verb>` MIR ops, then
+//      cgen emits the matching `call __cssl_time_<verb>` instruction
+//      (per the cgen_time pattern paired with cgen_fs / cgen_net).
+//   4. Return-code constants (`TIME_OK`, `TIME_ERR`,
+//      `TIME_DEADLINE_ALREADY_PAST`) mirror cssl-rt::host_time exactly ;
+//      renaming requires lock-step changes in both files (matches the
+//      fs/net surface-discipline).
+//   5. `frame_budget_ns_for_hz(hz)` is a pure-arithmetic helper that
+//      computes the per-frame ns budget for a target refresh rate. Used
+//      by `engine/frame_clock.cssl` (deferred) + game-loop schedulers
+//      that want a deadline-ns target without re-reading the monotonic
+//      clock between frames. 144 Hz → 6_944_444 ns (truncation ; the
+//      remainder is absorbed by the OS scheduler quantum).
+//
+// § INVARIANTS
+//   - `monotonic_ns` is monotonically non-decreasing within a single
+//     process (per cssl-rt::host_time::cssl_time_monotonic_ns_impl ; the
+//     boot-instant cache + `Instant::elapsed()` provide the guarantee).
+//   - `wall_unix_ns` may regress (system clock adjustment) ; callers that
+//     need monotonicity must use `monotonic_ns`. PRIME-DIRECTIVE :
+//     wall-clock reads carry NO Sensitive label — they're a process-local
+//     observation per §§ 11.
+//   - `sleep_ns(0)` is a documented no-op (yields without syscall) ;
+//     `sleep_ns(ns > 0)` blocks the current thread for at-least `ns`
+//     nanoseconds (OS scheduler granularity is the lower bound).
+//   - `deadline_until(deadline_ns)` returns immediately with
+//     `TIME_DEADLINE_ALREADY_PAST` when the deadline has already passed
+//     at call entry — the past-deadline path bypasses the syscall.
+
+module com.apocky.stdlib.time
+
+// ───────────────────────────────────────────────────────────────────────
+// § Return-code constants  (mirror cssl-rt::host_time::TIME_*).
+//
+//   ABI-locked from Wave-D1 ; renaming requires a major-version bump.
+// ───────────────────────────────────────────────────────────────────────
+
+// `TIME_OK = 0` — successful completion of a sleep / deadline_until call.
+fn time_ok() -> i32 {
+    0
+}
+
+// `TIME_ERR = -1` — reserved for future use ; stage-0 host_time never
+// produces this code (`Duration::from_nanos` is total over u64). Locked
+// for stage-1's syscall-direct path.
+fn time_err() -> i32 {
+    -1
+}
+
+// `TIME_DEADLINE_ALREADY_PAST = 1` — `deadline_until` short-circuit
+// signal indicating the deadline was already in the past at call entry.
+// Distinct from `TIME_OK` so callers that want to distinguish "we slept"
+// from "we didn't have to" can branch without re-reading the clock.
+fn time_deadline_already_past() -> i32 {
+    1
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Useful constants  (pure arithmetic ; no FFI).
+// ───────────────────────────────────────────────────────────────────────
+
+// Nanoseconds per second.
+fn ns_per_sec() -> u64 {
+    1_000_000_000
+}
+
+// Nanoseconds per millisecond.
+fn ns_per_ms() -> u64 {
+    1_000_000
+}
+
+// Nanoseconds per microsecond.
+fn ns_per_us() -> u64 {
+    1_000
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § effect Time  (canonical effect-declaration per specs/24 § CSSL-SIDE WRAPPERS)
+//
+//   Per `specs/24_HOST_FFI.csl § CSSL-SIDE WRAPPERS § Time` the canonical
+//   form is :
+//
+//     effect Time {
+//       fn monotonic() -> {NonDeterministic} u64
+//       fn wall()      -> {NonDeterministic} i64
+//       fn sleep(ns: u64) -> ()
+//     }
+//
+//   Stage-0 the parser does NOT yet recognize the effect-block syntax with
+//   embedded effect-rows (`-> {NonDeterministic} u64`). The precedent
+//   (fs.cssl + net.cssl) is to comment-document the effect-block + expose
+//   a free-function surface that the syntactic recognizer routes to the
+//   correct cssl.time.* MIR op. The effect-block below is documentary —
+//   once the parser slice for in-effect-row return-types lands, the
+//   block becomes active without needing to re-author the wrappers.
+//
+//   // N! syntax-uncertain : effect-block + embedded effect-rows on return
+//   //    types is per spec/24 + spec/04 but no existing stdlib/*.cssl
+//   //    declares an effect-block — declare-as-comment until parser-slice
+//   //    lands ; the free-fn surface below is the active call surface.
+//
+//   effect Time {
+//       fn monotonic_ns() -> {NonDeterministic} u64
+//       fn wall_unix_ns() -> {NonDeterministic} i64
+//       fn sleep_ns(ns : u64) -> i32
+//       fn deadline_until(deadline_ns : u64) -> i32
+//   }
+// ───────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────
+// § Free-function wrapper surface  (active call surface ; cap-gated).
+//
+//   Each wrapper :
+//     1. Takes a `cap : i64` parameter representing a Cap<Time> witness
+//        (the i64 is the packed gen-ref bit-pattern per specs/12).
+//     2. Routes through the 2-segment recognizer `time::<verb>(...)`
+//        which lowers to a `cssl.time.<verb>` MIR op with the
+//        `(time_effect, "true")` attribute.
+//     3. Carries the documentary {NonDeterministic, Time} effect-row in
+//        its doc-comment until in-fn-sig effect-row syntax lands.
+// ───────────────────────────────────────────────────────────────────────
+
+// `time_monotonic_ns(cap)` — read the monotonic-since-boot ns counter.
+//
+// § EFFECT-ROW (documentary at stage-0)
+//   { NonDeterministic, Time }
+//
+// § CAPABILITY
+//   Consumes a `Cap<Time>` witness (the `cap : i64` packs the gen-ref
+//   per specs/12). The wrapper validates `cap != 0` ; zero-cap = caller
+//   never obtained the witness from the Apocky-PM signed-token grant
+//   path (per specs/24 § CAPABILITY-MATRIX) and the call short-circuits
+//   to 0 as a defensive sentinel. The runtime cap-witness check is
+//   strengthened in the deferred runtime-IFC slice ; at stage-0 the
+//   parameter-presence is the structural witness.
+//
+// § PRIME-DIRECTIVE
+//   Time-monotonic carries the NonDeterministic IFC label per §§ 11.
+//   No Sensitive data, no egress, no side-channels.
+//
+// § STAGE-0 BEHAVIOR
+//   Delegates to the `time::monotonic_ns` recognizer-form which lowers
+//   to `cssl.time.monotonic_ns` → `call __cssl_time_monotonic_ns()`.
+fn time_monotonic_ns(cap : i64) -> u64 {
+    if cap == 0 {
+        // Defensive : zero-cap is a caller-contract violation. Return 0
+        // rather than fire the syscall ; the source-level type-system
+        // enforces witness-presence, this branch is the runtime fallback.
+        0
+    } else {
+        time::monotonic_ns()
+    }
+}
+
+// `time_wall_unix_ns(cap)` — read the wall-clock UNIX-epoch ns counter.
+//
+// § EFFECT-ROW (documentary)
+//   { NonDeterministic, Time }
+//
+// § CAPABILITY
+//   Consumes a Cap<Time> witness. See `time_monotonic_ns` for the
+//   stage-0 zero-cap fallback rationale.
+//
+// § PRIME-DIRECTIVE
+//   Wall-clock reads carry NO Sensitive label per §§ 11 — they are a
+//   process-local observation of the host clock with no egress channel.
+//
+// § STAGE-0 BEHAVIOR
+//   Delegates to the `time::wall_unix_ns` recognizer-form which lowers
+//   to `cssl.time.wall_unix_ns` → `call __cssl_time_wall_unix_ns()`.
+fn time_wall_unix_ns(cap : i64) -> i64 {
+    if cap == 0 {
+        0
+    } else {
+        time::wall_unix_ns()
+    }
+}
+
+// `time_sleep_ns(cap, ns)` — block the current thread for `ns` ns.
+//
+// § EFFECT-ROW (documentary)
+//   { Time }    // sleep is permitted in PureDet contexts only via
+//                  recorded-trace replay ; live execution carries Time
+//                  but NOT NonDeterministic per spec/24 distinction.
+//
+// § CAPABILITY
+//   Consumes a Cap<Time> witness.
+//
+// § STAGE-0 BEHAVIOR
+//   `ns == 0` is a documented no-op (yields without syscall ; matches
+//   POSIX `nanosleep(0, NULL)` semantics). `ns > 0` blocks for at-least
+//   `ns` nanoseconds. Returns `TIME_OK` on completion ; never returns
+//   `TIME_ERR` at stage-0.
+fn time_sleep_ns(cap : i64, ns : u64) -> i32 {
+    if cap == 0 {
+        time_err()
+    } else {
+        time::sleep_ns(ns)
+    }
+}
+
+// `time_deadline_until(cap, deadline_ns)` — sleep until `deadline_ns`
+// (a monotonic-ns reading from `time_monotonic_ns`).
+//
+// § EFFECT-ROW (documentary)
+//   { Time }
+//
+// § CAPABILITY
+//   Consumes a Cap<Time> witness.
+//
+// § STAGE-0 BEHAVIOR
+//   Returns :
+//     - `TIME_OK` (= 0) when the wrapper actually slept.
+//     - `TIME_DEADLINE_ALREADY_PAST` (= 1) when the deadline was already
+//       in the past at call entry — the past-deadline path bypasses the
+//       syscall entirely (Sawyer-efficient).
+//     - `TIME_ERR` (= -1) reserved for future use.
+//
+//   Computes `delta = deadline_ns.saturating_sub(now_ns)` inside cssl-rt ;
+//   if `delta == 0` short-circuits, else sleeps for `delta` ns + returns 0.
+fn time_deadline_until(cap : i64, deadline_ns : u64) -> i32 {
+    if cap == 0 {
+        time_err()
+    } else {
+        time::deadline_until(deadline_ns)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helpers — pure arithmetic ; no FFI ; no cap.
+// ───────────────────────────────────────────────────────────────────────
+
+// `frame_budget_ns_for_hz(hz)` — compute the per-frame ns budget for a
+// target refresh rate.
+//
+// § FORMULA
+//   budget_ns = NS_PER_SEC / hz
+//
+// § EXAMPLES
+//   - 60 Hz    → 16_666_666 ns  (~16.67 ms)
+//   - 90 Hz    → 11_111_111 ns  (~11.11 ms)
+//   - 120 Hz   → 8_333_333 ns   (~8.33 ms)
+//   - 144 Hz   → 6_944_444 ns   (~6.94 ms)
+//   - 240 Hz   → 4_166_666 ns   (~4.17 ms)
+//
+// § RATIONALE
+//   Game-loop schedulers that want a per-frame deadline-ns target use
+//   this helper paired with `time_monotonic_ns` to compute the next
+//   frame's deadline without re-reading the clock between frames :
+//
+//     let frame_budget = frame_budget_ns_for_hz(144) ;
+//     let frame_start  = time_monotonic_ns(cap_time) ;
+//     // ... render frame ...
+//     let next_deadline = frame_start + frame_budget ;
+//     time_deadline_until(cap_time, next_deadline) ;
+//
+//   Truncation : the remainder is absorbed by the OS scheduler quantum.
+//   For `hz == 0` we return 0 as a defensive sentinel (no frame-pacing).
+fn frame_budget_ns_for_hz(hz : u32) -> u64 {
+    if hz == 0 {
+        0
+    } else {
+        ns_per_sec() / (hz as u64)
+    }
+}
+
+// `ms_to_ns(ms)` — convert a millisecond budget to nanoseconds.
+fn ms_to_ns(ms : u64) -> u64 {
+    ms * ns_per_ms()
+}
+
+// `us_to_ns(us)` — convert a microsecond budget to nanoseconds.
+fn us_to_ns(us : u64) -> u64 {
+    us * ns_per_us()
+}
+
+// `ns_to_ms(ns)` — convert a nanosecond reading to milliseconds (truncating).
+fn ns_to_ms(ns : u64) -> u64 {
+    ns / ns_per_ms()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DEFERRED  (carried-forward to a future spec-amendment / parser-slice)
+//
+//   1. effect-block syntax with embedded effect-rows on return types :
+//        effect Time {
+//            fn monotonic() -> {NonDeterministic} u64
+//            ...
+//        }
+//      Currently parser-rejected ; documented in commented-out form
+//      above. Once the parser slice lands the documentary block becomes
+//      active.
+//   2. Structural `MirEffectRow` threading on the parent fn carrying
+//      `{NonDeterministic, Time}` ; mirrors the {IO} / {Net} structural-
+//      threading deferral from T11-D76 / T11-D82.
+//   3. Cap<Time> typed-witness : the `cap : i64` parameter is a host-
+//      width packed gen-ref. Once the parser recognizes `Cap<Time>` as
+//      a type-annotation form, the parameter type migrates to the
+//      typed shape. The migration is mechanical.
+//   4. Trait-Drop integration on Cap<Time> : revoking the witness on
+//      scope-exit lands once the trait-Drop infra is in place. Stage-0
+//      callers manage cap-revocation manually.
+//   5. {Realtime<Crit>} composition with `time_deadline_until` for the
+//      audio-callback frame-pacing pattern (per `examples/audio_callback.cssl`).
+//      Stage-0 the composition is documented but not type-checked.
+// ───────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : measure elapsed ns across a brief sleep.
+// Demonstrates the canonical monotonic-pair pattern.
+fn _example_measure_elapsed_ns(cap : i64) -> u64 {
+    let t0 = time_monotonic_ns(cap) ;
+    let _r = time_sleep_ns(cap, ms_to_ns(1)) ;  // sleep 1ms
+    let t1 = time_monotonic_ns(cap) ;
+    if t1 < t0 {
+        0
+    } else {
+        t1 - t0
+    }
+}
+
+// Worked example : 144 Hz frame-pacing scaffolding. Demonstrates the
+// deadline-ns composition the engine `frame_clock.cssl` will use.
+fn _example_frame_pace_144hz(cap : i64) -> i32 {
+    let frame_budget = frame_budget_ns_for_hz(144) ;
+    let frame_start = time_monotonic_ns(cap) ;
+    // ... caller's render-frame work elided ...
+    let next_deadline = frame_start + frame_budget ;
+    time_deadline_until(cap, next_deadline)
+}
+
+// Worked example : wall-clock timestamp capture (positive in 2026).
+// Demonstrates the wall-vs-monotonic distinction.
+fn _example_wall_clock_capture(cap : i64) -> i64 {
+    time_wall_unix_ns(cap)
+}
