@@ -3333,7 +3333,10 @@ fn obj_lower_cssl_brif(
 // ───────────────────────────────────────────────────────────────────────
 
 fn obj_memref_alignment(op: &MirOp, elem_ty: &MirType) -> Option<u32> {
-    let natural = elem_ty.natural_alignment()?;
+    // § T11-W19-α-CSSLC-FIX15 — fallback to host-pointer-width alignment
+    // when natural_alignment() can't compute (MirType::None / Memref / etc.).
+    // Mirrors the FIX15 host-ptr-class fallback in mir_type_to_cl_with_layouts.
+    let natural = elem_ty.natural_alignment().unwrap_or(8);
     let parsed = op
         .attributes
         .iter()
@@ -3899,6 +3902,18 @@ fn mir_type_to_cl_with_layouts(
         MirType::Ptr | MirType::Handle => Some(ptr_ty),
         // T11-W17-A struct-FFI + T11-W19-α-CSSLC-FIX4 enum/Result/str/Vec.
         MirType::Opaque(s) => resolve_aggregate_opaque(s, ptr_ty, layouts, enum_layouts),
+        // § T11-W19-α-CSSLC-FIX15 — `MirType::None` graceful fallback.
+        //   body_lower emits `None` for slice / fat-pointer / unresolved-cast
+        //   shapes (e.g. `&[u8]` in engine/asset::read_u16_le). Stage-0 lowers
+        //   it to a host-pointer — the runtime owns the real fat-pointer ABI
+        //   ; the cgen-side just needs a register-class to hand off. This
+        //   matches the FIX4 PointerByRef fallback for unknown structs and
+        //   the Result / Vec / str opaque mappings.
+        MirType::None => Some(ptr_ty),
+        // § T11-W19-α-CSSLC-FIX15 — Memref + Vector + Tuple + Function fallback
+        //   to host-pointer. All are aggregate / fat-pointer shapes that cross
+        //   FFI by-ref at stage-0.
+        MirType::Memref { .. } | MirType::Tuple(_) | MirType::Function { .. } => Some(ptr_ty),
         _ => None,
     }
 }
@@ -4029,6 +4044,70 @@ fn resolve_aggregate_opaque(
     // `resolve_call_result_types` couldn't resolve (synthetic sibling
     // callee with no MirFunc match). Stage-0 fallback = host-pointer.
     if opaque_name.starts_with("!cssl.call_result.") {
+        return Some(ptr_ty);
+    }
+    // § T11-W19-α-CSSLC-FIX14 — spec/03 § BASE-TYPES vector / matrix opaques.
+    //   `vec2 / vec3 / vec4 / mat2 / mat3 / mat4 / quat` lower to MirType::Opaque
+    //   today (real SIMD-vector lowering is deferred). Stage-0 ABI : pass as
+    //   host-pointer (PointerByRef) — these aggregate types cross FFI by-ref
+    //   in every supported platform. Without this fallback `engine/scene.cssl`
+    //   rejects vec_replace_at_mat4 / vec_push::<vec3>.
+    if matches!(
+        opaque_name,
+        "vec2" | "vec3" | "vec4" | "mat2" | "mat3" | "mat4" | "quat"
+    ) {
+        return Some(ptr_ty);
+    }
+    // § T11-W19-α-CSSLC-FIX12 — `!cssl.field.<name>` fallback : the cssl.field
+    //   op's result-ty leaks into fn signatures (e.g. `fn pump(h : x.handle)`)
+    //   when the parser sees a path-segment-as-type. Resolve to host-pointer.
+    if opaque_name.starts_with("!cssl.field.") {
+        return Some(ptr_ty);
+    }
+    // § T11-W19-α-CSSLC-FIX11 — `!cssl.unresolved.<EnumName>.<Variant>` fallback.
+    //   body_lower::lower_path emits this opaque-ty when a multi-segment path
+    //   like `GpuBackend::D3D12` reaches expression position. The cssl.path_ref
+    //   op's result-ty bleeds into fn-signature slots (e.g. when the variant
+    //   is the last expression of a fn). Stage-0 : try the enclosing enum-name
+    //   via the FIX4-ENUM resolution path ; fall back to host-pointer when
+    //   not registered in enum_layouts (cross-module or aux-module case).
+    if let Some(rest) = opaque_name.strip_prefix("!cssl.unresolved.") {
+        let enum_name = rest.split('.').next().unwrap_or(rest);
+        if let Some(t) = resolve_enum_opaque(enum_name, ptr_ty, enum_layouts) {
+            return Some(t);
+        }
+        // Try as bare uppercase name (FIX14 fallback) — enum-not-loaded case.
+        if enum_name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_uppercase())
+        {
+            return Some(ptr_ty);
+        }
+        return Some(ptr_ty);
+    }
+    // § T11-W19-α-CSSLC-FIX14 — bare-name struct/enum opaque graceful fallback.
+    //   `csslc build engine/scene.cssl` doesn't auto-load `engine/ecs.cssl`
+    //   so `EntityId` / `Transform` / `SurfaceFormat` / `Device` opaques
+    //   land here without a layout-table entry. Stage-0 strategy : when
+    //   the bare name "looks like" a user type (starts with an uppercase
+    //   ASCII letter + has no path-separators / generics / sigils), treat
+    //   it as PointerByRef so the signature resolves to a host-pointer.
+    //   The runtime-side host bridge owns the real ABI ; this preserves
+    //   the FIX4 contract that "unknown >8B aggregate → ptr-by-ref".
+    //
+    //   Skipped for known-unresolved internal sigils (`!cssl.*`) which are
+    //   handled in their own arms above OR by call-site coercion (FIX5 +
+    //   FIX12 + FIX13).
+    if opaque_name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_uppercase())
+        && !opaque_name.contains('!')
+        && !opaque_name.contains('.')
+        && !opaque_name.contains('<')
+        && !opaque_name.contains(':')
+    {
         return Some(ptr_ty);
     }
     None
