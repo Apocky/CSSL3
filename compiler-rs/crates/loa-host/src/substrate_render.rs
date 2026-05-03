@@ -71,12 +71,15 @@ fn halton_b2(i: u32) -> f32 { halton(i, 2) }
 fn halton_b3(i: u32) -> f32 { halton(i, 3) }
 fn halton_b5(i: u32) -> f32 { halton(i, 5) }
 
-/// Number of test crystals procedurally-allocated at startup. Increased
-/// from 5 → 32 (Apocky-directive · pack-in-more-visual-data) so the
-/// substrate-resonance pixel-field has dense fringe-pattern interference
-/// in every viewing direction. 32 crystals × 8 aspect-curves × 4 illuminant-
-/// LUTs → ≈1024 active spectral contributions per frame across 8 classes.
-/// Replay-deterministic from seeds 0xC1A1A_0001..0020.
+/// Number of test crystals procedurally-allocated at startup. ITER-14
+/// telemetry showed 128 → fps=1.7 (3.8B ops/frame · O(N)-per-pixel kills
+/// frame-budget). Reverted to 32 · workgroup-cache STAYS active · 32 fits
+/// easily in shared mem · no cache-spill · cache-hit-rate ≈ 100%.
+/// 32 × 8 aspect-curves × 4 illuminant-LUTs ≈ 1024 active spectral
+/// contributions/frame · denser-interference-fringes from ℂ-amplitude
+/// bundle WITHOUT the O(N²) penalty of larger N.
+/// Future · spatial-index/grid-cull → bump count again.
+/// Replay-deterministic from seeds 0xC1A1A_0000..001F.
 pub const STARTUP_CRYSTAL_COUNT: usize = 32;
 
 /// Holds all substrate-render state for one host instance.

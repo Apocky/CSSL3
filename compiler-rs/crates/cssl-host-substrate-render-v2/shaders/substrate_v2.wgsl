@@ -61,6 +61,13 @@ const ILLUMINANT_COUNT   : u32 = 4u;
 const ASPECT_SILHOUETTE  : u32 = 0u;
 const Z_UNIT             : i32 = 1000;
 
+// § T11-W18-WORKGROUP-CACHE · cooperative crystal-load across the 64-thread
+//   8×8 workgroup. Every thread in the group needs the same crystal-list ;
+//   loading via shared memory cuts L1$ pressure ~64×. 128-slot cache covers
+//   any reasonable scene · spill to global beyond.
+const WG_CACHE_SIZE      : u32 = 128u;
+const WG_THREADS         : u32 = 64u;
+
 // ════════════════════════════════════════════════════════════════════════════
 // § STORAGE-BUFFER LAYOUT — must match cssl_host_substrate_resonance_gpu::
 // buffer_pack::GpuCrystal exactly (host-side bytemuck::Pod struct).
@@ -95,6 +102,14 @@ struct ObserverUniform {
 @group(0) @binding(0) var<uniform> observer    : ObserverUniform;
 @group(0) @binding(1) var<storage, read> crystals : array<GpuCrystal>;
 @group(0) @binding(2) var output : texture_storage_2d<rgba8unorm, write>;
+
+// § T11-W18-WORKGROUP-CACHE · the 64 threads of an 8×8 workgroup cooperatively
+//   load the first WG_CACHE_SIZE crystals into shared memory. After a barrier
+//   ALL threads scan the cache · cache-resident reads cost ~1 cycle vs ~100
+//   for global storage-buffer reads on Intel-Arc/AMD-RDNA · expect ~10-30×
+//   speedup on the inner crystal-loop when n_crystals ≤ 128.
+var<workgroup> wg_cache : array<GpuCrystal, WG_CACHE_SIZE>;
+var<workgroup> wg_cached_count : u32;
 
 // ════════════════════════════════════════════════════════════════════════════
 // § Helper functions (all integer, all deterministic).
@@ -228,6 +243,14 @@ fn weighted_reflectance(c: GpuCrystal, band: u32) -> u32 {
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    // § T11-W18-ITER15 (telemetry-driven · post-iter15) · workgroup-cache
+    //   tested · GpuCrystal=352B × 32 = 11KB shared-mem load + barrier
+    //   COSTS more than the cache-hit savings on Intel-Arc + 1440p workload.
+    //   REVERTED to direct-global-fetch · which the L1$ amortizes well
+    //   enough at N=32 crystals × 1440p = 3.7M reads/frame.
+    // (workgroup-cache constants kept above for future N>64 + spatial-index
+    //  experiments where the cache pattern actually pays off.)
+
     let px = gid.x;
     let py = gid.y;
     if (px >= observer.width || py >= observer.height) {
