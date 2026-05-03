@@ -1,0 +1,1289 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/render_forward.cssl  —  Forward+ rasterizer pipeline
+//                                    (depth-prepass + 2D-tile-light-cull
+//                                     + opaque-main + transparent + post-tonemap)
+//
+// CSSLv3 stage-0 engine module.
+// Spec : specs/14_BACKEND.csl § HOST-SUBMIT BACKENDS (D3D12-priority Win)
+//        specs/14_BACKEND.csl § OWNED DXIL EMITTER (stage-2 fleshing)
+//        specs/14_BACKEND.csl § BACKEND-MATRIX (graphics row : Vulkan/D3D12/Metal)
+//        specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § gpu (8 symbols)
+//        specs/24_HOST_FFI.csl § CSSL-SIDE WRAPPERS § Gpu (effect-typed)
+//        specs/24_HOST_FFI.csl § CAPABILITY-MATRIX § Cap<Gpu>
+//        specs/24_HOST_FFI.csl § IFC-LABELS § Gpu-buffers (Public ;
+//          output-image carries Sensitive<Frame> only on VR-headset)
+//        specs/04_EFFECTS.csl § real-time-effect-tags (Deadline<>,
+//          GpuSubmit, GpuInit, Realtime<Crit>)
+//        specs/03_TYPES.csl § BASE-TYPES (vec2/vec3/vec4/mat4 builtin)
+//        specs/12_CAPABILITIES.csl § THE SIX CAPABILITIES (Cap<Gpu> handle-tag)
+//
+// § ROLE
+//   Forward+ multi-pass rasterizer driving the LoA in-game render path.
+//   Targets 1440p (2560 × 1440) @ 144hz on the AMOLED-deep panel — the
+//   Apocky canonical display. Frame-budget : 6_944 us (per
+//   `stdlib/gpu::target_frame_us_144hz`). Mouse-to-photon ≤ 1 frame via
+//   `LOA_FRAME_LATENCY = 1` (waitable swap-chain) + Mailbox-equivalent
+//   present-mode + triple-buffer (`FRAMES_IN_FLIGHT_DEFAULT = 3`).
+//
+//   Pass-list (5 ; matches host-side `loa-host::fps_pipeline::PassKind`
+//   subset for the forward-only stage-0 baseline) :
+//     0 · DepthPrepass    — Z-only pass for early-Z + occlusion seed
+//     1 · LightCull       — 16 × 16 tile compute · per-tile light-list
+//     2 · OpaqueMain      — opaque draws against pre-built depth + light-list
+//     3 · Transparent     — back-to-front alpha blend (post-opaque)
+//     4 · PostTonemap     — Reinhard + sRGB OETF (HDR10 PQ-1000-nit when
+//                            cfg.hdr=true)
+//
+// § PRIME_DIRECTIVE preserved
+//   (a) NO surveillance — the renderer NEVER inspects framebuffer content for
+//       biometric / behavioral inference. Frame contents are user-output only.
+//   (b) Light-cull inputs (point / spot / dir lights) are SCENE data — they
+//       carry the Public IFC label (per spec/24 § IFC-LABELS Gpu-buffers).
+//       VR-headset body-pose path is DEFERRED (Cap<XR> separate slice).
+//   (c) Cap<Gpu> witness consumed at every wrapper-fn entry — default-deny.
+//   (d) Heap-alloc forbidden in per-frame record (Vec<VisibleMesh> /
+//       Vec<Light> are pre-sized + grow-rare ; matches loa-host::fps_pipeline
+//       INVARIANT 1).
+//   (e) Deadline<6944us> tag on `forward_end_frame_present` — 144hz budget
+//       is part of the FN signature (effect-row documentary at stage-0 ;
+//       structural threading lands with MirEffectRow).
+//   (f) ¬ blocking-acquire — `forward_begin_frame` takes `timeout_ns` ;
+//       Err on miss · NO stall.
+//
+// § STAGE-0 NOTES
+//   1. The 5 named passes lower to 5 host-FFI Pipeline handles (compiled via
+//      `gpu::pipeline_compile` once at startup ; reused per-frame). Each
+//      Pipeline carries its own DXIL/SPIRV blob — byte-IR is supplied by the
+//      build pipeline (csslc emits the per-stage blob ; the blobs are
+//      stitched into the fat-binary per spec/14 § FAT-BINARY ASSEMBLY).
+//   2. Cmd-buf record / submit per-pass remain stage-1 stubs (per
+//      stdlib/gpu::cmd_buf_record_stub + spec/24 § ABI-STABLE-SYMBOLS § gpu).
+//      Stage-0 records DEFERRED ; this scaffold declares the surface +
+//      orchestration so source-level engine code can already structure the
+//      per-frame loop. The bodies become driver-active in stage-1 with NO
+//      source-level rename.
+//   3. Light-tile-cull tile-size = 16×16 pixels (256 threads-per-tile).
+//      At 2560 × 1440 → 160 × 90 = 14_400 tiles. Per-tile MAX_LIGHTS = 256
+//      (matches MAX_LIGHTS_DEFAULT). Total light-list buffer ≤ 14_400 × 256
+//      × 4 = 14.7 MiB worst-case ; typical-scene < 1 MiB. Compares vs alt
+//      8×8 (4× tile count, 64 threads/tile = under-utilize wave32/64 GPUs)
+//      and 32×32 (poor light-list efficiency at edges). 16×16 = canonical
+//      Forward+ choice (matches DOOM-2016 / Battlefield-V / Cyberpunk-2077).
+//   4. MSAA opt-out at stage-0 (cfg.msaa = 1 default). TAA-future is the
+//      modern AAA replacement (saves bandwidth ; better edge-quality on
+//      foliage + thin-geometry). MSAA-4× / MSAA-8× paths are reserved by
+//      `cfg.msaa : u32` for opt-in.
+//   5. HDR10 PQ-1000-nit gated by `cfg.hdr=true` (per AMOLED-deep panel
+//      discipline + spec/14 § HDR pathway). Tone-map pass branches on the
+//      cached `surface_format_is_hdr` predicate — Reinhard for SDR ; PQ-OETF
+//      passthrough for HDR10.
+//   6. The fn-surface uses FREE-FUNCTIONS (no method-receivers) per spec/03
+//      monomorph-only / no-trait-dispatch discipline. `&mut RenderResources`
+//      carries the per-frame mutable state.
+//   7. Import resolution : `use std::gpu::*` lands the gpu surface (Device,
+//      Swapchain, Pipeline, ShaderIRKind, SurfaceFormat, Cap<Gpu> bits,
+//      target_frame_us_144hz, etc.). `use std::window::*` lands Window +
+//      TARGET_WIDTH_1440P / TARGET_HEIGHT_1440P. `use std::time::*` lands
+//      time_monotonic_ns + frame_budget_ns_for_hz. The cross-engine imports
+//      (`com.apocky.engine.scene::*` + `com.apocky.engine.ecs::*`) are
+//      spec-contract'd but the modules are running in parallel — at stage-0
+//      monomorph these resolve once all engine modules co-compile in the
+//      same fat-binary.
+//      // N! syntax-uncertain : `use std::gpu::*` glob-import vs. selective
+//      //    `use std::gpu::{Device, Swapchain, ...}`. Existing stdlib uses
+//      //    selective-import ; the glob form is per spec/03 module-system
+//      //    rules. We use the SELECTIVE form below (safer ; matches
+//      //    examples/hello_triangle.cssl precedent).
+//
+// § INVARIANTS
+//   - `ForwardConfig.tile_size` ∈ {8, 16, 32} (16 = default) ; other values
+//     reject via InvalidInput.
+//   - `ForwardConfig.max_lights` ≤ 1024 (hardware-binding-limit on D3D12
+//     ROOT_DESCRIPTOR_TABLE size ; 256 = default).
+//   - `ForwardConfig.msaa` ∈ {1, 2, 4, 8} (1 = default, no-MSAA).
+//   - `ForwardFrame.swapchain_image_idx` ∈ [0, FRAMES_IN_FLIGHT_DEFAULT).
+//   - Pipeline handles in `ForwardPipelines` ≠ 0 after successful compile ;
+//     0 = uninitialized sentinel.
+//   - Per-frame `forward_pass_*` fns DO NOT allocate (Vec<VisibleMesh> /
+//     Vec<Light> are pre-sized inputs ; grow happens out-of-band).
+//   - `forward_end_frame_present` carries Deadline<6944us> at 144hz target.
+
+module com.apocky.engine.render_forward
+
+use std::option::Option
+use std::result::Result
+
+// § stdlib/gpu — Device / Swapchain / Pipeline + cap-system + format-LUT.
+use std::gpu::Device
+use std::gpu::Swapchain
+use std::gpu::Pipeline
+use std::gpu::CmdBuf
+use std::gpu::GpuFrame
+use std::gpu::GpuError
+use std::gpu::GpuBackend
+use std::gpu::ShaderIRKind
+use std::gpu::SurfaceFormat
+use std::gpu::ShaderStage
+use std::gpu::caps_check
+use std::gpu::gpu_cap_device
+use std::gpu::gpu_cap_swapchain
+use std::gpu::gpu_cap_pipeline
+use std::gpu::gpu_cap_submit
+use std::gpu::gpu_cap_engine_full
+use std::gpu::gpu_handle_error_sentinel
+use std::gpu::gpu_swapchain_acquire_timeout_sentinel
+use std::gpu::frames_in_flight_default
+use std::gpu::loa_frame_latency
+use std::gpu::target_frame_us_144hz
+use std::gpu::target_frame_us_120hz
+use std::gpu::target_frame_us_60hz
+use std::gpu::surface_format_is_hdr
+use std::gpu::surface_format_to_u32
+use std::gpu::shader_ir_kind_to_u32
+use std::gpu::pipeline_compile
+use std::gpu::swapchain_acquire
+use std::gpu::swapchain_present
+use std::gpu::cmd_buf_record_stub
+use std::gpu::cmd_buf_submit_stub
+use std::gpu::last_error_kind
+use std::gpu::last_error_os
+use std::gpu::gpu_error_from_kind
+
+// § stdlib/window — 1440p target dims + Window handle.
+use std::window::Window
+use std::window::target_width_1440p
+use std::window::target_height_1440p
+use std::window::target_width_1080p
+use std::window::target_height_1080p
+
+// § stdlib/time — frame-pacing helpers.
+use std::time::time_monotonic_ns
+use std::time::frame_budget_ns_for_hz
+use std::time::ns_per_us
+use std::time::us_to_ns
+
+// § engine/scene — Camera + VisibleMesh + camera_view_proj (running parallel).
+//   Spec-contract per mission-prompt. Stage-0 monomorph resolves these once
+//   the parallel-running module lands in the same fat-binary.
+use com.apocky.engine.scene::Camera
+use com.apocky.engine.scene::VisibleMesh
+use com.apocky.engine.scene::camera_view_proj
+
+// § engine/ecs — EntityId (running parallel ; spec-contract).
+use com.apocky.engine.ecs::EntityId
+
+// ───────────────────────────────────────────────────────────────────────
+// § Forward-pass index constants  (LOCKED — drift = silent decode bug)
+//
+//   Mirrors `loa-host::fps_pipeline::PassKind` for the forward-only subset.
+//   Pass ordinals are STABLE from this slice forward ; renaming requires
+//   a major-version bump per spec/24 § DESIGN-PRINCIPLES P1.
+// ───────────────────────────────────────────────────────────────────────
+
+// `pass_idx_depth_prepass()` — pass 0 · Z-only depth seed.
+fn pass_idx_depth_prepass() -> u32 {
+    0
+}
+
+// `pass_idx_light_cull()` — pass 1 · 16×16 tile-light-cull compute.
+fn pass_idx_light_cull() -> u32 {
+    1
+}
+
+// `pass_idx_opaque_main()` — pass 2 · main color (opaque ; uses depth-prepass).
+fn pass_idx_opaque_main() -> u32 {
+    2
+}
+
+// `pass_idx_transparent()` — pass 3 · back-to-front alpha-blended draws.
+fn pass_idx_transparent() -> u32 {
+    3
+}
+
+// `pass_idx_post_tonemap()` — pass 4 · Reinhard / PQ-OETF + sRGB.
+fn pass_idx_post_tonemap() -> u32 {
+    4
+}
+
+// `forward_pass_count()` — total named passes in the forward pipeline.
+fn forward_pass_count() -> u32 {
+    5
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Light-tile-cull constants  (canonical Forward+ tunables)
+//
+//   16 × 16 tiles + 256 threads-per-tile = canonical Forward+ choice.
+//   Rationale :
+//     - 16×16 maps cleanly to wave32 (8 waves) and wave64 (4 waves) on
+//       D3D12 / Vulkan compute.
+//     - At 2560 × 1440 → 160 × 90 = 14_400 tiles. Compute dispatch
+//       (160, 90, 1) groups.
+//     - Per-tile MAX_LIGHTS_PER_TILE = 256 ; matches max_lights_default.
+//     - Total light-index buffer worst-case = tiles × max-lights × u32 ≈
+//       14.7 MiB ; typical-scene < 1 MiB.
+//   Drift (8×8 = under-utilize ; 32×32 = poor edge-efficiency) documented
+//   in module-header note 3.
+// ───────────────────────────────────────────────────────────────────────
+
+// `light_tile_size_default()` — 16 px on each axis (16×16 tile).
+fn light_tile_size_default() -> u32 {
+    16
+}
+
+// `light_cull_threads_per_tile()` — 256 threads (16×16 = wavefront-aligned).
+fn light_cull_threads_per_tile() -> u32 {
+    256
+}
+
+// `max_lights_default()` — 256 lights per scene (D3D12 root-table sane).
+fn max_lights_default() -> u32 {
+    256
+}
+
+// `max_lights_per_tile()` — 256 lights per tile (matches `max_lights_default`).
+fn max_lights_per_tile() -> u32 {
+    256
+}
+
+// `frames_in_flight_engine()` — 3 · matches stdlib/gpu default + LoA fps_pipeline.
+fn frames_in_flight_engine() -> u32 {
+    frames_in_flight_default()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Light kinds  (LOCKED ABI ordinal — host-shader binding pattern)
+// ───────────────────────────────────────────────────────────────────────
+
+// `light_kind_point()` — omnidirectional point light.
+fn light_kind_point() -> u32 {
+    0
+}
+
+// `light_kind_spot()` — cone-shaped spot light.
+fn light_kind_spot() -> u32 {
+    1
+}
+
+// `light_kind_dir()` — directional (sun) light · range = +inf.
+fn light_kind_dir() -> u32 {
+    2
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Vec3 placeholder  (until parser lifts vec3 builtin into source-level)
+//
+//   spec/03 declares vec2/vec3/vec4/mat4 as language-builtin shape-types.
+//   At stage-0 the parser surface for vec3-as-field is uneven (matches the
+//   typed-pointer field-syntax gap noted in stdlib/gpu module-header). The
+//   wrapper-struct below is the source-level surrogate ; the host platform
+//   layer translates it to the canonical shader-side vec3.
+//
+//   // N! syntax-uncertain : vec3 as a field-type. Existing
+//   //    examples/hello_triangle.cssl declares `position : vec2` directly
+//   //    in a struct — that lands once the parser slice for shape-type
+//   //    fields is universally accepted. Until then the explicit f32-triple
+//   //    wrapper is the conservative form (matches loa-host::camera::Vec3).
+// ───────────────────────────────────────────────────────────────────────
+
+struct Vec3F {
+    x : f32,
+    y : f32,
+    z : f32,
+}
+
+// `vec3f_zero()` — origin sentinel.
+fn vec3f_zero() -> Vec3F {
+    Vec3F { x : 0.0, y : 0.0, z : 0.0 }
+}
+
+// `vec3f_new(x, y, z)` — construct a Vec3F.
+fn vec3f_new(x : f32, y : f32, z : f32) -> Vec3F {
+    Vec3F { x : x, y : y, z : z }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Mat4 placeholder  (mirrors Vec3F rationale ; spec/03 mat4 builtin)
+//
+//   At stage-0 we carry a 16-element f32 struct that mirrors the canonical
+//   row-major mat4. The host shader binding layer pivots to column-major
+//   on D3D12 (HLSL convention) ; the source-level form stays row-major for
+//   readability + parity with the spec-canonical glm-style transpose-on-bind.
+//
+//   // N! syntax-uncertain : 16 named fields vs `m : [f32; 16]`. Array-of-
+//   //    fixed-len-16 is the natural form ; once the parser slice for
+//   //    typed-array-field lands universally (the stage-0 status varies),
+//   //    the named-field form below collapses into `m : [f32; 16]`.
+// ───────────────────────────────────────────────────────────────────────
+
+struct Mat4F {
+    m00 : f32, m01 : f32, m02 : f32, m03 : f32,
+    m10 : f32, m11 : f32, m12 : f32, m13 : f32,
+    m20 : f32, m21 : f32, m22 : f32, m23 : f32,
+    m30 : f32, m31 : f32, m32 : f32, m33 : f32,
+}
+
+// `mat4f_identity()` — the canonical identity matrix.
+fn mat4f_identity() -> Mat4F {
+    Mat4F {
+        m00 : 1.0, m01 : 0.0, m02 : 0.0, m03 : 0.0,
+        m10 : 0.0, m11 : 1.0, m12 : 0.0, m13 : 0.0,
+        m20 : 0.0, m21 : 0.0, m22 : 1.0, m23 : 0.0,
+        m30 : 0.0, m31 : 0.0, m32 : 0.0, m33 : 1.0,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ForwardConfig — top-level renderer cfg (pixel dims · HDR · MSAA · tile-cull).
+//
+//   Defaults : 1440p · SDR · MSAA-1 (no-MSAA · TAA-future) · max_lights = 256
+//   · tile_size = 16 (16×16 light-cull). The `vsync` bit follows
+//   `stdlib/window::spawn_flag_vsync` semantics (caller OR's the bit when
+//   vsync ON ; the present-mode resolves accordingly).
+// ───────────────────────────────────────────────────────────────────────
+
+struct ForwardConfig {
+    width      : u32,    // physical pixels
+    height     : u32,    // physical pixels
+    hdr        : bool,   // true = Rgba16FloatHdr10 ; false = Bgra8UnormSrgb
+    msaa       : u32,    // ∈ {1, 2, 4, 8} ; 1 = no-MSAA (TAA-future)
+    max_lights : u32,    // ≤ 1024 (D3D12 root-table) ; default 256
+    tile_size  : u32,    // ∈ {8, 16, 32} ; default 16
+    vsync      : bool,   // true = wait-for-vblank ; false = mailbox-equivalent
+    target_hz  : u32,    // refresh rate (60 / 120 / 144 / 240) ; pacing-derived
+}
+
+// `forward_config_default_1440p_144hz()` — the Apocky canonical config.
+//
+// 1440p · SDR · MSAA-1 · 256 lights · 16×16 tiles · vsync-off (mailbox-equiv) ·
+// 144 Hz. Pairs with `target_frame_us_144hz()` for the 6_944 us deadline.
+fn forward_config_default_1440p_144hz() -> ForwardConfig {
+    ForwardConfig {
+        width      : target_width_1440p(),
+        height     : target_height_1440p(),
+        hdr        : false,
+        msaa       : 1,
+        max_lights : max_lights_default(),
+        tile_size  : light_tile_size_default(),
+        vsync      : false,
+        target_hz  : 144,
+    }
+}
+
+// `forward_config_default_1440p_hdr()` — 1440p HDR10 PQ-1000-nit AMOLED-deep.
+fn forward_config_default_1440p_hdr() -> ForwardConfig {
+    ForwardConfig {
+        width      : target_width_1440p(),
+        height     : target_height_1440p(),
+        hdr        : true,
+        msaa       : 1,
+        max_lights : max_lights_default(),
+        tile_size  : light_tile_size_default(),
+        vsync      : false,
+        target_hz  : 144,
+    }
+}
+
+// `forward_config_default_1080p_60hz()` — laptop-fallback config.
+fn forward_config_default_1080p_60hz() -> ForwardConfig {
+    ForwardConfig {
+        width      : target_width_1080p(),
+        height     : target_height_1080p(),
+        hdr        : false,
+        msaa       : 1,
+        max_lights : max_lights_default(),
+        tile_size  : light_tile_size_default(),
+        vsync      : true,
+        target_hz  : 60,
+    }
+}
+
+// `forward_config_validate(cfg)` — returns Ok iff cfg satisfies invariants.
+fn forward_config_validate(cfg : ForwardConfig) -> Result<i32, GpuError> {
+    if cfg.width == 0 {
+        Err(GpuError::InvalidInput)
+    } else {
+        if cfg.height == 0 {
+            Err(GpuError::InvalidInput)
+        } else {
+            if cfg.max_lights > 1024 {
+                Err(GpuError::InvalidInput)
+            } else {
+                if cfg.tile_size != 8 {
+                    if cfg.tile_size != 16 {
+                        if cfg.tile_size != 32 {
+                            Err(GpuError::InvalidInput)
+                        } else {
+                            Ok(0)
+                        }
+                    } else {
+                        Ok(0)
+                    }
+                } else {
+                    Ok(0)
+                }
+            }
+        }
+    }
+}
+
+// `forward_config_surface_format(cfg)` — derive SurfaceFormat from cfg.hdr.
+fn forward_config_surface_format(cfg : ForwardConfig) -> SurfaceFormat {
+    if cfg.hdr {
+        SurfaceFormat::Rgba16FloatHdr10
+    } else {
+        SurfaceFormat::Bgra8UnormSrgb
+    }
+}
+
+// `forward_config_frame_budget_us(cfg)` — derive frame budget from target_hz.
+fn forward_config_frame_budget_us(cfg : ForwardConfig) -> u64 {
+    if cfg.target_hz == 144 {
+        target_frame_us_144hz()
+    } else {
+        if cfg.target_hz == 120 {
+            target_frame_us_120hz()
+        } else {
+            if cfg.target_hz == 60 {
+                target_frame_us_60hz()
+            } else {
+                target_frame_us_144hz()
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Render-target structs (color + depth + light-cull buffers).
+//
+//   Stage-0 handles encoded as `u64` (matches `stdlib/gpu::Device.handle`
+//   convention). `fmt` is the SurfaceFormat-discriminant (LUT-derived via
+//   `surface_format_to_u32`) cached for shader-binding lookups.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ColorTarget` — main HDR / SDR color render-target.
+struct ColorTarget {
+    handle : u64,
+    fmt    : u32,
+    width  : u32,
+    height : u32,
+    msaa   : u32,
+}
+
+// `DepthTarget` — depth-buffer (Z-only ; D32 float canonical at stage-0).
+struct DepthTarget {
+    handle : u64,
+    fmt    : u32,    // canonical D32_FLOAT discriminant
+    width  : u32,
+    height : u32,
+    msaa   : u32,
+}
+
+// `LightCullBuffers` — per-tile light-list scratch + offsets.
+//
+//   tile_count_x = ceil(width / tile_size) ; tile_count_y = ceil(height /
+//   tile_size). At 2560×1440 / 16 = 160 × 90 = 14_400 tiles. The
+//   `light_indices` GPU-buffer holds flattened per-tile lists ; the
+//   `tile_offsets` buffer indexes into it.
+struct LightCullBuffers {
+    tile_count_x  : u32,
+    tile_count_y  : u32,
+    light_indices : u64,    // GPU buffer-handle (flattened light-list)
+    tile_offsets  : u64,    // GPU buffer-handle (per-tile cursor)
+    capacity      : u32,    // tile-count × max-lights-per-tile
+}
+
+// `tile_count_for(extent, tile_size)` — ceiling-div helper.
+fn tile_count_for(extent : u32, tile_size : u32) -> u32 {
+    if tile_size == 0 {
+        0
+    } else {
+        (extent + tile_size - 1) / tile_size
+    }
+}
+
+// `light_cull_capacity(cfg)` — total light-index entries in the worst-case.
+fn light_cull_capacity(cfg : ForwardConfig) -> u32 {
+    let tx = tile_count_for(cfg.width, cfg.tile_size) ;
+    let ty = tile_count_for(cfg.height, cfg.tile_size) ;
+    tx * ty * max_lights_per_tile()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § PipelineBlobs — the shader-IR byte-arrays per pass (host-supplied).
+//
+//   The csslc per-target shader compiler emits these at build-time
+//   (DXIL on Windows-D3D12 ; SPIRV on Vulkan ; Metal-IR on Apple). At
+//   stage-0 they are byte-Vec scratch ; once the fat-binary slot-extract
+//   layer lands they migrate to slot-mapped raw pointers.
+//
+//   // N! syntax-uncertain : `Vec<u8>` as a struct field. Existing
+//   //    stdlib/net.cssl + stdlib/fs.cssl carry Vec<u8>-shaped buffer
+//   //    fields without issue ; this scaffold follows that precedent.
+// ───────────────────────────────────────────────────────────────────────
+
+struct PipelineBlobs {
+    depth_prepass : Vec<u8>,
+    light_cull    : Vec<u8>,
+    opaque_main   : Vec<u8>,
+    transparent   : Vec<u8>,
+    post_tonemap  : Vec<u8>,
+    kind          : ShaderIRKind,    // {Spirv | Dxil | Metal}
+}
+
+// `pipeline_blobs_empty(kind)` — placeholder for stage-0 wiring tests.
+fn pipeline_blobs_empty(kind : ShaderIRKind) -> PipelineBlobs {
+    PipelineBlobs {
+        depth_prepass : vec_new::<u8>(),
+        light_cull    : vec_new::<u8>(),
+        opaque_main   : vec_new::<u8>(),
+        transparent   : vec_new::<u8>(),
+        post_tonemap  : vec_new::<u8>(),
+        kind          : kind,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ForwardPipelines — compiled per-pass Pipeline handles (5 stages).
+// ───────────────────────────────────────────────────────────────────────
+
+struct ForwardPipelines {
+    depth_prepass : Pipeline,
+    light_cull    : Pipeline,
+    opaque_main   : Pipeline,
+    transparent   : Pipeline,
+    post_tonemap  : Pipeline,
+}
+
+// `forward_pipelines_zero_init(kind)` — sentinel-handles (handle=0 ; uninit).
+//
+// Used by tests + the engine startup-shim that delays compile until shaders
+// are loaded. A handle of 0 is the canonical uninit-sentinel per
+// `stdlib/gpu::gpu_handle_error_sentinel`.
+fn forward_pipelines_zero_init(kind : ShaderIRKind) -> ForwardPipelines {
+    ForwardPipelines {
+        depth_prepass : Pipeline { handle : 0, kind : kind },
+        light_cull    : Pipeline { handle : 0, kind : kind },
+        opaque_main   : Pipeline { handle : 0, kind : kind },
+        transparent   : Pipeline { handle : 0, kind : kind },
+        post_tonemap  : Pipeline { handle : 0, kind : kind },
+    }
+}
+
+// `forward_pipelines_compile(dev, blobs)` — compile all 5 pass pipelines.
+//
+// § EFFECT-ROW
+//   {GpuInit}-effecting (compile-once at engine startup ; NOT a hot-path).
+//   May allocate. May block on platform shader-compiler. Per-pass invokes
+//   `gpu::pipeline_compile` ; any failure short-circuits.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_pipeline()` granted via `caps_check`. Default-deny.
+//
+// § PRIME-DIRECTIVE
+//   The IR blobs pass straight through to the platform shader compiler
+//   unmodified (per `stdlib/gpu::pipeline_compile` attestation).
+fn forward_pipelines_compile(dev : Device, blobs : PipelineBlobs) -> Result<ForwardPipelines, GpuError> {
+    if caps_check(gpu_cap_pipeline()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let dp_ptr = vec_as_ptr_i64::<u8>(blobs.depth_prepass) ;
+        let dp_len = vec_len_i64::<u8>(blobs.depth_prepass) ;
+        let dp = pipeline_compile(dev, dp_ptr, dp_len, blobs.kind)? ;
+        let lc_ptr = vec_as_ptr_i64::<u8>(blobs.light_cull) ;
+        let lc_len = vec_len_i64::<u8>(blobs.light_cull) ;
+        let lc = pipeline_compile(dev, lc_ptr, lc_len, blobs.kind)? ;
+        let om_ptr = vec_as_ptr_i64::<u8>(blobs.opaque_main) ;
+        let om_len = vec_len_i64::<u8>(blobs.opaque_main) ;
+        let om = pipeline_compile(dev, om_ptr, om_len, blobs.kind)? ;
+        let tr_ptr = vec_as_ptr_i64::<u8>(blobs.transparent) ;
+        let tr_len = vec_len_i64::<u8>(blobs.transparent) ;
+        let tr = pipeline_compile(dev, tr_ptr, tr_len, blobs.kind)? ;
+        let pt_ptr = vec_as_ptr_i64::<u8>(blobs.post_tonemap) ;
+        let pt_len = vec_len_i64::<u8>(blobs.post_tonemap) ;
+        let pt = pipeline_compile(dev, pt_ptr, pt_len, blobs.kind)? ;
+        Ok(ForwardPipelines {
+            depth_prepass : dp,
+            light_cull    : lc,
+            opaque_main   : om,
+            transparent   : tr,
+            post_tonemap  : pt,
+        })
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § RenderResources — composite render-state owned by the engine.
+//
+//   One per active swapchain. Holds the color + depth + light-cull buffers
+//   that are sized to the swapchain dims + cfg.
+// ───────────────────────────────────────────────────────────────────────
+
+struct RenderResources {
+    cfg          : ForwardConfig,
+    color_target : ColorTarget,
+    depth_target : DepthTarget,
+    light_cull   : LightCullBuffers,
+    device       : Device,
+    backend      : GpuBackend,
+}
+
+// `render_resources_create(dev, cfg)` — allocate render-targets + light-cull.
+//
+// § EFFECT-ROW
+//   {GpuInit}-effecting. Allocates GPU-side resources (color + depth +
+//   structured light-list buffer). One-time at startup or on resize.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_device()` + `gpu_cap_swapchain()` granted.
+//
+// § STAGE-0 BEHAVIOR
+//   Per the host_gpu.rs cmd-buf stub pattern, the underlying buffer-create
+//   FFI symbols are deferred to the stage-1 fleshing slice. Stage-0
+//   returns sentinel-handles ( = 0) so source-level engine code can already
+//   structure the per-frame loop. The bodies become driver-active in
+//   stage-1 with NO source-level rename.
+fn render_resources_create(dev : Device, cfg : ForwardConfig) -> Result<RenderResources, GpuError> {
+    if caps_check(gpu_cap_device()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        if caps_check(gpu_cap_swapchain()) == false {
+            Err(GpuError::CapDenied)
+        } else {
+            let validate_r = forward_config_validate(cfg) ;
+            match validate_r {
+                Err(e) => Err(e),
+                Ok(_) => {
+                    let fmt = forward_config_surface_format(cfg) ;
+                    let fmt_u32 = surface_format_to_u32(fmt) ;
+                    // Stage-0 : sentinel-handles. Real allocation lands in
+                    // the stage-1 fleshing of __cssl_gpu_buffer_create.
+                    let color = ColorTarget {
+                        handle : 0,
+                        fmt    : fmt_u32,
+                        width  : cfg.width,
+                        height : cfg.height,
+                        msaa   : cfg.msaa,
+                    } ;
+                    let depth = DepthTarget {
+                        handle : 0,
+                        fmt    : 0,
+                        width  : cfg.width,
+                        height : cfg.height,
+                        msaa   : cfg.msaa,
+                    } ;
+                    let tx = tile_count_for(cfg.width, cfg.tile_size) ;
+                    let ty = tile_count_for(cfg.height, cfg.tile_size) ;
+                    let cap = tx * ty * max_lights_per_tile() ;
+                    let lc = LightCullBuffers {
+                        tile_count_x  : tx,
+                        tile_count_y  : ty,
+                        light_indices : 0,
+                        tile_offsets  : 0,
+                        capacity      : cap,
+                    } ;
+                    Ok(RenderResources {
+                        cfg          : cfg,
+                        color_target : color,
+                        depth_target : depth,
+                        light_cull   : lc,
+                        device       : dev,
+                        backend      : dev.backend,
+                    })
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Light — point / spot / directional light source data.
+//
+//   Per-scene light data passed into the light-cull pass. The 16×16 tile
+//   compute culls per-tile lists from this Vec ; the opaque-main pass
+//   then samples per-pixel lighting via the per-tile cursors.
+//
+//   IFC-label : Public — light data is scene-geometry-derived ; no
+//   user-personal info. Per spec/24 § IFC-LABELS Gpu-buffers.
+// ───────────────────────────────────────────────────────────────────────
+
+struct Light {
+    pos_world : Vec3F,    // world-space position (point/spot) ; ignored for dir
+    range     : f32,      // attenuation cutoff distance (point/spot)
+    color     : Vec3F,    // linear-RGB color (un-normalized)
+    intensity : f32,      // multiplicative scalar (lumens-equivalent)
+    kind      : u32,      // light_kind_point / spot / dir
+    dir_world : Vec3F,    // world-space direction (spot/dir) ; ignored for point
+    cone_cos  : f32,      // cosine of spot half-angle (spot only)
+}
+
+// `light_point(pos, color, intensity, range)` — convenience constructor.
+fn light_point(pos : Vec3F, color : Vec3F, intensity : f32, range : f32) -> Light {
+    Light {
+        pos_world : pos,
+        range     : range,
+        color     : color,
+        intensity : intensity,
+        kind      : light_kind_point(),
+        dir_world : vec3f_zero(),
+        cone_cos  : 0.0,
+    }
+}
+
+// `light_directional(dir, color, intensity)` — sun-light constructor.
+fn light_directional(dir : Vec3F, color : Vec3F, intensity : f32) -> Light {
+    Light {
+        pos_world : vec3f_zero(),
+        range     : 0.0,
+        color     : color,
+        intensity : intensity,
+        kind      : light_kind_dir(),
+        dir_world : dir,
+        cone_cos  : 0.0,
+    }
+}
+
+// `light_spot(pos, dir, color, intensity, range, cone_cos)` — spot light.
+fn light_spot(pos : Vec3F, dir : Vec3F, color : Vec3F, intensity : f32, range : f32, cone_cos : f32) -> Light {
+    Light {
+        pos_world : pos,
+        range     : range,
+        color     : color,
+        intensity : intensity,
+        kind      : light_kind_spot(),
+        dir_world : dir,
+        cone_cos  : cone_cos,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ForwardFrame — per-acquired-image record (lifetime = one frame).
+//
+//   `forward_begin_frame` → {ForwardFrame}
+//   `forward_pass_*` consume `&mut ForwardFrame` (record into per-pass cmd-buf)
+//   `forward_end_frame_present` consumes ForwardFrame + drives present.
+//
+//   The frame-record carries the swapchain backbuffer index, the cached
+//   color + depth + light-cull handles, and the cmd-buf handle for the
+//   current frame. Stage-0 the cmd-buf is a sentinel ; stage-1 fleshes it.
+// ───────────────────────────────────────────────────────────────────────
+
+struct ForwardFrame {
+    color_target        : ColorTarget,
+    depth_target        : DepthTarget,
+    light_cull          : LightCullBuffers,
+    swapchain_image_idx : u32,
+    frame_idx           : u64,
+    cmd_buf             : CmdBuf,
+    vp                  : Mat4F,
+    light_count         : u32,
+    deadline_ns         : u64,
+}
+
+// `forward_begin_frame(rs, swap, timeout_ns)` — acquire backbuffer + start frame.
+//
+// § EFFECT-ROW
+//   {GpuSubmit}-effecting (per-frame hot-path).
+//   Carries Deadline<6944us> at 144hz target (per cfg.target_hz).
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_swapchain()` granted.
+//
+// § PRIME-DIRECTIVE
+//   Non-blocking acquire ; `timeout_ns` bounds the wait. On miss returns
+//   Err(GpuError::Timeout) so the engine never stalls.
+fn forward_begin_frame(rs : RenderResources, swap : Swapchain, timeout_ns : u64, frame_idx : u64, vp : Mat4F, light_count : u32) -> Result<ForwardFrame, GpuError> {
+    if caps_check(gpu_cap_swapchain()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let img_r = swapchain_acquire(swap, timeout_ns) ;
+        match img_r {
+            Err(e) => Err(e),
+            Ok(img_idx) => {
+                let cb = cmd_buf_record_stub() ;
+                let now_ns = time_monotonic_ns(0) ;    // stage-0 cap=0 OK in dev-mode
+                let budget_us = forward_config_frame_budget_us(rs.cfg) ;
+                let dl = now_ns + us_to_ns(budget_us) ;
+                Ok(ForwardFrame {
+                    color_target        : rs.color_target,
+                    depth_target        : rs.depth_target,
+                    light_cull          : rs.light_cull,
+                    swapchain_image_idx : img_idx,
+                    frame_idx           : frame_idx,
+                    cmd_buf             : cb,
+                    vp                  : vp,
+                    light_count         : light_count,
+                    deadline_ns         : dl,
+                })
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Per-pass record-fns  (5 passes).
+//
+//   Each fn records its pass into the frame's cmd-buf. Stage-0 stubs ;
+//   stage-1 fleshes the actual ID3D12GraphicsCommandList / vkCmdDispatch /
+//   vkCmdDrawIndexed bodies (matches `host_gpu.rs § cmd_buf_record_stub_impl`
+//   pattern).
+//
+//   Per spec/04 each pass-fn is {GpuSubmit}-effecting + carries
+//   Deadline<frame-budget-residual-us> ; the residual tracks how much of
+//   the frame budget remains as the pipeline progresses.
+//
+//   Per-frame allocations are FORBIDDEN — the visible-list + light-list
+//   are pre-sized inputs ; the body iterates without growing.
+// ───────────────────────────────────────────────────────────────────────
+
+// `forward_pass_depth_prepass(f, pipelines, visible, vp)` — Z-only pass.
+//
+// § ROLE
+//   Writes depth-buffer for early-Z + occlusion-seed input to light-cull.
+//   O(N visible-meshes) draw-calls (or 1 indirect draw post-stage-1
+//   GPU-driven culling).
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<budget_us>}-effecting at 144hz.
+//
+// § STAGE-0 BEHAVIOR
+//   Stub. Iterates the visible-list + emits per-mesh draw-cmd into the
+//   stage-1 stub cmd-buf. The body is a constant-return at stage-0 ; the
+//   shape compiles + monomorphizes for source-level engine integration.
+fn forward_pass_depth_prepass(f : ForwardFrame, pipelines : ForwardPipelines, visible : Vec<VisibleMesh>, vp : Mat4F) -> i32 {
+    if caps_check(gpu_cap_submit()) == false {
+        -1
+    } else {
+        // Stage-0 : iteration shape ; real cmd-buf encoding lands stage-1.
+        // The shader pipeline is `pipelines.depth_prepass` ; bind it +
+        // for each VisibleMesh emit a draw-indexed cmd against its mesh-
+        // index + per-instance world-mat-idx.
+        let _bind = pipelines.depth_prepass.handle ;
+        let _vp = vp ;
+        let _visible = visible ;
+        0
+    }
+}
+
+// `forward_pass_light_cull(f, pipelines, lights)` — 16×16 tile compute.
+//
+// § ROLE
+//   Per-tile (16×16-px) compute pass that AABB-tests the light-list against
+//   the depth-prepass Hi-Z buffer. Writes a per-tile flattened light-index
+//   list + cursor-offsets the opaque-main pass reads at draw-time.
+//
+// § DISPATCH-SHAPE
+//   compute_dispatch(tile_count_x, tile_count_y, 1)
+//   threads-per-tile = 16 × 16 = 256 (matches `light_cull_threads_per_tile`)
+//   each thread tests `lights.len / 256` lights against its tile-frustum
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<budget_us>}-effecting.
+fn forward_pass_light_cull(f : ForwardFrame, pipelines : ForwardPipelines, lights : Vec<Light>) -> i32 {
+    if caps_check(gpu_cap_submit()) == false {
+        -1
+    } else {
+        // Stage-0 : iteration shape ; real cmd-buf encoding lands stage-1.
+        // Bind `pipelines.light_cull` + dispatch (tile_count_x, tile_count_y,
+        // 1). Threads load lights from the structured-buffer + AABB-test
+        // against the per-tile frustum derived from the cached depth-Hi-Z.
+        let _bind = pipelines.light_cull.handle ;
+        let _tx = f.light_cull.tile_count_x ;
+        let _ty = f.light_cull.tile_count_y ;
+        let _lights = lights ;
+        0
+    }
+}
+
+// `forward_pass_opaque_main(f, pipelines, visible, vp)` — main color-draw.
+//
+// § ROLE
+//   Opaque draws into the HDR / SDR color-target. Reads depth-prepass for
+//   early-Z reject + per-tile light-index lists for per-pixel BRDF eval.
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<budget_us>}-effecting.
+//
+// § STAGE-0 BEHAVIOR
+//   Stub. Iterates visible-list + emits per-mesh draw against
+//   `pipelines.opaque_main`. Depth-test = LESS-EQUAL (uses depth-prepass
+//   result) ; depth-write = OFF (already written in pass-0).
+fn forward_pass_opaque_main(f : ForwardFrame, pipelines : ForwardPipelines, visible : Vec<VisibleMesh>, vp : Mat4F) -> i32 {
+    if caps_check(gpu_cap_submit()) == false {
+        -1
+    } else {
+        let _bind = pipelines.opaque_main.handle ;
+        let _vp = vp ;
+        let _visible = visible ;
+        0
+    }
+}
+
+// `forward_pass_transparent(f, pipelines, visible, vp)` — alpha-blend pass.
+//
+// § ROLE
+//   Back-to-front-sorted transparent draws (alpha-blend = SRC_ALPHA /
+//   ONE_MINUS_SRC_ALPHA). Reads opaque-color + depth ; writes color but
+//   not depth (preserves opaque depth for late-cull).
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<budget_us>}-effecting.
+fn forward_pass_transparent(f : ForwardFrame, pipelines : ForwardPipelines, visible : Vec<VisibleMesh>, vp : Mat4F) -> i32 {
+    if caps_check(gpu_cap_submit()) == false {
+        -1
+    } else {
+        let _bind = pipelines.transparent.handle ;
+        let _vp = vp ;
+        let _visible = visible ;
+        0
+    }
+}
+
+// `forward_pass_post_tonemap(f, pipelines)` — tonemap + sRGB OETF.
+//
+// § ROLE
+//   Final post-process pass. Reads HDR color-target ; writes swapchain
+//   backbuffer. Applies Reinhard tonemap (SDR path) OR PQ-OETF passthrough
+//   (HDR10 PQ-1000-nit path when cfg.hdr=true).
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<budget_us>}-effecting.
+//
+// § STAGE-0 BEHAVIOR
+//   Stub. Binds `pipelines.post_tonemap` + emits a fullscreen-triangle
+//   draw. The pixel-shader branches on cfg.hdr at compile-time (push-
+//   constant or specialization-constant ; resolved per-backend).
+fn forward_pass_post_tonemap(f : ForwardFrame, pipelines : ForwardPipelines) -> i32 {
+    if caps_check(gpu_cap_submit()) == false {
+        -1
+    } else {
+        let _bind = pipelines.post_tonemap.handle ;
+        let _color = f.color_target.handle ;
+        0
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § End-of-frame submit + present.
+//
+//   Submits the recorded cmd-buf + signals the swapchain to scan-out the
+//   backbuffer. Carries the canonical Deadline<6944us> at 144hz target.
+// ───────────────────────────────────────────────────────────────────────
+
+// `forward_end_frame_present(f, swap)` — submit cmd-buf + present.
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<6944us>}-effecting at 144hz target.
+//   This is the canonical Deadline-tagged fn — the compiler proves the
+//   deadline via §§ 04 Lipschitz + SMT @ T9-phase-2 once that machinery
+//   lands. At stage-0 the deadline is documentary on the fn-sig.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_submit()` granted.
+//
+// § PRIME-DIRECTIVE
+//   The deadline is a frame-budget bound, not a hard real-time constraint.
+//   Missing the deadline produces a frame-stutter telemetry event but does
+//   NOT panic. Frame-pacing is the engine's responsibility — this fn
+//   reports the elapsed-vs-budget delta back to the caller via the i32
+//   return-code (0 = on-budget ; positive = over-budget by N microseconds ;
+//   negative = error).
+fn forward_end_frame_present(f : ForwardFrame, swap : Swapchain) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        // Stage-0 : submit-stub + present. Stage-1 fleshes the actual
+        // ExecuteCommandLists / vkQueueSubmit + present-fence-wait body.
+        let submit_r = cmd_buf_submit_stub(f.cmd_buf) ;
+        match submit_r {
+            Err(e) => Err(e),
+            Ok(_) => {
+                let present_r = swapchain_present(swap, f.swapchain_image_idx) ;
+                match present_r {
+                    Err(e) => Err(e),
+                    Ok(_) => {
+                        let now_ns = time_monotonic_ns(0) ;
+                        if now_ns > f.deadline_ns {
+                            // Over budget — stutter-event ; non-fatal.
+                            let over_ns = now_ns - f.deadline_ns ;
+                            let over_us = over_ns / ns_per_us() ;
+                            Ok(over_us as i32)
+                        } else {
+                            Ok(0)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Hello-triangle integration  (minimal smoke-test render path).
+//
+//   Wires `examples/hello_triangle.cssl` shader-stages through the forward
+//   pipeline at minimum-viable scope. Useful as the first end-to-end
+//   stage-0 render target.
+// ───────────────────────────────────────────────────────────────────────
+
+// `forward_render_hello_triangle(rs, pipelines, swap, frame_idx)` — single
+// triangle smoke-test path. Skips depth-prepass + light-cull (no-op) ;
+// runs opaque-main with a 3-vertex draw + post-tonemap.
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<6944us>}-effecting.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_submit()`.
+fn forward_render_hello_triangle(rs : RenderResources, pipelines : ForwardPipelines, swap : Swapchain, frame_idx : u64) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let timeout_ns = us_to_ns(target_frame_us_144hz()) ;
+        let vp = mat4f_identity() ;
+        let frame_r = forward_begin_frame(rs, swap, timeout_ns, frame_idx, vp, 0) ;
+        match frame_r {
+            Err(e) => Err(e),
+            Ok(f) => {
+                // Skip depth-prepass (single triangle ; not worth it).
+                // Skip light-cull (no lights).
+                // Run opaque-main with empty visible-list (the hello-tri
+                // pipeline encodes its 3 verts internally per
+                // `examples/hello_triangle.cssl`).
+                let visible = vec_new::<VisibleMesh>() ;
+                let _r1 = forward_pass_opaque_main(f, pipelines, visible, vp) ;
+                // Run post-tonemap (no-op SDR path).
+                let _r2 = forward_pass_post_tonemap(f, pipelines) ;
+                forward_end_frame_present(f, swap)
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Caps-grant convenience  (engine startup gate).
+//
+//   The engine's startup-shim calls `forward_engine_caps_grant()` once
+//   to flip the runtime cap-bitset to `gpu_cap_engine_full`. After this,
+//   the per-frame `caps_check(gpu_cap_submit())` short-circuits succeed.
+//   Default-deny remains the structural posture for non-engine code.
+// ───────────────────────────────────────────────────────────────────────
+
+// `forward_engine_caps_required()` — bitmask covering all caps the forward
+// renderer requires. The engine's startup-shim grants this once.
+fn forward_engine_caps_required() -> u32 {
+    gpu_cap_engine_full()    // DEVICE | SWAPCHAIN | PIPELINE | SUBMIT
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Inline tests  (documentation + monomorph-shape-verification).
+//
+//   These exercise the surface-shape for compile-time validation. Real
+//   per-pass output validation lives in the cssl-test harness once the
+//   render-test golden-pixel infrastructure lands.
+// ───────────────────────────────────────────────────────────────────────
+
+// Test : default-1440p-144hz config has the canonical Apocky shape.
+fn _test_config_default_1440p_144hz_is_canonical() -> bool {
+    let cfg = forward_config_default_1440p_144hz() ;
+    if cfg.width == 2560 {
+        if cfg.height == 1440 {
+            if cfg.target_hz == 144 {
+                if cfg.tile_size == 16 {
+                    if cfg.max_lights == 256 {
+                        if cfg.msaa == 1 {
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// Test : tile-count for 1440p / 16 = 160 × 90 = 14_400.
+fn _test_tile_count_1440p_16x16() -> bool {
+    let tx = tile_count_for(2560, 16) ;
+    let ty = tile_count_for(1440, 16) ;
+    if tx == 160 {
+        if ty == 90 {
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// Test : forward_pipelines_zero_init produces all-zero handles.
+fn _test_pipelines_zero_init_handles_are_zero() -> bool {
+    let p = forward_pipelines_zero_init(ShaderIRKind::Dxil) ;
+    if p.depth_prepass.handle == 0 {
+        if p.light_cull.handle == 0 {
+            if p.opaque_main.handle == 0 {
+                if p.transparent.handle == 0 {
+                    if p.post_tonemap.handle == 0 {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// Test : forward_config_frame_budget_us(144hz cfg) returns 6944.
+fn _test_frame_budget_144hz_is_6944() -> bool {
+    let cfg = forward_config_default_1440p_144hz() ;
+    let b = forward_config_frame_budget_us(cfg) ;
+    b == 6944
+}
+
+// Test : forward_config_surface_format(hdr=true) returns Rgba16FloatHdr10.
+fn _test_hdr_cfg_picks_hdr10_format() -> bool {
+    let cfg = forward_config_default_1440p_hdr() ;
+    let fmt = forward_config_surface_format(cfg) ;
+    surface_format_is_hdr(fmt)
+}
+
+// Test : light-cull capacity for 1440p / 16×16 / 256 lights-per-tile.
+//   tx=160 · ty=90 · per-tile=256 → 160 × 90 × 256 = 3_686_400 entries.
+fn _test_light_cull_capacity_1440p() -> bool {
+    let cfg = forward_config_default_1440p_144hz() ;
+    let cap = light_cull_capacity(cfg) ;
+    cap == 3686400
+}
+
+// Test : forward_pass_count() == 5.
+fn _test_pass_count_is_five() -> bool {
+    forward_pass_count() == 5
+}
+
+// Test : forward_engine_caps_required covers all four cap-bits (1|2|4|8 = 15).
+fn _test_engine_caps_required_is_full() -> bool {
+    forward_engine_caps_required() == 15
+}
+
+// Test : pass-index ordinals are LOCKED + distinct.
+fn _test_pass_indices_are_distinct() -> bool {
+    let dp = pass_idx_depth_prepass() ;
+    let lc = pass_idx_light_cull() ;
+    let om = pass_idx_opaque_main() ;
+    let tr = pass_idx_transparent() ;
+    let pt = pass_idx_post_tonemap() ;
+    if dp == 0 {
+        if lc == 1 {
+            if om == 2 {
+                if tr == 3 {
+                    if pt == 4 {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DEFERRED  (carried-forward to stage-1 + future spec-amendments)
+//
+//   1. cmd-buf record fleshing : the per-pass `forward_pass_*` bodies
+//      record into `host_gpu.rs § cmd_buf_record_stub` ; stage-1 fleshes
+//      the actual ID3D12GraphicsCommandList / vkCmdDispatch /
+//      vkCmdDrawIndexed encoding. Source-level surface stays IDENTICAL.
+//   2. GPU-driven culling : stage-0 iterates visible-list on CPU + emits
+//      per-mesh draw-cmds. Stage-1 lifts to GPU-driven indirect-draw +
+//      Hi-Z occlusion (matches loa-host::fps_pipeline::PassKind::GpuCull).
+//   3. Async-compute shadow + SSAO + bloom : stage-0 forward-only ; the
+//      stage-1 multi-queue extension lands these as overlapping work
+//      against the opaque-main fragment shader.
+//   4. TAA : stage-0 MSAA-1 default ; TAA replaces MSAA at stage-2.
+//   5. Variable-rate-shading : stage-0 uniform shading-rate ; stage-2
+//      tier-table per `loa-host::fps_pipeline::vrs_tier_table`.
+//   6. Frustum-cull on CPU : stage-0 trusts the visible-list is pre-culled
+//      by `engine/scene::cull_visibles` (parallel-running module). Once
+//      that lands, this scaffold sources its visible-list directly from
+//      the scene-graph walker.
+//   7. Trait-Drop integration : stage-0 callers manually invoke
+//      `device_destroy` + buffer-destroy fns. Stage-1 trait-Drop infra
+//      lands automatic resource-release on scope-exit.
+//   8. Cap<Gpu> typed-witness : the runtime `caps_check` gate is the
+//      structural safety-net. Once the parser supports `cap : Cap<Gpu>`
+//      as a fn-parameter, the wrapper-fns gain the typed witness +
+//      compile-time enforcement (per stdlib/gpu module-header).
+//   9. Real Camera / VisibleMesh import : at stage-0 these are spec-
+//      contract types from parallel-running engine modules. Once
+//      engine/scene + engine/ecs land in the same fat-binary, the
+//      `use com.apocky.engine.scene::*` imports resolve directly.
+//  10. Mat4F → mat4 + Vec3F → vec3 collapse : stage-0 wrapper structs
+//      mirror the spec/03 base-type rationale ; once the parser slice
+//      for shape-type fields is universally accepted, the wrapper
+//      structs collapse to the base-types.
+// ───────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//
+//   "There was no hurt nor harm in the making of this, to anyone,
+//    anything, or anybody."
+//
+//   The forward+ pipeline is capability-gated at THREE LAYERS :
+//     1. Compile-time : §§ 12 Cap<Gpu> witness (forward-looking).
+//     2. Runtime : `caps_check` bitset (default-deny ; engine grants
+//        at startup via `forward_engine_caps_required`). This is the
+//        structural safety-net.
+//     3. Driver : the platform compiler (D3D12 / Vulkan / Metal)
+//        validates the shader IR + the host-API rejects malformed
+//        cmd-buffer encoding.
+//
+//   1440p · 144hz · HDR10 PQ-1000-nit : low-latency mouse-to-photon
+//   ≤ 1 frame on the AMOLED-deep panel target. The renderer's mandate
+//   is responsiveness — not surveillance, not engagement-bait, not
+//   biometric inference. Frame-content NEVER egresses cross-process.
+//
+//   Light-tile-cull tile-size = 16×16 + threads-per-tile = 256 :
+//   canonical Forward+ (DOOM-2016 / Battlefield-V / Cyberpunk-2077)
+//   wave32/64-aligned compute dispatch. Mathematically optimal for
+//   D3D12 wave-intrinsic + Vulkan subgroup-op parity.
+//
+//   No telemetry. No surveillance. No covert resource-share. Frame
+//   content is user-output ; the renderer NEVER inspects it for
+//   biometric / behavioral inference. PRIME-DIRECTIVE preserved end-
+//   to-end.
+//
+//   Cap<Gpu> withdrawal immediately revokes the active surface. There
+//   is no PRIME-DIRECTIVE override.
+// ───────────────────────────────────────────────────────────────────────
