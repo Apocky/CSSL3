@@ -66,6 +66,13 @@
     LOA_SIGMA_CHAIN_PROOF_DEPTH        ← consensus depth ; default 3
   ⟧
 
+§I TESTING-DEVELOPMENT
+  ⟦
+    LOA_QUICK_QUIT = 0|N               ← auto-quit after N frames ; default 0 (off)
+                                            useful for smoke-test runs without manual close
+                                            checked in window event-loop about_to_wait
+  ⟧
+
 §I OBSERVABILITY-ATTESTATION
   ¬ surveillance · ¬ identifying-telemetry · ¬ phone-home
   default-fast-path : every adaptive/learning system has env-disable

@@ -479,6 +479,7 @@ fn log_startup_banner() {
         ("LOA_SUBSTRATE_BENCH", "0", "log gpu_dispatch_us every-N frames"),
         ("LOA_SUBSTRATE_PACKED", "0", "64B-packed-GpuCrystal path"),
         ("LOA_DXIL_PRESENT_TEAR", "1", "D3D12 ALLOW_TEARING (when L8 lands)"),
+        ("LOA_QUICK_QUIT", "0", "auto-quit after N frames (smoke-test)"),
     ];
     for &(key, default, _semantic) in knobs {
         let (val, src) = match std::env::var(key) {

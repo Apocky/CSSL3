@@ -1725,6 +1725,28 @@ impl ApplicationHandler for App {
             let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1);
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
         }
+        // § T11-W18-QUICK-QUIT : LOA_QUICK_QUIT=N exits after N frames.
+        //   Useful for smoke-testing the runtime without manual close.
+        //   Read once and cache via static; check current frame count vs
+        //   threshold every event-loop tick. Off when env-var is unset or 0.
+        static QUICK_QUIT_FRAMES: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        let threshold = *QUICK_QUIT_FRAMES.get_or_init(|| {
+            std::env::var("LOA_QUICK_QUIT")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0)
+        });
+        if threshold > 0 && self.substrate.frame_count >= threshold {
+            cssl_rt::loa_startup::log_event(
+                "INFO",
+                "loa-host/window",
+                &format!(
+                    "QUICK_QUIT triggered · frame_count={} · threshold={}",
+                    self.substrate.frame_count, threshold
+                ),
+            );
+            event_loop.exit();
+        }
     }
 }
 
