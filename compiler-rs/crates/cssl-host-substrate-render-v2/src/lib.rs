@@ -548,6 +548,63 @@ pub fn try_headless_device() -> Option<(wgpu::Instance, wgpu::Adapter, wgpu::Dev
 mod tests {
     use super::*;
 
+    /// § T11-W18-SOA-PACK · Test : the WGSL `GpuCrystalPacked` struct +
+    /// helper functions are present in the shader source. The packed
+    /// kernel-path is currently scaffold-only ; this test is the canary
+    /// that catches accidental deletion of the packed-WGSL plumbing in
+    /// future shader edits. Once the packed path is wired, this test
+    /// upgrades to a layout-validation check (offsetof per field).
+    #[test]
+    fn wgsl_packed_struct_present() {
+        // Every load-bearing identifier the future packed-kernel will
+        // reference must appear in the shader source. If a refactor
+        // accidentally renames or deletes one, the kernel-rewrite wave
+        // breaks immediately rather than silently regressing.
+        for sym in [
+            "struct GpuCrystalPacked",
+            "world_pos_x",
+            "extent_sigma_flags",
+            "spectral_quad",
+            "silhouette_quant",
+            "fn unpack_extent_mm",
+            "fn unpack_sigma_mask",
+            "fn unpack_flags",
+            "fn unpack_spectral_band",
+            "fn unpack_silhouette_axis",
+            "_packed_scaffold_reference",
+        ] {
+            assert!(
+                SHADER_SRC.contains(sym),
+                "WGSL packed scaffold missing : `{sym}` not found in substrate_v2.wgsl",
+            );
+        }
+    }
+
+    /// § T11-W18-SOA-PACK · the host-side packed struct round-trips through
+    /// `bytemuck::cast_slice` + `cast` back without bit-loss. This is the
+    /// load-bearing invariant for `Queue::write_buffer(buf, 0, &bytes)`
+    /// followed by the GPU reading at the matching byte offsets.
+    #[test]
+    fn packed_struct_byte_cast_is_lossless() {
+        use cssl_host_alien_materialization::observer::ObserverCoord;
+        use cssl_host_crystallization::{Crystal, CrystalClass, WorldPos};
+        let observer = ObserverCoord::default();
+        let blend = observer.illuminant_blend.w;
+        let crystals = vec![
+            Crystal::allocate(CrystalClass::Object, 1, WorldPos::new(123, -456, 7890)),
+            Crystal::allocate(CrystalClass::Entity, 2, WorldPos::new(0, 0, 1500)),
+        ];
+        let packed = pack_crystals_packed(&crystals, blend);
+        let bytes: &[u8] = bytemuck::cast_slice(&packed);
+        // Cast back ⇒ same struct values, byte-for-byte.
+        let recovered: &[GpuCrystalPacked] = bytemuck::cast_slice(bytes);
+        assert_eq!(recovered.len(), 2);
+        assert_eq!(recovered[0].world_pos_x_mm, 123);
+        assert_eq!(recovered[0].world_pos_y_mm, -456);
+        assert_eq!(recovered[0].world_pos_z_mm, 7890);
+        assert_eq!(recovered[1].world_pos_z_mm, 1500);
+    }
+
     /// Test 1 : the embedded WGSL parses + passes naga validation. Catches
     /// shader-syntax / binding / type errors at unit-test time without GPU.
     #[test]

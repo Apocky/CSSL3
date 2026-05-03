@@ -119,6 +119,111 @@ struct ObserverUniform {
 @group(0) @binding(1) var<storage, read> crystals : array<GpuCrystal>;
 @group(0) @binding(2) var output : texture_storage_2d<rgba8unorm, write>;
 
+// ════════════════════════════════════════════════════════════════════════════
+// § T11-W18-SOA-PACK · 64-byte packed-crystal scaffold (FUTURE PATH).
+// ════════════════════════════════════════════════════════════════════════════
+//
+// `GpuCrystalPacked` is the 64-byte equivalent of `GpuCrystal` shipped in
+// W18-SOA-PACK. The host-side struct + pack functions are wired up ; the
+// **shader-side** plumbing here is scaffold-only (struct + bit-extract
+// helpers) — no entry-point currently uses these symbols, so the kernel
+// behaviour is bit-for-bit identical to pre-SOA-PACK. The packed kernel
+// path will be wired in a follow-up wave after the host-side telemetry
+// confirms the visual delta is sub-perceptual at 1440p.
+//
+// LAYOUT (64 B · matches Rust `GpuCrystalPacked`)
+//
+//   ofs0 .. 11 : world_pos_x/y/z (vec3<i32>)
+//   ofs12      : extent_mm + sigma + flags packed into ONE u32 :
+//                  byte 0..1 = extent_mm_u16  (LE)
+//                  byte 2    = sigma_mask_u8
+//                  byte 3    = flags_u8
+//   ofs16      : spectral_quad : array<u32, 4>  (16 bands × 1 byte)
+//   ofs32      : silhouette_quant : array<u32, 8>  (32 i8 packed 4-per-u32)
+//
+// The total stride is `4 (vec3 = 12 bytes round to 16) + ...` — actually
+// `vec3<i32>` in WGSL has 12 B but std430 rounds it to 16. We use four
+// `i32` scalars to pin the layout to 12 B and place `extent_sigma_flags`
+// at offset 12, exactly matching the host struct.
+
+struct GpuCrystalPacked {
+    world_pos_x        : i32,
+    world_pos_y        : i32,
+    world_pos_z        : i32,
+    extent_sigma_flags : u32,
+    spectral_quad      : array<vec4<u32>, 1>,  // 16 bytes
+    silhouette_quant   : array<vec4<u32>, 2>,  // 32 bytes (8 × u32 = 32 i8 packed)
+};
+
+// Helper : extract `extent_mm` (u16 low) from the packed `extent_sigma_flags`.
+fn unpack_extent_mm(packed: u32) -> u32 {
+    return packed & 0xFFFFu;
+}
+
+// Helper : extract `sigma_mask` (byte 2) from the packed word.
+fn unpack_sigma_mask(packed: u32) -> u32 {
+    return (packed >> 16u) & 0xFFu;
+}
+
+// Helper : extract `flags` (byte 3) from the packed word.
+fn unpack_flags(packed: u32) -> u32 {
+    return (packed >> 24u) & 0xFFu;
+}
+
+// Helper : extract a single 1-byte spectral band (b in 0..16) from the
+// `spectral_quad` array (4 × u32 = 16 bytes packed LE).
+fn unpack_spectral_band(quad: vec4<u32>, band: u32) -> u32 {
+    let word_idx = band / 4u;
+    let byte_idx = band & 3u;
+    var word : u32;
+    if      (word_idx == 0u) { word = quad.x; }
+    else if (word_idx == 1u) { word = quad.y; }
+    else if (word_idx == 2u) { word = quad.z; }
+    else                     { word = quad.w; }
+    return (word >> (byte_idx * 8u)) & 0xFFu;
+}
+
+// Helper : extract a single sign-extended i32 from packed silhouette i8
+// quant. `point_idx` 0..16 · `axis_idx` 0..2.
+fn unpack_silhouette_axis(silhouette: array<vec4<u32>, 2>, point_idx: u32, axis_idx: u32) -> i32 {
+    // Total i8 index = point_idx * 2 + axis_idx (range 0..32).
+    let i8_idx = point_idx * 2u + axis_idx;
+    // Pack/unpack : 8 u32 hold 32 i8 = 4 × i8 / u32. Choose the right u32.
+    let word_idx = i8_idx / 4u;
+    let byte_idx = i8_idx & 3u;
+    var word : u32;
+    if      (word_idx == 0u) { word = silhouette[0].x; }
+    else if (word_idx == 1u) { word = silhouette[0].y; }
+    else if (word_idx == 2u) { word = silhouette[0].z; }
+    else if (word_idx == 3u) { word = silhouette[0].w; }
+    else if (word_idx == 4u) { word = silhouette[1].x; }
+    else if (word_idx == 5u) { word = silhouette[1].y; }
+    else if (word_idx == 6u) { word = silhouette[1].z; }
+    else                     { word = silhouette[1].w; }
+    let raw = (word >> (byte_idx * 8u)) & 0xFFu;
+    // Sign-extend i8 → i32.  (`signed` is a reserved WGSL keyword ; use a
+    // different name.)
+    var extended_i32 : i32 = i32(raw);
+    if ((raw & 0x80u) != 0u) {
+        extended_i32 = extended_i32 - 256;
+    }
+    return extended_i32;
+}
+
+// § T11-W18-SOA-PACK · _SCAFFOLD_REFERENCE keeps the helpers from being
+// pruned by naga DCE. Returning a dummy boolean derived from all helpers
+// forces the validator to include them in the module ; the entry-point
+// can OPT-IN later by replacing its inner crystal-loop with the packed
+// path. The function is unused → compiled-out at runtime.
+fn _packed_scaffold_reference(p: GpuCrystalPacked) -> bool {
+    let e = unpack_extent_mm(p.extent_sigma_flags);
+    let s = unpack_sigma_mask(p.extent_sigma_flags);
+    let f = unpack_flags(p.extent_sigma_flags);
+    let b = unpack_spectral_band(p.spectral_quad[0], 0u);
+    let sa = unpack_silhouette_axis(p.silhouette_quant, 0u, 0u);
+    return (e | s | f | b) > 0u || sa != 0;
+}
+
 // § T11-W18-WORKGROUP-CACHE · the 64 threads of an 8×8 workgroup cooperatively
 //   load the first WG_CACHE_SIZE crystals into shared memory. After a barrier
 //   ALL threads scan the cache · cache-resident reads cost ~1 cycle vs ~100
