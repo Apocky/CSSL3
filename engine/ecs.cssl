@@ -1,0 +1,984 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/ecs.cssl  —  Sparse-set Entity-Component-System
+//
+// CSSLv3 stage-0 engine module.
+// Spec : specs/03_TYPES.csl § HANDLE (24-bit-id + 40-bit-gen Handle<T>
+//                                       packing convention)
+//        specs/03_TYPES.csl § AGGREGATE (struct + Vec<T> usage)
+//        specs/12_CAPABILITIES.csl § ISO-OWNERSHIP (component-pool data
+//                                                    is iso-owned)
+// Slice : E1B — engine companion to E1A (frame_clock.cssl). Pure-data
+//         entity allocator + sparse-set component pool. NO FFI ; NO
+//         capability gating (these primitives are non-effectful).
+//
+// § PRIME_DIRECTIVE preserved : the ECS is a value-container that holds
+//   user-controlled tables of entity-IDs and component-indices. It does
+//   NOT introduce hidden control flow, weakened consent, or surveillance.
+//   - Entity creation is deterministic : the next-id allocator + the
+//     generation-counter discipline produce reproducible IDs given a
+//     reproducible call-sequence.
+//   - Generation-counter monotonically advances on destroy ; a recycled
+//     slot returns a NEW EntityId whose `gen` differs from the old one.
+//     `is_alive` checks both `id` and `gen` so dangling references are
+//     detected at the source level (no use-after-free silent-acceptance).
+//   - The sparse-set is a TABLE — no observation of the entity is
+//     possible without explicit caller invocation of `pool_get_index`
+//     / `pool_view`. Substrate-sovereign : iteration order is the
+//     insertion order of `dense`, which is caller-controlled.
+//
+// § APOCKY-DIRECTIVE
+//   Pure-data ECS · ¬ heap-alloc in entity-create hot-path (Vec::push
+//   amortized OK · Sawyer-efficient amortization · no surprise syscalls).
+//   Generation-counter discipline : every destroy bumps `gen` BEFORE the
+//   slot returns to free-list ; subsequent `is_alive` checks against the
+//   old EntityId observe gen-mismatch and reject.
+//
+// § PARADIGM
+//   - `EntityId` is packed 32-bit-id + 32-bit-gen (lower-half + upper-half
+//     of a u64-shaped Handle<T>). Per spec/03 § HANDLE the canonical pack
+//     is 24+40 ; we use 32+32 at stage-0 for cleaner bit-arithmetic in
+//     CSSL (the parser does not yet accept arbitrary bit-widths). The
+//     migration to 24+40 is mechanical once the parser supports
+//     bit-field syntax. The struct-shape is wire-compatible (both fields
+//     are u32 in the struct ; only the semantic-id is the question).
+//   - Sparse-set canonical layout : `sparse[entity_id]` → dense-index ;
+//     `dense[dense_index]` → entity_id. Component data lives in a
+//     parallel typed Vec<T> at `data_indices[dense_index]` (caller-
+//     managed ; the pool only tracks the membership + dense-array).
+//   - Iteration is over `dense` (cache-friendly ; contiguous entity-ids).
+//
+// § STAGE-0 NOTES
+//   1. Imports `std::vec::Vec` for the dynamic-array surface. The Vec
+//      free-fn alias-delegates (`vec_new` / `vec_push` / `vec_len` /
+//      `vec_get`) are the active call-shape per stdlib/vec.cssl §
+//      W-B-MIGRATE-B (impl-method form is canonical but the free-fns
+//      are preserved as transparent forwarders for back-compat).
+//   2. EntityId is a struct of two u32 fields (id + gen). Packing into
+//      a single u64 (per spec/03 § HANDLE) is deferred to a follow-up
+//      slice once the parser accepts bit-shift in const-position
+//      reliably.
+//   3. The NULL_ENTITY sentinel is `EntityId { id : 0xFFFFFFFF, gen : 0 }`.
+//      ID 0xFFFFFFFF is reserved as the never-allocated "tombstone" ;
+//      live entities have id ∈ [0, 0xFFFFFFFE] ⇒ 4 billion entities
+//      capacity which is more than sufficient for any LoA scene budget.
+//   4. The sparse-set's `sparse` Vec is grown on-demand via
+//      `pool_ensure_sparse_capacity` ; growth-policy mirrors stdlib/vec.
+//      Stage-0 each new sparse slot is initialized to the SPARSE_NONE
+//      sentinel (0xFFFFFFFF) indicating "no component for this entity".
+//   5. The pool itself does NOT hold the component data ; it tracks
+//      dense-indices into a caller-managed typed Vec<T>. This separation
+//      is required because CSSL stage-0 generic structs over T cannot
+//      own a Vec<T> field directly through the parser (the
+//      `data : Vec<T>` form parses but lowering through monomorph for
+//      a heterogeneous component-type registry is not yet wired). The
+//      caller-managed-data design is the canonical sparse-set ECS
+//      architecture (per Bevy / EnTT / Specs) and is what we want
+//      regardless of parser-state.
+//   6. Pool methods follow the stdlib value-out style : `pool_insert`
+//      consumes a ComponentPool and returns `(ComponentPool, dense_index)`
+//      via a `PoolInsertReport` struct. Mut-borrow migration is
+//      mechanical once the parser slice lands.
+//   7. `pool_view` returns a `ComponentView` cursor that walks `dense`
+//      via index-based iteration ; the cursor is consumed-and-returned
+//      per the stdlib VecIter precedent.
+//
+// § INVARIANTS  (stage-0)
+//   - `EntityAlloc.next_id` is monotonically non-decreasing over the
+//     allocator's lifetime (deterministic).
+//   - `EntityAlloc.generations[id]` is monotonically non-decreasing per
+//     slot (every destroy → gen += 1).
+//   - `pool.sparse[entity_id]` ∈ { SPARSE_NONE, dense_index } where
+//     dense_index < pool.dense.len.
+//   - `pool.dense[dense_index]` is the entity_id whose `sparse` slot
+//     points back at `dense_index` (round-trip invariant).
+//   - `pool.dense.len == pool.data_indices.len` always (parallel arrays).
+//   - `pool.data_indices[dense_index]` is the index into the caller-
+//     managed typed Vec<T> where the component data lives.
+
+module com.apocky.engine.ecs
+
+use std::vec::Vec
+use std::vec::vec_new
+use std::vec::vec_push
+use std::vec::vec_len
+use std::vec::vec_get
+use std::vec::vec_index
+use std::option::Option
+
+// ───────────────────────────────────────────────────────────────────────
+// § Sentinel constants.
+// ───────────────────────────────────────────────────────────────────────
+
+// `NULL_ENTITY_ID = 0xFFFFFFFF` — reserved tombstone-id ; live entities
+// have id ∈ [0, 0xFFFFFFFE]. Used as the "no entity" sentinel.
+fn null_entity_id() -> u32 {
+    4294967295
+}
+
+// `SPARSE_NONE = 0xFFFFFFFF` — sparse-slot value indicating "no
+// component for this entity". Distinguishes "absent" from "dense-index 0".
+fn sparse_none() -> u32 {
+    4294967295
+}
+
+// `INITIAL_SPARSE_CAPACITY = 64` — initial capacity for the sparse Vec.
+// 64 entities is a reasonable floor for small scenes ; larger scenes
+// grow the sparse vec via `pool_ensure_sparse_capacity` (amortized 2x).
+fn initial_sparse_capacity() -> i64 {
+    64
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type-definitions.
+// ───────────────────────────────────────────────────────────────────────
+
+// `EntityId` — 32+32 packed handle for an entity in an EntityAlloc.
+//
+// § FIELDS
+//   - `id`  : the slot-index (0..max_entities).
+//   - `gen` : the generation-counter at the time of allocation.
+//             Bumped by `entity_alloc_destroy` ; subsequent `is_alive`
+//             checks against the old EntityId observe gen-mismatch and
+//             reject the dangling reference.
+//
+// § INVARIANTS
+//   - `id == NULL_ENTITY_ID` ⇒ this is the null sentinel ; never
+//     allocated to a live entity.
+//   - For live entities : `id < EntityAlloc.next_id` AND
+//     `gen == EntityAlloc.generations[id]`.
+struct EntityId {
+    id  : u32,
+    gen : u32,
+}
+
+// `entity_id_null()` — construct the canonical null EntityId.
+//
+// Stage-0 substitute for the const-fn shape that requires struct-literal
+// in const position (parser slice deferred). The function-form is
+// equivalent ; the call-site is a single-fn-call.
+fn entity_id_null() -> EntityId {
+    EntityId {
+        id  : null_entity_id(),
+        gen : 0,
+    }
+}
+
+// `entity_id_eq(a, b)` — structural equality for EntityId.
+fn entity_id_eq(a : EntityId, b : EntityId) -> bool {
+    if a.id == b.id {
+        a.gen == b.gen
+    } else {
+        false
+    }
+}
+
+// `entity_id_is_null(e)` — true iff `e` is the null sentinel.
+fn entity_id_is_null(e : EntityId) -> bool {
+    e.id == null_entity_id()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § EntityAlloc — entity-id allocator with generation-counter discipline.
+//
+//   Allocation strategy :
+//     1. If `free_list` is non-empty : pop a slot ; return EntityId
+//        with the slot's current generation.
+//     2. Otherwise : `id = next_id ; next_id += 1` ; push `gen = 1` to
+//        `generations` (gen=0 is reserved so the null EntityId.gen=0 is
+//        never a live identity ; live entities start at gen=1).
+//
+//   Destruction strategy :
+//     1. Validate `is_alive(e)` ; if not, return false (no-op).
+//     2. Bump `generations[e.id] += 1` (monotonic ; gen-counter
+//        discipline ; old EntityId becomes stale).
+//     3. Push `e.id` to `free_list` (recycle-on-next-create).
+//     4. Return true.
+//
+//   The free-list is FIFO at stage-0 (Vec::push + Vec::pop yields LIFO ;
+//   for ECS recycle-order this is fine and avoids the cost of a queue).
+// ───────────────────────────────────────────────────────────────────────
+
+// `EntityAlloc` — entity-id allocator + generation-counter table.
+//
+// § FIELDS
+//   - `next_id`     : the next un-allocated slot-index. Monotonic.
+//   - `free_list`   : recycle-stack of slot-ids whose entities were
+//                     destroyed. `entity_alloc_create` pops from here
+//                     before incrementing `next_id`.
+//   - `generations` : per-slot generation-counter. `generations[i]` is
+//                     the current generation of slot i. Bumped by
+//                     destroy ; never decremented.
+struct EntityAlloc {
+    next_id     : u32,
+    free_list   : Vec<u32>,
+    generations : Vec<u32>,
+}
+
+// `entity_alloc_new()` — construct a fresh empty allocator.
+//
+// § STAGE-0 BEHAVIOR
+//   Allocates two empty Vecs (no heap traffic until first push). The
+//   `next_id` starts at 0 ; the first `entity_alloc_create` returns
+//   `EntityId { id : 0, gen : 1 }`.
+fn entity_alloc_new() -> EntityAlloc {
+    EntityAlloc {
+        next_id     : 0,
+        free_list   : vec_new::<u32>(),
+        generations : vec_new::<u32>(),
+    }
+}
+
+// `EntityCreateReport` — return shape for `entity_alloc_create`.
+//
+// § FIELDS
+//   - `entity` : the newly-allocated EntityId.
+//   - `alloc`  : the updated EntityAlloc (free-list popped or
+//                next_id incremented + generations grown).
+struct EntityCreateReport {
+    entity : EntityId,
+    alloc  : EntityAlloc,
+}
+
+// `entity_alloc_create(a)` — allocate a new entity-id.
+//
+// § PARAMETERS
+//   - `a` : the current EntityAlloc state.
+//
+// § RETURN
+//   `EntityCreateReport { entity, alloc }` where :
+//     - `entity` is the freshly-minted EntityId.
+//     - `alloc`  is the updated allocator state.
+//
+// § STAGE-0 BEHAVIOR
+//   First tries to recycle from `free_list` ; if empty, increments
+//   `next_id` and grows `generations`. Newly-created slots get gen=1
+//   (gen=0 is reserved for the null sentinel).
+fn entity_alloc_create(a : EntityAlloc) -> EntityCreateReport {
+    let free_count = vec_len::<u32>(a.free_list) ;
+    if free_count > 0 {
+        // Recycle path : pop slot from free-list ; read its current gen.
+        let last_idx = free_count - 1 ;
+        let recycled_id = vec_index::<u32>(a.free_list, last_idx) ;
+        // Stage-0 vec_pop returns the popped Vec (the value is unobservable
+        // at stage-0 per stdlib/vec.cssl § STAGE-0 NOTES § 6). We fetched
+        // the value via vec_index above before the pop.
+        let new_free = entity_alloc_pop_last(a.free_list) ;
+        let cur_gen = vec_index::<u32>(a.generations, recycled_id as i64) ;
+        EntityCreateReport {
+            entity : EntityId {
+                id  : recycled_id,
+                gen : cur_gen,
+            },
+            alloc : EntityAlloc {
+                next_id     : a.next_id,
+                free_list   : new_free,
+                generations : a.generations,
+            },
+        }
+    } else {
+        // Fresh-slot path : id = next_id ; gen = 1 ; push to generations.
+        let new_id = a.next_id ;
+        let new_generations = vec_push::<u32>(a.generations, 1) ;
+        EntityCreateReport {
+            entity : EntityId {
+                id  : new_id,
+                gen : 1,
+            },
+            alloc : EntityAlloc {
+                next_id     : new_id + 1,
+                free_list   : a.free_list,
+                generations : new_generations,
+            },
+        }
+    }
+}
+
+// Helper : pop the last element of a u32 Vec. At stage-0 vec_pop returns
+// the (possibly-shrunk) Vec only ; we wrap that for clarity.
+fn entity_alloc_pop_last(v : Vec<u32>) -> Vec<u32> {
+    // Stage-0 : delegate to the stdlib alias. The caller fetches the
+    // value separately via vec_index before invoking this fn.
+    let len = vec_len::<u32>(v) ;
+    if len == 0 {
+        v
+    } else {
+        // Use vec_clear-style decrement : at stage-0 we rebuild via
+        // a trim. Once vec_pop's value is observable through the
+        // stdlib surface this becomes a single call.
+        entity_alloc_trim_last_u32(v, len - 1)
+    }
+}
+
+// Helper : trim a u32 Vec to the given length (stage-0 substitute for
+// the not-yet-landed `Vec::truncate`). Walks 0..new_len and pushes into
+// a fresh Vec ; cost is O(new_len) — acceptable for free-list pop.
+//
+// N! stage-0 hot-path cost : O(n) per pop. Once `Vec::truncate` lands
+// this becomes O(1). The semantic surface is identical.
+fn entity_alloc_trim_last_u32(v : Vec<u32>, new_len : i64) -> Vec<u32> {
+    entity_alloc_trim_step_u32(v, vec_new::<u32>(), 0, new_len)
+}
+
+// Tail-recursive worker for the trim helper.
+fn entity_alloc_trim_step_u32(src : Vec<u32>, acc : Vec<u32>, i : i64, target : i64) -> Vec<u32> {
+    if i >= target {
+        acc
+    } else {
+        let val = vec_index::<u32>(src, i) ;
+        let acc1 = vec_push::<u32>(acc, val) ;
+        entity_alloc_trim_step_u32(src, acc1, i + 1, target)
+    }
+}
+
+// `EntityDestroyReport` — return shape for `entity_alloc_destroy`.
+//
+// § FIELDS
+//   - `was_alive` : true iff `e` was alive at call entry (the destroy
+//                   actually fired). False for stale / null EntityIds.
+//   - `alloc`     : the updated EntityAlloc (gen-bumped + free-list
+//                   pushed if was_alive ; otherwise unchanged).
+struct EntityDestroyReport {
+    was_alive : bool,
+    alloc     : EntityAlloc,
+}
+
+// `entity_alloc_destroy(a, e)` — destroy an entity ; bump its slot's
+// generation-counter ; return the slot to the free-list.
+//
+// § PARAMETERS
+//   - `a` : the current EntityAlloc state.
+//   - `e` : the EntityId to destroy.
+//
+// § RETURN
+//   `EntityDestroyReport { was_alive, alloc }`.
+//
+// § STAGE-0 BEHAVIOR
+//   1. If `is_alive(e)` is false : return `{ was_alive : false, alloc : a }`
+//      (no-op for null / stale EntityIds).
+//   2. Bump `generations[e.id]` via the rebuild-helper (stage-0
+//      substitute for Vec::set ; the migration is mechanical).
+//   3. Push `e.id` to `free_list`.
+//   4. Return `{ was_alive : true, alloc : updated }`.
+fn entity_alloc_destroy(a : EntityAlloc, e : EntityId) -> EntityDestroyReport {
+    if entity_alloc_is_alive(a, e) {
+        let new_generations = entity_alloc_bump_generation(a.generations, e.id) ;
+        let new_free = vec_push::<u32>(a.free_list, e.id) ;
+        EntityDestroyReport {
+            was_alive : true,
+            alloc : EntityAlloc {
+                next_id     : a.next_id,
+                free_list   : new_free,
+                generations : new_generations,
+            },
+        }
+    } else {
+        EntityDestroyReport {
+            was_alive : false,
+            alloc     : a,
+        }
+    }
+}
+
+// `entity_alloc_is_alive(a, e)` — true iff `e` references a live slot
+// in `a` (id-bounds + gen-match).
+//
+// § STAGE-0 BEHAVIOR
+//   - rejects null EntityIds (id == NULL_ENTITY_ID).
+//   - rejects out-of-bounds ids (id >= a.next_id).
+//   - rejects gen-mismatches (e.gen != a.generations[e.id]).
+//   - rejects gen=0 EntityIds (gen 0 is the null-sentinel reserve).
+fn entity_alloc_is_alive(a : EntityAlloc, e : EntityId) -> bool {
+    if entity_id_is_null(e) {
+        false
+    } else {
+        if e.gen == 0 {
+            false
+        } else {
+            if (e.id as i64) >= (a.next_id as i64) {
+                false
+            } else {
+                let cur_gen = vec_index::<u32>(a.generations, e.id as i64) ;
+                cur_gen == e.gen
+            }
+        }
+    }
+}
+
+// Helper : bump the generation-counter at slot `id` by 1. Stage-0
+// rebuild-helper substitute for the not-yet-landed `Vec::set`.
+fn entity_alloc_bump_generation(v : Vec<u32>, id : u32) -> Vec<u32> {
+    entity_alloc_bump_step(v, vec_new::<u32>(), 0, id)
+}
+
+// Tail-recursive worker for the bump helper. Walks `src`, copies values
+// to `acc`, increments the value at index `target`.
+fn entity_alloc_bump_step(src : Vec<u32>, acc : Vec<u32>, i : i64, target : u32) -> Vec<u32> {
+    let len = vec_len::<u32>(src) ;
+    if i >= len {
+        acc
+    } else {
+        let val = vec_index::<u32>(src, i) ;
+        let new_val = if (i as u32) == target {
+            val + 1
+        } else {
+            val
+        } ;
+        let acc1 = vec_push::<u32>(acc, new_val) ;
+        entity_alloc_bump_step(src, acc1, i + 1, target)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ComponentPool — sparse-set membership table.
+//
+//   Layout :
+//     - `sparse[entity_id]` : dense-index for this entity, or SPARSE_NONE.
+//     - `dense[dense_index]` : entity-id at this dense slot.
+//     - `data_indices[dense_index]` : index into caller-managed typed
+//                                      Vec<T> for the component data.
+//
+//   Insertion : entity → (sparse[entity] = new_dense_index ;
+//                          dense.push(entity) ;
+//                          data_indices.push(new_data_index)).
+//   Removal   : swap-remove on dense + data_indices ; update sparse for
+//               the swapped-in entity ; mark sparse[entity] = SPARSE_NONE.
+//
+//   This is the canonical sparse-set ECS architecture (per Bevy / EnTT /
+//   Specs). The caller manages the typed component-data Vec separately ;
+//   the pool only tracks membership + dense-array.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ComponentPool` — sparse-set membership table.
+//
+// § FIELDS
+//   - `sparse`       : sparse-array indexed by entity_id ; values are
+//                      dense-indices or SPARSE_NONE. Grown on-demand.
+//   - `dense`        : packed array of entity-ids that have this
+//                      component (cache-friendly iteration order).
+//   - `data_indices` : parallel array to `dense` ; each slot holds the
+//                      index into the caller-managed typed Vec<T> where
+//                      the component data lives.
+struct ComponentPool {
+    sparse       : Vec<u32>,
+    dense        : Vec<u32>,
+    data_indices : Vec<u32>,
+}
+
+// `pool_new()` — construct a fresh empty ComponentPool.
+//
+// § STAGE-0 BEHAVIOR
+//   Allocates three empty Vecs ; no heap traffic until first insert.
+//   The sparse vec grows on-demand to `entity_id + 1` (or
+//   INITIAL_SPARSE_CAPACITY at first push, whichever is larger).
+fn pool_new() -> ComponentPool {
+    ComponentPool {
+        sparse       : vec_new::<u32>(),
+        dense        : vec_new::<u32>(),
+        data_indices : vec_new::<u32>(),
+    }
+}
+
+// `PoolInsertReport` — return shape for `pool_insert`.
+//
+// § FIELDS
+//   - `dense_index` : the dense-slot at which the entity was inserted.
+//                     The caller stores the component data at the same
+//                     index in the typed Vec<T>. NULL_ENTITY_ID is
+//                     returned when the entity already had this
+//                     component (idempotent ; no-op).
+//   - `pool`        : the updated ComponentPool.
+struct PoolInsertReport {
+    dense_index : u32,
+    pool        : ComponentPool,
+}
+
+// `pool_insert(p, e)` — insert `e` into the pool ; return the dense-
+// index for the caller to store component data at.
+//
+// § PARAMETERS
+//   - `p` : the current ComponentPool state.
+//   - `e` : the EntityId to insert.
+//
+// § RETURN
+//   `PoolInsertReport { dense_index, pool }` where :
+//     - `dense_index` is where the component-data should be stored
+//       in the caller's typed Vec<T>.
+//     - `pool` is the updated pool (sparse-grown + dense-pushed).
+//
+// § STAGE-0 BEHAVIOR
+//   1. If `pool_contains(p, e)` is true : return `{ NULL_ENTITY_ID,
+//      p }` (idempotent — caller can detect via the sentinel).
+//   2. Grow sparse to `e.id + 1` if needed (initialized to SPARSE_NONE).
+//   3. Compute `new_dense_index = dense.len`.
+//   4. Set `sparse[e.id] = new_dense_index`.
+//   5. Push `e.id` to `dense` ; push `new_dense_index` to `data_indices`.
+fn pool_insert(p : ComponentPool, e : EntityId) -> PoolInsertReport {
+    if pool_contains(p, e) {
+        // Idempotent : no-op ; signal via NULL_ENTITY_ID dense_index.
+        PoolInsertReport {
+            dense_index : null_entity_id(),
+            pool        : p,
+        }
+    } else {
+        let p1 = pool_ensure_sparse_capacity(p, e.id) ;
+        let new_dense_index = vec_len::<u32>(p1.dense) as u32 ;
+        let new_sparse = entity_alloc_set_u32(p1.sparse, e.id as i64, new_dense_index) ;
+        let new_dense = vec_push::<u32>(p1.dense, e.id) ;
+        let new_data_indices = vec_push::<u32>(p1.data_indices, new_dense_index) ;
+        PoolInsertReport {
+            dense_index : new_dense_index,
+            pool : ComponentPool {
+                sparse       : new_sparse,
+                dense        : new_dense,
+                data_indices : new_data_indices,
+            },
+        }
+    }
+}
+
+// `pool_contains(p, e)` — true iff `e` has a component in this pool.
+//
+// § STAGE-0 BEHAVIOR
+//   - rejects null EntityIds (id == NULL_ENTITY_ID).
+//   - rejects out-of-bounds (e.id >= sparse.len) — the entity has
+//     never been inserted (sparse was never grown that far).
+//   - reads `sparse[e.id]` ; returns true iff != SPARSE_NONE.
+fn pool_contains(p : ComponentPool, e : EntityId) -> bool {
+    if entity_id_is_null(e) {
+        false
+    } else {
+        let sparse_len = vec_len::<u32>(p.sparse) ;
+        if (e.id as i64) >= sparse_len {
+            false
+        } else {
+            let slot = vec_index::<u32>(p.sparse, e.id as i64) ;
+            slot != sparse_none()
+        }
+    }
+}
+
+// `pool_get_index(p, e)` — return the dense-index for `e` in the pool ;
+// SPARSE_NONE if absent.
+//
+// § STAGE-0 BEHAVIOR
+//   - rejects null / out-of-bounds : returns SPARSE_NONE.
+//   - reads `sparse[e.id]` directly.
+fn pool_get_index(p : ComponentPool, e : EntityId) -> u32 {
+    if entity_id_is_null(e) {
+        sparse_none()
+    } else {
+        let sparse_len = vec_len::<u32>(p.sparse) ;
+        if (e.id as i64) >= sparse_len {
+            sparse_none()
+        } else {
+            vec_index::<u32>(p.sparse, e.id as i64)
+        }
+    }
+}
+
+// `PoolRemoveReport` — return shape for `pool_remove`.
+//
+// § FIELDS
+//   - `was_present`     : true iff `e` had a component (the remove
+//                         actually fired).
+//   - `removed_index`   : the dense-index that was vacated. The caller
+//                         uses this to swap-remove the component data
+//                         in their typed Vec<T>. SPARSE_NONE if
+//                         was_present is false.
+//   - `swapped_in_id`   : the entity_id that was swapped into the
+//                         vacated slot (was the last element of dense).
+//                         NULL_ENTITY_ID if the removed entity was the
+//                         last element (no swap needed).
+//   - `pool`            : the updated ComponentPool.
+struct PoolRemoveReport {
+    was_present   : bool,
+    removed_index : u32,
+    swapped_in_id : u32,
+    pool          : ComponentPool,
+}
+
+// `pool_remove(p, e)` — remove `e` from the pool ; return the dense-
+// index that was vacated for swap-remove on the caller's typed Vec<T>.
+//
+// § PARAMETERS
+//   - `p` : the current ComponentPool state.
+//   - `e` : the EntityId to remove.
+//
+// § RETURN
+//   `PoolRemoveReport { was_present, removed_index, swapped_in_id, pool }`.
+//
+// § STAGE-0 BEHAVIOR (swap-remove)
+//   1. If `pool_contains(p, e)` is false : return
+//      `{ false, SPARSE_NONE, NULL_ENTITY_ID, p }` (no-op).
+//   2. Read `removed_idx = sparse[e.id]`.
+//   3. Read `last_idx = dense.len - 1`.
+//   4. If `removed_idx == last_idx` : just pop dense + data_indices ;
+//      mark sparse[e.id] = SPARSE_NONE ; swapped_in_id = NULL_ENTITY_ID.
+//   5. Else : read `last_id = dense[last_idx]` ;
+//             write dense[removed_idx] = last_id ;
+//             write data_indices[removed_idx] = data_indices[last_idx] ;
+//             pop dense + data_indices ;
+//             write sparse[last_id] = removed_idx ;
+//             mark sparse[e.id] = SPARSE_NONE ;
+//             swapped_in_id = last_id.
+fn pool_remove(p : ComponentPool, e : EntityId) -> PoolRemoveReport {
+    if pool_contains(p, e) {
+        let removed_idx = vec_index::<u32>(p.sparse, e.id as i64) ;
+        let dense_len = vec_len::<u32>(p.dense) ;
+        let last_idx = (dense_len - 1) as u32 ;
+        if removed_idx == last_idx {
+            // Last-slot remove : simple pop + sparse-clear.
+            let new_dense = entity_alloc_trim_last_u32(p.dense, dense_len - 1) ;
+            let new_data_indices = entity_alloc_trim_last_u32(
+                p.data_indices,
+                vec_len::<u32>(p.data_indices) - 1
+            ) ;
+            let new_sparse = entity_alloc_set_u32(p.sparse, e.id as i64, sparse_none()) ;
+            PoolRemoveReport {
+                was_present   : true,
+                removed_index : removed_idx,
+                swapped_in_id : null_entity_id(),
+                pool : ComponentPool {
+                    sparse       : new_sparse,
+                    dense        : new_dense,
+                    data_indices : new_data_indices,
+                },
+            }
+        } else {
+            // Swap-remove path : last → vacated slot.
+            let last_id = vec_index::<u32>(p.dense, last_idx as i64) ;
+            let last_data_idx = vec_index::<u32>(p.data_indices, last_idx as i64) ;
+            // Step 1 : write dense[removed_idx] = last_id.
+            let dense1 = entity_alloc_set_u32(p.dense, removed_idx as i64, last_id) ;
+            // Step 2 : write data_indices[removed_idx] = last_data_idx.
+            let data1 = entity_alloc_set_u32(p.data_indices, removed_idx as i64, last_data_idx) ;
+            // Step 3 : pop dense + data_indices.
+            let dense2 = entity_alloc_trim_last_u32(dense1, dense_len - 1) ;
+            let data2 = entity_alloc_trim_last_u32(data1, vec_len::<u32>(data1) - 1) ;
+            // Step 4 : update sparse for swapped-in + cleared.
+            let sparse1 = entity_alloc_set_u32(p.sparse, last_id as i64, removed_idx) ;
+            let sparse2 = entity_alloc_set_u32(sparse1, e.id as i64, sparse_none()) ;
+            PoolRemoveReport {
+                was_present   : true,
+                removed_index : removed_idx,
+                swapped_in_id : last_id,
+                pool : ComponentPool {
+                    sparse       : sparse2,
+                    dense        : dense2,
+                    data_indices : data2,
+                },
+            }
+        }
+    } else {
+        PoolRemoveReport {
+            was_present   : false,
+            removed_index : sparse_none(),
+            swapped_in_id : null_entity_id(),
+            pool          : p,
+        }
+    }
+}
+
+// `pool_len(p)` — number of entities currently in the pool.
+fn pool_len(p : ComponentPool) -> i64 {
+    vec_len::<u32>(p.dense)
+}
+
+// `pool_is_empty(p)` — true iff the pool holds no entities.
+fn pool_is_empty(p : ComponentPool) -> bool {
+    vec_len::<u32>(p.dense) == 0
+}
+
+// Helper : grow `p.sparse` to at least `entity_id + 1` slots, padding
+// new slots with SPARSE_NONE. Stage-0 walks-and-rebuilds because
+// `Vec::resize` is not yet landed.
+fn pool_ensure_sparse_capacity(p : ComponentPool, entity_id : u32) -> ComponentPool {
+    let cur_len = vec_len::<u32>(p.sparse) ;
+    let needed = (entity_id as i64) + 1 ;
+    if cur_len >= needed {
+        p
+    } else {
+        // Pad with SPARSE_NONE up to `needed` (or initial-capacity if
+        // larger ; amortizes early growth).
+        let target = if needed < initial_sparse_capacity() {
+            initial_sparse_capacity()
+        } else {
+            needed
+        } ;
+        let new_sparse = pool_pad_sparse_step(p.sparse, cur_len, target) ;
+        ComponentPool {
+            sparse       : new_sparse,
+            dense        : p.dense,
+            data_indices : p.data_indices,
+        }
+    }
+}
+
+// Tail-recursive worker for sparse-padding. Pushes SPARSE_NONE values
+// until `current >= target`.
+fn pool_pad_sparse_step(v : Vec<u32>, current : i64, target : i64) -> Vec<u32> {
+    if current >= target {
+        v
+    } else {
+        let v1 = vec_push::<u32>(v, sparse_none()) ;
+        pool_pad_sparse_step(v1, current + 1, target)
+    }
+}
+
+// Helper : write `value` to `v[i]`. Stage-0 rebuild-helper substitute
+// for the not-yet-landed `Vec::set`. O(n) per write — acceptable for
+// the low-frequency sparse-set update pattern.
+//
+// N! Hot-path note : at scale this is the bottleneck of the ECS. The
+// migration to `Vec::set` (stage-0 follow-up slice) is mechanical ;
+// the call-shape is identical.
+fn entity_alloc_set_u32(v : Vec<u32>, i : i64, value : u32) -> Vec<u32> {
+    entity_alloc_set_step_u32(v, vec_new::<u32>(), 0, i, value)
+}
+
+// Tail-recursive worker for the set helper.
+fn entity_alloc_set_step_u32(src : Vec<u32>, acc : Vec<u32>, i : i64, target : i64, value : u32) -> Vec<u32> {
+    let len = vec_len::<u32>(src) ;
+    if i >= len {
+        acc
+    } else {
+        let cur = vec_index::<u32>(src, i) ;
+        let new_val = if i == target {
+            value
+        } else {
+            cur
+        } ;
+        let acc1 = vec_push::<u32>(acc, new_val) ;
+        entity_alloc_set_step_u32(src, acc1, i + 1, target, value)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ComponentView — forward-only iteration over the dense entity-id array.
+//
+//   The view is a value-type cursor that walks `dense[0..pool.dense.len]`.
+//   Each call to `view_next` returns `Some(entity_id)` and the advanced
+//   cursor, or `None` at exhaustion. The cursor is consumed-and-returned
+//   per the stdlib VecIter precedent.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ComponentView` — forward-only iteration cursor over a ComponentPool.
+//
+// § FIELDS
+//   - `pool_dense` : copy of the pool's dense Vec at view-creation time
+//                    (stage-0 ; once mut-borrow lands the view holds a
+//                    reference). Iteration is over this snapshot.
+//   - `cursor`     : current dense-index ∈ [0, pool_dense.len].
+struct ComponentView {
+    pool_dense : Vec<u32>,
+    cursor     : i64,
+}
+
+// `pool_view(p)` — produce a forward-only view over the pool's dense
+// entity-id array.
+//
+// § STAGE-0 BEHAVIOR
+//   Snapshots the dense Vec at view-creation. Once mut-borrow lands the
+//   snapshot becomes a borrow ; the iteration semantics are unchanged.
+fn pool_view(p : ComponentPool) -> ComponentView {
+    ComponentView {
+        pool_dense : p.dense,
+        cursor     : 0,
+    }
+}
+
+// `ViewNextReport` — return shape for `view_next`.
+//
+// § FIELDS
+//   - `entity_or_null` : the next entity_id (or NULL_ENTITY_ID at
+//                        exhaustion).
+//   - `view`           : the advanced view (cursor += 1).
+//   - `done`           : true iff iteration is exhausted.
+struct ViewNextReport {
+    entity_or_null : u32,
+    view           : ComponentView,
+    done           : bool,
+}
+
+// `view_next(v)` — advance the cursor and return the next entity_id
+// in the view (or signal exhaustion).
+//
+// § STAGE-0 BEHAVIOR
+//   - cursor >= dense.len ⇒ `done = true` ; entity_or_null = NULL_ENTITY_ID.
+//   - else : read `dense[cursor]` ; cursor += 1.
+fn view_next(v : ComponentView) -> ViewNextReport {
+    let len = vec_len::<u32>(v.pool_dense) ;
+    if v.cursor >= len {
+        ViewNextReport {
+            entity_or_null : null_entity_id(),
+            view           : v,
+            done           : true,
+        }
+    } else {
+        let id = vec_index::<u32>(v.pool_dense, v.cursor) ;
+        ViewNextReport {
+            entity_or_null : id,
+            view : ComponentView {
+                pool_dense : v.pool_dense,
+                cursor     : v.cursor + 1,
+            },
+            done : false,
+        }
+    }
+}
+
+// `view_remaining(v)` — number of entities not yet visited.
+fn view_remaining(v : ComponentView) -> i64 {
+    let len = vec_len::<u32>(v.pool_dense) ;
+    if v.cursor >= len {
+        0
+    } else {
+        len - v.cursor
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DEFERRED  (carried-forward to a future spec-amendment / parser-slice)
+//
+//   1. `Vec::set` + `Vec::truncate` lands ⇒ entity_alloc_set_u32 +
+//      entity_alloc_trim_last_u32 collapse to O(1) ; the call-shapes
+//      below remain identical.
+//   2. Mut-borrow lowering ⇒ EntityCreateReport / EntityDestroyReport /
+//      PoolInsertReport / PoolRemoveReport / ViewNextReport collapse
+//      back into in-place mutation. The struct-shapes remain as
+//      historical aliases for back-compat.
+//   3. 24+40 EntityId packing per spec/03 § HANDLE ⇒ EntityId becomes
+//      a single u64 field with bit-field accessors. Stage-0 32+32 is
+//      wire-compatible.
+//   4. Generic `ComponentPool<T>` carrying a typed Vec<T> field ⇒
+//      eliminates the caller-managed component-data convention.
+//      Currently parser-deferred per § STAGE-0 NOTES § 5.
+//   5. Multi-component archetype views (join multiple ComponentPools) ⇒
+//      requires sparse-set intersection. Surface lands once the basic
+//      single-pool view pattern is exercised.
+//   6. `Drop` integration ⇒ EntityAlloc + ComponentPool free their
+//      backing Vec storage at scope-exit. Callers currently invoke
+//      `vec_drop::<u32>(...)` manually.
+//   7. Trait-impl `Iterator for ComponentView` ⇒ once trait-impl
+//      overlays land, the explicit ViewNextReport collapses into
+//      `Option<u32>` per the stdlib Iterator surface.
+// ───────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+//
+//   These document the intended call-shapes for stage-0 readers + provide
+//   the inline-test surface required by the slice spec.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : create + destroy + reuse cycle. Demonstrates the
+// generation-counter discipline : a recycled slot returns a NEW
+// EntityId whose `gen` differs from the destroyed one.
+fn _example_alloc_create_destroy_reuse() -> u32 {
+    let a0 = entity_alloc_new() ;
+    let r1 = entity_alloc_create(a0) ;
+    let e1 = r1.entity ;
+    let a1 = r1.alloc ;
+    // e1 = { id : 0, gen : 1 }
+    let d = entity_alloc_destroy(a1, e1) ;
+    let a2 = d.alloc ;
+    // generations[0] = 2 now ; free_list = [0]
+    let r2 = entity_alloc_create(a2) ;
+    let e2 = r2.entity ;
+    // e2 = { id : 0, gen : 2 } — same slot, new generation
+    e2.gen
+}
+
+// Worked example : verify is_alive rejects a stale EntityId.
+fn _example_stale_entity_rejected() -> bool {
+    let a0 = entity_alloc_new() ;
+    let r1 = entity_alloc_create(a0) ;
+    let e1 = r1.entity ;
+    let a1 = r1.alloc ;
+    let d = entity_alloc_destroy(a1, e1) ;
+    let a2 = d.alloc ;
+    // e1 is now stale ; is_alive should return false.
+    entity_alloc_is_alive(a2, e1)
+}
+
+// Worked example : pool insert + contains + remove roundtrip.
+// Demonstrates the canonical sparse-set lifecycle.
+fn _example_pool_insert_remove_roundtrip() -> u32 {
+    let a0 = entity_alloc_new() ;
+    let r = entity_alloc_create(a0) ;
+    let e = r.entity ;
+    let p0 = pool_new() ;
+    let ins = pool_insert(p0, e) ;
+    let p1 = ins.pool ;
+    let dense_idx = ins.dense_index ;
+    // dense_idx should be 0 (first insert).
+    let _ok = pool_contains(p1, e) ;
+    let rem = pool_remove(p1, e) ;
+    // After remove : pool_contains should be false ; rem.was_present true.
+    if rem.was_present {
+        dense_idx
+    } else {
+        null_entity_id()
+    }
+}
+
+// Worked example : insert two entities + view-iterate. Demonstrates
+// the dense-array iteration order matches insertion order.
+fn _example_pool_view_iterate_two() -> u32 {
+    let a0 = entity_alloc_new() ;
+    let r1 = entity_alloc_create(a0) ;
+    let e1 = r1.entity ;
+    let a1 = r1.alloc ;
+    let r2 = entity_alloc_create(a1) ;
+    let e2 = r2.entity ;
+    let p0 = pool_new() ;
+    let ins1 = pool_insert(p0, e1) ;
+    let ins2 = pool_insert(ins1.pool, e2) ;
+    let p2 = ins2.pool ;
+    let v0 = pool_view(p2) ;
+    let n1 = view_next(v0) ;
+    // n1.entity_or_null should be e1.id (first inserted).
+    n1.entity_or_null
+}
+
+// Worked example : pool_insert is idempotent. Demonstrates that a
+// double-insert of the same entity returns NULL_ENTITY_ID for the
+// second call's dense_index (signaling "already present").
+fn _example_pool_idempotent_insert() -> u32 {
+    let a0 = entity_alloc_new() ;
+    let r = entity_alloc_create(a0) ;
+    let e = r.entity ;
+    let p0 = pool_new() ;
+    let ins1 = pool_insert(p0, e) ;
+    let ins2 = pool_insert(ins1.pool, e) ;
+    // ins2.dense_index should be NULL_ENTITY_ID (idempotent signal).
+    ins2.dense_index
+}
+
+// Worked example : swap-remove with two entities. Demonstrates that
+// removing a non-last entity swaps in the last one + reports the
+// swapped-in entity-id correctly.
+fn _example_pool_swap_remove() -> u32 {
+    let a0 = entity_alloc_new() ;
+    let r1 = entity_alloc_create(a0) ;
+    let e1 = r1.entity ;
+    let a1 = r1.alloc ;
+    let r2 = entity_alloc_create(a1) ;
+    let e2 = r2.entity ;
+    let p0 = pool_new() ;
+    let ins1 = pool_insert(p0, e1) ;
+    let ins2 = pool_insert(ins1.pool, e2) ;
+    // Remove e1 (the non-last entity) ; e2 should be swapped into slot 0.
+    let rem = pool_remove(ins2.pool, e1) ;
+    rem.swapped_in_id
+}
+
+// Worked example : pool_len + pool_is_empty inspectors.
+fn _example_pool_inspectors() -> i64 {
+    let a0 = entity_alloc_new() ;
+    let r1 = entity_alloc_create(a0) ;
+    let p0 = pool_new() ;
+    let ins = pool_insert(p0, r1.entity) ;
+    pool_len(ins.pool)
+}
