@@ -10,6 +10,7 @@ import { authFetch } from '../lib/browser-auth';
 interface AdminLayoutProps {
   title: string;
   children: ReactNode;
+  onAdminCheck?: (check: AdminCheck) => void;
 }
 
 interface AdminCheck {
@@ -19,32 +20,41 @@ interface AdminCheck {
   stub?: boolean;
 }
 
-const NAV: Array<{ href: string; label: string; glyph: string }> = [
+const NAV: Array<{ href: string; label: string; glyph: string; mobile?: boolean }> = [
   { href: '/admin', label: 'Home', glyph: '§' },
-  { href: '/admin/chat', label: 'Chat', glyph: '✶' },
-  { href: '/admin/lazarus', label: 'Lazarus', glyph: 'Λ' },
+  { href: '/admin/chat', label: 'Workbench', glyph: 'W', mobile: true },
+  { href: '/admin/lazarus', label: 'Lazarus', glyph: 'L', mobile: true },
   { href: '/admin/tessera-omnimind', label: 'Tessera', glyph: 'Ψ' },
   { href: '/admin/tasks', label: 'Tasks', glyph: '◐' },
-  { href: '/admin/analytics', label: 'Analytics', glyph: '∂' },
+  { href: '/admin/analytics', label: 'Analytics', glyph: 'A' },
   { href: '/admin/mcp', label: 'MCP', glyph: '⊑' },
-  { href: '/admin/logs', label: 'Logs', glyph: '✓' },
+  { href: '/admin/logs', label: 'Logs', glyph: 'G', mobile: true },
 ];
 
-export default function AdminLayout({ title, children }: AdminLayoutProps) {
+const MOBILE_NAV = NAV.filter((item) => item.mobile);
+
+export default function AdminLayout({ title, children, onAdminCheck }: AdminLayoutProps) {
   const router = useRouter();
   const [check, setCheck] = useState<AdminCheck | null>(null);
 
   useEffect(() => {
     authFetch('/api/admin/check', { cache: 'no-store' })
       .then((r) => r.json())
-      .then((j: AdminCheck) => setCheck(j))
-      .catch(() => setCheck({ authorized: false, reason: 'network error' }));
+      .then((j: AdminCheck) => {
+        setCheck(j);
+        onAdminCheck?.(j);
+      })
+      .catch(() => {
+        const denied = { authorized: false, reason: 'network error' };
+        setCheck(denied);
+        onAdminCheck?.(denied);
+      });
   }, []);
 
   return (
     <>
       <Head>
-        <title>{title} · Apocky Admin</title>
+        <title>{`${title} · Apocky Admin`}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -214,7 +224,7 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        {NAV.map((n) => {
+        {MOBILE_NAV.map((n) => {
           const active = router.pathname === n.href;
           return (
             <Link
