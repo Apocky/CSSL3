@@ -1,66 +1,60 @@
-// /api/admin/bridge · phone↔desktop bridge for /admin/chat
-// Per spec/24 (companion-spec being-written) :
-//   ?action=status → poll desktop heartbeat
-//   ?action=send (POST) → enqueue message · desktop polls + responds
-//   ?action=poll (POST · desktop-side) → desktop pulls pending messages, posts responses
-//
-// Stub-mode when APOCKY_HUB_SUPABASE_URL is missing · returns shape-correct guidance
+// /api/admin/bridge · private admin chat relay.
+// This route does not return fake chat content. If no server-side model key is configured,
+// it returns 503 so the UI can show a real configuration fault.
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getAuthClient } from '../../../lib/auth';
-
-const HEARTBEAT_MS = 30_000;
+import { callAdminChatModel, resolveAdminChatProvider, sanitizeAdminChatMessages } from '@/lib/admin-chat';
+import { requireAdmin } from '@/lib/lazarus/auth';
+import { envelope } from '@/lib/response';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const action = (req.query.action as string) ?? 'status';
-  const client = getAuthClient();
+  if (!(await requireAdmin(req, res))) return;
 
-  // ── STATUS ──
   if (action === 'status' && req.method === 'GET') {
-    if (!client) {
-      return res.status(200).json({
-        online: false,
-        stub: true,
-        reason: 'APOCKY_HUB_SUPABASE_URL not set · bridge inactive',
-      });
-    }
-    // When wired : query Supabase realtime presence on channel `desktop:<player_id>`
-    // For now : optimistic-stub returning offline until heartbeat-table integrated
+    const provider = resolveAdminChatProvider();
     return res.status(200).json({
-      online: false,
-      desktop: 'none',
-      reason: 'Heartbeat table integration pending W9-D2 supabase real-provision',
+      online: provider.ready,
+      model_ready: provider.ready,
+      provider: provider.provider,
+      model: provider.model,
+      ...envelope(),
     });
   }
 
-  // ── SEND (phone → desktop) ──
   if (action === 'send' && req.method === 'POST') {
-    const { target, text } = req.body ?? {};
-    if (typeof target !== 'string' || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ error: 'target + text required' });
-    }
-    if (!client) {
-      // Stub-mode : echo back a useful guidance message
-      return res.status(200).json({
-        stub: true,
-        role: 'system',
-        response: `⚠ Bridge in stub-mode. Once Apocky-Hub Supabase is configured (per spec/22 + spec/24), this message ("${text.slice(0, 80)}${text.length > 80 ? '…' : ''}") will route via Realtime channel to your /${target} on whatever desktop instance is online (LoA.exe MCP-server :3001 OR Mycelium-Desktop W10 build). Response streams back here token-by-token.`,
+    const body = req.body as { text?: unknown; messages?: unknown } | undefined;
+    const text = typeof body?.text === 'string' ? body.text.trim() : '';
+    const priorMessages = sanitizeAdminChatMessages(body?.messages);
+    if (!text) return res.status(400).json({ error: 'text required', ...envelope() });
+
+    const provider = resolveAdminChatProvider();
+    if (!provider.ready) {
+      return res.status(503).json({
+        error: 'No admin chat model is configured. Set DEEPSEEK_API_KEY or ANTHROPIC_API_KEY on the server.',
+        model_ready: false,
+        ...envelope(),
       });
     }
-    // When wired : insert into Supabase `admin_bridge_messages` table · desktop subscribes
-    return res.status(200).json({
-      stub: false,
-      role: 'system',
-      response: '◐ message queued · awaiting desktop response (poll /api/admin/bridge?action=poll-response)',
-    });
-  }
 
-  // ── POLL (desktop → phone) · for desktop to pull pending messages and post responses ──
-  if (action === 'poll' && req.method === 'POST') {
-    if (!client) {
-      return res.status(200).json({ messages: [], stub: true });
+    try {
+      const result = await callAdminChatModel({
+        messages: priorMessages.length > 0 ? priorMessages : [{ role: 'user', content: text }],
+      });
+      return res.status(200).json({
+        response: result.text,
+        provider: result.provider,
+        model: result.model,
+        usage: result.usage,
+        ...envelope(),
+      });
+    } catch (err) {
+      return res.status(502).json({
+        error: err instanceof Error ? err.message : String(err),
+        model_ready: true,
+        ...envelope(),
+      });
     }
-    return res.status(200).json({ messages: [] });
   }
 
   return res.status(405).json({ error: 'Method or action not allowed' });

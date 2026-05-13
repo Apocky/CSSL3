@@ -20,6 +20,17 @@ interface ProfileLinks {
   [key: string]: string;
 }
 
+async function fetchJsonWithTimeout<T>(url: string, init: RequestInit, timeoutMs: number): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    return await res.json() as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const Account: NextPage = () => {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,44 +40,63 @@ const Account: NextPage = () => {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Load profile links from localStorage immediately (before async work).
+    try {
+      const stored = JSON.parse(localStorage.getItem('apocky-profile-links') ?? '{}');
+      setProfileLinks(stored);
+    } catch {
+      // ignore
+    }
+
     (async () => {
-      // First : if we have a Supabase client AND a localStorage session, mirror to cookie
-      // so server-side /api/auth/me can resolve us. This handles the post-magic-link case.
+      // Mirror browser session to cookie so server-side /api/auth/me can resolve us.
+      // Cap at 5s — a slow/misconfigured Supabase should not block the whole page load.
       const client = getAuthClient();
       if (client) {
         try {
-          const { data } = await client.auth.getSession();
-          if (data?.session?.access_token) {
+          const sessionResult = await Promise.race([
+            client.auth.getSession(),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+          ]) as Awaited<ReturnType<typeof client.auth.getSession>>;
+          if (sessionResult.data?.session?.access_token) {
             persistSessionToCookie(
-              data.session.access_token,
-              data.session.refresh_token ?? undefined,
+              sessionResult.data.session.access_token,
+              sessionResult.data.session.refresh_token ?? undefined,
             );
           }
         } catch {
-          // ignore · server-side fetch will report null
+          // ignore — timeout or network issue; server-side /api/auth/me will report null
         }
       }
-      // Then : ask server who we are
+
+      // Ask server who we are.
       try {
-        const res = await fetch('/api/auth/me', { cache: 'no-store' });
-        const j: MeResponse = await res.json();
+        const j = await fetchJsonWithTimeout<MeResponse>('/api/auth/me', { cache: 'no-store' }, 5000);
         if (cancelled) return;
         setMe(j);
         setStubMode(!!j.stub);
 
-        // If server says null but client has a session, fall back to client-side identity
+        // If server says null but client has a session, fall back to client-side identity.
         if (!j.user && client) {
-          const { data } = await client.auth.getUser();
-          if (cancelled) return;
-          if (data?.user?.email) {
-            setMe({
-              user: {
-                id: data.user.id,
-                email: data.user.email,
-                provider: data.user.app_metadata?.provider ?? 'email',
-                createdAt: data.user.created_at ?? new Date().toISOString(),
-              },
-            });
+          try {
+            const { data } = await Promise.race([
+              client.auth.getUser(),
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+            ]) as Awaited<ReturnType<typeof client.auth.getUser>>;
+            if (cancelled) return;
+            if (data?.user?.email) {
+              setMe({
+                user: {
+                  id: data.user.id,
+                  email: data.user.email,
+                  provider: data.user.app_metadata?.provider ?? 'email',
+                  createdAt: data.user.created_at ?? new Date().toISOString(),
+                },
+              });
+            }
+          } catch {
+            // ignore timeout
           }
         }
         setLoading(false);
@@ -77,15 +107,10 @@ const Account: NextPage = () => {
         setMe({ user: null, stub: true });
       }
     })();
+
     return () => {
       cancelled = true;
     };
-    try {
-      const stored = JSON.parse(localStorage.getItem('apocky-profile-links') ?? '{}');
-      setProfileLinks(stored);
-    } catch {
-      // ignore
-    }
   }, []);
 
   function setLink(id: string, value: string) {

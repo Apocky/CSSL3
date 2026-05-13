@@ -1,7 +1,7 @@
 // cssl-edge · lib/supabase.ts
 // Server-only Supabase client wrapper for multiplayer-signaling tables.
-// Reads NEXT_PUBLIC_SUPABASE_URL + SUPABASE_ANON_KEY (server-only) at first
-// call. Returns null when env-vars missing — routes fall back to mocked
+// Reads NEXT_PUBLIC_SUPABASE_URL plus a server/public anon key at first call.
+// Returns null when env-vars missing — routes fall back to mocked
 // behavior (preserves stage-0 stub-friendly deploy semantics).
 //
 // Tables (from cssl-supabase/migrations/0004_signaling.sql) :
@@ -53,8 +53,8 @@ let _client: SupabaseClient | null | undefined;
 // null and fall back to mocked behavior (no Supabase round-trip).
 export function getSupabase(): SupabaseClient | null {
   if (_client !== undefined) return _client;
-  const url = process.env['NEXT_PUBLIC_SUPABASE_URL'];
-  const key = process.env['SUPABASE_ANON_KEY'];
+  const url = process.env['NEXT_PUBLIC_SUPABASE_URL'] ?? process.env['APOCKY_HUB_SUPABASE_URL'];
+  const key = process.env['SUPABASE_ANON_KEY'] ?? process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] ?? process.env['APOCKY_HUB_SUPABASE_ANON_KEY'];
   if (!url || !key) {
     _client = null;
     return null;

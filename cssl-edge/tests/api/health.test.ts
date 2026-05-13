@@ -58,7 +58,20 @@ export function testHealthShape(): void {
   const { req, res, out } = mockReqRes('GET');
   handler(req, res);
   const body = out.body as Record<string, unknown>;
-  const requiredKeys = ['ok', 'sha', 'served_by', 'ts', 'version'];
+  const requiredKeys = [
+    'ok',
+    'sha',
+    'served_by',
+    'ts',
+    'version',
+    'stripe_configured',
+    'stripe_webhook_configured',
+    'auth_supabase_configured',
+    'data_supabase_configured',
+    'cron_configured',
+    'supabase_connected',
+    'payments_ready',
+  ];
   for (const k of requiredKeys) {
     if (!(k in body)) {
       throw new Error(`missing required key: ${k}`);

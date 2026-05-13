@@ -3,14 +3,22 @@
 
 import type { NextPage } from 'next';
 import Head from 'next/head';
-import { useState } from 'react';
-import { AUTH_PROVIDERS } from '../lib/auth';
+import { useEffect, useState } from 'react';
+import { AUTH_PROVIDERS, getAuthClient } from '../lib/auth';
 
 const Login: NextPage = () => {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [stubMode, setStubMode] = useState<boolean | null>(null);
+  const [localhostWarning, setLocalhostWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof location !== 'undefined' && location.hostname === 'localhost') {
+      setLocalhostWarning(`http://localhost:${location.port || 3000}/auth/callback`);
+    }
+  }, []);
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -34,26 +42,44 @@ const Login: NextPage = () => {
   }
 
   async function handleOAuth(provider: string) {
+    if (oauthLoading) return;
     setMessage(null);
+    setOauthLoading(provider);
+
+    // Initiate OAuth client-side so the PKCE code verifier is stored in the browser's
+    // sessionStorage — calling signInWithOAuth server-side discards the verifier and
+    // breaks the callback exchange, which caused the "frozen" sign-in screen.
+    const client = getAuthClient();
+    if (!client) {
+      setStubMode(true);
+      setMessage('Stub mode · OAuth not connected yet · set NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local');
+      setOauthLoading(null);
+      return;
+    }
+
     try {
-      const res = await fetch('/api/auth/oauth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, redirectTo: `${location.origin}/auth/callback` }),
+      const { data, error } = await client.auth.signInWithOAuth({
+        provider: provider as 'google' | 'apple' | 'github' | 'discord',
+        options: {
+          redirectTo: `${location.origin}/auth/callback`,
+          skipBrowserRedirect: true,
+          queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
+        },
       });
-      const json = await res.json();
-      if (json.stub) {
-        setStubMode(true);
-        setMessage('Stub mode · OAuth not connected yet · pending Apocky-Hub Supabase signup');
+      if (error) {
+        setMessage(`✗ OAuth error: ${error.message}`);
+        setOauthLoading(null);
         return;
       }
-      if (json.url) {
-        location.href = json.url;
-      } else {
-        setMessage('✗ OAuth init failed');
+      if (!data?.url) {
+        setMessage('✗ OAuth did not return a provider URL');
+        setOauthLoading(null);
+        return;
       }
+      location.assign(data.url);
     } catch (err) {
       setMessage('✗ Network error');
+      setOauthLoading(null);
     }
   }
 
@@ -97,6 +123,41 @@ const Login: NextPage = () => {
         <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.92rem' }}>
           One account · all Apocky-projects · sovereign-revocable
         </p>
+
+        {/* ─── LOCALHOST DEV WARNING ─── */}
+        {localhostWarning && (
+          <div
+            style={{
+              marginBottom: '1.5rem',
+              padding: '0.9rem 1rem',
+              background: 'rgba(251, 191, 36, 0.08)',
+              border: '1px solid rgba(251, 191, 36, 0.4)',
+              borderRadius: 4,
+              fontSize: '0.8rem',
+              color: '#fbbf24',
+            }}
+          >
+            <strong style={{ display: 'block', marginBottom: '0.4rem' }}>⚠ localhost dev setup required</strong>
+            <p style={{ margin: '0 0 0.5rem' }}>
+              Google OAuth will redirect to <strong>production</strong> (apocky.com) instead of here
+              unless you whitelist this URL in Supabase.
+            </p>
+            <p style={{ margin: '0 0 0.5rem', fontFamily: 'inherit' }}>
+              <strong>Fix:</strong>{' '}
+              <a
+                href="https://supabase.com/dashboard/project/pzirbmyfmrbtkllrtcmx/auth/url-configuration"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#fbbf24', textDecoration: 'underline' }}
+              >
+                Supabase → Auth → URL Configuration → Redirect URLs
+              </a>
+            </p>
+            <p style={{ margin: '0', userSelect: 'all', background: 'rgba(0,0,0,0.3)', padding: '0.3rem 0.5rem', borderRadius: 3, fontFamily: 'monospace' }}>
+              {localhostWarning}
+            </p>
+          </div>
+        )}
 
         {/* ─── EMAIL MAGIC-LINK ─── */}
         <form onSubmit={handleMagicLink} style={{ marginTop: '2.5rem' }}>
@@ -162,28 +223,35 @@ const Login: NextPage = () => {
 
         {/* ─── OAUTH PROVIDERS ─── */}
         <div style={{ display: 'grid', gap: '0.5rem' }}>
-          {AUTH_PROVIDERS.filter((p) => p.enabled).map((p) => (
-            <button
-              key={p.id}
-              onClick={() => handleOAuth(p.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.7rem 1rem',
-                background: 'rgba(20, 20, 30, 0.7)',
-                border: '1px solid #2a2a3a',
-                borderRadius: 4,
-                color: '#e6e6f0',
-                cursor: 'pointer',
-                fontSize: '0.92rem',
-                fontFamily: 'inherit',
-              }}
-            >
-              <span>Continue with {p.label}</span>
-              <span style={{ color: '#5a5a6a' }}>→</span>
-            </button>
-          ))}
+          {AUTH_PROVIDERS.filter((p) => p.enabled).map((p) => {
+            const isLoading = oauthLoading === p.id;
+            const anyLoading = !!oauthLoading;
+            return (
+              <button
+                key={p.id}
+                onClick={() => handleOAuth(p.id)}
+                disabled={anyLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.7rem 1rem',
+                  background: isLoading ? 'rgba(124, 211, 252, 0.08)' : 'rgba(20, 20, 30, 0.7)',
+                  border: `1px solid ${isLoading ? 'rgba(124, 211, 252, 0.4)' : '#2a2a3a'}`,
+                  borderRadius: 4,
+                  color: anyLoading && !isLoading ? '#5a5a6a' : '#e6e6f0',
+                  cursor: anyLoading ? (isLoading ? 'wait' : 'not-allowed') : 'pointer',
+                  fontSize: '0.92rem',
+                  fontFamily: 'inherit',
+                  opacity: anyLoading && !isLoading ? 0.5 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <span>{isLoading ? `Redirecting to ${p.label}…` : `Continue with ${p.label}`}</span>
+                <span style={{ color: isLoading ? '#7dd3fc' : '#5a5a6a' }}>{isLoading ? '◐' : '→'}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* ─── MESSAGE ─── */}

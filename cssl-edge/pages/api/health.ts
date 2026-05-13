@@ -17,6 +17,9 @@ export interface HealthResponse {
   // Integration config — booleans only · NEVER leak the actual env-values.
   stripe_configured: boolean;
   stripe_webhook_configured: boolean;
+  auth_supabase_configured: boolean;
+  data_supabase_configured: boolean;
+  cron_configured: boolean;
   supabase_connected: boolean;
   // Composite readiness flag — convenience for status-page polls.
   payments_ready: boolean;
@@ -36,7 +39,13 @@ export default function handler(
   const env = envelope();
   const stripeConfigured = isSet('STRIPE_SECRET_KEY');
   const webhookConfigured = isSet('STRIPE_WEBHOOK_SIGNING_SECRET');
-  const supabaseConnected = isSet('NEXT_PUBLIC_SUPABASE_URL') && isSet('SUPABASE_ANON_KEY');
+  const authSupabaseConfigured =
+    isSet('APOCKY_HUB_SUPABASE_URL') && isSet('APOCKY_HUB_SUPABASE_ANON_KEY');
+  const dataSupabaseConfigured =
+    (isSet('NEXT_PUBLIC_SUPABASE_URL') || isSet('APOCKY_HUB_SUPABASE_URL')) &&
+    (isSet('SUPABASE_ANON_KEY') || isSet('NEXT_PUBLIC_SUPABASE_ANON_KEY') || isSet('APOCKY_HUB_SUPABASE_ANON_KEY'));
+  const cronConfigured = isSet('CRON_SECRET');
+  const supabaseConnected = authSupabaseConfigured || dataSupabaseConfigured;
 
   const body: HealthResponse = {
     ok: true,
@@ -46,6 +55,9 @@ export default function handler(
     version: process.env['CSSL_EDGE_VERSION'] ?? '0.1.0',
     stripe_configured: stripeConfigured,
     stripe_webhook_configured: webhookConfigured,
+    auth_supabase_configured: authSupabaseConfigured,
+    data_supabase_configured: dataSupabaseConfigured,
+    cron_configured: cronConfigured,
     supabase_connected: supabaseConnected,
     payments_ready: stripeConfigured && webhookConfigured && supabaseConnected,
   };
@@ -80,7 +92,15 @@ export function testHealthCarriesW9Keys(): void {
   const { req, res, out } = mockReqRes();
   handler(req, res);
   const body = out.body as Record<string, unknown>;
-  for (const k of ['stripe_configured', 'stripe_webhook_configured', 'supabase_connected', 'payments_ready']) {
+  for (const k of [
+    'stripe_configured',
+    'stripe_webhook_configured',
+    'auth_supabase_configured',
+    'data_supabase_configured',
+    'cron_configured',
+    'supabase_connected',
+    'payments_ready',
+  ]) {
     assert(typeof body[k] === 'boolean', `${k} must be boolean`);
   }
 }
@@ -93,7 +113,7 @@ export function testHealthCarriesW9Keys(): void {
 // becomes `'<inlined-string>' = 'x'` — a syntax error in the production bundle.
 // Indirection through a variable defeats the inline-substitution.
 export function testHealthPaymentsReadyComposite(): void {
-  const KEYS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SIGNING_SECRET', 'NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_ANON_KEY'] as const;
+  const KEYS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SIGNING_SECRET', 'APOCKY_HUB_SUPABASE_URL', 'APOCKY_HUB_SUPABASE_ANON_KEY'] as const;
   const VALS = ['sk_test_x', 'whsec_x', 'https://test.supabase.co', 'anon_test'];
   const prev: Record<string, string | undefined> = {};
   for (const k of KEYS) prev[k] = process.env[k];

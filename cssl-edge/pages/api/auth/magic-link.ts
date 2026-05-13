@@ -2,7 +2,7 @@
 // Falls back to stub-mode if APOCKY_HUB_SUPABASE_URL is not configured.
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { signInWithMagicLink, getAuthClient } from '../../../lib/auth';
+import { signInWithMagicLink, getAuthClient, resolveAuthRedirect } from '../../../lib/auth';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -25,9 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  const safeRedirect = typeof redirectTo === 'string' && redirectTo.startsWith('http')
-    ? redirectTo
-    : 'https://apocky.com/account';
+  const safeRedirect = resolveAuthRedirect(redirectTo, req.headers);
 
   const result = await signInWithMagicLink(email, safeRedirect);
 

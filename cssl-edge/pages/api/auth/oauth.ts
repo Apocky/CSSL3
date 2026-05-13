@@ -2,10 +2,30 @@
 // Returns provider-redirect URL · client navigates · provider redirects-back to /api/auth/callback
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getAuthClient } from '../../../lib/auth';
+import { createClient } from '@supabase/supabase-js';
+import { resolveAuthRedirect } from '../../../lib/auth';
 
 const ALLOWED_PROVIDERS = ['google', 'apple', 'github', 'discord'] as const;
 type AllowedProvider = (typeof ALLOWED_PROVIDERS)[number];
+
+function getLegacyOAuthClient() {
+  const url = process.env.APOCKY_HUB_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.APOCKY_HUB_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return null;
+
+  // This route exists for older cached login pages that still POST here.
+  // Server-side PKCE cannot work because the verifier must stay in browser
+  // storage, so this fallback uses implicit flow and lets /auth/callback set
+  // the returned hash tokens as the browser session.
+  return createClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      flowType: 'implicit',
+    },
+  });
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -21,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  const client = getAuthClient();
+  const client = getLegacyOAuthClient();
   if (!client) {
     return res.status(200).json({
       ok: false,
@@ -31,9 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  const safeRedirect = typeof redirectTo === 'string' && redirectTo.startsWith('http')
-    ? redirectTo
-    : 'https://apocky.com/account';
+  const safeRedirect = resolveAuthRedirect(redirectTo, req.headers);
 
   const { data, error } = await client.auth.signInWithOAuth({
     provider: provider as AllowedProvider,

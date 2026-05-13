@@ -1,52 +1,48 @@
 // /auth/callback · landing page after Supabase magic-link / OAuth redirect
-// Picks up session from URL hash (detectSessionInUrl=true does this on first getSession)
-// then writes cookies and redirects to /account
+// Exchanges Supabase OAuth / magic-link callback params into a browser session,
+// writes server-readable cookies, then redirects to /account.
 
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
-import { getAuthClient, persistSessionToCookie } from '../../lib/auth';
+import { consumeAuthCallbackFromLocation } from '../../lib/auth-callback';
 
 const AuthCallback: NextPage = () => {
   const [message, setMessage] = useState<string>('§ verifying your sign-in…');
   const [stub, setStub] = useState<boolean>(false);
 
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof location !== 'undefined' && location.hostname === 'localhost') {
+      const q = new URLSearchParams(location.search);
+      const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const parts: string[] = [`origin: ${location.origin}`];
+      const code = q.get('code');
+      const err = q.get('error') ?? h.get('error');
+      const accessToken = h.get('access_token');
+      if (code) parts.push(`code: ${code.slice(0, 12)}…`);
+      if (accessToken) parts.push('hash: access_token present');
+      if (err) parts.push(`error: ${err}`);
+      if (!code && !accessToken && !err) parts.push('⚠ no code / token / error in URL — likely Supabase redirect URL not whitelisted');
+      setDebugInfo(parts.join(' · '));
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const client = getAuthClient();
-      if (!client) {
-        if (!cancelled) {
-          setStub(true);
-          setMessage('⚠ stub-mode · APOCKY_HUB_SUPABASE_URL not set on this deploy.');
-        }
+      const result = await consumeAuthCallbackFromLocation();
+      if (cancelled) return;
+      if (result.ok) {
+        if (!cancelled) setMessage('✓ signed in · redirecting…');
+        setTimeout(() => { location.replace('/account'); }, 600);
         return;
       }
-
-      // Give detectSessionInUrl a moment to consume the hash, then read session.
-      await new Promise((r) => setTimeout(r, 250));
-      const { data, error } = await client.auth.getSession();
-
-      if (error || !data?.session) {
-        if (!cancelled) {
-          setMessage(`✗ no session detected in callback · ${error?.message ?? 'click the magic-link in your email again, or sign in fresh.'}`);
-        }
-        return;
-      }
-
-      // Persist as cookie so server-side /api/auth/me + /api/admin/check can resolve.
-      persistSessionToCookie(data.session.access_token, data.session.refresh_token ?? undefined);
-
-      if (!cancelled) {
-        setMessage('✓ signed in · redirecting to your account…');
-      }
-      setTimeout(() => {
-        location.replace('/account');
-      }, 600);
+      setStub(Boolean(result.stub));
+      setMessage(`✗ sign-in failed · ${result.reason ?? 'no session found'} · check Supabase Auth redirect URLs and Google provider credentials.`);
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   return (
@@ -90,6 +86,23 @@ const AuthCallback: NextPage = () => {
           >
             {message}
           </p>
+          {debugInfo && (
+            <p
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 0.75rem',
+                background: 'rgba(251, 191, 36, 0.07)',
+                border: '1px solid rgba(251, 191, 36, 0.3)',
+                borderRadius: 4,
+                fontSize: '0.72rem',
+                color: '#fbbf24',
+                textAlign: 'left',
+                wordBreak: 'break-all',
+              }}
+            >
+              {debugInfo}
+            </p>
+          )}
           <a
             href="/login"
             style={{

@@ -1,5 +1,5 @@
 // § Akashic-Webpage-Records · AkashicConsent.tsx
-// First-visit overlay · sovereign-revocable cap-grant. Phone-first responsive.
+// First-visit non-blocking banner · sovereign-revocable cap-grant.
 // Three tiers : Spore / Mycelium / Akashic + None toggle. Sovereignty-respecting
 // copy ; NO dark-pattern. User picks · user changes · user revokes.
 //
@@ -8,10 +8,12 @@
 // post-first-visit.
 
 import * as React from 'react';
+import { useRouter } from 'next/router';
 import { withConsent, currentTier } from '@/lib/akashic-telemetry';
 import type { ConsentTier } from '@/lib/akashic-telemetry';
 
 const STORAGE_KEY = 'akashic.consent.shown.v1';
+const AUTH_FLOW_PATHS = new Set(['/login', '/register', '/auth/callback']);
 
 interface TierOpt {
   tier: ConsentTier;
@@ -57,12 +59,18 @@ const TIERS: TierOpt[] = [
 ];
 
 export function AkashicConsent(): React.ReactElement | null {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [chosen, setChosen] = React.useState<ConsentTier>('spore');
+  const hiddenForAuthFlow = AUTH_FLOW_PATHS.has(router.pathname);
 
   React.useEffect(() => {
     try {
       if (typeof localStorage === 'undefined') return;
+      if (hiddenForAuthFlow) {
+        setOpen(false);
+        return;
+      }
       const shown = localStorage.getItem(STORAGE_KEY);
       if (shown !== '1') {
         setOpen(true);
@@ -71,7 +79,7 @@ export function AkashicConsent(): React.ReactElement | null {
     } catch {
       // storage unavailable · skip overlay (privacy-mode)
     }
-  }, []);
+  }, [hiddenForAuthFlow]);
 
   const handleGrant = React.useCallback(
     (tier: ConsentTier): void => {
@@ -88,22 +96,18 @@ export function AkashicConsent(): React.ReactElement | null {
     []
   );
 
-  if (!open) return null;
+  if (!open || hiddenForAuthFlow) return null;
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      role="region"
       aria-labelledby="akashic-consent-title"
       style={{
         position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(10,10,15,0.92)',
-        zIndex: 999_999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1rem',
+        right: '1rem',
+        bottom: '1rem',
+        zIndex: 10_000,
+        maxWidth: 'min(34rem, calc(100vw - 2rem))',
         fontFamily: 'system-ui, sans-serif',
         color: '#e6e6f0',
       }}
@@ -112,26 +116,26 @@ export function AkashicConsent(): React.ReactElement | null {
         style={{
           backgroundColor: '#15151f',
           border: '1px solid #303040',
-          borderRadius: '0.75rem',
-          padding: '1.5rem',
-          maxWidth: '40rem',
+          borderRadius: '0.5rem',
+          padding: '1rem',
           width: '100%',
-          maxHeight: '90vh',
+          maxHeight: 'min(74vh, 34rem)',
           overflowY: 'auto',
+          boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
         }}
       >
         <h2
           id="akashic-consent-title"
           style={{
             marginTop: 0,
-            fontSize: '1.4rem',
+            fontSize: '1rem',
             fontWeight: 600,
             letterSpacing: '0.01em',
           }}
         >
-          The Akashic Records remember your session
+          Akashic diagnostics
         </h2>
-        <p style={{ opacity: 0.85, lineHeight: 1.5, fontSize: '0.95rem' }}>
+        <p style={{ opacity: 0.85, lineHeight: 1.45, fontSize: '0.8rem' }}>
           apocky.com runs a substrate-native diagnostic layer · every page-event
           becomes a cell in the ω-field. Cells are Σ-mask-gated for sovereignty
           · k-anonymous before any pattern is retained · purgeable at any time
@@ -139,7 +143,7 @@ export function AkashicConsent(): React.ReactElement | null {
           Pick what you want to share. You can change or revoke any time.
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.4rem', marginTop: '0.75rem' }}>
           {TIERS.map((opt) => (
             <button
               key={opt.tier}
@@ -147,29 +151,29 @@ export function AkashicConsent(): React.ReactElement | null {
               aria-pressed={chosen === opt.tier}
               style={{
                 textAlign: 'left',
-                padding: '0.85rem 1rem',
+                padding: '0.55rem 0.65rem',
                 backgroundColor: chosen === opt.tier ? '#1f1f33' : '#0e0e18',
                 border: chosen === opt.tier ? '1px solid #5a4cff' : '1px solid #2a2a3a',
-                borderRadius: '0.5rem',
+                borderRadius: '0.35rem',
                 color: '#e6e6f0',
                 cursor: 'pointer',
                 display: 'flex',
-                gap: '0.75rem',
+                gap: '0.45rem',
                 alignItems: 'flex-start',
                 fontFamily: 'inherit',
               }}
             >
-              <span style={{ fontSize: '1rem', marginTop: '0.1rem', color: '#8a7dff', fontWeight: 600 }}>
+              <span style={{ fontSize: '0.72rem', marginTop: '0.05rem', color: '#8a7dff', fontWeight: 600 }}>
                 {opt.glyph !== '' ? opt.glyph : '·'}
               </span>
               <span style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                <span style={{ fontWeight: 600, fontSize: '1rem' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>
                   {opt.title}
                 </span>
-                <span style={{ fontSize: '0.85rem', opacity: 0.85 }}>
+                <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>
                   {opt.short}
                 </span>
-                <span style={{ fontSize: '0.78rem', opacity: 0.7, marginTop: '0.15rem' }}>
+                <span style={{ fontSize: '0.65rem', opacity: 0.7, marginTop: '0.1rem' }}>
                   {opt.detail}
                 </span>
               </span>
@@ -181,21 +185,21 @@ export function AkashicConsent(): React.ReactElement | null {
           style={{
             display: 'flex',
             gap: '0.5rem',
-            marginTop: '1.25rem',
+            marginTop: '0.85rem',
             flexWrap: 'wrap',
           }}
         >
           <button
             onClick={() => handleGrant(chosen)}
             style={{
-              padding: '0.65rem 1.25rem',
+              padding: '0.55rem 0.85rem',
               backgroundColor: '#5a4cff',
               color: 'white',
               border: 'none',
               borderRadius: '0.4rem',
               cursor: 'pointer',
               fontWeight: 600,
-              fontSize: '0.95rem',
+              fontSize: '0.82rem',
               flex: '1 1 auto',
               minWidth: '10rem',
             }}
@@ -205,13 +209,13 @@ export function AkashicConsent(): React.ReactElement | null {
           <button
             onClick={() => handleGrant('none')}
             style={{
-              padding: '0.65rem 1.25rem',
+              padding: '0.55rem 0.85rem',
               backgroundColor: 'transparent',
               color: '#e6e6f0',
               border: '1px solid #404050',
               borderRadius: '0.4rem',
               cursor: 'pointer',
-              fontSize: '0.95rem',
+              fontSize: '0.82rem',
               flex: '0 0 auto',
             }}
           >
@@ -221,7 +225,7 @@ export function AkashicConsent(): React.ReactElement | null {
 
         <p
           style={{
-            fontSize: '0.75rem',
+            fontSize: '0.65rem',
             opacity: 0.55,
             marginTop: '1rem',
             marginBottom: 0,

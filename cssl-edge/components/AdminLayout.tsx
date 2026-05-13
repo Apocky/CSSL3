@@ -5,6 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState, type ReactNode } from 'react';
+import { authFetch } from '../lib/browser-auth';
 
 interface AdminLayoutProps {
   title: string;
@@ -21,6 +22,8 @@ interface AdminCheck {
 const NAV: Array<{ href: string; label: string; glyph: string }> = [
   { href: '/admin', label: 'Home', glyph: '§' },
   { href: '/admin/chat', label: 'Chat', glyph: '✶' },
+  { href: '/admin/lazarus', label: 'Lazarus', glyph: 'Λ' },
+  { href: '/admin/tessera-omnimind', label: 'Tessera', glyph: 'Ψ' },
   { href: '/admin/tasks', label: 'Tasks', glyph: '◐' },
   { href: '/admin/analytics', label: 'Analytics', glyph: '∂' },
   { href: '/admin/mcp', label: 'MCP', glyph: '⊑' },
@@ -32,7 +35,7 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
   const [check, setCheck] = useState<AdminCheck | null>(null);
 
   useEffect(() => {
-    fetch('/api/admin/check')
+    authFetch('/api/admin/check', { cache: 'no-store' })
       .then((r) => r.json())
       .then((j: AdminCheck) => setCheck(j))
       .catch(() => setCheck({ authorized: false, reason: 'network error' }));
@@ -191,7 +194,7 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
           </h1>
         </header>
 
-        {children}
+        {check?.authorized ? children : check ? null : <p style={{ color: '#7a7a8c' }}>§ checking admin session…</p>}
       </main>
 
       {/* ─── MOBILE BOTTOM-NAV ─── */}

@@ -1,12 +1,14 @@
 // apocky.com · Portfolio Hub landing page
-// META-platform for ALL Apocky-projects · per spec/grand-vision/22_APOCKY_COM_PORTFOLIO_HUB.csl
-// Replaces prior cssl-edge endpoint-listing landing
-// Pure SSG-friendly · NO client-side data-fetch
+// Public project hub · auth-aware navigation + Lazarus entrypoint.
 
 import type { NextPage } from 'next';
 import Head from 'next/head';
+import { useEffect, useState } from 'react';
+import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
+import { getAuthClient } from '../lib/auth';
+import { authFetch } from '../lib/browser-auth';
 
-type ProjectStatus = 'live' | 'alpha' | 'in-development' | 'planning' | 'open-source';
+type ProjectStatus = 'active' | 'docs' | 'private' | 'console';
 
 interface Project {
   id: string;
@@ -16,104 +18,121 @@ interface Project {
   href: string;
   external?: boolean;
   accent: string;
+  requiresAuth?: boolean;
 }
 
 const PROJECTS: ReadonlyArray<Project> = [
   {
-    id: 'labyrinth',
-    name: 'Labyrinth of Apocalypse',
-    tagline: 'Substrate-grown action-RPG · roguelike · alchemy · gear-ascension · mycelial multiverse · alpha v0.1.0 available now',
-    status: 'alpha',
+    id: 'loa',
+    name: 'LoA',
+    tagline: 'Primary game project · active development · playable builds and project updates.',
+    status: 'active',
     href: '/download',
     accent: '#c084fc',
   },
   {
-    id: 'infinity-engine',
-    name: 'The Infinity Engine',
-    tagline: 'The proprietary substrate-native runtime that powers everything · always running · always learning · sovereign by default',
-    status: 'alpha',
-    href: '/infinity-engine',
-    accent: '#a78bfa',
-  },
-  {
     id: 'cssl',
     name: 'CSSL',
-    tagline: 'Conscious Substrate System Language · proprietary language + compiler stack',
-    status: 'open-source',
-    href: 'https://cssl.dev',
-    external: true,
+    tagline: 'Implementation language surface · public docs where useful · internals stay private.',
+    status: 'docs',
+    href: '/docs/cssl-language',
     accent: '#7dd3fc',
   },
   {
-    id: 'sigma-chain',
-    name: 'Σ-Chain',
-    tagline: 'Substrate-native distributed ledger · Coherence-Proof consensus · NO PoW · NO PoS',
-    status: 'planning',
-    href: '/sigma-chain',
+    id: 'csl',
+    name: 'CSL',
+    tagline: 'Dense specification notation · reasoning layer · project documentation format.',
+    status: 'docs',
+    href: '/docs',
     accent: '#34d399',
   },
   {
-    id: 'akashic',
-    name: 'Akashic Records',
-    tagline: 'Mycelial cosmic-memory layer · cross-project · player-sovereign opt-in',
-    status: 'planning',
-    href: '/akashic',
-    accent: '#f472b6',
-  },
-  {
-    id: 'mycelium',
-    name: 'Mycelium',
-    tagline: 'the autonomous-local-agent · 3-mode LLM-bridge · substrate-knowledge embedded · proprietary',
-    status: 'alpha',
-    href: '/mycelium',
+    id: 'lazarus',
+    name: 'Lazarus',
+    tagline: 'Autonomous coding control plane · admin console for LoA development runs.',
+    status: 'console',
+    href: '/admin/lazarus',
     accent: '#fbbf24',
+    requiresAuth: true,
   },
-];
-
-const SOCIAL: ReadonlyArray<{ label: string; href: string }> = [
-  { label: '@noneisone.oneisall', href: 'https://medium.com/@noneisone.oneisall' },
-  { label: 'ko-fi.com/oneinfinity', href: 'https://ko-fi.com/oneinfinity' },
-  { label: 'patreon.com/0ne1nfinity', href: 'https://www.patreon.com/0ne1nfinity' },
-  { label: 'github.com/Apocky', href: 'https://github.com/Apocky' },
-  { label: 'apocky.tumblr.com', href: 'https://apocky.tumblr.com' },
-  { label: 'etsy: FancyIndividual', href: 'https://www.etsy.com/shop/FancyIndividual' },
 ];
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
-  live: 'LIVE',
-  alpha: 'ALPHA · DOWNLOAD',
-  'in-development': 'IN DEVELOPMENT',
-  'open-source': 'OPEN SOURCE',
-  planning: 'PLANNING',
+  active: 'ACTIVE',
+  docs: 'DOCS',
+  private: 'PRIVATE',
+  console: 'CONSOLE',
 };
 
 const STATUS_COLOR: Record<ProjectStatus, string> = {
-  live: '#34d399',
-  alpha: '#fbbf24',
-  'in-development': '#fbbf24',
-  'open-source': '#7dd3fc',
-  planning: '#9aa0a6',
+  active: '#c084fc',
+  docs: '#7dd3fc',
+  private: '#9aa0a6',
+  console: '#fbbf24',
 };
 
 const Home: NextPage = () => {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const callbackParams = readAuthCallbackParams(location.search, location.hash);
+      if (callbackParams.hasCallback) {
+        setAuthNotice('finishing sign-in…');
+        const callbackResult = await consumeAuthCallbackFromLocation();
+        if (cancelled) return;
+        if (callbackResult.ok) {
+          setAuthNotice('signed in · session saved');
+          setAuthed(true);
+        } else {
+          setAuthNotice(`sign-in failed · ${callbackResult.reason ?? 'try again from /login'}`);
+          setAuthed(false);
+          return;
+        }
+      }
+
+      let browserAuthed = false;
+      const client = getAuthClient();
+      if (client) {
+        try {
+          const { data } = await client.auth.getSession();
+          browserAuthed = !!data.session;
+        } catch {
+          browserAuthed = false;
+        }
+      }
+      try {
+        const res = await authFetch('/api/auth/me', { cache: 'no-store' });
+        const json = await res.json() as { user?: unknown };
+        if (!cancelled) setAuthed(Boolean(json.user) || browserAuthed);
+      } catch {
+        if (!cancelled) setAuthed(browserAuthed);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <>
       <Head>
-        <title>Apocky · The Infinity Engine · Substrate-Native Systems</title>
-        <meta name="description" content="Apocky's portfolio · powered by The Infinity Engine · proprietary substrate-native runtime · games · languages · intelligence engines · One Unified System of Systems" />
+        <title>Apocky · LoA · CSSL · CSL · Lazarus</title>
+        <meta name="description" content="Apocky project hub for LoA, CSSL, CSL, and Lazarus." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="author" content="Apocky" />
         <meta name="theme-color" content="#0a0a0f" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta property="og:title" content="Apocky · The Infinity Engine · Substrate-Native Systems" />
-        <meta property="og:description" content="Powered by The Infinity Engine — proprietary substrate-native runtime. Games, languages, distributed ledger, mycelial multiplayer · all on one root system. Sovereign by default." />
+        <meta property="og:title" content="Apocky · LoA · CSSL · CSL · Lazarus" />
+        <meta property="og:description" content="Project hub for LoA, CSSL, CSL, and Lazarus." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://apocky.com" />
         <meta property="og:site_name" content="Apocky" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Apocky · The Infinity Engine" />
-        <meta name="twitter:description" content="One engine. Many projects. Always running, always learning, sovereign by default." />
+        <meta name="twitter:title" content="Apocky · Projects" />
+        <meta name="twitter:description" content="LoA, CSSL, CSL, and Lazarus." />
         <link rel="canonical" href="https://apocky.com" />
         <style>{`
           * { box-sizing: border-box; }
@@ -158,13 +177,18 @@ const Home: NextPage = () => {
             color: '#a8a8b8',
           }}
         >
-          <a href="/docs">Docs</a>
-          <a href="/devblog">Devblog</a>
-          <a href="/press">Press</a>
-          <a href="/buy" style={{ color: '#c084fc' }}>Buy</a>
+          <a href="/download">LoA</a>
+          <a href="/docs/cssl-language">CSSL</a>
+          <a href="/docs">CSL</a>
+          {authed ? <a href="/admin/lazarus" style={{ color: '#fbbf24' }}>Lazarus</a> : null}
           <span style={{ flexGrow: 1 }} />
-          <a href="/login">Sign in</a>
-          <a href="/account">Account</a>
+          {authed ? (
+            <a href="/account" style={{ color: '#34d399' }}>Account ✓</a>
+          ) : authed === null ? (
+            <span style={{ color: '#5a5a6a' }}>checking session…</span>
+          ) : (
+            <a href="/login">Sign in</a>
+          )}
         </nav>
 
         {/* ─── HERO ─── */}
@@ -182,7 +206,7 @@ const Home: NextPage = () => {
               textTransform: 'uppercase',
             }}
           >
-            § Apocky · Substrate-Native Systems
+            § Apocky · Project Hub
           </div>
           <h1
             style={{
@@ -196,9 +220,9 @@ const Home: NextPage = () => {
               WebkitTextFillColor: 'transparent',
             }}
           >
-            One Unified System
+            LoA · CSSL · CSL
             <br />
-            of Systems.
+            Lazarus.
           </h1>
           <p
             style={{
@@ -208,8 +232,8 @@ const Home: NextPage = () => {
               maxWidth: 640,
             }}
           >
-            Games · languages · intelligence engines · distributed substrate. Each project shares one
-            mycelial root. Sovereign by default · open where it matters · proprietary where it counts.
+            Public entry points for the actual active projects. Details stay sparse by design:
+            enough to navigate, not enough to leak internals.
           </p>
           <p
             style={{
@@ -219,18 +243,15 @@ const Home: NextPage = () => {
               maxWidth: 640,
             }}
           >
-            powered by{' '}
-            <a
-              href="/infinity-engine"
-              style={{ color: '#c084fc', textDecoration: 'underline', fontWeight: 600 }}
-            >
-              The Infinity Engine
-            </a>
-            {' '}· proprietary substrate-native runtime
+            {authed === true
+              ? 'signed in · Lazarus console available'
+              : authed === false
+                ? authNotice ?? 'sign in to access private project controls'
+                : 'checking session…'}
           </p>
           <div style={{ marginTop: '2rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
             <a
-              href="#projects"
+              href={authed ? '/admin/lazarus' : '#projects'}
               style={{
                 padding: '0.75rem 1.5rem',
                 background: 'linear-gradient(135deg, #c084fc 0%, #7dd3fc 100%)',
@@ -240,32 +261,47 @@ const Home: NextPage = () => {
                 fontSize: '0.95rem',
               }}
             >
-              Explore projects →
+              {authed ? 'Open Lazarus →' : 'Explore projects →'}
             </a>
-            <a
-              href="/login"
-              style={{
-                padding: '0.75rem 1.5rem',
-                border: '1px solid #2a2a3a',
-                color: '#e6e6f0',
-                borderRadius: 4,
-                fontSize: '0.95rem',
-              }}
-            >
-              Sign in
-            </a>
-            <a
-              href="/register"
-              style={{
-                padding: '0.75rem 1.5rem',
-                border: '1px solid #2a2a3a',
-                color: '#e6e6f0',
-                borderRadius: 4,
-                fontSize: '0.95rem',
-              }}
-            >
-              Create account
-            </a>
+            {authed === true ? (
+              <a
+                href="/account"
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  border: '1px solid #2a2a3a',
+                  color: '#e6e6f0',
+                  borderRadius: 4,
+                  fontSize: '0.95rem',
+                }}
+              >
+                Account ✓
+              </a>
+            ) : authed === false ? (
+              <a
+                href="/login"
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  border: '1px solid #2a2a3a',
+                  color: '#e6e6f0',
+                  borderRadius: 4,
+                  fontSize: '0.95rem',
+                }}
+              >
+                Sign in
+              </a>
+            ) : (
+              <span
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  border: '1px solid #2a2a3a',
+                  color: '#7a7a8c',
+                  borderRadius: 4,
+                  fontSize: '0.95rem',
+                }}
+              >
+                checking session…
+              </span>
+            )}
             <a
               href="https://github.com/Apocky"
               style={{
@@ -276,7 +312,7 @@ const Home: NextPage = () => {
                 fontSize: '0.95rem',
               }}
             >
-              github ↗
+              GitHub ↗
             </a>
           </div>
         </section>
@@ -292,7 +328,7 @@ const Home: NextPage = () => {
               marginBottom: '1.5rem',
             }}
           >
-            § Projects · Tenants of the Substrate
+            § Projects
           </h2>
           <div
             style={{
@@ -302,7 +338,7 @@ const Home: NextPage = () => {
             }}
           >
             {PROJECTS.map((p) => {
-              const clickable = p.status === 'live' || p.status === 'open-source' || p.status === 'alpha';
+              const clickable = !p.requiresAuth || authed === true;
               const cardStyle: React.CSSProperties = {
                 display: 'block',
                 padding: '1.5rem',
@@ -326,7 +362,7 @@ const Home: NextPage = () => {
                       height: 8,
                       borderRadius: '50%',
                       background: STATUS_COLOR[p.status],
-                      animation: p.status === 'live' || p.status === 'in-development' || p.status === 'alpha' ? 'pulse-spore 2.5s ease-in-out infinite' : 'none',
+                      animation: p.status === 'active' || p.status === 'console' ? 'pulse-spore 2.5s ease-in-out infinite' : 'none',
                     }}
                   />
                   <div
@@ -385,45 +421,6 @@ const Home: NextPage = () => {
           </div>
         </section>
 
-        {/* ─── SUBSTRATE THESIS ─── */}
-        <section style={{ marginBottom: '5rem' }}>
-          <h2
-            style={{
-              fontSize: '0.75rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.18em',
-              color: '#7a7a8c',
-              marginBottom: '1.5rem',
-            }}
-          >
-            § The Substrate · The Infinity Engine
-          </h2>
-          <div
-            style={{
-              padding: '1.75rem',
-              background: 'rgba(15, 15, 25, 0.5)',
-              border: '1px solid #1f1f2a',
-              borderRadius: 8,
-            }}
-          >
-            <p style={{ marginTop: 0, color: '#cdd6e4', fontSize: '1rem' }}>
-              Every project here grows from one root system — an ω-field substrate with Σ-mask
-              consent threading, KAN-driven adaptation, and HDC chemical signaling.{' '}
-              <a href="/infinity-engine" style={{ color: '#c084fc', textDecoration: 'underline' }}>
-                The Infinity Engine
-              </a>{' '}is the persistent runtime that hosts that substrate · always running,
-              always learning, sovereign by default. The substrate is the trunk · the engine is
-              the trunk made-alive · projects are branches · all share roots.
-            </p>
-            <p style={{ color: '#a0a0b0', fontSize: '0.92rem', marginBottom: 0 }}>
-              Privacy-default. No public-ledger leaks. No mining waste. No plutocratic stake.
-              No gas fees. No surveillance. No DRM. No rootkits. No anti-cheat spyware.
-              Sovereign-cap unilaterally revocable. Player-Home always-private-by-default.
-              Participation is a gift — never extraction.
-            </p>
-          </div>
-        </section>
-
         {/* ─── ABOUT ─── */}
         <section style={{ marginBottom: '5rem' }}>
           <h2
@@ -438,32 +435,9 @@ const Home: NextPage = () => {
             § About
           </h2>
           <p style={{ color: '#cdd6e4', fontSize: '0.95rem' }}>
-            Apocky designs and builds substrate-native systems —{' '}
-            <a href="/infinity-engine" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
-              The Infinity Engine
-            </a>{' '}is the proprietary runtime underneath all of them, from language up through
-            distributed ledger, mycelial multiplayer, and runtime procedural generation. Based in
-            Phoenix, AZ. Building since infinity.
+            Apocky builds LoA and its supporting language, notation, and autonomous development tooling.
+            Public pages stay intentionally concise; private controls live behind signed-in admin access.
           </p>
-          <div style={{ marginTop: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-            {SOCIAL.map((s) => (
-              <a
-                key={s.href}
-                href={s.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  padding: '0.5rem 0.9rem',
-                  border: '1px solid #2a2a3a',
-                  borderRadius: 4,
-                  fontSize: '0.82rem',
-                  color: '#cdd6e4',
-                }}
-              >
-                {s.label} ↗
-              </a>
-            ))}
-          </div>
         </section>
 
         {/* ─── FOOTER ─── */}
@@ -483,42 +457,24 @@ const Home: NextPage = () => {
               marginBottom: '1.25rem',
             }}
           >
-            <a href="/store">Store</a>
             <a href="/docs">Docs</a>
             <a href="/devblog">Devblog</a>
             <a href="/press">Press</a>
-            <a href="/buy">Buy</a>
             <a href="/download">Download</a>
-            <a href="/infinity-engine">Infinity Engine</a>
+            {authed ? <a href="/admin/lazarus">Lazarus</a> : null}
             <span style={{ color: '#2a2a3a' }}>|</span>
             <a href="/legal/privacy">Privacy</a>
             <a href="/legal/terms">Terms</a>
             <a href="/legal/eula">EULA</a>
-            <a href="#" className="termly-display-preferences">Consent Preferences</a>
+            <a href="/legal/privacy">Privacy Controls</a>
             <a href="/api/health">Status</a>
             <a href="mailto:apocky13@gmail.com">Contact</a>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginBottom: '1.25rem',
-            }}
-          >
-            <a href="https://medium.com/@noneisone.oneisall" target="_blank" rel="noopener noreferrer" aria-label="Medium">medium ↗</a>
-            <a href="https://apocky.tumblr.com" target="_blank" rel="noopener noreferrer" aria-label="Tumblr">tumblr ↗</a>
-            <a href="https://ko-fi.com/oneinfinity" target="_blank" rel="noopener noreferrer" aria-label="Ko-fi">ko-fi ↗</a>
-            <a href="https://www.patreon.com/0ne1nfinity" target="_blank" rel="noopener noreferrer" aria-label="Patreon">patreon ↗</a>
-            <a href="https://www.etsy.com/shop/FancyIndividual" target="_blank" rel="noopener noreferrer" aria-label="Etsy · FancyIndividual">etsy: FancyIndividual ↗</a>
-            <a href="https://github.com/Apocky" target="_blank" rel="noopener noreferrer" aria-label="GitHub">github ↗</a>
-            <span style={{ color: '#3a3a4a' }}>discord · coming soon</span>
           </div>
           <p style={{ margin: 0 }}>
             § ¬ harm in the making · sovereignty preserved · t∞
           </p>
           <p style={{ margin: '0.4rem 0 0' }}>
-            © {new Date().getFullYear()} Apocky. The Substrate is its own attestation.
+            © {new Date().getFullYear()} Apocky.
           </p>
         </footer>
       </main>

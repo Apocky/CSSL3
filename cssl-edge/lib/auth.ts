@@ -6,6 +6,79 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let cachedClient: SupabaseClient | null = null;
 
+const DEFAULT_AUTH_ORIGIN = 'https://www.apocky.com';
+const TRUSTED_AUTH_HOSTS = new Set([
+  'apocky.com',
+  'www.apocky.com',
+  'apocky-com.vercel.app',
+  'cssl-edge.vercel.app',
+]);
+
+type AuthRedirectHeaders = {
+  origin?: string | string[];
+  host?: string | string[];
+  'x-forwarded-host'?: string | string[];
+  'x-forwarded-proto'?: string | string[];
+};
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  return first?.split(',')[0]?.trim() || null;
+}
+
+function isLocalAuthHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+}
+
+function isVercelPreviewHost(hostname: string): boolean {
+  return hostname.endsWith('.vercel.app') && (hostname.startsWith('apocky-') || hostname.startsWith('cssl-edge-'));
+}
+
+function isTrustedRequestOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if (url.protocol === 'https:' && TRUSTED_AUTH_HOSTS.has(url.hostname)) return true;
+    if (url.protocol === 'https:' && isVercelPreviewHost(url.hostname)) return true;
+    if (url.protocol === 'http:' && isLocalAuthHost(url.hostname) && process.env.NODE_ENV !== 'production') return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function requestOriginFromHeaders(headers?: AuthRedirectHeaders): string {
+  const forwardedHost = firstHeaderValue(headers?.['x-forwarded-host']);
+  const host = forwardedHost ?? firstHeaderValue(headers?.host);
+  if (!host) return DEFAULT_AUTH_ORIGIN;
+
+  const forwardedProto = firstHeaderValue(headers?.['x-forwarded-proto']);
+  const proto = forwardedProto ?? (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+  const origin = `${proto}://${host}`;
+  return isTrustedRequestOrigin(origin) ? new URL(origin).origin : DEFAULT_AUTH_ORIGIN;
+}
+
+function isTrustedRedirectTarget(url: URL, requestOrigin: string): boolean {
+  if (url.protocol === 'https:' && TRUSTED_AUTH_HOSTS.has(url.hostname)) return true;
+  if (url.origin === requestOrigin && isTrustedRequestOrigin(requestOrigin)) return true;
+  return false;
+}
+
+export function resolveAuthRedirect(redirectTo: unknown, headers?: AuthRedirectHeaders): string {
+  const requestOrigin = requestOriginFromHeaders(headers);
+  const fallback = new URL('/account', requestOrigin).toString();
+
+  if (typeof redirectTo !== 'string' || !redirectTo.trim()) return fallback;
+
+  try {
+    const target = new URL(redirectTo.trim(), requestOrigin);
+    if (!isTrustedRedirectTarget(target, requestOrigin)) return fallback;
+    if (target.protocol === 'http:' && !isLocalAuthHost(target.hostname)) return fallback;
+    return target.toString();
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Returns the apocky-hub Supabase client OR null if env vars missing.
  * Pages/routes MUST handle null-case gracefully (show stub-mode UI).
@@ -19,11 +92,11 @@ export function getAuthClient(): SupabaseClient | null {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      // detectSessionInUrl=true so magic-link callback URL hash gets parsed into a session
-      // automatically when the client mounts on /account or /auth/callback.
-      // Using implicit flow (default) for OTP magic-link · PKCE only for OAuth providers.
-      detectSessionInUrl: true,
-      flowType: 'implicit',
+      // The callback page explicitly exchanges PKCE ?code= for a session. Keeping
+      // background URL detection enabled can race that exchange in Next dev mode.
+      detectSessionInUrl: false,
+      // pkce keeps the OAuth verifier in browser storage; OAuth must start client-side.
+      flowType: 'pkce',
     },
   });
   return cachedClient;

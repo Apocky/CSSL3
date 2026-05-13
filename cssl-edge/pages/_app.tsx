@@ -1,7 +1,7 @@
 // § Akashic-Webpage-Records · _app.tsx
 // Top-level App wrapper · wires Akashic-Webpage-Records on every page mount +
 // installs the AkashicErrorBoundary at the React root + renders the
-// first-visit AkashicConsent overlay.
+// first-visit AkashicConsent banner.
 //
 // Substrate-flavor : the App-component is the trunk · every page is a branch ·
 // the ErrorBoundary catches any spore-fall in any branch · the Records remember.
