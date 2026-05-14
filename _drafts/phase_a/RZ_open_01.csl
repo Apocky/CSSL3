@@ -1,0 +1,78 @@
+§ RZ.open · phase-a/01-sentinel-return · 2026-05-14
+  ← author       : Tech-Lead-agent (Claude-Opus-4.7)
+  ← branch       : phase-a/01-sentinel-return
+  ← baseline     : dd59670 (spec-70 RATIFIED + T11-W19-β lifecycle bundle + cast-fix)
+  ← spec         : specs/70_PHASE_A_CORRECTNESS.csl § OBSERVABLE-ASSERTIONS § item-01
+  ← assertions   : A01.1 · A01.2 · A01.3 · A01.4
+
+§I HYPOTHESIS-TO-FALSIFY
+  H · cssl-rt prologue + epilogue can write magic bytes (0xC0FFEE / 0xDEADBEEF) to
+       %CSSL_SENTINEL_PATH% in a way that scripts/sentinel_build_check.sh observes
+       as PASS · without breaking existing T11-W19-β fs_event_jsonl pipeline
+
+§I FAILURE-MODE-ENUMERATION (P1 · what-could-make-this-wrong)
+  FM.1 · CSSL_SENTINEL_PATH unset → silent-skip · sentinel script cannot detect
+         mitigation : if env-var unset · log to events.jsonl with kind=sentinel.skip
+         test : sentinel_build_check.sh must exit 2 DEGRADED on env-unset (A01.4)
+
+  FM.2 · epilogue path : panic / abort / SIGTERM / OS-kill skips epilogue
+         only A01.2 says "covers normal-exit path" · panic-exit can be FM-by-design
+         mitigation : write 0xDEADBEEF in atexit hook (already exists @ shutdown_hook)
+         test : abnormal-exit case writes 0xC0FFEE-only · sentinel script must distinguish
+
+  FM.3 · env-var-injection vector : malicious caller sets CSSL_SENTINEL_PATH = /etc/passwd
+         consequence : we'd write magic bytes into arbitrary file
+         mitigation : reject paths outside %TEMP% or pwd · diagnostic + degrade
+         PD-adjacency check : N! biometric · N! consent-bypass · this is filesystem-write-arbitrary
+                              which IS a sovereignty-leak shape · MUST sandbox
+
+  FM.4 · concurrent test runs collide on same CSSL_SENTINEL_PATH
+         mitigation : test harness sets per-test-PID-suffixed path
+
+  FM.5 · TOCTOU between sentinel_build_check.sh check and process-exit
+         script must read final state · not racing-during-execution
+
+§I CHEAPEST-FALSIFICATION (cheapest test that breaks H if H is wrong)
+  build a hello-world cssl program · run it with CSSL_SENTINEL_PATH=$TEMP\sentinel.bin
+  inspect $TEMP\sentinel.bin :
+    expect 8 bytes : 0xC0FFEE prefix + 0xDEADBEEF suffix
+  if fails · either prologue or epilogue contract broken
+  ⇒ ~30 LOC test · ~5 min wallclock · highest-signal-per-token
+
+§I TOUCH-POINTS (anchored in actual codebase @ baseline dd59670)
+  cssl-rt/src/loa_startup.rs    EDIT  ← prologue (after EventScope create) + epilogue (in shutdown_hook)
+                                       coexist with T11-W19-β fs_event_jsonl process.start/exit
+  cssl-rt/src/events.rs         EXTEND ← add sentinel.write helper if needed (or inline in loa_startup)
+  scripts/sentinel_build_check.sh USE  ← read script · land golden-test against it · A01.3·A01.4
+  examples/hello_main.cssl      USE   ← golden-program for sentinel-byte regression
+
+  N! TOUCH : cssl-mir · cssl-host-* · cssl-ast (out-of-scope · pure-cssl-rt + script work)
+
+§I ASSERT-MAPPING (boot-spec → impl-action)
+  A01.1 prologue 0xC0FFEE     →  loa_startup::startup_run() · early-write before user_main
+  A01.2 epilogue 0xDEADBEEF   →  loa_startup::shutdown_hook() · atexit · normal-exit path
+  A01.3 script PASS=0         →  scripts/sentinel_build_check.sh on built .exe · CI green
+  A01.4 script DEGRADED=2     →  exe alive but sentinel-bytes absent · transitional support
+
+§I PROTOCOL (per spec-70 § Implementation-discipline)
+  · ≤ 1 item per PR (this branch = item-01 only)
+  · ¬ invent new ASSERTs · make stated A01.* green
+  · PR.title    : "spec-70 § item-01 : sentinel-return-verification"
+  · PR.trailer  : "Spec-Transition: 70 (item-01) RATIFIED→IMPLEMENTED by <handle>"
+  · Gate-E pre-merge : scripts/sentinel_build_check.sh exit-0 on golden-program
+
+§I ESTIMATE
+  ~80 LOC csslc-rt + ~50 LOC test (per spec-70 § IMPLEMENTATION-NOTES)
+  ~3-5 wallclock-hours @ focused-agent
+
+§I PRIME-DIRECTIVE-CHECK
+  ‼ FM.3 raises actual PD-adjacency (arbitrary-file-write vector) · MUST sandbox env-var path
+  ‼ ¬ harm @ user-system · ¬ surveillance (sentinel bytes are non-identifying constants)
+  ‼ ¬ consent-bypass · CSSL_SENTINEL_PATH is opt-in env-var
+
+§ ATTESTATION
+  ‼ ¬ flattery · ¬ ship-around-bugs · stop-when-FM.3-not-mitigated
+  ‼ disk-first · spec-first · CSL-think
+  ‼ Reza-pattern : agent-who-picks-this-up may critique these FMs further before impl
+  © 2026 Apocky · TIER-B · t∞
+∎
