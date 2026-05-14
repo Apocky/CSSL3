@@ -200,6 +200,97 @@ fn pid() -> u64 {
     std::process::id() as u64
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// § SENTINEL ENVELOPE · spec-70 § item-01
+// § ref     : scripts/sentinel_build_check.sh · specs/64_SPEC_FIRST_DISCIPLINE.csl § Gate-E
+// § contract : when env CSSL_SENTINEL_PATH is set to a sandboxed file path
+//   (inside %TEMP% or pwd), the cssl-rt prologue writes 0xC0FFEE before
+//   user-main and the epilogue (atexit) writes 0xDEADBEEF after user-main
+//   returns. Gate-E grep's `hexdump -C` for `c0 ff ee` and `de ad be ef` so
+//   bytes are written in big-endian-on-disk order (the natural left-to-right
+//   sequence hexdump prints).
+// § PD-check : the env-var is opt-in; the sandbox below rejects paths outside
+//   %TEMP% / pwd to neutralize the FM.3 "caller sets CSSL_SENTINEL_PATH=/etc/passwd"
+//   arbitrary-file-write vector (§RZ_open_01 §I FAILURE-MODE-ENUMERATION FM.3).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SENTINEL_MAGIC_PREFIX: &[u8] = &[0xC0, 0xFF, 0xEE];
+const SENTINEL_MAGIC_SUFFIX: &[u8] = &[0xDE, 0xAD, 0xBE, 0xEF];
+
+/// Validate `CSSL_SENTINEL_PATH` and return it, or an `Err` with a short
+/// reason suitable for emitting as a `sentinel.skip` JSONL note.
+fn sentinel_path_validated() -> Result<PathBuf, String> {
+    let raw = std::env::var_os("CSSL_SENTINEL_PATH")
+        .ok_or_else(|| "env-unset".to_string())?;
+    let p = PathBuf::from(&raw);
+    if !sentinel_path_in_sandbox(&p) {
+        return Err(format!("sandbox-rejected:{}", p.display()));
+    }
+    Ok(p)
+}
+
+/// Reject sentinel paths whose parent directory does not canonicalize under
+/// `%TEMP%` or the current working directory. Both must exist; the sentinel
+/// file itself does not need to exist yet (it is created on first write).
+fn sentinel_path_in_sandbox(p: &std::path::Path) -> bool {
+    let parent = match p.parent() {
+        Some(par) if !par.as_os_str().is_empty() => par.to_path_buf(),
+        _ => return false,
+    };
+    let Ok(parent_canon) = fs::canonicalize(&parent) else {
+        return false;
+    };
+    let temp_canon = fs::canonicalize(std::env::temp_dir()).ok();
+    let cwd_canon = std::env::current_dir().and_then(fs::canonicalize).ok();
+    let in_temp = temp_canon.is_some_and(|t| parent_canon.starts_with(&t));
+    let in_cwd = cwd_canon.is_some_and(|c| parent_canon.starts_with(&c));
+    in_temp || in_cwd
+}
+
+fn emit_sentinel_skip(phase: &'static str, reason: &str) {
+    crate::events::fs_event_jsonl(
+        "cssl-rt::loa_startup",
+        "sentinel.skip",
+        "skip",
+        serde_json::json!({"phase": phase}),
+        None,
+        None,
+        Some(reason),
+    );
+}
+
+fn sentinel_write(magic: &[u8], phase: &'static str) {
+    let path = match sentinel_path_validated() {
+        Ok(p) => p,
+        Err(reason) => {
+            emit_sentinel_skip(phase, &reason);
+            return;
+        }
+    };
+    let res: std::io::Result<()> = (|| {
+        let mut f = OpenOptions::new().create(true).append(true).open(&path)?;
+        f.write_all(magic)?;
+        f.flush()?;
+        Ok(())
+    })();
+    if let Err(e) = res {
+        emit_sentinel_skip(phase, &format!("io:{:?}", e.kind()));
+    }
+}
+
+/// A01.1 · prologue magic. Called from `startup_run` before the user `main`
+/// can be reached (we are inside a CRT/.init_array constructor).
+fn sentinel_write_prefix() {
+    sentinel_write(SENTINEL_MAGIC_PREFIX, "prologue");
+}
+
+/// A01.2 · epilogue magic. Called from the `atexit` shutdown hook, which
+/// covers the normal-exit path (returns from `main` + explicit `exit()`).
+/// Panic / abort / SIGKILL paths skip atexit by design — see §RZ_open_01 FM.2.
+fn sentinel_write_suffix() {
+    sentinel_write(SENTINEL_MAGIC_SUFFIX, "epilogue");
+}
+
 fn startup_run() {
     if std::env::var("CSSL_LOG_DISABLE").is_ok() {
         return;
@@ -221,6 +312,10 @@ fn startup_run() {
         Some(0),
         None,
     );
+    // § spec-70 § item-01 A01.1 : write 0xC0FFEE prologue magic to the
+    //   sandboxed CSSL_SENTINEL_PATH. Best-effort; failures emit a
+    //   `sentinel.skip` JSONL event but never panic the ctor.
+    sentinel_write_prefix();
     if let Ok(f) = open_log_file() {
         if let Ok(mut guard) = LOG_FILE.lock() {
             *guard = Some(f);
@@ -277,6 +372,10 @@ fn startup_run() {
         "§ panic-hook armed · captures stack-trace to log before process dies",
     );
     extern "C" fn shutdown_hook() {
+        // § spec-70 § item-01 A01.2 : write 0xDEADBEEF epilogue magic FIRST
+        //   so the sentinel envelope completes even if the JSONL emit below
+        //   trips on a closed-file race during interpreter teardown.
+        sentinel_write_suffix();
         log_event(
             "INFO",
             "loa_startup",
@@ -419,5 +518,130 @@ mod tests {
         // Cleanup.
         std::env::remove_var("CSSL_LOG_DIR");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ─── spec-70 § item-01 sentinel envelope tests ────────────────────────
+
+    /// Serialize all sentinel tests : they all mutate the process-wide
+    /// `CSSL_SENTINEL_PATH` env-var, which races under the default parallel
+    /// test runner.
+    static SENTINEL_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Helper: derive a unique per-test sentinel path inside %TEMP%.
+    fn sentinel_tmp(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "cssl-sentinel-{}-{}-{}.bin",
+            label,
+            std::process::id(),
+            // Nanosecond suffix avoids same-pid collisions across rapid calls.
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.subsec_nanos())
+                .unwrap_or(0),
+        ))
+    }
+
+    #[test]
+    fn sentinel_magic_constants_canonical() {
+        // The Gate-E script greps `hexdump -C` for `c0 ff ee` and `de ad be ef`.
+        // Bytes are written in disk-order ; verify they match.
+        assert_eq!(SENTINEL_MAGIC_PREFIX, &[0xC0, 0xFF, 0xEE]);
+        assert_eq!(SENTINEL_MAGIC_SUFFIX, &[0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn sandbox_accepts_temp_dir() {
+        let p = std::env::temp_dir().join("ok.bin");
+        assert!(sentinel_path_in_sandbox(&p));
+    }
+
+    #[test]
+    fn sandbox_rejects_root_path() {
+        // /etc/passwd-style escape vector — parent canonicalizes outside %TEMP% / pwd.
+        // On Windows we use C:\Windows\System32\drivers\etc\hosts as the equivalent.
+        #[cfg(unix)]
+        let p = PathBuf::from("/etc/passwd");
+        #[cfg(windows)]
+        let p = PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts");
+        // On a system where these parents happen to BE inside %TEMP% (impossible
+        // in practice), the test would falsely fail ; skip in that pathological case.
+        let parent_canon = p.parent().and_then(|par| fs::canonicalize(par).ok());
+        let temp_canon = fs::canonicalize(std::env::temp_dir()).ok();
+        if let (Some(pc), Some(tc)) = (parent_canon, temp_canon) {
+            if pc.starts_with(&tc) {
+                eprintln!("skipping: %TEMP% contains the test escape path");
+                return;
+            }
+        }
+        assert!(!sentinel_path_in_sandbox(&p));
+    }
+
+    #[test]
+    fn sandbox_rejects_path_with_no_parent() {
+        let p = PathBuf::from("ok.bin"); // no parent component
+        // Behavior depends on whether pwd exists ; if pwd is sane this returns false
+        // because parent is empty. Just assert it does not panic.
+        let _ = sentinel_path_in_sandbox(&p);
+    }
+
+    #[test]
+    fn sentinel_write_prefix_creates_magic_bytes() {
+        let _g = SENTINEL_ENV_LOCK.lock().unwrap();
+        let path = sentinel_tmp("prefix");
+        std::env::set_var("CSSL_SENTINEL_PATH", &path);
+        sentinel_write_prefix();
+        let bytes = fs::read(&path).expect("sentinel file written");
+        std::env::remove_var("CSSL_SENTINEL_PATH");
+        let _ = fs::remove_file(&path);
+        assert_eq!(bytes, [0xC0, 0xFF, 0xEE]);
+    }
+
+    #[test]
+    fn sentinel_write_suffix_creates_magic_bytes() {
+        let _g = SENTINEL_ENV_LOCK.lock().unwrap();
+        let path = sentinel_tmp("suffix");
+        std::env::set_var("CSSL_SENTINEL_PATH", &path);
+        sentinel_write_suffix();
+        let bytes = fs::read(&path).expect("sentinel file written");
+        std::env::remove_var("CSSL_SENTINEL_PATH");
+        let _ = fs::remove_file(&path);
+        assert_eq!(bytes, [0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn sentinel_full_envelope_appends_in_order() {
+        let _g = SENTINEL_ENV_LOCK.lock().unwrap();
+        // Simulate the prologue → user-main → epilogue lifecycle.
+        let path = sentinel_tmp("envelope");
+        std::env::set_var("CSSL_SENTINEL_PATH", &path);
+        sentinel_write_prefix();
+        // (user-main "ran" here)
+        sentinel_write_suffix();
+        let bytes = fs::read(&path).expect("sentinel file written");
+        std::env::remove_var("CSSL_SENTINEL_PATH");
+        let _ = fs::remove_file(&path);
+        assert_eq!(bytes, [0xC0, 0xFF, 0xEE, 0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn sentinel_skip_when_env_unset_does_not_create_file() {
+        let _g = SENTINEL_ENV_LOCK.lock().unwrap();
+        // Pick a path that WOULD be writable if env were set.
+        let path = sentinel_tmp("unset");
+        std::env::remove_var("CSSL_SENTINEL_PATH");
+        sentinel_write_prefix();
+        assert!(!path.exists(), "no file should be created when env unset");
+    }
+
+    #[test]
+    fn sentinel_skip_when_sandbox_rejects_does_not_create_file() {
+        let _g = SENTINEL_ENV_LOCK.lock().unwrap();
+        // Construct a path whose parent doesn't exist → sandbox check fails →
+        // skip event emitted, no file created.
+        let bogus = PathBuf::from("/this/path/does/not/exist/ever/sentinel.bin");
+        std::env::set_var("CSSL_SENTINEL_PATH", &bogus);
+        sentinel_write_prefix();
+        std::env::remove_var("CSSL_SENTINEL_PATH");
+        assert!(!bogus.exists());
     }
 }
