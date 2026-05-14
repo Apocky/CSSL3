@@ -1,13 +1,26 @@
 //! § diag — diagnostic rendering for `csslc`.
 //!
-//! Stage-0 keeps this minimal : map every internal diagnostic-bag entry to
-//! a single `<file>:<line>:<col>: <severity>: <code> <message>` line on
-//! stderr. miette-style fancy rendering is deferred ; the stable diagnostic
-//! codes (`AD0001..0003` / `IFC0001..0004` / `STG0001..0003` / `MAC0001..0003`
-//! / `SMT-*` / `TEL-*`) are preserved verbatim so downstream tools can match
-//! them.
+//! As of spec-70 § item-89 PR-2, csslc routes every `DiagnosticBag` entry through
+//! `cssl_ast::Renderer`, giving us : rustc-style `severity[code]: message` headers,
+//! `--> file:line:col` source-locators, caret underlines (when a `SourceFile` is
+//! threaded), `did you mean : X?` suggestions, and ANSI color when stderr is a tty
+//! (honoring `NO_COLOR` and `CLICOLOR_FORCE` per <https://no-color.org>).
+//!
+//! Two emit-paths are exposed :
+//!   - [`emit_diagnostics`]              : path-only ; renders headers without carets.
+//!                                          Kept for callers that don't have the
+//!                                          source text in hand.
+//!   - [`emit_diagnostics_with_source`] : full-fidelity ; uses `SourceFile` to draw
+//!                                          the source line + caret + column.
+//!
+//! Both return the count of `Severity::Error`-level entries.
+//!
+//! The legacy `Severity` + `DiagLine` types remain as public API for downstream
+//! callers that wanted manual line-shaping ; new code should prefer the renderer.
 
 use std::path::Path;
+
+use cssl_ast::{DiagnosticBag, Renderer, SourceFile};
 
 /// Severity classes recognized by `csslc`. Maps from internal diagnostic
 /// kinds to a printable label and an exit-code influence flag.
@@ -69,50 +82,50 @@ impl DiagLine {
     }
 }
 
-/// Emit a `DiagnosticBag`'s contents to stderr. Returns the count of
-/// fatal entries (errors).
+/// Emit a `DiagnosticBag`'s contents to stderr without source-line carets.
+/// Returns the count of `Error`-severity entries.
 ///
-/// Each diagnostic renders to one line in the canonical
-/// `<file>:<line>:<col>: <sev>: <msg>` form. Stage-0 uses placeholder
-/// `0:0` coordinates because `DiagnosticBag` Diagnostic spans are not
-/// yet linked to source-line resolution ; the tooling-stable diagnostic
-/// codes (when present) are preserved.
+/// Use this when the caller has only a `Path` (no loaded `SourceFile`). For
+/// caret-quality rendering, prefer [`emit_diagnostics_with_source`].
+///
+/// `file_path` is currently advisory — header lines are produced by
+/// `cssl_ast::Renderer` and don't include the path when no span is present;
+/// it is retained in the signature so the legacy call-sites do not need to
+/// change and so that future spec-70 follow-ups (e.g. emitting a synthetic
+/// `<file>:0:0` prefix for span-less diagnostics) can use it without another
+/// signature churn.
 pub fn emit_diagnostics(file_path: &Path, bag: &cssl_ast::DiagnosticBag) -> u32 {
-    let mut fatal = 0u32;
-    let file_display = file_path.display().to_string();
+    let _ = file_path; // reserved for future synthetic-prefix wiring
+    emit_via_renderer(bag, None)
+}
+
+/// Emit a `DiagnosticBag`'s contents to stderr with full caret rendering.
+/// Returns the count of `Error`-severity entries. See module docs.
+pub fn emit_diagnostics_with_source(source: &SourceFile, bag: &DiagnosticBag) -> u32 {
+    emit_via_renderer(bag, Some(source))
+}
+
+/// Render a single diagnostic to a `String` for tests / capture. Plain-text
+/// (no ANSI) regardless of tty state ; suitable for golden-snapshot asserts.
+#[must_use]
+pub fn render_diagnostic_plain(
+    source: Option<&SourceFile>,
+    diag: &cssl_ast::Diagnostic,
+) -> String {
+    Renderer::plain().render(diag, source)
+}
+
+fn emit_via_renderer(bag: &DiagnosticBag, source: Option<&SourceFile>) -> u32 {
+    let renderer = Renderer::auto_for_stderr();
+    let mut fatal: u32 = 0;
     for diag in bag.iter() {
-        let severity = match diag.severity {
-            cssl_ast::Severity::Error => Severity::Error,
-            cssl_ast::Severity::Warning => Severity::Warning,
-            cssl_ast::Severity::Note | cssl_ast::Severity::Help => Severity::Note,
-        };
-        if severity.is_fatal() {
+        if diag.severity.is_error() {
             fatal = fatal.saturating_add(1);
         }
-        let line = DiagLine {
-            severity,
-            code: None,
-            file: file_display.clone(),
-            line: 0,
-            col: 0,
-            message: diag.message.clone(),
-        };
-        eprintln!("{}", line.render());
-        for note in &diag.notes {
-            let note_line = DiagLine {
-                severity: match note.severity {
-                    cssl_ast::Severity::Error => Severity::Error,
-                    cssl_ast::Severity::Warning => Severity::Warning,
-                    cssl_ast::Severity::Note | cssl_ast::Severity::Help => Severity::Note,
-                },
-                code: None,
-                file: file_display.clone(),
-                line: 0,
-                col: 0,
-                message: note.message.clone(),
-            };
-            eprintln!("    {}", note_line.render());
-        }
+        // Renderer always terminates each diagnostic with a trailing newline
+        // for span-bearing diagnostics ; for header-only it emits one line +
+        // newline. `eprint!` (no extra newline) keeps output clean.
+        eprint!("{}", renderer.render(diag, source));
     }
     fatal
 }
@@ -199,6 +212,52 @@ mod tests {
         bag.push(Diagnostic::warning("w1"));
         bag.push(Diagnostic::error("e2"));
         let n = emit_diagnostics(std::path::Path::new("foo.cssl"), &bag);
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn render_diagnostic_plain_emits_rustc_style_header() {
+        use cssl_ast::Diagnostic;
+        let d = Diagnostic::error("type mismatch").with_code("T0001");
+        let s = render_diagnostic_plain(None, &d);
+        assert!(s.starts_with("error[T0001]: type mismatch\n"), "got: {s:?}");
+        // no ANSI escapes in plain mode
+        assert!(!s.contains('\x1b'));
+    }
+
+    #[test]
+    fn render_diagnostic_plain_with_source_includes_caret() {
+        use cssl_ast::{Diagnostic, SourceFile, SourceId, Span, Surface};
+        let src = SourceFile::new(
+            SourceId::first(),
+            "fixture.cssl",
+            "let x : u32 = 0;\n",
+            Surface::RustHybrid,
+        );
+        // span over the literal `0`
+        let zero_off = src.contents.find('0').expect("fixture has 0") as u32;
+        let span = Span::new(src.id, zero_off, zero_off + 1);
+        let d = Diagnostic::error("expected i32, got u32")
+            .with_code("T0001")
+            .with_span(span)
+            .with_suggestion("0i32");
+        let s = render_diagnostic_plain(Some(&src), &d);
+        assert!(s.contains("error[T0001]: expected i32, got u32"), "got: {s}");
+        assert!(s.contains("fixture.cssl:1:"), "got: {s}");
+        assert!(s.contains("let x : u32 = 0;"), "got: {s}");
+        assert!(s.contains("^"), "got: {s}");
+        assert!(s.contains("help: did you mean : `0i32`?"), "got: {s}");
+    }
+
+    #[test]
+    fn emit_diagnostics_with_source_returns_fatal_count() {
+        use cssl_ast::{Diagnostic, DiagnosticBag, SourceFile, SourceId, Surface};
+        let src = SourceFile::new(SourceId::first(), "x.cssl", "abc\n", Surface::RustHybrid);
+        let mut bag = DiagnosticBag::new();
+        bag.push(Diagnostic::error("a"));
+        bag.push(Diagnostic::warning("b"));
+        bag.push(Diagnostic::error("c"));
+        let n = emit_diagnostics_with_source(&src, &bag);
         assert_eq!(n, 2);
     }
 }
