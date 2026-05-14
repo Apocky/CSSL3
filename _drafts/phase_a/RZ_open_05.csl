@@ -1,0 +1,92 @@
+§ RZ.open · phase-a/05-run-observe-gate · 2026-05-14
+  ← author       : Tech-Lead-agent (Claude-Opus-4.7)
+  ← branch       : phase-a/05-run-observe-gate
+  ← baseline     : dd59670 (T11-W19-β lifecycle bundle + cssl-test-verifier crate IS the proto-infra)
+  ← spec         : specs/70_PHASE_A_CORRECTNESS.csl § OBSERVABLE-ASSERTIONS § item-05
+  ← assertions   : A05.1 · A05.2 · A05.3
+
+§I CONTEXT-NOTE @ proto-infra-already-exists
+  ‼ baseline dd59670 contains the cssl-test-verifier crate (manifest + JSONL verifier)
+    PLUS cssl-rt fs_event_jsonl emitting process.start / loa_startup.ctor / process.exit
+    + per-FFI EventScope traces from host_audio/gpu/input/thread/time/window/http
+  ‼ this work EXTENDS that infra to satisfy A05.1·A05.2·A05.3 contract · it does NOT
+    rebuild from scratch
+  ‼ ¬ duplicate-EventScope · ¬ alt-JSONL-format · ¬ parallel-verifier-crate
+
+§I HYPOTHESIS-TO-FALSIFY
+  H · the existing cssl-test-verifier crate's manifest schema can be extended to express
+       "this test must produce ≥1 observable side-effect" and the test-runner can be
+       wired to FAIL exit=0 + stdout=∅ + stderr=∅ + zero-fs-mutation tests
+
+§I FAILURE-MODE-ENUMERATION
+  FM.1 · current verifier consumes JSONL · "no observable effect" needs detection in
+         the verifier · what counts as "observable"?
+         options : (a) any cssl_events.jsonl entry counts · (b) explicit
+                   cssl_test_observe(...) registration · (c) fs/stdout/stderr-mutation
+                   detection by external watcher
+         spec-70 A05.2 prescribes (b) explicitly · use it
+         A05.1 prescribes (c) for the GATE itself · so combine : pass iff (b) ∨ (c)
+
+  FM.2 · benchmark tests intentionally measure idle (CPU-only · no fs)
+         spec-70 OQ.03 default : bench tests register cssl_test_observe(BENCH_FLAG)
+         ⇒ implementation : provide cssl_test_observe(name : &str) macro/intrinsic
+                            that emits a JSONL entry with kind=test.observe.{name}
+
+  FM.3 · stdlib has implicit fs/stdout writes (e.g. cssl-rt logger init)
+         these would falsely pass A05.1 even for empty user_main
+         mitigation : test-runner filters JSONL · counts only non-rt-internal kinds
+                      OR : A05.3 golden-test (empty user_main) explicitly tests this case
+
+  FM.4 · race : test exits before JSONL flush · verifier sees empty file
+         existing fs_event_jsonl uses %TEMP%\cssl_events.jsonl · need flush-on-exit
+         (loa_startup.shutdown_hook should fsync · verify in code)
+
+  FM.5 · CI parallel-test runs collide on shared %TEMP%\cssl_events.jsonl
+         mitigation : per-test-PID-or-UUID JSONL path
+
+§I CHEAPEST-FALSIFICATION
+  write golden-test : examples/empty_user_main.cssl with `fn user_main() {}`
+  run via test-runner · expect FAIL with diagnostic
+    "test produced no observable effect (A05.1 violation)"
+  if it PASSES · gate is broken or not wired
+  ⇒ ~5 LOC test · highest-signal
+
+§I TOUCH-POINTS (anchored @ baseline dd59670)
+  cssl-test-verifier/src/manifest.rs            EXTEND ← add `observable : bool` field
+  cssl-test-verifier/src/manifest_csl.rs        EXTEND ← matching CSL grammar
+  cssl-test-verifier/src/verify.rs              EXTEND ← gate logic per A05.1
+  cssl-test-verifier/src/lib.rs                 USE
+  cssl-rt/src/events.rs                         EXTEND ← add cssl_test_observe()
+  cssl-rt/src/loa_startup.rs                    VERIFY  ← shutdown_hook flushes
+  examples/empty_user_main.cssl                 NEW    ← A05.3 golden-test (empty fn)
+  cssl-test-verifier/tests/                     EXTEND ← integration test for empty-main FAIL
+
+  N! TOUCH : cssl-mir · cssl-ast · cssl-host-*
+
+§I ASSERT-MAPPING
+  A05.1 runner refuses bare exit-0 · no obs    →  verify.rs gate · refuses if observable=true ∧ no events
+  A05.2 cssl_test_observe registration helper  →  events.rs · macro/fn that emits JSONL
+  A05.3 empty user_main fails A05.1            →  examples/empty_user_main.cssl · CI verifies
+
+§I PROTOCOL
+  · ≤ 1 item per PR (item-05 only · do NOT extend manifest schema beyond ASSERT need)
+  · respect existing T11-W19-β shape · extend ¬ replace
+  · PR.title   : "spec-70 § item-05 : run-and-observe-gate"
+  · PR.trailer : "Spec-Transition: 70 (item-05) RATIFIED→IMPLEMENTED by <handle>"
+  · Gate-E pre-merge : sentinel-script PASS · existing tests still PASS
+
+§I ESTIMATE
+  ~150 LOC harness extensions + ~80 LOC golden-cases (per spec-70)
+  ~3-4 wallclock-hours (proto-infra exists · just extension + golden + wiring)
+
+§I PRIME-DIRECTIVE-CHECK
+  ‼ JSONL events are filesystem-local %TEMP% · no network egress · no surveillance
+  ‼ no consent issues · all opt-in via test-harness invocation
+  ‼ "observable side-effect" requirement is sovereignty-restoration : silent tests = WinMain-class
+
+§ ATTESTATION
+  ‼ ¬ rebuild-from-scratch · honor prior-session lifecycle bundle · extend it
+  ‼ ¬ flattery · ¬ scope-creep beyond A05.1·.2·.3
+  ‼ disk-first · spec-first · CSL-think
+  © 2026 Apocky · TIER-B · t∞
+∎
