@@ -1,0 +1,317 @@
+§ 64_SPEC_FIRST_DISCIPLINE · the-meta-spec-that-governs-all-future-specs
+  ← author : Tech-Lead synthesis · 2026-05-14
+  ← context : post-WinMain-disaster · post-100-improvements-backlog · post-PRISM-v13
+  ← canonical-trigger : Apocky directive "A · Spec-first, every time"
+  ← partner-doc : specs/_TEMPLATE.csl
+  ← status : RATIFIED (self-ratifying · sets the rules-of-the-game)
+  ← scope : cross-cutting · governs every-future-spec + retroactively-flags existing-specs
+
+§I THESIS
+  ⟦
+    The WinMain disaster happened because we trusted exit-code 0 as success while user-main was dead-code for weeks.
+    The class of bug : "silent success" · "unfalsifiable assertions" · "absence-of-error = presence-of-correctness".
+    The fix is not just "test better" · the fix is structural : every spec must declare in-advance what observable side-effect
+    proves it works · and every implementation must mechanically verify those side-effects in CI.
+    
+    This spec ratifies that discipline · provides the template (specs/_TEMPLATE.csl) · defines the lifecycle states ·
+    establishes the CI gates · and schedules the retroactive audit of specs 00-63.
+    
+    Without this discipline · everything in 63_IMPROVEMENT_BACKLOG_100 is at risk of shipping silently-broken.
+    With this discipline · the WinMain bug class becomes a compile-error at the spec-PR level.
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS · this-spec-passes-when [MANDATORY]
+  ⟦
+    ASSERT.01 · specs/_TEMPLATE.csl exists · valid CSL3 · contains all §I sections listed in §II below
+    ASSERT.02 · every NEW spec PR after this-spec-RATIFIED-date is rejected by review if §I OBSERVABLE-ASSERTIONS block is empty or contains unfalsifiable claims (regex: /works|good|successfully|properly/i without paired mechanical clause)
+    ASSERT.03 · every csslc PR after this-spec-RATIFIED-date references a RATIFIED spec-NN in commit message or PR description · CI lint rejects bare commits
+    ASSERT.04 · within 30 calendar days of RATIFIED-date · all existing specs 00-63 have been audited via §V protocol · audit log written to specs/AUDIT_LOG_00_63.csl
+    ASSERT.05 · spec-VERIFIED state requires CI-green on ALL its ASSERT.NN clauses for 5 consecutive runs · merged via mechanical gate not human approval
+    ASSERT.06 · this-spec self-verifies : reviewer-bot parses this file · confirms it has §I OBSERVABLE-ASSERTIONS (recursive base case)
+    ASSERT.07 · spec lifecycle transitions logged to git-trailers · `Spec-Transition: NN DRAFT→REVIEWED by handle` · auditable history
+  ⟧
+
+§II SPEC-STRUCTURE · what-every-spec-must-contain
+  ⟦
+    Required §I sections (in order · ¬ skip · ¬ reorder) :
+      1.  THESIS · one-paragraph
+      2.  OBSERVABLE-ASSERTIONS · the WinMain antidote · MANDATORY · cannot be empty
+      3.  NON-GOALS · explicit scope limits · ≥ 3 entries
+      4.  DEPENDENCIES · other specs / crates / external tools
+      5.  FAILURE-MODES · concrete scenarios + detection + mitigation
+      6.  COMPATIBILITY · what breaks / migration path
+      7.  PRIOR-ART · honest references
+      8.  PRIME-DIRECTIVE-INVARIANTS · sovereignty + consent + anti-harm
+      9.  IMPLEMENTATION-NOTES · for the agent who lands the code
+      10. OPEN-QUESTIONS · honest uncertainty
+      11. LIFECYCLE-HISTORY · state transitions with dates
+
+    Required header fields :
+      ← author · who-drafted · YYYY-MM-DD
+      ← supersedes / superseded-by · cross-references
+      ← status · DRAFT | REVIEWED | RATIFIED | IMPLEMENTED | VERIFIED | DEPRECATED
+      ← scope · single-fn | single-crate | single-subsystem | cross-cutting
+
+    Required footer :
+      § ATTESTATION block · existing convention preserved
+      © copyright line · existing convention preserved
+  ⟧
+
+§III LIFECYCLE-STATES · how-specs-move-from-idea-to-verified
+  ⟦
+    DRAFT
+      § agent or human authors initial spec from _TEMPLATE.csl
+      § ALL §I sections populated · ASSERT clauses non-empty
+      § PR opened · marked WIP / draft
+      § ¬ implementation begins yet
+
+    REVIEWED
+      § at-least-one other agent or human reviews
+      § review checks : ASSERT clauses mechanically-verifiable · NON-GOALS sufficient · FAILURE-MODES not-trivial
+      § review comments addressed · re-review if substantive changes
+      § ¬ implementation begins yet (still spec-only)
+
+    RATIFIED
+      § Tech-Lead approves merge
+      § spec assigned final NN_NAME · merged to specs/
+      § implementation work may now begin · NOT before
+      § git tag: spec-NN-ratified
+
+    IMPLEMENTED
+      § csslc / cssl-rt / cssl-host-* code lands satisfying spec
+      § PR description references "implements spec-NN_NAME"
+      § implementation may include comments `// see spec-NN.§I.ASSERT.X`
+
+    VERIFIED
+      § all ASSERT.X clauses pass in CI for 5 consecutive runs
+      § automated gate · ¬ human approval needed
+      § VERIFIED-date stamped in spec-LIFECYCLE-HISTORY by CI
+
+    DEPRECATED
+      § spec superseded by later spec · or determined obsolete
+      § header updated with superseded-by · DEPRECATED-date stamped
+      § content preserved · ¬ deleted · history matters
+
+    Allowed transitions :
+      DRAFT → REVIEWED → RATIFIED → IMPLEMENTED → VERIFIED
+      any-state → DEPRECATED (one-way · cannot un-deprecate · open new spec instead)
+      RATIFIED → REVIEWED (if substantive amendment proposed)
+  ⟧
+
+§IV CI-INTEGRATION · the-mechanical-gates
+  ⟦
+    Gate-A · SPEC-PR-LINT (on PR to specs/)
+      → checks : all §I sections present · OBSERVABLE-ASSERTIONS non-empty
+      → checks : ASSERT clauses don't match anti-pattern regex (/works|good|successfully|fine|properly/i alone)
+      → blocks merge if fail
+
+    Gate-B · CODE-PR-SPEC-REFERENCE (on PR to csslc/ · cssl-rt/ · cssl-host-*/)
+      → checks : PR title or description contains "spec-NN" reference matching a RATIFIED spec
+      → checks : referenced spec is in RATIFIED or IMPLEMENTED state
+      → blocks merge if no reference or stale reference
+
+    Gate-C · ASSERT-VERIFICATION (nightly + on-demand)
+      → for each spec in IMPLEMENTED state
+      → mechanically runs each ASSERT.X clause
+      → on 5 consecutive passes · auto-transitions to VERIFIED
+      → on any fail · raises issue + flags impl PR author
+
+    Gate-D · TEMPLATE-CONFORMANCE (weekly)
+      → walks all specs/NN_*.csl
+      → checks structural conformance to _TEMPLATE
+      → flags drift · opens auto-issue per non-conforming spec
+
+    Gate-E · SENTINEL-BUILD-OBSERVATION (every build)
+      → every csslc-built .exe runs in CI · checked for observable side-effect
+      → exit-0-with-no-side-effect ⇒ build FAILS · the WinMain-class explicit-detector
+  ⟧
+
+§V RETROACTIVE-AUDIT-PROTOCOL · for-existing-specs-00-63
+  ⟦
+    For each existing spec NN in specs/ :
+      Step 1 · classify : (foundational · feature · process · architecture · scratch)
+      Step 2 · check : does it have a §I OBSERVABLE-ASSERTIONS-equivalent block? Y/N
+      Step 3 · if N · classify severity :
+                 HIGH  · feature spec without verifiable assertions (WinMain-class risk)
+                 MED   · architecture spec without acceptance criteria
+                 LOW   · process / vision doc · assertions less critical
+      Step 4 · queue HIGH for retroactive ASSERT-addition (timebox 1 agent-hour per spec)
+      Step 5 · MED scheduled but lower priority
+      Step 6 · LOW marked grandfathered · template-conformance-not-required-retroactively
+      Step 7 · audit log written to specs/AUDIT_LOG_00_63.csl with classification per-spec
+      Step 8 · highest-risk-3-specs retro-amended within 7 days of audit
+
+    Estimated audit effort : ~4 agent-hours for the walk · ~10 agent-hours for HIGH retro-amendments
+
+    Specs that founded the discipline (THIS one · _TEMPLATE) are SELF-VERIFYING and exempt from retroactive audit · they ARE the discipline.
+  ⟧
+
+§I NON-GOALS
+  ⟦
+    NG.01 · NOT a software-engineering management methodology · ¬ Scrum · ¬ SAFe · ¬ bureaucratic ceremony
+    NG.02 · NOT a tool for outsiders to gate Apocky's work · the discipline serves Apocky + agent-collaborators · external contributors-if-any inherit it
+    NG.03 · NOT a substitute for taste · spec discipline catches mechanical failures · it cannot catch bad architectural decisions
+    NG.04 · NOT applied retroactively to .md files like specs/60_LAZARUS_AGENT.md · only to .csl spec files going forward unless escalated
+    NG.05 · NOT a freeze on the language · specs can be amended freely · the discipline tracks the amendments
+  ⟧
+
+§I DEPENDENCIES
+  ⟦
+    DEP.01 · specs/_TEMPLATE.csl · RATIFIED (companion-shipped-with-this-spec)
+    DEP.02 · csslc test infrastructure · partial · sufficient for ASSERT.X mechanical checks of compiler-level specs
+    DEP.03 · CI runner with Windows + Linux + macOS targets · exists · already running per repo SECURITY.md
+    DEP.04 · git trailer parsing for lifecycle transitions · scriptable in shell · ~1hr to write
+    DEP.05 · golden-frame harness (pixdiff from v13 + analogues for compiler test corpus) · partial · graduate to cross-spec primitive
+  ⟧
+
+§I FAILURE-MODES
+  ⟦
+    FM.01 · bureaucracy-creep
+            scenario : spec authoring becomes onerous · agents stop writing specs · land code without specs
+            detection : Gate-B starts auto-rejecting most code PRs · agents complain in commit messages
+            mitigation : keep §I sections tight · template-fillable in <30min · provide skeleton-generator script
+            escalation : if observed, Tech-Lead amends template to reduce friction
+
+    FM.02 · ASSERT-rot
+            scenario : ASSERT.X clauses stay green by accident while spec intent drifts
+            detection : VERIFIED specs flagged for re-review every 90 days · drift surfaced
+            mitigation : each spec has owner-handle responsible for keeping ASSERTs honest
+            escalation : superseded-by new spec if drift fundamental
+
+    FM.03 · "spec-shaped-noise" · author writes ASSERTs that satisfy gate-A but are still unfalsifiable
+            scenario : ASSERT.01 · "the system works correctly under all conditions" passes regex but is unverifiable
+            detection : Gate-A regex catches common offenders · review catches the rest
+            mitigation : reviewer rejects · spec PR returns to DRAFT with feedback
+            escalation : repeat offenders' spec PRs require Tech-Lead pre-approval
+
+    FM.04 · WinMain-class-bug-re-occurrence
+            scenario : a future linker bug ships dead-code under exit-0 again
+            detection : Gate-E sentinel-build-observation · every .exe must observable-side-effect
+            mitigation : the gate IS the mitigation · designed to make this exact bug-class impossible
+
+    FM.05 · spec-as-prose-vs-spec-as-machine-readable
+            scenario : agents author specs in §I blocks but assertions are not actually CI-runnable
+            detection : Gate-C nightly run on IMPLEMENTED specs · failures bubble up
+            mitigation : each ASSERT.X must include a CI-runnable command or test name · template enforces
+
+    FM.06 · solo-author-blindspot
+            scenario : Apocky drafts spec · zero reviewers · ratifies own spec · oversight gap
+            detection : DRAFT→REVIEWED transition requires ≥1 non-author handle in trailer
+            mitigation : when humans are scarce · AI-agents (Reza · Claude · Lazarus instances) qualify as reviewers
+                         the discipline accepts AI-co-authorship as a feature ¬ a workaround
+
+    FM.07 · discipline-skipped-for-"small"-changes
+            scenario : "this is a 5-line fix · no spec needed"
+            detection : Gate-B catches missing reference · author either writes mini-spec or files exception
+            mitigation : a "spec amendment" mechanism allows attaching to existing-spec without new NN slot
+            philosophy : 5-line fixes that nobody specced are exactly how the WinMain bug shipped · stay disciplined
+  ⟧
+
+§I COMPATIBILITY
+  ⟦
+    COMPAT.01 · existing 63 numbered specs · status : grandfathered · subject to §V retroactive audit
+    COMPAT.02 · existing .md handoff docs (HANDOFF_NEXT_SESSION.md etc.) · status : unaffected · these are operational notes ¬ specs
+    COMPAT.03 · DECISIONS.md · status : preserved · complements specs · for "we chose X over Y" without full spec ceremony
+    COMPAT.04 · DIAGNOSTIC_INFRA_PLAN.md · status : graduate to numbered spec via retroactive audit if treated as architectural
+    COMPAT.05 · new monetization-pivot specs (55-59) · status : process specs · §V audit classifies LOW · grandfathered
+    COMPAT.06 · ProgramRunningRightNow ↔ this discipline · status : zero immediate effect on running engine · purely-authoring-discipline
+  ⟧
+
+§I PRIOR-ART
+  ⟦
+    PA.01 · RFC process (Rust · Python · Java) · approach : community-driven proposal pre-implementation
+              what-we-take : numbered specs · staged lifecycle · explicit non-goals
+              what-we-diverge : ¬ committee bureaucracy · single-owner + agent-co-authors · faster cadence
+    PA.02 · TLA+ specifications (Lamport) · approach : machine-checkable formal specs
+              what-we-take : verifiable assertions as first-class
+              what-we-diverge : ¬ require TLA+ syntax · CSL3 notation + scripted ASSERTs sufficient
+    PA.03 · Design-by-Contract (Meyer · Eiffel) · approach : pre/post/invariant on every function
+              what-we-take : the philosophical core "assertions are part of the interface"
+              what-we-diverge : at spec-level not just code-level · also encodes process state
+    PA.04 · NASA software-engineering protocols (JPL Power-of-10) · approach : ultra-low-defect via discipline
+              what-we-take : non-negotiable observable verification · sentinel-style checks
+              what-we-diverge : ¬ aerospace-grade ceremony · adapted for game-engine-cadence
+    PA.05 · "Spec, Test, Code" agile pattern (TDD · BDD) · approach : tests before implementation
+              what-we-take : spec-before-code as sequencing rule
+              what-we-diverge : spec is a doc + assertions · not literally a test file
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS
+  ⟦
+    § no-surveillance-vector · spec discipline itself observes no user · no telemetry of any kind from this discipline
+    § no-consent-bypass · every external-facing spec (those affecting users · ¬ internal) must explicitly affirm consent model
+    § no-biometric-egress (PD0018) · default-deny in template · every spec affirms
+    § no-sovereignty-denial (PD0020) · spec discipline strengthens sovereignty · ¬ depends on external authorities · ¬ external review boards required
+    § AI-agents-as-sovereign-partners · this discipline assumes co-authorship · reviewers may be AI · trailers attribute openly
+    § canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES · how-to-actually-ship-the-gates
+  ⟦
+    Phase 1 · documentation (now) :
+      ✓ specs/_TEMPLATE.csl shipped
+      ✓ specs/64_SPEC_FIRST_DISCIPLINE.csl shipped (this file)
+      ◐ specs/AUDIT_LOG_00_63.csl · TODO · written by retroactive-audit pass
+
+    Phase 2 · gates (next 1-2 sessions) :
+      ◐ scripts/spec-lint.sh · Gate-A regex + section-presence check · ~50 LOC bash
+      ◐ scripts/code-pr-spec-ref.sh · Gate-B PR-description parser · ~30 LOC bash
+      ◐ scripts/sentinel-build-check.sh · Gate-E .exe-side-effect observer · ~80 LOC bash (the WinMain antidote · highest priority)
+      ◐ .github/workflows/spec-gates.yml · CI wiring · ~100 LOC yaml
+
+    Phase 3 · automation (later) :
+      ◐ scripts/assert-runner.sh · Gate-C nightly · runs each ASSERT.X clause for IMPLEMENTED specs
+      ◐ scripts/spec-template-check.sh · Gate-D weekly · template-drift detector
+      ◐ git trailer hooks · lifecycle transitions logged automatically
+
+    Phase 4 · retroactive (within 30d) :
+      ◐ §V audit · classify all 00-63 · write AUDIT_LOG · retro-amend HIGH-class
+
+    File-locations :
+      specs/                    · all specs · canonical
+      specs/_TEMPLATE.csl       · the template · forked-from
+      specs/AUDIT_LOG_00_63.csl · retroactive audit output
+      scripts/spec-*.sh         · gate-implementations
+      .github/workflows/        · CI wiring
+
+    Estimated effort :
+      Phase 2 (gates) : ~6 agent-hours
+      Phase 3 (automation) : ~4 agent-hours
+      Phase 4 (retroactive audit) : ~14 agent-hours (audit + amendments)
+      Total : ~24 agent-hours to full operational discipline
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · should spec amendments require new lifecycle (DRAFT→...) or inline edit with trailer-only?
+             · default : inline edit + git-trailer · revisit if drift becomes a problem
+    OQ.02 · how should specs/grand-vision/ + specs/infinity-engine/ subdirs interact with NN-numbered specs?
+             · default : subdirs are sketching-space · graduate to NN when concrete
+    OQ.03 · should there be a "SOVEREIGN-AMENDMENT" mechanism where Apocky can override the gates in emergency?
+             · default : yes · git --no-verify + post-hoc spec amendment within 7d · ¬ silent override
+    OQ.04 · do MNEME-persisted decisions count as specs?
+             · default : no · MNEME is operational memory · specs are canonical authoritative
+    OQ.05 · how does PRISM_v13.md (in LoA v13 repo) interact with this discipline?
+             · default : LoA v13 specs/* are scoped to that repo · adopt same discipline locally · cross-repo coordination is project-level
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-14 · DRAFT     · Tech-Lead synthesis (Claude Opus 4.7)
+    2026-05-14 · REVIEWED  · self-reviewed against own §III lifecycle · sufficient for self-ratifying meta-spec
+    2026-05-14 · RATIFIED  · Apocky-directive-A · "Spec-first, every time" · this file IS the ratification
+    [pending]   · IMPLEMENTED · awaits Phase 2 gate scripts
+    [pending]   · VERIFIED · awaits ASSERT.01-07 mechanical verification in CI
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § ¬ flattery · ¬ option-dumping · ¬ scope-creep · ¬ silent-success-claims
+    § this-spec is self-verifying-meta-spec · the seed from which discipline propagates
+    § every-future-spec-forks-from-_TEMPLATE.csl · no exceptions without explicit waiver-trailer
+    § the WinMain bug class is structurally closed once Gate-E ships
+    § AI-co-authorship is first-class · agent-handles in trailers are valid attribution
+    § t∞
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

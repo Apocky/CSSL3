@@ -1,0 +1,299 @@
+§ 70_PHASE_A_CORRECTNESS · Phase-A.bundle · sentinel + recognizer + symbol-audit + observe-gate + diagnostics
+  ← author : Tech-Lead-Claude-Opus-4.7 · 2026-05-14
+  ← supersedes : —
+  ← superseded-by : —
+  ← status : RATIFIED · ready-to-drive-Phase-A-spawn
+  ← scope : single-phase (Phase-A of specs/63_IMPROVEMENT_BACKLOG_100.csl)
+  ← parent-template : specs/_TEMPLATE.csl
+  ← discipline : authored under specs/64_SPEC_FIRST_DISCIPLINE.csl
+  ← bundles-items : 01·02·03·04·05·06·08·09·19·30 (Phase-A) + 87·89 (tooling adjacent)
+  ← rationale : bundle ¬ per-item → avoids file-proliferation (FM.01 bureaucracy-creep)
+                Phase-A items tightly coupled (correctness foundation) · belong in one spec
+                future phases get analogous bundle specs : spec-71 Phase-B · spec-72 Phase-C · etc.
+
+§I THESIS
+  ⟦
+    Phase-A closes the WinMain-class bug structurally. Twelve items collectively make it impossible
+    for a csslc-built .exe to ship with dead user-main code, impossible for type-shape mismatches
+    to be silently rejected, impossible for cross-target struct layouts to drift, impossible for
+    diagnostics to fail to point at the offending source span.
+    
+    Items are tightly coupled : item-01 (sentinel-return) needs item-03 (symbol-audit) to verify
+    user-main is reachable · item-02 (recognizer-type-mismatch) needs item-89 (diagnostics-with-carets)
+    to produce useful error messages · item-08 (cross-target-struct-parity) needs item-09 (σ-enforce
+    extended) to verify FFI boundary layouts. Bundling them in one spec keeps the coupling visible.
+    
+    Phase-A is the foundation of the revenue-unblock slice. It must land before math-half-Phase-B
+    (spec-71). Until Phase-A is VERIFIED, every PR risks shipping dead code (the WinMain class).
+    Gate-E (scripts/sentinel_build_check.sh) is the structural backstop · this spec is the items
+    that make Gate-E's job easy.
+  ⟧
+
+§I ITEMS-COVERED · references-to-specs/63
+  ⟦
+    item-01 · sentinel-return-verification     · csslc-rt prologue/epilogue writes magic bytes to CSSL_SENTINEL_PATH
+    item-02 · recognizer-type-mismatch          · u32-vs-i64 silent-reject → compile-error with span
+    item-03 · .o-symbol-audit-pass              · post-codegen verifier walks emitted objects
+    item-04 · build-artifact-manifest           · csslc emits expected-symbols+hashes · linker verifies
+    item-05 · run-and-observe-gate              · CI requires observable side-effect per test
+    item-06 · effect-row-runtime-validation     · declared effects ↔ emitted FFI symbols cross-check
+    item-08 · cross-target-struct-parity        · SPIR-V·DXIL·MSL·WGSL·native-x64 byte-identical
+    item-09 · σ-enforce-extended                · compile-time padding+alignment+ABI checks @ FFI boundaries
+    item-19 · if-else-as-expression-position    · graduate partial-impl (small but unblocks v13 substrate)
+    item-30 · drop-checker                      · GPU buffers + textures + descriptor sets cleanup
+    item-87 · build-cache-incremental           · per-module hash · 10× iteration speed
+    item-89 · diagnostics-with-carets-and-suggestions · rustc-quality error messages
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS [MANDATORY]
+  ⟦
+    item-01 ASSERTs :
+      A01.1 · csslc-rt prologue writes 0xC0FFEE to %CSSL_SENTINEL_PATH% before user-main runs
+      A01.2 · csslc-rt epilogue writes 0xDEADBEEF after user-main returns (covers normal-exit path)
+      A01.3 · scripts/sentinel_build_check.sh exits 0 PASS on cssl-built .exe with both magic bytes present
+      A01.4 · sentinel_build_check.sh exits 2 DEGRADED if exe alive but contract not-honored (transitional)
+    
+    item-02 ASSERTs :
+      A02.1 · `csslc compile bad.cssl` where bad.cssl has `fn f(x : u32) -> i64 { x }` fails with
+              diagnostic mentioning "expected i64, got u32" + source span pointing at `x`
+      A02.2 · the canonical test cases for type-shape regression land in csslc/tests/recognizer/
+      A02.3 · no silent-fall-through path in cssl-mir::body_lower for type-mismatch (audit pass)
+    
+    item-03 ASSERTs :
+      A03.1 · csslc post-codegen pass walks the emitted .o for the user-main symbol
+      A03.2 · pass FAILS the build if WinMain (or _main, _start, mainCRTStartup) is present without
+              tail-call to user-main
+      A03.3 · golden-test : a known-bad .o (WinMain returns 0 directly) fails this pass with diagnostic
+              "WinMain does not tail-call user-main · WinMain-class dead-code risk"
+    
+    item-04 ASSERTs :
+      A04.1 · csslc emits build-manifest.json containing list of expected (symbol-name, hash) tuples
+      A04.2 · linker reads manifest before producing .exe · errors with "manifest mismatch: symbol X
+              expected hash H, got H'" on any divergence
+      A04.3 · CI fails the build if build-manifest.json is missing from build artifacts
+    
+    item-05 ASSERTs :
+      A05.1 · CI test-runner refuses to mark a test PASS if exit=0 AND stdout=∅ AND stderr=∅ AND
+              no observable filesystem mutation occurred
+      A05.2 · the test-harness exposes `cssl_test_observe(...)` for tests to register expected side-effects
+      A05.3 · golden-test : an empty `fn user_main() {}` test fails A05.1 (verified by CI)
+    
+    item-06 ASSERTs :
+      A06.1 · linker cross-checks declared-effect-row of each fn against emitted FFI symbol set
+      A06.2 · fn declared `/ { IO }` that emits no IO-FFI-symbol fails link with diagnostic
+      A06.3 · fn declared `/ {}` (pure) that emits any IO-FFI-symbol fails link with diagnostic
+    
+    item-08 ASSERTs :
+      A08.1 · csslc test-corpus contains 20 small modules · each compiled to all 5 targets
+              (SPIR-V · DXIL · MSL · WGSL · native-x64)
+      A08.2 · for each struct used across targets · layout bytes are diffed · max diff = 0
+      A08.3 · packed-parity-failure surfaces as csslc-level diagnostic naming the field that drifted
+    
+    item-09 ASSERTs :
+      A09.1 · σ-enforce pass extended to FFI-boundary structs (extern "C" fn signatures)
+      A09.2 · alignment violation on FFI boundary emits LAY0002 (per existing spec-33 stable code)
+              with FFI-boundary context in the diagnostic
+      A09.3 · golden-test : struct with field at offset-misaligned-for-extern-C fails LAY0002
+    
+    item-19 ASSERTs :
+      A19.1 · `let x = if cond { 1 } else { 2 }` parses + compiles in expression position
+      A19.2 · works in struct-init context : `let p = Point { x: if cond { 0 } else { 1 }, y: 0 }`
+      A19.3 · works in return-position : `fn f() -> i32 { if cond { 1 } else { 2 } }` (no explicit `return`)
+      A19.4 · v13 LoA substrate.cssl drops every `clamp((x-y)*1e6, 0, 1)` branchless-flag-trick comment
+              after re-compile · regression-frame matches pre-change
+    
+    item-30 ASSERTs :
+      A30.1 · GPU resources (Buffer · Texture · DescriptorSet · Semaphore · Fence) have Drop impls
+      A30.2 · scope-exit runs Drop · GPU resource handle returned to host-rt allocator
+      A30.3 · valgrind/ASan or equivalent leak-check on a known scope shows zero leaked GPU handles
+    
+    item-87 ASSERTs :
+      A87.1 · csslc per-module hash computed · stored in .cssl-cache/
+      A87.2 · re-compile with no source change exits in < 1s (cache-hit on all modules)
+      A87.3 · single-module source change re-compiles only that module + dependents · not full tree
+    
+    item-89 ASSERTs :
+      A89.1 · diagnostics include source-file path · line · column · caret pointing at offending token
+      A89.2 · diagnostics include "did you mean : X?" suggestion when the user's identifier is within
+              edit-distance 2 of a defined identifier
+      A89.3 · diagnostics use ANSI color codes when stderr is a tty (RUSTC_COLOR-style)
+  ⟧
+
+§I DEPENDENCY-GRAPH (per specs/63 § PHASE-A · reproduced here for spawn-time reference)
+  ⟦
+    depth-0 (parallel · 4-agents-spawn) :
+      ⟨ item-01 ⟩ branch : phase-a/01-sentinel-return
+      ⟨ item-02 ⟩ branch : phase-a/02-recognizer-mismatch
+      ⟨ item-05 ⟩ branch : phase-a/05-run-observe-gate
+      ⟨ item-89 ⟩ branch : phase-a/89-diagnostics-carets
+    
+    depth-1 (parallel · 6-agents-spawn @ depth-0.merged) :
+      ⟨ item-03 ⟩ branch : phase-a/03-symbol-audit          ← needs item-01 sentinel-contract
+      ⟨ item-04 ⟩ branch : phase-a/04-build-manifest        ← parallel
+      ⟨ item-06 ⟩ branch : phase-a/06-effect-runtime-check  ← parallel
+      ⟨ item-08 ⟩ branch : phase-a/08-cross-target-parity   ← needs item-02 recognizer-tightened
+      ⟨ item-09 ⟩ branch : phase-a/09-sigma-enforce-ffi     ← needs item-02 recognizer-tightened
+      ⟨ item-19 ⟩ branch : phase-a/19-if-expression          ← parallel · small
+    
+    depth-2 :
+      ⟨ item-30 ⟩ branch : phase-a/30-drop-checker          ← needs item-09 σ-enforce-extended
+    
+    depth-3 :
+      ⟨ item-87 ⟩ branch : phase-a/87-incremental-cache     ← needs item-02 type-cache-key stable
+  ⟧
+
+§I NON-GOALS
+  ⟦
+    NG.01 · ¬ replace existing diag-code blocks (LAY0001 · EFR0001 · SIG0001) · those frozen-stable
+    NG.02 · ¬ per-item separate spec files · this spec IS the bundle (anti-FM.01)
+    NG.03 · ¬ extend Phase-A scope beyond the 12 listed items · ¬ scope-creep
+    NG.04 · ¬ block Phase-B from beginning · Phase-B math-half items can spawn @ Phase-A.depth-0 land
+             (per spec-63 dependency-graph)
+  ⟧
+
+§I DEPENDENCIES
+  ⟦
+    DEP.01 · spec-63_IMPROVEMENT_BACKLOG_100 RATIFIED · canonical-item-list parent
+    DEP.02 · spec-64_SPEC_FIRST_DISCIPLINE RATIFIED · discipline-meta
+    DEP.03 · scripts/sentinel_build_check.sh exists · Gate-E backbone for item-01·05
+    DEP.04 · existing diag-code blocks (LAY · EFR · SIG) preserved · extended ¬ replaced
+  ⟧
+
+§I FAILURE-MODES
+  ⟦
+    FM.01 · scenario : item-01 csslc-rt contract added but downstream tests don't observe sentinel-bytes
+            detection : sentinel_build_check.sh exits 2 DEGRADED · auto-issue raised
+            mitigation : ASSERT A01.4 explicitly tracks DEGRADED transitional-state
+    
+    FM.02 · scenario : item-02 recognizer-tightened breaks existing v13 substrate.cssl
+            detection : Role-D substrate validation harness (18 rays) fails post-merge
+            mitigation : recognizer changes always paired with grace-period flag · v13 ports forward
+    
+    FM.03 · scenario : item-08 cross-target-parity reveals existing struct-layout drift
+            detection : 20-module test corpus surfaces · failures triaged per-target
+            mitigation : drift IS a bug · spec-amendment iff drift was intentional · else fix to parity
+    
+    FM.04 · scenario : item-30 drop-checker triggers on existing GPU-resource patterns in cssl-host-*
+            detection : compile-error post-implementation
+            mitigation : grace-period · @no_drop_check escape hatch for stage-0 Rust shims (sunsets at Phase-E)
+    
+    FM.05 · scenario : item-19 if-expression breaks parser on existing if-statement code
+            detection : parser test-corpus regression
+            mitigation : if-expression is additive (statement-position works as-before) · type-checker
+                          distinguishes context · v13 substrate.cssl is canonical test bed
+    
+    FM.06 · scenario : items merge faster than ASSERT-clauses verify · race to VERIFIED state
+            detection : Gate-C nightly ASSERT-runner shows IMPLEMENTED items without 5-consecutive-pass
+            mitigation : VERIFIED state is per-ASSERT · partial-verify is acceptable interim · merge cadence
+                          ¬ blocked by VERIFIED · only IMPLEMENTED required to merge
+  ⟧
+
+§I COMPATIBILITY
+  ⟦
+    COMPAT.01 · existing csslc test corpus · status : extended ¬ replaced
+    COMPAT.02 · existing LAY · EFR · SIG diag-code blocks · status : preserved
+    COMPAT.03 · v13 LoA substrate.cssl · status : item-19 graduate enables clean rewrite (workaround-removal)
+                 post-Phase-A · the substrate code drops branchless-flag-trick comments
+    COMPAT.04 · cssl-host-d3d12 + cssl-host-vulkan crates · status : item-30 may flag existing patterns
+                 grace-period via @no_drop_check (FM.04)
+    COMPAT.05 · existing CSSLv3 test programs · status : item-05 run-and-observe-gate may surface
+                 tests that pass-by-accident (exit-0 with no observable effect) · those tests get fixed
+                 to actually test something · this is the WinMain-class detection in test code
+  ⟧
+
+§I PRIOR-ART
+  ⟦
+    PA.01 · rustc diagnostic-quality · what-we-take : carets · suggestions · color · file:line:col · 
+             what-we-diverge : structurally identical · this is "do what rustc does"
+    PA.02 · cargo build-cache · what-we-take : per-module fingerprint · re-build only changed modules ·
+             what-we-diverge : CSSL has its own module hash (content + dep-closure) ¬ Cargo's
+    PA.03 · Coq/Lean proof-obligations · what-we-take : every spec discharges its ASSERTs mechanically ·
+             what-we-diverge : not full proof-theory · scripted ASSERT-runners sufficient
+    PA.04 · NASA JPL Power-of-10 · what-we-take : observable-side-effect as proof-of-aliveness ·
+             what-we-diverge : adapted to compiler/CI scale not aerospace-criticality
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS
+  ⟦
+    § no-surveillance-vector · this spec is internal compiler discipline · zero user-facing telemetry
+    § no-consent-bypass · diagnostics are honest · ¬ silently-coerced
+    § no-biometric-egress (PD0018) · not applicable to this layer
+    § no-sovereignty-denial (PD0020) · this spec strengthens sovereignty · WinMain-class bugs were
+       sovereignty-leaks (we shipped what we didn't intend) · closing them = sovereignty-restoration
+    § AI-co-authorship · Reza-pattern · this spec authored by Tech-Lead-agent · Reza-class reviewer welcome
+    § canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES
+  ⟦
+    where-this-lands :
+      cssl-rt              · item-01 sentinel contract (CSSL_SENTINEL_PATH env-var read + magic-byte writes)
+      cssl-mir             · item-02 recognizer tightening · item-09 σ-enforce extended to FFI
+      csslc-linker         · item-03 symbol audit · item-04 manifest verify · item-06 effect-row cross-check
+      csslc-codegen-*      · item-08 cross-target struct-parity verifier
+      cssl-test-harness    · item-05 run-and-observe gate
+      cssl-parser          · item-19 if-expression position
+      cssl-host-rt         · item-30 Drop impls for GPU resources
+      cssl-build-cache     · item-87 per-module incremental
+      cssl-diagnostics     · item-89 carets + suggestions + color
+    
+    estimated-LOC :
+      item-01 : ~80 LOC csslc-rt + ~50 sentinel-bytes test
+      item-02 : ~120 LOC recognizer + 200 LOC test corpus
+      item-03 : ~200 LOC symbol-audit pass + 100 LOC test
+      item-04 : ~250 LOC manifest emit + verify + 80 LOC test
+      item-05 : ~150 LOC harness + 80 LOC golden-cases
+      item-06 : ~180 LOC linker pass + 100 LOC test
+      item-08 : ~400 LOC cross-target verifier + 600 LOC test corpus (20 modules × 5 targets)
+      item-09 : ~150 LOC σ-enforce FFI extension + 80 LOC test
+      item-19 : ~80 LOC parser + 150 LOC test
+      item-30 : ~300 LOC Drop impls + 200 LOC leak test
+      item-87 : ~500 LOC cache impl + 200 LOC test
+      item-89 : ~600 LOC diagnostic formatter + 300 LOC golden
+      total estimate : ~4900 LOC
+    
+    estimated-agent-hours (per spec-63 § PHASE-A · ~30 sum · ~10-12h wall-clock @ 4 parallel) :
+      depth-0 (4 agents) : ~2-3h wall-clock
+      depth-1 (6 agents) : ~3-4h wall-clock
+      depth-2 (1 agent)  : ~2-3h wall-clock
+      depth-3 (1 agent)  : ~3-4h wall-clock
+      total wall-clock   : ~10-14h with full 4-6 parallel fleet
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · should item-01 sentinel magic bytes be configurable per-build for security?
+             default · no · 0xC0FFEE / 0xDEADBEEF are stable forever · these are NOT secrets
+    OQ.02 · should item-04 manifest support unsigned-symbol exceptions for FFI to non-CSSL libs?
+             default · yes · @opaque_extern marker bypasses manifest check for declared-foreign symbols
+    OQ.03 · item-05 run-and-observe : how does it handle benchmark tests that intentionally measure idle?
+             default · benchmark tests register `cssl_test_observe(BENCH_FLAG)` → counts as observable
+    OQ.04 · item-08 cross-target-parity : if MSL has alignment quirk vs SPIR-V · who wins?
+             default · SPIR-V is the reference target · MSL/WGSL/DXIL must conform · backend-specific
+                       padding inserted to match SPIR-V layout
+    OQ.05 · item-30 drop-checker : interaction with linear types from spec-12?
+             default · linear types (iso) require consume · drop-checker enforces this at scope-exit
+                       drop-checker = runtime-witness of compile-time-enforced linearity
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-14 · DRAFT     · Tech-Lead-agent (Claude Opus 4.7) · initial · Phase-A.bundle
+    2026-05-14 · REVIEWED  · self-reviewed against spec-64 §III lifecycle · sufficient as bundle-spec
+    2026-05-14 · RATIFIED  · Apocky-Tech-Lead delegation @ creative-control · this file IS the ratification
+    [pending]    · IMPLEMENTED · awaits Phase-A.depth-0 fanout · 4-agents spawn
+    [pending]    · VERIFIED   · awaits per-item ASSERT.X CI verification · 5-consecutive-pass per item
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § Phase-A bundle ¬ per-item proliferation · honors FM.01 bureaucracy-creep prevention
+    § ¬ flattery · ¬ option-dumping · ¬ scope-creep
+    § every ASSERT mechanically-verifiable · scripts/sentinel_build_check.sh is the Gate-E backbone
+    § future-phase-bundles : spec-71 Phase-B · spec-72 Phase-C · spec-73 Phase-D · spec-74 Phase-E
+    § epic-specs reserved separately : spec-66 ECS · spec-67 csslc-self-host · spec-68 stage-2 · spec-69 wasm32
+    § AI-co-authorship · Reza-pattern · Tech-Lead-agent authored under Apocky delegation
+    § t∞
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

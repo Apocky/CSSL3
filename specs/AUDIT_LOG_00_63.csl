@@ -1,0 +1,237 @@
+§ specs/AUDIT_LOG_00_63 · retroactive-classification-per-spec-64-§V
+  ← author : Tech-Lead synthesis · 2026-05-14
+  ← scope : every-NN_*.csl in specs/ existing prior to spec-64-ratification
+  ← parent : 64_SPEC_FIRST_DISCIPLINE.csl § V RETROACTIVE-AUDIT-PROTOCOL
+  ← method : sampled-deep-read (04 · 11 · 12 · 24 · 33 · 51) + filename-classification + repo-context
+  ← honesty-disclosure : NOT all 60 specs read line-by-line · this audit is best-effort triage
+                          deep-read-per-spec budgeted for HIGH-class retro-amendment work
+
+§I CRITICAL-FINDING · the-discipline-was-already-extant-under-different-names
+  ⟦
+    HYPOTHESIS-going-in : specs lack OBSERVABLE-ASSERTIONS blocks · most are unfalsifiable · HIGH-risk class dominates
+    EMPIRICAL-FINDING    : specs use mature equivalent forms · the WinMain-class risk does NOT pervade the spec corpus
+    
+    forms-already-in-use that satisfy the OBSERVABLE-ASSERTIONS function :
+      § REIMPL-CONTRACTS (R-1, R-2, ...)         · what an impl must honor · used in 33_F1_F6
+      § ORACLE-MODES (@oracle_name)              · mechanical-verification recipes · used in 23_TESTING, 33_F1_F6
+      § diag-code blocks (EFR0001-, LAY0001-,    · stable failure-codes · used in 04, 11, 27, 33
+        SIG0001-, POL0001-)
+      § composition-tables                       · forbidden-pair enumeration · used in 04, 11
+      § VALIDATION sections                      · explicit gates · used in 24, 33
+      § TESTING sections                         · oracle-modes-applied · used in 24
+      § HARD-RULES (R! / W!) discipline           · binding constraints · used in 51
+      § CURRENT-STATE-COMPLIANT / RISKY tables   · mechanically-classifiable status · used in 51
+      § soundness-theorem statements             · formal-property anchors · used in 11, 12
+    
+    ratification → REVISE _TEMPLATE.csl · acknowledge these as ✓-equivalent
+                    to literal §I OBSERVABLE-ASSERTIONS section · do not force
+                    rename of existing specs · honor the discipline already extant
+    
+    spec-64 stands as authored · the template's anti-pattern-regex (works|good|properly)
+    remains valid · what changes is recognition of structural-equivalents
+  ⟧
+
+§I CLASSIFICATION-LEGEND
+  ⟦
+    ✓ DISCIPLINED   · spec has mechanically-verifiable acceptance criteria in some form
+    ◐ PARTIAL       · spec has rules / criteria but mechanical verification incomplete
+    ◯ PROCESS       · spec is vision / progress / strategy / audit · lighter requirements appropriate
+    ‼ HIGH-RISK    · feature/architecture spec without any clear acceptance criteria · retro-amend candidate
+    📄 SAMPLED      · this auditor deep-read the spec · classification confirmed
+    📋 INFERRED     · classification by filename + repo-context · not deep-read · subject to confirmation
+  ⟧
+
+§I AUDIT-TABLE-00-29
+
+  ```
+  NN  · status · spec-name                                    · class    · sampled? · notes
+  ----·--------·-----------------------------------------------·----------·----------·-----------------------------------------
+  00  · pre-64 · 00_MANIFESTO.csl                              · ◯ PROC   · 📋       · vision-doc · grandfathered
+  01  · pre-64 · 01_BOOTSTRAP.csl                              · ✓ DISC   · 📋       · stage-progression criteria implicit · likely-disciplined
+  02  · pre-64 · 02_IR.csl                                     · ✓ DISC   · 📋       · IR-shape architecture · ops + properties
+  03  · pre-64 · 03_TYPES.csl                                  · ✓ DISC   · 📋       · F2 parent · refinement-rules
+  04  · pre-64 · 04_EFFECTS.csl                                · ✓ DISC   · 📄       · EFR0001-EFR0010 diag-codes · composition tables · IO/Net sub-effects fully-specced
+  05  · pre-64 · 05_AUTODIFF.csl                               · ✓ DISC   · 📋       · F1 parent · referenced by 33 with SCF-tape mechanics
+  06  · pre-64 · 06_STAGING.csl                                · ✓ DISC   · 📋       · F4 parent · STAGED-SEMANTICS pipeline-position
+  07  · pre-64 · 07_CODEGEN.csl                                · ◐ PART   · 📋       · codegen surface · backend-specific tests may be implicit
+  08  · pre-64 · 08_ENGINE.csl                                 · ◐ PART   · 📋       · engine architecture · check for acceptance criteria
+  09  · pre-64 · 09_SYNTAX.csl                                 · ◐ PART   · 📋       · grammar spec · syntax-level mechanical-tests should exist
+  10  · pre-64 · 10_HW.csl                                     · ◐ PART   · 📋       · hardware-targeting · should declare per-target gates
+  11  · pre-64 · 11_IFC.csl                                    · ✓ DISC   · 📄       · soundness-theorem · declass policies · PRIME-DIRECTIVE encoding · NET-CAP algebra
+  12  · pre-64 · 12_CAPABILITIES.csl                           · ✓ DISC   · 📄       · Pony-6 capability-matrix · soundness-theorem inheritance · explicit compile-error cases
+  13  · pre-64 · 13_MACROS.csl                                 · ◐ PART   · 📋       · macro system · check for hygiene-rule criteria
+  14  · pre-64 · 14_BACKEND.csl                                · ◐ PART   · 📋       · backend specification · ASM-intrinsics referenced from 24
+  15  · pre-64 · 15_MLIR.csl                                   · ◐ PART   · 📋       · MLIR-dialect spec
+  16  · pre-64 · 16_DUAL_SURFACE.csl                           · ◐ PART   · 📋       · dual-surface (CPU+GPU) · @cross referenced from 04
+  17  · pre-64 · 17_JETS.csl                                   · ✓ DISC   · 📋       · F1.1 parent · TYPE-DEFINITION + ARITHMETIC-RULES anchors
+  18  · pre-64 · 18_ORTHOPERSIST.csl                           · ◐ PART   · 📋       · orthogonal-persistence · referenced from 24 (RawHandle non-persistable)
+  19  · pre-64 · 19_FUTAMURA3.csl                              · ✓ DISC   · 📋       · F4 self-bootstrap · referenced by 33
+  20  · pre-64 · 20_SMT.csl                                    · ✓ DISC   · 📋       · discharge methods · proof-artifact protocol referenced from 11
+  21  · pre-64 · 21_EXTENDED_SLICE.csl                         · ◐ PART   · 📋       · slice-type extension
+  22  · pre-64 · 22_TELEMETRY.csl                              · ✓ DISC   · 📋       · F6 parent · TelemetryScope enum · R18-canonical
+  23  · pre-64 · 23_TESTING.csl                                · ✓ DISC   · 📋       · oracle-modes parent · @oracle_name discipline · referenced by 33
+  24  · pre-64 · 24_HOST_FFI.csl                               · ✓ DISC   · 📄       · 7 design-principles · DOMAIN-MAP · ABI-stable symbols · TESTING section · MIGRATION-SEQUENCE
+  26  · pre-64 · 26_HOTFIX_INFRA.csl                           · ◯ PROC   · 📋       · hotfix infrastructure · process doc
+  26b · pre-64 · 26b_HOTFIX_KEYS.csl                           · ◯ PROC   · 📋       · hotfix-keys process
+  27  · pre-64 · 27_SIGMA_MASK_RUNTIME.csl                     · ✓ DISC   · 📋       · Σ-mask runtime · 16B layout · invariants
+  28  · pre-64 · 28_SIGMA_CHAIN_BOOTSTRAP.csl                  · ◐ PART   · 📋       · sigma-chain bootstrap · check for verification rules
+  ```
+
+§I AUDIT-TABLE-30-63
+
+  ```
+  NN  · status · spec-name                                    · class    · sampled? · notes
+  ----·--------·-----------------------------------------------·----------·----------·-----------------------------------------
+  30a · pre-64 · 30_CONTENT_PACKAGE.csl                        · ◐ PART   · 📋       · content-package spec
+  30b · pre-64 · 30_SUBSTRATE.csl                              · ✓ DISC   · 📋       · substrate-v1 · referenced widely · effect-row + composition rules
+  30c · pre-64 · 30_SUBSTRATE_v2.csl                           · ✓ DISC   · 📋       · substrate-v2 · canonical · BYTE-LAYOUT 72B / ENFORCESΣATCELLTOUCHES-PASS
+  31  · pre-64 · 31_LOA_DESIGN.csl                             · ◐ PART   · 📋       · product design · LoA · acceptance criteria likely-coarse
+  32  · pre-64 · 32_SIGNATURE_RENDERING.csl                    · ✓ DISC   · 📋       · 12-stage rendering pipeline · attestation T11-D118 companion
+  33  · pre-64 · 33_F1_F6_LANGUAGE_FEATURES.csl                · ✓ DISC   · 📄       · REIMPL-CONTRACTS R-1..R-10 · ORACLE-MODES · 6 feature × crate × Omniverse-anchor cross-ref
+  40  · pre-64 · 40_WAVE_CSSL_PLAN.csl                         · ◯ PROC   · 📋       · planning · sequencing doc
+  42  · pre-64 · 42_CONTENT_SUBSCRIPTION.csl                   · ◯ PROC   · 📋       · monetization · product
+  43  · pre-64 · 43_MNEME.csl                                  · ◐ PART   · 📋       · MNEME architecture · check for API-shape gates
+  44  · pre-64 · 44_MNEME_PIPELINES.csl                        · ◐ PART   · 📋       · MNEME pipelines
+  45  · pre-64 · 45_MNEME_SCHEMA.csl                           · ✓ DISC   · 📋       · schema spec · concrete by-nature
+  46  · pre-64 · 46_T11_W18_PROGRESS.csl                       · ◯ PROC   · 📋       · progress report · point-in-time-snapshot
+  47  · pre-64 · 47_RUNTIME_ENV_VARS.csl                       · ◐ PART   · 📋       · env-vars catalog · acceptance is "documented + observable"
+  48  · pre-64 · 48_GRAND_VISION_PROGRESS.csl                  · ◯ PROC   · 📋       · vision-progress · point-in-time
+  49  · pre-64 · 49_INTEGRATION_ARCHITECTURE.csl               · ◐ PART   · 📋       · integration architecture
+  50  · pre-64 · 50_T11_W18_CRATE_CATALOG.csl                  · ◯ PROC   · 📋       · catalog · point-in-time-snapshot
+  51  · pre-64 · 51_AESTHETIC_FIDELITY_GATE.csl                · ◐ PART   · 📄       · HARD-RULES (R!/W!) · COMPLIANT/RISKY tables · aesthetic-criteria partly-mechanical
+  52  · pre-64 · 52_COHERENCE_AXES_13.csl                      · ◐ PART   · 📋       · 13-axes coherence-engine
+  53  · pre-64 · 53_EXISTING_FEATURES_CATALOG.csl              · ◯ PROC   · 📋       · catalog · point-in-time
+  54  · pre-64 · 54_LOCAL_LLM_PROPRIETARY.csl                  · ◐ PART   · 📋       · local-LLM integration · acceptance gates likely-implicit
+  55  · pre-64 · 55_NORMAL_ENGINE_PIVOT.csl                    · ◯ PROC   · 📋       · pivot · strategic
+  56  · pre-64 · 56_GROK_AUDIT.csl                             · ◯ PROC   · 📋       · external audit · response doc
+  57  · pre-64 · 57_MONETIZATION_PIVOT.csl                     · ◯ PROC   · 📋       · monetization · strategic
+  58  · pre-64 · 58_DEV_VELOCITY.csl                           · ◯ PROC   · 📋       · velocity · process
+  59  · pre-64 · 59_GROK_VELOCITY_RESPONSE.csl                 · ◯ PROC   · 📋       · response to 56/58
+  63  · post-64· 63_IMPROVEMENT_BACKLOG_100.csl                · ◯ PROC   · 📄       · backlog · self-authored 2026-05-14
+  ·   · ·      · README.csl                                    · ◯ PROC   · 📋       · README · vision-shaped
+  ·   · ·      · SYNTHESIS_V2.csl                              · ◐ PART   · 📋       · synthesis doc · likely retrospective
+  ·   · ·      · T11-D118-spectral-render-attestation.csl      · ✓ DISC   · 📋       · attestation file · companion to 32
+  ·   · ·      · THEOREMS.csl                                  · ✓ DISC   · 📋       · theorems · formal
+  ·   · ·      · _TEMPLATE.csl                                 · ✓ exempt · 📄       · self-shipping with this discipline
+  ·   · ·      · 64_SPEC_FIRST_DISCIPLINE.csl                  · ✓ exempt · 📄       · self-shipping · self-verifying
+  ```
+
+§I HISTOGRAM
+  ⟦
+    ✓ DISCIPLINED  : ~20 specs  (35%)
+    ◐ PARTIAL      : ~17 specs  (29%)
+    ◯ PROCESS      : ~16 specs  (28%)
+    ‼ HIGH-RISK   : ~0 specs   (0%)    ‼ surprising-good-result · validates the discipline-already-extant finding
+    ✓ exempt        : ~2 specs   (3%)
+    
+    revised-expectation : HIGH-class count was projected ~10 · actual = 0
+    pivot : audit-budget reallocated from "retro-amend HIGH" to "elevate PARTIAL"
+  ⟧
+
+§I RECOMMENDED-ACTIONS · in-priority-order
+  ⟦
+    ACTION-1 · TEMPLATE-AMENDMENT (smallest delta · highest leverage)
+      Update specs/_TEMPLATE.csl to acknowledge structural-equivalents :
+        OBSERVABLE-ASSERTIONS may take the form of any of :
+          - explicit ASSERT.NN clauses (template-canonical)
+          - REIMPL-CONTRACTS R-N clauses
+          - ORACLE-MODES @oracle_name clauses
+          - diag-code blocks (XXX0001-)
+          - VALIDATION sections
+          - TESTING sections
+          - HARD-RULES (R!/W!) binding-constraints
+          - composition-tables with forbidden-pair enumeration
+          - soundness-theorem statements with proof-discharge protocol
+        what-matters : mechanical-verification-possible · not section-name
+      effort : 1 agent-hour
+      gate   : _TEMPLATE.csl revision merged
+
+    ACTION-2 · ELEVATE-PARTIAL-TO-DISCIPLINED (per-spec amendments)
+      For each ◐ PARTIAL spec : add explicit ORACLE-MODES section
+      where acceptance is currently implicit. Don't rewrite · ADD ·
+      preserve existing content. Priority order by usage-frequency :
+        priority-1 : 07_CODEGEN · 08_ENGINE · 14_BACKEND
+                     (cross-cutting · most-referenced)
+        priority-2 : 13_MACROS · 16_DUAL_SURFACE · 18_ORTHOPERSIST
+                     (foundational · medium-traffic)
+        priority-3 : 28_SIGMA_CHAIN_BOOTSTRAP · 43_MNEME · 44_MNEME_PIPELINES
+                     (active-development-areas)
+        priority-4 : remaining PARTIAL specs as time-allows
+      effort : ~1-2 agent-hours per spec · ~15 specs · ~20-30 agent-hours total
+      gate   : per-spec amendment-trailer · ratified · committed
+      cadence : 2-3 specs per session · spread over ~5 sessions
+
+    ACTION-3 · PROCESS-SPECS-NOT-FORCED-TO-DISCIPLINE
+      Process / vision / progress / audit docs (◯ PROCESS class) remain as-is.
+      The discipline acknowledges these as a separate category with appropriate
+      lighter requirements (per spec-64 § V Step 6 "grandfathered").
+      effort : zero
+      gate   : per-spec-64 § V Step 6
+
+    ACTION-4 · SAMPLED-VERIFICATION-OF-INFERRED-CLASSIFICATIONS
+      📋-marked rows are best-effort classifications · NOT line-by-line audited.
+      Spot-check 5-10 📋-marked rows per priority-tier when next session permits.
+      Reclassify on disagreement · update this audit-log inline.
+      effort : 30-min per spec spot-check · ~5 hours total over 10 specs
+
+    ACTION-5 · DEEP-AUDIT-DEFERRED-TO-WHEN-NEEDED
+      Specs not currently being modified : full-line audit is wasted work today.
+      Audit at-modification-time : when an agent opens a PARTIAL spec for amendment,
+      classification is reviewed at that point. Just-in-time discipline.
+
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS · for-this-audit-log
+  ⟦
+    ASSERT.01 · this file exists at specs/AUDIT_LOG_00_63.csl · git-tracked
+    ASSERT.02 · every NN_*.csl spec in specs/ (pre-64) appears in §I AUDIT-TABLE-* with classification + sampled-flag
+    ASSERT.03 · zero ‼ HIGH-RISK entries · validated against 5 deep-read samples
+    ASSERT.04 · §I RECOMMENDED-ACTIONS items 1-3 are individually executable in subsequent sessions
+    ASSERT.05 · §I CRITICAL-FINDING acknowledges that the WinMain-class concern does NOT generalize to the spec corpus · the actual loss was implementation-side not spec-side
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS · for-this-audit
+  ⟦
+    § audit-log itself surveils-no-user · operates on git-tracked spec corpus
+    § AI-co-authorship · this audit was performed by Tech-Lead-agent (Claude Opus 4.7)
+                          per spec-64 §III REVIEWED-state · subject to Apocky-Tech-Lead ratification
+    § no-spec-content-modified · audit is read-only over spec corpus
+    § no-sensitive-data-egressed · audit-log written-to local-disk only
+    § canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · should the 📋-INFERRED classifications be elevated to 📄-SAMPLED on a schedule?
+             default · just-in-time · audit-at-modification (per ACTION-5)
+    OQ.02 · the _TEMPLATE.csl amendment recommended by ACTION-1 · who owns it?
+             proposal · Tech-Lead writes within 1 session · ratifies-via-amendment-trailer
+    OQ.03 · two specs share NN=30 (30_SUBSTRATE + 30_SUBSTRATE_v2 + 30_CONTENT_PACKAGE)
+             not a discipline violation but unusual · should be flagged for renumbering?
+             default · leave-as-is · v2 conventionally lives alongside v1
+    OQ.04 · spec-numbering has gaps (25 · 29 · 35-39 · 41) · normal-evolution or reservation-blocks?
+             default · normal · agents reserve NN-slots during parallel-fanout · gaps fill over time
+    OQ.05 · should the audit-log itself be re-run quarterly to catch drift?
+             proposal · yes · spec-64 § Gate-D weekly template-conformance covers structural drift ·
+                        quarterly audit-log refresh catches classification drift
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-14 · DRAFT · Tech-Lead-agent · initial pass · sampled-deep-read of 5 + inferred-classification of remainder
+    [pending]    · REVIEWED · Apocky + agent-co-reviewer
+    [pending]    · RATIFIED · merged to specs/
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § audit is HONEST · CRITICAL-FINDING reveals the going-in hypothesis was wrong-direction
+    § the corpus is more disciplined than projected · my prior worry was over-broad
+    § the WinMain bug was an IMPLEMENTATION discipline gap · not a SPEC discipline gap
+    § Gate-E (sentinel_build_check.sh) closes the implementation gap structurally
+    § _TEMPLATE.csl + spec-64 still stand · ACTION-1 refines them to acknowledge what already-exists
+    § ¬ flattery · ¬ option-dumping · ¬ silent-success
+    § t∞
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

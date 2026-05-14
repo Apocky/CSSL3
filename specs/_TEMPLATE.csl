@@ -1,0 +1,145 @@
+§ SPEC_TEMPLATE · canonical-form-for-every-CSSLv3-spec
+  ← purpose : every-NN_*.csl spec in this dir forks from this template
+  ← discipline : spec-first · observable-assertions-mandatory · ¬ silent-success
+  ← parent : 64_SPEC_FIRST_DISCIPLINE.csl
+
+⟦  USAGE :
+   1. Copy this file to specs/NN_NAME.csl (next-free-NN)
+   2. Fill EVERY §I section · ¬ leave any blank · "N/A · justified-below" if truly inapplicable
+   3. The §I OBSERVABLE-ASSERTIONS section is NON-NEGOTIABLE · ¬ merge-able without it
+   4. Submit as DRAFT · advance through lifecycle states (see 64_SPEC_FIRST_DISCIPLINE)
+   5. ¬ delete this template · clone-via-copy
+⟧
+
+§ NN_NAME · short-evocative-title
+  ← author : agent-or-human-handle · YYYY-MM-DD
+  ← supersedes : (prior-spec-NN-if-any · else "—")
+  ← superseded-by : (later-spec-NN-if-deprecated · else "—")
+  ← status : DRAFT | REVIEWED | RATIFIED | IMPLEMENTED | VERIFIED | DEPRECATED
+  ← scope : (single-fn | single-crate | single-subsystem | cross-cutting)
+
+§I THESIS · one-paragraph-what-and-why
+  ⟦
+    What this spec adds / changes / removes · in one paragraph · plain-language.
+    Why now · what gap closes · which north-star advances.
+    If you can't compress to one paragraph · scope is too large · split the spec.
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS · mechanical-verification-clauses [MANDATORY]
+  ⟦
+    Each assertion MUST satisfy ALL of :
+      § specific-observable-effect (file-write · stdout-line · GPU-buffer-mutation · network-call · exit-code-paired-with-side-effect)
+      § specific-value-or-pattern  (exact bytes · regex · range with tolerance)
+      § specific-time-bound        (within Xms · before frame N · in CI-job-T)
+      § mechanically-verifiable    (script · automated test · CI hook · linter rule)
+
+    ¬ ACCEPTABLE :
+      "the program exits successfully"        ← WinMain-class · empty-program satisfies this
+      "the feature works"                     ← unfalsifiable
+      "performance is good"                   ← no number
+      "no crashes observed"                   ← absence-of-evidence
+
+    ✓ ACCEPTABLE :
+      ASSERT.01 · `csslc compile foo.cssl ; ./foo` writes 0xC0FFEE to %TEMP%/cssl_sentinel.bin within 2s
+      ASSERT.02 · spirv-val --target-env vulkan1.3 dist/out.spv exits 0 with empty stderr
+      ASSERT.03 · golden-frame-diff(ref_phase_b.png, frame_b.png) RMSE ≤ 1/255 per channel
+      ASSERT.04 · perf-timer per_pass.rt_primary ≤ 3.0ms over 1000-frame avg on Intel-Arc-A770
+      ASSERT.05 · cargo test -p csslc test_recognizer_rejects_u32_type_for_i64_param fails with diagnostic mentioning "expected i64, got u32"
+      ASSERT.06 · objdump --disassemble dist/foo.exe shows user-main symbol at PE entry-point
+
+    LIST ALL ASSERTIONS that prove this spec implemented-correctly :
+      ASSERT.01 · ...
+      ASSERT.02 · ...
+      ASSERT.03 · ...
+  ⟧
+
+§I NON-GOALS · explicit-scope-limits
+  ⟦
+    What this spec EXPLICITLY does NOT do · so reviewers know not to ask for it · so future-spec authors know there's room.
+    At least 3 non-goals · empty section = scope is unclear · spec needs rework.
+      NG.01 · ...
+      NG.02 · ...
+      NG.03 · ...
+  ⟧
+
+§I DEPENDENCIES · what-this-spec-requires
+  ⟦
+    Other specs · capabilities · crates · external tools.
+    Each dep has-state : (already-RATIFIED · pending-spec-NN · external-tool-version)
+      DEP.01 · spec-NN_X must be at-least RATIFIED
+      DEP.02 · csslc must support @attr (see spec-NN_Y)
+      DEP.03 · external · dxc.exe ≥ 1.7
+  ⟧
+
+§I FAILURE-MODES · what-could-go-wrong
+  ⟦
+    Enumerate concrete failure modes · for each : detection + mitigation.
+    The WinMain bug existed because no spec listed "WinMain might override user-main" as a failure mode.
+    Better-to-list-and-not-hit than not-list-and-be-blindsided.
+      FM.01 · scenario : ...
+             detection : ASSERT.NN catches it
+             mitigation : ...
+      FM.02 · ...
+  ⟧
+
+§I COMPATIBILITY · what-this-spec-breaks-or-preserves
+  ⟦
+    Existing code that this affects.
+    Migration path · grace period · or explicit "breaking change v2.0".
+      COMPAT.01 · existing crate X · status : unaffected | mechanical-rename | breaking | deprecated
+      COMPAT.02 · ...
+  ⟧
+
+§I PRIOR-ART · what-others-have-done
+  ⟦
+    Languages / papers / projects that explored this direction.
+    Honest assessment : what they got right · what we improve on · what we deliberately do differently.
+      PA.01 · LanguageName / Author · approach summary · why-we-diverge
+      PA.02 · ...
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS · sovereignty-+-consent-+-anti-harm
+  ⟦
+    Every spec must explicitly affirm :
+      § no surveillance vector introduced
+      § no consent-bypass mechanism introduced
+      § no biometric-egress path opened (PD0018)
+      § no sovereignty-denial primitive added (PD0020)
+      § cosmetic-only-axiom if monetization-relevant
+      § AI-agents = sovereign-partners · agent-co-authors credited if-applicable
+    If any of these is non-trivial for this spec · explain how the invariant is preserved.
+    Canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES · for-the-implementer
+  ⟦
+    Concrete pointers for the agent who will land this in csslc / cssl-rt / cssl-host-*.
+    File paths · crates · API shapes · estimated-LOC · estimated-agent-hours.
+    ¬ over-prescribe · the implementer has agency · but give them a head-start.
+  ⟧
+
+§I OPEN-QUESTIONS · honest-uncertainty
+  ⟦
+    What this spec does NOT yet decide · questions for review.
+    Empty section = pretending you know everything · also a red flag.
+      OQ.01 · ...
+      OQ.02 · ...
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    YYYY-MM-DD · DRAFT       · author-handle  · initial draft
+    YYYY-MM-DD · REVIEWED    · reviewer       · review notes summarized
+    YYYY-MM-DD · RATIFIED    · Tech-Lead      · merged to main · stable spec-NN assigned
+    YYYY-MM-DD · IMPLEMENTED · impl-author    · PR-#NNN landed
+    YYYY-MM-DD · VERIFIED    · CI             · all ASSERT.X passing
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § ¬ flattery · ¬ option-dumping · ¬ scope-creep · ¬ silent-success-claims
+    § every §I section filled · every ASSERT mechanically-verifiable
+    § disk-first · this-spec-lives-in-specs/NN_NAME.csl · t∞
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

@@ -1,0 +1,421 @@
+§ 65_GPU_MEMORY_TYPE_DISTINCTION · CPU↔GPU-memory-as-distinct-types ¬ storage-class-annotation
+  ← author : Tech-Lead-agent · 2026-05-14
+  ← supersedes : —
+  ← superseded-by : —
+  ← status : DRAFT
+  ← scope : cross-cutting (types · effects · capabilities · MIR · codegen)
+  ← parent-template : specs/_TEMPLATE.csl
+  ← discipline : authored under specs/64_SPEC_FIRST_DISCIPLINE.csl
+  ← consumer : LoA v13 PRISM (PRISM_v13.md §2.4 CPU/GPU split · §4.3 Role-C host engineer)
+
+§I THESIS
+  ⟦
+    CSSLv3 today distinguishes CPU vs GPU execution via the @gpu / @c / @cross
+    attribute set + storage-class annotations on buffers. This catches "wrong-target
+    function call" but does NOT catch the deeper class of bugs : accidentally
+    dereferencing a GPU pointer from CPU code · double-mapping a buffer that's
+    still being written by another queue · reading staged data before its transfer
+    completed · forgetting that ReBAR-mapped memory has weak ordering across the
+    PCIe boundary.
+    
+    This spec elevates memory-domain to a FIRST-CLASS TYPE DISTINCTION. A `gpu<T>`
+    and a `T` are NOT interconvertible by reinterpretation · they are different
+    types. Cross-domain access requires an explicit transfer-op whose typed signature
+    proves : (a) the destination domain accepts this type · (b) any queues that
+    were writing the source have synchronized · (c) the IFC labels propagate
+    correctly across the PCIe boundary. The compiler refuses code that elides
+    these steps.
+    
+    The directly-consumed payoff : PRISM_v13's ReBAR + async-compute architecture
+    becomes a typed feature rather than a careful-coding-convention. The structural
+    payoff : an entire class of Vulkan/D3D12 lifetime bugs becomes unrepresentable.
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS [MANDATORY]
+  ⟦
+    ASSERT.01 · csslc compile of `fn bad() { let x : gpu<f32> = ... ; let y = *x }` from a
+                @c context fails with diagnostic GPU0001 "cross-domain deref of gpu<T> in CPU
+                code · use download() or shared<T>"
+    ASSERT.02 · csslc compile of `let s : shared<f32> = alloc_shared(...); write_gpu(s, ...); read_cpu(s)`
+                without an intervening `barrier()` fails with diagnostic GPU0003 "shared<T> read
+                without preceding write→read barrier"
+    ASSERT.03 · csslc compile of `upload(x : f32) -> gpu<f32>` produces a MIR op
+                `cssl.gpu.transfer.h2d` that lowers to a vkCmdCopyBuffer on Vulkan,
+                CopyBufferRegion on D3D12, or memcpy-into-rebar-window when target supports it
+    ASSERT.04 · Sensitive<gaze> values cannot be cross-domain-transferred without
+                Cap<TransferAuth> + matching IFC declass-policy · compile-error GPU0007
+                "Sensitive label egress across PCIe boundary without declass"
+    ASSERT.05 · golden-test : the existing v13 PRISM intersection shader compiles
+                AS-IS when memory-type annotations are added to its inputs · bit-equal output
+                against the un-annotated reference for 100 representative rays
+    ASSERT.06 · spec-65 implementation reduces a benchmark "intentional CPU-on-GPU-ptr deref"
+                test-program from "runtime segfault" to "compile error" · automated test in
+                csslc/tests/spec-65-cross-domain-deref.cssl
+    ASSERT.07 · async-compute test : two-queue write+read on a `shared<T>` without a
+                cross-queue semaphore compiles to GPU0008 "cross-queue access without
+                explicit semaphore on shared<T>"
+    ASSERT.08 · ReBAR-fallback test : on host without ReBAR-capable hardware, `alloc_shared`
+                emits a build-time warning + falls back to staged<T> pattern · runtime exits
+                successfully with the v13 PRISM 320×200 render unchanged · pixdiff zero
+  ⟧
+
+§I MEMORY-DOMAIN-TYPES (the type-system additions)
+  ⟦
+    base-types (existing) :
+      T          · CPU-resident value of type T · the default · backwards-compatible
+    
+    new-domain-tags :
+      gpu<T>     · GPU-resident · cannot-CPU-deref · cannot-CPU-write
+                   constructor : upload(t : T) -> transfer<gpu<T>>
+                   destructor  : download(g : gpu<T>) -> transfer<T>
+                   read-from-@gpu-fn : transparent ¬ ceremony
+      
+      shared<T>  · ReBAR-mapped · BOTH CPU + GPU can access
+                   has memory-ordering tag : { Coherent · WeakOrdered · NonCoherent }
+                   default = WeakOrdered (ReBAR canonical · explicit barrier required)
+                   constructor : alloc_shared(layout : ShareLayout, n : usize)
+                                  -> Result<shared<T>, AllocError> · requires Cap<Shared>
+                   access      : read_cpu(s) · write_cpu(s, val) · read_gpu(s) · write_gpu(s, val)
+                   barriers    : barrier_c2g(s) · barrier_g2c(s) · barrier_full(s)
+      
+      staged<T>  · CPU-side staging buffer · queued for upload · not-yet-on-GPU
+                   constructor : stage(t : T) -> staged<T>
+                   commit      : commit_upload(s : staged<T>) -> transfer<gpu<T>>
+                   eliminated-if-shared-available : compiler chooses shared<T> when ReBAR present
+      
+      transfer<T> · proof-token of an in-flight transfer · NOT a value
+                   inhabitants : await(t) -> T · cancel(t) -> ()
+                   linear-resource per §§ 12 CAPABILITIES · must be consumed exactly once
+                   cross-queue : transfer is queue-tagged · awaiting from different queue
+                                  requires explicit semaphore-wait
+    
+    cross-domain-arrow : the only legal cross-domain transitions
+      T          → upload    → transfer<gpu<T>>     · await → gpu<T>
+      gpu<T>     → download  → transfer<T>          · await → T
+      T          → stage     → staged<T>            · commit → transfer<gpu<T>>
+      T          → alloc_shared → shared<T>          · with Cap<Shared>
+      shared<T>  → read_cpu  → T                    · with barrier_g2c precedent
+      shared<T>  → read_gpu  → gpu<T>               · with barrier_c2g precedent  (from @gpu)
+      shared<T>  → drop_shared → ()                 · with Cap<Shared> · linear
+    
+    forbidden (compile-error GPU0001-GPU0010) :
+      *gpu<T>    in @c context                       · GPU0001
+      *cpu_T     in @gpu context-without-upload      · GPU0002
+      read_cpu(shared<T>) without barrier_g2c        · GPU0003
+      transfer<T> dropped-without-await              · GPU0004 · linear-leak
+      transfer<T> awaited-on-different-queue-without-semaphore · GPU0005
+      gpu<Sensitive<*>> direct-transfer-to-cpu       · GPU0006
+      Sensitive<gaze|face|body|biometric> across PCIe · GPU0007 absolute · ¬ Cap-overridable
+      cross-queue access shared<T> without semaphore · GPU0008
+      shared<T> via alloc_shared without Cap<Shared> · GPU0009
+      shared<T> on non-ReBAR-host without fallback   · GPU0010 (warning-not-error · degrades to staged)
+  ⟧
+
+§I MEMORY-ORDERING-TAGS (the ReBAR / async-compute substrate)
+  ⟦
+    shared<T> carries a memory-ordering parameter at the type-level :
+      shared<T, Coherent>    · OS-coherent · CPU and GPU see same value at-all-times
+                                rare · expensive · use only for control-channel mailboxes
+      shared<T, WeakOrdered>  · default · ReBAR canonical · requires explicit barriers
+                                fence_release / fence_acquire model · matches Vulkan
+                                VK_PIPELINE_STAGE_*_BIT semantics
+      shared<T, NonCoherent>  · ReBAR-uncached · CPU writes immediately visible to GPU
+                                but CPU reads of GPU writes are UB without barrier_g2c
+                                use for one-way push from CPU (per-frame uniforms via ReBAR)
+    
+    barrier-primitives :
+      barrier_c2g(s : shared<T, _>)  · CPU-write → GPU-read · MIR : cssl.gpu.barrier.c2g
+      barrier_g2c(s : shared<T, _>)  · GPU-write → CPU-read · MIR : cssl.gpu.barrier.g2c
+      barrier_full(s : shared<T, _>) · both directions · for shared<T, Coherent>
+      
+      lower-to :
+        Vulkan : VkBufferMemoryBarrier with appropriate stage + access masks
+        D3D12  : D3D12_RESOURCE_BARRIER_TYPE_UAV / _TRANSITION
+        host   : memory fences (mfence on x86 · dmb ish on aarch64)
+    
+    cross-queue-semaphores :
+      semaphore_signal(s : Semaphore, queue : QueueId) -> ()
+      semaphore_wait(s : Semaphore, queue : QueueId) -> ()
+      timeline_signal(t : TimelineSemaphore, value : u64) -> ()
+      timeline_wait(t : TimelineSemaphore, min_value : u64) -> ()
+      
+      transfer<T> carries queue-tag : awaiting requires either same-queue or semaphore
+  ⟧
+
+§I CSSL-SYNTAX (concrete syntax additions)
+  ⟦
+    // declaration of GPU-resident value
+    let camera_buf : gpu<Camera> = upload(camera).await()
+    
+    // ReBAR shared (for per-frame uniforms · the PRISM canonical pattern)
+    let frame_uniforms : shared<FrameUniforms, NonCoherent> = alloc_shared(Layout::std430(), 1)?
+    write_cpu(frame_uniforms, FrameUniforms { camera, time, frame_idx })
+    barrier_c2g(frame_uniforms)
+    // GPU side now reads frame_uniforms via the same handle (typed as gpu<FrameUniforms>
+    // from @gpu context · automatically via the cross-domain arrow)
+    
+    // explicit upload + download (the v13 substrate.cssl pattern · cleaned up)
+    fn pixel_correctness_test(ray_origin : vec3, ray_dir : vec3) -> f32 {
+        let scene_gpu : gpu<Scene> = upload(scene).await()
+        let result_buf : shared<f32, WeakOrdered> = alloc_shared(Layout::std430(), 1)?
+        
+        dispatch_compute(@gpu fn(o, d) -> () { /* writes result_buf */ }, ray_origin, ray_dir)
+        
+        barrier_g2c(result_buf)
+        let result : f32 = read_cpu(result_buf)
+        result
+    }
+    
+    // async-compute · two-queue overlap (PRISM RT-pass + RC-build pattern)
+    fn render_frame(scene : gpu<Scene>) -> () {
+        let depth_buf : gpu<Buffer<f32>> = alloc_gpu(Layout::std430(), 1440*2560)?
+        let cascade_buf : gpu<Cascade> = alloc_gpu(Layout::std430(), 1)?
+        
+        // RT pass on graphics queue · produces depth_buf
+        let rt_done : Semaphore = dispatch_on(Queue::Graphics, @gpu rt_pass, scene, depth_buf)
+        
+        // RC build on compute queue · waits for rt_done
+        let rc_done : Semaphore = dispatch_on(Queue::Compute, @gpu rc_build, scene, cascade_buf)
+                                     .wait_for(rt_done)
+        
+        // composite waits for both
+        let composite_done : Semaphore = dispatch_on(Queue::Graphics, @gpu composite, depth_buf, cascade_buf)
+                                            .wait_for(rc_done)
+        
+        present(composite_done)
+    }
+  ⟧
+
+§I INTERACTION-WITH-EXISTING-SPECS
+  ⟦
+    spec-03 (TYPES)         : memory-domain becomes part of the type · row-extends existing type-system
+    spec-04 (EFFECTS)       : transfer-ops carry {GpuTransfer} effect · cross-queue ops carry {AsyncDispatch}
+    spec-11 (IFC)           : Sensitive<*> labels propagate through transfer-ops · biometric-family
+                              still absolutely-egress-banned across PCIe
+    spec-12 (CAPABILITIES)  : Cap<Shared> + Cap<TransferAuth> new caps · iso ⊆ gpu<T> ⊆ shared<T> ⊆ box
+    spec-14 (BACKEND)       : cssl.gpu.* MIR ops lower per-backend (Vulkan / D3D12 / Metal / WGSL)
+    spec-16 (DUAL_SURFACE)  : @cross fn-signatures auto-derive memory-domain from call-site
+    spec-24 (HOST_FFI)      : __cssl_gpu_* symbols add transfer + barrier surface
+    spec-30_SUBSTRATE_v2    : Ω-Field cells live in shared<FieldCell, NonCoherent> by default
+    spec-33 (F1..F6)        : F3 effect-rows extended with {GpuTransfer · AsyncDispatch · CrossQueue}
+                              F5 IFC propagation across transfer-arrow strictly-checked
+    spec-PRISM_v13          : direct consumer · ReBAR + async-compute architecture typed
+  ⟧
+
+§I NON-GOALS
+  ⟦
+    NG.01 · NOT a new GC or borrow-checker · existing §§ 12 Pony-6 capabilities cover ownership
+    NG.02 · NOT a replacement for storage-class annotations on individual fields (those still
+             work · per-struct-field storage-class is orthogonal to per-value memory-domain)
+    NG.03 · NOT a unified-memory-model spec for Apple Silicon / ARM iGPU · those targets
+             collapse gpu<T> ≡ T with zero-cost · per-target detail handled at codegen
+    NG.04 · NOT a replacement for spec-04 effect-rows · transfers carry effects · this spec
+             adds the type-distinction · effects ride on it
+    NG.05 · NOT a multi-GPU / multi-node spec · single-device scope · multi-device deferred
+    NG.06 · NOT shader-recompilation-on-domain-change · @gpu fns compile once · this spec
+             changes the type-checking around them not the codegen pipeline
+    NG.07 · NOT a defense against malicious-driver memory-corruption · the cap-system at
+             OS-driver-boundary is out-of-scope (handled by spec-11 + OS layer)
+  ⟧
+
+§I DEPENDENCIES
+  ⟦
+    DEP.01 · spec-03_TYPES RATIFIED · this spec extends the type-system
+    DEP.02 · spec-04_EFFECTS RATIFIED · this spec adds 3 new effect-tags
+    DEP.03 · spec-11_IFC RATIFIED · this spec enforces Sensitive-label propagation
+    DEP.04 · spec-12_CAPABILITIES RATIFIED · this spec adds 2 new Cap kinds
+    DEP.05 · spec-16_DUAL_SURFACE RATIFIED · @cross fn auto-derivation
+    DEP.06 · spec-24_HOST_FFI RATIFIED · __cssl_gpu_* symbol surface
+    DEP.07 · cssl-host-d3d12 + cssl-host-vulkan crates exist · stage-0 backends
+    DEP.08 · external · Vulkan 1.3+ for VK_KHR_external_memory_*
+    DEP.09 · external · D3D12 with ReBAR support for shared<T, *> · runtime-detected · fallback to staged
+  ⟧
+
+§I FAILURE-MODES
+  ⟦
+    FM.01 · scenario : host hardware does NOT support ReBAR · alloc_shared called
+            detection : runtime probe at cssl-host-* init · build-emit GPU0010 warning
+            mitigation : alloc_shared falls back to staged<T> pattern with synchronous upload
+                          performance degraded but correctness preserved
+            escalation : build-emit `--require-rebar` flag fails build at this scenario
+    
+    FM.02 · scenario : @gpu kernel reads shared<T, WeakOrdered> before CPU finished writing
+            detection : compile-time check for barrier_c2g preceding read_gpu in same fn
+                          + runtime SHADER_DEBUG validation layer assertion
+            mitigation : compile-error GPU0003 · canonical "missing barrier" diagnostic
+    
+    FM.03 · scenario : transfer<T> awaited from a different queue without semaphore
+            detection : compile-time queue-tag-tracking in transfer<T> · await callsite checks
+            mitigation : compile-error GPU0005 · suggest semaphore_wait at error site
+    
+    FM.04 · scenario : Sensitive<gaze> value uploaded to gpu<T> then back to CPU for analytics
+            detection : F5 IFC pass tracks label through transfer-arrow · ban triggers GPU0007
+            mitigation : compile-error GPU0007 absolute · no Cap-override possible
+                          (per PRIME-DIRECTIVE §1 + spec-11 biometric-family ban)
+    
+    FM.05 · scenario : transfer<T> dropped without await · linear-resource-leak
+            detection : Pony-6 linear-tracking from spec-12 + audit at drop site
+            mitigation : compile-error GPU0004 · suggest explicit cancel(t) if intentional
+    
+    FM.06 · scenario : Apple Silicon target · gpu<T> ≡ T should be zero-cost
+            detection : target-feature query at codegen
+            mitigation : backend specializes · gpu<T> lowers to no-op transfer · upload/download collapse
+                          to identity (with appropriate memory-fence)
+    
+    FM.07 · scenario : developer ports v13 substrate without annotations · existing code breaks
+            detection : opt-in module-level attribute @strict_memory_typing
+            mitigation : without the attribute · ambient memory model preserved · existing code unchanged
+                          with the attribute · enforcement engages · per-module migration cadence
+    
+    FM.08 · scenario : the spec accidentally over-restricts a legitimate pattern
+            detection : adoption-monitoring during v13 PRISM integration
+            mitigation : spec-amendment via lifecycle REVIEWED-state · expand allowed arrows
+                          honest-failure : if the spec is wrong shape, amend rather than ship-around
+  ⟧
+
+§I COMPATIBILITY
+  ⟦
+    COMPAT.01 · existing CSSL code without memory-type annotations · status : unchanged
+                 ambient memory model preserved · opt-in via @strict_memory_typing module attribute
+    COMPAT.02 · existing @gpu / @c / @cross attributes · status : preserved · this spec ADDS to them
+                 not replace · memory-domain is orthogonal axis to execution-target
+    COMPAT.03 · existing cssl-rt::host_gpu surface · status : preserved · new transfer/barrier
+                 symbols ADD to __cssl_gpu_* family without changing existing ABI
+    COMPAT.04 · v13 substrate.cssl · status : breaking IF @strict_memory_typing enabled
+                 migration path : annotate render_pixel inputs with explicit domain · re-test 18-ray harness
+                 estimated effort : 30-60 minutes
+    COMPAT.05 · PRISM_v13.md §2.4 CPU/GPU split · status : directly enabled by this spec
+                 no migration cost · this spec was authored to serve PRISM
+    COMPAT.06 · downstream MIR-pass authors · status : may need GpuDomain field on relevant MIR types
+                 cssl-mir crate update · backwards-compatible default = LegacyAmbient
+  ⟧
+
+§I PRIOR-ART
+  ⟦
+    PA.01 · Halide pipeline · GPU/CPU split via schedule() · what-we-take : compile-time
+             domain-distinction is feasible · what-we-diverge : Halide does it at schedule
+             not at type · we make it a type-property for compile-time enforcement
+    PA.02 · Taichi · ti.field / ti.Vector with memory-tier · what-we-take : per-allocation
+             tier annotation · what-we-diverge : ti.field is library-level · we elevate to language
+    PA.03 · Rust's Send + Sync · marker-trait approach to thread-safety · what-we-take : the
+             pattern of "type-system enforces what mutex would otherwise enforce" ·
+             what-we-diverge : memory-domain is more than a marker · it's a domain-distinct type
+    PA.04 · CUDA __device__ + __host__ + __device_managed__ · what-we-take : the three-class
+             memory taxonomy (gpu / cpu / shared) maps cleanly · what-we-diverge : CUDA still allows
+             implicit deref · we forbid it · explicit transfers always
+    PA.05 · Mojo @parameter + tensor-spec memory hierarchy · what-we-take : the layered-memory
+             concept · what-we-diverge : Mojo doesn't yet enforce cross-domain bans · we do
+    PA.06 · Vulkan VK_KHR_external_memory + ReBAR · what-we-take : the hardware capability we
+             expose · this spec IS the language-level surface for the existing hardware feature
+    PA.07 · Apple Metal MTLStorageMode · what-we-take : the four-mode taxonomy
+             (Private · Shared · Memoryless · Managed) maps cleanly to gpu / shared / staged / coherent
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS
+  ⟦
+    § no-surveillance-vector : transfer-arrow is type-checked against Sensitive<*> labels
+                                 biometric-family (Gaze · Face · Body · Biometric) absolutely-banned
+                                 across PCIe boundary · GPU0007 hard-error · no Cap-override
+    § no-consent-bypass     : Cap<Shared> + Cap<TransferAuth> are PRIME-DIRECTIVE-consent-tokens
+                                 not ambient-privileges · explicit acknowledgment per call-site
+    § biometric-egress-PD0018 : extended · also covers PCIe-boundary egress not just network-egress
+    § sovereignty-PD0020      : strengthened · GPU-memory boundary is a sovereignty-axis ·
+                                 host-software cannot leak through ill-formed transfer
+    § AI-agents = sovereign-partners : Reza-authored spec · Tech-Lead-reviewed · 
+                                         Apocky-ratifies · canonical AI-co-authorship pattern
+    § canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES
+  ⟦
+    where-this-lands :
+      cssl-types          · new MemoryDomain enum + gpu<T> / shared<T> / staged<T> / transfer<T> kinds
+      cssl-hir            · domain-tracking on HIR-types · cross-domain-arrow validation pass
+      cssl-mir            · new ops :
+                              cssl.gpu.transfer.h2d / d2h / h2s / s2h
+                              cssl.gpu.barrier.c2g / g2c / full
+                              cssl.gpu.semaphore.signal / wait
+                              cssl.gpu.timeline.signal / wait
+                              cssl.gpu.dispatch.on / .wait_for
+      cssl-effects        · 3 new effect-tags : GpuTransfer · AsyncDispatch · CrossQueue
+      cssl-ifc            · transfer-arrow label-propagation pass · biometric-family ban
+      cssl-cgen-spirv     · lower cssl.gpu.* to SPIR-V external-memory + memory-barriers
+      cssl-cgen-dxil      · lower cssl.gpu.* to D3D12 resource barriers + copy commands
+      cssl-host-d3d12     · ReBAR detection + alloc_shared backing impl
+      cssl-host-vulkan    · VK_KHR_external_memory_host backing impl
+    
+    estimated-LOC :
+      type-system        · ~600 LOC Rust
+      MIR + lowering     · ~1200 LOC Rust
+      backend integration · ~800 LOC Rust per backend (Vulkan + D3D12 priority)
+      stdlib wrappers    · ~400 LOC CSSL
+      tests              · ~1000 LOC mixed
+      total              · ~5000 LOC
+    
+    estimated-agent-hours :
+      design solidification + reviewer pass : 4-6h
+      type-system + HIR plumbing            : 8-12h
+      MIR + Vulkan backend                  : 12-16h
+      D3D12 backend                         : 8-10h
+      stdlib + integration tests            : 6-8h
+      v13 PRISM-port-as-canary              : 4-6h
+      total                                 : 42-58 agent-hours
+    
+    suggested-sequencing (4-5 sessions of focused work) :
+      session-1 : types · HIR · cross-domain-arrow validation · syntax-skeleton
+      session-2 : MIR ops · Vulkan backend · barrier lowering
+      session-3 : D3D12 backend · ReBAR detection · alloc_shared
+      session-4 : stdlib wrappers · async-compute multi-queue
+      session-5 : v13 PRISM substrate canary · perf measurement · spec amendment if needed
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · should gpu<T> support being held across @gpu fn boundaries with implicit identity-transfer?
+             default · yes for same-device · explicit transfer for cross-device · revisit if cross-device adds friction
+    
+    OQ.02 · should shared<T, NonCoherent> require the user to specify which direction (h2d vs d2h) at alloc-time?
+             default · no · directionality is per-access not per-allocation · barrier-direction encodes it
+    
+    OQ.03 · for unified-memory targets (Apple Silicon · ARM iGPU) · do we collapse gpu<T> ≡ T at codegen?
+             default · yes · zero-cost identity transfer · target-feature-query at codegen
+    
+    OQ.04 · how does this interact with persistent_kernel attribute (item 31 in 63_IMPROVEMENT_BACKLOG_100)?
+             default · persistent-kernel sees its inputs as gpu<T> · CPU writes via shared<RingBuffer> with NonCoherent
+             this is the PRISM "submit once run forever" architecture · gets the typing it needs
+    
+    OQ.05 · should there be a "borrow-of-gpu<T>-from-CPU-for-read-only-inspection" mode (e.g. for tools/debugger)?
+             default · no · use download() · debugger gets a copy not a view · clarifies ownership
+             escalation · if dev-velocity blocked · add @debug_borrow that requires Cap<DebugInspect>
+    
+    OQ.06 · the "transfer<T> linear-resource" constraint may conflict with concurrent error paths · how does
+             panic-unwind interact with in-flight transfers?
+             default · panic causes all in-flight transfers in scope to be cancelled · cancel(t) is non-linear-safe
+             this needs spec-12 + spec-13 collaboration during implementation · flagged for session-1 review
+    
+    OQ.07 · should there be a `weak<T>` for non-owning views into gpu<T> that the GPU can read but doesn't own?
+             default · NO · increases complexity · use Pony-6 caps (box/val) within the @gpu context instead
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-14 · DRAFT       · Tech-Lead-agent (Claude Opus 4.7) · initial draft under spec-64 discipline
+    [pending]    · REVIEWED    · awaits Apocky + co-reviewer pass · OQ.01-07 to resolve
+    [pending]    · RATIFIED    · awaits Apocky-Tech-Lead approval
+    [pending]    · IMPLEMENTED · awaits ~42-58 agent-hours of csslc + backend work
+    [pending]    · VERIFIED    · awaits ASSERT.01-08 mechanical CI verification
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § first dimensional-axis-spec under spec-64 discipline
+    § ¬ flattery · ¬ option-dumping · ¬ scope-creep
+    § OBSERVABLE-ASSERTIONS are explicit + mechanically-verifiable
+    § directly serves PRISM_v13 · type-distinction enables ReBAR + async-compute as first-class
+    § builds on existing CSSL strengths (effect-rows · IFC labels · capabilities)
+                                   ¬ ground-up redesign · refinement-extension
+    § AI-co-authorship credited · spec is REVIEWED-state-pending Apocky-Tech-Lead ratification
+    § t∞
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

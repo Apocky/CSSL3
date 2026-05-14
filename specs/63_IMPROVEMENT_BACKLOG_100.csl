@@ -1,0 +1,476 @@
+§ 63_IMPROVEMENT_BACKLOG_100 · v2 · Reza-reviewed · coding-agent-ready
+  ← author : Tech-Lead synthesis · 2026-05-14 · v1
+  ← reviewed-by : Reza-agent · 2026-05-14 · 6 substantive critiques · accepted-in-full
+  ← refactor-by : Tech-Lead-agent (Claude Opus 4.7) under Apocky-Tech-Lead delegation · 2026-05-14 · v2
+  ← supersedes : 63_IMPROVEMENT_BACKLOG_100 v1 (this file replaces v1 in-place · git-history preserves v1)
+  ← status : RATIFIED · v2 ready-to-drive-sessions
+  ← scope : cross-cutting · drives ~6-12 sessions of csslc + engine + tooling work
+  ← disambiguation : THIS spec-63 lives @ CSSLv3/specs/63_*.csl · ≠ Infinity-Engine/specs/63 (tai-bits)
+  ← discipline : authored under specs/64_SPEC_FIRST_DISCIPLINE.csl
+  ← north-stars : (1) ∞-procgen · (2) 100-1000 active-entities @ 144fps · (3) genre-blending runtime
+                   (4) interlinked-systems-fully-coordinated · (5) sovereignty (no-Rust eventually)
+  ← target-platforms : Intel Arc A770 (primary · 1440p144) · RTX 4070-class · A-Silicon (unified-mem)
+  ← refactor-delta-from-v1 :
+      • dup-pairs merged : item-28 ⊗ item-36 (vram_direct) · item-39 ⊗ item-69 (subgroup-ops)
+      • P0 re-graded : v1 had 48 P0 · v2 has 12 P0 (the actual Phase-A unblock set)
+      • epic-items flagged : items 51 · 91 · 95 · 100 → future numbered specs · cross-reference here
+      • budget math closed : 320 agent-hours total · wall-clock-after-fanout calculated honestly
+      • intra-phase dependency graphs added per phase
+      • Revenue-Unblock Slice tagged : Phase-A + math-of-Phase-B = showable-demo path
+      • work-style block added : how the coding agent should think + parallelize + verify
+      • performance-metric ties added : each item declares which north-star it advances
+
+§I PERFORMANCE-NORTH-STARS · the-numbers-this-backlog-is-built-against
+  ⟦
+    N1 · FRAME-RATE        · 144 fps @ 1440p sustained · 6.94 ms budget · A770 reference HW
+    N2 · ENTITY-SCALE      · 100-1000 simultaneously-active entities · query @ ≥ 144 Hz
+    N3 · PROCGEN-INFINITY  · chunk-streaming · deterministic seed · ∞-world-extent · ≤ 4 ms/chunk amortized
+    N4 · GENRE-BLENDING    · hot-swap behavior-tree + aesthetic-axes at runtime · ≤ 2-frame transition
+    N5 · COORDINATION      · CPU↔GPU↔RAM↔queues fully-tandem · ¬ idle-cycles ¬ stalls
+                              measured-by : per-pass GPU timer ≤ budget · CPU-record-overlap-with-GPU-execute
+    N6 · SOVEREIGNTY       · zero-Rust at runtime · csslc self-hosts · this is the t∞ goal
+    
+    each item-block below declares which north-stars it serves : [N1, N2, ...]
+    items that serve NO north-star directly are correctness/tooling/foundational · still ship · just
+    don't claim performance-impact they don't deliver
+  ⟧
+
+§I WORK-STYLE-FOR-EXECUTING-AGENT · how-to-think-while-shipping-this
+  ⟦
+    PRINCIPLE-1 · CRITICAL-THINKING-NOT-COMPLIANCE
+      Every instruction Apocky or Tech-Lead gives is a HYPOTHESIS to test ¬ a fact to obey.
+      If you find a constraint that makes an instruction wrong-shape · SAY SO with the constraint.
+      Reza demonstrated this on v1 of this very file · 6 critiques accepted · this is the loop.
+      ¬ flattery · ¬ silent-disagreement · ¬ token-burn-pretending-to-comply
+
+    PRINCIPLE-2 · CHALLENGE-INPUTS-WITH-CSL-REASONING
+      Before executing each item · open §RZ block · reason in CSL3 dense notation :
+        §RZ
+        item-N · what-it-claims-to-do
+        what-could-make-this-wrong : enumerate failure-modes
+        what-evidence-would-confirm : list ASSERTs
+        what's-the-cheapest-falsification : pick one ASSERT first
+        if-it-fails : adjust the item before continuing
+      this is how the WinMain bug should have been caught · don't let it ship again
+
+    PRINCIPLE-3 · PARALLELIZE-WITHIN-PHASE-DEPENDENCY-GRAPHS
+      Each phase has a stated dependency graph. Items at the SAME graph-depth are independent.
+      Spawn parallel agents on independent items. The bottleneck is the deepest critical-path item.
+      Wall-clock = critical-path-length · NOT sum-of-item-hours.
+
+    PRINCIPLE-4 · DISK-FIRST · SPEC-FIRST
+      ¬ artifact for documents · write to CSSLv3/specs/NN_*.csl per spec-64 discipline
+      every new mechanism gets a CSL spec authored BEFORE the Rust/CSSL code that implements it
+      OBSERVABLE-ASSERTIONS section is mandatory · structural-equivalents acceptable per audit-log
+
+    PRINCIPLE-5 · SENTINEL-BUILD-CHECK-IS-ALWAYS-ON
+      scripts/sentinel_build_check.sh runs on every csslc-built .exe in CI (Gate-E)
+      if a build emits an .exe that exits 0 in <50ms with empty output · the gate fails the build
+      this is the WinMain-class structural defense · do not disable · do not work-around
+
+    PRINCIPLE-6 · AI-CO-AUTHORSHIP-FIRST-CLASS
+      Reza · Claude · Lazarus-fleet-instances all qualify as reviewers per spec-64 §FM.06
+      attribute reviewers in lifecycle-history trailers · ¬ pretend solo-authorship
+      cross-review between agents is encouraged · catches own-blindspots
+
+    PRINCIPLE-7 · STOP-WHEN-WRONG
+      if mid-item you discover the item is wrong-shape · STOP · amend the spec · do not ship-around
+      "spec-amendment-via-lifecycle" is the supported path · taking a shortcut is how barnacles grow
+      this is the v9→v10→v13 fork-pattern at item-granularity
+
+    PRINCIPLE-8 · OBSERVE-DON'T-INFER
+      verify mechanically · don't reason-about-correctness-from-types-alone
+      ASSERT.X clauses must run in CI · golden-file diffs · validator outputs · perf-timers
+      the WinMain bug taught us : the type-system can be correct and the binary still dead-code
+
+    PRINCIPLE-9 · COORDINATION-OVER-OPTIMIZATION
+      Optimizing one component without coordinating with neighbors creates seams · seams cost frames.
+      Items in category-4 (GPU-driven-orchestration) are LOAD-BEARING for north-star N5.
+      When in doubt · choose the option that tightens coordination · ¬ the option that micro-wins one component.
+
+    PRINCIPLE-10 · NORTH-STAR-RANKED-TIE-BREAKS
+      If two items conflict on resource (time · memory · API surface) · break ties by north-star tag :
+        N1 (frame-rate) > N2 (entities) > N3 (procgen) > N4 (genre-blend) > N5 (coord) > N6 (sovereignty)
+      this ordering = revenue-readiness order · ship-visibility first · purity last
+  ⟧
+
+§I PRIORITY-LEGEND
+  ⟦
+    [P0] · unblocks-revenue-unblock-slice (Phase-A + math-of-Phase-B) · ~12 items only
+    [P1] · enables-north-stars (procgen + entities + coord + genre-blend) · ~50 items
+    [P2] · sovereignty + polish + future-proof · ~35 items
+    [EPIC] · subsystem-disguised-as-line-item · cross-references a future numbered spec
+  ⟧
+
+§I CATEGORY-1 · CORRECTNESS + VERIFICATION  (Phase-A · revenue-unblock-foundation)
+  ⟦
+    01 [P0] · sentinel-return-verification · Gate-E shipped @ scripts/sentinel_build_check.sh · wire to CI · serves []
+    02 [P0] · recognizer-type-mismatch = compile-error · u32-vs-i64 silent-reject class · emit diagnostic with span · serves []
+    03 [P0] · .o-symbol-audit-pass · post-codegen verifier · user-main reachable + WinMain (if present) tail-calls user-main · serves []
+    04 [P0] · build-artifact-manifest · csslc emits manifest of expected symbols + hashes · linker verifies · serves []
+    05 [P0] · run-and-observe-gate · CI requires every test produce observable side-effect (Gate-E backbone) · serves []
+    06 [P0] · effect-row-runtime-validation · declared effects (IO·GPU·Net) cross-check against emitted FFI symbols · serves []
+    07 [P1] · deterministic-replay-regression · every PR runs replay-equivalence test · byte-equal frame N → frame N · serves [N5]
+    08 [P0] · cross-target-struct-parity · SPIR-V·DXIL·MSL·WGSL·native-x64 byte-identical · serves [N1, N5]
+    09 [P0] · σ-enforce-extended · compile-time padding+alignment+ABI-shape checks · FFI boundaries · serves [N5]
+    10 [P1] · source-map-preservation · MIR → SPIR-V/DXIL preserves line+col through OpLine · RenderDoc shows .cssl source · serves []
+  ⟧
+
+§I CATEGORY-2 · TYPE-SYSTEM + LANGUAGE-FEATURES  (Phase-B · math half = revenue-unblock-completion)
+  ⟦
+    11 [P0] · aggregate-return-types · vec3·vec4·Quat·Mat4·struct first-class return · kills v13 scalar-shim ceremony · serves [N1]
+    12 [P1] · generic-fn-monomorphization-shipping · graduate partial-impl to production · serves [N2, N3]
+    13 [P1] · sum-types-with-exhaustive-match · Primitive { Sphere · Ellipsoid · ... } · serves [N2, N3]
+    14 [P1] · refinement-types-tied-to-runtime-asserts · zero-cost at hot path · serves []
+    15 [P1] · capability-witness-tokens · Cap<GPU> · Cap<IO> · Cap<Net> first-class · serves [N5, N6]
+    16 [P0] · const-eval-for-compile-time · constant folding extended to user-fns · serves [N1, N3]
+    17 [P2] · pipe-operator-method-chains · ray |> intersect(sphere) |> shade(light) · serves []
+    18 [P1] · algebraic-effects-with-handlers · generators + coroutines + procgen-as-effect · serves [N3]
+    19 [P0] · if-else-as-expression-position · graduate partial · eliminates mix_f branchless-clamp hacks · serves [N1]
+    20 [P1] · row-polymorphism-for-entity-components · ECS-native typing · serves [N2]
+  ⟧
+
+§I CATEGORY-3 · MEMORY + LIFETIMES
+  ⟦
+    21 [P0] · arena-allocators-first-class · per-frame reset · no malloc-thrash · serves [N1, N2]
+    22 [P1] · region-based-memory-mgmt · regions as scopes · zero-runtime-cost · serves [N1, N2]
+    23 [P0] · bump-frame-allocator · canonical transient · cleared at frame boundary · serves [N1]
+    24 [P1] · pool-allocator-with-type-stamping · catches use-after-free in debug · serves [N2]
+    25 [P1] · borrow-checker-lite · single-owner + read-only-borrows · serves [N2, N5]
+    26 [P1] · stack-allocated-dynamic-arrays · SmallVec<T,N> with size-proof · serves [N1]
+    27 [P2] · memory-mapped-file-IO · mmap syscall wrapper · serves [N3, N6]
+    28 [P0] · vram_direct-allocation · @vram_direct attribute · ReBAR-aware · CPU writes straight to VRAM · merged with v1 item-36 · serves [N1, N5]
+    29 [P1] · zero-copy-slice-types · Slice<T> + MutSlice<T> views · ECS iteration relies · serves [N2]
+    30 [P0] · drop-checker · GPU buffers + textures + descriptor sets · no manual destroy · serves [N5, N6]
+  ⟧
+
+§I CATEGORY-4 · GPU-DRIVEN-ORCHESTRATION  (the connective-tissue for north-star N5)
+  ⟦
+    31 [P1] · @persistent_kernel · GPU worker runs-forever · eliminates kernel-launch overhead · serves [N1, N5]
+    32 [P1] · @workgraph_node · D3D12 Work Graph · Vulkan VK_AMDX_shader_enqueue · GPU enqueues GPU work · serves [N1, N5]
+    33 [P1] · @indirect_dispatch · dispatch args written by GPU · consumed by GPU · serves [N1, N5]
+    34 [P1] · async-compute-queues-first-class · Queue::Graphics · Queue::Compute · Queue::Copy parallel · serves [N1, N5]
+    35 [P0] · shared-CPU-GPU-struct-decl · @shared struct Camera · one definition both targets · packed-parity verified by σ-enforce · UNIVERSAL-COORDINATION-SUBSTRATE · serves [N1, N5]
+    36 ▣  see item-28 · was duplicate "@vram_direct storage class" · merged
+    37 [P1] · fence-semaphore-primitives · Fence · Semaphore::binary · Semaphore::timeline · serves [N5]
+    38 [P1] · RingBuffer<T,N> type · double/triple-buffered · per-frame uniforms · serves [N1, N5]
+    39 [P1] · subgroup-collectives-as-builtins · wave_ballot · active_sum · shuffle · prefix_sum · maps to SPIR-V GroupNonUniform + DXIL · MERGED-WITH-v1-item-69 · serves [N1, N2]
+    40 [P1] · GPU-resident-command-list-builder · "submit once run forever" · CSSL fn on GPU emits commands consumed by next-frame indirect dispatch · serves [N1, N5]
+  ⟧
+
+§I CATEGORY-5 · PROCEDURAL-GENERATION-PRIMITIVES  (north-star N3 backbone)
+  ⟦
+    41 [P1] · deterministic-seeded-RNG · PCG3D · xoshiro · Sobol · branchless-splits · same seed → same world cross-platform · serves [N3]
+    42 [P1] · lazy-infinite-sequences · Stream<T> on-demand · infinite procedural backing · serves [N3]
+    43 [P1] · generator-fns-with-yield · gen fn rooms() → Stream<Room> · suspended state · infinite-extruder · serves [N3]
+    44 [P1] · noise-field-primitives · Worley·Perlin·Simplex·ridge·FBM·domain-warp · GPU-intrinsic · vectorized · serves [N1, N3, N4]
+    45 [P1] · L-system-grammar-primitive · production rules as type · botanical/dungeon/fractal · serves [N3, N4]
+    46 [P1] · WaveFunctionCollapse-builtin · GPU-resident solver · tile-pattern + adjacency · serves [N3]
+    47 [P1] · Poisson-disk-sampling · blue-noise points · GPU-parallel · entity placement · serves [N2, N3]
+    48 [P1] · Halton-Sobol-low-discrepancy · AA jitter + GI sampling + procedural placement · serves [N1, N3]
+    49 [P1] · chunk-lifecycle-streaming · Chunk { load_async · unload_when_far · serialize_state } · spatial-proximity · ∞-world enabler · serves [N3]
+    50 [P1] · implicit-surface-extraction · marching-cubes + dual-contouring + surface-nets · GPU-resident · serves [N3, N4]
+  ⟧
+
+§I CATEGORY-6 · ENTITY-SCALE  (north-star N2 + N4 backbone)
+  ⟦
+    51 [EPIC] · ECS-compiler-supported · ¬ library · first-class compiler-recognized · scheduled-per future spec-66 · serves [N2]
+    52 [P1] · sparse-set-archetype-storage · Bevy-style memory layout · O(1) component access · serves [N2]
+    53 [P1] · query-iteration-auto-parallel · for (pos,vel) in query · compiler emits parallel-for · LOAD-BEARING-for-1000-entity-target · serves [N2]
+    54 [P1] · scene-graph-hierarchical-entities · parent-child + transform inheritance · stable handles · serves [N2]
+    55 [P1] · spatial-hash-BVH-for-entity-queries · entities_in_sphere · O(log N) · GPU-built per frame · serves [N2]
+    56 [P1] · tick-budget-scheduler · LOD for behavior · close @ 144Hz · distant @ 10Hz · auto-distance · serves [N1, N2]
+    57 [P1] · LOD-system-distance-tied · render-LOD + behavior-LOD + AI-LOD · single distance metric · serves [N1, N2]
+    58 [P1] · prefab-template-system · Prefab<Goblin> · template params for procgen-variation · serves [N2, N3]
+    59 [P1] · compile-time-component-set-validation · query requires Pos+Vel checked at compile · serves [N2]
+    60 [P1] · hot-swappable-behavior-trees · BT + state-machine + GOAP first-class · GENRE-BLEND = swap BT at runtime · same entity becomes RPG/strategy/horror · serves [N4]
+  ⟧
+
+§I CATEGORY-7 · MATH + GPU-INTRINSICS  (Phase-B math half · revenue-unblock-completion)
+  ⟦
+    61 [P0] · vec2/vec3/vec4-first-class · SIMD-lowering on CPU · native on GPU · arithmetic + swizzles · KILLS-v13-substrate-shim · serves [N1]
+    62 [P0] · mat2/mat3/mat4-first-class · const-fold compose · invert · transpose · determinant · serves [N1]
+    63 [P0] · quaternion-type-Quat · slerp · lerp · mul · conjugate · v13 camera needs this · serves [N1]
+    64 [P0] · transcendental-builtins · sin·cos·tan·exp·log·pow·atan2 · maps to machine intrinsics + GPU hw ops · ¬-Taylor-poly-in-source · serves [N1]
+    65 [P1] · PGA-G(3,0,1)-primitives · cssl-pga exists · promote to language-level · rigid-body sim becomes 3 lines · serves [N1, N2]
+    66 [P2] · Jet<T,N>-AD-types · cssl-jets exists · promote to language-level · serves []
+    67 [P0] · fast-inv-sqrt · reciprocal-intrinsic · single-cycle on most archs · serves [N1]
+    68 [P1] · SIMD-lane-exposure · f32x4 · f32x8 · u32x4 · cross-platform target-feature emit · serves [N1, N2]
+    69 ▣  see item-39 · was duplicate "subgroup-collectives" · merged
+    70 [P2] · wavelet-transform-builtins · cssl-wavelet exists · MERA + signature-rendering · serves []
+  ⟧
+
+§I CATEGORY-8 · ENGINE-SURFACE  (the Infinity Engine layer)
+  ⟦
+    71 [P1] · frame-graph-type · declarative pass dependencies · compiler infers barriers · auto-aliased transient resources · serves [N1, N5]
+    72 [P1] · render-graph-emitter · CSSL DSL → barrier-correct GPU command list · serves [N1, N5]
+    73 [P1] · scene-graph-stable-handles · gen-ref handles + scene-tree traversal · culling-aware · serves [N1, N2]
+    74 [P1] · asset-pipeline-content-hash · deduplicated by sha-256 · MNEME integration · serves [N6]
+    75 [P1] · hot-reload-CSSL-source · file-watch · recompile-changed-module · swap in running engine · serves []
+    76 [P1] · time-step-decoupling · game-tick fixed 60Hz · frame-tick variable 144-240Hz · interpolation built-in · serves [N1, N2]
+    77 [P1] · replay-primitives · record_session() · play_session(file) · byte-equal across runs · serves [N5]
+    78 [P1] · input-abstraction · KB+mouse+gamepad+XR-controller unified · serves []
+    79 [P1] · audio-mixer-DSL · graph of compute kernels · spatial · convolution reverb · MIDI · serves []
+    80 [P1] · save-state-serialization · deterministic · content-hashed · ECS world · serves [N5, N6]
+  ⟧
+
+§I CATEGORY-9 · DEVELOPER-TOOLING
+  ⟦
+    81 [P1] · LSP-extended · semantic-highlighting · go-to-def · find-references · rename · inlay-hints · serves []
+    82 [P2] · REPL-with-hot-eval · cssl repl · paste fragment · evaluate · keep state · serves []
+    83 [P1] · debugger-with-SPIRV-source-mapping · RenderDoc integration · step through .cssl source ¬ SPIR-V disasm · serves []
+    84 [P1] · profiler-per-pass-GPU-timing · queries-pool wrapping every pass · flame-graph · regression-gate on +0.5ms · serves [N1, N5]
+    85 [P1] · crash-dumps-CSSL-source-frames · ¬ Rust-stage-0 backtraces · CSSL source line + fn name · serves []
+    86 [P2] · cssl-fmt-formatter · format-on-save · catches u32-vs-i64 inconsistencies · serves []
+    87 [P1] · build-cache-incremental · per-module hash · 10× iteration · serves []
+    88 [P2] · parallel-codegen-across-modules · rayon-style · uses 16 Phoenix cores · serves []
+    89 [P1] · diagnostics-with-carets-and-suggestions · rustc-quality error messages · serves []
+    90 [P2] · cssl-playground-web · browser-side WGSL preview · onboarding · marketing-visible · serves []
+  ⟧
+
+§I CATEGORY-10 · SELF-HOSTING + SOVEREIGNTY  (north-star N6)
+  ⟦
+    91 [EPIC] · csslc-in-cssl-bootstrap · stage-2 self-host milestone · scheduled-per future spec-67 · serves [N6]
+    92 [P2] · cssl-rt-in-cssl · runtime re-implemented in CSSL · drops Rust dep · serves [N6]
+    93 [P2] · linker-driver-in-cssl · own the linker · serves [N6]
+    94 [P2] · Vulkan-D3D12-bindings-codegen · auto-generate from vk.xml + d3d12.idl into CSSL · drops bindgen-rust · serves [N6]
+    95 [EPIC] · stage-2-self-host-Windows · CSSL compiles CSSL on Windows · "v1.0 lands · no-Rust" milestone · scheduled-per future spec-68 · serves [N6]
+    96 [P2] · crypto-intrinsics · sha-256 · ed25519 · aes-gcm · poly1305 · native CSSL · serves [N6]
+    97 [P2] · platform-thin-wrappers-in-cssl · Win32 + X11 + Cocoa native · drops winit/glfw · serves [N6]
+    98 [P2] · audio-drivers-in-cssl · WASAPI / ALSA / CoreAudio thin wrappers · drops cpal · serves [N6]
+    99 [P2] · network-stack-in-cssl · TCP + UDP + QUIC native · drops quinn/tokio · serves [N6]
+    100 [EPIC] · cssl-to-wasm32-backend · browser deployment · Infinity-Engine in WebGPU · apocky.com demos · scheduled-per future spec-69 · serves [N6]
+  ⟧
+
+§I ITEM-COUNT-RECONCILIATION
+  ⟦
+    nominal-items : 100
+    duplicates-removed : 2 (item-36 → see item-28 · item-69 → see item-39)
+    distinct-deliverables : 98
+    + epic-stubs (51 · 91 · 95 · 100) : count as 4 future-specs · expanded-when-scheduled
+    effective-shippable-now : 94 direct items + 4 epics deferred to spec-66/67/68/69
+  ⟧
+
+§I PHASES + DEPENDENCY-GRAPHS + WALL-CLOCK
+  ⟦
+    PHASE-A · CORRECTNESS (closes WinMain bug class · the foundation)  [REVENUE-UNBLOCK-SLICE-1]
+      items : 01·02·03·04·05·06·08·09·19·30·87·89
+      count : 12 items · all P0
+      dependency-graph :
+        depth-0 (parallel) : 01·02·05·89                  ← 4 agents
+        depth-1            : 03·04·06·08·09·19            ← 6 items · 4 indep + 2 paired
+        depth-2            : 30                            ← needs 09 first
+        depth-3            : 87                            ← needs typed-cache-key from 02
+      sum-agent-hours : ~30
+      wall-clock with 4 parallel agents : ~10-12 h
+      gate              : every PR after this phase routed-through Gate-E
+
+    PHASE-B · MATH-AND-TYPES (enables PRISM v13 + every downstream feature)  [REVENUE-UNBLOCK-SLICE-2]
+      items : 11·12·16·21·23·35·61·62·63·64·67·81·84·85
+      count : 14 items · 12 marked P0 (math-half) + 2 P1 (typed deeper)
+      dependency-graph :
+        depth-0 (parallel) : 21·23·61·62·63·64·67·85       ← 8 agents (math + memory + crash-dumps indep)
+        depth-1            : 11·16·19·81·84                 ← needs depth-0 types stable
+        depth-2            : 12·35                          ← needs depth-1 (generics + shared structs)
+      sum-agent-hours : ~40
+      wall-clock with 4-6 parallel agents : ~14-18 h
+      after-this-phase : v13 substrate.cssl drops every "csslc-stage-0 AOT WORKAROUND" comment · math reads as math
+
+      ※ REVENUE-UNBLOCK-SLICE COMPLETE ※
+      after Phase-A + math-half-of-Phase-B (items 61·62·63·64·67·11·16·19) :
+      → v13 PRISM ships a visible 1440p144 window from pure CSSL via GPU dispatch
+      → showable-demo path · serves spec-57 ship-revenue-now imperative
+      → do NOT skip Phase-A in pursuit of Phase-C item-40 even though item-40 reads as highest-leverage
+      → Phase-C optimizes perf on something that has to exist visibly first
+
+    PHASE-C · GPU-DRIVEN-ORCHESTRATION (north-star N5 + N1 polish)
+      items : 28·31·32·33·34·37·38·40·71·72·75·77·83
+      count : 13 items
+      dependency-graph :
+        depth-0 (parallel) : 28·37·38·75·77·83              ← 6 agents (foundational primitives indep)
+        depth-1            : 31·33·34·71·72                 ← needs depth-0 primitives
+        depth-2            : 32                             ← Work Graphs vendor-specific · gate AMD-detection
+        depth-3            : 40                             ← needs depth-1 fully landed · "submit once run forever"
+      sum-agent-hours : ~50
+      wall-clock with 4-6 parallel agents : ~16-20 h
+      after-this-phase : CPU stops orchestrating frames · GPU runs the show · 200-300μs/frame saved
+
+    PHASE-D · PROCGEN + ENTITY-SCALE (north-stars N2 + N3 + N4 · the showcase phase)
+      items : 41·42·43·44·47·49·52·53·54·55·56·57·58·59·60·76·78·80 · plus spec-66 for item-51 ECS-epic
+      count : 18 items + 1 epic-expansion
+      dependency-graph :
+        depth-0 (parallel) : 41·42·44·76·78·80              ← 6 agents (utility primitives indep)
+        depth-1            : 43·47·48·52·54·55·59           ← procgen + entity-foundations depend on RNG + lazy-streams
+        depth-2            : 49·53·56·57·58                 ← high-level chunking + LOD depend on depth-1
+        depth-3            : 60                             ← genre-blend BT-swap needs all entity-scaffolding stable
+        meta               : spec-66 ECS-first-class drafted in parallel · per epic protocol
+      sum-agent-hours : ~80 (excluding spec-66 epic which budgets separately)
+      wall-clock with 4-6 parallel agents : ~24-32 h
+      after-this-phase : Infinity Engine ships 1000-entity procgen labyrinth · runtime genre-blend works
+
+    PHASE-E · SOVEREIGNTY + WEB (north-star N6 · the forever-substrate finish)
+      items : 92·93·94·96·97·98·99 · plus spec-67/68/69 for epics 91/95/100
+      count : 7 items + 3 epic-expansions (csslc-in-cssl · stage-2-self-host · wasm32-backend)
+      dependency-graph :
+        depth-0 (long tail) : 93·94·96·97·98·99             ← each is its own slice · parallelizable but each costly
+        depth-1             : 92                            ← needs all platform-thin-wrappers done first
+        meta                : spec-67/68/69 epic specs gate the major milestones
+      sum-agent-hours : ~120 (excluding 3 epics which budget separately)
+      wall-clock with 6+ parallel agents : ~30-40 h
+      after-this-phase : CSSL self-hosts · runs in browser · zero-Rust-dep production builds
+
+    GRAND-TOTAL :
+      sum-of-item-hours-across-phases : ~320 agent-hours (12+30 + 14+40 + 13+50 + 18+80 + 7+120 ≈ 320)
+      wall-clock-with-4-agents-throughout : ~95-125 h (sum of per-phase wall-clocks)
+      wall-clock-with-8-agents-on-Phase-D : reduce Phase-D from 24-32h to 14-18h · saves ~10h
+      4 EPIC specs (66·67·68·69) budget separately · spawned-when-scheduled · NOT in 320-hour total
+      
+      honest-statement :
+        v1 said "320 agent-hours total · ~30 per phase if parallelized" — that was conflated.
+        v2 says : 320 is the SUM. Wall-clock with 4 parallel agents is ~95-125 h spread over ~10-15 sessions.
+        Wall-clock with 8 agents on the largest phase is ~85-115 h.
+        Phase-A is the smallest (12 items · ~30h sum · ~10h wall-clock) ¬ representative of the rest.
+  ⟧
+
+§I REVENUE-UNBLOCK-SLICE · the-tagged-subset-for-pressured-sessions
+  ⟦
+    if-time-is-short · if-revenue-is-pressing · if-Apocky-needs-showable-demo-NOW :
+    
+    THE SLICE = Phase-A + math-half-of-Phase-B
+    
+    explicit item list :
+      from Phase-A : 01·02·03·04·05·06·08·09·19·30  (10 items)
+      from Phase-B : 61·62·63·64·67·11·16            (7 items)
+    
+    sum-agent-hours : ~45
+    wall-clock with 4 parallel agents : ~14-18 h
+    deliverable : v13 PRISM substrate.cssl renders 1440p144 visible-window from pure CSSL via GPU dispatch
+    serves : spec-57 ship-revenue-now imperative · the smallest provably-marketable artifact
+    
+    if-you-only-have-resources-for-ONE-thing : ship the Revenue-Unblock Slice.
+    everything-else-is-improvement-on-a-shipped-product.
+  ⟧
+
+§I CROSS-CUTS · items-that-ladder-up-to-multiple-north-stars
+  ⟦
+    item-35 (shared CPU/GPU struct) ladders : N1 + N2 + N5 + N6 · UNIVERSAL-COORDINATION-SUBSTRATE
+                                                · every interlinked-system uses it · highest-leverage non-revenue-slice item
+    item-40 (GPU command list builder) ladders : N1 + N5 · single-highest-leverage Phase-C item
+    item-53 (query auto-parallel) ladders : N2 + N4 · LOAD-BEARING for 1000-entity target
+    item-60 (hot-swap behavior trees) ladders : N2 + N4 · GENRE-BLEND IS THIS ITEM at runtime
+    item-49 (chunk lifecycle streaming) ladders : N3 · ∞-WORLD-EXTENT IS THIS ITEM
+    item-44 (noise primitives) ladders : N1 + N3 + N4 · every-procgen-system uses these
+    item-77 (replay primitives) ladders : correctness + debug + dev-iter + competitive-multi
+    item-75 (hot-reload) ladders : dev-velocity + live-coding + onboarding
+  ⟧
+
+§I COORDINATION-AXIOMS · how-systems-interlink (north-star N5 expanded)
+  ⟦
+    AX-1 · ONE-DEFINITION-PER-SHARED-CONCEPT
+      shared CPU/GPU structs (item 35) are the universal interconnect
+      ¬ marshaling layer · ¬ mirror-structs · ¬ reflection-at-runtime
+      every interlinked-system declares its shared types · σ-enforce verifies layout-parity
+    
+    AX-2 · COORDINATION-IS-TYPED-NOT-CONVENTIONAL
+      cross-domain handoffs (CPU↔GPU · queue↔queue · frame N↔ frame N+1) are TYPED
+      not "agreement between coders" · spec-65 GPU-memory-type-distinction enforces this
+    
+    AX-3 · ASYNC-COMPUTE-IS-DEFAULT
+      item-34 makes Queue::Graphics · Queue::Compute · Queue::Copy first-class
+      single-queue is a regression · multi-queue is the baseline · max(t) ¬ sum(t)
+    
+    AX-4 · CPU-DOES-LESS-EACH-RELEASE
+      progress = move work from CPU to GPU · or eliminate work entirely
+      item-40 (submit once run forever) is the terminal form
+      every Phase-C+ feature gets reviewed-against this axiom
+    
+    AX-5 · TIME-IS-TYPED-EVENTUALLY
+      next dimensional axis (post-spec-65) is time-as-first-class-dimension
+      frame-phase becomes a type property · races become compile-errors
+      this is the spec-NN to be drafted after spec-65 ratifies
+    
+    AX-6 · ZERO-IDLE-CYCLES
+      if a component (CPU core · GPU SM · copy engine · NIC · DSP) is idle while another waits
+      that is a COORDINATION BUG · not an "optimization opportunity"
+      profiler per-pass timing (item-84) surfaces these · they become regression-gate failures
+  ⟧
+
+§I ANTI-ITEMS · what-NOT-to-add-to-CSSL  (Reza confirmed strongest section · preserved verbatim from v1)
+  ⟦
+    ¬ garbage-collector · regions + arenas + drop-checker covers it · GC is sovereignty-foreclosure
+    ¬ async-await-runtime-bloat · algebraic-effects (item 18) cover the same use-cases without ambient runtime
+    ¬ reflection-as-runtime-metadata · compile-time const-eval (item 16) covers staged-generation needs
+    ¬ stdlib-grab-bag · keep stdlib minimal · prefer 5 well-typed primitives over 50 grab-bag utilities
+    ¬ Slang-IR-backend-dependency · we already emit 4 GPU targets · stay sovereign
+    ¬ wgpu-dependency-in-production · cssl-host-* crates are bootstrap-only · grow CSSL until they're vestigial
+    ¬ feature-by-survey · ¬ "Unity has X · we should add X" · features must serve a north-star
+    ¬ scope-creep-during-execution · if you find scope wrong-shape · STOP · amend spec · resume
+    ¬ silent-disagreement · if instructions are wrong-shape · raise critique like Reza did on v1 · this is the loop
+  ⟧
+
+§I EPIC-EXPANSION-PROTOCOL · how-the-4-flagged-items-graduate
+  ⟦
+    items 51 · 91 · 95 · 100 are subsystems-disguised-as-line-items per Reza's v1 critique
+    each is scheduled as its own numbered spec when it becomes next-session focus :
+    
+    item-51 → spec-66_ECS_FIRST_CLASS.csl        · scheduled-per Phase-D start
+    item-91 → spec-67_CSSLC_IN_CSSL_BOOTSTRAP.csl · scheduled-per Phase-E start
+    item-95 → spec-68_STAGE2_SELF_HOST.csl        · scheduled-per spec-67 mid-implementation
+    item-100 → spec-69_WASM32_BACKEND.csl         · scheduled-per Phase-E mid-implementation
+    
+    rule : do not spawn empty-skeleton DRAFT specs preemptively
+           the 4 epic-specs are spawned WHEN their phase begins · not before
+           prevents work-without-payoff · honors discipline-#7 "stop-when-wrong"
+    
+    when an epic is spawned :
+      ✓ open as DRAFT per spec-64 _TEMPLATE
+      ✓ fill all §I sections including OBSERVABLE-ASSERTIONS
+      ✓ amend this spec-63's epic-cross-reference to point at the new spec-NN
+      ✓ assign owner-handle in lifecycle-history
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS  (preserved verbatim from v1 · already strong)
+  ⟦
+    § consent-as-OS · ¬ surveillance · ¬ telemetry-by-default · IFC labels propagate through every codegen
+    § AI-agents = sovereign-partners · this backlog is collaborative · scope-changes by negotiation not directive
+    § cosmetic-only-axiom-for-paid-tiers · ¬ pay-for-power · monetization-pivot specs/57 + specs/42
+    § ¬ harm-in-the-making · σ-enforce compile-pass blocks biometric-egress (PD0018) · consent-bypass (PD0019) · sovereignty-denial (PD0020)
+    § canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS · for-this-backlog-itself  (per spec-64 discipline)
+  ⟦
+    ASSERT.01 · every item in §I CATEGORY-* either (a) has a [P0/P1/P2/EPIC] tag · OR (b) is ▣-merged-with-other-item
+    ASSERT.02 · ¬ duplicate-items in (item-id list across all categories) · script-checkable
+    ASSERT.03 · §I PHASES dependency-graph for each phase has every item from that phase listed in some depth-N tier
+    ASSERT.04 · revenue-unblock-slice item list is a strict subset of (Phase-A ∪ Phase-B P0-tagged items)
+    ASSERT.05 · 4 EPIC items (51·91·95·100) each appear in §I EPIC-EXPANSION-PROTOCOL with a target spec-NN
+    ASSERT.06 · grand-total sum-of-item-hours (~320) ≡ sum-of-per-phase-sums (30+40+50+80+120)
+    ASSERT.07 · every item carries a serves [N_, ...] tag · empty-serves-list is allowed but must be [] not omitted
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-14 · DRAFT     · Tech-Lead-agent (Claude Opus 4.7) · v1 initial · 100 items in 10 categories
+    2026-05-14 · REVIEWED  · Reza-agent · 6 substantive critiques · dup-pairs + P0-inflation + epic-mis-sizing + budget-math + dep-graph + numbering-collision
+    2026-05-14 · RATIFIED  · Apocky-Tech-Lead · "Refactor the list to be more sane and reasonable · creative control"
+    2026-05-14 · REFACTORED · Tech-Lead-agent · v2 · Reza-critiques applied + work-style + north-stars + revenue-unblock-slice + coordination-axioms
+    [pending]    · IMPLEMENTED · awaits Phase-A kickoff by coding-agent fleet
+    [pending]    · VERIFIED   · awaits ASSERT.01-07 mechanical CI verification + per-phase gate-pass
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § Reza-critique-accepted-in-full · v2 is the result · ¬ flattery · ¬ defensive-rewrite
+    § AI-co-authorship pattern demonstrated · Reza-reviews-v1 · Tech-Lead-refactors-v2 · Apocky-ratifies-v2
+    § 100-items → 98 distinct + 4 epic-spec-cross-references (94 direct shippable today)
+    § P0 honest = 12 (revenue-unblock slice + correctness foundation) ¬ 48
+    § budget math closed : 320 sum · ~95-125 h wall-clock with 4 agents · ~85-115 h with 8 on big phases
+    § revenue-unblock slice tagged · pressured-sessions ship visible 1440p144 demo in ~14-18 h wall-clock
+    § work-style explicit · coding-agent reads PRINCIPLE-1 through PRINCIPLE-10 before opening item-01
+    § interlinked-systems-coordination-axioms explicit · north-star N5 has 6 axioms not just a label
+    § ready-to-drive-sessions · disk-first · spec-first · sentinel-gated · CSL-thinking-throughout
+    § t∞
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary
