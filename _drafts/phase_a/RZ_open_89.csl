@@ -1,0 +1,98 @@
+§ RZ.open · phase-a/89-diagnostics-carets · 2026-05-14
+  ← author       : Tech-Lead-agent (Claude-Opus-4.7)
+  ← branch       : phase-a/89-diagnostics-carets
+  ← baseline     : dd59670 (cssl-ast/src/diagnostic.rs is sole existing diag file)
+  ← spec         : specs/70_PHASE_A_CORRECTNESS.csl § OBSERVABLE-ASSERTIONS § item-89
+  ← assertions   : A89.1 · A89.2 · A89.3
+  ← bundle-role  : tooling-adjacent · unblocks every other item's quality of error
+
+§I HYPOTHESIS-TO-FALSIFY
+  H · cssl-ast/src/diagnostic.rs can be extended to render rustc-quality diagnostics :
+       file:line:col · source-line snippet · caret pointing at offending span ·
+       did-you-mean suggestion (edit-distance ≤ 2) · ANSI color when stderr is tty
+       without breaking any existing diagnostic call-site
+
+§I FAILURE-MODE-ENUMERATION
+  FM.1 · diagnostic.rs may be the SOLE file but call-sites may be MANY (1775 .rs files)
+         changing Diagnostic struct shape = mass rewrites
+         mitigation : keep existing constructors · ADD new render() path · preserve API
+
+  FM.2 · A89.3 ANSI color when tty · cargo build redirects stderr → no-tty
+         BUT humans want color in interactive csslc compile · use atty crate or
+         std::io::IsTerminal (Rust 1.70+) · check stderr only · respect NO_COLOR env
+         per https://no-color.org
+
+  FM.3 · A89.2 "did you mean" via edit-distance can produce false-positives
+         (e.g. `let x = y` typo'd to `let x = z` · BOTH might be defined symbols)
+         mitigation : suggest only when single-best within edit-distance ≤ 2 · else silent
+         + threshold by symbol-similarity (kind-aware : variable vs type vs fn)
+
+  FM.4 · source-snippet rendering needs file-content access · diagnostic system
+         currently may not have file-access (just span : path + offset)
+         mitigation : add SourceMap or file-cache · OR re-read file on diagnostic emit
+                       (slow but simple · acceptable for compile-error path)
+
+  FM.5 · multi-line spans · spans-across-macro-expansion · Unicode width counting
+         (non-ASCII chars take varying terminal width)
+         mitigation : Phase-1 = ASCII single-line spans only · OQ for multi-line/Unicode
+
+  FM.6 · color codes leaking into log files · CI logs · GitHub Actions output
+         mitigation : strict tty-only check · NO_COLOR env override · CLICOLOR_FORCE override
+
+§I CHEAPEST-FALSIFICATION
+  fixture : examples/diag_test.cssl with deliberate type-mismatch
+  invoke : csslc compile examples/diag_test.cssl 2>&1
+  expect output shape :
+    error[T0001]: expected `i64`, got `u32`
+      --> examples/diag_test.cssl:3:23
+       |
+     3 | fn f(x : u32) -> i64 { x }
+       |                       ^ this is `u32`, not `i64`
+       |
+       = help: try explicit cast : `x as i64`
+  if any line missing · A89.* unmet
+  ⇒ snapshot-test pattern · ~20 LOC · highest-signal
+
+§I TOUCH-POINTS (anchored @ baseline dd59670)
+  cssl-ast/src/diagnostic.rs                    EXTEND ← Renderer trait · CaretRenderer impl
+  cssl-ast/src/                                 GREP   ← look for SourceMap · Span · Loc types
+  csslc/src/main.rs (or compiler driver)        WIRE   ← stderr-tty check at top of main
+  csslc/tests/diagnostics/                      NEW    ← snapshot-test corpus (insta crate?)
+  examples/diag_test.cssl                       NEW    ← golden fixture
+  Cargo.toml workspace                          MAYBE  ← add `is-terminal` or use std
+
+  N! TOUCH : cssl-rt · cssl-host-* · cssl-mir (out-of-scope · diagnostic is presentation layer)
+
+§I ASSERT-MAPPING
+  A89.1 file:line:col + caret             →  Renderer::render(diag) → String w/ caret line
+  A89.2 did-you-mean within edit-dist 2   →  symbol-table lookup · Levenshtein · single-best
+                                              suggestion only · type-aware kind filter
+  A89.3 ANSI color when stderr is tty     →  color::Style enum · IsTerminal check · NO_COLOR
+
+§I PROTOCOL
+  · ≤ 1 item per PR (item-89 only)
+  · preserve all existing Diagnostic API · ADD render path · do NOT change call-sites
+    (large blast-radius · 1775 .rs files possible)
+  · PR.title   : "spec-70 § item-89 : diagnostics-with-carets-and-suggestions"
+  · PR.trailer : "Spec-Transition: 70 (item-89) RATIFIED→IMPLEMENTED by <handle>"
+  · Gate-E pre-merge : sentinel-script PASS · existing diag tests still PASS
+
+§I ESTIMATE
+  ~600 LOC diagnostic formatter + ~300 LOC golden-snapshots (per spec-70)
+  ~5-7 wallclock-hours
+
+§I COORDINATION-NOTE
+  · item-02 recognizer (parallel branch) emits diagnostics that CONSUME this work
+  · until item-89 lands · item-02 emits string-only diagnostics (still satisfies A02.1·.2)
+  · post-item-89 merge · item-02 PR may be amended to use new caret renderer (optional polish)
+
+§I PRIME-DIRECTIVE-CHECK
+  ‼ honest diagnostics = consent-respect (¬ silently-coerce · tell user what's wrong)
+  ‼ no surveillance · no PII in diagnostics · source path is local-only
+  ‼ ANSI color not a security concern · NO_COLOR honored
+
+§ ATTESTATION
+  ‼ ¬ flattery · ¬ rebuild-existing-diag-API · extend ¬ replace (FM.1 mitigation)
+  ‼ disk-first · spec-first · CSL-think
+  © 2026 Apocky · TIER-B · t∞
+∎
