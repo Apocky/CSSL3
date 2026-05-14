@@ -5,6 +5,7 @@ import type { NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
+import { normalizeAuthReturnPath } from '../lib/auth-return';
 import { getAuthClient } from '../lib/auth';
 import { authFetch } from '../lib/browser-auth';
 
@@ -80,10 +81,15 @@ const Home: NextPage = () => {
     (async () => {
       const callbackParams = readAuthCallbackParams(location.search, location.hash);
       if (callbackParams.hasCallback) {
+        const returnTo = normalizeAuthReturnPath(new URLSearchParams(location.search).get('next'), '');
         setAuthNotice('finishing sign-in…');
         const callbackResult = await consumeAuthCallbackFromLocation();
         if (cancelled) return;
         if (callbackResult.ok) {
+          if (returnTo) {
+            location.replace(returnTo);
+            return;
+          }
           setAuthNotice('signed in · session saved');
           setAuthed(true);
         } else {

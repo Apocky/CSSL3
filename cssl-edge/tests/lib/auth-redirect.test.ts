@@ -3,6 +3,7 @@
 
 import { resolveAuthRedirect } from '@/lib/auth';
 import { readAuthCallbackParams } from '@/lib/auth-callback';
+import { buildAuthCallbackUrl, loginHrefForReturnPath, normalizeAuthReturnPath } from '@/lib/auth-return';
 
 function assertEqual(name: string, actual: string, expected: string): void {
   if (actual !== expected) {
@@ -62,6 +63,20 @@ export function testAuthCallbackParamParsing(): void {
   }
 }
 
+export function testAuthReturnPathNormalization(): void {
+  assertEqual('admin return preserved', normalizeAuthReturnPath('/admin/chat'), '/admin/chat');
+  assertEqual('legacy chat normalized', normalizeAuthReturnPath('/chat'), '/admin/chat');
+  assertEqual('legacy chat query normalized', normalizeAuthReturnPath('/chat?x=1'), '/admin/chat?x=1');
+  assertEqual('external return rejected', normalizeAuthReturnPath('https://evil.example/admin/chat'), '/account');
+  assertEqual('callback loop rejected', normalizeAuthReturnPath('/auth/callback?next=/admin/chat'), '/account');
+  assertEqual('login href includes next', loginHrefForReturnPath('/admin/chat'), '/login?next=%2Fadmin%2Fchat');
+  assertEqual(
+    'callback URL carries safe next',
+    buildAuthCallbackUrl('https://www.apocky.com', '/admin/chat'),
+    'https://www.apocky.com/auth/callback?next=%2Fadmin%2Fchat',
+  );
+}
+
 declare const require: { main?: unknown } | undefined;
 declare const module: { id?: string } | undefined;
 const isMain =
@@ -73,6 +88,7 @@ if (isMain) {
   testProductionRedirects();
   testPreviewAndLocalhostRedirects();
   testAuthCallbackParamParsing();
+  testAuthReturnPathNormalization();
   // eslint-disable-next-line no-console
   console.log('auth-redirect.test : OK');
 }

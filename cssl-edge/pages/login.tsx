@@ -5,6 +5,7 @@ import type { NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { AUTH_PROVIDERS, getAuthClient } from '../lib/auth';
+import { buildAuthCallbackUrl, normalizeAuthReturnPath } from '../lib/auth-return';
 
 const Login: NextPage = () => {
   const [email, setEmail] = useState('');
@@ -13,12 +14,21 @@ const Login: NextPage = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [stubMode, setStubMode] = useState<boolean | null>(null);
   const [localhostWarning, setLocalhostWarning] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState('/account');
 
   useEffect(() => {
+    if (typeof location !== 'undefined') {
+      const next = new URLSearchParams(location.search).get('next');
+      setReturnTo(normalizeAuthReturnPath(next));
+    }
     if (typeof location !== 'undefined' && location.hostname === 'localhost') {
       setLocalhostWarning(`http://localhost:${location.port || 3000}/auth/callback`);
     }
   }, []);
+
+  function callbackUrl(): string {
+    return buildAuthCallbackUrl(location.origin, returnTo);
+  }
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -29,7 +39,7 @@ const Login: NextPage = () => {
       const res = await fetch('/api/auth/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, redirectTo: `${location.origin}/auth/callback` }),
+        body: JSON.stringify({ email, redirectTo: callbackUrl() }),
       });
       const json = await res.json();
       if (json.stub) setStubMode(true);
@@ -61,7 +71,7 @@ const Login: NextPage = () => {
       const { data, error } = await client.auth.signInWithOAuth({
         provider: provider as 'google' | 'apple' | 'github' | 'discord',
         options: {
-          redirectTo: `${location.origin}/auth/callback`,
+          redirectTo: callbackUrl(),
           skipBrowserRedirect: true,
           queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
         },
@@ -123,6 +133,11 @@ const Login: NextPage = () => {
         <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.92rem' }}>
           One account · all Apocky-projects · sovereign-revocable
         </p>
+        {returnTo !== '/account' && (
+          <p style={{ color: '#7dd3fc', marginTop: '0.75rem', fontSize: '0.82rem' }}>
+            After sign-in → {returnTo}
+          </p>
+        )}
 
         {/* ─── LOCALHOST DEV WARNING ─── */}
         {localhostWarning && (
@@ -275,7 +290,7 @@ const Login: NextPage = () => {
         {/* ─── REGISTER LINK ─── */}
         <p style={{ marginTop: '2.5rem', fontSize: '0.85rem', color: '#7a7a8c', textAlign: 'center' }}>
           Don't have an account?{' '}
-          <a href="/register" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+          <a href={`/register?next=${encodeURIComponent(returnTo)}`} style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
             Create one
           </a>
         </p>

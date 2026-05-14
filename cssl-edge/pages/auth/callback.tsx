@@ -5,6 +5,7 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
+import { normalizeAuthReturnPath } from '../../lib/auth-return';
 import { consumeAuthCallbackFromLocation } from '../../lib/auth-callback';
 
 const AuthCallback: NextPage = () => {
@@ -32,11 +33,12 @@ const AuthCallback: NextPage = () => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const returnTo = normalizeAuthReturnPath(new URLSearchParams(location.search).get('next'));
       const result = await consumeAuthCallbackFromLocation();
       if (cancelled) return;
       if (result.ok) {
         if (!cancelled) setMessage('✓ signed in · redirecting…');
-        setTimeout(() => { location.replace('/account'); }, 600);
+        setTimeout(() => { location.replace(returnTo); }, 600);
         return;
       }
       setStub(Boolean(result.stub));

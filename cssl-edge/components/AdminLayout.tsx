@@ -5,6 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState, type ReactNode } from 'react';
+import { loginHrefForReturnPath } from '../lib/auth-return';
 import { authFetch } from '../lib/browser-auth';
 
 interface AdminLayoutProps {
@@ -36,6 +37,7 @@ const MOBILE_NAV = NAV.filter((item) => item.mobile);
 export default function AdminLayout({ title, children, onAdminCheck }: AdminLayoutProps) {
   const router = useRouter();
   const [check, setCheck] = useState<AdminCheck | null>(null);
+  const loginHref = loginHrefForReturnPath(router.asPath || router.pathname || '/admin/chat');
 
   useEffect(() => {
     authFetch('/api/admin/check', { cache: 'no-store' })
@@ -180,7 +182,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
             {check.reason ?? 'Sign in with the admin email to access these controls.'}
             {!check.email && (
               <div style={{ marginTop: '0.5rem' }}>
-                <Link href="/login" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+                <Link href={loginHref} style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
                   → Sign in
                 </Link>
               </div>

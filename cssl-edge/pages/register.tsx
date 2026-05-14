@@ -4,8 +4,9 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AUTH_PROVIDERS } from '../lib/auth';
+import { buildAuthCallbackUrl, normalizeAuthReturnPath } from '../lib/auth-return';
 
 const Register: NextPage = () => {
   const [email, setEmail] = useState('');
@@ -13,6 +14,17 @@ const Register: NextPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [stubMode, setStubMode] = useState<boolean | null>(null);
+  const [returnTo, setReturnTo] = useState('/account');
+
+  useEffect(() => {
+    if (typeof location === 'undefined') return;
+    const next = new URLSearchParams(location.search).get('next');
+    setReturnTo(normalizeAuthReturnPath(next));
+  }, []);
+
+  function callbackUrl(): string {
+    return buildAuthCallbackUrl(location.origin, returnTo);
+  }
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +37,7 @@ const Register: NextPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
-          redirectTo: `${location.origin}/auth/callback`,
+          redirectTo: callbackUrl(),
           isRegistration: true,
         }),
       });
@@ -49,7 +61,7 @@ const Register: NextPage = () => {
       const res = await fetch('/api/auth/oauth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, redirectTo: `${location.origin}/auth/callback` }),
+        body: JSON.stringify({ provider, redirectTo: callbackUrl() }),
       });
       const json = await res.json();
       if (json.stub) {
