@@ -18,6 +18,7 @@
 
 pub mod cst;
 pub mod diagnostic;
+pub mod diagnostic_render;
 pub mod source;
 pub mod span;
 
@@ -30,7 +31,8 @@ pub use cst::{
     PatternKind, RefinementKind, Stmt, StmtKind, StructBody, StructFieldInit, StructItem, Type,
     TypeAliasItem, TypeKind, UnOp, UseItem, UseTree, Visibility, VisibilityKind, WhereClause,
 };
-pub use diagnostic::{Diagnostic, DiagnosticBag, Severity};
+pub use diagnostic::{did_you_mean, levenshtein, Diagnostic, DiagnosticBag, Severity};
+pub use diagnostic_render::Renderer;
 pub use source::{SourceFile, SourceId, SourceLocation, Surface};
 pub use span::Span;
 

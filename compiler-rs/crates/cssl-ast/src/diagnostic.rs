@@ -59,6 +59,13 @@ pub struct Diagnostic {
     pub span: Option<Span>,
     /// Attached sub-diagnostics (notes, helps) for multi-part messages.
     pub notes: Vec<Note>,
+    /// Stable diagnostic code (e.g. `"T0001"` for type-mismatch). Renders as
+    /// `error[T0001]: ...`. `None` for diagnostics without a stable code yet.
+    pub code: Option<String>,
+    /// One-line suggestion shown as `help: did you mean : X?`. Carrier-only;
+    /// the lookup that produces the suggestion lives at the call-site
+    /// (typically via `did_you_mean` below). See spec-70 § item-89 A89.2.
+    pub suggestion: Option<String>,
 }
 
 /// A secondary note attached to a primary diagnostic.
@@ -81,6 +88,8 @@ impl Diagnostic {
             message: message.into(),
             span: None,
             notes: Vec::new(),
+            code: None,
+            suggestion: None,
         }
     }
 
@@ -92,6 +101,8 @@ impl Diagnostic {
             message: message.into(),
             span: None,
             notes: Vec::new(),
+            code: None,
+            suggestion: None,
         }
     }
 
@@ -134,6 +145,89 @@ impl Diagnostic {
         });
         self
     }
+
+    /// Attach a stable diagnostic code (e.g. `"T0001"`).
+    #[must_use]
+    pub fn with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = Some(code.into());
+        self
+    }
+
+    /// Attach a one-line suggestion (`help: did you mean : <suggestion>?`).
+    /// See spec-70 § item-89 A89.2.
+    #[must_use]
+    pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
+        self.suggestion = Some(suggestion.into());
+        self
+    }
+}
+
+/// Return the best `did you mean` candidate within edit-distance 2 of `ident`,
+/// or `None` if no candidate is close enough or the best match is ambiguous
+/// (multiple candidates tied at the same distance).
+///
+/// Per spec-70 § item-89 A89.2 : single-best within distance ≤ 2 only.
+///
+/// `candidates` is typically the in-scope identifier set at the error site.
+/// Pass `&[]` to disable suggestion (returns `None`).
+///
+/// # Examples
+///
+/// ```
+/// # use cssl_ast::diagnostic::did_you_mean;
+/// assert_eq!(did_you_mean("foo", &["foa", "bar"]), Some("foa".to_string()));
+/// assert_eq!(did_you_mean("foo", &["completely_unrelated"]), None);
+/// // tied → ambiguous → None
+/// assert_eq!(did_you_mean("foo", &["foa", "fob"]), None);
+/// ```
+#[must_use]
+pub fn did_you_mean(ident: &str, candidates: &[&str]) -> Option<String> {
+    let mut best: Option<(usize, &str)> = None;
+    let mut tied = false;
+    for cand in candidates {
+        let d = levenshtein(ident, cand);
+        if d > 2 {
+            continue;
+        }
+        match best {
+            None => best = Some((d, cand)),
+            Some((bd, _)) if d < bd => {
+                best = Some((d, cand));
+                tied = false;
+            }
+            Some((bd, _)) if d == bd => tied = true,
+            _ => {}
+        }
+    }
+    if tied {
+        return None;
+    }
+    best.map(|(_, s)| s.to_string())
+}
+
+/// Levenshtein edit-distance — iterative DP, O(|a| * |b|) time, O(min(|a|,|b|)) space.
+/// Used by `did_you_mean`; pub for callers needing the raw metric.
+#[must_use]
+pub fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (a, b) = if a.len() < b.len() { (b, a) } else { (a, b) };
+    if b.is_empty() {
+        return a.len();
+    }
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr: Vec<usize> = vec![0; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            curr[j + 1] = (curr[j] + 1)
+                .min(prev[j + 1] + 1)
+                .min(prev[j] + cost);
+        }
+        core::mem::swap(&mut prev, &mut curr);
+    }
+    prev[b.len()]
 }
 
 /// Accumulator for diagnostics produced by a single frontend pass.
@@ -230,6 +324,58 @@ mod tests {
         assert_eq!(d.notes.len(), 2);
         assert_eq!(d.notes[0].severity, Severity::Note);
         assert_eq!(d.notes[1].severity, Severity::Help);
+        assert!(d.code.is_none());
+        assert!(d.suggestion.is_none());
+    }
+
+    #[test]
+    fn with_code_and_suggestion() {
+        let d = Diagnostic::error("expected `i64`, got `u32`")
+            .with_code("T0001")
+            .with_suggestion("x as i64");
+        assert_eq!(d.code.as_deref(), Some("T0001"));
+        assert_eq!(d.suggestion.as_deref(), Some("x as i64"));
+    }
+
+    #[test]
+    fn levenshtein_basics() {
+        use super::levenshtein;
+        assert_eq!(levenshtein("", ""), 0);
+        assert_eq!(levenshtein("", "abc"), 3);
+        assert_eq!(levenshtein("abc", ""), 3);
+        assert_eq!(levenshtein("abc", "abc"), 0);
+        assert_eq!(levenshtein("foo", "foa"), 1);
+        assert_eq!(levenshtein("kitten", "sitting"), 3);
+        // unicode
+        assert_eq!(levenshtein("café", "cafe"), 1);
+    }
+
+    #[test]
+    fn did_you_mean_picks_closest() {
+        use super::did_you_mean;
+        assert_eq!(
+            did_you_mean("foo", &["foa", "bar", "baz"]),
+            Some("foa".to_string())
+        );
+    }
+
+    #[test]
+    fn did_you_mean_returns_none_when_too_far() {
+        use super::did_you_mean;
+        assert_eq!(did_you_mean("foo", &["completely_unrelated"]), None);
+    }
+
+    #[test]
+    fn did_you_mean_returns_none_when_tied() {
+        use super::did_you_mean;
+        // both "foa" and "fob" are distance 1 from "foo" → ambiguous
+        assert_eq!(did_you_mean("foo", &["foa", "fob"]), None);
+    }
+
+    #[test]
+    fn did_you_mean_empty_candidates() {
+        use super::did_you_mean;
+        assert_eq!(did_you_mean("foo", &[]), None);
     }
 
     #[test]

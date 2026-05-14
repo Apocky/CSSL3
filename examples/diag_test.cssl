@@ -1,0 +1,7 @@
+// § GOLDEN-FIXTURE for spec-70 § item-89 (diagnostic carets + suggestions).
+// § STATUS: DRAFT — used by tests in cssl-ast/src/diagnostic_render.rs.
+//          When call-site adoption lands (cssl-hir + cssl-mir), the csslc
+//          driver will emit a real diagnostic for the type-mismatch on line 2.
+
+fn add(a : i32, b : i32) -> i32 { a + b }
+fn f(x : u32) -> i64 { x }
