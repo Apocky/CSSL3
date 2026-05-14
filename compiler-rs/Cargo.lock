@@ -2252,6 +2252,7 @@ dependencies = [
  "cssl-host-input",
  "cssl-host-window",
  "rand",
+ "serde_json",
  "ureq",
 ]
 
@@ -2418,6 +2419,15 @@ dependencies = [
  "cssl-ifc",
  "ed25519-dalek",
  "rand",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-test-verifier"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

@@ -1,0 +1,5 @@
+{"ts_ns":1,"src":"cssl-rt::host_window","op":"window.create","kind":"entry","args":{},"result":null,"latency_ns":null,"note":null}
+{"ts_ns":2,"src":"cssl-rt::host_window","op":"window.create","kind":"exit","args":{},"result":0,"latency_ns":1500,"note":null}
+{"ts_ns":10,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"entry","args":{},"result":null,"latency_ns":null,"note":null}
+{"ts_ns":11,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"exit","args":{},"result":{"image_idx":4294967295},"latency_ns":7000000,"note":null}
+{"ts_ns":40,"src":"cssl-rt::host_swapchain","op":"swapchain.recreate","kind":"skip","args":{},"result":null,"latency_ns":null,"note":"silent fallback fired"}

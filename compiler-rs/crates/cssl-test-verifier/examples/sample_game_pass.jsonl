@@ -1,0 +1,9 @@
+{"ts_ns":1,"src":"cssl-rt::host_window","op":"window.create","kind":"entry","args":{},"result":null,"latency_ns":null,"note":null}
+{"ts_ns":2,"src":"cssl-rt::host_window","op":"window.create","kind":"exit","args":{},"result":42,"latency_ns":1500,"note":null}
+{"ts_ns":10,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"entry","args":{},"result":null,"latency_ns":null,"note":null}
+{"ts_ns":11,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"exit","args":{},"result":{"image_idx":0},"latency_ns":2000,"note":null}
+{"ts_ns":20,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"entry","args":{},"result":null,"latency_ns":null,"note":null}
+{"ts_ns":21,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"exit","args":{},"result":{"image_idx":1},"latency_ns":1800,"note":null}
+{"ts_ns":30,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"entry","args":{},"result":null,"latency_ns":null,"note":null}
+{"ts_ns":31,"src":"cssl-rt::host_gpu","op":"gpu.acquire_image","kind":"exit","args":{},"result":{"image_idx":2},"latency_ns":2100,"note":null}
+{"ts_ns":40,"src":"cssl-rt::host_telemetry","op":"telemetry.batch","kind":"skip","args":{},"result":null,"latency_ns":null,"note":"allowlisted"}

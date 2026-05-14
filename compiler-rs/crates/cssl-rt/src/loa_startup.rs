@@ -204,6 +204,23 @@ fn startup_run() {
     if std::env::var("CSSL_LOG_DISABLE").is_ok() {
         return;
     }
+    // § T11-W19-β-LIFECYCLE-2026-05-04 : emit canonical process.start +
+    // loa_startup.ctor pseudo-events to JSONL so the verifier can match
+    // the manifest's lifecycle expectations. These fire BEFORE user main.
+    let ctor_scope = crate::events::EventScope::new(
+        "cssl-rt::loa_startup",
+        "loa_startup.ctor",
+        serde_json::json!({"pid": pid()}),
+    );
+    crate::events::fs_event_jsonl(
+        "cssl-rt::loa_startup",
+        "process.start",
+        "exit",
+        serde_json::json!({"pid": pid()}),
+        Some(serde_json::json!({"ok": true})),
+        Some(0),
+        None,
+    );
     if let Ok(f) = open_log_file() {
         if let Ok(mut guard) = LOG_FILE.lock() {
             *guard = Some(f);
@@ -265,10 +282,23 @@ fn startup_run() {
             "loa_startup",
             "§ atexit fired · LoA-v13 shutting down",
         );
+        // § T11-W19-β-LIFECYCLE-2026-05-04 : emit process.exit pseudo-event
+        // 'f the verifier · matched against manifest @ shutdown.
+        crate::events::fs_event_jsonl(
+            "cssl-rt::loa_startup",
+            "process.exit",
+            "exit",
+            serde_json::json!({}),
+            Some(serde_json::json!({"ok": true})),
+            None,
+            None,
+        );
     }
     unsafe {
         libc_atexit(shutdown_hook);
     }
+    // Finalize the ctor scope · emits loa_startup.ctor.exit JSONL event.
+    ctor_scope.success(serde_json::json!({"banner_emitted": true}));
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]

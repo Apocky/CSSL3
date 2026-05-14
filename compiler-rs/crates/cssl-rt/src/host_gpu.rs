@@ -254,12 +254,26 @@ pub fn reset_for_tests() {
 
 static DEVICE_ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+// § T11-W19-β-FS-EVENT-JSONL : per-call counters used to sample the
+//   structured-event sink for every-frame ops (acquire / present). Without
+//   sampling these would dominate the JSONL log on a 60 Hz game loop.
+static SWAPCHAIN_ACQUIRE_COUNT: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static SWAPCHAIN_PRESENT_COUNT: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 fn next_device_id() -> u64 {
     DEVICE_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 #[must_use]
 pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
+    // § T11-W19-β-FS-EVENT-JSONL : entry/exit + branch on real-D3D12.
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_gpu",
+        "gpu.device_create",
+        serde_json::json!({"adapter_idx": adapter_idx, "flags": flags}),
+    );
     // § T11-W19-β-RT-DELEG-GPU : real-D3D12 attempt first.
     //
     // Try `cssl_host_d3d12::Factory::new()` + `Device::new(...)` with the
@@ -274,7 +288,15 @@ pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
     // § STAGE-0-MAPPING). What we DO get : confirmation that DXGI
     // factory creation + adapter enumeration + device creation work on
     // this host. Stage-1 swaps in the real ID3D12Device pointer pinning.
-    let _real_attempt = real_device_create_d3d12(adapter_idx, flags);
+    let real_attempt = real_device_create_d3d12(adapter_idx, flags);
+    if real_attempt.is_some() {
+        scope.branch("real-d3d12-device-create-OK");
+    } else {
+        // ‼ Silent-fallback made-visible : real_d3d12 returned None ; we
+        //   fall through to the slot-table stub. Pre-T11-W19-β this was
+        //   completely invisible from outside the runtime.
+        scope.branch("real-d3d12-returned-None-falling-to-stub-slot");
+    }
     // Continue to register the slot-table entry regardless ; the engine's
     // device.handle stays the slot-index for back-compat.
     let record = DeviceRecord {
@@ -286,7 +308,12 @@ pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    tbl.insert(record)
+    let handle = tbl.insert(record);
+    scope.success(serde_json::json!({
+        "handle":      handle,
+        "real_d3d12":  real_attempt.is_some(),
+    }));
+    handle
 }
 
 /// Stage-0 real-D3D12 path : create + (intentionally drop) a Device
@@ -310,26 +337,45 @@ fn real_device_create_d3d12(_adapter_idx: u32, _flags: u32) -> Option<()> {
 
 #[must_use]
 pub fn device_destroy_impl(device: u64) -> i32 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_gpu",
+        "gpu.device_destroy",
+        serde_json::json!({"device": device}),
+    );
     // SWAP-POINT : vkDestroyDevice + vkDestroyInstance.
     let mut tbl = match device_table().lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
     if tbl.remove(device).is_some() {
+        scope.success(serde_json::json!({"rc": GPU_I32_OK_SENTINEL}));
         GPU_I32_OK_SENTINEL
     } else {
+        scope.error(
+            serde_json::json!({"rc": GPU_I32_ERROR_SENTINEL}),
+            Some("device-not-in-slot-table"),
+        );
         GPU_I32_ERROR_SENTINEL
     }
 }
 
 #[must_use]
 pub fn swapchain_create_impl(device: u64, window: u64, fmt: u32) -> u64 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_gpu",
+        "gpu.swapchain_create",
+        serde_json::json!({"device": device, "window": window, "fmt": fmt}),
+    );
     {
         let dt = match device_table().lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
         if !dt.contains(device) {
+            scope.error(
+                serde_json::json!({"handle": GPU_HANDLE_ERROR_SENTINEL}),
+                Some("device-not-in-slot-table"),
+            );
             return GPU_HANDLE_ERROR_SENTINEL;
         }
     }
@@ -345,11 +391,20 @@ pub fn swapchain_create_impl(device: u64, window: u64, fmt: u32) -> u64 {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    st.insert(record)
+    let handle = st.insert(record);
+    scope.success(serde_json::json!({"handle": handle, "image_count": 3}));
+    handle
 }
 
 #[must_use]
 pub fn swapchain_acquire_impl(swap: u64, _timeout_ns: u64) -> u32 {
+    // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED. Apocky directive.
+    let n = SWAPCHAIN_ACQUIRE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let scope = Some(crate::events::EventScope::new(
+        "cssl-rt::host_gpu",
+        "gpu.swapchain_acquire",
+        serde_json::json!({"swap": swap, "timeout_ns": _timeout_ns, "call_idx": n}),
+    ));
     // SWAP-POINT : vkAcquireNextImageKHR(swap, timeout_ns, sem, fence, &idx).
     let mut st = match swapchain_table().lock() {
         Ok(g) => g,
@@ -357,15 +412,34 @@ pub fn swapchain_acquire_impl(swap: u64, _timeout_ns: u64) -> u32 {
     };
     let idx = swap as usize;
     if idx == 0 || idx >= st.slots.len() {
+        if let Some(s) = scope {
+            s.error(
+                serde_json::json!({"image_idx": GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL}),
+                Some("swap-out-of-range"),
+            );
+        }
         return GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL;
     }
     match &mut st.slots[idx] {
         Slot::Occupied(rec) => {
             let image = rec.acquire_counter % rec.image_count.max(1);
             rec.acquire_counter = rec.acquire_counter.wrapping_add(1);
+            if let Some(s) = scope {
+                s.success(serde_json::json!({"image_idx": image}));
+            }
             image
         }
-        Slot::Free(_) => GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL,
+        Slot::Free(_) => {
+            // Silent-fallback : freed slot returns timeout-sentinel. Pre-
+            // T11-W19-β this looked indistinguishable from a real timeout.
+            if let Some(s) = scope {
+                s.error(
+                    serde_json::json!({"image_idx": GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL}),
+                    Some("swap-slot-freed-timeout-sentinel"),
+                );
+            }
+            GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL
+        }
     }
 }
 
@@ -378,35 +452,74 @@ pub fn swapchain_acquire_force_timeout_impl(_swap: u64) -> u32 {
 
 #[must_use]
 pub fn swapchain_present_impl(swap: u64, image_idx: u32) -> i32 {
+    // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED.
+    let n = SWAPCHAIN_PRESENT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let scope = Some(crate::events::EventScope::new(
+        "cssl-rt::host_gpu",
+        "gpu.swapchain_present",
+        serde_json::json!({"swap": swap, "image_idx": image_idx, "call_idx": n}),
+    ));
     // SWAP-POINT : vkQueuePresentKHR(queue, &PresentInfo {…}).
     let st = match swapchain_table().lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
     let Some(rec) = st.get(swap) else {
+        if let Some(s) = scope {
+            s.error(
+                serde_json::json!({"rc": GPU_I32_ERROR_SENTINEL}),
+                Some("swap-not-in-slot-table"),
+            );
+        }
         return GPU_I32_ERROR_SENTINEL;
     };
     if image_idx >= rec.image_count {
+        if let Some(s) = scope {
+            s.error(
+                serde_json::json!({"rc": GPU_I32_ERROR_SENTINEL}),
+                Some("image-idx-out-of-range"),
+            );
+        }
         return GPU_I32_ERROR_SENTINEL;
+    }
+    if let Some(s) = scope {
+        s.success(serde_json::json!({"rc": GPU_I32_OK_SENTINEL}));
     }
     GPU_I32_OK_SENTINEL
 }
 
 #[must_use]
 pub fn pipeline_compile_impl(device: u64, kind: u32, ir_len: usize) -> u64 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_gpu",
+        "gpu.pipeline_compile",
+        serde_json::json!({"device": device, "kind": kind, "ir_len": ir_len}),
+    );
     {
         let dt = match device_table().lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
         if !dt.contains(device) {
+            scope.error(
+                serde_json::json!({"handle": GPU_HANDLE_ERROR_SENTINEL}),
+                Some("device-not-in-slot-table"),
+            );
             return GPU_HANDLE_ERROR_SENTINEL;
         }
     }
     let Some(decoded) = pipeline_kind_from_u32(kind) else {
+        scope.error(
+            serde_json::json!({"handle": GPU_HANDLE_ERROR_SENTINEL}),
+            Some("invalid-pipeline-kind"),
+        );
         return GPU_HANDLE_ERROR_SENTINEL;
     };
     if ir_len == 0 || ir_len > GPU_PIPELINE_IR_LEN_MAX {
+        scope.error(
+            serde_json::json!({"handle": GPU_HANDLE_ERROR_SENTINEL}),
+            Some("ir-len-out-of-range"),
+        );
         return GPU_HANDLE_ERROR_SENTINEL;
     }
     // SWAP-POINT : per-kind dispatch :
@@ -423,7 +536,9 @@ pub fn pipeline_compile_impl(device: u64, kind: u32, ir_len: usize) -> u64 {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    pt.insert(record)
+    let handle = pt.insert(record);
+    scope.success(serde_json::json!({"handle": handle, "kind": decoded as u32}));
+    handle
 }
 
 #[must_use]
@@ -544,6 +659,18 @@ pub mod ffi {
     /// # Safety  Always safe.
     #[no_mangle]
     pub unsafe extern "C" fn __cssl_gpu_cmd_buf_record_stub() -> u64 {
+        // § T11-W19-β-FS-EVENT-JSONL : `_impl` is `const fn` → instrument
+        //   at the FFI shim. Emit a `skip` (the stub is intentionally a
+        //   no-op pending stage-1 ABI) so callers can SEE the dead path.
+        crate::events::fs_event_jsonl(
+            "cssl-rt::host_gpu",
+            "gpu.cmd_buf_record",
+            "skip",
+            serde_json::json!({}),
+            Some(serde_json::json!({"handle": 0u64})),
+            Some(0u64),
+            Some("stage-0-stub-pending-stage-1-abi"),
+        );
         cmd_buf_record_stub_impl()
     }
 
@@ -551,6 +678,16 @@ pub mod ffi {
     /// # Safety  Always safe.
     #[no_mangle]
     pub unsafe extern "C" fn __cssl_gpu_cmd_buf_submit_stub(cmd: u64) -> i32 {
+        // § T11-W19-β-FS-EVENT-JSONL : same stub-no-op disclosure as record.
+        crate::events::fs_event_jsonl(
+            "cssl-rt::host_gpu",
+            "gpu.cmd_buf_submit",
+            "skip",
+            serde_json::json!({"cmd": cmd}),
+            Some(serde_json::json!({"rc": 0i32})),
+            Some(0u64),
+            Some("stage-0-stub-pending-stage-1-abi"),
+        );
         cmd_buf_submit_stub_impl(cmd)
     }
 

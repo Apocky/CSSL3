@@ -302,6 +302,12 @@ pub static MUTEX_SLOTS: OnceLock<Mutex<Vec<MutexSlot>>> = OnceLock::new();
 /// Monotonic ID counter for mutex-handle assignment.
 static NEXT_MUTEX_ID: AtomicU64 = AtomicU64::new(1);
 
+// § T11-W19-β-FS-EVENT-JSONL : sample counters for hot-path FFI ops.
+//   Lock/unlock fire in inner loops (per-frame mutator chains) ; without
+//   sampling these would dominate the JSONL log.
+static MUTEX_LOCK_COUNT: AtomicU64 = AtomicU64::new(0);
+static MUTEX_UNLOCK_COUNT: AtomicU64 = AtomicU64::new(0);
+
 /// Acquire the mutex slot-table guard, lazily-initializing on first call.
 fn mutex_slots_guard() -> std::sync::MutexGuard<'static, Vec<MutexSlot>> {
     let lock = MUTEX_SLOTS.get_or_init(|| Mutex::new(Vec::with_capacity(8)));
@@ -646,8 +652,19 @@ pub unsafe extern "C" fn __cssl_thread_spawn(
     entry: *const u8,
     arg: *const u8,
 ) -> u64 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_thread",
+        "thread.spawn",
+        serde_json::json!({"entry_ptr": entry as usize, "arg_ptr": arg as usize}),
+    );
     // SAFETY : entry/arg pointer-validity is the FFI-caller's contract.
-    unsafe { cssl_thread_spawn_impl(entry, arg) }
+    let handle = unsafe { cssl_thread_spawn_impl(entry, arg) };
+    if handle == 0 {
+        scope.error(serde_json::json!({"handle": 0u64}), Some("spawn-failed"));
+    } else {
+        scope.success(serde_json::json!({"handle": handle}));
+    }
+    handle
 }
 
 /// FFI : join the thread identified by `handle` ; write its return-code
@@ -663,8 +680,19 @@ pub unsafe extern "C" fn __cssl_thread_join(
     handle: u64,
     ret_out: *mut i32,
 ) -> i32 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_thread",
+        "thread.join",
+        serde_json::json!({"handle": handle, "ret_out": ret_out as usize}),
+    );
     // SAFETY : handle + ret_out contract inherited from caller.
-    unsafe { cssl_thread_join_impl(handle, ret_out) }
+    let rc = unsafe { cssl_thread_join_impl(handle, ret_out) };
+    if rc == 0 {
+        scope.success(serde_json::json!({"rc": rc}));
+    } else {
+        scope.error(serde_json::json!({"rc": rc}), Some("join-failed"));
+    }
+    rc
 }
 
 /// FFI : create a new mutex. Returns the slot-table handle (nonzero on
@@ -674,7 +702,18 @@ pub unsafe extern "C" fn __cssl_thread_join(
 /// Always safe to call ; `unsafe` only because of `extern "C"` ABI rules.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_mutex_create() -> u64 {
-    cssl_mutex_create_impl()
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_thread",
+        "thread.mutex_create",
+        serde_json::json!({}),
+    );
+    let handle = cssl_mutex_create_impl();
+    if handle == 0 {
+        scope.error(serde_json::json!({"handle": 0u64}), Some("mutex-alloc-failed"));
+    } else {
+        scope.success(serde_json::json!({"handle": handle}));
+    }
+    handle
 }
 
 /// FFI : lock the mutex identified by `handle`. Returns 0 on success,
@@ -685,7 +724,26 @@ pub unsafe extern "C" fn __cssl_mutex_create() -> u64 {
 /// [`__cssl_mutex_create`] and not yet destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_mutex_lock(handle: u64) -> i32 {
-    cssl_mutex_lock_impl(handle)
+    // § T11-W19-β-FS-EVENT-JSONL : sample (mutex-lock can be hot per-frame).
+    let n = MUTEX_LOCK_COUNT.fetch_add(1, Ordering::Relaxed);
+    let scope = if n < 5 || n & 0xFF == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_thread",
+            "thread.mutex_lock",
+            serde_json::json!({"handle": handle, "call_idx": n}),
+        ))
+    } else {
+        None
+    };
+    let rc = cssl_mutex_lock_impl(handle);
+    if let Some(s) = scope {
+        if rc == 0 {
+            s.success(serde_json::json!({"rc": rc}));
+        } else {
+            s.error(serde_json::json!({"rc": rc}), Some("lock-failed"));
+        }
+    }
+    rc
 }
 
 /// FFI : unlock the mutex identified by `handle`. Returns 0 on success,
@@ -696,7 +754,25 @@ pub unsafe extern "C" fn __cssl_mutex_lock(handle: u64) -> i32 {
 /// [`__cssl_mutex_create`] and not yet destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_mutex_unlock(handle: u64) -> i32 {
-    cssl_mutex_unlock_impl(handle)
+    let n = MUTEX_UNLOCK_COUNT.fetch_add(1, Ordering::Relaxed);
+    let scope = if n < 5 || n & 0xFF == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_thread",
+            "thread.mutex_unlock",
+            serde_json::json!({"handle": handle, "call_idx": n}),
+        ))
+    } else {
+        None
+    };
+    let rc = cssl_mutex_unlock_impl(handle);
+    if let Some(s) = scope {
+        if rc == 0 {
+            s.success(serde_json::json!({"rc": rc}));
+        } else {
+            s.error(serde_json::json!({"rc": rc}), Some("unlock-failed"));
+        }
+    }
+    rc
 }
 
 /// FFI : destroy the mutex identified by `handle`. Returns 0 on success,
@@ -708,7 +784,18 @@ pub unsafe extern "C" fn __cssl_mutex_unlock(handle: u64) -> i32 {
 /// handle is invalidated.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_mutex_destroy(handle: u64) -> i32 {
-    cssl_mutex_destroy_impl(handle)
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_thread",
+        "thread.mutex_destroy",
+        serde_json::json!({"handle": handle}),
+    );
+    let rc = cssl_mutex_destroy_impl(handle);
+    if rc == 0 {
+        scope.success(serde_json::json!({"rc": rc}));
+    } else {
+        scope.error(serde_json::json!({"rc": rc}), Some("mutex-destroy-failed"));
+    }
+    rc
 }
 
 /// FFI : atomically load a `u64` from `addr` with the given ordering.

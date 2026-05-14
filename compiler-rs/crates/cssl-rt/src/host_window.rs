@@ -515,13 +515,33 @@ pub unsafe fn cssl_window_spawn_impl(
         "spawn_impl entry tp={:p} tl={} w={} h={} flags={}",
         title_ptr, title_len, width, height, flags
     ));
+    // § T11-W19-β-FS-EVENT-JSONL : structured event entry/exit pair.
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_window",
+        "window.spawn",
+        serde_json::json!({
+            "title_ptr": title_ptr as usize,
+            "title_len": title_len,
+            "w":         width,
+            "h":         height,
+            "flags":     flags,
+        }),
+    );
     // Validation gate-1 : dimensions.
     if width == 0 || height == 0 {
         fs_trace("spawn_impl REJECT zero-dim");
+        scope.error(
+            serde_json::json!({"handle": 0u64}),
+            Some("zero-dim-rejected"),
+        );
         return INVALID_WINDOW_HANDLE;
     }
     // Validation gate-2 : flag bitset.
     if !validate_spawn_flags(flags) {
+        scope.error(
+            serde_json::json!({"handle": 0u64}),
+            Some("invalid-spawn-flags"),
+        );
         return INVALID_WINDOW_HANDLE;
     }
     // Validation gate-3 : title.
@@ -551,6 +571,10 @@ pub unsafe fn cssl_window_spawn_impl(
     // the slot. In practice this is never reached at stage-0 + the wrap is
     // benign : we'd just consume one slot.
     if handle == INVALID_WINDOW_HANDLE {
+        scope.error(
+            serde_json::json!({"handle": 0u64}),
+            Some("handle-counter-wrapped"),
+        );
         return INVALID_WINDOW_HANDLE;
     }
 
@@ -560,6 +584,7 @@ pub unsafe fn cssl_window_spawn_impl(
     // production path on Apocky-host (Windows 11 + Arc A770) goes Real.
     let cfg = build_host_config(title.clone(), width, height, flags);
     fs_trace(&format!("spawn_impl call-spawn_window title='{}' {}x{} flags={}", title, width, height, flags));
+    scope.branch("attempt-real-win32-spawn");
     match spawn_window(&cfg) {
         Ok(real_win) => {
             fs_trace(&format!("spawn_impl OK handle={}", handle));
@@ -576,10 +601,12 @@ pub unsafe fn cssl_window_spawn_impl(
                 );
             });
             SPAWN_COUNT.fetch_add(1, Ordering::Relaxed);
+            scope.success(serde_json::json!({"handle": handle, "backend": "real"}));
             return handle;
         }
         Err(e) => {
             fs_trace(&format!("spawn_impl FAIL err={:?}", e));
+            scope.branch(&format!("real-spawn-failed-fallback-stub err={:?}", e));
             // Fall through to stub on real-backend failure (LoaderMissing
             // on non-Windows ; OsFailure on hosts where Win32 rejected the
             // spawn). Stub keeps the FFI-shape testable.
@@ -601,6 +628,7 @@ pub unsafe fn cssl_window_spawn_impl(
         g.insert(handle, entry);
     }
     SPAWN_COUNT.fetch_add(1, Ordering::Relaxed);
+    scope.success(serde_json::json!({"handle": handle, "backend": "stub"}));
     handle
 }
 
@@ -619,14 +647,29 @@ pub unsafe fn cssl_window_pump_impl(
     max_events: usize,
 ) -> i64 {
     let n = PUMP_COUNT.fetch_add(1, Ordering::Relaxed);
-    if n < 5 || n % 60 == 0 {
-        // Trace first-5-pumps + every-60th to avoid spam · still see start + cadence
-        fs_trace(&format!("pump_impl call#{} handle={} max_events={}", n, handle, max_events));
-    }
+    // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED. Apocky directive :
+    // "account for events that fire AND things that don't fire when they should
+    // or at all." Sampling defeats absence-detection — every call must emit.
+    fs_trace(&format!("pump_impl call#{} handle={} max_events={}", n, handle, max_events));
+    let scope = Some(crate::events::EventScope::new(
+        "cssl-rt::host_window",
+        "window.pump",
+        serde_json::json!({
+            "handle":     handle,
+            "max_events": max_events,
+            "call_idx":   n,
+        }),
+    ));
 
     // Buffer-validity gate.
     if max_events > 0 && events_out.is_null() {
         fs_trace("pump_impl REJECT null-buf");
+        if let Some(s) = scope {
+            s.error(
+                serde_json::json!({"rc": PUMP_ERR_NULL_BUF}),
+                Some("null-events-buf"),
+            );
+        }
         return PUMP_ERR_NULL_BUF;
     }
 
@@ -675,6 +718,13 @@ pub unsafe fn cssl_window_pump_impl(
         Some(written as i64)
     });
     if let Some(rc) = real_result {
+        if let Some(s) = scope {
+            if rc < 0 {
+                s.error(serde_json::json!({"rc": rc}), Some("real-backend-error"));
+            } else {
+                s.success(serde_json::json!({"rc": rc, "backend": "real"}));
+            }
+        }
         return rc;
     }
 
@@ -689,6 +739,12 @@ pub unsafe fn cssl_window_pump_impl(
     let (synth_close, ts_ms) = {
         let mut g = registry().lock().expect("registry mutex");
         let Some(entry) = g.get_mut(&handle) else {
+            if let Some(s) = scope {
+                s.error(
+                    serde_json::json!({"rc": PUMP_ERR_BAD_HANDLE}),
+                    Some("bad-handle-stub-miss"),
+                );
+            }
             return PUMP_ERR_BAD_HANDLE;
         };
         match entry {
@@ -699,6 +755,12 @@ pub unsafe fn cssl_window_pump_impl(
                 ..
             } => {
                 if *destroyed {
+                    if let Some(s) = scope {
+                        s.error(
+                            serde_json::json!({"rc": PUMP_ERR_DESTROYED}),
+                            Some("destroyed-window"),
+                        );
+                    }
                     return PUMP_ERR_DESTROYED;
                 }
                 if *close_requested && max_events > 0 {
@@ -715,7 +777,13 @@ pub unsafe fn cssl_window_pump_impl(
         // SAFETY : events_out is valid for at least 1 event-record by the
         // caller's contract + the max_events > 0 + non-null buffer gate.
         unsafe { write_close_event(events_out, ts_ms) };
+        if let Some(s) = scope {
+            s.success(serde_json::json!({"rc": 1i64, "backend": "stub", "synth_close": true}));
+        }
         return 1;
+    }
+    if let Some(s) = scope {
+        s.success(serde_json::json!({"rc": 0i64, "backend": "stub"}));
     }
     0
 }
@@ -724,6 +792,11 @@ pub unsafe fn cssl_window_pump_impl(
 ///
 /// Returns `0` on success ; `-1` on bad-handle / already-destroyed.
 pub fn cssl_window_request_close_impl(handle: u64) -> i32 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_window",
+        "window.request_close",
+        serde_json::json!({"handle": handle}),
+    );
     // § T11-W19-β-RT-DELEG-WINDOW : real-backend first.
     let real_hit = REAL_REGISTRY.with(|reg| {
         let mut g = reg.borrow_mut();
@@ -735,10 +808,12 @@ pub fn cssl_window_request_close_impl(handle: u64) -> i32 {
         }
     });
     if real_hit {
+        scope.success(serde_json::json!({"rc": 0i32, "backend": "real"}));
         return 0;
     }
     let mut g = registry().lock().expect("registry mutex");
     let Some(entry) = g.get_mut(&handle) else {
+        scope.error(serde_json::json!({"rc": -1i32}), Some("bad-handle"));
         return -1;
     };
     let RegistryEntry::Stub {
@@ -747,10 +822,12 @@ pub fn cssl_window_request_close_impl(handle: u64) -> i32 {
         ..
     } = entry;
     if *destroyed {
+        scope.error(serde_json::json!({"rc": -1i32}), Some("already-destroyed"));
         return -1;
     }
     // Idempotent — repeat calls just keep the flag set.
     *close_requested = true;
+    scope.success(serde_json::json!({"rc": 0i32, "backend": "stub"}));
     0
 }
 
@@ -759,12 +836,18 @@ pub fn cssl_window_request_close_impl(handle: u64) -> i32 {
 /// Returns `0` on success ; `-1` on bad-handle (idempotent : second
 /// destroy of the same handle returns -1 since the entry has been removed).
 pub fn cssl_window_destroy_impl(handle: u64) -> i32 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_window",
+        "window.destroy",
+        serde_json::json!({"handle": handle}),
+    );
     // § T11-W19-β-RT-DELEG-WINDOW : real-backend first. Drop of the
     // RealEntry triggers `cssl_host_window::Window::Drop` →
     // `DestroyWindow(hwnd)` → message-loop wind-down.
     let real_removed = REAL_REGISTRY.with(|reg| reg.borrow_mut().remove(&handle).is_some());
     if real_removed {
         DESTROY_COUNT.fetch_add(1, Ordering::Relaxed);
+        scope.success(serde_json::json!({"rc": 0i32, "backend": "real"}));
         return 0;
     }
     let removed = {
@@ -773,8 +856,10 @@ pub fn cssl_window_destroy_impl(handle: u64) -> i32 {
     };
     if removed {
         DESTROY_COUNT.fetch_add(1, Ordering::Relaxed);
+        scope.success(serde_json::json!({"rc": 0i32, "backend": "stub"}));
         0
     } else {
+        scope.error(serde_json::json!({"rc": -1i32}), Some("bad-handle"));
         -1
     }
 }
@@ -792,6 +877,15 @@ pub fn cssl_window_destroy_impl(handle: u64) -> i32 {
 /// `max_len > 0`. `max_len == 0` is allowed + the function returns
 /// `RAW_HANDLE_MAX_BYTES_WIN32` so the caller learns the required size.
 pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: usize) -> i32 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_window",
+        "window.raw_handle",
+        serde_json::json!({
+            "handle":  handle,
+            "out_ptr": out as usize,
+            "max_len": max_len,
+        }),
+    );
     // § T11-W19-β-RT-DELEG-WINDOW : real-backend first.
     let real_pair = REAL_REGISTRY.with(|reg| -> Option<(usize, usize)> {
         let g = reg.borrow();
@@ -808,9 +902,11 @@ pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: us
     if let Some((hwnd, hinstance)) = real_pair {
         let needed = RAW_HANDLE_MAX_BYTES_WIN32;
         if max_len < needed {
+            scope.error(serde_json::json!({"rc": -2i32}), Some("buf-too-small-real"));
             return -2;
         }
         if out.is_null() {
+            scope.error(serde_json::json!({"rc": -2i32}), Some("null-out-real"));
             return -2;
         }
         let hwnd_bytes = hwnd.to_le_bytes();
@@ -821,6 +917,11 @@ pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: us
             core::ptr::copy_nonoverlapping(hwnd_bytes.as_ptr(), out, word_size);
             core::ptr::copy_nonoverlapping(hinst_bytes.as_ptr(), out.add(word_size), word_size);
         }
+        scope.success(serde_json::json!({
+            "rc":      needed as i32,
+            "backend": "real",
+            "hwnd":    hwnd,
+        }));
         return needed as i32;
     }
     // Tight critical-section : peek the handle's destroyed-flag under the
@@ -833,15 +934,18 @@ pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: us
         }
     };
     if !exists_alive {
+        scope.error(serde_json::json!({"rc": -1i32}), Some("bad-handle"));
         return -1;
     }
     // STUB-VS-REAL § : real-backend miss → Stub fallback writes a
     // deterministic (hwnd, hinstance) pair derived from the handle.
     let needed = RAW_HANDLE_MAX_BYTES_WIN32;
     if max_len < needed {
+        scope.error(serde_json::json!({"rc": -2i32}), Some("buf-too-small-stub"));
         return -2;
     }
     if out.is_null() {
+        scope.error(serde_json::json!({"rc": -2i32}), Some("null-out-stub"));
         return -2;
     }
     // Synthesize a stub blob : (hwnd = handle * 0x10, hinstance = 1).
@@ -862,6 +966,11 @@ pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: us
         core::ptr::copy_nonoverlapping(hwnd_bytes.as_ptr(), out, word_size);
         core::ptr::copy_nonoverlapping(hinst_bytes.as_ptr(), out.add(word_size), word_size);
     }
+    scope.success(serde_json::json!({
+        "rc":      needed as i32,
+        "backend": "stub",
+        "hwnd":    stub_hwnd,
+    }));
     needed as i32
 }
 
@@ -873,7 +982,13 @@ pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: us
 /// # Safety
 /// `w_out` + `h_out` must be valid for one writable u32 each when non-null.
 pub unsafe fn cssl_window_get_dims_impl(handle: u64, w_out: *mut u32, h_out: *mut u32) -> i32 {
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_window",
+        "window.get_dims",
+        serde_json::json!({"handle": handle}),
+    );
     if w_out.is_null() || h_out.is_null() {
+        scope.error(serde_json::json!({"rc": -2i32}), Some("null-out-ptr"));
         return -2;
     }
     // § T11-W19-β-RT-DELEG-WINDOW : real-backend first.
@@ -888,6 +1003,12 @@ pub unsafe fn cssl_window_get_dims_impl(handle: u64, w_out: *mut u32, h_out: *mu
             w_out.write(w);
             h_out.write(h);
         }
+        scope.success(serde_json::json!({
+            "rc":      0i32,
+            "backend": "real",
+            "w":       w,
+            "h":       h,
+        }));
         return 0;
     }
     // Tight critical-section : extract (width, height) under the lock,
@@ -904,12 +1025,21 @@ pub unsafe fn cssl_window_get_dims_impl(handle: u64, w_out: *mut u32, h_out: *mu
             _ => None,
         }
     };
-    let Some((w, h)) = dims else { return -1 };
+    let Some((w, h)) = dims else {
+        scope.error(serde_json::json!({"rc": -1i32}), Some("bad-handle"));
+        return -1;
+    };
     // SAFETY : null-check above guarantees writable u32 slot per ptr.
     unsafe {
         w_out.write(w);
         h_out.write(h);
     }
+    scope.success(serde_json::json!({
+        "rc":      0i32,
+        "backend": "stub",
+        "w":       w,
+        "h":       h,
+    }));
     0
 }
 

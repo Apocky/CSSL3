@@ -197,10 +197,20 @@ fn boot_instant() -> Instant {
 /// counter directly with the same saturation semantic.
 #[must_use]
 pub fn cssl_time_monotonic_ns_impl() -> u64 {
-    MONOTONIC_COUNT.fetch_add(1, Ordering::Relaxed);
+    let n = MONOTONIC_COUNT.fetch_add(1, Ordering::Relaxed);
     let elapsed = boot_instant().elapsed();
-    // u128 → u64 saturating cast (Duration::as_nanos returns u128).
-    elapsed.as_nanos().min(u128::from(u64::MAX)) as u64
+    let ns = elapsed.as_nanos().min(u128::from(u64::MAX)) as u64;
+    // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED. monotonic_ns can
+    // fire millions of times per frame in a tight inner loop ; if that floods
+    // the audit log, the right answer is to NOT call monotonic_ns in that loop,
+    // not to silently drop calls that the verifier expects to see.
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_time",
+        "time.monotonic_ns",
+        serde_json::json!({"call_idx": n}),
+    );
+    scope.success(serde_json::json!({"ns": ns}));
+    ns
 }
 
 /// Implementation : wall-clock UNIX-epoch in nanoseconds. Returns a
@@ -214,8 +224,14 @@ pub fn cssl_time_monotonic_ns_impl() -> u64 {
 ///   it's a process-local observation of the host clock.
 #[must_use]
 pub fn cssl_time_wall_unix_ns_impl() -> i64 {
-    WALL_COUNT.fetch_add(1, Ordering::Relaxed);
-    match SystemTime::now().duration_since(UNIX_EPOCH) {
+    let n = WALL_COUNT.fetch_add(1, Ordering::Relaxed);
+    // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED.
+    let scope = Some(crate::events::EventScope::new(
+        "cssl-rt::host_time",
+        "time.wall_ns",
+        serde_json::json!({"call_idx": n}),
+    ));
+    let wall = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(dur) => i64::try_from(dur.as_nanos()).unwrap_or(i64::MAX),
         Err(err) => {
             // Pre-epoch reading : duration_since returns Err with the
@@ -226,7 +242,11 @@ pub fn cssl_time_wall_unix_ns_impl() -> i64 {
             // which is bounded by the i64::MAX clamp above.
             abs_ns.saturating_neg()
         }
+    };
+    if let Some(s) = scope {
+        s.success(serde_json::json!({"ns": wall}));
     }
+    wall
 }
 
 /// Implementation : sleep for `ns` nanoseconds. Returns `TIME_OK` (=0)
@@ -239,8 +259,9 @@ pub fn cssl_time_wall_unix_ns_impl() -> i64 {
 ///   (Win32) directly via §§ 14 ASM intrinsics.
 pub fn cssl_time_sleep_ns_impl(ns: u64) -> i32 {
     let n = SLEEP_COUNT.fetch_add(1, Ordering::Relaxed);
-    // § T11-W19-β-FS-TRACE · log first-5 + every-60th sleep call
-    if n < 5 || n % 60 == 0 {
+    // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED. Every sleep
+    // emits both a text-trace line AND a JSONL event for full coverage.
+    {
         let path = std::env::temp_dir().join("cssl_trace.log");
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -256,12 +277,23 @@ pub fn cssl_time_sleep_ns_impl(ns: u64) -> i32 {
             let _ = f.sync_data();
         }
     }
+    let scope = Some(crate::events::EventScope::new(
+        "cssl-rt::host_time",
+        "time.sleep_ns",
+        serde_json::json!({"ns": ns, "call_idx": n}),
+    ));
     if ns == 0 {
         // Zero-duration sleep : skip the syscall, but DO count it.
+        if let Some(s) = scope {
+            s.skip("zero-duration-no-syscall");
+        }
         return TIME_OK;
     }
     TOTAL_SLEEP_NS.fetch_add(ns, Ordering::Relaxed);
     std::thread::sleep(Duration::from_nanos(ns));
+    if let Some(s) = scope {
+        s.success(serde_json::json!({"rc": TIME_OK}));
+    }
     TIME_OK
 }
 
@@ -280,15 +312,27 @@ pub fn cssl_time_sleep_ns_impl(ns: u64) -> i32 {
 ///   Reads the monotonic clock ONCE — saturating-sub avoids a second
 ///   read for the negative case. Past-deadline path bypasses the syscall.
 pub fn cssl_time_deadline_until_impl(deadline_ns: u64) -> i32 {
-    DEADLINE_COUNT.fetch_add(1, Ordering::Relaxed);
+    let n = DEADLINE_COUNT.fetch_add(1, Ordering::Relaxed);
+    // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED.
+    let scope = Some(crate::events::EventScope::new(
+        "cssl-rt::host_time",
+        "time.deadline_until",
+        serde_json::json!({"deadline_ns": deadline_ns, "call_idx": n}),
+    ));
     let now_ns = cssl_time_monotonic_ns_impl();
     let delta = deadline_ns.saturating_sub(now_ns);
     if delta == 0 {
         // Already past — no syscall, no contribution to total_sleep_ns.
+        if let Some(s) = scope {
+            s.skip("deadline-already-past");
+        }
         return TIME_DEADLINE_ALREADY_PAST;
     }
     TOTAL_SLEEP_NS.fetch_add(delta, Ordering::Relaxed);
     std::thread::sleep(Duration::from_nanos(delta));
+    if let Some(s) = scope {
+        s.success(serde_json::json!({"rc": TIME_OK, "delta_ns": delta}));
+    }
     TIME_OK
 }
 

@@ -102,6 +102,13 @@ pub mod alloc;
 // against this module's FFI symbol. The static HIR `cap_check` pass
 // remains authoritative ; this is a defense-in-depth runtime check.
 pub mod cap_verify;
+// § T11-W19-β-FS-EVENT-JSONL — structured-event observability for FFI
+// entry/exit/branch/skip/error. Every host_* module routes through
+// `EventScope::new(...)` to emit canonical JSONL into
+// `%TEMP%\cssl_events.jsonl` plus a legacy text summary into
+// `cssl_trace.log`. See the module docstring for the schema.
+pub mod events;
+pub use events::{fs_event_jsonl, EventScope};
 pub mod exit;
 pub mod ffi;
 // § Wave-D host-FFI surface (T11-D250 integration commit) — modules

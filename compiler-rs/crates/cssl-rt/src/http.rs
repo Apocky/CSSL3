@@ -467,16 +467,33 @@ pub unsafe extern "C" fn __cssl_http_get(
     let started = Instant::now();
     HTTP_REQUESTS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
+    // § T11-W19-β-FS-EVENT-JSONL : structured-event scope. The legacy
+    // `log_event` calls below remain in place (they target a separate
+    // sink at `logs/loa_runtime.log`) ; this scope augments them with
+    // canonical JSONL into `cssl_events.jsonl`.
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::http",
+        "http.get",
+        serde_json::json!({
+            "url_len": url_len,
+            "out_cap": out_cap,
+            "sovereign_cap": sovereign_cap,
+        }),
+    );
+
     // Argument validation.
     if url_ptr.is_null() || url_len <= 0 || out_buf.is_null() || out_cap <= 0 {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("invalid-args"));
         return HTTP_ERR_INVAL;
     }
     // SAFETY : caller supplies a buffer of `url_len` UTF-8 bytes per ABI.
     let url_bytes = unsafe { core::slice::from_raw_parts(url_ptr, url_len as usize) };
     let Ok(url) = core::str::from_utf8(url_bytes) else {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("url-not-utf8"));
         return HTTP_ERR_INVAL;
     };
     let Some(parsed) = parse_url(url) else {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("url-parse-failed"));
         return HTTP_ERR_INVAL;
     };
 
@@ -490,8 +507,10 @@ pub unsafe extern "C" fn __cssl_http_get(
             "http/get",
             &format!("denied · url={url} · code={code}"),
         );
+        scope.error(serde_json::json!({"rc": code}), Some("cap-denied"));
         return code;
     }
+    scope.branch("dispatch-ureq-get");
 
     // Execute.
     let agent = build_agent();
@@ -510,6 +529,12 @@ pub unsafe extern "C" fn __cssl_http_get(
                             "{{\"event\":\"http_request\",\"method\":\"GET\",\"url\":\"{url}\",\"status\":{status},\"bytes\":{n},\"duration_us\":{dur_us}}}"
                         ),
                     );
+                    scope.success(serde_json::json!({
+                        "rc": n,
+                        "status": status,
+                        "bytes_in": n,
+                        "duration_us": dur_us,
+                    }));
                     n
                 }
                 Err(code) => {
@@ -518,6 +543,7 @@ pub unsafe extern "C" fn __cssl_http_get(
                         "http/get",
                         &format!("body-read-failed · url={url} · code={code}"),
                     );
+                    scope.error(serde_json::json!({"rc": code}), Some("body-read-failed"));
                     code
                 }
             }
@@ -536,6 +562,10 @@ pub unsafe extern "C" fn __cssl_http_get(
                 &format!(
                     "{{\"event\":\"http_request\",\"method\":\"GET\",\"url\":\"{url}\",\"error\":\"{e}\",\"code\":{code},\"duration_us\":{dur_us}}}"
                 ),
+            );
+            scope.error(
+                serde_json::json!({"rc": code, "duration_us": dur_us}),
+                Some(if code == HTTP_ERR_TIMEDOUT { "timeout" } else { "ureq-error" }),
             );
             code
         }
@@ -567,23 +597,43 @@ pub unsafe extern "C" fn __cssl_http_post(
     let started = Instant::now();
     HTTP_REQUESTS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
+    // § T11-W19-β-FS-EVENT-JSONL : structured-event scope augments the
+    // legacy `log_event` calls. See __cssl_http_get docstring for the
+    // dual-sink rationale.
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::http",
+        "http.post",
+        serde_json::json!({
+            "url_len": url_len,
+            "body_len": body_len,
+            "content_type_len": content_type_len,
+            "out_cap": out_cap,
+            "sovereign_cap": sovereign_cap,
+        }),
+    );
+
     // Argument validation.
     if url_ptr.is_null() || url_len <= 0 || out_buf.is_null() || out_cap <= 0 {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("invalid-args"));
         return HTTP_ERR_INVAL;
     }
     if body_len < 0 || (body_len > 0 && body_ptr.is_null()) {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("invalid-body-args"));
         return HTTP_ERR_INVAL;
     }
     if content_type_len < 0 || (content_type_len > 0 && content_type_ptr.is_null()) {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("invalid-ct-args"));
         return HTTP_ERR_INVAL;
     }
 
     // SAFETY : caller supplies buffers per ABI ; we slice them.
     let url_bytes = unsafe { core::slice::from_raw_parts(url_ptr, url_len as usize) };
     let Ok(url) = core::str::from_utf8(url_bytes) else {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("url-not-utf8"));
         return HTTP_ERR_INVAL;
     };
     let Some(parsed) = parse_url(url) else {
+        scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("url-parse-failed"));
         return HTTP_ERR_INVAL;
     };
 
@@ -599,7 +649,10 @@ pub unsafe extern "C" fn __cssl_http_post(
         let ct = unsafe { core::slice::from_raw_parts(content_type_ptr, content_type_len as usize) };
         match core::str::from_utf8(ct) {
             Ok(s) => s,
-            Err(_) => return HTTP_ERR_INVAL,
+            Err(_) => {
+                scope.error(serde_json::json!({"rc": HTTP_ERR_INVAL}), Some("ct-not-utf8"));
+                return HTTP_ERR_INVAL;
+            }
         }
     } else {
         "application/octet-stream"
@@ -615,8 +668,10 @@ pub unsafe extern "C" fn __cssl_http_post(
             "http/post",
             &format!("denied · url={url} · code={code}"),
         );
+        scope.error(serde_json::json!({"rc": code}), Some("cap-denied"));
         return code;
     }
+    scope.branch("dispatch-ureq-post");
 
     // Execute.
     let agent = build_agent();
@@ -640,6 +695,13 @@ pub unsafe extern "C" fn __cssl_http_post(
                             body.len(),
                         ),
                     );
+                    scope.success(serde_json::json!({
+                        "rc": n,
+                        "status": status,
+                        "bytes_out": body.len(),
+                        "bytes_in": n,
+                        "duration_us": dur_us,
+                    }));
                     n
                 }
                 Err(code) => {
@@ -648,6 +710,7 @@ pub unsafe extern "C" fn __cssl_http_post(
                         "http/post",
                         &format!("body-read-failed · url={url} · code={code}"),
                     );
+                    scope.error(serde_json::json!({"rc": code}), Some("body-read-failed"));
                     code
                 }
             }
@@ -667,6 +730,10 @@ pub unsafe extern "C" fn __cssl_http_post(
                     "{{\"event\":\"http_request\",\"method\":\"POST\",\"url\":\"{url}\",\"error\":\"{e}\",\"code\":{code},\"duration_us\":{dur_us}}}"
                 ),
             );
+            scope.error(
+                serde_json::json!({"rc": code, "duration_us": dur_us}),
+                Some(if code == HTTP_ERR_TIMEDOUT { "timeout" } else { "ureq-error" }),
+            );
             code
         }
     }
@@ -677,20 +744,41 @@ pub unsafe extern "C" fn __cssl_http_post(
 /// (cast-cast-clean since the bitset fits in 4 bits).
 #[no_mangle]
 pub extern "C" fn __cssl_http_caps_grant(bits: u32) -> i32 {
-    http_caps_grant_impl(bits) as i32
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::http",
+        "http.caps_grant",
+        serde_json::json!({"bits": bits}),
+    );
+    let rc = http_caps_grant_impl(bits) as i32;
+    scope.success(serde_json::json!({"rc": rc}));
+    rc
 }
 
 /// FFI : lower the cap-bits in `bits`.  Reserved bits are silently
 /// masked off ; the post-revoke cap-set is returned as `i32`.
 #[no_mangle]
 pub extern "C" fn __cssl_http_caps_revoke(bits: u32) -> i32 {
-    http_caps_revoke_impl(bits) as i32
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::http",
+        "http.caps_revoke",
+        serde_json::json!({"bits": bits}),
+    );
+    let rc = http_caps_revoke_impl(bits) as i32;
+    scope.success(serde_json::json!({"rc": rc}));
+    rc
 }
 
 /// FFI : snapshot the current cap-set.
 #[no_mangle]
 pub extern "C" fn __cssl_http_caps_current() -> u32 {
-    http_caps_current()
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::http",
+        "http.caps_current",
+        serde_json::json!({}),
+    );
+    let v = http_caps_current();
+    scope.success(serde_json::json!({"caps": v}));
+    v
 }
 
 // ═══════════════════════════════════════════════════════════════════════

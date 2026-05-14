@@ -34,6 +34,11 @@ rand   = { workspace = true }
 # `tls` here means every call returns -EACCES, which is the correct
 # default-deny posture per PRIME-DIRECTIVE.
 ureq = { workspace = true }
+# § T11-W19-β-FS-EVENT-JSONL : structured-event observability for FFI entry-points.
+# Used by `crate::events::fs_event_jsonl` to emit one JSON object per line into
+# `%TEMP%\cssl_events.jsonl` (or /tmp on Linux). Append-only · process-survival ·
+# audit-friendly. Schema : {ts_ns, src, op, kind, args, result, latency_ns, note}.
+serde_json = { workspace = true }
 
 # § T11-W19-β-RT-DELEG-WINDOW : delegate cssl-rt::host_window to the real
 # Win32 backend. The cssl-host-window crate gates its windows-rs dep on

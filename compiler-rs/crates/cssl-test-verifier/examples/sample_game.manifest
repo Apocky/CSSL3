@@ -1,0 +1,16 @@
+# § sample-game · stage0 fixture for cssl-test-verify CLI demo
+profile default
+
+require window.create     entry =1
+require window.create     exit  =1
+require gpu.acquire_image entry [3,5]
+require gpu.acquire_image exit  [3,5]
+
+allow-skip telemetry.batch
+
+order window.create  before gpu.acquire_image
+
+result window.create     exit . != 0
+result gpu.acquire_image exit .image_idx != 4294967295
+
+latency-max gpu.acquire_image exit 5000000

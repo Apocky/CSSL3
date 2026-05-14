@@ -532,27 +532,74 @@ pub fn reset_for_tests() {
 // ───────────────────────────────────────────────────────────────────────
 
 fn keyboard_state_impl(handle: u64, out: &mut [u8]) -> i32 {
+    let n = KEYBOARD_READ_COUNT.load(Ordering::Acquire);
+    let scope = if n < 5 || n % 60 == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_input",
+            "input.keyboard_state",
+            serde_json::json!({"handle": handle, "out_len": out.len(), "call_idx": n}),
+        ))
+    } else {
+        None
+    };
     if !caps_satisfied(INPUT_CAP_KEYBOARD) {
-        return record_input_error(INPUT_ERR_CAP_DENIED);
+        let rc = record_input_error(INPUT_ERR_CAP_DENIED);
+        if let Some(s) = scope {
+            s.error(serde_json::json!({"rc": rc}), Some("cap-denied-keyboard"));
+        }
+        return rc;
     }
     if out.len() < KEYBOARD_STATE_BYTES {
-        return record_input_error(INPUT_ERR_BUFFER_TOO_SMALL);
+        let rc = record_input_error(INPUT_ERR_BUFFER_TOO_SMALL);
+        if let Some(s) = scope {
+            s.error(serde_json::json!({"rc": rc}), Some("buf-too-small"));
+        }
+        return rc;
     }
-    let slots = poison_safe_lock(&HANDLE_SLOTS);
-    if let Some(idx) = find_existing_slot(&slots, handle) {
-        out[..KEYBOARD_STATE_BYTES].copy_from_slice(&slots[idx].keyboard);
-    } else {
-        // Unknown handle : zero the buffer (cleanest "no input" state).
-        out[..KEYBOARD_STATE_BYTES].fill(0);
+    let slot_found;
+    {
+        let slots = poison_safe_lock(&HANDLE_SLOTS);
+        if let Some(idx) = find_existing_slot(&slots, handle) {
+            out[..KEYBOARD_STATE_BYTES].copy_from_slice(&slots[idx].keyboard);
+            slot_found = true;
+        } else {
+            // Unknown handle : zero the buffer (cleanest "no input" state).
+            out[..KEYBOARD_STATE_BYTES].fill(0);
+            slot_found = false;
+        }
     }
     KEYBOARD_READ_COUNT.fetch_add(1, Ordering::AcqRel);
+    if let Some(s) = scope {
+        if !slot_found {
+            // ‼ Silent-fallback made-visible : unknown handle silently
+            //   zeros the buffer pre-T11-W19-β. Now visible as `skip`.
+            s.skip("unknown-handle-zeroed-buffer");
+        } else {
+            s.success(serde_json::json!({"rc": INPUT_OK}));
+        }
+    }
     INPUT_OK
 }
 
 fn mouse_state_impl(handle: u64, x_out: &mut i32, y_out: &mut i32, btns_out: &mut u32) -> i32 {
+    let n = MOUSE_READ_COUNT.load(Ordering::Acquire);
+    let scope = if n < 5 || n % 60 == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_input",
+            "input.mouse_state",
+            serde_json::json!({"handle": handle, "call_idx": n}),
+        ))
+    } else {
+        None
+    };
     if !caps_satisfied(INPUT_CAP_MOUSE) {
-        return record_input_error(INPUT_ERR_CAP_DENIED);
+        let rc = record_input_error(INPUT_ERR_CAP_DENIED);
+        if let Some(s) = scope {
+            s.error(serde_json::json!({"rc": rc}), Some("cap-denied-mouse"));
+        }
+        return rc;
     }
+    let mut slot_unknown = false;
     if handle == 0 {
         *x_out = GLOBAL_MOUSE_X.load(Ordering::Acquire);
         *y_out = GLOBAL_MOUSE_Y.load(Ordering::Acquire);
@@ -568,16 +615,44 @@ fn mouse_state_impl(handle: u64, x_out: &mut i32, y_out: &mut i32, btns_out: &mu
             *x_out = 0;
             *y_out = 0;
             *btns_out = 0;
+            slot_unknown = true;
         }
     }
     MOUSE_READ_COUNT.fetch_add(1, Ordering::AcqRel);
+    if let Some(s) = scope {
+        if slot_unknown {
+            s.skip("unknown-handle-zeroed");
+        } else {
+            s.success(serde_json::json!({
+                "rc":   INPUT_OK,
+                "x":    *x_out,
+                "y":    *y_out,
+                "btns": *btns_out,
+            }));
+        }
+    }
     INPUT_OK
 }
 
 fn mouse_delta_impl(handle: u64, dx_out: &mut i32, dy_out: &mut i32) -> i32 {
+    let n = MOUSE_DELTA_READ_COUNT.load(Ordering::Acquire);
+    let scope = if n < 5 || n % 60 == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_input",
+            "input.mouse_delta",
+            serde_json::json!({"handle": handle, "call_idx": n}),
+        ))
+    } else {
+        None
+    };
     if !caps_satisfied(INPUT_CAP_MOUSE_DELTA) {
-        return record_input_error(INPUT_ERR_CAP_DENIED);
+        let rc = record_input_error(INPUT_ERR_CAP_DENIED);
+        if let Some(s) = scope {
+            s.error(serde_json::json!({"rc": rc}), Some("cap-denied-mouse-delta"));
+        }
+        return rc;
     }
+    let mut slot_unknown = false;
     if handle == 0 {
         // Atomic swap-with-zero : reads current pending and zeros it
         // atomically. This is the canonical "consume-pending-delta"
@@ -595,23 +670,55 @@ fn mouse_delta_impl(handle: u64, dx_out: &mut i32, dy_out: &mut i32) -> i32 {
         } else {
             *dx_out = 0;
             *dy_out = 0;
+            slot_unknown = true;
         }
     }
     // § Sensitive<Behavioral> per § 24 IFC : counter increments but
     // nothing about the delta-bytes egresses.
     MOUSE_DELTA_READ_COUNT.fetch_add(1, Ordering::AcqRel);
+    if let Some(s) = scope {
+        if slot_unknown {
+            s.skip("unknown-handle-zeroed-delta");
+        } else {
+            // Note : delta values intentionally NOT logged per
+            // Sensitive<Behavioral> IFC label ; only the rc.
+            s.success(serde_json::json!({"rc": INPUT_OK}));
+        }
+    }
     INPUT_OK
 }
 
 fn gamepad_state_impl(idx: u32, out: &mut [u8]) -> i32 {
+    let n = GAMEPAD_READ_COUNT.load(Ordering::Acquire);
+    let scope = if n < 5 || n % 60 == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_input",
+            "input.gamepad_state",
+            serde_json::json!({"idx": idx, "out_len": out.len(), "call_idx": n}),
+        ))
+    } else {
+        None
+    };
     if !caps_satisfied(INPUT_CAP_GAMEPAD) {
-        return record_input_error(INPUT_ERR_CAP_DENIED);
+        let rc = record_input_error(INPUT_ERR_CAP_DENIED);
+        if let Some(s) = scope {
+            s.error(serde_json::json!({"rc": rc}), Some("cap-denied-gamepad"));
+        }
+        return rc;
     }
     if (idx as usize) >= GAMEPAD_SLOT_COUNT {
-        return record_input_error(INPUT_ERR_INVALID_INDEX);
+        let rc = record_input_error(INPUT_ERR_INVALID_INDEX);
+        if let Some(s) = scope {
+            s.error(serde_json::json!({"rc": rc}), Some("invalid-pad-idx"));
+        }
+        return rc;
     }
     if out.len() < GAMEPAD_STATE_BYTES {
-        return record_input_error(INPUT_ERR_BUFFER_TOO_SMALL);
+        let rc = record_input_error(INPUT_ERR_BUFFER_TOO_SMALL);
+        if let Some(s) = scope {
+            s.error(serde_json::json!({"rc": rc}), Some("buf-too-small"));
+        }
+        return rc;
     }
     let slots = poison_safe_lock(&GAMEPAD_SLOTS);
     let slot = &slots[idx as usize];
@@ -620,10 +727,17 @@ fn gamepad_state_impl(idx: u32, out: &mut [u8]) -> i32 {
         // disconnected error-code so the caller sees both "shape valid"
         // (output is well-formed all-zero) AND "no signal" (errcode).
         out[..GAMEPAD_STATE_BYTES].fill(0);
-        return record_input_error(INPUT_ERR_DISCONNECTED);
+        let rc = record_input_error(INPUT_ERR_DISCONNECTED);
+        if let Some(s) = scope {
+            s.skip("pad-disconnected-zeroed");
+        }
+        return rc;
     }
     out[..GAMEPAD_STATE_BYTES].copy_from_slice(&slot.bytes);
     GAMEPAD_READ_COUNT.fetch_add(1, Ordering::AcqRel);
+    if let Some(s) = scope {
+        s.success(serde_json::json!({"rc": INPUT_OK, "connected": true}));
+    }
     INPUT_OK
 }
 
@@ -778,7 +892,14 @@ pub unsafe extern "C" fn __cssl_input_gamepad_state(
 /// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_input_caps_grant(bits: i32) -> i32 {
-    caps_grant(bits)
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_input",
+        "input.caps_grant",
+        serde_json::json!({"bits": bits}),
+    );
+    let rc = caps_grant(bits);
+    scope.success(serde_json::json!({"rc": rc}));
+    rc
 }
 
 /// FFI : AND-NOT-revoke `bits` from the input-cap bitset. Returns new bitset.
@@ -787,7 +908,14 @@ pub unsafe extern "C" fn __cssl_input_caps_grant(bits: i32) -> i32 {
 /// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_input_caps_revoke(bits: i32) -> i32 {
-    caps_revoke(bits)
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_input",
+        "input.caps_revoke",
+        serde_json::json!({"bits": bits}),
+    );
+    let rc = caps_revoke(bits);
+    scope.success(serde_json::json!({"rc": rc}));
+    rc
 }
 
 /// FFI : return the current input-cap bitset.
@@ -796,7 +924,14 @@ pub unsafe extern "C" fn __cssl_input_caps_revoke(bits: i32) -> i32 {
 /// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_input_caps_current() -> i32 {
-    caps_current()
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_input",
+        "input.caps_current",
+        serde_json::json!({}),
+    );
+    let rc = caps_current();
+    scope.success(serde_json::json!({"rc": rc}));
+    rc
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -838,6 +973,18 @@ pub unsafe extern "C" fn __cssl_input_caps_current() -> i32 {
 /// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_input_flush_host_state() -> i32 {
+    // § T11-W19-β-FS-EVENT-JSONL : emit a `skip` event so the dead path
+    //   is visible in the audit log. Pre-instrumentation this fired every
+    //   frame to NO observable effect.
+    crate::events::fs_event_jsonl(
+        "cssl-rt::host_input",
+        "input.flush_host_state",
+        "skip",
+        serde_json::json!({}),
+        Some(serde_json::json!({"rc": 0i32})),
+        Some(0u64),
+        Some("F2-input-integration-pending-no-events-flushed"),
+    );
     // SWAP-POINT : cssl-host-input::Win32Backend::tick() + current_state()
     // serialization. Today no real backend is wired (F2-input-integration
     // pending) ; the FFI symbol exists so source-level CSSL code can

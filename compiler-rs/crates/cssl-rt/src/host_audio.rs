@@ -242,6 +242,9 @@ static BYTES_WRITTEN_TOTAL: AtomicU64 = AtomicU64::new(0);
 static BYTES_READ_TOTAL: AtomicU64 = AtomicU64::new(0);
 static FORMAT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static MIC_DENIED_COUNT: AtomicU64 = AtomicU64::new(0);
+// § T11-W19-β-FS-EVENT-JSONL : sample counters for hot-path audio ops.
+static AUDIO_WRITE_COUNT: AtomicU64 = AtomicU64::new(0);
+static AUDIO_READ_COUNT: AtomicU64 = AtomicU64::new(0);
 
 static LAST_ERROR_KIND: AtomicI32 = AtomicI32::new(audio_error_code::OK);
 static AUDIO_CAPS: AtomicU32 = AtomicU32::new(AUDIO_CAP_DEFAULT);
@@ -529,7 +532,26 @@ pub unsafe extern "C" fn __cssl_audio_stream_open(
     channels: u32,
     fmt: u32,
 ) -> u64 {
-    stream_open_impl(flags, sample_rate, channels, fmt)
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_audio",
+        "audio.stream_open",
+        serde_json::json!({
+            "flags":       flags,
+            "sample_rate": sample_rate,
+            "channels":    channels,
+            "fmt":         fmt,
+        }),
+    );
+    let handle = stream_open_impl(flags, sample_rate, channels, fmt);
+    if handle == INVALID_STREAM {
+        scope.error(
+            serde_json::json!({"handle": handle}),
+            Some("stream-open-rejected-see-last_audio_error_kind"),
+        );
+    } else {
+        scope.success(serde_json::json!({"handle": handle}));
+    }
+    handle
 }
 
 /// FFI : write `len` bytes from `buf` into the stream's playback queue.
@@ -543,7 +565,27 @@ pub unsafe extern "C" fn __cssl_audio_stream_write(
     buf: *const u8,
     len: usize,
 ) -> i64 {
-    stream_write_impl(stream, buf, len)
+    // § T11-W19-β-FS-EVENT-JSONL : audio-write is per-frame ; sample.
+    let n = AUDIO_WRITE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let scope = if n < 5 || n & 0xFF == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_audio",
+            "audio.stream_write",
+            serde_json::json!({"stream": stream, "len": len, "call_idx": n}),
+        ))
+    } else {
+        None
+    };
+    let rc = stream_write_impl(stream, buf, len);
+    if let Some(s) = scope {
+        if rc < 0 {
+            s.error(serde_json::json!({"rc": rc}), Some("write-failed"));
+        } else {
+            // Note : audio bytes are NOT logged ; only length-class & rc.
+            s.success(serde_json::json!({"rc": rc}));
+        }
+    }
+    rc
 }
 
 /// FFI : read up to `len` bytes from the stream's capture queue.
@@ -558,7 +600,25 @@ pub unsafe extern "C" fn __cssl_audio_stream_read(
     buf: *mut u8,
     len: usize,
 ) -> i64 {
-    stream_read_impl(stream, buf, len)
+    let n = AUDIO_READ_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let scope = if n < 5 || n & 0xFF == 0 {
+        Some(crate::events::EventScope::new(
+            "cssl-rt::host_audio",
+            "audio.stream_read",
+            serde_json::json!({"stream": stream, "len": len, "call_idx": n}),
+        ))
+    } else {
+        None
+    };
+    let rc = stream_read_impl(stream, buf, len);
+    if let Some(s) = scope {
+        if rc < 0 {
+            s.error(serde_json::json!({"rc": rc}), Some("read-failed"));
+        } else {
+            s.success(serde_json::json!({"rc": rc}));
+        }
+    }
+    rc
 }
 
 /// FFI : close an audio stream, releasing its slot. Returns `0` on
@@ -568,7 +628,18 @@ pub unsafe extern "C" fn __cssl_audio_stream_read(
 /// Pure slot-table mutation — no raw-pointer deref.
 #[no_mangle]
 pub unsafe extern "C" fn __cssl_audio_stream_close(stream: u64) -> i32 {
-    stream_close_impl(stream)
+    let scope = crate::events::EventScope::new(
+        "cssl-rt::host_audio",
+        "audio.stream_close",
+        serde_json::json!({"stream": stream}),
+    );
+    let rc = stream_close_impl(stream);
+    if rc == 0 {
+        scope.success(serde_json::json!({"rc": rc}));
+    } else {
+        scope.error(serde_json::json!({"rc": rc}), Some("close-invalid-handle"));
+    }
+    rc
 }
 
 // ───────────────────────────────────────────────────────────────────────
