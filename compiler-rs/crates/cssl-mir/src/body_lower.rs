@@ -643,7 +643,7 @@ fn lower_expr(ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr) -> Option<(ValueId, Mi
         HirExprKind::Field { obj, name } => Some(lower_field(ctx, obj, *name, expr.span)),
         HirExprKind::Index { obj, index } => Some(lower_index(ctx, obj, index, expr.span)),
         HirExprKind::Assign { op, lhs, rhs } => Some(lower_assign(ctx, *op, lhs, rhs, expr.span)),
-        HirExprKind::Cast { expr: inner, .. } => Some(lower_cast(ctx, inner, expr.span)),
+        HirExprKind::Cast { expr: inner, ty } => Some(lower_cast(ctx, inner, ty, expr.span)),
         HirExprKind::Tuple(elements) => Some(lower_tuple(ctx, elements, expr.span)),
         HirExprKind::Array(arr) => Some(lower_array(ctx, arr, expr.span)),
         HirExprKind::Struct { path, fields, .. } => {
@@ -987,16 +987,22 @@ fn emit_compound_op(
     result_id
 }
 
-fn lower_cast(ctx: &mut BodyLowerCtx<'_>, inner: &HirExpr, span: Span) -> (ValueId, MirType) {
+fn lower_cast(ctx: &mut BodyLowerCtx<'_>, inner: &HirExpr, target_hir_ty: &cssl_hir::HirType, span: Span) -> (ValueId, MirType) {
     let (in_id, _) = lower_expr(ctx, inner).unwrap_or((ctx.fresh_value_id(), MirType::None));
     let id = ctx.fresh_value_id();
+    // § FIX 2026-05-06 : thread the target-type from the `as`-syntax through to the MIR result-type
+    //   so the cgen-side bitcast handler can emit a real numerical conversion (fcvt-from-sint /
+    //   fcvt-to-sint-sat / fpromote / fdemote / sextend / ireduce) instead of pass-through.
+    //   Prior behavior emitted MirType::None, leaving cgen no choice but to-pass-the-source-bits-unchanged
+    //   (silently producing wrong results for `(int) as f32` in loops).
+    let target_mir_ty = lower_hir_type_light(ctx.interner, target_hir_ty);
     ctx.ops.push(
         MirOp::std("arith.bitcast")
             .with_operand(in_id)
-            .with_result(id, MirType::None)
+            .with_result(id, target_mir_ty.clone())
             .with_attribute("source_loc", format!("{span:?}")),
     );
-    (id, MirType::None)
+    (id, target_mir_ty)
 }
 
 fn lower_tuple(ctx: &mut BodyLowerCtx<'_>, elements: &[HirExpr], span: Span) -> (ValueId, MirType) {
