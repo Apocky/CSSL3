@@ -39,6 +39,7 @@ pub mod emit;
 pub mod feature;
 pub mod jit;
 pub mod lower;
+pub mod symbol_audit;
 pub mod target;
 pub mod types;
 
@@ -47,6 +48,9 @@ pub use emit::{emit_module, CpuCodegenError, EmittedArtifact};
 pub use feature::{CpuFeature, CpuFeatureSet, SimdTier};
 pub use jit::{JitError, JitFn, JitModule};
 pub use lower::{format_operands, format_value, lower_op, ClifInsn};
+pub use symbol_audit::{
+    audit_object_for_user_main, audit_object_for_user_symbols, SymbolAuditError, SymbolAuditReport,
+};
 pub use target::{CpuTarget, CpuTargetProfile, DebugFormat};
 pub use types::{clif_type_for, ClifType};
 
