@@ -1,0 +1,16 @@
+[package]
+name         = "cssl-cas"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description  = "CSSLv3 content-addressing kernel : BLAKE3 Cid + canonical encoding (foundation crate per specs/Upgrade/impl/IMPL_02_FOUNDATION.csl)."
+repository.workspace   = true
+
+[dependencies]
+blake3.workspace    = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

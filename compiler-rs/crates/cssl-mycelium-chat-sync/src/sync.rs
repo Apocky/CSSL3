@@ -514,7 +514,7 @@ mod tests {
     fn tick_drops_patterns_when_emitter_not_in_policy() {
         let sink = Arc::new(InMemoryBroadcastSink::default());
         let svc = MyceliumChatSync::builder()
-            .sink(sink.clone() as Arc<dyn BroadcastSink>)
+            .sink(sink as Arc<dyn BroadcastSink>)
             .build();
         let p = mk_pattern(1, IntentKind::Question, CAP_FLAGS_ALL);
         // grant a DIFFERENT emitter

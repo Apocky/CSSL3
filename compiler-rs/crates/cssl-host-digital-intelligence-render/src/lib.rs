@@ -287,21 +287,20 @@ mod tests {
     #[test]
     fn profiler_attached_via_builder() {
         let r = DigitalIntelligenceRenderer::new(8, 8)
-            .with_profiler(FrameProfiler::for_144hz());
+            .with_profiler(FrameProfiler::new(BUDGET_144HZ));
         assert!(r.profiler.is_some());
-        assert_eq!(r.profiler.as_ref().unwrap().budget_micros, BUDGET_144HZ);
+        assert_eq!(r.profiler.as_ref().unwrap().budget_us, BUDGET_144HZ);
     }
 
     #[test]
     fn profiler_records_per_tick() {
         let mut r = DigitalIntelligenceRenderer::new(8, 8)
-            .with_profiler(FrameProfiler::for_144hz());
+            .with_profiler(FrameProfiler::new(BUDGET_144HZ));
         let crystal = Crystal::allocate(CrystalClass::Object, 1, WorldPos::new(0, 0, 1500));
         for _ in 0..3 {
             r.tick(day_observer(), &[crystal.clone()], BUDGET_144HZ);
         }
         let p = r.profiler.as_ref().unwrap();
-        assert_eq!(p.frames_observed, 3);
-        assert_eq!(p.window.len(), 3);
+        assert_eq!(p.samples.len(), 3);
     }
 }

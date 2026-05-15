@@ -179,6 +179,7 @@ pub fn transmute(g: Gear, target_rarity: Rarity, mat_cost: u8, sink: &dyn AuditS
 }
 
 fn next_mat_for_rarity(r: Rarity) -> BaseMat {
+    #[allow(clippy::match_same_arms)] // arms intentionally distinct ; Q-06 fallbacks tracked separately
     match r {
         Rarity::Common => BaseMat::Iron,
         Rarity::Uncommon => BaseMat::Silver,

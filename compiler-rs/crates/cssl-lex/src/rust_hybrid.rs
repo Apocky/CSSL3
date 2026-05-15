@@ -94,12 +94,11 @@ fn fold_morpheme_suffixes(source: &SourceFile, tokens: &mut Vec<Token>) {
 fn promote(raw: RawToken, text: &str) -> TokenKind {
     match raw {
         RawToken::Ident => Keyword::from_word(text).map_or(TokenKind::Ident, TokenKind::Keyword),
-        RawToken::IntLiteral => TokenKind::IntLiteral,
         // § T11-W15-CSSLC-BADHEX : malformed hex (namespace-prefix-style hash
         //   anchors like `0xAKA_T8AG_FEDCBA98u64`) collapse to IntLiteral so the
         //   parser sees a normal-shape literal ; the source-text retains the
         //   typo for downstream warnings + diagnostics.
-        RawToken::MalformedHexLiteral => TokenKind::IntLiteral,
+        RawToken::IntLiteral | RawToken::MalformedHexLiteral => TokenKind::IntLiteral,
         RawToken::FloatLiteral => TokenKind::FloatLiteral,
         RawToken::StringLiteral => TokenKind::StringLiteral(StringFlavor::Normal),
         RawToken::RawStringLiteral => TokenKind::StringLiteral(StringFlavor::Raw),

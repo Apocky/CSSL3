@@ -659,10 +659,11 @@ mod tests {
     }
 
     #[test]
-    fn cfg0006_flags_scf_while_with_two_regions() {
+    fn cfg0006_flags_scf_while_with_three_regions() {
         let mut module = MirModule::new();
         let mut f = well_formed_i32_fn("while_too_many");
         let mut op = MirOp::std("scf.while");
+        op.regions.push(MirRegion::with_entry(Vec::new()));
         op.regions.push(MirRegion::with_entry(Vec::new()));
         op.regions.push(MirRegion::with_entry(Vec::new()));
         f.push_op(op);

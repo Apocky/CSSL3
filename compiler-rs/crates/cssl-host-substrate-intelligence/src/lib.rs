@@ -1,5 +1,15 @@
 //! § cssl-host-substrate-intelligence — STAGE-0-BOOTSTRAP-SHIM
 //! ════════════════════════════════════════════════════════════════════════════
+#![allow(
+    clippy::no_effect,
+    clippy::enum_glob_use,
+    clippy::match_same_arms,
+    clippy::must_use_candidate,
+    clippy::needless_range_loop,
+    clippy::int_plus_one,
+    clippy::unnecessary_cast,
+    clippy::verbose_bit_mask
+)] // domain: 8-axis matrix loops + enum-rich morphology ; explicit indexed loops are intentional
 //!
 //! § T11-W17-N · canonical-implementation : `Labyrinth of Apocalypse/systems/substrate_intelligence.csl`
 //!

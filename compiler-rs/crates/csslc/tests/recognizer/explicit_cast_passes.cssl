@@ -1,0 +1,3 @@
+// § A02.2 corpus · positive case · explicit cast satisfies the gate
+// expected : OK · no diagnostics
+fn f(x : u32) -> i64 { x as i64 }

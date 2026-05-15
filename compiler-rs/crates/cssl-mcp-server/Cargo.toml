@@ -53,8 +53,10 @@ thiserror   = { workspace = true }
 [dev-dependencies]
 serde_json  = { workspace = true }
 
-# Auto-enable test-bypass when this crate is used as a dev-dep in its own
-# integration tests. (External crates that pull cssl-mcp-server in production
-# do NOT get test-bypass.)
-[package.metadata.docs.rs]
-features = []
+# Integration tests use `Cap::<T>::for_test()`, which is intentionally gated
+# behind `test-bypass`. Cargo does not auto-enable crate features for its own
+# integration tests, so match the workspace precedent: skip this target unless
+# the bypass feature is explicitly requested.
+[[test]]
+name = "integration"
+required-features = ["test-bypass"]

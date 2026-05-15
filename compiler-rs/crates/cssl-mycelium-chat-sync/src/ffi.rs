@@ -87,19 +87,16 @@ pub fn federation_lookup_shape_via(
     for s in svc.federation().snapshot_public() {
         if s.intent_kind == want_intent && s.arc_phase == want_phase {
             let cand = (s.observation_count, s.mean_confidence_q8, s.response_shape);
-            best = Some(match best {
-                None => cand,
-                Some(prev) => {
-                    // Prefer higher count ; tie-break lower-numbered shape.
-                    if cand.0 > prev.0
-                        || (cand.0 == prev.0 && (cand.2 as u8) < (prev.2 as u8))
-                    {
-                        cand
-                    } else {
-                        prev
-                    }
+            best = Some(best.map_or(cand, |prev| {
+                // Prefer higher count ; tie-break lower-numbered shape.
+                if cand.0 > prev.0
+                    || (cand.0 == prev.0 && (cand.2 as u8) < (prev.2 as u8))
+                {
+                    cand
+                } else {
+                    prev
                 }
-            });
+            }));
         }
     }
     match best {
@@ -293,7 +290,7 @@ mod tests {
             ResponseShape::ShortDirect,
         );
         svc.grant_emitter(p.emitter_handle(), CAP_FLAGS_ALL);
-        svc.observe(p.clone());
+        svc.observe(p);
         let rc = revoke_via(&svc, p.emitter_handle(), 1234);
         assert_eq!(rc, FFI_OK);
         assert!(svc.ring().is_empty());

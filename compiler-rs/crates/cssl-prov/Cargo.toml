@@ -1,0 +1,16 @@
+[package]
+name         = "cssl-prov"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description  = "CSSLv3 provenance DAG : Cid-keyed (output, op, inputs, ts) records (foundation crate per specs/Upgrade/impl/IMPL_02_FOUNDATION.csl)."
+repository.workspace   = true
+
+[dependencies]
+cssl-cas = { path = "../cssl-cas" }
+smallvec.workspace = true
+
+[lints]
+workspace = true

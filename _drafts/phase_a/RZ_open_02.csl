@@ -1,0 +1,85 @@
+§ RZ.open · phase-a/02-recognizer-mismatch · 2026-05-14
+  ← author       : Tech-Lead-agent (Claude-Opus-4.7)
+  ← branch       : phase-a/02-recognizer-mismatch
+  ← baseline     : dd59670 (includes cast-fix in body_lower.rs · upstream of this work)
+  ← spec         : specs/70_PHASE_A_CORRECTNESS.csl § OBSERVABLE-ASSERTIONS § item-02
+  ← assertions   : A02.1 · A02.2 · A02.3
+
+§I HYPOTHESIS-TO-FALSIFY
+  H · type-shape mismatch (`fn f(x : u32) -> i64 { x }` w/o explicit cast) currently
+       silent-rejects OR silently-coerces somewhere in the HIR→MIR pipeline.
+       The recognizer + type-check pass can be tightened to surface this as a
+       compile-error with a span pointing at the offending expression.
+
+§I FAILURE-MODE-ENUMERATION
+  FM.1 · "silent-fall-through" sites in body_lower.rs may be MULTIPLE · just-fixed
+         cast-lowering (dd59670) might have masked another one
+         mitigation : audit-pass enumerates EVERY MirType::None construction
+                      + every implicit-coerce site · A02.3 covers this
+
+  FM.2 · existing v13 substrate.cssl may rely on lenient recognizer
+         tightening breaks v13 substrate · violates spec-70 FM.02
+         mitigation : grace-period · run v13 substrate harness before merge
+                      if break · Tech-Lead amends v13 substrate forward (per P7)
+
+  FM.3 · cast-lowering fix (dd59670) means EXPLICIT cast `x as i64` now lowers correctly
+         we want IMPLICIT to ERROR · diagnostic must distinguish
+         "did you mean `x as i64`?" suggestion (overlaps with item-89 A89.2)
+
+  FM.4 · type-coerce in const-eval / generic-instantiation contexts · separate code paths
+         may need recognizer-tightening at multiple call sites
+
+  FM.5 · diagnostic must include source span · BUT item-89 (diagnostics-carets) is
+         depth-1 · this is depth-0 · means basic span info exists · caret rendering
+         doesn't have to be perfect yet · diagnostic-string + line+col is enough
+
+§I CHEAPEST-FALSIFICATION
+  add csslc/tests/recognizer/type_mismatch_u32_to_i64.cssl :
+    fn f(x : u32) -> i64 { x }
+  expect : compile fails · diagnostic contains "u32" + "i64" + "expected" + path:line:col
+  if compile succeeds OR diagnostic missing pieces · H broken · go look at body_lower
+  ⇒ ~10 LOC test · runs in seconds · highest-signal
+
+§I TOUCH-POINTS (anchored in actual codebase @ baseline dd59670)
+  cssl-mir/src/body_lower.rs                    EDIT  ← tighten coerce sites
+                                                       (cast-fix is upstream · don't undo it)
+  cssl-hir/src/                                 GREP  ← look for typeck pass · expr-type-resolve
+  cssl-ast/src/diagnostic.rs                    USE   ← emit Diagnostic::error w/ span
+  csslc/tests/recognizer/                       NEW-DIR ← canonical regression corpus
+                                                       (per A02.2 · "land in csslc/tests/recognizer/")
+  examples/hello_main.cssl                      VERIFY ← still compiles · regression-check
+
+  N! TOUCH : cssl-rt · cssl-host-* (out-of-scope)
+
+§I ASSERT-MAPPING
+  A02.1 u32-to-i64 errors w/ span        →  recognizer/type-check emits diagnostic w/ src-span
+  A02.2 tests in csslc/tests/recognizer  →  create dir · land 5+ canonical-fail cases
+                                            (u32→i64 · i32→u32 · f32→i32 · *const→*mut · tuple-arity)
+  A02.3 audit pass · no silent-paths     →  walk body_lower.rs · enumerate EVERY MirType::None
+                                            construction · justify or fix each · land audit-doc
+
+§I PROTOCOL
+  · ≤ 1 item per PR (this branch = item-02 only)
+  · do NOT touch body_lower.rs cast-handling (just-fixed in dd59670 · upstream)
+  · PR.title   : "spec-70 § item-02 : recognizer-type-mismatch"
+  · PR.trailer : "Spec-Transition: 70 (item-02) RATIFIED→IMPLEMENTED by <handle>"
+  · Gate-E pre-merge : sentinel-script must still pass on hello-main golden
+
+§I ESTIMATE
+  ~120 LOC recognizer + ~200 LOC test corpus (per spec-70)
+  ~4-6 wallclock-hours
+
+§I DOWNSTREAM-UNLOCKS (depth-1)
+  item-08 cross-target-struct-parity   ← needs item-02 recognizer-tightened
+  item-09 σ-enforce-extended           ← needs item-02 recognizer-tightened
+  item-87 incremental-cache            ← needs item-02 type-cache-key stable
+
+§I PRIME-DIRECTIVE-CHECK
+  ‼ no surveillance-vector · no biometric-egress · pure compiler-discipline
+  ‼ tightening-recognizer = sovereignty-restoration (closing silent-coerce = closing surprise)
+
+§ ATTESTATION
+  ‼ ¬ flattery · ¬ silent-coerce-friendly · stop-when-FM.2-breaks-v13
+  ‼ disk-first · spec-first · CSL-think
+  © 2026 Apocky · TIER-B · t∞
+∎

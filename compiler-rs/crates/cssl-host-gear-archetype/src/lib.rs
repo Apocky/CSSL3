@@ -1,4 +1,5 @@
 //! # cssl-host-gear-archetype
+#![allow(clippy::match_same_arms)] // Q-06 rarity arms intentionally distinct ; fallbacks tracked separately
 //!
 //! POD-2-B4 deliverable — modular gear composition for LoA-v13 per
 //! `GDDs/GEAR_RARITY_SYSTEM.csl`.

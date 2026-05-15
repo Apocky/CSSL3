@@ -591,7 +591,7 @@ impl MirPass for StringAbiPass {
         // Per-family counters. Walked recursively so ops nested inside
         // scf.if / scf.for / cssl.region.* are also counted.
         let mut counts = StringAbiCounts::default();
-        for func in module.funcs.iter() {
+        for func in &module.funcs {
             count_string_abi_ops_in_region(&func.body, &mut counts);
         }
         let StringAbiCounts {
@@ -660,8 +660,8 @@ struct StringAbiCounts {
 /// then/else regions and scf.for / scf.while / cssl.region.* bodies are
 /// also counted). The walker is read-only ; matches by canonical op-name.
 fn count_string_abi_ops_in_region(region: &crate::block::MirRegion, counts: &mut StringAbiCounts) {
-    for block in region.blocks.iter() {
-        for op in block.ops.iter() {
+    for block in &region.blocks {
+        for op in &block.ops {
             match op.name.as_str() {
                 "cssl.string.from_utf8" => counts.from_utf8 += 1,
                 "cssl.string.from_utf8_unchecked" => counts.from_utf8_unchecked += 1,
@@ -675,7 +675,7 @@ fn count_string_abi_ops_in_region(region: &crate::block::MirRegion, counts: &mut
                 "cssl.char.from_u32" => counts.char_from_u32 += 1,
                 _ => {}
             }
-            for nested in op.regions.iter() {
+            for nested in &op.regions {
                 count_string_abi_ops_in_region(nested, counts);
             }
         }
@@ -993,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    fn tagged_union_abi_diagnostic_code_TUNI0000() {
+    fn tagged_union_abi_diagnostic_code_tuni0000() {
         // The pass emits `TUNI0000` (Info) when it has any expansion to
         // report. On empty modules nothing is emitted ; the constant is
         // reachable via the canonical-pipeline flow when real ops are

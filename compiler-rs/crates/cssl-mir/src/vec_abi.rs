@@ -133,12 +133,8 @@ impl VecLayout {
     /// `TaggedUnionLayout::for_option` in spirit.
     #[must_use]
     pub fn for_element(elem: &MirType) -> Self {
-        let elem_size = u32::try_from(crate::tagged_union_abi::heuristic_size_of(elem))
-            .unwrap_or(8)
-            .max(1);
-        let elem_align = u32::try_from(crate::tagged_union_abi::heuristic_align_of(elem))
-            .unwrap_or(8)
-            .max(1);
+        let elem_size = crate::tagged_union_abi::heuristic_size_of(elem).max(1);
+        let elem_align = crate::tagged_union_abi::heuristic_align_of(elem).max(1);
         Self::pack(elem_size, elem_align)
     }
 
@@ -238,8 +234,7 @@ pub fn payload_ty_str(op: &MirOp) -> &str {
     op.attributes
         .iter()
         .find(|(k, _)| k == ATTR_PAYLOAD_TY)
-        .map(|(_, v)| v.as_str())
-        .unwrap_or("i64")
+    .map_or("i64", |(_, v)| v.as_str())
 }
 
 /// Parse a textual `payload_ty` attribute into a `MirType` for layout
@@ -1277,14 +1272,12 @@ mod tests {
             .attributes
             .iter()
             .find(|(k, _)| k == "bytes")
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
+            .map_or("", |(_, v)| v.as_str());
         let align = alloc
             .attributes
             .iter()
             .find(|(k, _)| k == "alignment")
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
+            .map_or("", |(_, v)| v.as_str());
         assert_eq!(bytes, "24");
         assert_eq!(align, "8");
     }
@@ -1382,8 +1375,7 @@ mod tests {
             .attributes
             .iter()
             .find(|(k, _)| k == "offset")
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
+            .map_or("", |(_, v)| v.as_str());
         assert_eq!(off, "8");
     }
 
@@ -1412,8 +1404,7 @@ mod tests {
             .attributes
             .iter()
             .find(|(k, _)| k == "offset")
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
+            .map_or("", |(_, v)| v.as_str());
         assert_eq!(off, "16");
     }
 

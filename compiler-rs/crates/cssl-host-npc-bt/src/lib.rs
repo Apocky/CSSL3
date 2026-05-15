@@ -8,6 +8,11 @@
 // § I> exports : perception · bt · conditions · actions · decorators · goap
 //                routines · economy · cocreative_overlay · lod · audit
 // ════════════════════════════════════════════════════════════════════
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::items_after_statements,
+    clippy::suboptimal_flops
+)] // domain: NPC economy/utility floats + ad-hoc local structs in scoring fns
 
 #![forbid(unsafe_code)]
 

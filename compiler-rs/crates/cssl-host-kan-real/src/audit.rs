@@ -110,6 +110,7 @@ mod tests {
     use std::sync::Arc;
 
     /// § Counter sink — captures emit-count for test assertions.
+    #[allow(dead_code)]
     struct CounterSink {
         count: Arc<AtomicUsize>,
     }
