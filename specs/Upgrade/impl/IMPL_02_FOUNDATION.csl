@@ -1,0 +1,225 @@
+⟨spec⟩ IMPL_02_FOUNDATION · per-crate API surface · test discipline · invariants
+⟨ctx⟩ specs/Upgrade/impl/ · binding-spec for FOUNDATION-WAVE crates
+⟨upstream⟩ IMPL_01 (wave-graph) · UPG_05 (canonical projection) · UPG_06 (hgraph) · UPG_07-08 (compute-models) · UPG_11 §42 (7-layer)
+
+# § Eight foundation crates ; eight invariants
+
+| Crate            | Layer | Single-purpose | Test-discipline (min) |
+|------------------|-------|----------------|-----------------------|
+| cssl-cas         | L0    | content-address bytes → CID | 8 tests |
+| cssl-hgraph      | L0    | typed-hypergraph data structure | 10 tests |
+| cssl-grades      | L1    | semiring + multiplicities | 6 tests |
+| cssl-effects-row | L2    | row-typed effect labels | 6 tests |
+| cssl-prov        | L0+L7 | provenance DAG | 5 tests |
+| cssl-ocap        | L7    | unforgeable capability tokens | 5 tests |
+| cssl-consent     | L7    | consent-grade lattice | 5 tests |
+| cssl-iccombs     | L3    | sequential interaction-net reducer | 6 tests |
+
+# § cssl-cas — content-addressing kernel
+
+Purpose : ∀ artifact (term · type · MIR-node · patch · proof) → CID = hash(canonical-encoding(artifact))
+Invariant : α-equivalent terms → identical CID. De-Bruijn-positional encoding.
+Hash : BLAKE3 (32-byte digest ; keyed-mode reused by cssl-ocap). See IMPL_04 D-001.
+Public API :
+  pub struct Cid([u8; 32]);                          // BLAKE3 digest
+  pub trait CanonicalEncode { fn encode(&self, out: &mut Vec<u8>); }
+  pub fn cid_of<T: CanonicalEncode>(t: &T) -> Cid;
+  pub fn cid_of_bytes(bytes: &[u8]) -> Cid;
+  pub fn cid_hex(cid: &Cid) -> String;               // lowercase 64-char
+  pub fn cid_from_hex(s: &str) -> Result<Cid, ParseError>;
+Tests (≥ 8) :
+  - cid_deterministic : same input → same Cid
+  - cid_different_inputs_collide_negligibly : ≥ 100 distinct inputs → all distinct
+  - cid_alpha_equiv_via_de_bruijn : λx.x and λy.y produce identical Cid
+  - cid_hex_round_trip
+  - cid_hex_invalid_length_rejected
+  - cid_hex_invalid_char_rejected
+  - cid_encode_stable_across_runs (use a fixed-vector test)
+  - cid_size_32
+PD-binding : Cid forms the substrate for ocap-token nonces and provenance-DAG keys.
+
+# § cssl-hgraph — typed hypergraph IR
+
+Purpose : nodes = typed values · ports = typed edge-attachment-points · hyperedges = n-ary typed relations.
+Invariant : ∀ edge has a type ; ∀ node has a type-Cid ; ∀ port has an index + type-Cid.
+Public API :
+  pub type NodeId = u32; pub type EdgeId = u32; pub type PortIdx = u16;
+  pub struct TypeCid(pub Cid);                       // re-export
+  pub struct Node { pub id: NodeId, pub type_cid: TypeCid, pub label: NodeLabel }
+  pub enum NodeLabel { Leaf(SmolStr), App, Lam, ... }   // initial small set
+  pub struct Port { pub node: NodeId, pub idx: PortIdx, pub type_cid: TypeCid }
+  pub struct HEdge { pub id: EdgeId, pub kind: EdgeKind, pub ports: SmallVec<[Port; 4]> }
+  pub enum EdgeKind { DataFlow, Subterm, EffectScope, GradeAnnot, Custom(SmolStr) }
+  pub struct HGraph { /* arenas */ }
+  impl HGraph {
+    pub fn new() -> Self;
+    pub fn add_node(&mut self, type_cid: TypeCid, label: NodeLabel) -> NodeId;
+    pub fn add_edge(&mut self, kind: EdgeKind, ports: &[Port]) -> EdgeId;
+    pub fn nodes(&self) -> impl Iterator<Item = &Node>;
+    pub fn edges(&self) -> impl Iterator<Item = &HEdge>;
+    pub fn cid(&self) -> Cid;                        // canonical-encoding-CID
+  }
+Tests (≥ 10) :
+  - empty_graph_has_zero_nodes
+  - add_node_returns_sequential_ids
+  - add_edge_validates_port_node_ids
+  - add_edge_rejects_dangling_port_node
+  - graph_cid_deterministic
+  - graph_cid_changes_on_node_add
+  - isomorphic_graphs_same_cid (via canonical-encoding)
+  - effect_scope_edge_kind_round_trip
+  - grade_annot_edge_kind_round_trip
+  - hgraph_supports_at_least_one_million_nodes (smoke ; arena sizing)
+
+# § cssl-grades — graded modal kernel
+
+Purpose : abstract semiring (S, ⊕, ⊗, 0, 1) + grade-annotations on bindings.
+Invariant : substructural rules derive automatically from semiring chosen.
+Public API :
+  pub trait Semiring : Clone + Eq {
+    fn zero() -> Self;
+    fn one()  -> Self;
+    fn plus(self, other: Self) -> Self;     // ⊕
+    fn times(self, other: Self) -> Self;    // ⊗
+  }
+  pub mod kinds {
+    pub struct Linear;          // {0, 1, ω}  ; substructural-linear
+    pub struct Affine;          // {0, 1, ω}  ; can drop, ≤ 1 use
+    pub struct Unrestricted;    // {ω}        ; classical
+    pub struct Nat;             // ℕ          ; exact-count (saturating ; semiring on small values)
+    pub struct Trust;           // {Low, Med, High} ; ⊕=join (max), ⊗=meet (min)
+  }
+  // each `kind` impl Semiring
+  // NOTE: Privacy(ε) is provided as a distinct type (compose_parallel = max,
+  // compose_sequential = +) BUT does not impl Semiring on non-negative ℝ — annihilator
+  // missing without -∞. Tropical-semiring formulation deferred to a follow-up wave.
+  pub struct Graded<G: Semiring, T> { pub grade: G, pub value: T }
+Tests (≥ 6) :
+  - linear_semiring_axioms (assoc, comm, identity, distrib via random fixtures)
+  - affine_semiring_axioms
+  - nat_semiring_axioms
+  - privacy_semiring_max_add
+  - graded_value_clone_preserves_grade
+  - composition_grade_arithmetic_correct
+PD-binding : `Privacy` grade is the bedrock for differential-privacy-by-construction.
+
+# § cssl-effects-row — Koka-style row-typed effects
+
+Purpose : effect-set = scoped-row of labels ; inference computes effect-row of expressions.
+Invariant : pure if effect-row = ∅ ; handler-discharge removes labels from row.
+Public API :
+  pub type EffectLabel = SmolStr;
+  pub struct EffectRow { pub labels: BTreeSet<EffectLabel>, pub tail: RowTail }
+  pub enum RowTail { Closed, Open(VarId) }
+  impl EffectRow {
+    pub fn empty() -> Self;
+    pub fn singleton(label: EffectLabel) -> Self;
+    pub fn extend(self, label: EffectLabel) -> Self;
+    pub fn discharge(self, label: &EffectLabel) -> Self;
+    pub fn union(self, other: Self) -> Self;
+    pub fn is_pure(&self) -> bool;
+    pub fn cid(&self) -> Cid;
+  }
+Tests (≥ 6) :
+  - empty_row_is_pure
+  - singleton_row_contains_label
+  - discharge_removes_label
+  - union_idempotent_on_same_labels
+  - union_combines_distinct_labels
+  - row_cid_deterministic_under_label_set_equality
+
+# § cssl-prov — provenance DAG
+
+Purpose : every Cid-bearing artifact records its inputs (parent-Cids) and the operation that produced it.
+Invariant : DAG (no cycles by Cid acyclicity — operation-Cid depends on input-Cids).
+Public API :
+  pub struct ProvNode { pub output: Cid, pub op: SmolStr, pub inputs: SmallVec<[Cid; 4]>, pub ts: u64 }
+  pub struct ProvDag { /* in-memory map: Cid → ProvNode */ }
+  impl ProvDag {
+    pub fn new() -> Self;
+    pub fn record(&mut self, node: ProvNode);
+    pub fn lookup(&self, output: &Cid) -> Option<&ProvNode>;
+    pub fn ancestors(&self, output: &Cid) -> impl Iterator<Item = &ProvNode> + '_;
+  }
+Tests (≥ 5) :
+  - record_then_lookup
+  - ancestors_traverses_dag
+  - duplicate_record_is_idempotent
+  - lookup_missing_returns_none
+  - dag_serialize_round_trip (JSON or postcard)
+
+# § cssl-ocap — unforgeable capability tokens
+
+Purpose : token = (type-Cid, nonce, signature) ; only ocap-grantor can mint ; bearer can present ; verifier can check.
+Invariant : tokens are unforgeable (HMAC-SHA3-512 ; key held by grantor) ; non-copyable in linear-grade contexts.
+Public API :
+  pub struct CapType(pub Cid);                       // hash of capability spec
+  pub struct CapToken { pub cap_type: CapType, pub nonce: [u8; 32], pub mac: [u8; 64] }
+  pub struct Grantor { /* HMAC key */ }
+  impl Grantor {
+    pub fn new(key: [u8; 64]) -> Self;
+    pub fn mint(&self, cap_type: CapType) -> CapToken;
+    pub fn verify(&self, token: &CapToken) -> bool;
+  }
+Tests (≥ 5) :
+  - mint_then_verify_succeeds
+  - tampered_mac_verify_fails
+  - tampered_nonce_verify_fails
+  - tampered_cap_type_verify_fails
+  - distinct_grantors_dont_cross_verify
+
+# § cssl-consent — consent-grade lattice
+
+Purpose : every privileged operation has a consent-grade ; lattice = {Denied, Implicit, Explicit, Revoked} ; PD requires ≥ Explicit for anything user-affecting.
+Invariant : monotonic decay ; Granted can transition to Revoked ; Revoked is terminal until re-Granted.
+Public API :
+  pub enum Consent { Denied, Implicit, Explicit, Revoked }
+  impl Consent {
+    pub fn meet(a: Self, b: Self) -> Self;     // greatest-lower-bound
+    pub fn join(a: Self, b: Self) -> Self;     // least-upper-bound
+    pub fn permits(&self, required: Consent) -> bool;
+  }
+  pub struct ConsentScope { pub op: SmolStr, pub level: Consent, pub expires: Option<u64> }
+Tests (≥ 5) :
+  - lattice_axioms (meet/join associative, commutative, idempotent, absorption)
+  - permits_respects_lattice_order
+  - revoked_does_not_permit_anything
+  - consent_scope_expires_check
+  - explicit_required_for_user_facing_op
+
+# § cssl-iccombs — sequential interaction-net reducer
+
+Purpose : Lafont/Mazza-style interaction nets ; sequential reducer (single-thread) ; GPU-parallelism deferred to Wave U-E.
+Invariant : confluence (Church-Rosser) for well-formed nets ; reduction terminates iff input terminates in λ-calc.
+Public API :
+  pub enum AgentKind { Con, Dup, Era, Custom(SmolStr) }
+  pub struct Agent { pub id: u32, pub kind: AgentKind, pub ports: [PortRef; 3] }   // arity 0..3 initial
+  pub struct Net { pub agents: Vec<Agent> /* + active-pair queue */ }
+  impl Net {
+    pub fn new() -> Self;
+    pub fn add_agent(&mut self, kind: AgentKind) -> u32;
+    pub fn link(&mut self, a: PortRef, b: PortRef);
+    pub fn reduce_step(&mut self) -> Option<()>;     // returns None when normal-form
+    pub fn reduce_to_normal_form(&mut self, max_steps: usize) -> ReduceResult;
+  }
+  pub enum ReduceResult { NormalForm, MaxStepsReached, Stuck }
+Tests (≥ 6) :
+  - empty_net_immediate_normal_form
+  - single_agent_no_active_pair
+  - con_dup_interaction_reduces
+  - era_dup_interaction_reduces
+  - reduce_terminates_on_known_terminating_net
+  - reduce_max_steps_caps_runaway
+
+# § Cross-cutting invariants
+
+I-1 : ∀ foundation crate has #![forbid(unsafe_code)] at lib.rs head.
+I-2 : ∀ foundation crate inherits workspace lints (NO per-crate disable except documented PHASE-A debt).
+I-3 : ∀ public type implementing data-content has Debug + Clone + Eq + Hash + PartialEq.
+I-4 : ∀ public Cid-bearing type implements CanonicalEncode and exposes .cid().
+I-5 : ∀ test = real assertion with named-failure-mode (NO "println-and-pass" tests).
+I-6 : ∀ crate has rustdoc on every pub item ; CSL-native preferred ; one-line OK.
+I-7 : ∀ crate has a doc.rs example or examples/ runner exercising the headline API.
+I-8 : NO crate may take a dependency outside : workspace-already-present + smol_str + thiserror + sha3 + hmac (and only as needed).
+
+End IMPL_02.
