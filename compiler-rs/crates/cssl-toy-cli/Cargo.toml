@@ -13,13 +13,15 @@ name = "cssl-toy"
 path = "src/main.rs"
 
 [dependencies]
-cssl-elab        = { path = "../cssl-elab" }
-cssl-effects-row = { path = "../cssl-effects-row" }
-cssl-pd-check    = { path = "../cssl-pd-check" }
-cssl-ocap        = { path = "../cssl-ocap" }
-cssl-consent     = { path = "../cssl-consent" }
-cssl-cas         = { path = "../cssl-cas" }
-rand.workspace   = true
+cssl-elab          = { path = "../cssl-elab" }
+cssl-effects-row   = { path = "../cssl-effects-row" }
+cssl-pd-check      = { path = "../cssl-pd-check" }
+cssl-ocap          = { path = "../cssl-ocap" }
+cssl-consent       = { path = "../cssl-consent" }
+cssl-cas           = { path = "../cssl-cas" }
+cssl-iccombs       = { path = "../cssl-iccombs" }
+cssl-lower-iccombs = { path = "../cssl-lower-iccombs" }
+rand.workspace     = true
 
 [lints]
 workspace = true

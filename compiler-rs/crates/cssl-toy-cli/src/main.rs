@@ -32,6 +32,8 @@ fn run(args: &[String]) -> Result<(), String> {
     let mut consent = Consent::Explicit;
     let mut source: Option<String> = None;
     let mut from_stdin = false;
+    let mut lower_ic = false;
+    let mut reduce_steps: Option<usize> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -53,6 +55,14 @@ fn run(args: &[String]) -> Result<(), String> {
                     format!("`--grant` value `{g}` must be `<label>:<consent>`")
                 })?;
                 grants.push((label.into(), parse_consent(lvl)?));
+                i += 1;
+            }
+            "--lower-iccombs" => { lower_ic = true; i += 1; }
+            "--reduce" => {
+                i += 1;
+                let n = args.get(i).ok_or("`--reduce` requires a step-count")?;
+                reduce_steps = Some(n.parse::<usize>().map_err(|e| format!("`--reduce` : {e}"))?);
+                lower_ic = true;
                 i += 1;
             }
             "--" => {
@@ -94,15 +104,28 @@ fn run(args: &[String]) -> Result<(), String> {
         policy.grant(label, Grant { token, required_consent: lvl });
     }
 
-    match check(&elab, &policy) {
-        Ok(report) => {
-            println!("pd-check     : OK ({} effect(s) discharged)", report.effects_checked);
-            Ok(())
+    let pd_result = check(&elab, &policy);
+    match &pd_result {
+        Ok(report) => println!("pd-check     : OK ({} effect(s) discharged)", report.effects_checked),
+        Err(v)     => println!("pd-check     : VIOLATION : {v}"),
+    }
+
+    if lower_ic {
+        match cssl_lower_iccombs::lower(&term) {
+            Ok(mut lowered) => {
+                println!("iccombs net  : {} agent(s) initial", lowered.net.agent_count());
+                if let Some(max) = reduce_steps {
+                    let r = lowered.net.reduce_to_normal_form(max);
+                    println!("iccombs reduce: {r:?} ; {} agent(s) post-reduce", lowered.net.agent_count());
+                }
+            }
+            Err(e) => println!("iccombs lower: SKIPPED : {e}"),
         }
-        Err(v) => {
-            println!("pd-check     : VIOLATION : {v}");
-            Err(format!("PD-binding violation : {v}"))
-        }
+    }
+
+    match pd_result {
+        Ok(_)  => Ok(()),
+        Err(v) => Err(format!("PD-binding violation : {v}")),
     }
 }
 
@@ -127,10 +150,14 @@ fn print_help() {
     println!("  --consent <LEVEL>     held consent : Denied | Implicit | Explicit | Revoked  [default: Explicit]");
     println!("  --grant <L>:<LEVEL>   grant a capability for effect <L> requiring consent <LEVEL>  (repeatable)");
     println!("  --stdin               read source from stdin instead of args");
+    println!("  --lower-iccombs       additionally lower term to a cssl-iccombs interaction net (linear fragment only)");
+    println!("  --reduce <N>          implies --lower-iccombs ; reduce up to <N> active-pair steps");
     println!("  -h, --help            print this help");
     println!();
     println!("EXAMPLES :");
     println!("  cssl-toy -- '(lam x L x)'");
     println!("  cssl-toy --grant io:Implicit -- '(op io)'");
     println!("  cssl-toy --grant io:Explicit --consent Implicit -- '(op io)'   # fails (insufficient consent)");
+    println!("  cssl-toy --lower-iccombs -- '(lam x L x)'");
+    println!("  cssl-toy --reduce 64 -- '(app (lam x L x) ())'");
 }

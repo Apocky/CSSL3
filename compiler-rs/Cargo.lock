@@ -2532,6 +2532,8 @@ dependencies = [
  "cssl-consent",
  "cssl-effects-row",
  "cssl-elab",
+ "cssl-iccombs",
+ "cssl-lower-iccombs",
  "cssl-ocap",
  "cssl-pd-check",
  "rand",
