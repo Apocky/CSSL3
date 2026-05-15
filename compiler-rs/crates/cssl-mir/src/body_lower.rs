@@ -125,6 +125,20 @@ impl<'a> BodyLowerCtx<'a> {
             ops: Vec::new(),
         }
     }
+
+    /// Like `sub` but inherits the enclosing fn's parameter bindings so
+    /// nested control-flow branches (scf.if) can resolve `Path` references
+    /// to outer parameters. Used by item-19 if-as-expression graduation.
+    fn sub_inheriting(&self) -> BodyLowerCtx<'a> {
+        BodyLowerCtx {
+            interner: self.interner,
+            source: self.source,
+            param_vars: self.param_vars.clone(),
+            vec_param_vars: self.vec_param_vars.clone(),
+            next_value_id: self.next_value_id,
+            ops: Vec::new(),
+        }
+    }
 }
 
 /// Entry point : lower the body of `hir_fn` into `mir_fn.body.entry().ops`.
@@ -1352,22 +1366,20 @@ fn lower_if(
     span: Span,
 ) -> Option<(ValueId, MirType)> {
     let (cond_id, _) = lower_expr(ctx, cond)?;
-    // Emit scf.if with nested regions. Stage-0 lowers each branch into a sub-region.
-    let then_region = lower_sub_region_from(ctx, then_branch);
-    let else_region = match else_branch {
-        Some(e) => {
-            let mut sub_ctx = ctx.sub();
-            let _ = lower_expr(&mut sub_ctx, e);
-            ctx.next_value_id = sub_ctx.next_value_id;
-            let mut blk = MirBlock::new("entry");
-            blk.ops = sub_ctx.ops;
-            let mut r = MirRegion::new();
-            r.push(blk);
-            r
-        }
-        None => MirRegion::new(),
+    // spec-70 § item-19 A19.1–A19.3 : graduate scf.if from stage-0 result-less
+    // form to typed expression-position. Each branch's trailing value (if any)
+    // is yielded via scf.yield ; the scf.if op carries the unified result type
+    // (we trust HIR/infer to have unified the branches — if they didn't, an
+    // error diagnostic was already emitted upstream and we propagate MirType::None).
+    let (then_region, then_ty) = lower_if_branch_block(ctx, then_branch);
+    let (else_region, else_ty) = match else_branch {
+        Some(e) => lower_if_branch_expr(ctx, e),
+        None => (MirRegion::new(), None),
     };
-    let result_ty = MirType::None; // stage-0 : scf.if result-type resolved @ phase-2b
+    let result_ty = match (&then_ty, &else_ty) {
+        (Some(t), Some(_)) => t.clone(),
+        _ => MirType::None,
+    };
     let id = ctx.fresh_value_id();
     ctx.ops.push(
         MirOp::std("scf.if")
@@ -1379,6 +1391,59 @@ fn lower_if(
     );
     let _ = span;
     Some((id, result_ty))
+}
+
+/// Lower an if-branch block, emitting `scf.yield <trailing>` when the block
+/// has a trailing expression. Returns the region + trailing-type (if yielded).
+fn lower_if_branch_block(
+    ctx: &mut BodyLowerCtx<'_>,
+    block: &HirBlock,
+) -> (MirRegion, Option<MirType>) {
+    let mut sub_ctx = ctx.sub_inheriting();
+    let trailing = lower_block(&mut sub_ctx, block);
+    let yielded_ty = if let Some((vid, ty)) = trailing.as_ref() {
+        sub_ctx.ops.push(
+            MirOp::std("scf.yield")
+                .with_operand(*vid)
+                .with_attribute("source_loc", format!("{:?}", block.span)),
+        );
+        Some(ty.clone())
+    } else {
+        None
+    };
+    ctx.next_value_id = sub_ctx.next_value_id;
+    let mut blk = MirBlock::new("entry");
+    blk.ops = sub_ctx.ops;
+    let mut r = MirRegion::new();
+    r.push(blk);
+    (r, yielded_ty)
+}
+
+/// Lower an if-branch expression (`else` arm — either a `Block` expr or an
+/// `else if` chain), emitting `scf.yield <trailing>` when the expression
+/// produces a value.
+fn lower_if_branch_expr(
+    ctx: &mut BodyLowerCtx<'_>,
+    expr: &HirExpr,
+) -> (MirRegion, Option<MirType>) {
+    let mut sub_ctx = ctx.sub_inheriting();
+    let trailing = lower_expr(&mut sub_ctx, expr);
+    let yielded_ty = if let Some((vid, ty)) = trailing.as_ref() {
+        sub_ctx.ops.push(
+            MirOp::std("scf.yield")
+                .with_operand(*vid)
+                .with_attribute("source_loc", format!("{:?}", expr.span)),
+        );
+        Some(ty.clone())
+    } else {
+        None
+    };
+    ctx.next_value_id = sub_ctx.next_value_id;
+    let mut blk = MirBlock::new("entry");
+    blk.ops = sub_ctx.ops;
+    let mut r = MirRegion::new();
+    r.push(blk);
+    (r, yielded_ty)
 }
 
 /// Lower a block into a sub-region, inheriting + writing back the parent's
@@ -1475,6 +1540,7 @@ fn _unused(_: MirValue) {}
 mod tests {
     use super::lower_fn_body;
     use crate::lower::{lower_function_signature, LowerCtx};
+    use crate::value::MirType;
     use cssl_ast::{SourceFile, SourceId, Surface};
 
     fn hir_from(src: &str) -> (cssl_hir::HirModule, cssl_hir::Interner, SourceFile) {
@@ -1640,6 +1706,95 @@ mod tests {
             .find(|o| o.name == "scf.if")
             .unwrap();
         assert_eq!(if_op.regions.len(), 2);
+    }
+
+    /// spec-70 § item-19 A19.1 : `if cond { 1 } else { 2 }` in expression
+    /// position must lower to a typed `scf.if` (result_ty = Int(32) for i32
+    /// branches) with `scf.yield` terminating each region.
+    #[test]
+    fn a19_1_if_expression_yields_typed_result() {
+        let (f, _) = lower_one("fn choose(c : bool) -> i32 { if c { 1 } else { 2 } }");
+        let if_op = f
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|o| o.name == "scf.if")
+            .expect("scf.if missing");
+        // Result type must be Int(32) — the unified branch type, not None.
+        let result = if_op.results.first().expect("scf.if has no result");
+        assert!(
+            matches!(result.ty, MirType::Int(_)),
+            "scf.if result must be a typed Int, got {:?}",
+            result.ty
+        );
+        // Each region must terminate with scf.yield carrying the branch value.
+        for region in &if_op.regions {
+            let region_ops: Vec<&str> = region
+                .blocks
+                .iter()
+                .flat_map(|b| b.ops.iter().map(|o| o.name.as_str()))
+                .collect();
+            assert!(
+                region_ops.contains(&"scf.yield"),
+                "branch region missing scf.yield : {region_ops:?}"
+            );
+        }
+    }
+
+    /// spec-70 § item-19 A19.3 : if-expression in return-position (trailing
+    /// expression of a fn body) must produce a value the func.return picks up.
+    #[test]
+    fn a19_3_if_in_return_position() {
+        let (f, _) = lower_one("fn r(c : bool) -> i32 { if c { 1 } else { 2 } }");
+        let entry = f.body.entry().unwrap();
+        let ret = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "func.return")
+            .expect("func.return missing");
+        assert_eq!(
+            ret.operands.len(),
+            1,
+            "func.return should carry the if-expression's value"
+        );
+        // The operand must be the result of an scf.if op preceding the return.
+        let if_result_id = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "scf.if")
+            .expect("scf.if missing")
+            .results
+            .first()
+            .expect("scf.if has no result")
+            .id;
+        assert_eq!(
+            ret.operands[0], if_result_id,
+            "func.return must consume the scf.if result-id"
+        );
+    }
+
+    /// spec-70 § item-19 A19.1 : else-less `if` still lowers to MirType::None
+    /// (no graduation needed — already correct ; this guards the regression).
+    #[test]
+    fn a19_else_less_if_stays_unit() {
+        // Wrap in a stmt-position so the trailing expr is unit-compatible.
+        let (f, _) = lower_one("fn stmt(c : bool) { if c { 1 ; } }");
+        let if_op = f
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|o| o.name == "scf.if")
+            .expect("scf.if missing");
+        let result = if_op.results.first().expect("scf.if has no result");
+        assert!(
+            matches!(result.ty, MirType::None),
+            "else-less if must yield MirType::None, got {:?}",
+            result.ty
+        );
     }
 
     #[test]
