@@ -288,6 +288,21 @@ impl TypingEnv {
     pub fn item_schemes(&self) -> impl Iterator<Item = (&DefId, &Scheme)> {
         self.item_sigs.iter()
     }
+
+    /// Iterate over every name currently in any active local scope (stable
+    /// order not guaranteed). Used by `did_you_mean` candidate-collection
+    /// when emitting unresolved-name diagnostics (spec-70 § item-89 A89.2).
+    pub fn local_names(&self) -> impl Iterator<Item = Symbol> + '_ {
+        self.stack
+            .iter()
+            .flat_map(|s| s.schemes().map(|(sym, _)| *sym))
+    }
+
+    /// Iterate over every top-level item-name registered in the env.
+    /// Used by `did_you_mean` candidate-collection (spec-70 § item-89 A89.2).
+    pub fn item_names_iter(&self) -> impl Iterator<Item = Symbol> + '_ {
+        self.item_names.keys().copied()
+    }
 }
 
 #[cfg(test)]

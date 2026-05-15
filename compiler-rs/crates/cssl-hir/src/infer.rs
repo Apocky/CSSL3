@@ -96,6 +96,31 @@ impl<'a> InferCtx<'a> {
             .push(Diagnostic::error(message).with_span(span));
     }
 
+    /// Emit an unresolved-name diagnostic with an optional `did you mean ?`
+    /// suggestion (spec-70 § item-89 A89.2). Candidates are collected from
+    /// the active local scopes + module-level item names ; if the closest
+    /// candidate is within Levenshtein-distance 2 of `needle`, the suggestion
+    /// is attached via `Diagnostic::with_suggestion` and rendered by the
+    /// caret-renderer as `help: did you mean : <name>?`.
+    fn emit_unresolved(&mut self, message: String, needle: Symbol, span: Span) {
+        let needle_s = self.interner.resolve(needle);
+        let mut cands: Vec<String> = self
+            .env
+            .local_names()
+            .chain(self.env.item_names_iter())
+            .map(|s| self.interner.resolve(s))
+            .filter(|s| s != &needle_s)
+            .collect();
+        cands.sort();
+        cands.dedup();
+        let cand_refs: Vec<&str> = cands.iter().map(String::as_str).collect();
+        let mut diag = Diagnostic::error(message).with_span(span);
+        if let Some(suggestion) = cssl_ast::did_you_mean(&needle_s, &cand_refs) {
+            diag = diag.with_suggestion(suggestion);
+        }
+        self.diagnostics.push(diag);
+    }
+
     fn record(&mut self, id: HirId, t: Ty) {
         self.type_map.insert(id, t);
     }
@@ -185,13 +210,16 @@ impl<'a> InferCtx<'a> {
                     Some(d) => Ty::Named { def: *d, args },
                     None => {
                         // Unresolved — emit a diagnostic at T3.4 level (identifier undefined).
-                        self.emit(
+                        // Attach a `did you mean ?` suggestion when a near-miss exists.
+                        let needle = path[0];
+                        self.emit_unresolved(
                             format!(
                                 "unresolved type {:?}",
                                 path.iter()
                                     .map(|s| self.interner.resolve(*s))
                                     .collect::<Vec<_>>()
                             ),
+                            needle,
                             t.span,
                         );
                         Ty::Error
@@ -694,7 +722,7 @@ impl<'a> InferCtx<'a> {
                         return t;
                     }
                 }
-                self.emit(
+                self.emit_unresolved(
                     format!(
                         "unresolved name : {:?}",
                         segments
@@ -702,6 +730,7 @@ impl<'a> InferCtx<'a> {
                             .map(|s| self.interner.resolve(*s))
                             .collect::<Vec<_>>()
                     ),
+                    segments.first().copied().unwrap_or_else(|| self.interner.intern("")),
                     e.span,
                 );
                 Ty::Error
@@ -1227,6 +1256,71 @@ mod tests {
     fn unknown_identifier_diagnoses() {
         let (_types, diags) = infer("fn f() -> i32 { undefined_name }");
         assert!(diags >= 1);
+    }
+
+    /// spec-70 § item-89 A89.2 : when an unresolved name is within
+    /// Levenshtein-distance 2 of an in-scope param, the diagnostic must
+    /// carry a `did you mean ?` suggestion via `Diagnostic::with_suggestion`.
+    fn infer_full(src: &str) -> Vec<cssl_ast::Diagnostic> {
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (cst, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, interner, _lower_bag) = lower_module(&f, &cst);
+        let (_type_map, diags) = check_module(&hir, &interner);
+        diags
+    }
+
+    #[test]
+    fn a89_2_did_you_mean_attaches_suggestion_for_param_typo() {
+        // `count` is in scope ; `couint` is a typo within edit-dist 2.
+        let diags = infer_full("fn f(count : i32) -> i32 { couint }");
+        let prim = diags
+            .iter()
+            .find(|d| d.message.contains("unresolved name"))
+            .expect("unresolved-name diagnostic missing");
+        assert_eq!(
+            prim.suggestion.as_deref(),
+            Some("count"),
+            "did_you_mean must suggest `count` (got: {:?})",
+            prim.suggestion
+        );
+    }
+
+    #[test]
+    fn a89_2_did_you_mean_attaches_suggestion_for_item_typo() {
+        // `helpr` (typo of `helper`, edit-dist 1) → suggestion = `helper`.
+        let diags = infer_full(
+            "fn helper() -> i32 { 0 }\nfn caller() -> i32 { helpr() }",
+        );
+        let prim = diags
+            .iter()
+            .find(|d| d.message.contains("unresolved name"))
+            .expect("unresolved-name diagnostic missing");
+        assert_eq!(prim.suggestion.as_deref(), Some("helper"));
+    }
+
+    #[test]
+    fn a89_2_did_you_mean_silent_when_no_close_match() {
+        // `xyzzy` is more than 2 edits from anything in scope → no suggestion.
+        let diags = infer_full("fn f(count : i32) -> i32 { xyzzy }");
+        let prim = diags
+            .iter()
+            .find(|d| d.message.contains("unresolved name"))
+            .expect("unresolved-name diagnostic missing");
+        assert_eq!(prim.suggestion, None, "should not over-suggest");
+    }
+
+    #[test]
+    fn a89_2_did_you_mean_silent_when_tied() {
+        // Two equidistant candidates → silence (per `did_you_mean` contract).
+        let diags = infer_full(
+            "fn f(foo : i32, fob : i32) -> i32 { fox }",
+        );
+        let prim = diags
+            .iter()
+            .find(|d| d.message.contains("unresolved name"))
+            .expect("unresolved-name diagnostic missing");
+        assert_eq!(prim.suggestion, None, "tied candidates must yield no suggestion");
     }
 
     #[test]
