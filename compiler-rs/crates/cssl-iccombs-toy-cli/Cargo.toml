@@ -1,0 +1,22 @@
+[package]
+name         = "cssl-iccombs-toy-cli"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description  = "TOY S-exp frontend + driver for the iccombs demo-harness (Wave U-D + IMPL_06_CORRIGENDUM). NOT the production driver — production driver = csslc."
+repository.workspace   = true
+
+[[bin]]
+name = "cssl-iccombs-toy"
+path = "src/main.rs"
+
+[dependencies]
+cssl-iccombs-toy-elab = { path = "../cssl-iccombs-toy-elab" }
+cssl-cas              = { path = "../cssl-cas" }
+cssl-iccombs          = { path = "../cssl-iccombs" }
+cssl-lower-iccombs    = { path = "../cssl-lower-iccombs" }
+
+[lints]
+workspace = true

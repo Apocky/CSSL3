@@ -74,7 +74,7 @@
 //!   surfaces the row STRUCTURALLY : every drawing entry-point takes a
 //!   `&mut dyn Painter`, the `Painter` trait is the only sink that can
 //!   produce paint commands, and submission happens at `end_frame` time.
-//!   When the cssl-effects-row plumbing extends to UI, adding
+//!   When `cssl-effects` row-plumbing extends to UI, adding
 //!   `#[effect(Render)]` annotations to trait method signatures is a
 //!   non-breaking pass.
 //!

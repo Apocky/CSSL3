@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 #![doc = "cssl-lower-iccombs — Lafont/Mackie symmetric-interaction-combinator encoding\n\
-of the LINEAR fragment of cssl-elab's surface λ-calculus.\n\n\
+of the LINEAR fragment of cssl-iccombs-toy-elab's surface λ-calculus.\n\n\
 Encoding (λ_lin → SIC) :\n\
   • Lam(x, body)   ↦ Con node ; principal=output ; aux1=variable-port (env[x]) ;\n\
                        aux2 ← linked to body's output\n\
@@ -14,12 +14,13 @@ Out of scope (returns `LowerError::UnsupportedGrade` / `UnsupportedTerm`) :\n\
     multi-use ; deferred to a follow-up pass that performs erasure-Era / share-Dup\n\
     insertion based on use-counts.\n\
   • `Op(_)` effectful primitives → no SIC encoding ; effects must be discharged\n\
-    via cssl-pd-check at HIR-level before lowering, or thunked into a runtime-call\n\
+    via cssl-effects::banned_composition + cssl-ifc::validate_egress at HIR-level\n\
+    before lowering (per IMPL_06_CORRIGENDUM Wave U-G revision), or thunked into a runtime-call\n\
     combinator (deferred).\n\n\
 Spec : `specs/Upgrade/impl/IMPL_01_PLAN.csl` § Wave U-D ; `IMPL_02_FOUNDATION.csl`\n\
 § cssl-iccombs."]
 
-use cssl_elab::{Grade, Term};
+use cssl_iccombs_toy_elab::{Grade, Term};
 use cssl_iccombs::{AgentKind, Net, PortRef};
 use std::collections::HashMap;
 

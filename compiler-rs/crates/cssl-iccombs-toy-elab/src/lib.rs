@@ -1,19 +1,44 @@
 #![forbid(unsafe_code)]
-#![doc = "cssl-elab — Wave U-A graded-modal elaborator.\n\n\
-Spec : `specs/Upgrade/impl/IMPL_01_PLAN.csl` § Wave-U-A. Lowers a small \
-surface λ-calculus with grade annotations and effect operations into a \
-`cssl-hgraph::HGraph`, while \n\
-  (a) checking grade discipline (Linear = exactly-once, Affine = at-most-once, \
-      Unrestricted = any-count) per binder, and\n\
-  (b) accumulating an `EffectRow` over the term's effect operations.\n\n\
-This is the L1 graded-modal kernel skeleton — the type-system elaboration \
-(refinement, unification, dependent kinds) is deferred to Wave U-B."]
+#![doc = "cssl-iccombs-toy-elab — TOY graded-modal elaborator (iccombs harness).\n\n\
+⚠ TOY per `specs/Upgrade/impl/IMPL_06_CORRIGENDUM.csl`. NOT a production elaborator.\n\
+The production elaborator is `cssl-hir` (CST→typed-resolved-inferred HIR + integrates\n\
+cssl-caps + cssl-effects + cssl-ifc). Wave U-B revised : extend cssl-hir with grades,\n\
+do NOT keep this crate as the elab path. This crate exists only as the L1 input to\n\
+the iccombs demo-harness (cssl-lower-iccombs + cssl-iccombs-toy-cli)."]
 
 use cssl_cas::{cid_of_bytes, Cid};
-use cssl_effects_row::EffectRow;
 use cssl_hgraph::{EdgeKind, HGraph, NodeId, NodeLabel, Port, TypeCid};
 use std::collections::HashMap;
 use thiserror::Error;
+
+/// Toy effect-row : ordered set of effect labels accumulated during elaboration.
+///
+/// ⚠ TOY per IMPL_06_CORRIGENDUM. Real effect-rows live in `cssl-effects`
+/// (28 built-in effects + Ω-substrate-rows + sub_effect_check + banned_composition).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EffectRow {
+    pub labels: std::collections::BTreeSet<String>,
+}
+
+impl EffectRow {
+    #[must_use]
+    pub fn empty() -> Self { Self::default() }
+    #[must_use]
+    pub fn singleton(label: String) -> Self {
+        let mut s = std::collections::BTreeSet::new();
+        s.insert(label);
+        Self { labels: s }
+    }
+    #[must_use]
+    pub fn union(mut self, other: Self) -> Self {
+        self.labels.extend(other.labels);
+        self
+    }
+    #[must_use]
+    pub fn is_pure(&self) -> bool { self.labels.is_empty() }
+    #[must_use]
+    pub fn contains(&self, label: &str) -> bool { self.labels.contains(label) }
+}
 
 /// Grade annotation on a binder.
 ///

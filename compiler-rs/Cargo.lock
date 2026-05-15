@@ -1043,10 +1043,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cssl-consent"
-version = "0.1.0"
-
-[[package]]
 name = "cssl-content-moderation"
 version = "0.1.0"
 dependencies = [
@@ -1095,24 +1091,6 @@ dependencies = [
 name = "cssl-effects"
 version = "0.1.0"
 dependencies = [
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "cssl-effects-row"
-version = "0.1.0"
-dependencies = [
- "cssl-cas",
-]
-
-[[package]]
-name = "cssl-elab"
-version = "0.1.0"
-dependencies = [
- "cssl-cas",
- "cssl-effects-row",
- "cssl-grades",
- "cssl-hgraph",
  "thiserror 1.0.69",
 ]
 
@@ -2078,6 +2056,26 @@ name = "cssl-iccombs"
 version = "0.1.0"
 
 [[package]]
+name = "cssl-iccombs-toy-cli"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "cssl-iccombs",
+ "cssl-iccombs-toy-elab",
+ "cssl-lower-iccombs",
+]
+
+[[package]]
+name = "cssl-iccombs-toy-elab"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "cssl-grades",
+ "cssl-hgraph",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-ifc"
 version = "0.1.0"
 dependencies = [
@@ -2143,8 +2141,8 @@ dependencies = [
 name = "cssl-lower-iccombs"
 version = "0.1.0"
 dependencies = [
- "cssl-elab",
  "cssl-iccombs",
+ "cssl-iccombs-toy-elab",
  "thiserror 1.0.69",
 ]
 
@@ -2213,33 +2211,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cssl-ocap"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "cssl-cas",
- "rand",
-]
-
-[[package]]
 name = "cssl-parse"
 version = "0.1.0"
 dependencies = [
  "cssl-ast",
  "cssl-lex",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "cssl-pd-check"
-version = "0.1.0"
-dependencies = [
- "cssl-cas",
- "cssl-consent",
- "cssl-effects-row",
- "cssl-elab",
- "cssl-ocap",
- "rand",
  "thiserror 1.0.69",
 ]
 
@@ -2522,21 +2498,6 @@ name = "cssl-testing"
 version = "0.1.0"
 dependencies = [
  "cssl-telemetry",
-]
-
-[[package]]
-name = "cssl-toy-cli"
-version = "0.1.0"
-dependencies = [
- "cssl-cas",
- "cssl-consent",
- "cssl-effects-row",
- "cssl-elab",
- "cssl-iccombs",
- "cssl-lower-iccombs",
- "cssl-ocap",
- "cssl-pd-check",
- "rand",
 ]
 
 [[package]]

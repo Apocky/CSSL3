@@ -13,8 +13,8 @@
 //!   surfaces structurally as : every drawing entry-point takes `&mut dyn
 //!   Painter`, the painter is the only sink that can produce commands, and
 //!   the painter trait is `Send + Sync`-bounded so future render-graph
-//!   integration can move recordings across threads. When cssl-effects-row
-//!   plumbing extends to UI (a follow-up slice), adding `#[effect(Render)]`
+//!   integration can move recordings across threads. When `cssl-effects`
+//!   row-plumbing extends to UI (a follow-up slice), adding `#[effect(Render)]`
 //!   to the trait method signatures is a non-breaking annotation pass.
 //!
 //! § PRIMITIVES

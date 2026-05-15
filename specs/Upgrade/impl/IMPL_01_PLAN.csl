@@ -35,14 +35,41 @@ L7 ← L1 (consent=grade)           ⇒ Wave U-G
     ✓ workspace clippy + test green
   deliverables :
     ✓ specs/Upgrade/impl/IMPL_00..IMPL_05.csl (this set)
-    ✓ crates : cssl-cas · cssl-hgraph · cssl-grades · cssl-effects-row
-              cssl-prov · cssl-ocap · cssl-consent · cssl-iccombs
+    ✓ specs/Upgrade/impl/IMPL_06_CORRIGENDUM.csl ‼ AMENDS lines below : retire-4 ⊕ rebrand-2
+    ✓ crates : cssl-cas · cssl-hgraph · cssl-grades
+              cssl-prov · cssl-iccombs
+    ✓ TOY harness (NOT PD-binding ; per IMPL_06 ⟪U-K-prelude⟫) :
+              cssl-iccombs-toy-elab · cssl-lower-iccombs · cssl-iccombs-toy-cli (bin = cssl-iccombs-toy)
+    ¬ RETIRED per IMPL_06_CORRIGENDUM ⟦DUPLICATION-MATRIX⟧ :
+              cssl-effects-row (⊑ cssl-effects)
+              cssl-ocap        (⊑ cssl-caps)
+              cssl-consent     (⊑ cssl-ifc)
+              cssl-pd-check    (⊑ cssl-effects.banned ⊕ cssl-ifc.validate ⊕ cssl-caps.HostCap)
     ✓ each crate : ≥ 5 passing tests · clippy clean · doc-stub
   exit-gate :
     ✓ workspace clippy --workspace --all-targets -- -D warnings exit 0
     ✓ workspace test exit 0 (or pre-existing-failures-only)
     ✓ commit + push to phase-a/09-sigma-extended
   rollback : revert commit ; foundation crates are net-add ¬ touch existing crates
+──────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-K-prelude⟧ ⟪iccombs-experimental⟫ ‼ TOY ; explicitly NOT PD-binding
+  added per IMPL_06_CORRIGENDUM ⟦WAVE-GRAPH-REVISION⟧ : carves the TOY iccombs
+  demo-harness off the foundation-wave so it cannot be mistaken for production.
+  entry-gate : foundation-wave landed
+  scope (TOY ONLY) :
+    cssl-iccombs-toy-elab : surface λ-calculus → cssl-hgraph + grade-context + toy effect-row
+    cssl-lower-iccombs    : LINEAR fragment → cssl-iccombs interaction net
+    cssl-iccombs-toy-cli  : S-exp frontend + bin `cssl-iccombs-toy` (driver for the harness)
+  invariants :
+    ✗ NOT a production elaborator (production = cssl-hir per Wave U-B)
+    ✗ NOT a production driver    (production = csslc)
+    ✗ NOT a PD-discipline gate   (PD = cssl-caps + cssl-effects + cssl-ifc per Wave U-G)
+    ✓ doc-headers + descriptions + bin-name carry TOY warning + corrigendum link
+  exit-gate :
+    ✓ S-exp → elab → cid → optional iccombs-lower → optional reduce ⇒ green
+    ✓ ≥ 5 tests per crate · clippy clean
+  rollback : net-add ; deletion of all 3 crates is a no-op for production csslc/HIR/MIR
 ──────────────────────────────────────────────────────────────────────
 ⟦Wave U-A⟧ Sail-ingest + ISA-formalism
   entry-gate : foundation-wave landed
@@ -57,26 +84,33 @@ L7 ← L1 (consent=grade)           ⇒ Wave U-G
   rollback : impl is net-add ; existing CLIF emit unchanged
 ──────────────────────────────────────────────────────────────────────
 ⟦Wave U-B⟧ Graded-modal HIR-elaboration on toy fragment
-  entry-gate : foundation-wave + cssl-grades stable
+  ‼ REVISED per IMPL_06_CORRIGENDUM ⟦WAVE-GRAPH-REVISION⟧ : extend cssl-hir,
+  ¬ ship a parallel cssl-elab. The toy elaborator (cssl-iccombs-toy-elab) lives
+  in U-K-prelude as iccombs harness L1 ; production HIR is the elab-target.
+  entry-gate : foundation-wave landed
   deliverables :
-    cssl-grades-elab : elaborator for {linear · affine · unrestricted} on STLC fragment
-    cssl-grades-infer : grade-polymorphism inference (Granule-style)
+    cssl-hir EXTENSION : thread cssl-grades::Semiring through binders ;
+                        consume cssl-caps + cssl-effects + cssl-ifc (¬ cssl-effects-row)
+    cssl-hir-grades-infer : grade-polymorphism inference (Granule-style) over real HIR
     spec : grade-semiring algebra · soundness-claims · counter-examples
   exit-gate :
-    ✓ ≥ 50 elaboration tests : valid programs accepted, invalid rejected
+    ✓ ≥ 50 elaboration tests on cssl-hir : valid programs accepted, invalid rejected
     ✓ formal soundness sketch (paper-style) committed
-  rollback : isolated to cssl-grades-* crates ; no HIR/MIR touch
+  rollback : grade-thread guarded by `--feature grades` on cssl-hir until stable
 ──────────────────────────────────────────────────────────────────────
 ⟦Wave U-C⟧ Effects-row → MIR lowering ; handler-as-CPS pass
-  entry-gate : Wave U-B landed
+  ‼ REVISED per IMPL_06_CORRIGENDUM : extend cssl-effects (28 effects + Ω-substrate-rows
+  + sub_effect_check + banned_composition already shipped) with row-elaboration ;
+  ¬ ship cssl-effects-row (RETIRED). Add ONE new MIR pass : cssl-mir::pass::handler_cps.
+  entry-gate : Wave U-B landed (cssl-hir grade-thread)
   deliverables :
-    cssl-effects-elab : Koka-style row-typed effect inference
-    cssl-mir-effect-lower : new MIR pass ; effects → CPS-style
-    integration : existing 14-pass MIR pipeline gains an effect-elab phase
+    cssl-effects EXTENSION : Koka-style row-typed effect inference on top of existing rows
+    cssl-mir::pass::handler_cps : new MIR pass ; effects → CPS-style
+    integration : existing 14-pass MIR pipeline gains ONE effect-elab phase
   exit-gate :
     ✓ Koka-test-suite-port : ≥ 80% pass rate on the algebraic-effect subset
     ✓ existing MIR shotgun tests still pass
-  rollback : effect-elab pass guarded by feature-flag ; default=off until W-U-G
+  rollback : handler_cps pass guarded by feature-flag ; default=off until W-U-G
 ──────────────────────────────────────────────────────────────────────
 ⟦Wave U-D⟧ hgraph-native MIR ; 14-pass pipeline → hgraph-rewrites
   entry-gate : Wave U-C landed
@@ -113,11 +147,14 @@ L7 ← L1 (consent=grade)           ⇒ Wave U-G
   rollback : choreo-pass behind feature-flag
 ──────────────────────────────────────────────────────────────────────
 ⟦Wave U-G⟧ Ocap-as-load-bearing ; effect-discharge requires capability
-  entry-gate : Wave U-C + cssl-ocap stable
+  ‼ REVISED per IMPL_06_CORRIGENDUM : compose existing substrate (cssl-caps +
+  cssl-effects + cssl-ifc) instead of inventing cssl-ocap/cssl-consent/cssl-pd-check.
+  entry-gate : Wave U-C landed (cssl-effects + handler_cps)
   deliverables :
-    cssl-effects-ocap : every effect-handler discharge → ocap-token check
-    cssl-mir-cap-pass : new MIR pass enforces cap-discipline
-    integration : existing cap_runtime_check pass extended
+    cssl-effects::discharge → cssl-caps::HostCap::verify_cap (wired discharge gate)
+    cssl-ifc::validate_egress → cssl-effects::banned_composition (egress↔composition gate)
+    cssl-pd-pass : THIN MIR pass that orchestrates the above (¬ a new policy-engine ;
+                   merely the join-point) ; replaces the never-shipped cssl-pd-check
   exit-gate :
     ✓ all surveillance/coercion/manipulation effects compile-error without explicit grant
     ✓ ≥ 30 PD-binding tests pass : valid grants accepted, missing grants rejected

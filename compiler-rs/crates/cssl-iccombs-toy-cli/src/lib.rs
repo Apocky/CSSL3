@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
-#![doc = "cssl-toy-cli — minimal S-expression frontend for the foundation crates.\n\n\
+#![doc = "cssl-iccombs-toy-cli — TOY S-expression frontend for the iccombs demo.\n\n\
+⚠ TOY per `specs/Upgrade/impl/IMPL_06_CORRIGENDUM.csl`. NOT the production parser\n\
+(real parser = cssl-parse, real driver = csslc). This crate exists ONLY to feed\n\
+the iccombs harness (cssl-iccombs-toy-elab + cssl-lower-iccombs + cssl-iccombs-toy bin).\n\n\
 Grammar (recursive S-exp) :\n\
   term     := atom | list\n\
   atom     := identifier | `()`\n\
@@ -9,16 +12,9 @@ Grammar (recursive S-exp) :\n\
             | `app` fn arg\n\
             | `op` <label>\n\
   grade    := `L` | `A` | `W`     (linear / affine / unrestricted-ω)\n\
-  identifier = `[A-Za-z_][A-Za-z0-9_-]*`\n\n\
-Examples :\n\
-  `()`                              → unit\n\
-  `(lam x L x)`                     → linear identity\n\
-  `(app (lam x W x) (op io))`       → effectful application\n\
-  `(let x W (op io) (op state))`    → sequenced effects\n\n\
-This is NOT the production parser (that's a separate Logos/Chumsky frontend) — it \
-exists to give the foundation crates an end-to-end driver."]
+  identifier = `[A-Za-z_][A-Za-z0-9_-]*`\n"]
 
-use cssl_elab::{Grade, Term};
+use cssl_iccombs_toy_elab::{Grade, Term};
 
 /// Parse error.
 #[derive(Debug, PartialEq, Eq)]
@@ -193,7 +189,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cssl_elab::elaborate;
+    use cssl_iccombs_toy_elab::elaborate;
 
     #[test]
     fn parse_unit() {
