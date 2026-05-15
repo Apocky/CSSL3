@@ -35,6 +35,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod abi;
+pub mod build_manifest;
 pub mod emit;
 pub mod feature;
 pub mod jit;
@@ -43,6 +44,10 @@ pub mod target;
 pub mod types;
 
 pub use abi::{Abi, ObjectFormat};
+pub use build_manifest::{
+    emit_build_manifest_json, read_build_manifest, verify_manifest, verify_manifest_file,
+    verify_manifest_json, write_build_manifest, BuildManifest, BuildManifestError, SymbolHash,
+};
 pub use emit::{emit_module, CpuCodegenError, EmittedArtifact};
 pub use feature::{CpuFeature, CpuFeatureSet, SimdTier};
 pub use jit::{JitError, JitFn, JitModule};
