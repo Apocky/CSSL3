@@ -2056,6 +2056,26 @@ name = "cssl-iccombs"
 version = "0.1.0"
 
 [[package]]
+name = "cssl-iccombs-toy-cli"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "cssl-iccombs",
+ "cssl-iccombs-toy-elab",
+ "cssl-lower-iccombs",
+]
+
+[[package]]
+name = "cssl-iccombs-toy-elab"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "cssl-grades",
+ "cssl-hgraph",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-ifc"
 version = "0.1.0"
 dependencies = [
@@ -2114,6 +2134,15 @@ dependencies = [
  "blake3",
  "cssl-telemetry",
  "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-lower-iccombs"
+version = "0.1.0"
+dependencies = [
+ "cssl-iccombs",
+ "cssl-iccombs-toy-elab",
  "thiserror 1.0.69",
 ]
 
