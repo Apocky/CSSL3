@@ -268,3 +268,26 @@ impl Drop for EventScope {
         }
     }
 }
+
+/// § spec-70 § item-05 (A05.2) : register an observable side-effect for the
+/// run-and-observe gate. Tests call this to opt-in as "alive" even when they
+/// don't otherwise touch the FFI surface (e.g. pure compute / unit logic).
+///
+/// Emits a single JSONL `branch` event with op = `test.observe` and
+/// `args = {"name": <name>}`. The verifier (`cssl-test-verifier::verify`)
+/// counts these toward the `require-observable` gate.
+///
+/// This is an opt-in mechanism : tests that ARE expected to be silent (e.g.
+/// idle-cycle benchmarks per OQ.03) simply omit the `require-observable`
+/// line in their manifest and never call this function.
+pub fn cssl_test_observe(name: &str) {
+    fs_event_jsonl(
+        "cssl-rt::test_harness",
+        "test.observe",
+        "branch",
+        serde_json::json!({"name": name}),
+        None,
+        None,
+        Some("cssl_test_observe"),
+    );
+}

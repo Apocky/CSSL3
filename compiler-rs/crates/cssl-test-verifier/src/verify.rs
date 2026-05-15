@@ -49,6 +49,12 @@ pub enum Failure {
         actual_ns: u64,
         index: usize,
     },
+    /// § spec-70 § item-05 (A05.1) : the manifest required at least one
+    /// observable side-effect (op = `test.observe` or any non-rt-internal op)
+    /// but the trace contained none.
+    NoObservableEffect {
+        rt_internal_event_count: u64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +103,22 @@ fn pred_evaluate(pred: &PredOp, actual: Option<&serde_json::Value>) -> bool {
         (PredOp::Lt(n), Some(got)) => got.as_f64().is_some_and(|x| x < *n),
         (PredOp::Gt(_), None) | (PredOp::Lt(_), None) => false,
     }
+}
+
+/// § spec-70 § item-05 (A05.1) : ops emitted by cssl-rt itself that do NOT
+/// count as user-observable side-effects. The run-and-observe gate filters
+/// these out so a test that does nothing (and only the runtime ctor/atexit
+/// fires) cannot pass by accident. FM.3 mitigation per `§RZ_open_05`.
+const RT_INTERNAL_OPS: &[&str] = &[
+    "process.start",
+    "process.exit",
+    "loa_startup.ctor",
+    "sentinel.write",
+    "sentinel.skip",
+];
+
+fn is_rt_internal_op(op: &str) -> bool {
+    RT_INTERNAL_OPS.iter().any(|i| *i == op)
 }
 
 pub fn verify(manifest: &Manifest, events: &[Event]) -> VerificationReport {
@@ -271,6 +293,29 @@ pub fn verify(manifest: &Manifest, events: &[Event]) -> VerificationReport {
                 kind: e.kind.as_str().to_string(),
                 index: i,
             });
+        }
+    }
+
+    // (8) § spec-70 § item-05 (A05.1) : run-and-observe gate. When the
+    // manifest opts in via `require-observable`, the trace must contain at
+    // least one event whose op is NOT rt-internal. Tests that intentionally
+    // measure idle (OQ.03) opt out simply by NOT setting requires_observable.
+    if manifest.requires_observable {
+        let mut observable: u64 = 0;
+        let mut rt_internal: u64 = 0;
+        for e in events {
+            if is_rt_internal_op(&e.op) {
+                rt_internal += 1;
+            } else {
+                observable += 1;
+            }
+        }
+        if observable == 0 {
+            failures.push(Failure::NoObservableEffect {
+                rt_internal_event_count: rt_internal,
+            });
+        } else {
+            passed_count += 1;
         }
     }
 

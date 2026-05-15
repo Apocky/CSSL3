@@ -1,0 +1,28 @@
+// § examples/empty_user_main.cssl
+// § spec-70 § item-05 (A05.3) golden fixture
+// ────────────────────────────────────────────────────────────────────────
+// This is the "empty user_main" anti-pattern : a program that compiles
+// cleanly, runs to exit-0 in <1ms, produces no stdout/stderr, no fs
+// mutation, and would silently pass any naive test-runner.
+//
+// Per spec-70 § item-05 A05.3 : when this program is built and executed
+// under a manifest containing `require-observable`, the
+// `cssl-test-verifier` MUST FAIL it with a `NoObservableEffect`
+// failure (see compiler-rs/crates/cssl-test-verifier/tests/run_observe_gate.rs
+// for the Rust-layer e2e proof of the same gate logic).
+//
+// This file is the FORWARD-LOOKING source artifact ; it will be wired
+// through the csslc → .exe → run → JSONL → verify pipeline once item-04
+// (build-manifest) lands. Until then, the gate logic is verified at the
+// Rust verifier layer above.
+//
+// § attestation : ¬(hurt ∨ harm) · sovereignty-restoration · WinMain-class-killer
+// ────────────────────────────────────────────────────────────────────────
+
+fn user_main() {
+    // intentionally empty : exit-0, no observable side-effect.
+    // The runtime ctor and atexit hook will fire (process.start /
+    // loa_startup.ctor / process.exit are emitted by cssl-rt itself),
+    // but those are rt-internal and do NOT count toward the
+    // run-and-observe gate per `is_rt_internal_op` in verify.rs.
+}

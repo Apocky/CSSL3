@@ -157,6 +157,14 @@ pub struct Manifest {
     pub orderings: Vec<OrderConstraint>,
     pub latency_bounds: Vec<LatencyBound>,
     pub result_predicates: Vec<ResultPredicate>,
+    /// § spec-70 § item-05 (A05.1) : when true, the verifier rejects a
+    /// trace that contains zero observable side-effects. Rt-internal events
+    /// (process.start / process.exit / loa_startup.ctor / sentinel.{write,skip})
+    /// do NOT count toward observability — only test-authored events such as
+    /// `cssl_test_observe(...)` (op = test.observe) or any other non-rt-internal
+    /// op (e.g. user FFI traces) satisfy the gate.
+    #[serde(default)]
+    pub requires_observable: bool,
 }
 
 #[derive(Debug, Error)]
@@ -311,6 +319,11 @@ pub fn parse_manifest(raw: &str, profile_filter: Option<&str>) -> Result<Manifes
                     message: "allow-skip <op>".into(),
                 })?;
                 m.allowed_skips.push(AllowedSkip { op: op.to_string() });
+            }
+            "require-observable" => {
+                // § spec-70 § item-05 A05.1 : flips the run-and-observe gate on.
+                // No arguments. Multiple occurrences are idempotent.
+                m.requires_observable = true;
             }
             "order" => {
                 let a = tok.next();

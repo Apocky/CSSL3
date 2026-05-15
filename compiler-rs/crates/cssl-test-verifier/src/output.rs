@@ -104,6 +104,12 @@ pub fn render_human(report: &VerificationReport) -> String {
                         op, kind, expected_max_ns, actual_ns, index
                     ));
                 }
+                Failure::NoObservableEffect { rt_internal_event_count } => {
+                    out.push_str(&format!(
+                        "    ✗ NO-OBSERVABLE  · require-observable gate · rt_internal_only={}\n",
+                        rt_internal_event_count
+                    ));
+                }
             }
         }
     }
