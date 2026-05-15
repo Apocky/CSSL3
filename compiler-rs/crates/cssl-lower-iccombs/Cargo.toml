@@ -1,0 +1,17 @@
+[package]
+name         = "cssl-lower-iccombs"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description  = "Lower cssl-elab λ-terms to cssl-iccombs interaction nets — Lafont/Mackie SIC encoding for the LINEAR fragment (Wave U-D per IMPL_01_PLAN.csl ; demonstrates L1→L3 path)."
+repository.workspace   = true
+
+[dependencies]
+cssl-elab    = { path = "../cssl-elab" }
+cssl-iccombs = { path = "../cssl-iccombs" }
+thiserror.workspace = true
+
+[lints]
+workspace = true

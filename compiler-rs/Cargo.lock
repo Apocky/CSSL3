@@ -2140,6 +2140,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-lower-iccombs"
+version = "0.1.0"
+dependencies = [
+ "cssl-elab",
+ "cssl-iccombs",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-macros"
 version = "0.1.0"
 dependencies = [
