@@ -1,0 +1,3 @@
+// § A02.2 corpus · same-class f32 → f64 silent-widen regression
+// expected : Error · "expected f64, got f32"
+fn f(x : f32) -> f64 { x }

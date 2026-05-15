@@ -1014,6 +1014,14 @@ pub fn lower_module(
     // Run the resolve pass to populate module-level scope + path references.
     let mut hir = hir;
     resolve_module(&mut hir);
+    // § spec-70 § item-02 (A02.1) : surface primitive type-shape mismatches
+    // that the inference engine collapses away (Ty::Int swallows i32/u32/i64/…).
+    // Diagnostics flow through the same DiagnosticBag so `csslc check` /
+    // `csslc compile` reports them with full file:line:col rendering.
+    let extra = crate::primitive_shape::check_primitive_shape(&hir, &ctx.interner);
+    for d in extra {
+        ctx.diagnostics.push(d);
+    }
     (hir, ctx.interner, ctx.diagnostics)
 }
 

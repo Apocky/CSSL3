@@ -75,6 +75,7 @@ pub mod item;
 pub mod lower;
 pub mod macro_hygiene;
 pub mod pat;
+pub mod primitive_shape;
 pub mod refinement;
 pub mod resolve;
 pub mod staged_check;
@@ -119,6 +120,7 @@ pub use item::{
     HirStructBody, HirTypeAlias, HirUse, HirVisibility, HirWhereClause,
 };
 pub use lower::{lower_module, LowerCtx};
+pub use primitive_shape::check_primitive_shape;
 pub use macro_hygiene::{
     check_macro_hygiene, MacroHygieneCode, MacroHygieneDiagnostic, MacroHygieneReport,
 };
