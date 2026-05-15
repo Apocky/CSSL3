@@ -1,0 +1,18 @@
+[package]
+name         = "cssl-iccombs-toy-elab"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description  = "TOY graded-modal elaborator for the iccombs demo-harness (Wave U-D + IMPL_06_CORRIGENDUM). NOT a production elaborator — production elab lives in cssl-hir. Surface λ-calculus → hgraph + grade-context + toy effect-row."
+repository.workspace   = true
+
+[dependencies]
+cssl-cas    = { path = "../cssl-cas" }
+cssl-hgraph = { path = "../cssl-hgraph" }
+cssl-grades = { path = "../cssl-grades" }
+thiserror.workspace = true
+
+[lints]
+workspace = true
