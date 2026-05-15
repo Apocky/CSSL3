@@ -2516,6 +2516,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-toy-cli"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "cssl-consent",
+ "cssl-effects-row",
+ "cssl-elab",
+ "cssl-ocap",
+ "cssl-pd-check",
+ "rand",
+]
+
+[[package]]
 name = "cssl-tweak"
 version = "0.1.0"
 dependencies = [
