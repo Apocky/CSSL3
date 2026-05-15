@@ -489,10 +489,12 @@ pub fn parse_format_spec_at(bytes: &[u8], pos: usize) -> Option<(FormatSpecKind,
     // Zero-padded : `{:0Nd}`.
     if i < bytes.len() && bytes[i] == b'0' {
         let (n, after) = parse_decimal(bytes, i + 1)?;
-        if after < bytes.len() && bytes[after] == b'd' {
-            if after + 1 < bytes.len() && bytes[after + 1] == b'}' {
-                return Some((FormatSpecKind::ZeroPadInt(n), after + 2));
-            }
+        if after < bytes.len()
+            && bytes[after] == b'd'
+            && after + 1 < bytes.len()
+            && bytes[after + 1] == b'}'
+        {
+            return Some((FormatSpecKind::ZeroPadInt(n), after + 2));
         }
         return None;
     }

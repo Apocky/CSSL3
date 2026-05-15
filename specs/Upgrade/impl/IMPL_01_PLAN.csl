@@ -1,0 +1,241 @@
+⟨spec⟩ IMPL_01_PLAN · 7-layer architecture · wave-graph · per-wave gates
+⟨ctx⟩ specs/Upgrade/impl/ · canonical asymptote-architecture-as-implementable
+⟨upstream⟩ UPG_11 §42 (cartesian product) · UPG_12 (sovereignty path)
+⟨downstream⟩ IMPL_02 (foundation crates) · IMPL_03 (migration) · IMPL_05 (cadence)
+
+# § The 7-layer architecture (re-stated as implementable)
+
+Layer 0  CANONICAL    : typed-hypergraph ⊗ SHA-3-CAS ⊗ Hazelnut-typed-holes ⊗ Pijul-patch-algebra
+Layer 1  TYPES        : graded-modal-kernel ⊒ {linear privacy capability region trust totality reversibility monotonicity AD-mode}
+Layer 2  EFFECTS      : Koka-row-typed-scoped + delimited-control-IR ; ∀ observable = effect
+Layer 3  COMPUTE      : interaction-combinator-graph (Lafont/Mazza ; HVM2-class) ; sequential = strategy
+Layer 4  BACKEND      : Cranelift-bootstrap → Sail-derived ISA backends (x86_64 / aarch64 / rv64) ¬ LLVM
+Layer 5  DISTRIB      : choreographic-projection (Pirouette/HasChor) + CRDT + CALM-monotonicity
+Layer 6  AI           : LLM=effect ⊗ ocap-gated ⊗ content-addressed-patches ⊗ SMT-refinement-contract
+Layer 7  PD           : consent=grade ; surveillance/coercion/manipulation = effects-OS-refuses-cap-for ⇒ mechanical
+
+# § Layer-dependency graph (build-order)
+
+L0 ← (none)                       ⇒ FOUNDATION-WAVE [this session]
+L1 ← L0                           ⇒ Wave U-B
+L2 ← L0 + L1                      ⇒ Wave U-C
+L3 ← L0 + L1 + L2                 ⇒ Wave U-E (preceded by U-D pipeline-port)
+L4 ← (independent of L0..L3)      ⇒ Wave U-A first (Sail-ingest) then U-L (self-hosted)
+L5 ← L2 + (region-grades from L1) ⇒ Wave U-F
+L6 ← L0 + L7 (cap-as-grade)       ⇒ Wave U-I
+L7 ← L1 (consent=grade)           ⇒ Wave U-G
+
+# § Wave-graph (dependency-ordered ; per-wave entry/exit gates)
+
+──────────────────────────────────────────────────────────────────────
+⟦FOUNDATION-WAVE⟧ ← THIS SESSION
+  entry-gate :
+    ✓ UPG_00..UPG_12 read + synthesized
+    ✓ phase-a/09 σ-enforce-FFI committed (item-09 closing)
+    ✓ workspace clippy + test green
+  deliverables :
+    ✓ specs/Upgrade/impl/IMPL_00..IMPL_05.csl (this set)
+    ✓ crates : cssl-cas · cssl-hgraph · cssl-grades · cssl-effects-row
+              cssl-prov · cssl-ocap · cssl-consent · cssl-iccombs
+    ✓ each crate : ≥ 5 passing tests · clippy clean · doc-stub
+  exit-gate :
+    ✓ workspace clippy --workspace --all-targets -- -D warnings exit 0
+    ✓ workspace test exit 0 (or pre-existing-failures-only)
+    ✓ commit + push to phase-a/09-sigma-extended
+  rollback : revert commit ; foundation crates are net-add ¬ touch existing crates
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-A⟧ Sail-ingest + ISA-formalism
+  entry-gate : foundation-wave landed
+  deliverables :
+    cssl-sail-ingest : parser for Sail subset (RISC-V instr-encoding tables)
+    cssl-isa-table   : x86_64 + aarch64 + rv64 instruction-encoding-tables (handwritten initial)
+    docs : sovereignty-rationale ; comparison vs Cranelift-ISLE
+  exit-gate :
+    ✓ generate rv64 ADD/SUB/LD/ST encodings from Sail spec
+    ✓ round-trip : encode → disassemble → re-encode = identity
+    ✓ ≥ 30 ISA tests pass per arch
+  rollback : impl is net-add ; existing CLIF emit unchanged
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-B⟧ Graded-modal HIR-elaboration on toy fragment
+  entry-gate : foundation-wave + cssl-grades stable
+  deliverables :
+    cssl-grades-elab : elaborator for {linear · affine · unrestricted} on STLC fragment
+    cssl-grades-infer : grade-polymorphism inference (Granule-style)
+    spec : grade-semiring algebra · soundness-claims · counter-examples
+  exit-gate :
+    ✓ ≥ 50 elaboration tests : valid programs accepted, invalid rejected
+    ✓ formal soundness sketch (paper-style) committed
+  rollback : isolated to cssl-grades-* crates ; no HIR/MIR touch
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-C⟧ Effects-row → MIR lowering ; handler-as-CPS pass
+  entry-gate : Wave U-B landed
+  deliverables :
+    cssl-effects-elab : Koka-style row-typed effect inference
+    cssl-mir-effect-lower : new MIR pass ; effects → CPS-style
+    integration : existing 14-pass MIR pipeline gains an effect-elab phase
+  exit-gate :
+    ✓ Koka-test-suite-port : ≥ 80% pass rate on the algebraic-effect subset
+    ✓ existing MIR shotgun tests still pass
+  rollback : effect-elab pass guarded by feature-flag ; default=off until W-U-G
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-D⟧ hgraph-native MIR ; 14-pass pipeline → hgraph-rewrites
+  entry-gate : Wave U-C landed
+  deliverables :
+    cssl-mir-hgraph : MirModule encoded as cssl-hgraph nodes
+    rewrite-rules : 14 existing passes expressed as graph-rewrite-rule-sets
+    e-graph integration : equality-saturation as the optimization model
+  exit-gate :
+    ✓ existing MIR pipeline reproducible via hgraph-rewrites (functional equiv)
+    ✓ shotgun + golden tests still green
+  rollback : new path behind feature-flag ; old path remains until cutover
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-E⟧ iccombs GPU port (HVM2-class scaling)
+  entry-gate : Wave U-D landed
+  deliverables :
+    cssl-iccombs-cuda : CUDA kernel for interaction-net reduction
+    cssl-iccombs-hip  : HIP port (AMD MI300)
+    cssl-iccombs-vk   : Vulkan-compute fallback (cross-vendor)
+    bench : ≥ 10 GMIPS on RTX 4060+ class GPU
+  exit-gate :
+    ✓ correctness : sequential-reducer ≡ GPU-reducer on ≥ 100 fixtures
+    ✓ scaling : ≥ 5× speedup vs sequential on parallel-friendly fixtures
+  rollback : GPU paths are opt-in via cap-gate
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-F⟧ Choreographic projection ; multi-tier
+  entry-gate : Wave U-C landed (effects-row)
+  deliverables :
+    cssl-choreo : Pirouette-style global protocols
+    cssl-choreo-project : endpoint-projection compiler-pass
+    targets : CPU ↔ GPU work-graphs ↔ NPU stub
+  exit-gate :
+    ✓ ≥ 20 choreographies type-check and project to deadlock-free endpoints
+    ✓ ≥ 5 multi-tier examples run end-to-end on CPU+GPU
+  rollback : choreo-pass behind feature-flag
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-G⟧ Ocap-as-load-bearing ; effect-discharge requires capability
+  entry-gate : Wave U-C + cssl-ocap stable
+  deliverables :
+    cssl-effects-ocap : every effect-handler discharge → ocap-token check
+    cssl-mir-cap-pass : new MIR pass enforces cap-discipline
+    integration : existing cap_runtime_check pass extended
+  exit-gate :
+    ✓ all surveillance/coercion/manipulation effects compile-error without explicit grant
+    ✓ ≥ 30 PD-binding tests pass : valid grants accepted, missing grants rejected
+  rollback : guard behind PD_STRICT feature-flag (default-on after stabilization)
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-H⟧ Refinement-types ; SMT-discharge integration
+  entry-gate : Wave U-B landed (graded-modal)
+  deliverables :
+    cssl-refine : F*/Liquid-Haskell-style refinement parser
+    cssl-refine-smt : Z3-via-FFI smt-discharge bridge
+    cssl-refine-checker : checker pass in HIR/MIR
+  exit-gate :
+    ✓ ≥ 100 refinement-typed examples discharge cleanly
+    ✓ counterexamples produced for invalid refinements
+  rollback : refine-checker is opt-in attribute ; non-refined code unaffected
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-I⟧ AI-fleet ocap-gated patch protocol
+  entry-gate : Wave U-G + Wave U-H landed
+  deliverables :
+    cssl-ai-patch : content-addressed-patch format (hash_old, hash_new, refinement-witness)
+    cssl-ai-cap   : per-AI-actor ocap tokens ; consent-scope ; budget
+    cssl-ai-review : AI-proposed → human-grant → apply pipeline
+  exit-gate :
+    ✓ end-to-end : AI proposes patch → SMT-checker validates → human grants ocap → patch applies
+    ✓ provenance entry on every applied patch
+  rollback : AI-patch path is opt-in ; manual edits always available
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-J⟧ Choreographic multi-substrate (CXL · PIM · WG · RT)
+  entry-gate : Wave U-F + Wave U-A landed
+  deliverables :
+    cssl-region-cxl  : CXL-memory region-type ; placement-aware lowering
+    cssl-region-pim  : PIM-DRAM region-type ; UPMEM/HBM-PIM compile target
+    cssl-iccombs-wg  : work-graph backend (D3D12 1.1 ; Vulkan 1.3+)
+    cssl-trace       : RT-cores-as-BVH-walker ; OptiX/HIP-RT/VK-RT lowering
+  exit-gate :
+    ✓ region-typed value forbidden from incorrect substrate at compile-time
+    ✓ ≥ 5 multi-substrate examples per backend (4 backends × 5 = 20 examples)
+  rollback : substrate-backends are feature-gated per backend
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-K⟧ Projectional editor surface
+  entry-gate : Wave U-D landed (hgraph-native MIR)
+  deliverables :
+    cssl-proj-text   : text ↔ hgraph projection (current de facto)
+    cssl-proj-glyph  : APL/BQN/Uiua-style dense-glyph projection
+    cssl-proj-graph  : visual dataflow projection
+    cssl-proj-hazel  : typed-hole projectional-editor stub (cssl-edge integration)
+  exit-gate :
+    ✓ round-trip : text → hgraph → text identity-preserving for ≥ 200 fixtures
+    ✓ glyph projection ≤ 30% token-count vs text on representative fixtures
+    ✓ Hazel-style typed-hole-bearing intermediate states are well-typed
+  rollback : projections are read-only initially ; editing flows added incrementally
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-L⟧ Self-hosted backend (Sail → SIGIL-codegen ; Cranelift drop)
+  entry-gate : Wave U-A landed (Sail-ingest) + Wave U-D landed (hgraph-MIR)
+  deliverables :
+    cssl-cgen-x86_64 : direct emission ; no CLIF intermediate
+    cssl-cgen-aarch64 : direct emission
+    cssl-cgen-rv64    : direct emission
+    cssl-regalloc     : SSA + e-graph + constraint-based allocator
+  exit-gate :
+    ✓ ≥ 90% of existing Cranelift-emitted tests pass on direct backend
+    ✓ Cranelift dependency drop-able from Cargo.toml without breaking workspace
+  rollback : direct backend feature-gated ; Cranelift remains until ≥ 99% test parity
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-M⟧ Quantum coprocessor (ZX · Silq-discipline · OpenQASM-3)
+  entry-gate : Wave U-G landed (ocap-as-load-bearing — quantum is a capability)
+  deliverables :
+    cssl-quantum-zx   : ZX-calculus diagram type · rewrite rules
+    cssl-quantum-silq : qfree/mfree annotations · auto-uncomputation
+    cssl-quantum-emit : OpenQASM-3 backend
+  exit-gate :
+    ✓ ≥ 30 quantum kernels type-check under Silq-discipline
+    ✓ generated OpenQASM-3 simulates correctly on a software simulator
+  rollback : quantum-feature-gated ; default-off
+──────────────────────────────────────────────────────────────────────
+⟦Wave U-N⟧ Neuromorphic / photonic backends
+  entry-gate : Wave U-F landed (dataflow via choreographic projection)
+  deliverables :
+    cssl-neuro-loihi  : Lava-Python compile target (intermediate)
+    cssl-neuro-spiking : Spike-as-typed-stream with surrogate-grad training
+    cssl-photonic-mzi : MZI-mesh matmul target (Lightmatter)
+  exit-gate :
+    ✓ ≥ 5 spiking-net examples train + run on Loihi-2 (or simulator)
+    ✓ photonic-MZI matmul fidelity ≤ 1% drift vs reference
+  rollback : substrate-backends feature-gated
+──────────────────────────────────────────────────────────────────────
+
+# § Per-wave gate-discipline (universal)
+
+∀ wave W :
+  entry-gate :
+    1. all dependency-waves have green exit-gate
+    2. workspace clippy + test green BEFORE wave-branch created
+    3. wave-dispatch-plan committed under specs/Upgrade/impl/waves/W-<id>.csl
+    4. AI-fleet review : ≥ 1 partner reviews dispatch-plan before code-work
+  during-wave :
+    5. ALL crate additions get ≥ 5 tests + clippy-clean before merge
+    6. NO touching existing crate APIs without : (a) RFC under specs/Upgrade/impl/rfcs/
+                                                  (b) Wave U-G+ : ocap-gated patch protocol
+    7. Prime-Directive review : capability-surface changes get explicit human-grant
+  exit-gate :
+    8. workspace clippy + test green
+    9. dispatch-plan postmortem : actual-vs-planned · lessons-learned
+    10. AI-fleet handoff : next-wave entry-gate refreshed with new state
+
+# § Out-of-scope for the asymptote (explicit closure)
+
+- Permanent dependency on LLVM, MLIR, Slang, CUDA-as-language, HIP-as-language,
+  OpenCL-as-language, Vulkan-shader-language. Bootstrap-only OK ; permanent
+  forbidden by sovereignty axiom.
+- Surveillance / coercion / manipulation features without ocap-gate. Mechanical
+  rejection at compile-time once Wave U-G lands ; aspirational rejection
+  (lint-warning + manual review) until then.
+- Closed ISAs (Apple AMX is OK as reverse-engineered ; ARM AMX hidden mfg-ISA
+  is OK as Sail-modeled ; truly closed e.g. Tensor cores' undocumented internals
+  are accessed via documented public ISA only).
+- Single-vendor lock-in for any backend (NVIDIA-only, AMD-only). Each substrate
+  backend MUST have either : (a) a portable fallback (Vulkan compute, OpenGL,
+  CPU-fallback) or (b) be feature-gated and explicitly opt-in.
+
+End IMPL_01.

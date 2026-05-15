@@ -1,5 +1,14 @@
 //! § cssl-host-crystallization — STAGE-0-BOOTSTRAP-SHIM for crystallization.csl
 //! ════════════════════════════════════════════════════════════════════════════
+#![allow(
+    clippy::cast_possible_wrap,
+    clippy::suboptimal_flops,
+    clippy::match_same_arms,
+    clippy::identity_op,
+    clippy::needless_range_loop,
+    clippy::return_self_not_must_use,
+    clippy::unnecessary_cast
+)] // domain: spectral/spline numerics + 8-aspect enum dispatch + Self-returning builders
 //!
 //! § T11-W17-L-IMPL · canonical-implementation : `Labyrinth of Apocalypse/systems/crystallization.csl`
 //!

@@ -258,6 +258,7 @@ mod tests {
     fn gpu_crystal_packed_is_exactly_64_bytes() {
         // Force the const-eval check to fire (zero-cost · proves SIZE_CHECK
         // compiled-in).
+        #[allow(clippy::let_unit_value)]
         let _ = GpuCrystalPacked::SIZE_CHECK;
         assert_eq!(
             GpuCrystalPacked::SIZE_BYTES,

@@ -1,0 +1,92 @@
+⟨spec⟩ IMPL_03_MIGRATION · current 14-pass MIR → hgraph-native asymptote
+⟨ctx⟩ specs/Upgrade/impl/ · how to NOT break existing work while moving to hgraph
+⟨upstream⟩ IMPL_01 Wave U-D · UPG_06 (hgraph-as-canonical) · existing crates/cssl-mir/
+
+# § The migration premise
+
+The asymptote canonical-form is **typed-hypergraph + content-addressed**.
+The current MIR is a 14-pass tree-with-CFG pipeline with arena allocations.
+A naive rewrite would invalidate ~200 tests, the JIT/native backends, and
+the entire cap_runtime_check / sigma_enforce / ffi_abi_check stack.
+
+Discipline : **gradual port behind a feature-flag**. Both representations
+co-exist for a long window. Cutover only when hgraph-form passes ≥ 99% of
+existing-MIR test parity.
+
+# § Phased migration
+
+Phase M-0 (THIS SESSION ; foundation-wave) :
+  Add cssl-hgraph as a standalone crate.
+  Do NOT touch crates/cssl-mir/.
+  Add no-op converters : MirModule → HGraph (for read-out) ; behind feature mir2hg.
+
+Phase M-1 (Wave U-D, sub-phase α) :
+  cssl-mir gains a `hgraph_view: Option<HGraph>` field on MirModule.
+  A new pass `BuildHGraphView` populates it ; existing passes ignore it.
+  No semantic change ; just observability.
+
+Phase M-2 (Wave U-D, sub-phase β) :
+  Express ONE existing pass (chosen : SimplifyArith) as an hgraph-rewrite-rule-set.
+  Run both old + new on every fixture ; assert identical output.
+  Iterate until parity. Then mark old impl as feature-gated-legacy.
+
+Phase M-3 (Wave U-D, sub-phase γ) :
+  Repeat M-2 for every pass in dependency-order. Order :
+    1. SimplifyArith   (purely local ; safest)
+    2. ConstFold
+    3. DeadCodeElim
+    4. InlineSmallFns
+    5. BodyLower (heaviest ; do mid-arc)
+    6. EffectRowCheck (after Wave U-C lands)
+    7. CapRuntimeCheck (PD-critical ; do late ; double-verify)
+    8. SigmaEnforce (PD-critical ; same)
+    9. FfiBoundaryAbiCheck (item-09 ; structural ; mid-arc OK)
+    10. HeapDealloc
+    11. StringAbi
+    12. VecAbi
+    13. TaggedUnionAbi
+    14. StructuredCfg
+
+Phase M-4 (Wave U-D end) :
+  All passes have hgraph-rewrite versions. Both run in parallel for ≥ 1 month
+  in CI. Drift-detector fires if outputs differ on any fixture.
+
+Phase M-5 (Wave U-D cutover) :
+  Old tree-MIR demoted to legacy ; hgraph-MIR is canonical.
+  Old MirModule struct becomes a thin wrapper around HGraph.
+
+Phase M-6 (Wave U-K) :
+  Projectional-editor surfaces (text · glyph · graph) all compile through
+  hgraph as the single source of truth.
+
+# § Compatibility-shim discipline
+
+While both reps co-exist :
+  - Old MirModule remains the fastest path for hot codegen.
+  - HGraph-view is for : optimization (e-graphs), provenance, AI-patches.
+  - Both update on every mutation (write-through).
+  - Drift-detector : MirModule.cid() ≡ HGraph::from(&mir).cid().
+
+# § What this session does NOT touch
+
+- crates/cssl-mir/ : no source changes beyond the existing item-09 work.
+- Any pass implementation.
+- Any backend (cgen-cl, native, JIT).
+- Any test ; foundation crates only ADD tests.
+
+# § What this session DOES touch (in cssl-mir)
+
+Nothing. Foundation-wave is purely net-add. cssl-mir gains nothing until Wave U-D.
+
+# § Risk register
+
+R-1 : hgraph-rewrite parity may reveal subtle bugs in current passes.
+      Mitigation : drift-detector runs on EVERY fixture ; surface as test-failures.
+R-2 : Performance regression during co-existence window (write-through cost).
+      Mitigation : feature-flag the hgraph-view ; off by default in release builds
+                   until M-3 completes.
+R-3 : E-graph saturation may not converge on existing fixtures (rule conflicts).
+      Mitigation : per-pass rule-set ; saturation-budget caps ; fall through to
+                   sequential rewrite if budget hit.
+
+End IMPL_03.

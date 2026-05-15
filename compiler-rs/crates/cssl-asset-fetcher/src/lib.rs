@@ -78,7 +78,7 @@
 // Returning `&str` from short helpers is intentional ; the pedantic
 // "unnecessary lifetime" suggestion forces a `&'static str` rewrite that
 // doesn't compose well across our format-mapping helpers.
-#![allow(clippy::needless_lifetimes_for_generics)]
+#![allow(clippy::needless_borrows_for_generic_args)]
 
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;

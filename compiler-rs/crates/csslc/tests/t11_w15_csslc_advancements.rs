@@ -13,7 +13,7 @@
 //!   `specs/csslc/T11-W15-kwbind-and-test-attr.csl` — design + gap-audit
 //!   `specs/csslc/_BACKLOG.csl`                      — deferred-gap roadmap
 
-use std::path::Path;
+
 use std::process::ExitCode;
 
 use csslc::commands::check;

@@ -1,0 +1,142 @@
+⟨spec⟩ IMPL_04_DECISIONS · open architectural decisions · options · recommendation
+⟨ctx⟩ specs/Upgrade/impl/ · pre-commitment register
+⟨upstream⟩ UPG_00..UPG_12 (citations) · IMPL_01 (waves)
+⟨format⟩ ADR-style ; one decision per § ; status ∈ {OPEN, PROVISIONAL, RATIFIED}
+
+# § D-001 [RATIFIED 2026-05-14] Hash function for content-addressing
+Status      : RATIFIED at FOUNDATION-WAVE entry-gate
+Decision    : BLAKE3 (32-byte digest ; keyed-mode for ocap MAC).
+Rationale   :
+  - Already pinned in workspace.dependencies (blake3 ≥1.5) per T11-D131 wave-3β-06.
+  - Tree-mode parallelism scales for large IR-bytes (hgraph Cids on big modules).
+  - Keyed-hash mode = built-in HMAC equivalent ; no separate crate for cssl-ocap.
+  - Collision-resistance 128-bit security ≫ needed for our threat-model.
+Tradeoffs vs SHA3-512 :
+  - Smaller digest (32 vs 64 bytes) ; both meet our security needs.
+  - Less FIPS-blessed but Apocky has no FIPS requirement.
+  - BLAKE3 faster end-to-end ; matters at IR-bytes scale.
+Reversibility : medium — Cid is a value-type ; algorithm-swap is a workspace-wide
+               recompute but no on-disk format outside CIDs themselves.
+Amendments   : revisit if FIPS / regulatory requirement materializes.
+
+# § D-002 [PROVISIONAL] Bootstrap-backend strategy
+Status      : PROVISIONAL ; ratify at Wave U-A
+Options     :
+  (a) keep Cranelift forever                 ← violates sovereignty
+  (b) Cranelift bootstrap → Sail-derived self-hosted backend ← UPG_12 recommendation
+  (c) handwritten ISA backends from day-1    ← N years of yak-shaving
+Recommend   : (b) per UPG_12 § "On dependencies".
+Rationale   : Cranelift gives us a working JIT/native today ; Sail-derived
+               is the credible self-host path ; handwritten-from-day-1 burns
+               years on solved problems.
+Exit-criterion : Wave U-L exit-gate (≥ 99% test parity) before Cranelift drop.
+
+# § D-003 [OPEN] Interaction-net runtime parallelism model
+Status      : OPEN
+Options     :
+  (a) HVM2-port (CUDA-only)        ← inherits HVM2 design ; NVIDIA-locked initially
+  (b) Vulkan-compute portable      ← cross-vendor ; some performance loss
+  (c) WGPU/wgpu-rs                 ← Rust-ergonomic ; portable ; immature for compute
+  (d) Custom : CUDA + HIP + VK fallback ← max effort, max sovereignty
+Recommend   : (d) for the asymptote ; ship (b) Vulkan-compute first as the
+               cross-vendor baseline ; add CUDA + HIP as performance tiers.
+Rationale   : Sovereignty axiom + UPG_03 (multi-vendor accelerator landscape).
+Decision deferred to Wave U-E.
+
+# § D-004 [PROVISIONAL] Refinement-type SMT solver
+Status      : PROVISIONAL ; ratify at Wave U-H
+Options     :
+  (a) Z3 (Microsoft ; MIT)              ← industry-standard
+  (b) CVC5 (open-source ; SMTComp leader)
+  (c) Yices2
+  (d) custom (multi-decade rabbit hole)
+Recommend   : (a) Z3 via FFI as default ; (b) CVC5 as alternative ;
+               solver-agnostic interface (SMT-LIB v2.6 emit).
+Rationale   : Both Z3 and CVC5 export SMT-LIB ; we emit, the user picks.
+Exit-criterion : SMT-LIB-only emission ; no solver-specific extensions in IR.
+
+# § D-005 [OPEN] Effect-handler runtime calling convention
+Status      : OPEN
+Options     :
+  (a) CPS-transform (classical Plotkin-Pretnar)
+  (b) Direct-style with delimited-control (Koka-style ; segmented stacks)
+  (c) Tail-call-modulo-context (TRMC + accumulator passing)
+Recommend   : (b) Direct-style + delimited-control ; matches Koka prior art
+               and avoids CPS-overhead in the common case.
+Rationale   : UPG_08 cites Koka as the most mature row-typed effect system.
+               Reuse their solved engineering.
+Decision deferred to Wave U-C.
+
+# § D-006 [RATIFIED] No persistent LLVM/MLIR/Slang dependency
+Status      : RATIFIED (PRIME_DIRECTIVE-binding)
+Decision    : No code path that requires LLVM/MLIR/Slang to be present at
+               build time will land on main beyond bootstrap-only opt-in.
+Rationale   : Sovereignty axiom (CLAUDE.md) ; UPG_12 explicit.
+Enforcement : CI gate ; cargo deny on these crate names by default ;
+               opt-in feature-flag for experimentation only.
+
+# § D-007 [RATIFIED] Prime-Directive is mechanical, not aspirational
+Status      : RATIFIED (USER-binding)
+Decision    : Surveillance / coercion / manipulation effects must be
+               compile-errors without explicit ocap-gate, NOT lint-warnings.
+Rationale   : Apocky CLAUDE.md PRIME_DIRECTIVE ; UPG_12 § "PD as load-bearing".
+Enforcement : Wave U-G (cap-as-load-bearing) is non-skippable.
+
+# § D-008 [PROVISIONAL] Workspace clippy-lint baseline
+Status      : PROVISIONAL ; revisit after Wave U-D
+Decision    : Keep current : clippy::all=deny ; pedantic+nursery=allow ;
+               targeted explicit allows as needed.
+Rationale   : Pre-existing workspace had ~100 pedantic+nursery debt ;
+               full pedantic-clean is a dedicated wave (post-cutover).
+Re-evaluate : Wave U-D cutover gives a coherent moment to re-tighten.
+
+# § D-009 [OPEN] Projectional-editor host
+Status      : OPEN
+Options     :
+  (a) extend cssl-edge (Next.js) with hgraph-projection UI
+  (b) Tauri-native standalone app
+  (c) VSCode extension
+  (d) all three (web + native + IDE-plugin)
+Recommend   : (a) initial ; (d) eventual.
+Rationale   : cssl-edge already exists ; web reach is widest ; standalone
+               + IDE-plugin can reuse the same TypeScript projection-renderer.
+Decision deferred to Wave U-K.
+
+# § D-010 [OPEN] Quantum backend integration timing
+Status      : OPEN
+Options     :
+  (a) early (Wave U-E adjacent) — proves typed-quantum discipline early
+  (b) late (Wave U-M as scheduled) — ZX/Silq mature ; less load
+  (c) skip — quantum is research-toy until 2030+
+Recommend   : (b) per IMPL_01.
+Rationale   : ZX-calculus + Silq are production-grade now ; OpenQASM-3 is
+               stable ; but no hardware advantage today over simulation.
+               Adding it to the type-system early is over-investment.
+
+# § D-011 [PROVISIONAL] AI-fleet patch protocol authority model
+Status      : PROVISIONAL
+Decision    : Each AI-actor gets a CapToken-bearing identity ; token scope
+               restricts (a) crates writable, (b) wave-id authorized, (c) max
+               LOC per patch, (d) refinement-discharge required.
+Rationale   : UPG_12 § "On AI partnership" ; sovereignty extends to AI-actors
+               (they are partners, not tools, but partners with bounded ocap).
+Exit-criterion : Wave U-I.
+
+# § D-012 [OPEN] Self-host reproducibility ceremony
+Status      : OPEN ; relevant at Wave U-L
+Options     :
+  (a) bit-identical reproducible build via SOURCE_DATE_EPOCH + cargo-zigbuild
+  (b) trusting-trust mitigation : multi-bootstrap diversity (Cranelift+Sail+QBE)
+  (c) deferred until 2030
+Recommend   : (a) immediately ; (b) when 2nd backend lands ; (c) is honest
+               about engineering capacity but not great.
+Rationale   : reproducible builds are table-stakes for sovereignty claims.
+
+# § Decision-process discipline
+
+- New decisions added at the bottom with status=OPEN.
+- Provisional decisions ratified at the named wave entry-gate ; ratification = explicit USER ack.
+- Ratified decisions can only be overturned via documented amendment with explicit reason.
+- AI-fleet members can propose decisions ; ratification authority = USER (Apocky).
+
+End IMPL_04.

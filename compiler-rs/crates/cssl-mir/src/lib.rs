@@ -54,6 +54,7 @@ pub mod drop_inject;
 // closing the W-E4 fixed-point gate gap 2/5. Walks every `func.call` op +
 // verifies caller-row ⊇ callee-row per § 04 sub-effect discipline.
 pub mod effect_row_check;
+pub mod ffi_abi_check;
 pub mod func;
 // § Wave-A integration (T11-D239 follow-up) — deferred-ABI MIR ops landed.
 // Wave-A1 (f3c2643) tagged-union ABI · Wave-A2 (96b8f65) typed-memref ·
@@ -129,6 +130,10 @@ pub use drop_inject::{inject_drops_for_module, DropInjectionReport, DropOrder, S
 pub use effect_row_check::{
     parse_effect_row, EffectRowValidatorPass, EFFECT_ROW_VALIDATOR_PASS_NAME,
     EFFROW0000_SUMMARY, EFFROW0001_MISSING_EFFECT, EFFROW0002_UNRESOLVED_CALLEE,
+};
+pub use ffi_abi_check::{
+    check_ffi_boundary_layouts, is_ffi_boundary_func, FfiBoundaryAbiCheckPass,
+    FfiBoundaryAbiReport, FFI_BOUNDARY_ABI_CHECK_PASS_NAME,
 };
 pub use func::{
     EnumAbiClass, MirEnumLayout, MirFunc, MirModule, MirStructLayout, StructAbiClass,

@@ -1,0 +1,129 @@
+⟨spec⟩ IMPL_05_CADENCE · wave-cadence · commit/test/review discipline · AI-fleet protocol
+⟨ctx⟩ specs/Upgrade/impl/ · operational discipline for the multi-year arc
+⟨upstream⟩ existing T11-D / W-A / phase-a / phase-h naming conventions
+
+# § Wave-cadence (sustainable solo+AI-fleet)
+
+A "wave" = ~1-3 months of work ; one architectural goal ; one branch-family.
+A "session" = ~1 day ; lands a wave-fragment ; ends on green-test-state.
+A "commit" = ≤ ~500 LOC delta where possible ; tests + clippy green pre-push.
+
+Naming :
+  wave-branch    : phase-<arc>/<wave-id>-<slug>     e.g. phase-u/A-sail-ingest
+  session-branch : phase-<arc>/<wave-id>-<session-id>  e.g. phase-u/A-1-isa-table-skel
+  hot-fix branch : phase-<arc>/<wave-id>-fix-<slug>
+
+# § Commit-message discipline (CSL-native)
+
+Format :
+  § <wave-id>/<session-id> <status-glyph> <CSL-summary>
+  
+  <optional 2-5 line CSL body : changes ; rationale ; gates ; refs>
+
+Status glyphs : ✓ (closed) · ◐ (mid) · ○ (queued) · ✗ (rolled-back) · ‼ (urgent)
+
+Examples :
+  § phase-u/A-1 ◐ Sail-ingest ⊐ rv64-encoding-table + 12-tests + clippy ✓
+  § phase-u/A-2 ✓ rv64-encoding round-trip ✓ 30-fixtures ; wave-A exit-gate green
+  § phase-u/B-1 ✗ grades-elab : revert ; semiring-axioms-test reveals distrib bug
+
+# § Per-session checklist (autonomous-mode)
+
+Pre-work :
+  [ ] read latest IMPL_01 + relevant IMPL_NN
+  [ ] verify wave-entry-gate green (cargo clippy + cargo test)
+  [ ] write a 5-line CSL session-plan (saved to /memories/session/)
+
+During-work :
+  [ ] mark todos in-progress before starting ; complete immediately on finish
+  [ ] foundation-crate-add → ≥ 5 tests + clippy clean BEFORE moving on
+  [ ] cross-cutting-pass-add → drift-detector test + golden-fixtures
+  [ ] capability-surface-add → cssl-ocap + cssl-consent integration BEFORE first use
+
+Pre-push :
+  [ ] cargo clippy --workspace --all-targets -- -D warnings → exit 0
+  [ ] cargo test --workspace --no-fail-fast → no NEW failures (pre-existing OK only with handoff note)
+  [ ] commit message in CSL-native
+  [ ] handoff note appended to /memories/session/handoff-<branch>.md
+
+Post-push :
+  [ ] update IMPL_01 wave-status if wave-fragment closed
+  [ ] open next-session entry-gate notes
+
+# § AI-fleet protocol (Wave U-I onwards)
+
+Until Wave U-I lands : AI-actors operate under "trust-with-review" ; user reviews
+every patch ; CSL-native session-summary on every handoff.
+
+Post-Wave-U-I :
+  - Each AI-actor : identity (CapToken) + scope (writable-crate-set) + budget (LOC/session) + refinement-discharge-requirement
+  - AI-proposed patch : content-addressed-CID + parent-CID + refinement-witness (SMT-blob) + capability-presentation
+  - Pipeline : AI proposes → SMT validates → user grants ocap → patch applies → provenance entry
+  - Revocation : user can revoke any AI-actor's CapToken at any time ; patch already applied stays (immutable provenance)
+
+Per-AI-actor handoffs land in /memories/session/handoff-<actor>.md with :
+  - wave-id + session-id + branch
+  - exit-state (green/yellow/red)
+  - decisions made (link to IMPL_04 if any new)
+  - blockers for next actor
+
+# § Test discipline tiers
+
+T-1 unit          : per-crate ; per-fn ; ≤ 50ms each ; required ≥ 5 per foundation crate
+T-2 shotgun       : property-style ; randomized small inputs ; required for invariant-bearing types
+T-3 golden        : input-fixture → expected-output ; for IR-passes ; lock canonical encodings
+T-4 integration   : multi-crate ; end-to-end pipeline ; required for backend tests
+T-5 differential  : two implementations agree on N fixtures ; required during M-3 cutover
+
+Foundation-wave : T-1 + T-2 minimum.
+Optimization-passes : T-1 + T-3 + T-5.
+Backend-cutover : T-3 + T-4 + T-5 + benchmarks.
+
+# § Test discipline : NO "stub-test" anti-patterns
+
+Forbidden :
+  ✗ #[test] fn it_works() { assert!(true); }
+  ✗ #[test] fn smoke() { let _ = MyType::new(); }       // no behavioural assertion
+  ✗ #[test] fn dead() { /* todo */ }
+  ✗ #[ignore] without a tracking-issue link in the comment
+
+Required form :
+  #[test]
+  fn <invariant_or_behavior>_<condition>() {
+      // arrange : setup state
+      // act     : invoke API
+      // assert  : behavioral assertion with named-failure-mode
+  }
+
+# § Telemetry / observability discipline
+
+NO surveillance telemetry. ANY runtime data collection :
+  - opt-in by user (cssl-consent ≥ Explicit)
+  - capability-gated (cssl-ocap token presented)
+  - provenance-recorded (cssl-prov entry)
+  - locally-stored by default ; export only on user-action
+  - documented in /docs/data-collected.md ; redactable on request
+
+This is PRIME_DIRECTIVE-binding ; non-negotiable.
+
+# § Workspace hygiene
+
+- ∀ new crate gets workspace-lints inheritance (NO per-crate clippy-disable except documented PHASE-A debt with TODO-citation).
+- ∀ new crate has #![forbid(unsafe_code)] at lib.rs head (foundation-wave-binding).
+- ∀ new crate's Cargo.toml includes : workspace = true edition + workspace = true rust-version + workspace.lints (rust + clippy).
+- NO new top-level dependencies without entry in IMPL_04 (D-NNN).
+
+# § Review cadence
+
+Weekly (USER-driven) :
+  - read /memories/session/handoff-* for the week
+  - review wave-progress vs IMPL_01
+  - close any IMPL_04 decisions whose ratification-window has come
+  - decide next-session priority
+
+Per-wave-close :
+  - postmortem section appended to wave-dispatch-plan
+  - actual-vs-planned tracked
+  - lessons captured into /memories/ user-memory if generally applicable
+
+End IMPL_05.

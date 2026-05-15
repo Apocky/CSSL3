@@ -22,7 +22,7 @@
 //!   profiling. Output is aggregate timings only.
 
 use loa_host::fps_pipeline::{
-    FpsPipeline, InstanceEntry, FRAME_BUDGET_120HZ_MS, FRAME_BUDGET_144HZ_MS,
+    InstanceEntry, FRAME_BUDGET_120HZ_MS, FRAME_BUDGET_144HZ_MS,
 };
 use loa_host::wired_fps_pipeline::{default_pipeline, summary_line};
 use std::time::Instant;

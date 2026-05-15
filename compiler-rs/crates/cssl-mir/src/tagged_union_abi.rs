@@ -133,8 +133,8 @@ impl TaggedUnionLayout {
     /// for `Ptr`-shaped payloads.
     #[must_use]
     pub fn for_option(payload: &MirType) -> Self {
-        let payload_size = u32::try_from(heuristic_size_of(payload)).unwrap_or(8).max(1);
-        let payload_align = u32::try_from(heuristic_align_of(payload)).unwrap_or(8).max(1);
+        let payload_size = heuristic_size_of(payload).max(1);
+        let payload_align = heuristic_align_of(payload).max(1);
         Self::pack(payload_size, payload_align)
     }
 
@@ -143,10 +143,10 @@ impl TaggedUnionLayout {
     /// variant requires the stricter natural alignment.
     #[must_use]
     pub fn for_result(ok_ty: &MirType, err_ty: &MirType) -> Self {
-        let ok_size = u32::try_from(heuristic_size_of(ok_ty)).unwrap_or(8).max(1);
-        let err_size = u32::try_from(heuristic_size_of(err_ty)).unwrap_or(8).max(1);
-        let ok_align = u32::try_from(heuristic_align_of(ok_ty)).unwrap_or(8).max(1);
-        let err_align = u32::try_from(heuristic_align_of(err_ty)).unwrap_or(8).max(1);
+        let ok_size = heuristic_size_of(ok_ty).max(1);
+        let err_size = heuristic_size_of(err_ty).max(1);
+        let ok_align = heuristic_align_of(ok_ty).max(1);
+        let err_align = heuristic_align_of(err_ty).max(1);
         Self::pack(ok_size.max(err_size), ok_align.max(err_align))
     }
 

@@ -68,10 +68,6 @@ impl<'a> LowerCtx<'a> {
         self.arena.fresh_hir_id()
     }
 
-    fn def_id(&mut self) -> DefId {
-        self.arena.fresh_def_id()
-    }
-
     /// Allocate a fresh `DefId` AND record its content-stable attribution-key.
     /// Lowering call-sites for definition-bearing items must call this so the
     /// fixed-point gate can fingerprint the module without depending on `Spur`
@@ -723,7 +719,7 @@ impl<'a> LowerCtx<'a> {
         // forms also have leading/trailing `"`, so this trim handles both
         // surface forms uniformly. We don't process escape sequences ;
         // ABI tags are short identifier-like strings in practice.
-        let trimmed = raw.trim_start_matches(|c: char| c == 'r' || c == '#');
+        let trimmed = raw.trim_start_matches(&['r', '#'][..]);
         let trimmed = trimmed
             .strip_prefix('"')
             .unwrap_or(trimmed)

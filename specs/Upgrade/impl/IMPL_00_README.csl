@@ -1,0 +1,90 @@
+⟨spec⟩ IMPL_00_README · Upgrade-arc implementation manifest
+⟨ctx⟩ specs/Upgrade/impl/ — phased plan + foundation-crate scaffolds for the 7-layer asymptote
+⟨upstream⟩ specs/Upgrade/UPG_00..UPG_12 (frontier-map ; landscape-doc)
+⟨authority⟩ Apocky · §RZ ; AI-fleet co-design ; Prime-Directive-binding
+⟨first-drop⟩ 2026-05-14 · branch phase-a/09-sigma-extended (rides item-09 σ-enforce-FFI commit)
+⟨constraints⟩ sovereignty=axiom · no-LLVM/MLIR/Slang-permanent · PD=load-bearing · solo+AI-fleet · t∞
+
+# § The shape of this directory
+
+UPG_00..UPG_12 = **frontier map** (what's possible, what's research-cited).
+IMPL_00..IMPL_05 = **assembly plan** (how to land it, dependency-ordered, with gates).
+
+The plan is wave-cadenced like the existing T11-D / W-A / W-3β work. Each
+wave has : entry-gate ; deliverables ; exit-gate ; rollback-strategy.
+Waves are dependency-ordered ; later waves consume earlier waves'
+abstractions ; no wave starts until prior gates are green.
+
+# § File layout (this directory)
+
+| File | Scope |
+|------|-------|
+| IMPL_00_README.csl       | this manifest · reading-order |
+| IMPL_01_PLAN.csl         | 7-layer architecture + wave-graph + per-wave entry/exit gates |
+| IMPL_02_FOUNDATION.csl   | foundation crates : API surface · test-discipline · invariants |
+| IMPL_03_MIGRATION.csl    | current-state (14-pass MIR) → asymptote (hgraph-native) migration |
+| IMPL_04_DECISIONS.csl    | open architectural decisions · options · recommendation |
+| IMPL_05_CADENCE.csl      | wave-cadence · commit/test/review discipline · AI-fleet protocol |
+
+# § What this session lands (initial drop)
+
+✓ This impl/ plan-set (6 CSL files).
+✓ Foundation-crate scaffolds (compiler-rs/crates/) :
+    cssl-cas         — content-addressing kernel (SHA-3-512 ; positional De Bruijn ; canonical encoding)
+    cssl-hgraph      — typed hypergraph IR (nodes + ports + hyperedges ; CAS-indexed)
+    cssl-grades      — graded modal kernel (semiring ; multiplicities ; instances)
+    cssl-effects-row — row-typed effects (Koka-style ; scoped labels ; effect-row inference stub)
+    cssl-prov        — provenance DAG (computation-graph hashes ; query API)
+    cssl-ocap        — ocap tokens (unforgeable ; capability-passing)
+    cssl-consent     — consent-grades (Prime-Directive-binding ; capability-gated)
+    cssl-iccombs     — interaction-combinator runtime (Lafont/Mazza ; sequential reducer ; GPU-port deferred)
+✓ Workspace clippy --workspace --all-targets -- -D warnings → exit 0
+✓ Workspace test → all foundation-crate tests pass ; pre-existing tests untouched
+
+# § What later sessions land (per IMPL_01 wave-graph)
+
+○ Wave U-A : Sail-ISA ingest ; SIGIL-IR ⊐ CLIF emission cleanup
+○ Wave U-B : graded-modal HIR-elaboration prototype on toy fragment
+○ Wave U-C : effects-row → MIR lowering ; handler-as-CPS pass
+○ Wave U-D : hgraph-native MIR ; 14-pass pipeline mapped to hgraph-rewrites
+○ Wave U-E : iccombs GPU port (CUDA/HIP/Vulkan compute) ; HVM2-class scaling
+○ Wave U-F : choreographic projection ; multi-tier (CPU/GPU/NPU/edge)
+○ Wave U-G : ocap-as-load-bearing ; effect-handler discharge requires capability
+○ Wave U-H : refinement-types ; SMT-discharge integration ; F*/Liquid-Haskell-style
+○ Wave U-I : AI-fleet ocap-gated patch protocol ; content-addressed proposals
+○ Wave U-J : choreographic-multi-substrate (CXL ; PIM ; work-graphs ; RT-as-BVH-walker)
+○ Wave U-K : projectional-editor surface (Hazel-typed-holes ; multi-presentation projection)
+○ Wave U-L : self-hosted backend (Sail → SIGIL-codegen ; Cranelift drop)
+○ Wave U-M : quantum-coprocessor (ZX-calculus ; Silq-discipline ; OpenQASM-3 emit)
+○ Wave U-N : neuromorphic / photonic backends (Loihi-2 ; Lightmatter)
+
+Each wave : own dispatch-plan ; entry-gate ; AI-fleet review ; exit-gate.
+Wave-cadence per IMPL_05.
+
+# § Reading discipline
+
+- Read IMPL_01 first ; everything else cross-references its wave-graph.
+- Read IMPL_02 if implementing a foundation crate ; it's the per-crate spec.
+- Read IMPL_03 if touching the existing 14-pass pipeline ; migration-path is binding.
+- Read IMPL_04 before making any architectural commitment ; open decisions documented.
+- Read IMPL_05 before opening any new wave-branch ; cadence is the protocol.
+
+# § Honest pacing claim
+
+UPG_12 § "On time horizon" : Lean=11y · Unison=11y · Rust=9y. This arc is
+the same scale. Solo+AI-fleet pacing : per-wave landings span weeks-to-months ;
+full asymptote spans a decade. **Per-session deliverables are wave-fragments,
+not waves.** This session lands the foundation + plan ; ~10-15 follow-up
+sessions land Wave U-A. The arc is real ; the cadence is honest.
+
+# § Prime-Directive binding
+
+Every wave that adds capability-surface (effects, AI-edits, telemetry, network,
+sensor-read) MUST :
+  1. Declare the capability-token type for the new effect.
+  2. Default to consent-grade=DENIED ; explicit grant required.
+  3. Provenance-DAG entry on every capability-discharge.
+  4. AI-fleet patches on capability-bearing code go through ocap-gated review.
+This is mechanical ; PD-violations = compile-error ¬ aspiration.
+
+End IMPL_00.

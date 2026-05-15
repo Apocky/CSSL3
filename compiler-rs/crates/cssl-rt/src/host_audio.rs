@@ -828,7 +828,7 @@ mod tests {
         audio_caps_grant(AUDIO_CAP_INPUT);
         let h = stream_open_impl(STREAM_INPUT, 48_000, 2, FMT_F32);
         assert_ne!(h, INVALID_STREAM);
-        let buf = vec![0u8; 64];
+        let buf = [0u8; 64];
         let n = stream_write_impl(h, buf.as_ptr(), 64);
         assert_eq!(n, -1);
         assert_eq!(last_audio_error_kind(), audio_error_code::INVALID_INPUT);

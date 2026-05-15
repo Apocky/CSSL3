@@ -591,10 +591,8 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
                             // (e.g., closure-capture free-var analysis) still
                             // see the binding ; reads via `lower_path` prefer
                             // `local_cells` and emit a fresh load.
-                            ctx.local_vars.insert(sym, (vid, final_ty));
-                        } else {
-                            ctx.local_vars.insert(sym, (vid, final_ty));
                         }
+                        ctx.local_vars.insert(sym, (vid, final_ty));
                     }
                 }
             }
@@ -4733,7 +4731,7 @@ fn lower_str_arg_byte_len(
         ctx.source
             .and_then(|s| s.slice(arg_expr.span.start, arg_expr.span.end))
             .and_then(strip_string_quotes)
-            .map_or(0_i64, |s| s.len() as i64)
+            .map_or(0_i64, |s| i64::try_from(s.len()).unwrap_or(i64::MAX))
     } else {
         0_i64
     };
@@ -5740,6 +5738,7 @@ fn try_lower_audio_call(
 }
 
 /// Internal helper : emit a `cssl.audio.<verb>` op with canonical attribute set.
+#[allow(clippy::too_many_arguments)]
 fn emit_audio_op(
     ctx: &mut BodyLowerCtx<'_>,
     op_name: &str,
@@ -6615,11 +6614,6 @@ mod tests {
     /// Post-fix, all three resolve cleanly.
     #[test]
     fn if_else_if_cascade_bare_param_yield_resolves_all_arms() {
-        let (f, _) = lower_one(
-            "fn pick3(c1 : bool, c2 : bool, x : i32, y : i32, z : i32) -> i32 \
-             { if c1 { x } else if c2 { y } else { z } }",
-        );
-        let entry = f.body.entry().unwrap();
         // Walk EVERY op (incl. nested regions) recursively and assert no
         // unresolved-typed result ever appears.
         fn walk_ops(ops: &[crate::MirOp], path: &mut Vec<String>) {
@@ -6646,6 +6640,12 @@ mod tests {
                 path.pop();
             }
         }
+
+        let (f, _) = lower_one(
+            "fn pick3(c1 : bool, c2 : bool, x : i32, y : i32, z : i32) -> i32 \
+             { if c1 { x } else if c2 { y } else { z } }",
+        );
+        let entry = f.body.entry().unwrap();
         let mut path = Vec::new();
         walk_ops(&entry.ops, &mut path);
         // Sanity : must contain at least the outer scf.if (and the inner one
@@ -6660,11 +6660,6 @@ mod tests {
     /// sub-ctx via the cloned maps.
     #[test]
     fn if_else_cascade_with_bare_local_yield_resolves() {
-        let (f, _) = lower_one(
-            "fn pick(c1 : bool, c2 : bool, p : i32) -> i32 \
-             { let a : i32 = 1 ; let b : i32 = 2 ; if c1 { a } else if c2 { b } else { p } }",
-        );
-        let entry = f.body.entry().unwrap();
         // No cssl.path_ref op anywhere in the body or nested regions.
         fn no_path_ref(ops: &[crate::MirOp]) {
             for op in ops {
@@ -6688,6 +6683,12 @@ mod tests {
                 }
             }
         }
+
+        let (f, _) = lower_one(
+            "fn pick(c1 : bool, c2 : bool, p : i32) -> i32 \
+             { let a : i32 = 1 ; let b : i32 = 2 ; if c1 { a } else if c2 { b } else { p } }",
+        );
+        let entry = f.body.entry().unwrap();
         no_path_ref(&entry.ops);
     }
 

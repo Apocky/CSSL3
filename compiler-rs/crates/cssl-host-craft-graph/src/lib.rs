@@ -1,5 +1,11 @@
 // § T11-W7-RD-B3 cssl-host-craft-graph : crate root
 // ══════════════════════════════════════════════════════════════════
+#![allow(
+    clippy::enum_glob_use,
+    clippy::suboptimal_flops,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements
+)]
 //! # cssl-host-craft-graph
 //!
 //! § Recipe-graph DAG · material-pool · skill-scaling · alchemy · transmutation.

@@ -250,6 +250,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::redundant_clone)] // intentionally cloning to verify shared-state semantics
     fn clone_shares_state() {
         let r1 = ChatPatternRing::new(8);
         let r2 = r1.clone();

@@ -223,13 +223,12 @@ impl HostLabel {
     pub const fn tag(self) -> HostSensitiveTag {
         // Safe : constructor invariant guarantees tag-bits ∈ {1..5}.
         match (self.0 & Self::TAG_MASK) >> Self::TAG_SHIFT {
-            0x1 => HostSensitiveTag::Behavioral,
             0x2 => HostSensitiveTag::Voice,
             0x3 => HostSensitiveTag::Spatial,
             0x4 => HostSensitiveTag::NetData,
             0x5 => HostSensitiveTag::Frame,
-            // Unreachable under constructor invariant ; default keeps the
-            // function `const`-and-total without a panic in stable-const.
+            // `0x1` is Behavioral. Other values are unreachable under the
+            // constructor invariant ; default keeps this const-total.
             _ => HostSensitiveTag::Behavioral,
         }
     }
@@ -238,11 +237,11 @@ impl HostLabel {
     #[must_use]
     pub const fn scope(self) -> HostLabelScope {
         match self.0 & Self::SCOPE_MASK {
-            0x1 => HostLabelScope::DeviceLocal,
             0x2 => HostLabelScope::ProcessLocal,
             0x3 => HostLabelScope::CrossProcess,
             0x4 => HostLabelScope::Network,
-            // Unreachable under constructor invariant.
+            // `0x1` is DeviceLocal. Other values are unreachable under the
+            // constructor invariant.
             _ => HostLabelScope::DeviceLocal,
         }
     }

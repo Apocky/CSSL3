@@ -1,5 +1,21 @@
 //! § cssl-host-quantum-hdc — Quantum ℂ-amplitude hyperdimensional computing
 //! ════════════════════════════════════════════════════════════════════════════
+#![allow(
+    clippy::int_plus_one,
+    clippy::imprecise_flops,
+    clippy::must_use_candidate,
+    clippy::should_implement_trait,
+    clippy::suboptimal_flops,
+    clippy::float_cmp,
+    clippy::manual_memcpy,
+    clippy::redundant_clone,
+    clippy::unnecessary_cast,
+    clippy::verbose_bit_mask,
+    clippy::cast_possible_wrap,
+    clippy::no_effect,
+    clippy::return_self_not_must_use,
+    clippy::while_float
+)] // domain: HDC numerics + Self-returning builders ; clippy noise unrelated to correctness
 //!
 //! § ROLE
 //!   Exotic-extension to the binary-HDC stack at `cssl-hdc` and

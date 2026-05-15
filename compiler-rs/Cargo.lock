@@ -948,6 +948,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-cas"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-cgen-cpu-cranelift"
 version = "0.1.0"
 dependencies = [
@@ -1035,6 +1043,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-consent"
+version = "0.1.0"
+
+[[package]]
 name = "cssl-content-moderation"
 version = "0.1.0"
 dependencies = [
@@ -1084,6 +1096,13 @@ name = "cssl-effects"
 version = "0.1.0"
 dependencies = [
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-effects-row"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
 ]
 
 [[package]]
@@ -1141,6 +1160,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-grades"
+version = "0.1.0"
+
+[[package]]
 name = "cssl-hdc"
 version = "0.1.0"
 
@@ -1148,6 +1171,15 @@ version = "0.1.0"
 name = "cssl-health"
 version = "0.1.0"
 dependencies = [
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-hgraph"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "smallvec",
  "thiserror 1.0.69",
 ]
 
@@ -2031,6 +2063,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-iccombs"
+version = "0.1.0"
+
+[[package]]
 name = "cssl-ifc"
 version = "0.1.0"
 dependencies = [
@@ -2157,6 +2193,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-ocap"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-cas",
+ "rand",
+]
+
+[[package]]
 name = "cssl-parse"
 version = "0.1.0"
 dependencies = [
@@ -2198,6 +2243,14 @@ dependencies = [
  "cssl-substrate-omega-field",
  "smallvec",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-prov"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "smallvec",
 ]
 
 [[package]]
