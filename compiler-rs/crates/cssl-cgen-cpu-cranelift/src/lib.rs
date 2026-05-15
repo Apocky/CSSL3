@@ -36,6 +36,7 @@
 
 pub mod abi;
 pub mod build_manifest;
+pub mod effect_runtime;
 pub mod emit;
 pub mod feature;
 pub mod jit;
@@ -47,6 +48,10 @@ pub use abi::{Abi, ObjectFormat};
 pub use build_manifest::{
     emit_build_manifest_json, read_build_manifest, verify_manifest, verify_manifest_file,
     verify_manifest_json, write_build_manifest, BuildManifest, BuildManifestError, SymbolHash,
+};
+pub use effect_runtime::{
+    effect_witnesses_from_module, is_io_ffi_symbol, verify_effect_row_witnesses,
+    EffectRuntimeError, EffectRuntimeReport, EffectRuntimeWitness,
 };
 pub use emit::{emit_module, CpuCodegenError, EmittedArtifact};
 pub use feature::{CpuFeature, CpuFeatureSet, SimdTier};
