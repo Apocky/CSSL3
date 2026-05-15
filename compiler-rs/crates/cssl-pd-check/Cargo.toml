@@ -1,0 +1,23 @@
+[package]
+name         = "cssl-pd-check"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description  = "CSSLv3 PD-binding checker : every effect-label in an Elaborated program must have a verified ocap grant (Wave U-G prelude per specs/Upgrade/impl/IMPL_01_PLAN.csl)."
+repository.workspace   = true
+
+[dependencies]
+cssl-elab        = { path = "../cssl-elab" }
+cssl-effects-row = { path = "../cssl-effects-row" }
+cssl-ocap        = { path = "../cssl-ocap" }
+cssl-consent     = { path = "../cssl-consent" }
+cssl-cas         = { path = "../cssl-cas" }
+thiserror.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+
+[lints]
+workspace = true

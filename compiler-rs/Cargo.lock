@@ -2222,6 +2222,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-pd-check"
+version = "0.1.0"
+dependencies = [
+ "cssl-cas",
+ "cssl-consent",
+ "cssl-effects-row",
+ "cssl-elab",
+ "cssl-ocap",
+ "rand",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-persist"
 version = "0.1.0"
 dependencies = [
