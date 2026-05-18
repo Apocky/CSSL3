@@ -1,5 +1,10 @@
-// Shared admin layout · phone-first · bottom-nav on mobile · side-nav on tablet+
-// Sovereign-cap-protected · admin-allowlist enforced server-side via /api/admin/check
+// Apocrypha admin layout · 8-item nav · phone-first · sovereign-cap-protected
+//
+// Per Apocky's UX-cleanup pass : "Apocrypha is the name, not a nav element".
+// Every page in /admin/* is part of the Apocrypha surface ; the side-nav lists
+// destinations within that surface, not separate apps. LoA-specific destinations
+// (the old Tasks/Analytics/MCP content) were Apocky's other-project leakage and
+// were removed/repurposed per D043 (Apocrypha != LoA).
 
 import Head from 'next/head';
 import Link from 'next/link';
@@ -21,18 +26,36 @@ interface AdminCheck {
   stub?: boolean;
 }
 
-// Lazarus + Tessera removed from primary nav per Apocrypha/DECISIONS.md D033 + D034 :
-// they are sub-minds of Apocrypha, not co-equal admin destinations. Legacy pages still
-// resolvable for 6-week compat soak per Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl
-// §COMPATIBILITY-PLAN. Mobile bottom-nav = 3 icons per Apocky directive (Workbench / Apocrypha / Logs).
-const NAV: Array<{ href: string; label: string; glyph: string; mobile?: boolean }> = [
-  { href: '/admin', label: 'Home', glyph: '§' },
-  { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true },
-  { href: '/admin/apocrypha', label: 'Apocrypha', glyph: 'Ω', mobile: true },
-  { href: '/admin/tasks', label: 'Tasks', glyph: '◐' },
-  { href: '/admin/analytics', label: 'Analytics', glyph: 'A' },
-  { href: '/admin/mcp', label: 'MCP', glyph: '⊑' },
-  { href: '/admin/logs', label: 'Logs', glyph: 'G', mobile: true },
+interface NavItem {
+  href: string;
+  label: string;
+  glyph: string;
+  tip: string;
+  mobile?: boolean;
+}
+
+// 8 items · all Apocrypha-internal · LoA stuff lives elsewhere now (D043).
+// Mobile bottom-nav = 3 icons (Chat / Diagnostics / Logs) — the trio you actually
+// pull out your phone for. Everything else lives in the desktop side-nav.
+const NAV: ReadonlyArray<NavItem> = [
+  { href: '/admin', label: 'Home', glyph: '§',
+    tip: 'Apocrypha health summary · today\'s activity · quick links' },
+  { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true,
+    tip: 'Talk with Apocrypha · sidebar + bubbles + SSE streaming · Enter to send' },
+  { href: '/admin/cognition', label: 'Cognition', glyph: '∞', mobile: true,
+    tip: 'LIVE substrate visualization · swarm ticks · dream cycles · interactive triggers' },
+  { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬',
+    tip: 'Live tool-call timeline · recent conversations · what Apocrypha is doing right now' },
+  { href: '/admin/sub-minds', label: 'Sub-Minds', glyph: 'Ω',
+    tip: 'Lazarus (Ω9 operator) + Tessera (Ω10 reasoner) — health, queue, recent runs' },
+  { href: '/admin/controls', label: 'Controls', glyph: '☢',
+    tip: 'Kill switch · API keys · consent grants · operator-tier dangerous controls' },
+  { href: '/admin/tools', label: 'Tools', glyph: '⊑',
+    tip: 'Apocrypha\'s 19+ registered tools across 7 organs (memory/swarm/lang/forage/evolve/dream/state)' },
+  { href: '/admin/analytics', label: 'Analytics', glyph: '∂',
+    tip: 'Cost tracker · spend-by-model · memory size · swarm consensus · longer-term trends' },
+  { href: '/admin/logs', label: 'Logs', glyph: 'G',
+    tip: 'Apocrypha dispatch + cloudflared process logs · audit events' },
 ];
 
 const MOBILE_NAV = NAV.filter((item) => item.mobile);
@@ -59,7 +82,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
   return (
     <>
       <Head>
-        <title>{`${title} · Apocky Admin`}</title>
+        <title>{`${title} · Apocrypha · Apocky`}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -90,7 +113,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
           @media (min-width: 768px) {
             .admin-bottom-nav { display: none !important; }
             .admin-side { display: flex !important; }
-            .admin-main { margin-left: 200px; }
+            .admin-main { margin-left: 220px; }
           }
         `}</style>
       </Head>
@@ -105,7 +128,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
           left: 0,
           top: 0,
           bottom: 0,
-          width: 200,
+          width: 220,
           padding: '1.5rem 1rem',
           background: 'rgba(10, 10, 16, 0.95)',
           borderRight: '1px solid #1f1f2a',
@@ -117,21 +140,33 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
             fontSize: '0.7rem',
             letterSpacing: '0.18em',
             color: '#a78bfa',
-            marginBottom: '1.5rem',
+            marginBottom: '0.4rem',
             textTransform: 'uppercase',
           }}
         >
-          § Admin
+          § Apocrypha
+        </div>
+        <div
+          style={{
+            fontSize: '0.65rem',
+            color: '#5a5a6a',
+            marginBottom: '1.4rem',
+          }}
+        >
+          continuously-thinking digital intelligence
         </div>
         {NAV.map((n) => {
-          const active = router.pathname === n.href;
+          const active = router.pathname === n.href
+            || (n.href !== '/admin' && router.pathname.startsWith(n.href));
           return (
             <Link
               key={n.href}
               href={n.href}
+              title={n.tip}
+              aria-label={`${n.label} · ${n.tip}`}
               style={{
-                padding: '0.7rem 0.9rem',
-                marginBottom: '0.25rem',
+                padding: '0.6rem 0.8rem',
+                marginBottom: '0.2rem',
                 background: active ? 'rgba(124, 211, 252, 0.1)' : 'transparent',
                 border: `1px solid ${active ? 'rgba(124, 211, 252, 0.3)' : 'transparent'}`,
                 borderRadius: 4,
@@ -166,7 +201,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
 
       {/* ─── MAIN CONTENT ─── */}
       <main className="admin-main" style={{ padding: '1.25rem 1rem 2rem', minHeight: '100dvh' }}>
-        {/* AUTH STATUS BANNER · only-mobile or-when-stub */}
+        {/* AUTH STATUS BANNER */}
         {check && !check.authorized && (
           <div
             style={{
@@ -212,7 +247,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
         {check?.authorized ? children : check ? null : <p style={{ color: '#7a7a8c' }}>§ checking admin session…</p>}
       </main>
 
-      {/* ─── MOBILE BOTTOM-NAV ─── */}
+      {/* ─── MOBILE BOTTOM-NAV (3 icons : Chat · Diagnostics · Logs) ─── */}
       <nav
         className="admin-bottom-nav"
         style={{
@@ -235,6 +270,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
             <Link
               key={n.href}
               href={n.href}
+              title={n.tip}
               style={{
                 flex: 1,
                 padding: '0.75rem 0.25rem',

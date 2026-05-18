@@ -1,16 +1,16 @@
-// apocky.com/admin/apocrypha/controls · Controls face (kill-switch + API keys)
-// Per HANDOFF_v10 § TRACK-A A4 (FACE-3 = controls).
+// /admin/controls · kill-switch + API keys + consent (operator-tier dangerous controls).
+// Moved from /admin/apocrypha/controls per Apocky nav-cleanup.
 
 import type { NextPage } from 'next';
 import { useCallback, useState } from 'react';
 
-import AdminLayout from '../../../components/AdminLayout';
-import { ApiKeyManager } from '../../../components/apocrypha/ApiKeyManager';
-import { authFetch } from '../../../lib/browser-auth';
+import AdminLayout from '../../components/AdminLayout';
+import { ApiKeyManager } from '../../components/apocrypha/ApiKeyManager';
+import { authFetch } from '../../lib/browser-auth';
 
 const NUCLEAR_TOKEN = 'I-UNDERSTAND-THIS-IS-IRREVERSIBLE';
 
-const ApocryphaControls: NextPage = () => {
+const Controls: NextPage = () => {
   const [adminAuthorized, setAdminAuthorized] = useState(false);
   const [killBusy, setKillBusy] = useState(false);
   const [killResult, setKillResult] = useState<string | null>(null);
@@ -25,8 +25,6 @@ const ApocryphaControls: NextPage = () => {
     setKillBusy(true);
     setKillResult(null);
     try {
-      // Kill-switch invoked via /api/v1/chat → tool-call. The Mind selects the
-      // state.kill_switch tool when given an explicit prompt + confirm_token.
       const r = await authFetch('/api/admin/apocrypha/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -45,22 +43,22 @@ const ApocryphaControls: NextPage = () => {
   }, [confirmText, killReason]);
 
   return (
-    <AdminLayout title="Apocrypha · Controls" onAdminCheck={(c) => setAdminAuthorized(c.authorized)}>
+    <AdminLayout title="☢ Controls" onAdminCheck={(c) => setAdminAuthorized(c.authorized)}>
       {adminAuthorized ? (
         <div style={{
-          padding: '1rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '1.5rem',
           color: '#cdd6e4',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
         }}>
-          <section style={{
-            border: '1px solid #aa6060',
-            borderRadius: 6,
-            padding: '0.75rem 1rem',
-            background: 'rgba(60, 20, 20, 0.2)',
-          }}>
+          <section
+            title="Sets state/kill-switch file ; halts swarm within ≤1ms (spec 09 I-05). Confirm-token required."
+            style={{
+              border: '1px solid #aa6060',
+              borderRadius: 6,
+              padding: '0.75rem 1rem',
+              background: 'rgba(60, 20, 20, 0.2)',
+            }}>
             <h2 style={{ marginTop: 0, fontSize: '1rem', color: '#ff8888' }}>
               ☢ Kill-switch (NUCLEAR · spec 09 I-05)
             </h2>
@@ -73,24 +71,28 @@ const ApocryphaControls: NextPage = () => {
                 value={killReason}
                 onChange={(e) => setKillReason(e.target.value)}
                 placeholder="reason"
+                title="Recorded in the kill-switch file for the post-mortem"
                 style={inputStyle}
               />
               <input
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
                 placeholder={`type ${NUCLEAR_TOKEN}`}
+                title="Must match exactly ; case-sensitive ; intentional friction"
                 style={inputStyle}
               />
               <button
                 onClick={() => void triggerKillSwitch()}
                 disabled={killBusy || confirmText !== NUCLEAR_TOKEN}
+                title={confirmText === NUCLEAR_TOKEN
+                  ? 'Will halt Apocrypha within 1ms'
+                  : 'Type the confirm-token to enable'}
                 style={{
                   ...btnStyle,
                   background: confirmText === NUCLEAR_TOKEN ? '#aa3030' : '#444',
                   color: '#fff',
                   cursor: confirmText === NUCLEAR_TOKEN ? 'pointer' : 'not-allowed',
-                }}
-              >
+                }}>
                 {killBusy ? '…' : 'TRIGGER KILL-SWITCH'}
               </button>
             </div>
@@ -109,11 +111,13 @@ const ApocryphaControls: NextPage = () => {
             )}
           </section>
 
-          <section style={{
-            border: '1px solid #2a2a3a',
-            borderRadius: 6,
-            background: 'rgba(10, 10, 16, 0.4)',
-          }}>
+          <section
+            title="argon2id-hashed API keys ; principal-bound ; mint/list/revoke"
+            style={{
+              border: '1px solid #2a2a3a',
+              borderRadius: 6,
+              background: 'rgba(10, 10, 16, 0.4)',
+            }}>
             <ApiKeyManager />
           </section>
         </div>
@@ -145,4 +149,4 @@ const btnStyle: React.CSSProperties = {
   fontSize: '0.9rem',
 };
 
-export default ApocryphaControls;
+export default Controls;

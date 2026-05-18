@@ -163,3 +163,108 @@ export async function revokeKey(keyId: string): Promise<void> {
     body: JSON.stringify({ key_id: keyId }),
   });
 }
+
+// ── /api/v1/sub_minds/health ────────────────────────────────────────
+
+export interface LazarusHealth {
+  omega_id: number;
+  label: string;
+  tier: string;
+  runner_loop_running: boolean;
+  runner_id: string | null;
+  in_flight_dispatches: number;
+  task_count: number;
+  queued_count: number;
+  active_run_count: number;
+  pending_approval_count: number;
+  online_runner_count: number;
+  tool_count: number;
+}
+
+export interface TesseraHealth {
+  omega_id: number;
+  label: string;
+  tier: string;
+  started: boolean;
+  codebook_size: number;
+  episode_count: number;
+  escape_configured: boolean;
+}
+
+export interface SubMindsHealth {
+  lazarus: LazarusHealth;
+  tessera: TesseraHealth;
+}
+
+export async function subMindsHealth(): Promise<SubMindsHealth> {
+  const env = await callJson<SubMindsHealth>('/api/admin/apocrypha/sub_minds');
+  return env.data;
+}
+
+// ── /api/v1/cost ────────────────────────────────────────────────────
+
+export interface CostCallRecord {
+  ts_utc: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface CostSnapshot {
+  spent_today_usd: number;
+  daily_cap_usd: number;
+  remaining_today_usd: number;
+  total_calls_last_100: number;
+  spent_by_model_last_100: Record<string, number>;
+  recent_calls: CostCallRecord[];
+}
+
+export async function costSnapshot(): Promise<CostSnapshot> {
+  const env = await callJson<CostSnapshot>('/api/admin/apocrypha/cost');
+  return env.data;
+}
+
+// ── /api/v1/mcp/info ────────────────────────────────────────────────
+
+export interface McpToolEntry {
+  name: string;
+  description: string;
+  category: string;
+  permission_tier: string;
+  accepts_hv: boolean;
+}
+
+export interface McpInfo {
+  mcp_endpoint: string;
+  transport: string;
+  exposed_count: number;
+  blocked_count: number;
+  exposed_tools: McpToolEntry[];
+  blocked_tools: McpToolEntry[];
+}
+
+export async function mcpInfo(): Promise<McpInfo> {
+  const env = await callJson<McpInfo>('/api/admin/apocrypha/mcp_info');
+  return env.data;
+}
+
+// ── /api/status (basic health ; no auth) ────────────────────────────
+
+export interface ApocryphaStatus {
+  version: string;
+  tiers_available: { tier0: boolean; tier_a: boolean; tier_b: boolean };
+  spent_today_usd: number;
+  daily_cap_usd: number;
+  tools_registered: number;
+}
+
+export async function apocryphaStatus(): Promise<ApocryphaStatus | null> {
+  try {
+    const r = await authFetch('/api/admin/apocrypha/status', { cache: 'no-store' });
+    const json = (await r.json()) as { upstream_payload?: ApocryphaStatus };
+    return json.upstream_payload ?? null;
+  } catch {
+    return null;
+  }
+}
