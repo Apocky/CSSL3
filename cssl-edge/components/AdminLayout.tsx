@@ -21,11 +21,14 @@ interface AdminCheck {
   stub?: boolean;
 }
 
+// Lazarus + Tessera removed from primary nav per Apocrypha/DECISIONS.md D033 + D034 :
+// they are sub-minds of Apocrypha, not co-equal admin destinations. Legacy pages still
+// resolvable for 6-week compat soak per Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl
+// §COMPATIBILITY-PLAN. Mobile bottom-nav = 3 icons per Apocky directive (Workbench / Apocrypha / Logs).
 const NAV: Array<{ href: string; label: string; glyph: string; mobile?: boolean }> = [
   { href: '/admin', label: 'Home', glyph: '§' },
-  { href: '/admin/chat', label: 'Workbench', glyph: 'W', mobile: true },
-  { href: '/admin/lazarus', label: 'Lazarus', glyph: 'L', mobile: true },
-  { href: '/admin/tessera-omnimind', label: 'Tessera', glyph: 'Ψ' },
+  { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true },
+  { href: '/admin/apocrypha', label: 'Apocrypha', glyph: 'Ω', mobile: true },
   { href: '/admin/tasks', label: 'Tasks', glyph: '◐' },
   { href: '/admin/analytics', label: 'Analytics', glyph: 'A' },
   { href: '/admin/mcp', label: 'MCP', glyph: '⊑' },

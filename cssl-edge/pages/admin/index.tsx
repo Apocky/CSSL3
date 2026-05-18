@@ -78,7 +78,8 @@ const Dashboard: NextPage = () => {
   ];
 
   const quickActions: Array<{ label: string; href: string; glyph: string }> = [
-    { label: 'Open Lazarus control plane', href: '/admin/lazarus', glyph: 'Λ' },
+    { label: 'Chat with Apocrypha', href: '/admin/chat', glyph: '⊕' },
+    { label: 'Open Apocrypha cockpit', href: '/admin/apocrypha', glyph: 'Ω' },
     { label: 'View scheduled tasks', href: '/admin/tasks', glyph: '◐' },
     { label: 'Approve pending Coder edits', href: '/admin/coder', glyph: 'W!' },
     { label: 'Invoke MCP tool', href: '/admin/mcp', glyph: '⊑' },

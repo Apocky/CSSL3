@@ -48,12 +48,12 @@ const PROJECTS: ReadonlyArray<Project> = [
     accent: '#34d399',
   },
   {
-    id: 'lazarus',
-    name: 'Lazarus',
-    tagline: 'Autonomous coding control plane · admin console for LoA development runs.',
+    id: 'apocrypha',
+    name: 'Apocrypha',
+    tagline: 'Continuously-thinking digital intelligence · chat + cockpit · Lazarus (Ω9) + Tessera (Ω10) absorbed.',
     status: 'console',
-    href: '/admin/lazarus',
-    accent: '#fbbf24',
+    href: '/admin/apocrypha',
+    accent: '#ffaa55',
     requiresAuth: true,
   },
 ];
@@ -123,22 +123,22 @@ const Home: NextPage = () => {
   return (
     <>
       <Head>
-        <title>Apocky · LoA · CSSL · CSL · Lazarus</title>
-        <meta name="description" content="Apocky project hub for LoA, CSSL, CSL, and Lazarus." />
+        <title>Apocky · LoA · CSSL · CSL · Apocrypha</title>
+        <meta name="description" content="Apocky project hub for LoA, CSSL, CSL, and Apocrypha (cognitive substrate with Lazarus + Tessera absorbed as sub-minds)." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="author" content="Apocky" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta property="og:title" content="Apocky · LoA · CSSL · CSL · Lazarus" />
-        <meta property="og:description" content="Project hub for LoA, CSSL, CSL, and Lazarus." />
+        <meta property="og:title" content="Apocky · LoA · CSSL · CSL · Apocrypha" />
+        <meta property="og:description" content="Project hub for LoA, CSSL, CSL, and Apocrypha." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://apocky.com" />
         <meta property="og:site_name" content="Apocky" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Apocky · Projects" />
-        <meta name="twitter:description" content="LoA, CSSL, CSL, and Lazarus." />
+        <meta name="twitter:description" content="LoA, CSSL, CSL, and Apocrypha." />
         <link rel="canonical" href="https://apocky.com" />
         <style>{`
           * { box-sizing: border-box; }
@@ -186,7 +186,7 @@ const Home: NextPage = () => {
           <a href="/download">LoA</a>
           <a href="/docs/cssl-language">CSSL</a>
           <a href="/docs">CSL</a>
-          {authed ? <a href="/admin/lazarus" style={{ color: '#fbbf24' }}>Lazarus</a> : null}
+          {authed ? <a href="/admin/apocrypha" style={{ color: '#ffaa55' }}>Apocrypha</a> : null}
           <span style={{ flexGrow: 1 }} />
           {authed ? (
             <a href="/account" style={{ color: '#34d399' }}>Account ✓</a>
@@ -228,7 +228,7 @@ const Home: NextPage = () => {
           >
             LoA · CSSL · CSL
             <br />
-            Lazarus.
+            Apocrypha.
           </h1>
           <p
             style={{
@@ -250,14 +250,14 @@ const Home: NextPage = () => {
             }}
           >
             {authed === true
-              ? 'signed in · Lazarus console available'
+              ? 'signed in · Apocrypha cockpit available'
               : authed === false
                 ? authNotice ?? 'sign in to access private project controls'
                 : 'checking session…'}
           </p>
           <div style={{ marginTop: '2rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
             <a
-              href={authed ? '/admin/lazarus' : '#projects'}
+              href={authed ? '/admin/apocrypha' : '#projects'}
               style={{
                 padding: '0.75rem 1.5rem',
                 background: 'linear-gradient(135deg, #c084fc 0%, #7dd3fc 100%)',
@@ -267,7 +267,7 @@ const Home: NextPage = () => {
                 fontSize: '0.95rem',
               }}
             >
-              {authed ? 'Open Lazarus →' : 'Explore projects →'}
+              {authed ? 'Open Apocrypha →' : 'Explore projects →'}
             </a>
             {authed === true ? (
               <a
@@ -467,7 +467,7 @@ const Home: NextPage = () => {
             <a href="/devblog">Devblog</a>
             <a href="/press">Press</a>
             <a href="/download">Download</a>
-            {authed ? <a href="/admin/lazarus">Lazarus</a> : null}
+            {authed ? <a href="/admin/apocrypha">Apocrypha</a> : null}
             <span style={{ color: '#2a2a3a' }}>|</span>
             <a href="/legal/privacy">Privacy</a>
             <a href="/legal/terms">Terms</a>
