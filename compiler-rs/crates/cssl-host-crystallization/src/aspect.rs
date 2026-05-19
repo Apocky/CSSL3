@@ -175,8 +175,8 @@ mod tests {
         let d = [42u8; 32];
         let curves = AspectCurves::derive(&d, CrystalClass::Entity);
         for band in 0..16u8 {
-            let l = luminance_at_band(&curves, band);
-            assert!(l <= u16::MAX);
+            // u16 return is bounded by construction ; smoke-test the call returns.
+            let _l = luminance_at_band(&curves, band);
         }
     }
 

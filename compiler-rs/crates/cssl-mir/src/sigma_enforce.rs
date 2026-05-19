@@ -434,6 +434,7 @@ impl MirPass for EnforcesSigmaAtCellTouches {
 
     fn run(&self, module: &mut MirModule) -> PassResult {
         let mut diagnostics: Vec<PassDiagnostic> = Vec::new();
+        diagnostics.extend(crate::ffi_abi_check::check_ffi_boundary_layouts(module).diagnostics);
         for func in &module.funcs {
             walk_region(&func.body, &mut diagnostics);
         }

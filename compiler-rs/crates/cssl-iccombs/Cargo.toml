@@ -1,0 +1,14 @@
+[package]
+name         = "cssl-iccombs"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description  = "CSSLv3 sequential interaction-combinator runtime : Lafont/Mazza nets + Con/Dup/Era reductions (foundation crate per specs/Upgrade/impl/IMPL_02_FOUNDATION.csl)."
+repository.workspace   = true
+
+[dependencies]
+
+[lints]
+workspace = true

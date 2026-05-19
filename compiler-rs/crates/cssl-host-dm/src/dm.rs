@@ -1,6 +1,7 @@
 //! `DirectorMaster` — the DM orchestrator value-type.
 //!
 //! § SPEC : `specs/grand-vision/10_INTELLIGENCE.csl` § ROLE-DM
+#![allow(clippy::mutex_integer)] // intentional: blocking semantics + uniform Mutex story w/ cap_table
 //!
 //! § ROLE
 //!   Holds a [`DmCapTable`] + a [`SceneArbiter`] + an [`AuditSink`] ; routes
@@ -107,6 +108,7 @@ pub struct DirectorMaster {
     /// Audit-event sink (default = `NoopAuditSink`).
     audit_sink: Box<dyn AuditSink>,
     /// Spec § FAILURE-MODES § no-action-fallback counter.
+    #[allow(clippy::mutex_integer)] // intentional: blocking semantics + uniform Mutex story w/ cap_table
     silent_pass_count: Mutex<u64>,
 }
 

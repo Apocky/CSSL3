@@ -32,18 +32,18 @@ use crate::rust_hybrid::expr;
 pub fn parse_outer(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Option<Attr> {
     let head = cursor.peek();
     if head.kind == TokenKind::At {
-        return parse_outer_at(cursor, bag);
+        return Some(parse_outer_at(cursor, bag));
     }
     if head.kind == TokenKind::Hash
         && cursor.peek2().kind == TokenKind::Bracket(BracketKind::Square, BracketSide::Open)
     {
-        return parse_outer_hash(cursor, bag);
+        return Some(parse_outer_hash(cursor, bag));
     }
     None
 }
 
 /// Parse `@name(args)` outer-attribute form.
-fn parse_outer_at(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Option<Attr> {
+fn parse_outer_at(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Attr {
     let at = cursor.peek();
     cursor.bump();
     let path = parse_module_path(cursor, bag, "attribute name");
@@ -53,12 +53,12 @@ fn parse_outer_at(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Opti
         Vec::new()
     };
     let end = args.last().map_or(path.span.end, |a| attr_arg_span(a).end);
-    Some(Attr {
+    Attr {
         span: Span::new(at.span.source, at.span.start, end),
         kind: AttrKind::Outer,
         path,
         args,
-    })
+    }
 }
 
 /// § T11-W15-CSSLC-TESTATTR : Parse `#[name]` outer-attribute form.
@@ -71,7 +71,7 @@ fn parse_outer_at(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Opti
 ///
 /// Reuses `parse_attr_args` for the arg-list shape ; the AST node is identical
 /// to the `@`-form so HIR/MIR don't need to know which surface was used.
-fn parse_outer_hash(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Option<Attr> {
+fn parse_outer_hash(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Attr {
     let hash = cursor.peek();
     cursor.bump(); // #
     cursor.bump(); // [
@@ -93,12 +93,12 @@ fn parse_outer_hash(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Op
         bag.push(custom("expected `]` to close outer attribute", close.span));
         args.last().map_or(path.span.end, |a| attr_arg_span(a).end)
     };
-    Some(Attr {
+    Attr {
         span: Span::new(hash.span.source, hash.span.start, end),
         kind: AttrKind::Outer,
         path,
         args,
-    })
+    }
 }
 
 /// Parse an inner attribute `#![path = "value"]` or `#![path(args)]`.

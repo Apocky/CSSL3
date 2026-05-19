@@ -1,0 +1,13 @@
+    Checking cssl-host-crystallization v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-crystallization)
+    Checking cssl-ast v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-ast)
+    Checking cssl-lir v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-lir)
+    Checking cssl-hdc v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-hdc)
+    Checking cssl-wavelet v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-wavelet)
+    Checking cssl-host-alien-materialization v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-alien-materialization)
+    Checking cssl-host-combat-loop v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-combat-loop)
+    Checking cssl-host-substrate-resonance-gpu v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-substrate-resonance-gpu)
+    Checking cssl-host-digital-intelligence-render v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-digital-intelligence-render)
+    Checking cssl-host-substrate-volumetric v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-substrate-volumetric)
+    Checking cssl-host-substrate-render-v2 v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-substrate-render-v2)
+    Checking loa-host v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\loa-host)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.71s

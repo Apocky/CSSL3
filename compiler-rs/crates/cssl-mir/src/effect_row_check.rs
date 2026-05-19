@@ -298,7 +298,7 @@ mod tests {
             vec![MirType::Int(IntWidth::I32)],
             vec![MirType::Int(IntWidth::I32)],
         );
-        f.effect_row = row.map(|s| s.to_string());
+        f.effect_row = row.map(str::to_string);
         let op = MirOp::std("func.call")
             .with_attribute("callee", target)
             .with_attribute("source_loc", "<test>")
@@ -536,12 +536,12 @@ mod tests {
         module.push_func(caller);
 
         let r = EffectRowValidatorPass.run(&mut module);
-        let warnings: Vec<_> = r
+        let warning_count = r
             .diagnostics
             .iter()
             .filter(|d| d.code == EFFROW0002_UNRESOLVED_CALLEE)
-            .collect();
-        assert_eq!(warnings.len(), 1);
+            .count();
+        assert_eq!(warning_count, 1);
         let errors: Vec<_> = r
             .diagnostics
             .iter()

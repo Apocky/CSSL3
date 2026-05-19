@@ -86,7 +86,7 @@ use crate::symbol::Interner;
 /// future slices may add `E1005` for unreachable arms / `E1006` for
 /// overlapping ranges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExhaustivenessCode {
+pub enum ExhaustivenessCode {
     /// `E1004` — the match-arm-set does not cover every variant of the scrutinee's enum.
     NonExhaustiveMatch,
 }
@@ -94,7 +94,7 @@ pub(crate) enum ExhaustivenessCode {
 impl ExhaustivenessCode {
     /// Canonical short-code string for log-parsing tools.
     #[must_use]
-    pub(crate) const fn code(self) -> &'static str {
+    pub const fn code(self) -> &'static str {
         match self {
             Self::NonExhaustiveMatch => "E1004",
         }
@@ -103,7 +103,7 @@ impl ExhaustivenessCode {
 
 /// One exhaustiveness-check diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExhaustivenessDiagnostic {
+pub struct ExhaustivenessDiagnostic {
     /// Diagnostic code.
     pub code: ExhaustivenessCode,
     /// Span of the offending `match` expression.
@@ -121,7 +121,7 @@ impl ExhaustivenessDiagnostic {
     /// Render a one-line CI-log message in the canonical
     /// `error: non-exhaustive match : missing pattern `<V>` (E1004)` shape.
     #[must_use]
-    pub(crate) fn render(&self) -> String {
+    pub fn render(&self) -> String {
         format!(
             "error: non-exhaustive match : missing pattern `{}` ({})",
             self.missing_variants
@@ -134,7 +134,7 @@ impl ExhaustivenessDiagnostic {
 
 /// Aggregate report from an exhaustiveness pass.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ExhaustivenessReport {
+pub struct ExhaustivenessReport {
     /// All diagnostics found in the module.
     pub diagnostics: Vec<ExhaustivenessDiagnostic>,
     /// Number of `match` expressions inspected (regardless of pass/fail).
@@ -149,19 +149,19 @@ pub(crate) struct ExhaustivenessReport {
 impl ExhaustivenessReport {
     /// `true` iff no diagnostics were collected.
     #[must_use]
-    pub(crate) fn is_clean(&self) -> bool {
+    pub fn is_clean(&self) -> bool {
         self.diagnostics.is_empty()
     }
 
     /// Count of diagnostics matching a code.
     #[must_use]
-    pub(crate) fn count(&self, code: ExhaustivenessCode) -> usize {
+    pub fn count(&self, code: ExhaustivenessCode) -> usize {
         self.diagnostics.iter().filter(|d| d.code == code).count()
     }
 
     /// Short summary line for log output.
     #[must_use]
-    pub(crate) fn summary(&self) -> String {
+    pub fn summary(&self) -> String {
         format!(
             "exhaustiveness : {} match-exprs / {} skipped-unresolved / {} E1004",
             self.checked_match_count,
@@ -223,6 +223,7 @@ impl VariantSet {
     }
 
     /// `true` iff variant `i` is in the set.
+    #[allow(dead_code)] // reserved for future unreachable-arm checks.
     fn contains(&self, i: u32) -> bool {
         match self {
             Self::Bits(b) => (*b & (1u64 << i)) != 0,

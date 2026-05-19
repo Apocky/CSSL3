@@ -187,7 +187,7 @@ mod tests {
     use super::*;
     use crate::activation::ParametricActivation;
     use crate::modulation::LoaKanCellModulation;
-    use cssl_substrate_prime_directive::sigma::{ConsentBit, SigmaMaskPacked, SigmaPolicy};
+    use cssl_substrate_prime_directive::ConsentBit;
 
     fn permissive_mask() -> SigmaMaskPacked {
         SigmaMaskPacked::default_mask().with_consent(

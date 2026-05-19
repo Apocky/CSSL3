@@ -194,11 +194,7 @@ pub const fn dealloc_align_for(t: &MirType) -> i64 {
 ///   Single-pass over the input slice ; no allocation.
 #[must_use]
 pub fn matches_vec_drop_pattern(callee_segments: &[&str]) -> bool {
-    match callee_segments {
-        ["vec_drop"] => true,
-        ["Vec", "drop"] => true,
-        _ => false,
-    }
+    matches!(callee_segments, ["vec_drop"] | ["Vec", "drop"])
 }
 
 // ───────────────────────────────────────────────────────────────────────

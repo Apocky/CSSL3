@@ -1111,7 +1111,7 @@ mod tests {
     #[test]
     fn burst_state_stride_skips_intermediate_frames() {
         let mut b = BurstState::default();
-        b.start_burst(3, 5); // 3 frames, every 5th
+        let _ = b.start_burst(3, 5); // 3 frames, every 5th
         // Tick 1 : captures frame 0
         assert!(b.tick_capture_path().is_some());
         // Ticks 2-5 : skipped

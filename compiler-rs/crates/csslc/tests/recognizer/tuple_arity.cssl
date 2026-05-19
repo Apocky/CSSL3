@@ -1,0 +1,3 @@
+// § A02.2 corpus · tuple-arity mismatch (FM.4)
+// expected : Error · "expected tuple of arity 2, got tuple of arity 3"
+fn f() -> (i32, i32) { (1, 2, 3) }

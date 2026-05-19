@@ -1,0 +1,156 @@
+
+> workspace-clippy.log:8:    Checking cssl-host-quantum-hdc v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-quantum-hdc)
+  workspace-clippy.log:9:    Checking cssl-host-craft-graph v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-craft-graph)
+  workspace-clippy.log:10:    Checking cssl-host-mp-transport v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-mp-transport)
+  workspace-clippy.log:11:    Checking cssl-host-npc-bt v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-host-npc-bt)
+  workspace-clippy.log:12:    Checking cssl-cgen-gpu-wgsl v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-cgen-gpu-wgsl)
+  workspace-clippy.log:13:    Checking cssl-cgen-spirv v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-cgen-spirv)
+  workspace-clippy.log:14:    Checking cssl-smt v0.1.0 (C:\Users\Apocky\source\repos\CSSLv3\.claude\worktrees\phase-a\09\compiler-rs\crates\cssl-smt)
+  workspace-clippy.log:15:    Checking tokio v1.52.1
+  workspace-clippy.log:16:    Checking naga v23.1.0
+  workspace-clippy.log:17:error: unnecessary `>= y + 1` or `x - 1 >=`
+  workspace-clippy.log:18:   --> crates\cssl-host-substrate-intelligence\src\lib.rs:435:8
+  workspace-clippy.log:19:    |
+  workspace-clippy.log:20:435 |     if bytes.len() >= 1 + NUM_BANDS * 32 && bytes[0] == KAN_PERSIST_FORMAT_V2 {
+  workspace-clippy.log:21:    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: change it to: `bytes.len() > NUM_BANDS * 32`
+  workspace-clippy.log:22:    |
+  workspace-clippy.log:23:    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#int_plus_one
+> workspace-clippy.log:29:  --> crates\cssl-host-quantum-hdc\src\complex.rs:59:5
+  workspace-clippy.log:30:   |
+  workspace-clippy.log:31:59 | /     pub const fn conj(self) -> Self {
+  workspace-clippy.log:32:60 | |         Self {
+  workspace-clippy.log:33:61 | |             re: self.re,
+  workspace-clippy.log:34:62 | |             im: -self.im,
+  workspace-clippy.log:35:63 | |         }
+  workspace-clippy.log:36:64 | |     }
+  workspace-clippy.log:37:   | |_____^
+  workspace-clippy.log:38:   |
+  workspace-clippy.log:39:   = help: consider adding the `#[must_use]` attribute to the method or directly to the `Self` type
+  workspace-clippy.log:40:   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#return_self_not_must_use
+  workspace-clippy.log:41:   = note: `-D clippy::return-self-not-must-use` implied by `-D warnings`
+  workspace-clippy.log:42:   = help: to override `-D warnings` add `#[allow(clippy::return_self_not_must_use)]`
+  workspace-clippy.log:43:
+  workspace-clippy.log:44:error: missing `#[must_use]` attribute on a method returning `Self`
+> workspace-clippy.log:45:  --> crates\cssl-host-quantum-hdc\src\complex.rs:72:5
+  workspace-clippy.log:46:   |
+  workspace-clippy.log:47:72 | /     pub fn mul(self, other: Self) -> Self {
+  workspace-clippy.log:48:73 | |         Self {
+  workspace-clippy.log:49:74 | |             re: self.re * other.re - self.im * other.im,
+  workspace-clippy.log:50:75 | |             im: self.re * other.im + self.im * other.re,
+  workspace-clippy.log:51:76 | |         }
+  workspace-clippy.log:52:77 | |     }
+  workspace-clippy.log:53:   | |_____^
+  workspace-clippy.log:54:   |
+  workspace-clippy.log:55:   = help: consider adding the `#[must_use]` attribute to the method or directly to the `Self` type
+  workspace-clippy.log:56:   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#return_self_not_must_use
+  workspace-clippy.log:57:
+  workspace-clippy.log:58:error: missing `#[must_use]` attribute on a method returning `Self`
+> workspace-clippy.log:59:  --> crates\cssl-host-quantum-hdc\src\complex.rs:81:5
+  workspace-clippy.log:60:   |
+  workspace-clippy.log:61:81 | /     pub fn add(self, other: Self) -> Self {
+  workspace-clippy.log:62:82 | |         Self {
+  workspace-clippy.log:63:83 | |             re: self.re + other.re,
+  workspace-clippy.log:64:84 | |             im: self.im + other.im,
+  workspace-clippy.log:65:85 | |         }
+  workspace-clippy.log:66:86 | |     }
+  workspace-clippy.log:67:   | |_____^
+  workspace-clippy.log:68:   |
+  workspace-clippy.log:69:   = help: consider adding the `#[must_use]` attribute to the method or directly to the `Self` type
+  workspace-clippy.log:70:   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#return_self_not_must_use
+  workspace-clippy.log:71:
+  workspace-clippy.log:72:error: missing `#[must_use]` attribute on a method returning `Self`
+> workspace-clippy.log:73:  --> crates\cssl-host-quantum-hdc\src\complex.rs:90:5
+  workspace-clippy.log:74:   |
+  workspace-clippy.log:75:90 | /     pub fn scale(self, alpha: f32) -> Self {
+  workspace-clippy.log:76:91 | |         Self {
+  workspace-clippy.log:77:92 | |             re: self.re * alpha,
+  workspace-clippy.log:78:93 | |             im: self.im * alpha,
+  workspace-clippy.log:79:94 | |         }
+  workspace-clippy.log:80:95 | |     }
+  workspace-clippy.log:81:   | |_____^
+  workspace-clippy.log:82:   |
+  workspace-clippy.log:83:   = help: consider adding the `#[must_use]` attribute to the method or directly to the `Self` type
+  workspace-clippy.log:84:   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#return_self_not_must_use
+  workspace-clippy.log:85:
+  workspace-clippy.log:86:error: while condition comparing floats
+> workspace-clippy.log:87:   --> crates\cssl-host-quantum-hdc\src\complex.rs:106:11
+  workspace-clippy.log:88:    |
+  workspace-clippy.log:89:106 |     while phi > PI {
+  workspace-clippy.log:90:    |           ^^^^^^^^
+  workspace-clippy.log:91:    |
+  workspace-clippy.log:92:    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#while_float
+  workspace-clippy.log:93:    = note: `-D clippy::while-float` implied by `-D warnings`
+  workspace-clippy.log:94:    = help: to override `-D warnings` add `#[allow(clippy::while_float)]`
+  workspace-clippy.log:95:
+  workspace-clippy.log:96:error: while condition comparing floats
+> workspace-clippy.log:97:   --> crates\cssl-host-quantum-hdc\src\complex.rs:109:11
+  workspace-clippy.log:98:    |
+  workspace-clippy.log:99:109 |     while phi < -PI {
+  workspace-clippy.log:100:    |           ^^^^^^^^^
+  workspace-clippy.log:101:    |
+  workspace-clippy.log:102:    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#while_float
+  workspace-clippy.log:103:
+  workspace-clippy.log:104:error: missing `#[must_use]` attribute on a method returning `Self`
+> workspace-clippy.log:105:   --> crates\cssl-host-quantum-hdc\src\cvec.rs:114:5
+  workspace-clippy.log:106:    |
+  workspace-clippy.log:107:114 | /     pub fn bind(&self, other: &Self) -> Self {
+  workspace-clippy.log:108:115 | |         let mut amp = [0.0f32; CHDC_DIM];
+  workspace-clippy.log:109:116 | |         let mut phase = [0.0f32; CHDC_DIM];
+  workspace-clippy.log:110:117 | |         for i in 0..CHDC_DIM {
+  workspace-clippy.log:111:...   |
+  workspace-clippy.log:112:121 | |         Self { amp, phase }
+  workspace-clippy.log:113:122 | |     }
+  workspace-clippy.log:114:    | |_____^
+  workspace-clippy.log:115:    |
+  workspace-clippy.log:116:    = help: consider adding the `#[must_use]` attribute to the method or directly to the `Self` type
+  workspace-clippy.log:117:    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#return_self_not_must_use
+  workspace-clippy.log:118:
+  workspace-clippy.log:119:error: missing `#[must_use]` attribute on a method returning `Self`
+> workspace-clippy.log:120:   --> crates\cssl-host-quantum-hdc\src\cvec.rs:130:5
+  workspace-clippy.log:121:    |
+  workspace-clippy.log:122:130 | /     pub fn permute(&self, n: u32) -> Self {
+  workspace-clippy.log:123:131 | |         use core::f32::consts::PI;
+  workspace-clippy.log:124:132 | |         // Modulo 2┬╖CHDC_DIM ΓÇö anything beyond is a full revolution.
+  workspace-clippy.log:125:133 | |         let n_mod = (n as i64).rem_euclid(2 * CHDC_DIM as i64) as f32;
+  workspace-clippy.log:126:...   |
+  workspace-clippy.log:127:144 | |         Self { amp, phase }
+  workspace-clippy.log:128:145 | |     }
+  workspace-clippy.log:129:    | |_____^
+  workspace-clippy.log:130:    |
+  workspace-clippy.log:131:    = help: consider adding the `#[must_use]` attribute to the method or directly to the `Self` type
+  workspace-clippy.log:132:    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#return_self_not_must_use
+  workspace-clippy.log:133:
+  workspace-clippy.log:134:error: missing `#[must_use]` attribute on a method returning `Self`
+> workspace-clippy.log:135:   --> crates\cssl-host-quantum-hdc\src\cvec.rs:176:5
+  workspace-clippy.log:136:    |
+  workspace-clippy.log:137:176 | /     pub fn renormalize(&self) -> Self {
+  workspace-clippy.log:138:177 | |         let mut peak = 0.0f32;
+  workspace-clippy.log:139:178 | |         for &a in &self.amp {
+  workspace-clippy.log:140:179 | |             if a > peak {
+  workspace-clippy.log:141:...   |
+  workspace-clippy.log:142:195 | |     }
+  workspace-clippy.log:143:    | |_____^
+  workspace-clippy.log:144:    |
+  workspace-clippy.log:145:    = help: consider adding the `#[must_use]` attribute to the method or directly to the `Self` type
+  workspace-clippy.log:146:    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#return_self_not_must_use
+  workspace-clippy.log:147:
+  workspace-clippy.log:148:error: casting to the same type is unnecessary (`u32` -> `u32`)
+  workspace-clippy.log:149:  --> crates\cssl-host-substrate-intelligence\src\composer.rs:73:17
+  workspace-clippy.log:150:   |
+> workspace-clippy.log:168:error: could not compile `cssl-host-quantum-hdc` (lib) due to 9 previous errors
+  workspace-clippy.log:169:warning: build failed, waiting for other jobs to finish...
+  workspace-clippy.log:170:error: casting to the same type is unnecessary (`u32` -> `u32`)
+  workspace-clippy.log:171:  --> crates\cssl-host-crystallization\src\aspect.rs:38:35
+  workspace-clippy.log:172:   |
+  workspace-clippy.log:173:38 |         let local_t = (t * 15) - (seg as u32 * 1000);
+  workspace-clippy.log:174:   |                                   ^^^^^^^^^^ help: try: `seg`
+  workspace-clippy.log:175:   |
+  workspace-clippy.log:176:   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast
+  workspace-clippy.log:177:   = note: `-D clippy::unnecessary-cast` implied by `-D clippy::all`
+  workspace-clippy.log:178:   = help: to override `-D clippy::all` add `#[allow(clippy::unnecessary_cast)]`
+  workspace-clippy.log:179:
+  workspace-clippy.log:180:error: this operation has no effect
+  workspace-clippy.log:181:   --> crates\cssl-host-crystallization\src\aspect.rs:119:11
+  workspace-clippy.log:182:    |
+  workspace-clippy.log:183:119 |         (((yaw_milli >> 0) & 0xFF) as u8).max(64),
+

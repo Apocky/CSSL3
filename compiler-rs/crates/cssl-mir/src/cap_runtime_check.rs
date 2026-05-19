@@ -264,7 +264,7 @@ fn emit_fn_entry_preamble(f: &mut MirFunc, entry: &ParamCapEntry) {
         new_ops.push(h_const);
         new_ops.push(k_const);
         new_ops.push(verify);
-        new_ops.extend(entry_block.ops.drain(..));
+        new_ops.append(&mut entry_block.ops);
         entry_block.ops = new_ops;
     }
 }
@@ -467,15 +467,13 @@ mod tests {
             .attributes
             .iter()
             .find(|(k, _)| k == ATTR_CAP_KIND)
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
+            .map_or("", |(_, v)| v.as_str());
         assert_eq!(kind_attr, "iso");
         let origin_attr = op
             .attributes
             .iter()
             .find(|(k, _)| k == ATTR_ORIGIN)
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
+            .map_or("", |(_, v)| v.as_str());
         assert_eq!(origin_attr, ORIGIN_FN_ENTRY);
     }
 

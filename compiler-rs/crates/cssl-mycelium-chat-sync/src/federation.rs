@@ -170,6 +170,7 @@ impl ChatPatternFederation {
     /// post-ingest distinct-emitter-count for observability ; does NOT
     /// reveal whether the pattern is now public (callers should use
     /// `snapshot_public()` to read).
+    #[allow(clippy::significant_drop_tightening)] // recompute_stats requires the same write-guard
     pub fn ingest(&self, pattern: &ChatPattern) -> Result<u32, FederationError> {
         // Σ-mask gate (2nd line ; emit-side is the 1st).
         if !pattern.cap_check(CAP_FEDERATION_INGEST) {
@@ -195,19 +196,21 @@ impl ChatPatternFederation {
             .write()
             .map_err(|_| FederationError::Malformed(PatternError::ReservedCapFlagsSet(0)))?;
         g.stats.total_ingested += 1;
-        let bucket = g.buckets.entry(pattern.pattern_id()).or_default();
-        bucket.intent_kind = pattern.intent_kind();
-        bucket.response_shape = pattern.response_shape();
-        bucket.arc_phase = pattern.arc_phase();
-        bucket.observation_count = bucket.observation_count.saturating_add(1);
-        bucket.emitters.insert(pattern.emitter_handle());
-        bucket.confidence_sum = bucket
-            .confidence_sum
-            .saturating_add(u64::from(pattern.confidence_q8()));
-        if pattern.ts_bucketed() > bucket.last_ts_bucketed {
-            bucket.last_ts_bucketed = pattern.ts_bucketed();
-        }
-        let count = bucket.emitters.len() as u32;
+        let count = {
+            let bucket = g.buckets.entry(pattern.pattern_id()).or_default();
+            bucket.intent_kind = pattern.intent_kind();
+            bucket.response_shape = pattern.response_shape();
+            bucket.arc_phase = pattern.arc_phase();
+            bucket.observation_count = bucket.observation_count.saturating_add(1);
+            bucket.emitters.insert(pattern.emitter_handle());
+            bucket.confidence_sum = bucket
+                .confidence_sum
+                .saturating_add(u64::from(pattern.confidence_q8()));
+            if pattern.ts_bucketed() > bucket.last_ts_bucketed {
+                bucket.last_ts_bucketed = pattern.ts_bucketed();
+            }
+            bucket.emitters.len() as u32
+        };
         Self::recompute_stats(&mut g);
         Ok(count)
     }
@@ -236,7 +239,7 @@ impl ChatPatternFederation {
         };
         let mut touched = 0_usize;
         let mut empty_keys: Vec<u32> = Vec::new();
-        for (id, bucket) in g.buckets.iter_mut() {
+        for (id, bucket) in &mut g.buckets {
             if bucket.emitters.remove(&emitter_handle) {
                 touched += 1;
                 // Decrement observation_count proportionally — we don't
@@ -283,6 +286,7 @@ impl ChatPatternFederation {
     /// this only inside the federation crate.
     #[must_use]
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn snapshot_all_for_stats(&self) -> (Vec<AggregatedShape>, Vec<AggregatedShape>) {
         let Ok(g) = self.inner.read() else {
             return (Vec::new(), Vec::new());

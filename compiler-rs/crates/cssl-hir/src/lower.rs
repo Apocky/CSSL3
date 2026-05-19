@@ -68,10 +68,6 @@ impl<'a> LowerCtx<'a> {
         self.arena.fresh_hir_id()
     }
 
-    fn def_id(&mut self) -> DefId {
-        self.arena.fresh_def_id()
-    }
-
     /// Allocate a fresh `DefId` AND record its content-stable attribution-key.
     /// Lowering call-sites for definition-bearing items must call this so the
     /// fixed-point gate can fingerprint the module without depending on `Spur`
@@ -723,7 +719,7 @@ impl<'a> LowerCtx<'a> {
         // forms also have leading/trailing `"`, so this trim handles both
         // surface forms uniformly. We don't process escape sequences ;
         // ABI tags are short identifier-like strings in practice.
-        let trimmed = raw.trim_start_matches(|c: char| c == 'r' || c == '#');
+        let trimmed = raw.trim_start_matches(&['r', '#'][..]);
         let trimmed = trimmed
             .strip_prefix('"')
             .unwrap_or(trimmed)
@@ -1014,6 +1010,14 @@ pub fn lower_module(
     // Run the resolve pass to populate module-level scope + path references.
     let mut hir = hir;
     resolve_module(&mut hir);
+    // § spec-70 § item-02 (A02.1) : surface primitive type-shape mismatches
+    // that the inference engine collapses away (Ty::Int swallows i32/u32/i64/…).
+    // Diagnostics flow through the same DiagnosticBag so `csslc check` /
+    // `csslc compile` reports them with full file:line:col rendering.
+    let extra = crate::primitive_shape::check_primitive_shape(&hir, &ctx.interner);
+    for d in extra {
+        ctx.diagnostics.push(d);
+    }
     (hir, ctx.interner, ctx.diagnostics)
 }
 
