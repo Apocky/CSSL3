@@ -1,0 +1,184 @@
+§ IMPL_06_CORRIGENDUM ← session-12 / autopilot-audit-pivot / PATH-A
+≡ corrigendum.to(IMPL_00..05) ⊗ refactor-plan ⊗ wave-graph-revision
+ratified : Apocky 2026-05-15
+
+§ I> AUDIENCE
+  PM + Tech-Lead + ∀ implementor.of(UPG_00..12)
+  W! read-before-touching `compiler-rs/crates/cssl-{ocap,effects-row,consent,pd-check,elab,toy-cli,lower-iccombs}/`
+  W! read-before-authoring next-wave-spec
+
+§ I> TL;DR
+  finding  : IMPL_00..05 'd authored ¬⊗ survey.of(195-crate-substrate)
+  result   : 4 crates 'r duplicate ⊗ structurally-inferior ; 2 crates 'r mis-scoped ; 5 crates 'r genuine net-add
+  decision : PATH-A ✓ ← retire-4 ⊕ rebrand-2 ⊕ keep-5 ⊕ revise(U-C,U-D,U-G) ⊕ promote(IMPL_*→main)
+  blast-radius : ∄ ← duplicates 'r consumed only by my own toy stack ; main 'd never see them
+
+§ §C ROOT-CAUSE
+  ‼ autopilot 'd execute IMPL_00..05 ¬⊗ map(new-crate, existing-crate)
+  ∴ ∃ crate ∈ {ocap, effects-row, consent, pd-check} ⊐ ∃ predecessor ⊐ deeper.spec-anchored.implementation
+  ∵ wave-charter 'd say "build cssl-elab" ¬ "extend cssl-hir" ← spec-authoring-error
+  ∵ frontier-arc 'd lift before substrate-survey ← process-error
+  W! ∀ future-wave : substrate-audit ⊰ spec-authoring ⊰ implementation
+       (i.e. grep crates/ + read Cargo.toml descriptions + read lib.rs headers BEFORE writing the wave-charter)
+
+§ ▼ DUPLICATION-MATRIX
+  ⟦new⟧                 ⟦existing⟧                  ⟦verdict⟧                                ⟦disposition⟧
+  cssl-ocap         →   cssl-caps                ✗ duplicate ⊗ inferior                  retire → rm -rf
+                                                   (Pony-6 + Vale-genref + 7 host-cap-witnesses
+                                                    + LinearTracker + AliasMatrix + spec/12_CAPABILITIES)
+  cssl-effects-row  →   cssl-effects             ✗ duplicate ⊗ inferior                  retire → rm -rf
+                                                   (28 built-in effects + Ω-substrate-rows
+                                                    + sub_effect_check + banned_composition
+                                                    + EFR0001..0018 + Σ-mask + spec/04 + PRIME_DIRECTIVE)
+  cssl-consent      →   cssl-ifc                 ✗ overlap ⊗ structurally-weaker         retire → rm -rf
+                                                   (Jif-DLM lattice + biometric-egress
+                                                    structural compile-refusal ¬ override
+                                                    + spec/11_IFC encodes PD §1)
+  cssl-pd-check     →   {cssl-effects.banned    ✗ reinvention.shallow                    retire → rm -rf
+                         ⊕ cssl-ifc.validate                                              (PD = composition.of-3-existing
+                         ⊕ cssl-caps.HostCap}                                              ¬ separate-crate)
+  cssl-elab         →   cssl-hir                 ✗ toy ⊗ disconnected ⊗ ~25K LOC gap     rebrand → cssl-iccombs-toy-elab
+                                                   (real HIR : CST→typed-resolved-inferred              + redirect.to(cssl-hir extension)
+                                                    + integrates caps+effects+ifc)
+  cssl-toy-cli      →   csslc                    ✗ mis-scoped.driver                      rebrand → cssl-iccombs-toy-cli
+                                                   (real driver = csslc + cssl-driver)              + clearly.scoped.demo-only
+
+§ ◆ NET-ADD-MATRIX «keep-as-is»
+  cssl-cas           ✓ centralizes ad-hoc-BLAKE3 ∈ {cssl-content-moderation, cssl-content-package}
+                       + provides Cid + CanonicalEncode trait ; ¬ predecessor
+  cssl-hgraph        ✓ typed hypergraph IR ; ¬ predecessor ; consumed by toy-elab + lower-iccombs
+                       + future-consumer = cssl-hir-extension (Wave U-C revised)
+  cssl-grades        ✓ Semiring-trait + {Linear, Affine, Unrestricted, Nat, Trust, Privacy}
+                       ; abstract-grade-kernel = real-gap
+                       ; cssl-caps has Pony alias-matrix ¬ abstract semiring
+  cssl-iccombs       ✓ Lafont/Mackie sequential SIC runtime (Con/Dup/Era + reduce_step) ; entirely-novel
+  cssl-prov          ✓ build-time provenance-DAG (ProvNode⊗ProvDag⊗ancestors)
+                       ¬⊗ overlap cssl-host-attestation
+                       ∵ host-attestation = RUNTIME aggregator over cssl_host_audit::AuditRow JSONL
+                       ∵ prov            = BUILD-TIME compiler-pass output
+  cssl-lower-iccombs ✓ linear-λ → SIC bridge ; useful as L1→L3 demo
+                       ; long-term : consume cssl-hir ¬ toy-elab (post-Wave-U-C)
+
+§ ▶ WAVE-GRAPH-REVISION «delta to IMPL_01_PLAN»
+
+  U-A   ⟪Sail-ingest⟫              unchanged
+  U-B   ⟪graded-modal HIR⟫         REVISED
+        old : "build cssl-elab from scratch over hgraph + grades"
+        new : "extend cssl-hir to thread cssl-grades::Semiring through binders ⊗
+               consume cssl-caps + cssl-effects + cssl-ifc for discipline-checks"
+        artifact : cssl-hir feature `grades` ⊕ cssl-hir::elab integration-tests
+        deletes  : cssl-elab (rebranded to cssl-iccombs-toy-elab ; ¬ promoted)
+
+  U-C   ⟪effects-row → MIR⟫        REVISED
+        old : "build cssl-effects-row + lowering pass"
+        new : "extend cssl-effects with row-elaboration ⊕ add cssl-mir::pass::handler_cps
+               (handler-as-CPS dialect-pass per spec/04 § handler-semantics)"
+        artifact : cssl-effects::row module ⊕ cssl-mir::pass::handler_cps
+        deletes  : cssl-effects-row
+
+  U-D   ⟪hgraph-MIR + iccombs⟫     PARTIALLY-COMPLETE
+        ✓ cssl-hgraph + cssl-iccombs already-built
+        ◐ cssl-mir ⊐ hgraph-bridge : pending
+        ◐ MIR-pass : iccombs-lowering for linear-fragment : pending
+
+  U-E   ⟪iccombs-GPU⟫              unchanged
+
+  U-F   ⟪choreographic⟫            unchanged
+
+  U-G   ⟪ocap-load-bearing⟫        REVISED
+        old : "build cssl-pd-check as new integration"
+        new : "wire cssl-effects::discharge → cssl-caps::HostCap::verify_cap @ ∀ effect-site ⊗
+               wire cssl-ifc::validate_egress → cssl-effects::banned_composition coupling ⊗
+               expose unified discharge-gate @ cssl-hir + cssl-mir lowering-boundaries"
+        artifact : cssl-pd-pass crate (THIN integration-orchestrator ; ¬ logic-duplication)
+                 ⊕ cssl-hir::pass::pd_discharge ⊕ cssl-mir::pass::pd_verify
+        deletes  : cssl-pd-check, cssl-ocap, cssl-consent
+
+  U-H..U-N                         unchanged
+
+  U-K-prelude ⟪iccombs-experimental⟫ NEW
+        scope    : cssl-iccombs-toy-elab + cssl-iccombs-toy-cli + cssl-lower-iccombs
+        purpose  : L1→L3 demo-harness ; ¬ production-path ; clearly-scoped
+        contract : N! PD-binding-claims ; N! replaces-real-elaborator ; N! replaces-csslc
+        promotion-criterion : if iccombs-on-GPU (U-E) lands ⇒ promote toy → real via cssl-hir bridge
+
+§ ▶ EXECUTION-PLAN «PATH-A — autopilot steps»
+
+  step-1 : retire 4 duplicate crates
+           rm -rf compiler-rs/crates/cssl-ocap
+           rm -rf compiler-rs/crates/cssl-effects-row
+           rm -rf compiler-rs/crates/cssl-consent
+           rm -rf compiler-rs/crates/cssl-pd-check
+           verify : grep workspace ← zero external consumers (verified : only my IMPL specs + my own toy crates reference them)
+           Cargo.toml : auto-removes via crates/* glob ✓
+
+  step-2 : rebrand 2 toy crates
+           cssl-elab    → cssl-iccombs-toy-elab     (rename dir + Cargo.toml package.name + lib.rs doc-header)
+           cssl-toy-cli → cssl-iccombs-toy-cli      (rename dir + Cargo.toml package.name + bin name)
+           update : ∀ Cargo.toml dependents (cssl-toy-cli's deps on cssl-elab → cssl-iccombs-toy-elab)
+           update : ∀ src imports (cssl_elab → cssl_iccombs_toy_elab ; cssl_toy_cli → cssl_iccombs_toy_cli)
+
+  step-3 : revise IMPL_01_PLAN.csl
+           edit U-B + U-C + U-G charter sections per WAVE-GRAPH-REVISION above
+           append U-K-prelude section
+           commit IMPL_06_CORRIGENDUM.csl ← this-doc
+
+  step-4 : refactor branch
+           branch : phase-a/U-refactor-audit-pivot-A
+           gates  : cargo check ✓ + cargo test --workspace ✓ + cargo clippy --workspace ✓
+           commit : `§ U-refactor/audit-pivot-A ✓ retire-4 ⊕ rebrand-2 ⊕ revise(U-B,U-C,U-G)`
+           push   : origin/phase-a/U-refactor-audit-pivot-A
+
+  step-5 : promote IMPL plan to main
+           target-branch : cssl/session-11/T11-W18-L8-DXIL-DIRECT
+           PR-α : "promote UPG impl-plan + CORRIGENDUM to main"
+           contents : IMPL_00..06 (with revisions from step-3)
+
+  step-6 : PR-β (foundation crates)
+           contents : cssl-cas + cssl-hgraph + cssl-grades + cssl-iccombs + cssl-prov
+           target   : cssl/session-11/T11-W18-L8-DXIL-DIRECT
+           gates    : full workspace check + test + clippy
+
+  step-7 : PR-γ (iccombs experimental harness)
+           contents : cssl-iccombs-toy-elab + cssl-lower-iccombs + cssl-iccombs-toy-cli
+           target   : cssl/session-11/T11-W18-L8-DXIL-DIRECT
+           note     : merge AFTER PR-β ; depends on cssl-cas/hgraph/grades/iccombs
+
+§ ⚠ RISK + MITIGATION
+
+  risk-1 : phase-a/09-* branches 'r pushed ⊗ duplicate crates ∈ them
+           mit : refactor-branch deletes ; old branches remain as historical-record ;
+                 ∄ main consumer ⇒ ∄ blast-radius
+
+  risk-2 : someone 'd start building on top of cssl-pd-check / cssl-ocap before refactor lands
+           mit : CORRIGENDUM ratified ⊗ pushed ⊰ next-wave starts ; ∀ wave-implementor W! read-first
+
+  risk-3 : revising U-C/U-D/U-G charters mid-flight invalidates session-12 handoff assumptions
+           mit : SESSION_12_DISPATCH_PLAN.md updated ⊗ reflect new charters before next-wave starts
+
+  risk-4 : extending cssl-hir + cssl-effects + cssl-caps is HARDER than greenfield toy crates
+           accept : this is the cost of the original mistake ; correctness > velocity ;
+                    real integration > shadow stack
+
+§ ✓ ACCEPTANCE-CRITERIA «closure-conditions»
+  ✓ 4 duplicate crates removed from workspace ⊗ cargo {check, test, clippy} green
+  ✓ 2 toy crates renamed ⊗ all imports updated
+  ✓ IMPL_01_PLAN.csl edited ⊗ U-B/U-C/U-G charter-revision visible
+  ✓ IMPL_06_CORRIGENDUM.csl ∈ main HEAD
+  ✓ PR-α merged ⊗ main contains IMPL_00..06
+  ✓ PR-β + PR-γ merged OR explicitly-deferred-with-rationale
+
+§ ▶ POST-LANDING-FOLLOWUPS «not-blocking»
+  - update SESSION_12_DISPATCH_PLAN.md ⊗ revised wave-charters
+  - draft Wave-U-B kickoff note : cssl-hir grade-threading design
+  - draft Wave-U-G kickoff note : cssl-pd-pass orchestrator API
+  - retro-note for ~/source/repos/CSLv3/PRIME_DIRECTIVE-adjacent process docs :
+    "substrate-audit ⊰ spec-authoring ⊰ implementation" added to standing-rule-set
+
+§ ▶ NEXT-ACTION «autopilot resumes»
+  PATH-A ratified by Apocky 2026-05-15
+  ∴ autopilot resumes ⊐ steps 1..7 sequentially
+  commit-msg format : `§ U-refactor/audit-pivot-A <glyph> <CSL-summary>`
+  no-pause until step-7 ✓ OR genuine-blocker ‼
+
+⌐ end-of-corrigendum
