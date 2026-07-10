@@ -170,6 +170,39 @@ fn lower_constant(op: &MirOp) -> Option<Vec<ClifInsn>> {
         .iter()
         .find(|(k, _)| k == "value")
         .map_or("0", |(_, v)| v.as_str());
+    // § T11-W18-CSSLC-STRINGS — string-literal at the textual-CLIF surface.
+    //   The CLIF text is for inspection / golden-printing only — the real
+    //   data-segment + global_value emission happens in `object.rs` against
+    //   the cranelift `ObjectModule`. Here we mirror cranelift's own
+    //   `symbol_value` shape for a `gv` symbol named after the literal's
+    //   numeric pool index. The `@str_<index>` prefix is a stable convention
+    //   for inspection ; downstream textual tooling can recognize it as a
+    //   stage-0-emitted string global. We use the value's hash (low 16 bits)
+    //   as a deterministic-but-readable pool key when no explicit pool index
+    //   is available at this surface (the object backend uses 0-based indices).
+    if let cssl_mir::MirType::Opaque(s) = &r.ty {
+        if s == "!cssl.string" {
+            // Stable abbreviated key — first 8 chars of the payload escaped
+            // for readability, then a length suffix. The CLIF-text surface
+            // is for inspection only ; the real data-segment is named via
+            // the per-module `__cssl_str_<idx>` symbol pool.
+            let mut key = String::with_capacity(16);
+            for ch in value.chars().take(8) {
+                if ch.is_ascii_alphanumeric() || ch == '_' {
+                    key.push(ch);
+                } else {
+                    key.push('_');
+                }
+            }
+            if value.len() > 8 {
+                key.push_str(&format!("_l{}", value.len()));
+            }
+            let v_name = format_value(r.id);
+            return Some(vec![ClifInsn::new(format!(
+                "    {v_name} = symbol_value.r64 gv_str_{key}"
+            ))]);
+        }
+    }
     let clif_ty = clif_type_for(&r.ty)?;
     let v_name = format_value(r.id);
     let ty_str = clif_ty.as_str();

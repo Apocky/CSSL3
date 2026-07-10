@@ -93,6 +93,16 @@ pub fn clif_type_for(mir: &MirType) -> Option<ClifType> {
         // Cranelift has vector types (e.g., f32x4) but stage-0.5 JIT lowers
         // scalar-only ; vec3 ops are scalarized at a later stage.
         MirType::Vec(_, _) => None,
+        // § T11-W18-CSSLC-STRINGS — string-literal slots are pointer-typed.
+        // The MIR `arith.constant` for a string literal carries
+        // `MirType::Opaque("!cssl.string")` ; the CPU backend lowers that to
+        // a host-pointer global-value referencing a per-module data segment
+        // (NUL-terminated UTF-8 bytes). At the CLIF-text level we represent
+        // the slot as `r64` (reference-width on 64-bit hosts) so the
+        // pre-existing scalar-only printer can format `arith.constant` ops
+        // with string-typed results without crashing. The object-emit path
+        // in `object.rs` handles the actual data-segment emission.
+        MirType::Opaque(s) if s == "!cssl.string" => Some(ClifType::R64),
         MirType::Opaque(_) => None,
     }
 }
