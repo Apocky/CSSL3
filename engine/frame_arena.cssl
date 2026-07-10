@@ -1,0 +1,365 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/frame_arena.cssl  —  W-2 zero-alloc per-frame arena
+//
+// CSSLv3 engine module · pure CSSL · stage-0 scaffold.
+// Spec : specs/16_TRANSPORT_TIERS.csl § P6 ZERO-ALLOC-HOT-PATH
+//        specs/16_TRANSPORT_TIERS.csl § P2 BUILD → UPLOAD → RECORD
+//        specs/08_ENGINE.csl § PRIMITIVES (CmdBuf · Buffer · iso ownership)
+//        specs/24_HOST_FFI.csl § STAGE-0-MAPPING
+//
+// Wave : W-2 ZERO-ALLOC HOT-PATH  (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § ROLE
+//   The per-frame scratch space. ONE FrameArena is allocated at engine_init ;
+//   every per-frame phase reuses its slots. The §A6 transcript-distill P6 :
+//   per-frame syscalls ≤ Cap-check ; NO malloc on the critical path. At
+//   1M entities × 144hz, every per-frame allocation is a profiler-visible
+//   line on the flame graph and a guaranteed frame-stutter risk.
+//
+// § THE THREE STORAGE CLASSES
+//
+//   1. CPU-SoA scratch  (Vec<T> with cap pre-grown)
+//      - visible_meshes   : cull-pass output ; len resets each frame
+//      - active_lights    : light-cull input ; bounded
+//      - cpu_scratch_u32  : misc per-frame u32 array
+//
+//   2. GPU-side buffers  (Buffer<T> with persistent map for upload)
+//      - instance_stage   : T2 SSBO ; InstanceData[N] per frame
+//      - indirect_args    : T3 indirect-draw args buffer
+//      - per_frame_ubo    : T1 UBO ; scene + camera + lights
+//
+//   3. Cmd-buf            (one or more per frame, depending on backend)
+//      - opaque_cb        : forward+ opaque-main pass cmd buffer
+//      - compute_cb       : GPU-cull / mat4-compose compute pass
+//
+// § LIFECYCLE
+//
+//   frame_arena_new(dev, cfg)          — engine_init time ; one allocation
+//   frame_arena_begin_frame(&mut a)    — reset lengths · re-acquire cmd-buf
+//   ...build / upload / record phases reuse arena slots...
+//   frame_arena_end_frame(&mut a)      — close cmd-buf · prepare for next
+//
+// § PRIME_DIRECTIVE preserved
+//   Pure data-orchestration ; no surveillance ; no override. Buffer IFC
+//   labels propagate from stdlib/gpu_transport (Public default ;
+//   Sensitive<Frame> only on VR-output backbuffer path).
+
+module com.apocky.engine.frame_arena
+
+use std::vec::Vec
+use std::vec::vec_new
+use std::vec::vec_with_capacity
+use std::vec::vec_len
+use std::vec::vec_push
+use std::vec_mut::vec_clear_in_place
+use std::vec_mut::vec_reserve
+use std::vec_mut::vec_truncate
+
+use std::gpu::Device
+use std::gpu::CmdBuf
+use std::gpu::GpuError
+
+use std::gpu_transport::Buffer
+use std::gpu_transport::BufferUsage
+use std::gpu_transport::MemKind
+use std::gpu_transport::DrawIndexedIndirectArgs
+use std::gpu_transport::buffer_create
+use std::gpu_transport::buffer_destroy
+use std::gpu_transport::buffer_null
+use std::gpu_transport::cmd_buf_begin
+use std::gpu_transport::cmd_buf_end
+
+// Engine module imports.
+use com.apocky.engine.conventions::target_entity_count
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ArenaConfig — per-frame storage capacity profile.
+//
+//   The default profile targets 1_000_000 entities at 1440p / 144 Hz.
+//   Each capacity is the HIGH-WATERMARK — exceeding it triggers a log +
+//   one-shot grow ; subsequent frames reuse the larger cap.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct ArenaConfig {
+    visible_capacity      : u32,    // visible_meshes Vec cap (post-cull)
+    light_capacity        : u32,    // active_lights Vec cap
+    instance_capacity     : u32,    // GPU instance_stage Buffer cap
+    indirect_args_capacity : u32,   // GPU indirect_args Buffer cap (per-mesh)
+    cpu_scratch_capacity  : u32,    // misc per-frame u32 scratch
+    per_frame_ubo_bytes   : u32,    // T1 UBO bytes per frame
+}
+
+// `arena_config_default_1m_entities()` — the Apocky-mandate profile.
+//   1_000_000 instance cap · 256 unique meshes (= 256 indirect-args) ·
+//   256 lights · 1M visible-meshes (worst case = nothing culled) ·
+//   4 KiB per-frame UBO.
+fn arena_config_default_1m_entities() -> ArenaConfig {
+    ArenaConfig {
+        visible_capacity       : 1000000,
+        light_capacity         : 256,
+        instance_capacity      : 1000000,
+        indirect_args_capacity : 256,
+        cpu_scratch_capacity   : 4096,
+        per_frame_ubo_bytes    : 4096,
+    }
+}
+
+// `arena_config_default_100k_entities()` — mid-tier profile · 100K entities.
+fn arena_config_default_100k_entities() -> ArenaConfig {
+    ArenaConfig {
+        visible_capacity       : 100000,
+        light_capacity         : 64,
+        instance_capacity      : 100000,
+        indirect_args_capacity : 128,
+        cpu_scratch_capacity   : 2048,
+        per_frame_ubo_bytes    : 4096,
+    }
+}
+
+// `arena_config_default_10k_entities()` — bring-up profile · 10K entities.
+fn arena_config_default_10k_entities() -> ArenaConfig {
+    ArenaConfig {
+        visible_capacity       : 10000,
+        light_capacity         : 32,
+        instance_capacity      : 10000,
+        indirect_args_capacity : 64,
+        cpu_scratch_capacity   : 1024,
+        per_frame_ubo_bytes    : 4096,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § VisibleMesh — placeholder repeat of engine/scene's VisibleMesh.
+//
+//   Stage-0 we duplicate the struct here to avoid the cross-module import
+//   ordering issue (engine/scene.cssl is the larger module being refactored
+//   into the arena pattern ; once that lands universally we use the
+//   scene-side definition via `use com.apocky.engine.scene::VisibleMesh`).
+// ═══════════════════════════════════════════════════════════════════════
+
+struct VisibleMesh {
+    entity        : u32,
+    world_mat_idx : u32,
+    mesh_handle   : u32,    // index into MeshPool (W-3)
+    lod           : u8,
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § LightStub — placeholder light struct.
+//
+//   Stage-0 use ; the real Light struct lives in engine/render_forward.cssl.
+//   We hold a u32 light-handle here so the arena is self-contained.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct LightStub {
+    handle : u32,
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § InstanceData — placeholder per-instance GPU data.
+//
+//   W-3 lands the canonical InstanceData struct in engine/instance.cssl ;
+//   stage-0 we type the buffer over a u32 surrogate so this module compiles
+//   standalone. The Buffer<T> handle is the load-bearing piece ; the
+//   element type can be re-specialized in W-3.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct InstanceDataStub {
+    bits : u32,    // re-cast to InstanceData layout in W-3
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § FrameArena — the per-frame scratch space.
+//
+//   ONE FrameArena per engine instance. Per-frame phases borrow slots ;
+//   reset on begin_frame ; recycle forever. No alloc after engine_init.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameArena {
+    // CPU SoA scratch.
+    visible_meshes  : Vec<VisibleMesh>,
+    active_lights   : Vec<LightStub>,
+    cpu_scratch_u32 : Vec<u32>,
+
+    // GPU buffers (T2 SSBO + T3 indirect + T1 UBO).
+    instance_stage  : Buffer<InstanceDataStub>,
+    indirect_args   : Buffer<DrawIndexedIndirectArgs>,
+    per_frame_ubo   : Buffer<u32>,    // bytes addressed as u32 slots
+
+    // Cmd buffers (one per major pass).
+    opaque_cb       : CmdBuf,
+    compute_cb      : CmdBuf,
+
+    // Cached config for telemetry / re-grow.
+    cfg             : ArenaConfig,
+
+    // Frame counter (monotonic).
+    frame_idx       : u64,
+
+    // Watermarks (P7 measure-first).
+    visible_high_water  : u32,
+    light_high_water    : u32,
+    instance_high_water : u32,
+}
+
+// `frame_arena_new(dev, cfg)` — engine_init-time allocation.
+//
+// § EFFECT-ROW : {GpuInit}-effecting · allocates ALL per-frame storage.
+// § INVARIANT : after this call · no further heap alloc happens on the
+//   per-frame path until cap is exceeded (which logs + grows once · rare).
+fn frame_arena_new(dev : Device, cfg : ArenaConfig) -> Result<FrameArena, GpuError> {
+    // CPU scratch : Vec<T> pre-grown to cap.
+    let visible = vec_with_capacity::<VisibleMesh>(cfg.visible_capacity as i64) ;
+    let lights = vec_with_capacity::<LightStub>(cfg.light_capacity as i64) ;
+    let scratch = vec_with_capacity::<u32>(cfg.cpu_scratch_capacity as i64) ;
+
+    // GPU buffers : T2 SSBO (instance) · T3 indirect · T1 UBO.
+    let inst_r = buffer_create::<InstanceDataStub>(dev, cfg.instance_capacity, BufferUsage::Storage, MemKind::DeviceLocal) ;
+    let inst_buf = match inst_r {
+        Err(e) => { return Err(e) ; },
+        Ok(b)  => b,
+    } ;
+
+    let ind_r = buffer_create::<DrawIndexedIndirectArgs>(dev, cfg.indirect_args_capacity, BufferUsage::Indirect, MemKind::DeviceLocal) ;
+    let ind_buf = match ind_r {
+        Err(e) => { return Err(e) ; },
+        Ok(b)  => b,
+    } ;
+
+    let ubo_count = cfg.per_frame_ubo_bytes / 4 ;
+    let ubo_r = buffer_create::<u32>(dev, ubo_count, BufferUsage::Uniform, MemKind::HostCoherent) ;
+    let ubo_buf = match ubo_r {
+        Err(e) => { return Err(e) ; },
+        Ok(b)  => b,
+    } ;
+
+    // Cmd buffers : opaque + compute.
+    let cb_opaque_r = cmd_buf_begin(dev) ;
+    let cb_opaque = match cb_opaque_r {
+        Err(e) => { return Err(e) ; },
+        Ok(c)  => c,
+    } ;
+    // Close immediately ; begin_frame re-opens.
+    let _ = cmd_buf_end(cb_opaque) ;
+
+    let cb_compute_r = cmd_buf_begin(dev) ;
+    let cb_compute = match cb_compute_r {
+        Err(e) => { return Err(e) ; },
+        Ok(c)  => c,
+    } ;
+    let _ = cmd_buf_end(cb_compute) ;
+
+    Ok(FrameArena {
+        visible_meshes      : visible,
+        active_lights       : lights,
+        cpu_scratch_u32     : scratch,
+        instance_stage      : inst_buf,
+        indirect_args       : ind_buf,
+        per_frame_ubo       : ubo_buf,
+        opaque_cb           : cb_opaque,
+        compute_cb          : cb_compute,
+        cfg                 : cfg,
+        frame_idx           : 0,
+        visible_high_water  : 0,
+        light_high_water    : 0,
+        instance_high_water : 0,
+    })
+}
+
+// `frame_arena_begin_frame(a)` — reset CPU lens · advance frame_idx.
+//
+// § EFFECT-ROW : pure · no GPU work yet.
+// § INVARIANT : no allocation if previous frame respected caps.
+fn frame_arena_begin_frame(a : FrameArena) -> FrameArena {
+    FrameArena {
+        visible_meshes      : vec_clear_in_place::<VisibleMesh>(a.visible_meshes),
+        active_lights       : vec_clear_in_place::<LightStub>(a.active_lights),
+        cpu_scratch_u32     : vec_clear_in_place::<u32>(a.cpu_scratch_u32),
+        instance_stage      : a.instance_stage,
+        indirect_args       : a.indirect_args,
+        per_frame_ubo       : a.per_frame_ubo,
+        opaque_cb           : a.opaque_cb,
+        compute_cb          : a.compute_cb,
+        cfg                 : a.cfg,
+        frame_idx           : a.frame_idx + 1,
+        visible_high_water  : a.visible_high_water,
+        light_high_water    : a.light_high_water,
+        instance_high_water : a.instance_high_water,
+    }
+}
+
+// `frame_arena_record_watermark(a, kind, value)` — P7 measure-first hook.
+//
+//   `kind` selects which watermark to update :
+//     0 = visible  · 1 = light  · 2 = instance
+fn frame_arena_record_watermark(a : FrameArena, kind : u32, value : u32) -> FrameArena {
+    if kind == 0 {
+        FrameArena {
+            visible_meshes      : a.visible_meshes,
+            active_lights       : a.active_lights,
+            cpu_scratch_u32     : a.cpu_scratch_u32,
+            instance_stage      : a.instance_stage,
+            indirect_args       : a.indirect_args,
+            per_frame_ubo       : a.per_frame_ubo,
+            opaque_cb           : a.opaque_cb,
+            compute_cb          : a.compute_cb,
+            cfg                 : a.cfg,
+            frame_idx           : a.frame_idx,
+            visible_high_water  : if value > a.visible_high_water { value } else { a.visible_high_water },
+            light_high_water    : a.light_high_water,
+            instance_high_water : a.instance_high_water,
+        }
+    } else {
+        if kind == 1 {
+            FrameArena {
+                visible_meshes      : a.visible_meshes,
+                active_lights       : a.active_lights,
+                cpu_scratch_u32     : a.cpu_scratch_u32,
+                instance_stage      : a.instance_stage,
+                indirect_args       : a.indirect_args,
+                per_frame_ubo       : a.per_frame_ubo,
+                opaque_cb           : a.opaque_cb,
+                compute_cb          : a.compute_cb,
+                cfg                 : a.cfg,
+                frame_idx           : a.frame_idx,
+                visible_high_water  : a.visible_high_water,
+                light_high_water    : if value > a.light_high_water { value } else { a.light_high_water },
+                instance_high_water : a.instance_high_water,
+            }
+        } else {
+            FrameArena {
+                visible_meshes      : a.visible_meshes,
+                active_lights       : a.active_lights,
+                cpu_scratch_u32     : a.cpu_scratch_u32,
+                instance_stage      : a.instance_stage,
+                indirect_args       : a.indirect_args,
+                per_frame_ubo       : a.per_frame_ubo,
+                opaque_cb           : a.opaque_cb,
+                compute_cb          : a.compute_cb,
+                cfg                 : a.cfg,
+                frame_idx           : a.frame_idx,
+                visible_high_water  : a.visible_high_water,
+                light_high_water    : a.light_high_water,
+                instance_high_water : if value > a.instance_high_water { value } else { a.instance_high_water },
+            }
+        }
+    }
+}
+
+// `frame_arena_destroy(a)` — release all GPU buffers ; pair with new().
+fn frame_arena_destroy(a : FrameArena) -> Result<i32, GpuError> {
+    let _ = buffer_destroy::<InstanceDataStub>(a.instance_stage) ;
+    let _ = buffer_destroy::<DrawIndexedIndirectArgs>(a.indirect_args) ;
+    let _ = buffer_destroy::<u32>(a.per_frame_ubo) ;
+    Ok(0)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//
+//   The FrameArena is the load-bearing P6 enforcement in the engine.
+//   At 1M entities × 144 Hz the math demands zero-alloc per frame ;
+//   the arena pre-allocates the high-watermark and recycles forever.
+//   Pure value-shape ; no surveillance ; no override.
+// ═══════════════════════════════════════════════════════════════════════

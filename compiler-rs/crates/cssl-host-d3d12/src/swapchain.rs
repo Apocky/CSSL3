@@ -24,7 +24,11 @@
 //!   exercise present-fence + frame-pacing logic in tests.
 
 use crate::error::{D3d12Error, Result};
-use crate::ffi::{ComPtr, DxgiFormat, Loader};
+use crate::ffi::{
+    hr_check, ComPtr, CreateDXGIFactory2Fn, DxgiFormat, IDXGIFactory2VTable, IDXGISwapChain1VTable,
+    IUnknownVTable, Loader, SampleDesc, SwapChainDesc1, DXGI_ALPHA_MODE_UNSPECIFIED,
+    DXGI_SCALING_NONE, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING, IID_IDXGIFactory2,
+};
 
 // ─── public API ──────────────────────────────────────────────────────────
 
@@ -163,38 +167,167 @@ pub struct SwapChain {
 }
 
 impl SwapChain {
-    /// Real path (Windows) : `IDXGIFactory2::CreateSwapChainForHwnd` →
-    /// `QueryInterface(IID_IDXGISwapChain4)`. Stage-0 wires the loader probe
-    /// + descriptor population ; the actual `Create*` call is done through
-    /// the function-pointer stored in `Loader`. Until the full FFI table is
-    /// fleshed out, this path returns `LoaderMissing` so callers know to use
-    /// the windows-rs path or the mock.
+    /// Real path (Windows) : `IDXGIFactory2::CreateSwapChainForHwnd` via own-FFI
+    /// vtable dispatch · returns an owned `IDXGISwapChain1` ComPtr in
+    /// `self.inner`. Stores config + zeros frame counters.
+    ///
+    /// `queue_iunknown` MUST be the raw `IUnknown*` of an `ID3D12CommandQueue`.
+    /// Use [`crate::queue::CommandQueue::raw_iunknown_ptr`] to obtain it. DXGI
+    /// calls `AddRef` on the queue internally so the caller retains its own ref.
     ///
     /// # Errors
-    /// `D3d12Error::LoaderMissing` when the loader can't reach DXGI, or
-    /// `D3d12Error::InvalidArgument` if `config` fails validation.
-    pub fn create_for_hwnd(loader: &Loader, hwnd: Hwnd, config: SwapChainConfig) -> Result<Self> {
+    /// - `D3d12Error::InvalidArgument` if `config` fails validation, `hwnd`
+    ///   is null, or `queue_iunknown` is null.
+    /// - `D3d12Error::LoaderMissing` if `CreateDXGIFactory2` is unresolved
+    ///   (dxgi.dll absent or stripped, or non-Windows target).
+    /// - `D3d12Error::Hresult` if `CreateDXGIFactory2` or
+    ///   `CreateSwapChainForHwnd` returns a failure HRESULT.
+    ///
+    /// # Safety
+    /// The function performs unsafe COM calls internally but its signature is
+    /// safe. `queue_iunknown` MUST point to a live `ID3D12CommandQueue` for
+    /// the duration of the call.
+    pub fn create_for_hwnd(
+        loader: &Loader,
+        hwnd: Hwnd,
+        config: SwapChainConfig,
+        queue_iunknown: *mut core::ffi::c_void,
+    ) -> Result<Self> {
         config.validate()?;
-        if loader.create_dxgi_factory2.is_none() {
-            return Err(D3d12Error::loader(
-                "CreateDXGIFactory2 unresolved — dxgi.dll absent or stripped",
-            ));
-        }
+        let factory_proc = loader.create_dxgi_factory2.ok_or_else(|| {
+            D3d12Error::loader("CreateDXGIFactory2 unresolved — dxgi.dll absent or stripped")
+        })?;
         if hwnd.is_null() {
             return Err(D3d12Error::invalid(
                 "SwapChain::create_for_hwnd",
                 "HWND=null ; use SwapChain::mock for headless paths",
             ));
         }
-        // Stage-0 : full IDXGIFactory2::CreateSwapChainForHwnd dispatch
-        // requires a CommandQueue ComPtr (D3D12 swap-chains attach to a
-        // queue). The integration is done in `cssl-rt host_gpu` once the
-        // queue COM-pointer is available. Until that wire-through lands,
-        // we surface a deterministic LoaderMissing the runtime can fall
-        // back to the windows-rs path on.
-        Err(D3d12Error::loader(
-            "create_for_hwnd : full DXGI dispatch deferred to host_gpu wire-up",
-        ))
+        if queue_iunknown.is_null() {
+            return Err(D3d12Error::invalid(
+                "SwapChain::create_for_hwnd",
+                "queue_iunknown=null ; pass &CommandQueue::raw_iunknown_ptr()",
+            ));
+        }
+
+        // Non-Windows : the own-FFI types compile but the actual DLLs / DXGI
+        // runtime are absent. Surface LoaderMissing so callers downgrade to
+        // their non-Windows path.
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (factory_proc, hwnd, queue_iunknown);
+            return Err(D3d12Error::loader(
+                "non-Windows · D3D12 SwapChain unavailable through own-FFI",
+            ));
+        }
+
+        // Windows : real DXGI dispatch through the resolved fn-pointer + the
+        // own vtable for IDXGIFactory2.
+        #[cfg(target_os = "windows")]
+        {
+            // 1. Resolve CreateDXGIFactory2 fn-pointer.
+            // SAFETY : `factory_proc` was returned by `GetProcAddress("CreateDXGIFactory2")`
+            // against `dxgi.dll` ; the OS guarantees the symbol matches the
+            // `CreateDXGIFactory2Fn` ABI signature.
+            let create_factory: CreateDXGIFactory2Fn =
+                unsafe { core::mem::transmute::<usize, CreateDXGIFactory2Fn>(factory_proc) };
+
+            // 2. Create the IDXGIFactory2 instance.
+            let mut factory_ptr: *mut core::ffi::c_void = core::ptr::null_mut();
+            // SAFETY : `&IID_IDXGIFactory2` + `&mut factory_ptr` are valid for
+            // the call duration ; create_factory writes the owned interface
+            // into factory_ptr on success.
+            let hr = unsafe { create_factory(0, &IID_IDXGIFactory2, &mut factory_ptr) };
+            hr_check("CreateDXGIFactory2", hr)?;
+            if factory_ptr.is_null() {
+                return Err(D3d12Error::loader(
+                    "CreateDXGIFactory2 reported SUCCESS but returned null factory",
+                ));
+            }
+            let factory = ComPtr(factory_ptr);
+
+            // 3. Build DXGI_SWAP_CHAIN_DESC1 from our config.
+            let allow_tearing = matches!(config.present_mode, PresentMode::Tearing);
+            let flags = if allow_tearing {
+                DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
+            } else {
+                0
+            };
+            let desc = SwapChainDesc1 {
+                width: config.width,
+                height: config.height,
+                format: config.format,
+                stereo: 0,
+                sample_desc: SampleDesc {
+                    count: 1,
+                    quality: 0,
+                },
+                buffer_usage: config.buffer_usage,
+                buffer_count: config.buffer_count,
+                scaling: DXGI_SCALING_NONE,
+                swap_effect: config.swap_effect.as_raw(),
+                alpha_mode: DXGI_ALPHA_MODE_UNSPECIFIED,
+                flags,
+            };
+
+            // 4. Call IDXGIFactory2::CreateSwapChainForHwnd via the vtable.
+            // SAFETY : factory_ptr is a live IDXGIFactory2 COM object ; the
+            // vtable cast is valid because the vtable pointer is the first
+            // word of every COM object.
+            let factory_vtable: *const IDXGIFactory2VTable =
+                unsafe { factory.vtable::<IDXGIFactory2VTable>() };
+            if factory_vtable.is_null() {
+                // Release factory before bailing.
+                let iuv = unsafe { factory.vtable::<IUnknownVTable>() };
+                if !iuv.is_null() {
+                    let _ = unsafe { ((*iuv).release)(factory_ptr) };
+                }
+                return Err(D3d12Error::loader(
+                    "IDXGIFactory2 vtable pointer is null — COM object malformed",
+                ));
+            }
+
+            let mut sc1_ptr: *mut core::ffi::c_void = core::ptr::null_mut();
+            // SAFETY : all pointers live for the call ; vtable slot 15 is
+            // `CreateSwapChainForHwnd` per the IDXGIFactory2 layout above ;
+            // `desc` is `#[repr(C)]` matching DXGI_SWAP_CHAIN_DESC1 layout.
+            let hr = unsafe {
+                ((*factory_vtable).create_swap_chain_for_hwnd)(
+                    factory_ptr,
+                    queue_iunknown,
+                    hwnd.0 as *mut core::ffi::c_void,
+                    &desc,
+                    core::ptr::null(),     // no fullscreen desc — windowed mode
+                    core::ptr::null_mut(), // no restrict-to-output
+                    &mut sc1_ptr,
+                )
+            };
+
+            // 5. Release the factory (we don't keep a ref ; swapchain has its own
+            // ref + ref'd the queue via internal AddRef).
+            // SAFETY : factory_ptr is still live ; release decrements the ref-count.
+            let factory_iunknown: *const IUnknownVTable =
+                unsafe { factory.vtable::<IUnknownVTable>() };
+            if !factory_iunknown.is_null() {
+                let _ = unsafe { ((*factory_iunknown).release)(factory_ptr) };
+            }
+
+            // 6. Check the swap-chain creation result.
+            hr_check("IDXGIFactory2::CreateSwapChainForHwnd", hr)?;
+            if sc1_ptr.is_null() {
+                return Err(D3d12Error::loader(
+                    "CreateSwapChainForHwnd reported SUCCESS but returned null swap-chain",
+                ));
+            }
+
+            Ok(Self {
+                inner: ComPtr(sc1_ptr),
+                config,
+                next_back_buffer_index: 0,
+                frame_counter: 0,
+                is_mock: false,
+            })
+        }
     }
 
     /// Mock-mode constructor — works on any target. Useful for substrate-
@@ -272,6 +405,13 @@ impl SwapChain {
 
     /// Issue a `Present` and advance the back-buffer index.
     ///
+    /// In mock mode bumps the indices only. In real mode dispatches through
+    /// the `IDXGISwapChain1::Present` vtable slot with the configured sync /
+    /// tearing flags. The internal back-buffer index counter is advanced
+    /// modulo `buffer_count` on success ; mirrors what `GetCurrentBackBufferIndex`
+    /// would return on a real `IDXGISwapChain3` (QI for that lands in a
+    /// follow-up · sufficient for buffer-rotation today).
+    ///
     /// # Errors
     /// `D3d12Error::Hresult` on real-FFI failure ; `Ok(())` in mock mode.
     pub fn present(&mut self) -> Result<()> {
@@ -282,11 +422,34 @@ impl SwapChain {
             self.frame_counter = self.frame_counter.wrapping_add(1);
             return Ok(());
         }
-        // Real-FFI Present would dispatch `((*vtable).Present)(self.inner.0, sync, flags)`.
-        // Not reachable in stage-0 because `create_for_hwnd` returns LoaderMissing.
-        Err(D3d12Error::loader(
-            "real-FFI present unreachable in stage-0 ; create_for_hwnd is gated",
-        ))
+
+        // Real path : dispatch through IDXGISwapChain1::Present.
+        if self.inner.is_null() {
+            return Err(D3d12Error::loader(
+                "SwapChain::present : inner ComPtr is null but is_mock=false",
+            ));
+        }
+        // SAFETY : inner is a live IDXGISwapChain1 COM object (created by
+        // `create_for_hwnd`) ; vtable cast is valid (vtable ptr is first word
+        // of every COM object). Present's signature in the vtable matches
+        // the Win32 DXGI ABI.
+        let vtable: *const IDXGISwapChain1VTable =
+            unsafe { self.inner.vtable::<IDXGISwapChain1VTable>() };
+        if vtable.is_null() {
+            return Err(D3d12Error::loader(
+                "SwapChain::present : vtable pointer is null — COM object malformed",
+            ));
+        }
+        let (sync, flags) = self.config.present_mode.as_present_args();
+        // SAFETY : all pointers live for the call ; vtable slot 8 is Present
+        // per the IDXGISwapChain layout in ffi.rs.
+        let hr = unsafe { ((*vtable).present)(self.inner.0, sync, flags) };
+        hr_check("IDXGISwapChain1::Present", hr)?;
+
+        self.next_back_buffer_index =
+            (self.next_back_buffer_index + 1) % self.config.buffer_count;
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+        Ok(())
     }
 }
 
@@ -381,6 +544,12 @@ mod tests {
         assert!(sc.resize(0, 1080).is_err());
     }
 
+    /// Dummy non-null pointer for tests that exercise validation paths
+    /// upstream of the actual DXGI call (where the pointer is never deref'd).
+    fn dummy_queue_ptr() -> *mut core::ffi::c_void {
+        1 as *mut core::ffi::c_void
+    }
+
     #[test]
     fn create_for_hwnd_with_null_hwnd_is_invalid_argument() {
         let loader = crate::ffi::Loader {
@@ -393,6 +562,7 @@ mod tests {
             &loader,
             Hwnd::null(),
             SwapChainConfig::default_1080p(),
+            dummy_queue_ptr(),
         );
         match r {
             Err(D3d12Error::InvalidArgument { .. }) => (),
@@ -412,12 +582,42 @@ mod tests {
             &loader,
             Hwnd(0xdead_beef),
             SwapChainConfig::default_1080p(),
+            dummy_queue_ptr(),
         );
         match r {
             Err(D3d12Error::LoaderMissing { .. }) => (),
             other => panic!("expected LoaderMissing, got {other:?}"),
         }
     }
+
+    #[test]
+    fn create_for_hwnd_with_null_queue_is_invalid_argument() {
+        let loader = crate::ffi::Loader {
+            d3d12_create_device: Some(1),
+            create_dxgi_factory2: Some(1),
+            d3d12_get_debug_interface: Some(1),
+            d3d12_serialize_root_signature: Some(1),
+        };
+        let r = SwapChain::create_for_hwnd(
+            &loader,
+            Hwnd(0xdead_beef),
+            SwapChainConfig::default_1080p(),
+            core::ptr::null_mut(),
+        );
+        match r {
+            Err(D3d12Error::InvalidArgument { .. }) => (),
+            other => panic!("expected InvalidArgument (null queue), got {other:?}"),
+        }
+    }
+
+    // NOTE : a real-FFI integration test exercising IDXGIFactory2::CreateSwapChainForHwnd
+    // with dummy pointers crashes DXGI with STATUS_ACCESS_VIOLATION — DXGI dereferences
+    // the queue IUnknown* and the HWND without validating them first. Real integration
+    // testing requires a live ID3D12CommandQueue + a live HWND (cssl-rt host_gpu has the
+    // full plumbing). The validation-path tests above cover the safe contract surface.
+    //
+    // A future integration test can live in cssl-host-rt or compiler-rs/tests/ once
+    // the full Device + Queue + Window bring-up is wired.
 
     #[test]
     fn present_modes_have_distinct_args() {

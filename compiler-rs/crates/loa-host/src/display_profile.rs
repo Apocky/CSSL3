@@ -518,15 +518,15 @@ mod tests {
         assert_eq!(EdidMfgHint::from_mfg_id(""), EdidMfgHint::Unknown);
         // Case-insensitive
         assert_eq!(EdidMfgHint::from_mfg_id("gsm"), EdidMfgHint::LgOled);
-        assert_eq!(EdidMfgHint::from_mfg_id("  sdc "), EdidMfgHint::SamsungAmoled);
+        assert_eq!(
+            EdidMfgHint::from_mfg_id("  sdc "),
+            EdidMfgHint::SamsungAmoled
+        );
     }
 
     #[test]
     fn edid_mfg_implied_profile_mapping() {
-        assert_eq!(
-            EdidMfgHint::LgOled.implied_profile(),
-            DisplayProfile::Oled
-        );
+        assert_eq!(EdidMfgHint::LgOled.implied_profile(), DisplayProfile::Oled);
         assert_eq!(
             EdidMfgHint::SamsungAmoled.implied_profile(),
             DisplayProfile::Amoled

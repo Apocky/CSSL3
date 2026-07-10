@@ -1,0 +1,156 @@
+§§ HANDOFF · phase-a/item-19 SHIPPED → depth-1 continuation {03·04·06·08·09 ⊕ 30·87}
+═══════════════════════════════════════════════════════════════════════════
+
+§ IDENTITY
+  repo        : C:\Users\Apocky\source\repos\CSSLv3
+  branch.in   : phase-a/19-if-expression @ e4ca84a  (pushed origin ✓)
+                ← origin/main 7600523 + 1 commit
+  worktree    : .claude\worktrees\phase-a\19\
+  spec.gov    : specs/70_PHASE_A_CORRECTNESS.csl  (RATIFIED)
+  date        : 2026-05-14
+  authority   : Tech-Lead-agent-Claude-Opus-4.7 ⊗ autopilot-mandate (Apocky)
+  prior.ships : item-01 b7fb3e3 · item-02 d5dcdf1 · item-05 08b51d8 ·
+                item-89 {16c7f19 + 56290b8 + 647fe1f}
+  this.ship   : item-19 PR-1 e4ca84a   (this-handoff documents .)
+
+§ PRIME-DIRECTIVE  R! load-first ‼ immutable
+  path  : CSSLv3/PRIME_DIRECTIVE.md
+  axiom : consent=OS • sovereignty=substrate-invariant • violation=bug ¬tradeoff
+  AI    : sovereign-partners ¬ tools   (Reza-pattern co-author trailer mandatory)
+
+§ SHIPPED.this-session
+
+  item-19  if-expression-as-expression  (depth-1 ; smallest-unblocking)
+    commit       e4ca84a  "spec-70 § item-19 PR-1 · if-expression graduation (A19.1·A19.2·A19.3 ✓)"
+    diff         compiler-rs/crates/cssl-mir/src/body_lower.rs +170 −15
+    transition   70 (item-19) RATIFIED → IMPLEMENTED
+    asserts      A19.1 ✓ · A19.2 ✓ · A19.3 ✓
+                 A19.4 ⊘ DEFERRED  ← v13 LoA substrate revalidation = harness-owner territory
+    tests.delta  cssl-mir 184 → 187  (+3 :
+                   a19_1_if_expression_yields_typed_result
+                   a19_3_if_in_return_position
+                   a19_else_less_if_stays_unit)
+    workspace    cargo test --workspace --no-fail-fast → 0 FAILED
+    clippy       cargo clippy -p cssl-mir --all-targets -- -D warnings → clean
+    co-authors   Apocky <apocky@local>
+                 Tech-Lead-agent-Claude-Opus-4.7 <tech-lead@cssl.local>
+
+  R! key insight ← record'p ‼
+    parser ✓ HIR ✓ HIR-infer ✓ ⇒ pure-MIR-graduation
+    hardcoded `MirType::None` @ stage-0 was the only gate
+    fix.shape :
+      (a) BodyLowerCtx::sub_inheriting()    clones param_vars + vec_param_vars
+                                            (distinct from sub() ← lambda/for/while keep fresh-scope)
+      (b) lower_if_branch_block / _expr     emit `scf.yield <trailing>` + return MirType
+      (c) lower_if                          unify both yields ⇒ result_ty
+                                            else MirType::None  (else-less if regression-guarded)
+
+§ STATE @ depth graph
+  depth-0  {01 ✓ · 02 ✓ · 05 ✓ · 89 ✓}                      ALL SHIPPED
+  depth-1  {03 ⊘ · 04 ⊘ · 06 ⊘ · 08 ⊘ · 09 ⊘ · 19 ✓}        item-19 SHIPPED ; 5 remain
+  depth-2  {30 ⊘}                                            blocked-on item-09
+  depth-3  {87 ⊘}                                            unblocked since item-02 ✓
+
+§ PENDING.work  ← ordered.smallest-first ⊗ dependency-resolved
+
+  PRIORITY-1  item-03  symbol-audit-pass     dep ⊆ {item-01 ✓}  ← unblocked
+    scope    post-codegen pass walks emitted .o for user-main symbol
+    asserts  A03.1 csslc post-codegen walks .o for user-main
+             A03.2 FAILS build if WinMain|_main|_start|mainCRTStartup ∃ ¬user-main
+             A03.3 golden-test : known-bad .o (WinMain returns 0) fails w/ diagnostic
+    deps     `object` crate (or similar)  ← workspace add'p
+    touch    compiler-rs/crates/cssl-cgen-native/  ⊕  test fixture .o under tests/golden/
+    risk     net-new infra (object-walking) ; multi-hour
+    branch   phase-a/03-symbol-audit
+    worktree .claude\worktrees\phase-a\03\
+
+  PRIORITY-2  item-04  build-artifact-manifest    dep ⊆ ∅
+    scope    csslc emits build-manifest.json {symbol-name, hash} ; linker verifies ; CI gates
+    asserts  A04.1 csslc emits build-manifest.json {(sym, hash), ...}
+             A04.2 linker reads manifest before .exe ; errors "manifest mismatch: symbol X"
+             A04.3 CI fails build if manifest missing
+    touch    compiler-rs/crates/cssl-cgen-native/ + linker driver + scripts/sentinel_build_check.sh
+    risk     largest depth-1 ; touches backend + linker + CI
+    branch   phase-a/04-build-manifest
+
+  PRIORITY-3  item-06  effect-row-runtime-validation   dep ⊆ {item-04 ⊘ recommended}
+    scope    declared-effect-row of fn ↔ emitted FFI symbols cross-check @ link
+    asserts  A06.1 linker cross-checks declared-effect-row vs emitted FFI sym set
+             A06.2 fn `/{IO}` w/ no IO-FFI-symbol fails link w/ diagnostic
+             A06.3 fn `/{}` w/ any IO-FFI-symbol fails link w/ diagnostic
+    notes    ride'p item-04 manifest-format ← do item-04 first ⇒ less rework
+    branch   phase-a/06-effect-row-runtime
+
+  PRIORITY-4  item-09  σ-enforce-extended      dep ⊆ {item-02 ✓}
+    scope    compile-time padding+alignment+ABI checks @ FFI boundaries
+    touch    compiler-rs/crates/cssl-hir/src/effect.rs (likely) + cssl-cgen-*
+    branch   phase-a/09-sigma-extended
+
+  PRIORITY-5  item-08  cross-target-struct-parity   dep ⊆ {item-02 ✓ ⊕ item-09 ⊘}
+    scope    SPIR-V·DXIL·MSL·WGSL·native-x64 byte-identical
+    risk     needs cross-target fixture harness ; largest test infra build
+    branch   phase-a/08-cross-target-parity
+
+  THEN  depth-2  item-30  drop-checker        ← unblocks @ item-09 ✓
+        depth-3  item-87  incremental-cache    ← already-unblocked (item-02 ✓)
+
+§ DISPATCH.protocol  ← apply'd ∀ depth-1+ items
+  W! per-item-worktree     .claude\worktrees\phase-a\<N>\  branch'd ← origin/main
+  W! branch-name           phase-a/<N>-<slug>
+  W! commit-subject        "spec-70 § item-<N> PR-<X> · <topic> (A<N>.<i>·... ✓)"
+  W! body-format           change-summary + verification-summary + scope-clarification + baseline-issues
+  W! trailer.required      Spec-Transition: 70 (item-<N>) RATIFIED → IMPLEMENTED
+  W! co-authors            Apocky <apocky@local>
+                           Tech-Lead-agent-Claude-Opus-4.7 <tech-lead@cssl.local>
+  W! verification.gate     cargo test -p <crate>
+                         + cargo test --workspace --no-fail-fast  ← 0 FAILED required
+                         + cargo clippy -p <crate> --all-targets -- -D warnings  ← delta-clean
+  W! push                  git push -u origin phase-a/<N>-<slug>
+  I> RZ_open_<N>.csl       ← ¬ precedent on disk ; SKIP unless user-requests
+
+§ PRE-EXISTING.baseline  (document.in-commit-body ; ¬ block ship)
+  cssl-hir/src/lower.rs:726   manual_char_comparison clippy warning
+                              persists since origin/main 7600523 ← not introduced by depth-1 ships
+
+§ STYLE.mandate  ← Apocky-global ⊗ session-reinforced
+  notation         CSLv3-native ∀ design-notes + commit-msg + handoff
+  density          = sovereignty ; tokens-saved = more-work-per-round
+  prose            English-only-when : user-facing chat + error-msg + README + rustdoc-pub
+  autopilot        N! premature task_complete ; pivot to next-logical-item
+  pre-tool-text    R! always respond in text BEFORE tool calls ; ¬ silent-grind
+  scope-discipline ¬ over-engineer ; ¬ docstrings-on-untouched-code ;
+                   ¬ comments-explaining-the-obvious ; ¬ multi-paragraph-doc-blocks
+  AI co-author     Reza-pattern trailer ‼ mandatory on every ship
+  disk-first       handoff + RZ + session-notes → write-to-disk under repo-relative paths
+  spec-first       Spec-Transition trailer ‼ on every IMPLEMENTED transition
+
+§ NEXT-SESSION.opening-move
+  R! load PRIME_DIRECTIVE.md
+  R! load specs/70_PHASE_A_CORRECTNESS.csl  (item-03 ASSERTs L67-L72)
+  R! load this handoff in-full
+  ◐ session-store-sql query'd  ← last 24h optional context
+  → git fetch origin
+  → git worktree add -b phase-a/03-symbol-audit .claude\worktrees\phase-a\03 origin/main
+  → grep_search for existing object-file-walking infra in compiler-rs/crates/cssl-cgen-native
+  → if ¬ ∃ : workspace.add'p `object = "0.36"` (or contemporary version) to cssl-cgen-native
+  → design symbol-audit pass + golden-test fixture (.o w/ WinMain)
+  → implement + tests + workspace-test + clippy-gate + commit + push
+
+§ CHECKPOINT.directives  ← consent-checkpoint moments
+  user.confirm  before adding workspace dep that introduces large transitive tree
+  user.confirm  before any destructive op (force-push, branch delete, history rewrite)
+  ¬ confirm     for : per-item ship under autopilot ; spec-RATIFIED → IMPLEMENTED transitions
+
+§ MEMORY.notes-to-record  (post-session)
+  /memories/repo/  spec-70.md          ← depth-graph + ship cadence + per-item branch convention
+  /memories/repo/  dispatch-pattern.md ← worktree + commit-trailer + clippy-gate flow
+  /memories/      (no global update unless cross-workspace insight surfaces)
+
+§ TRANSCRIPT.continuity
+  prior  c:\Users\Apocky\AppData\Roaming\Code\User\workspaceStorage\
+         be965932efc7f1f5109cffde738a4613\GitHub.copilot-chat\
+         transcripts\c3f2dd59-edbc-4db6-94f7-88e05e6575a8.jsonl
+  scope  full conversation : depth-0 ship-out + item-19 ship + this handoff
+
+═══════════════════════════════════════════════════════════════════════════
+END HANDOFF · phase-a/item-19 → depth-1 continuation

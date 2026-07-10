@@ -1107,7 +1107,7 @@ mod tests {
         assert_eq!(t.rank(), 0);
         // Rank-0 (scalar) tensor : numel == 1 (empty product == 1).
         assert_eq!(t.numel(), 1);
-        assert_eq!(t.shape(), []);
+        assert_eq!(t.shape(), [] as [u64; 0]);
     }
 
     #[test]
@@ -1713,3 +1713,5 @@ mod tests {
         let _ = t.share_iso();
     }
 }
+
+

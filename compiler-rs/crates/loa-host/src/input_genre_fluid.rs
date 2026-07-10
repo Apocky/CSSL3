@@ -508,7 +508,7 @@ impl BindingTable {
                 None => return Self::default(),
             };
             i += 1; // consume closing "
-            // expect ':'
+                    // expect ':'
             while i < bytes.len() && bytes[i] != b':' {
                 i += 1;
             }
@@ -683,7 +683,11 @@ impl InputModeRouter {
             return;
         }
         // Different source : decide based on the grace-window.
-        let prev_last = self.last_event_ms.get(&prev_active_id).copied().unwrap_or(0);
+        let prev_last = self
+            .last_event_ms
+            .get(&prev_active_id)
+            .copied()
+            .unwrap_or(0);
         // If the previous active source has not received an event in
         // GRACE_WINDOW_MS, switch immediately. Otherwise switch only if the
         // grace elapsed since the previous event from the previously-active
@@ -953,11 +957,7 @@ mod tests {
     fn binding_remap_roundtrip_replaces() {
         let mut t = BindingTable::defaults();
         // Default Jump on KB+M is Space (0x20). Remap to V (0x56).
-        t.remap(
-            InputMode::KeyboardMouse,
-            Action::Jump,
-            Binding::new(0x56),
-        );
+        t.remap(InputMode::KeyboardMouse, Action::Jump, Binding::new(0x56));
         let b = t.get(InputMode::KeyboardMouse, Action::Jump).unwrap();
         assert_eq!(b.code, 0x56);
         assert!(!b.hold_to_toggle);

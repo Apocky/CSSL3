@@ -548,7 +548,10 @@ impl RadarState {
         let sin_y = self.player_yaw_rad.sin();
         let rx = nx * cos_y + nz * sin_y;
         let rz = -nx * sin_y + nz * cos_y;
-        Some((self.center_x + rx * self.radius_px, self.center_y + rz * self.radius_px))
+        Some((
+            self.center_x + rx * self.radius_px,
+            self.center_y + rz * self.radius_px,
+        ))
     }
 
     /// Compute the 8 compass-tick screen positions in N, NE, E, ... order.
@@ -1075,12 +1078,7 @@ impl FpsHud {
 
 /// Push the crosshair (style + bloom-spread + flash-color) at screen-center.
 /// Returns vertex count emitted.
-pub fn push_crosshair(
-    sw: f32,
-    sh: f32,
-    state: &CrosshairState,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn push_crosshair(sw: f32, sh: f32, state: &CrosshairState, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     let cx = sw * 0.5;
     let cy = sh * 0.5;
@@ -1098,7 +1096,14 @@ pub fn push_crosshair(
             push_solid_rect(out, cx + off, cy - thick * 0.5, len, thick, color);
         }
         CrosshairStyle::Dot => {
-            push_solid_rect(out, cx - thick * 1.5, cy - thick * 1.5, thick * 3.0, thick * 3.0, color);
+            push_solid_rect(
+                out,
+                cx - thick * 1.5,
+                cy - thick * 1.5,
+                thick * 3.0,
+                thick * 3.0,
+                color,
+            );
         }
         CrosshairStyle::Circle => {
             // Approximate by 8 small dots around a unit circle.
@@ -1117,20 +1122,29 @@ pub fn push_crosshair(
         }
         CrosshairStyle::PlusCross => {
             // Plus sign : full vertical + full horizontal at center.
-            push_solid_rect(out, cx - thick * 0.5, cy - off - len, thick, len * 2.0 + off * 2.0, color);
-            push_solid_rect(out, cx - off - len, cy - thick * 0.5, len * 2.0 + off * 2.0, thick, color);
+            push_solid_rect(
+                out,
+                cx - thick * 0.5,
+                cy - off - len,
+                thick,
+                len * 2.0 + off * 2.0,
+                color,
+            );
+            push_solid_rect(
+                out,
+                cx - off - len,
+                cy - thick * 0.5,
+                len * 2.0 + off * 2.0,
+                thick,
+                color,
+            );
         }
     }
     out.len() - n0
 }
 
 /// Push the ammo counter at the bottom-right corner.
-pub fn push_ammo_counter(
-    sw: f32,
-    sh: f32,
-    ammo: &AmmoCounter,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn push_ammo_counter(sw: f32, sh: f32, ammo: &AmmoCounter, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     let scale = TEXT_SCALE * 1.5; // bigger ammo text
     let glyph_w = (CELL_W as f32) * scale;
@@ -1175,7 +1189,14 @@ pub fn push_radar(
     for (tx, ty, label) in radar.compass_ticks() {
         push_solid_rect(out, tx - 1.5, ty - 1.5, 3.0, 3.0, COLOR_RADAR_TICK);
         if label == "N" {
-            build_text_quads(label, tx + 4.0, ty - 6.0, COLOR_WHITE, TEXT_SCALE * 0.75, out);
+            build_text_quads(
+                label,
+                tx + 4.0,
+                ty - 6.0,
+                COLOR_WHITE,
+                TEXT_SCALE * 0.75,
+                out,
+            );
         }
     }
 
@@ -1202,11 +1223,7 @@ pub fn push_radar(
 }
 
 /// Push the objective tracker at the top-right.
-pub fn push_objective(
-    sw: f32,
-    obj: &ObjectiveTracker,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn push_objective(sw: f32, obj: &ObjectiveTracker, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     if !obj.visible {
         return 0;
@@ -1220,7 +1237,11 @@ pub fn push_objective(
     let approx_w = (line1.len().max(line2.len()) as f32) * glyph_w;
     let x = sw - approx_w - pad;
     let y = 70.0;
-    let color = if obj.is_behind() { COLOR_DIM_TEXT } else { COLOR_HIGHLIGHT };
+    let color = if obj.is_behind() {
+        COLOR_DIM_TEXT
+    } else {
+        COLOR_HIGHLIGHT
+    };
     build_shadowed_text(&line1, x, y, color, scale, out);
     build_shadowed_text(&line2, x, y + 22.0, COLOR_WHITE, scale, out);
 
@@ -1235,10 +1256,7 @@ pub fn push_objective(
 }
 
 /// Push all active damage-floaters.
-pub fn push_damage_floaters(
-    pool: &DamageFloaterPool,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn push_damage_floaters(pool: &DamageFloaterPool, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     for f in &pool.slots {
         if !f.is_active() {
@@ -1246,7 +1264,11 @@ pub fn push_damage_floaters(
         }
         let mut col = f.tier_color();
         col[3] = f.current_alpha();
-        let scale = if f.is_crit { TEXT_SCALE * 1.4 } else { TEXT_SCALE };
+        let scale = if f.is_crit {
+            TEXT_SCALE * 1.4
+        } else {
+            TEXT_SCALE
+        };
         let s = format!("{}", f.damage);
         build_shadowed_text(&s, f.origin_x, f.current_y(), col, scale, out);
     }
@@ -1271,12 +1293,33 @@ pub fn push_health_shield(
     let health_y = sh - pad - bar_h;
 
     // Background (slate).
-    push_solid_rect(out, x - 2.0, shield_y - 2.0, bar_w + 4.0, bar_h, [0.05, 0.06, 0.10, 0.85]);
-    push_solid_rect(out, x - 2.0, health_y - 2.0, bar_w + 4.0, bar_h, [0.05, 0.06, 0.10, 0.85]);
+    push_solid_rect(
+        out,
+        x - 2.0,
+        shield_y - 2.0,
+        bar_w + 4.0,
+        bar_h,
+        [0.05, 0.06, 0.10, 0.85],
+    );
+    push_solid_rect(
+        out,
+        x - 2.0,
+        health_y - 2.0,
+        bar_w + 4.0,
+        bar_h,
+        [0.05, 0.06, 0.10, 0.85],
+    );
 
     // Shield fill.
     let s_fill = bar_w * bar.shield_norm.clamp(0.0, 1.0);
-    push_solid_rect(out, x, shield_y, s_fill, bar_h - 4.0, palette.shield_color());
+    push_solid_rect(
+        out,
+        x,
+        shield_y,
+        s_fill,
+        bar_h - 4.0,
+        palette.shield_color(),
+    );
 
     // Health fill (pulses red when low).
     let h_color = if bar.pulse_visible() {
@@ -1290,11 +1333,7 @@ pub fn push_health_shield(
 }
 
 /// Push the multiplayer score / team indicator at the top-center.
-pub fn push_score_team(
-    sw: f32,
-    score: &ScoreTeamIndicator,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn push_score_team(sw: f32, score: &ScoreTeamIndicator, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     if !score.multiplayer_active {
         return 0;
@@ -1341,12 +1380,7 @@ pub fn push_reload_indicator(
 }
 
 /// Push the x-shape hit-marker at screen-center.
-pub fn push_hit_marker(
-    sw: f32,
-    sh: f32,
-    marker: &HitMarker,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn push_hit_marker(sw: f32, sh: f32, marker: &HitMarker, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     if !marker.is_visible() {
         return 0;
@@ -1359,7 +1393,14 @@ pub fn push_hit_marker(
     col[3] = marker.current_alpha();
     // 4 small diagonal pips (X-shape).
     for &(dx, dy) in &[(half, half), (-half, half), (half, -half), (-half, -half)] {
-        push_solid_rect(out, cx + dx - thick * 0.5, cy + dy - thick * 0.5, thick, thick, col);
+        push_solid_rect(
+            out,
+            cx + dx - thick * 0.5,
+            cy + dy - thick * 0.5,
+            thick,
+            thick,
+            col,
+        );
     }
     // Subtle connecting bars (X arms).
     let arm = 8.0;
@@ -1369,11 +1410,7 @@ pub fn push_hit_marker(
 }
 
 /// Push the killfeed at the top-right (below the objective tracker).
-pub fn push_killfeed(
-    sw: f32,
-    feed: &Killfeed,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn push_killfeed(sw: f32, feed: &Killfeed, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     let scale = TEXT_SCALE;
     let glyph_w = (CELL_W as f32) * scale;
@@ -1398,12 +1435,7 @@ pub fn push_killfeed(
 
 /// Top-level frame builder. Caller-supplied `Vec<UiVertex>` ; observes
 /// every `HudVisibility` toggle. Returns the count of vertices appended.
-pub fn build_fps_hud_vertices(
-    sw: f32,
-    sh: f32,
-    hud: &FpsHud,
-    out: &mut Vec<UiVertex>,
-) -> usize {
+pub fn build_fps_hud_vertices(sw: f32, sh: f32, hud: &FpsHud, out: &mut Vec<UiVertex>) -> usize {
     let n0 = out.len();
     let v = &hud.visibility;
     if v.radar {
@@ -1661,7 +1693,10 @@ mod tests {
         }
         assert_eq!(r.enemy_pings.len(), RADAR_ENEMY_CAP);
         // Newest entry survives.
-        assert!(r.enemy_pings.iter().any(|b| (b.world_x - (RADAR_ENEMY_CAP as f32 + 4.0)).abs() < 1e-3));
+        assert!(r
+            .enemy_pings
+            .iter()
+            .any(|b| (b.world_x - (RADAR_ENEMY_CAP as f32 + 4.0)).abs() < 1e-3));
     }
 
     #[test]
@@ -1865,7 +1900,12 @@ mod tests {
                 let a = palettes[i].enemy_color();
                 let b = palettes[j].enemy_color();
                 let delta = (a[0] - b[0]).abs() + (a[1] - b[1]).abs() + (a[2] - b[2]).abs();
-                assert!(delta > 0.05, "palettes {} vs {} too close", palettes[i].label(), palettes[j].label());
+                assert!(
+                    delta > 0.05,
+                    "palettes {} vs {} too close",
+                    palettes[i].label(),
+                    palettes[j].label()
+                );
             }
         }
     }
@@ -1933,7 +1973,9 @@ mod tests {
         assert_eq!(r.segments_filled(), RELOAD_INDICATOR_SEGMENTS);
         r.update(0.5, true);
         let half = r.segments_filled();
-        assert!(half >= RELOAD_INDICATOR_SEGMENTS / 2 - 1 && half <= RELOAD_INDICATOR_SEGMENTS / 2 + 1);
+        assert!(
+            half >= RELOAD_INDICATOR_SEGMENTS / 2 - 1 && half <= RELOAD_INDICATOR_SEGMENTS / 2 + 1
+        );
         // Hidden indicator emits zero segments regardless of progress.
         r.update(0.5, false);
         assert_eq!(r.segments_filled(), 0);
@@ -1964,7 +2006,10 @@ mod tests {
         assert_eq!(hud.crosshair.flash_frames_remaining, 0);
         assert!(!hud.hit_marker.is_visible());
         assert_eq!(hud.damage_floaters.active_count(), 0);
-        assert!(hud.killfeed.entries.is_empty(), "killfeed should expire after >5s");
+        assert!(
+            hud.killfeed.entries.is_empty(),
+            "killfeed should expire after >5s"
+        );
         assert!(hud.radar.enemy_pings.is_empty());
     }
 }

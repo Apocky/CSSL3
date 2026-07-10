@@ -75,7 +75,11 @@ impl Camera {
 
     /// Spawn-with-position (e.g. for scene-load).
     pub fn at(pos: [f32; 3]) -> Self {
-        Self { pos, yaw: 0.0, pitch: 0.0 }
+        Self {
+            pos,
+            yaw: 0.0,
+            pitch: 0.0,
+        }
     }
 
     /// Forward unit-vector in world-space. Used by physics + render.
@@ -86,11 +90,7 @@ impl Camera {
     ///   right was -X, causing inverted strafe (Apocky play-test report).
     pub fn forward(&self) -> [f32; 3] {
         let cp = self.pitch.cos();
-        [
-            self.yaw.sin() * cp,
-            self.pitch.sin(),
-            -self.yaw.cos() * cp,
-        ]
+        [self.yaw.sin() * cp, self.pitch.sin(), -self.yaw.cos() * cp]
     }
 
     /// Right unit-vector. Always horizontal (y=0) — independent of pitch.
@@ -110,8 +110,8 @@ impl Camera {
     pub fn apply_look(&mut self, frame: &InputFrame) {
         self.yaw += frame.yaw_delta * MOUSE_SENSITIVITY;
         self.pitch -= frame.pitch_delta * MOUSE_SENSITIVITY; // mouse-up = look-up
-        // Wrap yaw to keep numerically stable across long sessions. Use modulo
-        // to handle arbitrarily-large deltas in O(1) rather than a while-loop.
+                                                             // Wrap yaw to keep numerically stable across long sessions. Use modulo
+                                                             // to handle arbitrarily-large deltas in O(1) rather than a while-loop.
         let tau = std::f32::consts::TAU;
         self.yaw = self.yaw.rem_euclid(tau);
         if self.yaw > tau * 0.5 {
@@ -132,7 +132,11 @@ impl Camera {
         };
         // Normalize horizontal input so diagonal isn't faster.
         let horiz_mag = frame.forward.hypot(frame.right);
-        let inv_mag = if horiz_mag > 1.0e-3 { 1.0 / horiz_mag } else { 1.0 };
+        let inv_mag = if horiz_mag > 1.0e-3 {
+            1.0 / horiz_mag
+        } else {
+            1.0
+        };
         let f = self.forward();
         let r = self.right();
         // Horizontal motion uses the camera's forward (which has y-component
@@ -226,10 +230,7 @@ pub fn camera_basis_xz(camera: &Camera) -> ([f32; 2], [f32; 2]) {
     let r = camera.right();
     let f_mag = f[0].hypot(f[2]).max(1.0e-6);
     let r_mag = r[0].hypot(r[2]).max(1.0e-6);
-    (
-        [f[0] / f_mag, f[2] / f_mag],
-        [r[0] / r_mag, r[2] / r_mag],
-    )
+    ([f[0] / f_mag, f[2] / f_mag], [r[0] / r_mag, r[2] / r_mag])
 }
 
 /// Light shim for the movement-aug intent struct (kept type-compatible with

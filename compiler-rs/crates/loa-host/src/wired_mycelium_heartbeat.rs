@@ -30,9 +30,9 @@
 
 pub use cssl_host_mycelium_heartbeat::{
     BackpressureQueue, BundleError, CloudHealth, FederationBundle, FederationCapPolicy,
-    FederationKind, FederationPattern, FederationPatternBuilder, HeartbeatRing,
-    HeartbeatService, HeartbeatServiceBuilder, HeartbeatStats, PatternError, PurgeRequest,
-    CAP_FED_EMIT_ALLOWED, DEFAULT_HEARTBEAT_PERIOD_SECS, K_ANONYMITY_FLOOR,
+    FederationKind, FederationPattern, FederationPatternBuilder, HeartbeatRing, HeartbeatService,
+    HeartbeatServiceBuilder, HeartbeatStats, PatternError, PurgeRequest, CAP_FED_EMIT_ALLOWED,
+    DEFAULT_HEARTBEAT_PERIOD_SECS, K_ANONYMITY_FLOOR,
 };
 use std::sync::Arc;
 
@@ -146,7 +146,7 @@ mod tests {
     fn tick_period_elapsed_default_deny() {
         let mut s = make_state();
         s.set_period_ms(100.0); // shorten for the test
-        // Two frames of 60ms each → 120ms > 100ms period.
+                                // Two frames of 60ms each → 120ms > 100ms period.
         let _ = tick(&mut s, 60.0, 1_700_000_000, false);
         let r = tick(&mut s, 60.0, 1_700_000_001, false); // CAP DENIED
         assert!(r.is_none());

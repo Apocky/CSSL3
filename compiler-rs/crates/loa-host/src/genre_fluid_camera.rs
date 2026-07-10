@@ -263,7 +263,12 @@ impl GenreFluidCamera {
     /// the primitive `Camera` ready for view/proj-matrix derivation.
     #[must_use]
     pub fn current_camera(&self) -> Camera {
-        let src_pose = pose_for(self.mode, self.player_focus, self.player_yaw, self.player_pitch);
+        let src_pose = pose_for(
+            self.mode,
+            self.player_focus,
+            self.player_yaw,
+            self.player_pitch,
+        );
         let pose = match self.target_mode {
             None => src_pose,
             Some(t) => {
@@ -294,10 +299,10 @@ impl GenreFluidCamera {
     pub fn effective_proj(&self, aspect: f32) -> Mat4 {
         let h = self.effective_ortho_half_height();
         let blend = cubic_ease(self.progress);
-        let pure_persp = !self.mode.is_orthographic()
-            && self.target_mode.is_none_or(|t| !t.is_orthographic());
-        let pure_ortho = self.mode.is_orthographic()
-            && self.target_mode.is_none_or(|t| t.is_orthographic());
+        let pure_persp =
+            !self.mode.is_orthographic() && self.target_mode.is_none_or(|t| !t.is_orthographic());
+        let pure_ortho =
+            self.mode.is_orthographic() && self.target_mode.is_none_or(|t| t.is_orthographic());
         if pure_persp {
             self.current_camera().proj(aspect)
         } else if pure_ortho {
@@ -673,10 +678,7 @@ mod tests {
     fn dm_orchestrated_trigger_accepted_when_sovereign_enabled() {
         let mut g = GenreFluidCamera::new();
         g.set_transition_duration_ms(0);
-        let ok = g.request_mode_switch(
-            CameraMode::TopDown,
-            TransitionSource::DmOrchestrated,
-        );
+        let ok = g.request_mode_switch(CameraMode::TopDown, TransitionSource::DmOrchestrated);
         assert!(ok);
         g.tick(1);
         assert_eq!(g.mode(), CameraMode::TopDown);
@@ -691,10 +693,7 @@ mod tests {
         let mut g = GenreFluidCamera::new();
         g.set_transition_duration_ms(0);
         g.revoke_sovereign();
-        let ok = g.request_mode_switch(
-            CameraMode::Isometric,
-            TransitionSource::DmOrchestrated,
-        );
+        let ok = g.request_mode_switch(CameraMode::Isometric, TransitionSource::DmOrchestrated);
         assert!(!ok);
         // Should still be FpsLocked (post-revoke restore-target).
         assert_eq!(g.mode(), CameraMode::FpsLocked);
@@ -719,10 +718,7 @@ mod tests {
         let mut g = GenreFluidCamera::new();
         g.set_transition_duration_ms(0);
         g.revoke_sovereign();
-        let ok = g.request_mode_switch(
-            CameraMode::TopDown,
-            TransitionSource::PlayerToggle,
-        );
+        let ok = g.request_mode_switch(CameraMode::TopDown, TransitionSource::PlayerToggle);
         assert!(ok);
         g.tick(1);
         assert_eq!(g.mode(), CameraMode::TopDown);
@@ -776,7 +772,10 @@ mod tests {
         let cam = g.current_camera();
         // Camera should be BEHIND player (negative -Z facing means cam is +Z).
         assert!(cam.position.z > 0.0, "3rd-person should be behind player");
-        assert!(cam.position.y > FPS_EYE_HEIGHT, "should be above eye-height");
+        assert!(
+            cam.position.y > FPS_EYE_HEIGHT,
+            "should be above eye-height"
+        );
     }
 
     #[test]
@@ -813,10 +812,7 @@ mod tests {
         g.grant_sovereign();
         assert!(g.sovereign_enabled());
         // DM-orchestrated should now work again.
-        let ok = g.request_mode_switch(
-            CameraMode::Isometric,
-            TransitionSource::DmOrchestrated,
-        );
+        let ok = g.request_mode_switch(CameraMode::Isometric, TransitionSource::DmOrchestrated);
         assert!(ok);
     }
 }

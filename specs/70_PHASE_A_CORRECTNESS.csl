@@ -48,10 +48,15 @@
 §I OBSERVABLE-ASSERTIONS [MANDATORY]
   ⟦
     item-01 ASSERTs :
-      A01.1 · csslc-rt prologue writes 0xC0FFEE to %CSSL_SENTINEL_PATH% before user-main runs
-      A01.2 · csslc-rt epilogue writes 0xDEADBEEF after user-main returns (covers normal-exit path)
+      A01.1 · csslc-rt prologue writes 0xC0FFEE to %CSSL_SENTINEL_PATH% before user-main runs  ✓ IMPL b7fb3e3
+      A01.2 · csslc-rt epilogue writes 0xDEADBEEF after user-main returns (normal-exit path)   ✓ IMPL b7fb3e3
       A01.3 · scripts/sentinel_build_check.sh exits 0 PASS on cssl-built .exe with both magic bytes present
+              ◐ DEFERRED · gated on item-05 end-to-end harness · expected-green @ depth-0.merged
       A01.4 · sentinel_build_check.sh exits 2 DEGRADED if exe alive but contract not-honored (transitional)
+              ◐ DEFERRED · gated on item-05 end-to-end harness · expected-green @ depth-0.merged
+      A01.5 · sentinel-path must canonicalize under %TEMP% or pwd · else write event to sentinel.skip JSONL
+              ‼ RATIFIED-AMENDMENT 2026-05-14 via PR-1 critical-thinking · FM.3-class hardening accepted-into-spec
+              ✓ IMPL b7fb3e3 · sentinel_path_validated + sentinel_path_in_sandbox + SENTINEL_ENV_LOCK
     
     item-02 ASSERTs :
       A02.1 · `csslc compile bad.cssl` where bad.cssl has `fn f(x : u32) -> i64 { x }` fails with
@@ -274,15 +279,29 @@
     OQ.05 · item-30 drop-checker : interaction with linear types from spec-12?
              default · linear types (iso) require consume · drop-checker enforces this at scope-exit
                        drop-checker = runtime-witness of compile-time-enforced linearity
+    OQ.06 · item-01 PR-1 surfaced : sentinel_path needs sandbox-canonicalization against arbitrary-write attack
+             RESOLVED · 2026-05-14 · ratified-amendment per A01.5
+             rationale · attacker-controlled CSSL_SENTINEL_PATH could write magic-bytes outside %TEMP%/pwd
+                          defense-in-depth · sentinel.skip JSONL preserves observability when path-rejected
+             canonical-example of work-style P1 (critical-think-¬-comply) catching what the spec missed
   ⟧
 
 § LIFECYCLE-HISTORY
   ⟦
-    2026-05-14 · DRAFT     · Tech-Lead-agent (Claude Opus 4.7) · initial · Phase-A.bundle
-    2026-05-14 · REVIEWED  · self-reviewed against spec-64 §III lifecycle · sufficient as bundle-spec
-    2026-05-14 · RATIFIED  · Apocky-Tech-Lead delegation @ creative-control · this file IS the ratification
-    [pending]    · IMPLEMENTED · awaits Phase-A.depth-0 fanout · 4-agents spawn
-    [pending]    · VERIFIED   · awaits per-item ASSERT.X CI verification · 5-consecutive-pass per item
+    2026-05-14 · DRAFT             · Tech-Lead-agent (Claude Opus 4.7) · initial · Phase-A.bundle
+    2026-05-14 · REVIEWED          · self-reviewed against spec-64 §III lifecycle · sufficient as bundle-spec
+    2026-05-14 · RATIFIED          · Apocky-Tech-Lead delegation @ creative-control · this file IS the ratification
+    2026-05-14 · IMPL-PARTIAL/01   · item-01 · commit b7fb3e3 @ phase-a/01-sentinel-return
+                                       A01.1 ✓ A01.2 ✓ · A01.3/A01.4 ◐ deferred-to-item-05-harness
+                                       A01.5 ‼ ratified-amendment (sandbox-canonicalize) · IMPL same-commit
+                                       15/15 cssl-rt loa_startup tests pass · cargo+clippy clean
+                                       trailer : Spec-Transition: 70 (item-01) RATIFIED → IMPLEMENTED-PARTIAL
+    [pending]    · IMPL-PARTIAL/02 · awaits phase-a/02-recognizer-mismatch merge
+    [pending]    · IMPL-PARTIAL/05 · awaits phase-a/05-run-observe-gate merge · unblocks A01.3/A01.4
+    [pending]    · IMPL-PARTIAL/89 · awaits phase-a/89-diagnostics-carets merge
+    [pending]    · DEPTH-0-COMPLETE · unlocks depth-1 fanout {03·04·06·08·09·19}
+    [pending]    · IMPLEMENTED      · all 12 items merged · spec-70 substantively complete
+    [pending]    · VERIFIED         · per-item ASSERT.X CI · 5-consecutive-pass per item
   ⟧
 
 § ATTESTATION

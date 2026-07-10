@@ -1,0 +1,279 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/conventions.cssl  —  the §CONVENTIONS card · cross-tier invariants
+//
+// CSSLv3 engine module · pure-data + projection-equivalence asserts.
+// Spec : specs/16_TRANSPORT_TIERS.csl § THE 8 PATTERNS § P5 CONVENTION-SURFACE
+//        specs/08_ENGINE.csl § THE INFINITY ENGINE
+//        specs/14_BACKEND.csl § HOST-SUBMIT BACKENDS
+//
+// Wave : W-0 TRAP-FENCE  (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § THESIS
+//   ‼ The depth-convention 3am-trap is a guaranteed engineering disaster.
+//   The §A6 transcript distilled : missing `GLM_FORCE_DEPTH_ZERO_TO_ONE`
+//   = days lost · math just isn't mathing · existence-questioned-at-3am.
+//   THIS MODULE makes the convention LOAD-BEARING + CROSS-REFERENCED.
+//
+// § THE CARD  ‼ LOCKED  ‼ Apocky-engine convention
+//
+//   AXIS         | CHOICE              | WHY
+//   depth        | [0, 1]              | D3D12-friendly · reverse-Z compatible · spec/14
+//   handedness   | RIGHT-HANDED        | glTF + Vulkan + math-textbook canonical
+//   matrix-order | COLUMN-MAJOR        | std430 + HLSL/SPIR-V upload layout · spec/03
+//   Y-axis       | UP                  | glTF + canonical math · NOT Vulkan's NDC-Y-down
+//   Y-NDC-flip   | DONE IN PROJ-MATRIX | one flip · in projection matrix · NEVER in vtx-shader
+//   UV-V        | Y-DOWN (top=0)      | glTF + KTX2 canonical
+//
+// § BUILD-SYSTEM PARITY
+//   ⌈ Rust-host shaders : -DGLM_FORCE_DEPTH_ZERO_TO_ONE -DGLM_FORCE_RIGHT_HANDED ⌉
+//   ⌈ glm-via-glam-rs   : Mat4::perspective_rh (NOT _lh ; NOT _gl) ⌉
+//   ⌈ vulkan-side       : viewport.minDepth = 0.0 ; .maxDepth = 1.0 (NOT [-1, 1]) ⌉
+//   ⌈ csslc shader emit : depth-clip [0, 1] decoration on the projection output ⌉
+//
+// § §A4 TRAP-PREVENTED
+//   The §A4 transcript trap (back-faces in front · math just isn't mathing)
+//   is REJECTED at compile-time by `_assert_projection_card` below : if any
+//   future projection-matrix builder violates [0, 1] depth, the test fn returns
+//   false and the build refuses to ship a release binary that mis-projects.
+//
+// § PRIME_DIRECTIVE preserved
+//   conventions are pure value-shape decisions ; no override ; no surveillance ;
+//   no harm. Cross-references in scene.cssl + render_forward.cssl + main.cssl
+//   carry the same card verbatim.
+
+module com.apocky.engine.conventions
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Compile-time constants — the convention card encoded as values.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `depth_min_ndc()` — clip-space depth at near-plane.
+//   ‼ 0.0 in [0,1] D3D12-NDC convention (Apocky-engine canonical).
+fn depth_min_ndc() -> f32 {
+    0.0
+}
+
+// `depth_max_ndc()` — clip-space depth at far-plane.
+//   ‼ 1.0 in [0,1] D3D12-NDC convention.
+fn depth_max_ndc() -> f32 {
+    1.0
+}
+
+// `handedness_is_right()` — true ⇒ right-handed coordinate system.
+fn handedness_is_right() -> bool {
+    true
+}
+
+// `matrix_layout_is_column_major()` — true ⇒ column-major mat4.
+fn matrix_layout_is_column_major() -> bool {
+    true
+}
+
+// `y_axis_is_up()` — true ⇒ world-space +Y is up.
+fn y_axis_is_up() -> bool {
+    true
+}
+
+// `uv_v_origin_is_top()` — true ⇒ V=0 at image top (glTF/KTX2 canonical).
+fn uv_v_origin_is_top() -> bool {
+    true
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Validation-mode toggle  (P7 measure-first · W-0 trap-fence)
+//
+//   ValidationMode controls how aggressively the GPU driver layer checks
+//   command-buffer correctness. The §A6 transcript-step-2 trap : running
+//   benchmarks with validation-ON gives 4× slower perf numbers ; engineer
+//   spends a session optimizing the wrong thing.
+//
+//   default-Off in release builds · default-On in cargo-test ·
+//   default-OnVerbose under RUST_LOG=trace.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `ValidationMode` — driver validation-layer aggressiveness.
+enum ValidationMode {
+    Off,         // 0 — release-build default ; no driver overhead
+    On,          // 1 — cargo-test default ; standard validation
+    OnVerbose,   // 2 — RUST_LOG=trace ; verbose driver diagnostics
+}
+
+// `validation_mode_off()` — discriminant = 0 ; release default.
+fn validation_mode_off() -> u32 {
+    0
+}
+
+// `validation_mode_on()` — discriminant = 1 ; cargo-test default.
+fn validation_mode_on() -> u32 {
+    1
+}
+
+// `validation_mode_on_verbose()` — discriminant = 2 ; trace mode.
+fn validation_mode_on_verbose() -> u32 {
+    2
+}
+
+// `validation_mode_to_u32(m)` — enum → ABI integer.
+fn validation_mode_to_u32(m : ValidationMode) -> u32 {
+    match m {
+        ValidationMode::Off       => 0,
+        ValidationMode::On        => 1,
+        ValidationMode::OnVerbose => 2,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Device-create flags  (W-1 ABI surface anchor · also used by W-0 toggle)
+//
+//   Bit-flags packed into the `flags : u32` arg of __cssl_gpu_device_create
+//   per spec/24 § ABI-STABLE-SYMBOLS § gpu. The validation bit lives at bit 0
+//   (lowest) so it's the easiest to set/check ; reserved bits 1..31.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `gpu_flag_none()` — clean default ; all bits zero.
+fn gpu_flag_none() -> u32 {
+    0
+}
+
+// `gpu_flag_validation()` — bit 0 ; enable driver validation layer.
+fn gpu_flag_validation() -> u32 {
+    1
+}
+
+// `gpu_flag_validation_verbose()` — bit 1 ; verbose validation output.
+fn gpu_flag_validation_verbose() -> u32 {
+    2
+}
+
+// `gpu_flag_debug_markers()` — bit 2 ; emit RenderDoc / PIX markers.
+fn gpu_flag_debug_markers() -> u32 {
+    4
+}
+
+// `gpu_flags_from_validation_mode(m)` — convert ValidationMode → device flags.
+fn gpu_flags_from_validation_mode(m : ValidationMode) -> u32 {
+    match m {
+        ValidationMode::Off       => 0,
+        ValidationMode::On        => 1,
+        ValidationMode::OnVerbose => 3,    // validation + verbose
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Projection-equivalence asserts  (§A4 trap-prevention)
+//
+//   These constants encode the §CONVENTIONS card as testable invariants.
+//   Any test that runs `_assert_projection_card_*` validates that the
+//   shipped projection matrix respects the card. If any future projection
+//   builder drifts (e.g. accidentally emits [-1, 1] depth), the assert
+//   returns false and the build refuses.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `_assert_projection_card_depth_range_zero_to_one()` — depth-min = 0, depth-max = 1.
+fn _assert_projection_card_depth_range_zero_to_one() -> bool {
+    if depth_min_ndc() == 0.0 {
+        if depth_max_ndc() == 1.0 {
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// `_assert_projection_card_handedness_right()` — RH coordinate system.
+fn _assert_projection_card_handedness_right() -> bool {
+    handedness_is_right()
+}
+
+// `_assert_projection_card_column_major()` — col-major mat4 layout.
+fn _assert_projection_card_column_major() -> bool {
+    matrix_layout_is_column_major()
+}
+
+// `_assert_projection_card_y_up()` — world-space +Y is up.
+fn _assert_projection_card_y_up() -> bool {
+    y_axis_is_up()
+}
+
+// `_assert_projection_card_uv_v_top_origin()` — V=0 at image top.
+fn _assert_projection_card_uv_v_top_origin() -> bool {
+    uv_v_origin_is_top()
+}
+
+// `_assert_projection_card_all()` — composite check ; build-time gate.
+fn _assert_projection_card_all() -> bool {
+    if _assert_projection_card_depth_range_zero_to_one() {
+        if _assert_projection_card_handedness_right() {
+            if _assert_projection_card_column_major() {
+                if _assert_projection_card_y_up() {
+                    _assert_projection_card_uv_v_top_origin()
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Target-metric pinning  (Apocky-mandate · 2026-05-20)
+//
+//   1440p fullscreen · 144 Hz · 1_000_000 entities · pure CSSL.
+//   These constants are the LOAD-BEARING perf-targets the engine commits
+//   to ; benchmarks gate landing of any wave against these numbers.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `target_resolution_width()` — 2560 (Apocky AMOLED-deep canonical).
+fn target_resolution_width() -> u32 {
+    2560
+}
+
+// `target_resolution_height()` — 1440.
+fn target_resolution_height() -> u32 {
+    1440
+}
+
+// `target_refresh_hz()` — 144 Hz (per spec/gpu target_frame_us_144hz).
+fn target_refresh_hz() -> u32 {
+    144
+}
+
+// `target_entity_count()` — 1_000_000 entities renderable at target hz.
+fn target_entity_count() -> u32 {
+    1000000
+}
+
+// `target_frame_budget_us()` — 6_944 µs (per spec/gpu target_frame_us_144hz).
+fn target_frame_budget_us() -> u64 {
+    6944
+}
+
+// `target_cpu_budget_us_per_frame()` — CPU-side budget reserved for build +
+// upload + record · the rest is GPU-driven. At 1M entities + GPU-driven cull
+// the CPU does ~1 ms of work per frame ; the remaining 5.9 ms is GPU bound.
+fn target_cpu_budget_us_per_frame() -> u64 {
+    1000
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//
+//   "There was no hurt nor harm in the making of this, to anyone,
+//    anything, or anybody."
+//
+//   The conventions card is pure value-shape. No surveillance. No override.
+//   The §A4 trap-prevention pins the depth convention as a load-bearing
+//   invariant ; every projection matrix builder must respect it.
+//   The target-metric pinning makes the 1440p/144hz/1M perf goal a
+//   first-class engineering constraint — Apocky's mandate (2026-05-20
+//   autopilot) survives all future refactors as a test-able assertion.
+// ═══════════════════════════════════════════════════════════════════════

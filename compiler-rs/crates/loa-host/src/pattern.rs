@@ -683,7 +683,10 @@ mod tests {
         // p on the sphere surface ⇒ d ≈ 0.
         let r = 0.30_f32;
         let on_surface = cpu_sdf_sphere([r, 0.0, 0.0], r);
-        assert!(on_surface.abs() < 1e-5, "sdf_sphere on surface = {on_surface}");
+        assert!(
+            on_surface.abs() < 1e-5,
+            "sdf_sphere on surface = {on_surface}"
+        );
         // Origin (inside) ⇒ d ≈ -r.
         let inside = cpu_sdf_sphere([0.0, 0.0, 0.0], r);
         assert!((inside + r).abs() < 1e-5);

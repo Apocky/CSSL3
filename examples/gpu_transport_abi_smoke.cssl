@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § examples/gpu_transport_abi_smoke.cssl
+// Direct W-1 GPU transport ABI smoke: exercises MIR lowering + Cranelift
+// import generation for the new 16-symbol transport ladder.
+
+module examples.gpu_transport_abi_smoke
+
+fn main() -> i32 {
+    let dev = gpu::device_create(0, 0) ;
+    if dev == 0 {
+        return 1 ;
+    }
+    let buf = gpu::buffer_create(dev, 1024, 3, 0) ;
+    if buf == 0 {
+        return 2 ;
+    }
+    let cb = gpu::cmd_buf_begin(dev) ;
+    if cb == 0 {
+        return 3 ;
+    }
+    let d = gpu::cmd_buf_dispatch(cb, 1, 1, 1) ;
+    if d != 0 {
+        return 4 ;
+    }
+    let e = gpu::cmd_buf_end(cb) ;
+    if e != 0 {
+        return 5 ;
+    }
+    let s = gpu::cmd_buf_submit_v2(cb, 0) ;
+    if s != 0 {
+        return 6 ;
+    }
+    let bd = gpu::buffer_destroy(buf) ;
+    if bd != 0 {
+        return 7 ;
+    }
+    let dd = gpu::device_destroy(dev) ;
+    if dd != 0 {
+        return 8 ;
+    }
+    0
+}

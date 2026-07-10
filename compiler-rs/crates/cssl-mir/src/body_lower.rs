@@ -5616,6 +5616,70 @@ fn try_lower_gpu_call(
                 span,
             ))
         }
+        ("buffer_create", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.buffer_create", "buffer_create", &ids, i64ty, span))
+        }
+        ("buffer_destroy", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.buffer_destroy", "buffer_destroy", &ids, i32ty, span))
+        }
+        ("buffer_map", 3) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.buffer_map", "buffer_map", &ids, i64ty, span))
+        }
+        ("buffer_unmap", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.buffer_unmap", "buffer_unmap", &ids, i32ty, span))
+        }
+        ("buffer_upload", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.buffer_upload", "buffer_upload", &ids, i32ty, span))
+        }
+        ("cmd_buf_begin", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_begin", "cmd_buf_begin", &ids, i64ty, span))
+        }
+        ("cmd_buf_end", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_end", "cmd_buf_end", &ids, i32ty, span))
+        }
+        ("cmd_buf_bind_pipeline", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_bind_pipeline", "cmd_buf_bind_pipeline", &ids, i32ty, span))
+        }
+        ("cmd_buf_bind_vbuf", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_bind_vbuf", "cmd_buf_bind_vbuf", &ids, i32ty, span))
+        }
+        ("cmd_buf_bind_ibuf", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_bind_ibuf", "cmd_buf_bind_ibuf", &ids, i32ty, span))
+        }
+        ("cmd_buf_bind_descriptor", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_bind_descriptor", "cmd_buf_bind_descriptor", &ids, i32ty, span))
+        }
+        ("cmd_buf_push_constants", 5) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_push_constants", "cmd_buf_push_constants", &ids, i32ty, span))
+        }
+        ("cmd_buf_draw_indexed", 6) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_draw_indexed", "cmd_buf_draw_indexed", &ids, i32ty, span))
+        }
+        ("cmd_buf_draw_indirect", 5) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_draw_indirect", "cmd_buf_draw_indirect", &ids, i32ty, span))
+        }
+        ("cmd_buf_dispatch", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_dispatch", "cmd_buf_dispatch", &ids, i32ty, span))
+        }
+        ("cmd_buf_submit_v2", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(ctx, "cssl.gpu.cmd_buf_submit_v2", "cmd_buf_submit_v2", &ids, i32ty, span))
+        }
         _ => None,
     }
 }
@@ -8673,6 +8737,52 @@ mod tests {
         assert_eq!(op.operands.len(), 1);
         assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
         assert_eq!(attr(op, "op"), Some("cmd_buf_submit_stub"));
+    }
+
+    #[test]
+    fn lower_gpu_w1_buffer_create_emits_cssl_gpu_buffer_create() {
+        let (f, _) = lower_one(
+            "fn f(d : i64, sz : i64, u : i64, m : i64) -> i64 { gpu::buffer_create(d, sz, u, m) }",
+        );
+        let op = find_op(&f, "cssl.gpu.buffer_create")
+            .expect("gpu::buffer_create should lower");
+        assert_eq!(op.operands.len(), 4);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "op"), Some("buffer_create"));
+    }
+
+    #[test]
+    fn lower_gpu_w1_cmd_buf_draw_indirect_emits_cssl_gpu_cmd_buf_draw_indirect() {
+        let (f, _) = lower_one(
+            "fn f(c : i64, b : i64, o : i64, n : i64, s : i64) -> i32 { gpu::cmd_buf_draw_indirect(c, b, o, n, s) }",
+        );
+        let op = find_op(&f, "cssl.gpu.cmd_buf_draw_indirect")
+            .expect("gpu::cmd_buf_draw_indirect should lower");
+        assert_eq!(op.operands.len(), 5);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("cmd_buf_draw_indirect"));
+    }
+
+    #[test]
+    fn lower_gpu_w1_cmd_buf_dispatch_emits_cssl_gpu_cmd_buf_dispatch() {
+        let (f, _) = lower_one(
+            "fn f(c : i64, x : i64, y : i64, z : i64) -> i32 { gpu::cmd_buf_dispatch(c, x, y, z) }",
+        );
+        let op = find_op(&f, "cssl.gpu.cmd_buf_dispatch")
+            .expect("gpu::cmd_buf_dispatch should lower");
+        assert_eq!(op.operands.len(), 4);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("cmd_buf_dispatch"));
+    }
+
+    #[test]
+    fn lower_gpu_w1_cmd_buf_submit_v2_emits_cssl_gpu_cmd_buf_submit_v2() {
+        let (f, _) = lower_one("fn f(c : i64, out : i64) -> i32 { gpu::cmd_buf_submit_v2(c, out) }");
+        let op = find_op(&f, "cssl.gpu.cmd_buf_submit_v2")
+            .expect("gpu::cmd_buf_submit_v2 should lower");
+        assert_eq!(op.operands.len(), 2);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("cmd_buf_submit_v2"));
     }
 
     #[test]

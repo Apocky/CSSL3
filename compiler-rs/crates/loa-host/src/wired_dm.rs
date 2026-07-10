@@ -92,7 +92,11 @@ pub fn archetype_label_from_byte(b: u8) -> &'static str {
 /// per Q-12 sovereign-choice + default-fallback discipline.
 #[must_use]
 pub fn dm_resolve_archetype(archetype_id: u8) -> u8 {
-    if archetype_id < DRACONIC_ARCHETYPE_COUNT { archetype_id } else { DM_ARCHETYPE_FALLBACK }
+    if archetype_id < DRACONIC_ARCHETYPE_COUNT {
+        archetype_id
+    } else {
+        DM_ARCHETYPE_FALLBACK
+    }
 }
 
 #[cfg(test)]
@@ -107,7 +111,10 @@ mod tests {
     #[test]
     fn cap_bits_are_disjoint_powers_of_two() {
         // SCENE_EDIT=1 · SPAWN_NPC=2 · COMPANION_RELAY=4.
-        assert_eq!(DM_CAP_SCENE_EDIT | DM_CAP_SPAWN_NPC | DM_CAP_COMPANION_RELAY, 7);
+        assert_eq!(
+            DM_CAP_SCENE_EDIT | DM_CAP_SPAWN_NPC | DM_CAP_COMPANION_RELAY,
+            7
+        );
         assert_eq!(DM_CAP_ALL, 7);
     }
 

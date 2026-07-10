@@ -542,10 +542,16 @@ mod tests {
 
         // Sorted-canonical-view collapses allocation-order : both arenas yield
         // the same content-stable sequence.
-        let canonical_a: Vec<AttributionKey> =
-            a.sorted_by_source_position().into_iter().map(|(_, k)| k).collect();
-        let canonical_b: Vec<AttributionKey> =
-            b.sorted_by_source_position().into_iter().map(|(_, k)| k).collect();
+        let canonical_a: Vec<AttributionKey> = a
+            .sorted_by_source_position()
+            .into_iter()
+            .map(|(_, k)| k)
+            .collect();
+        let canonical_b: Vec<AttributionKey> = b
+            .sorted_by_source_position()
+            .into_iter()
+            .map(|(_, k)| k)
+            .collect();
         assert_eq!(
             canonical_a, canonical_b,
             "canonical view must be alloc-order-invariant"

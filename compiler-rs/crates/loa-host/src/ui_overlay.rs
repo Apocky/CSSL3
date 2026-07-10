@@ -1100,15 +1100,36 @@ pub fn push_chat_hint(sw: f32, sh: f32, out: &mut Vec<UiVertex>) {
     let pill_y = sh - TEXT_INPUT_BOTTOM_OFFSET - pill_h;
 
     // Subtle dark background pill, semi-transparent.
-    push_solid_rect(out, pill_x, pill_y, pill_w, pill_h, [0.06, 0.06, 0.10, 0.65]);
+    push_solid_rect(
+        out,
+        pill_x,
+        pill_y,
+        pill_w,
+        pill_h,
+        [0.06, 0.06, 0.10, 0.65],
+    );
 
     // Thin border (1 px) so it reads as an interactive surface.
     let border = 1.0_f32;
     let border_color: [f32; 4] = [0.45, 0.45, 0.55, 0.55];
     push_solid_rect(out, pill_x, pill_y, pill_w, border, border_color);
-    push_solid_rect(out, pill_x, pill_y + pill_h - border, pill_w, border, border_color);
+    push_solid_rect(
+        out,
+        pill_x,
+        pill_y + pill_h - border,
+        pill_w,
+        border,
+        border_color,
+    );
     push_solid_rect(out, pill_x, pill_y, border, pill_h, border_color);
-    push_solid_rect(out, pill_x + pill_w - border, pill_y, border, pill_h, border_color);
+    push_solid_rect(
+        out,
+        pill_x + pill_w - border,
+        pill_y,
+        border,
+        pill_h,
+        border_color,
+    );
 
     // Label text : dim white, vertically centered.
     let text_x = pill_x + pad_h;
@@ -1225,11 +1246,25 @@ pub fn push_text_input_box(sw: f32, sh: f32, hud: &HudContext, out: &mut Vec<UiV
     // Top edge
     push_solid_rect(out, box_x, box_y, box_w, border, COLOR_WHITE);
     // Bottom edge
-    push_solid_rect(out, box_x, box_y + box_h - border, box_w, border, COLOR_WHITE);
+    push_solid_rect(
+        out,
+        box_x,
+        box_y + box_h - border,
+        box_w,
+        border,
+        COLOR_WHITE,
+    );
     // Left edge
     push_solid_rect(out, box_x, box_y, border, box_h, COLOR_WHITE);
     // Right edge
-    push_solid_rect(out, box_x + box_w - border, box_y, border, box_h, COLOR_WHITE);
+    push_solid_rect(
+        out,
+        box_x + box_w - border,
+        box_y,
+        border,
+        box_h,
+        COLOR_WHITE,
+    );
 
     // ── Background : black 80% alpha inside the border ──
     let bg_pad = border;
@@ -1262,7 +1297,9 @@ pub fn push_text_input_box(sw: f32, sh: f32, hud: &HudContext, out: &mut Vec<UiV
     // 60-frame on, 60-frame off → ≈ 0.5 Hz blink @60fps.
     let blink_on = (hud.text_input_blink_frame / TEXT_INPUT_BLINK_PERIOD_FRAMES) % 2 == 0;
     if blink_on {
-        let cursor_chars = hud.text_input_cursor.min(hud.text_input_buffer.chars().count());
+        let cursor_chars = hud
+            .text_input_cursor
+            .min(hud.text_input_buffer.chars().count());
         let cursor_x = text_x + (cursor_chars as f32) * glyph_px;
         // 2-px-wide vertical bar matching the glyph height.
         push_solid_rect(out, cursor_x, text_y, 2.0, glyph_h, COLOR_WHITE);
@@ -1323,8 +1360,12 @@ fn push_menu(sw: f32, sh: f32, hud: &HudContext, menu: &MenuState, out: &mut Vec
     let pad_inner = 24.0_f32;
 
     match menu.screen {
-        MenuScreen::Main => push_main_menu(panel_x, panel_y, panel_w, pad_inner, line, scale, hud, menu, out),
-        MenuScreen::McpHelp => push_help_menu(panel_x, panel_y, panel_w, panel_h, pad_inner, line, scale, menu, out),
+        MenuScreen::Main => push_main_menu(
+            panel_x, panel_y, panel_w, pad_inner, line, scale, hud, menu, out,
+        ),
+        MenuScreen::McpHelp => push_help_menu(
+            panel_x, panel_y, panel_w, panel_h, pad_inner, line, scale, menu, out,
+        ),
     }
 }
 
@@ -1358,13 +1399,16 @@ fn push_main_menu(
     for i in 0..MenuItem::COUNT {
         let y = items_y0 + (i as f32) * line * 1.4;
         let is_sel = menu.selection == i;
-        let color = if is_sel { COLOR_HIGHLIGHT } else { COLOR_DIM_TEXT };
+        let color = if is_sel {
+            COLOR_HIGHLIGHT
+        } else {
+            COLOR_DIM_TEXT
+        };
         let label = match MenuItem::from_index(i) {
             MenuItem::Continue => "Continue".to_string(),
-            MenuItem::RenderMode => format!(
-                "Render Mode : {}",
-                render_mode_label(menu.render_mode)
-            ),
+            MenuItem::RenderMode => {
+                format!("Render Mode : {}", render_mode_label(menu.render_mode))
+            }
             MenuItem::ToggleFullscreen => format!(
                 "Toggle Fullscreen (F11)  [{}]",
                 if menu.fullscreen { "ON" } else { "OFF" }
@@ -1850,12 +1894,19 @@ pub fn push_first_launch_prompt(
     let panel_x = (sw - panel_w) * 0.5;
     let panel_y = 80.0_f32;
     // Background panel
-    push_solid_rect(out, panel_x, panel_y, panel_w, panel_h, [
-        COLOR_PANEL[0],
-        COLOR_PANEL[1],
-        COLOR_PANEL[2],
-        COLOR_PANEL[3] * alpha,
-    ]);
+    push_solid_rect(
+        out,
+        panel_x,
+        panel_y,
+        panel_w,
+        panel_h,
+        [
+            COLOR_PANEL[0],
+            COLOR_PANEL[1],
+            COLOR_PANEL[2],
+            COLOR_PANEL[3] * alpha,
+        ],
+    );
     // Lines
     for (i, line_text) in lines.iter().enumerate() {
         let lw = (line_text.chars().count() as f32) * glyph_px;
@@ -2047,7 +2098,7 @@ mod tests {
         let mut m = MenuState::default();
         m.toggle();
         m.nav_down(); // RenderMode
-        // Left from 0 wraps to 9
+                      // Left from 0 wraps to 9
         m.nav_left();
         assert_eq!(m.render_mode, 9);
         m.nav_left();

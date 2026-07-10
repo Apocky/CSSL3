@@ -1,0 +1,140 @@
+⟨spec⟩ UPG_05_REPR_PROJECTION · projectional editing · content addressing · multi-presentation
+⟨ctx⟩ specs/Upgrade/ · Part II/2 · representation-level frontiers (1 of 2)
+⟨covers⟩ §11 non-textual source · §12 content-addressed code · §13 multi-presentation source
+
+──────────────────────────────────────────────────────────────────────
+# Part II — Representation-Level Frontiers
+
+## §11. Non-textual source forms: text as one projection
+
+The empirical evidence that **text is a lossy projection of programs,
+not the canonical form**, is now substantial:
+
+- **JetBrains MPS** (Meta Programming System) is a production
+  projectional editor used for industrial DSLs (Siemens medical
+  devices, automotive); the underlying model is a typed AST with
+  multiple projections (tabular, mathematical notation, diagrammatic).
+  The fact that an industrial company can build a several-million-
+  line projectional codebase establishes feasibility.
+- **Hazel** (Omar, Hammer, Aldrich, et al., POPL 2017 "Hazelnut: A
+  Bidirectionally Typed Structure Editor Calculus") is the academic
+  state of the art. Hazel's typed holes mean *every editor state is
+  a well-typed program*; there is no "syntactically invalid"
+  intermediate. The calculus is formalized. Live programming is a
+  property of the language, not an IDE feature.
+- **Lamdu** (Eyal Lotem) — typed structure editor with live
+  evaluation; less academic, more usable demos.
+- **Unison** (Chiusano, Bjarnason; see also §12) — text is the *input
+  format* but the canonical form is the typed AST in the codebase
+  database. The text is regenerated.
+- **Bret Victor's body of work** — "Learnable Programming," "Drawing
+  Dynamic Visualizations," "Up and Down the Ladder of Abstraction" —
+  argues that the *medium of programming* is the bottleneck, not the
+  syntax.
+- **Dynamicland** (Victor's research group, Oakland; halted public-
+  facing but research continues) — physical-object-based programming.
+- **Field** (Marc Downie / OpenEndedGroup) — code/graphics/timeline
+  integrated programming surface.
+- **Glamorous Toolkit / Pharo** (Feenk) — moldable development where
+  every object has multiple custom inspectors and the IDE is
+  generated from the program.
+- **Luna** / **Enso** — dual textual/visual representations of the
+  same dataflow program.
+
+The unifying theoretical move is **bidirectional / structural editing
+as the canonical interface, with text as one projection.** The
+Hazelnut calculus is the most rigorous reference. The conclusion for
+a sovereign language: the parser and pretty-printer are *projections*
+into and out of a canonical typed-hole-bearing AST, and there is no
+privileged textual representation.
+
+## §12. Content-addressed code (Unison and beyond)
+
+Unison's design (Chiusano, Bjarnason; unison-lang.org docs, "the big
+idea"; LWN article "Programming in Unison," 2024) is now well-
+documented:
+
+- Every typed AST node has a **512-bit SHA-3 hash** of its structure,
+  with named-variable references replaced by positional De Bruijn
+  indices and dependencies replaced by *their* hashes.
+- The hash *is* the identity. Names are metadata in a sidecar
+  namespace.
+- Renaming is a metadata operation, not a code change. Merges never
+  conflict on rename. There are no builds — code is compiled once
+  and cached by hash, forever.
+- Tests are cached by hash: if the function and all its transitive
+  dependencies have not changed (i.e., same hash), the test result
+  is reused.
+- Distribution: code can be sent over the wire by hash, and a remote
+  node fetches missing definitions on demand. This is the substrate
+  that makes Unison's distributed-programming story work —
+  `Remote.at(location, fn)` ships the function (just hashes plus
+  missing definitions) to the location.
+
+The structural insight: **the Unison codebase is a Merkle DAG.** This
+is structurally identical to Nix (content-addressed builds; Dolstra's
+2006 thesis is the reference) and IPFS (content-addressed storage)
+and Git (content-addressed snapshots) and Pijul/Darcs (patch theory —
+algebraic compositions of changes rather than snapshots).
+
+The compounding effects for SIGIL:
+- A **global codebase** indexed by hash, where any function ever
+  defined is reachable as a constant. This is the "Hoogle for all of
+  programming" idea, but it works because the hash *is* the address.
+- **Provenance is free**: every value's compute graph (per §27) is a
+  DAG of hashes, so you can prove what produced any output.
+- **Caching is global**: if anyone in the world has ever computed
+  `f(x)` where both `f` and `x` are content-addressed, the result is
+  reachable. (Memoization across organizations becomes a real
+  possibility, modulo capability-secure access to the cache.)
+- **Patch theory** (Pijul, based on Mimram's category-theoretic
+  framework, ICFP 2014) provides a sound algebra of *changes* on top
+  of content-addressed snapshots. A sovereign language can adopt
+  this as the version-control primitive built into the language,
+  eliminating Git as a foreign dependency.
+
+The interaction with §17 (AI-native source): when functions are
+content-addressed, a neural compiler that proposes refactorings can
+express its proposal as **"replace hash A with hash B, where A and B
+have the same type"** — a structural diff that is unambiguous and
+verifiable.
+
+## §13. Multi-presentation source: one canonical AST, many surfaces
+
+If the canonical form is a typed AST (per §11), the surface
+presentations multiply:
+
+- **Prose / literate**: Knuth's WEB, Org-babel, Jupyter, Quarto —
+  already mainstream.
+- **Dense glyphs**: APL (Iverson, 1962, Turing Award lecture
+  "Notation as a Tool of Thought," 1979), J (Iverson, 1990s), K / Q
+  (Whitney, KX Systems), BQN (Lochbaum, 2020), Uiua (Kaspar
+  Mortensen, 2023). These are not just terse syntax — the
+  *concision* changes what is thinkable. Uiua specifically is stack-
+  based plus rank-polymorphic, and reads top-to-bottom right-to-
+  left — a different cognitive model.
+- **Graphs**: dataflow editors (TouchDesigner, Houdini's VOPs/SOPs,
+  Max/MSP, PureData, Blender's geometry nodes, Unreal Blueprints).
+  The Unison codebase's underlying form is already a graph;
+  rendering it as a graph is just a projection choice.
+- **Voice**: not yet mainstream; relevant for accessibility and for
+  AI agents that produce structured speech outputs.
+- **VR/AR spatial**: Krea, Hover, recent immersive coding work.
+  Speculative as a primary surface, plausible for visualization.
+- **Diagrammatic** (Bret Victor's "Drawing Dynamic Visualizations"
+  talk, 2013) — code as direct manipulation of the data being
+  computed.
+
+For SIGIL: **the language's reference manual is itself the cleanest
+projection.** Multiple surfaces over a single canonical form means
+the manual can render as glyphs for experts, as named-keyword text
+for newcomers, as a graph for system architecture, and as a Bret-
+Victor live visualization for tutorial purposes — all from the same
+source.
+
+The non-obvious adjacency: **dense glyph notation (APL family) is
+highly amenable to AI generation.** A model that knows the BQN/Uiua
+primitive set can express a transformation in 4-8 tokens that would
+be a 200-token Python function. If the language is a partner to AI
+agents (per the Prime Directive), there is a real argument for first-
+class support for a dense-glyph surface.

@@ -22,12 +22,12 @@
 
 #![allow(clippy::module_name_repetitions)]
 
+use cssl_host_weapons::projectile::ProjectileImpact;
+use cssl_host_weapons::HitscanTarget;
 pub use cssl_host_weapons::{
     AccuracyParams, AccuracyState, ProjectilePool, TrajectoryEnv, WeaponKind, WeaponTier,
     MAX_PROJECTILES,
 };
-use cssl_host_weapons::HitscanTarget;
-use cssl_host_weapons::projectile::ProjectileImpact;
 
 /// § Per-frame weapon-input bundle the host fills from `InputFrame`.
 /// `allow_fire` is the cap-gate — default-deny.
@@ -144,10 +144,12 @@ pub fn tick(state: &mut WeaponsState, dt_ms: f32, input: WeaponInput) {
     // remains pure-passive (no spawns). Sibling wave wires actual targets.
     if input.allow_step {
         let empty_targets: [HitscanTarget; 0] = [];
-        let _impacts =
-            state
-                .pool
-                .step_all(state.env, dt_secs, &empty_targets, &mut state.impacts_scratch);
+        let _impacts = state.pool.step_all(
+            state.env,
+            dt_secs,
+            &empty_targets,
+            &mut state.impacts_scratch,
+        );
     }
 }
 

@@ -72,9 +72,12 @@ impl Aabb {
 
     /// True if `p` is strictly inside this AABB.
     pub fn contains(&self, p: [f32; 3]) -> bool {
-        p[0] >= self.min[0] && p[0] < self.max[0]
-            && p[1] >= self.min[1] && p[1] < self.max[1]
-            && p[2] >= self.min[2] && p[2] < self.max[2]
+        p[0] >= self.min[0]
+            && p[0] < self.max[0]
+            && p[1] >= self.min[1]
+            && p[1] < self.max[1]
+            && p[2] >= self.min[2]
+            && p[2] < self.max[2]
     }
 
     /// Expand this AABB by `r` on horizontal axes + `vh` on the vertical
@@ -171,7 +174,10 @@ impl RoomCollider {
         use crate::room::{Corridor, Room};
         // World envelope = AABB containing every room + corridor.
         let env = crate::room::world_envelope();
-        let world = Aabb::new([env.min[0], env.min[1], env.min[2]], [env.max[0], env.max[1], env.max[2]]);
+        let world = Aabb::new(
+            [env.min[0], env.min[1], env.min[2]],
+            [env.max[0], env.max[1], env.max[2]],
+        );
 
         // Per-room interior AABBs (camera must be inside SOME of these).
         let mut interiors = Vec::with_capacity(9);
@@ -254,8 +260,16 @@ impl RoomCollider {
         if self.interiors.is_empty() {
             // Single-room mode : SHRINK the room AABB by capsule radius/height.
             let inner = Aabb::new(
-                [self.room.min[0] + r - EPS, self.room.min[1] + half_h - EPS, self.room.min[2] + r - EPS],
-                [self.room.max[0] - r + EPS, self.room.max[1] - half_h + EPS, self.room.max[2] - r + EPS],
+                [
+                    self.room.min[0] + r - EPS,
+                    self.room.min[1] + half_h - EPS,
+                    self.room.min[2] + r - EPS,
+                ],
+                [
+                    self.room.max[0] - r + EPS,
+                    self.room.max[1] - half_h + EPS,
+                    self.room.max[2] - r + EPS,
+                ],
             );
             if !inner.contains(c) {
                 return false;
@@ -345,8 +359,16 @@ impl RoomCollider {
         // CLEAR rather than colliding — symmetric with the inner-room loosening.
         for p in &self.plinths {
             let e = Aabb::new(
-                [p.min[0] - r + EPS, p.min[1] - half_h + EPS, p.min[2] - r + EPS],
-                [p.max[0] + r - EPS, p.max[1] + half_h - EPS, p.max[2] + r - EPS],
+                [
+                    p.min[0] - r + EPS,
+                    p.min[1] - half_h + EPS,
+                    p.min[2] - r + EPS,
+                ],
+                [
+                    p.max[0] + r - EPS,
+                    p.max[1] + half_h - EPS,
+                    p.max[2] + r - EPS,
+                ],
             );
             if e.contains(c) {
                 return false;
@@ -453,14 +475,14 @@ impl RoomCollider {
     pub fn compass_distances(&self, camera: &Camera) -> CompassDistances {
         let s2 = std::f32::consts::FRAC_1_SQRT_2; // 1/√2 ≈ 0.7071
         let dirs: [[f32; 3]; 8] = [
-            [0.0, 0.0, 1.0],   // N
-            [s2, 0.0, s2],     // NE
-            [1.0, 0.0, 0.0],   // E
-            [s2, 0.0, -s2],    // SE
-            [0.0, 0.0, -1.0],  // S
-            [-s2, 0.0, -s2],   // SW
-            [-1.0, 0.0, 0.0],  // W
-            [-s2, 0.0, s2],    // NW
+            [0.0, 0.0, 1.0],  // N
+            [s2, 0.0, s2],    // NE
+            [1.0, 0.0, 0.0],  // E
+            [s2, 0.0, -s2],   // SE
+            [0.0, 0.0, -1.0], // S
+            [-s2, 0.0, -s2],  // SW
+            [-1.0, 0.0, 0.0], // W
+            [-s2, 0.0, s2],   // NW
         ];
         let mut out = [0.0_f32; 8];
         for (i, d) in dirs.iter().enumerate() {
@@ -478,14 +500,30 @@ pub struct CompassDistances {
 }
 
 impl CompassDistances {
-    pub fn n(&self) -> f32 { self.dist[0] }
-    pub fn ne(&self) -> f32 { self.dist[1] }
-    pub fn e(&self) -> f32 { self.dist[2] }
-    pub fn se(&self) -> f32 { self.dist[3] }
-    pub fn s(&self) -> f32 { self.dist[4] }
-    pub fn sw(&self) -> f32 { self.dist[5] }
-    pub fn w(&self) -> f32 { self.dist[6] }
-    pub fn nw(&self) -> f32 { self.dist[7] }
+    pub fn n(&self) -> f32 {
+        self.dist[0]
+    }
+    pub fn ne(&self) -> f32 {
+        self.dist[1]
+    }
+    pub fn e(&self) -> f32 {
+        self.dist[2]
+    }
+    pub fn se(&self) -> f32 {
+        self.dist[3]
+    }
+    pub fn s(&self) -> f32 {
+        self.dist[4]
+    }
+    pub fn sw(&self) -> f32 {
+        self.dist[5]
+    }
+    pub fn w(&self) -> f32 {
+        self.dist[6]
+    }
+    pub fn nw(&self) -> f32 {
+        self.dist[7]
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────

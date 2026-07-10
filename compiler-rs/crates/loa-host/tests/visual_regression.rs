@@ -29,8 +29,8 @@
 #![allow(clippy::cast_possible_truncation)]
 
 use loa_host::snapshot::{
-    decode_png, encode_png, mae_bgra8, rgba8_to_bgra8_inplace, sanitize_snapshot_path,
-    tour_by_id, GOLDEN_MAE_THRESHOLD, TOUR_IDS,
+    decode_png, encode_png, mae_bgra8, rgba8_to_bgra8_inplace, sanitize_snapshot_path, tour_by_id,
+    GOLDEN_MAE_THRESHOLD, TOUR_IDS,
 };
 
 /// Build a 32×16 RGBA8 image with a horizontal red→blue gradient. Returns
@@ -91,7 +91,10 @@ fn integration_mae_zero_for_identical_pngs() {
     rgba8_to_bgra8_inplace(&mut a);
     rgba8_to_bgra8_inplace(&mut b);
     let mae = mae_bgra8(&a, &b).expect("size match");
-    assert!(mae.abs() < 1e-6, "identical PNGs must have MAE ≈ 0; got {mae}");
+    assert!(
+        mae.abs() < 1e-6,
+        "identical PNGs must have MAE ≈ 0; got {mae}"
+    );
 
     let _ = std::fs::remove_file(&p1);
     let _ = std::fs::remove_file(&p2);

@@ -1,0 +1,925 @@
+§ 77_LANGUAGE_MATURATION_ROADMAP · CSSL-the-language as game-engine target · 6-axis maturity-plan
+  ← author : Tech-Lead-Claude-Opus-4.7-1M · 2026-05-18
+  ← supersedes : —
+  ← superseded-by : —
+  ← status : DRAFT · awaits Apocky ratification
+  ← scope : cross-cutting · type-system + effects + codegen + stdlib + tooling + self-host
+  ← parent-template : specs/_TEMPLATE.csl
+  ← discipline : authored under specs/64_SPEC_FIRST_DISCIPLINE.csl
+  ← purpose : Apocky directive 2026-05-18 — "maturing this language for a game engine capable of
+                                                rendering 1440p 144hz or better efficiently"
+  ← companion : 75_MENTAL_MAP_2026-05-18.csl + 76_GPU_RENDERING_MATURATION_PLAN.csl
+  ← honors : spec/59 GROK_VELOCITY_RESPONSE (revenue-first) + spec/63 IMPROVEMENT_BACKLOG_100 (N1-N6 north-stars)
+              + spec/64 SPEC_FIRST_DISCIPLINE (observable-assertions mandatory)
+
+§I THESIS
+  ⟦
+    CSSLv3-the-language at 2026-05-18 has a strong design-corpus (70+ specs · 183-crate compiler workspace ·
+    14-module stdlib · 6-module engine) but real-engine usage is bottlenecked by 6 maturity-axis gaps :
+    (A) type-system completeness (vec/mat/quat first-class · sum-types · refinement) · (B) effect-row +
+    IFC-label structural-threading (Cap<X> witness as compile-time fn-param · MirEffectRow · Deadline<N>
+    SMT-discharge) · (C) codegen completeness (cranelift verifier-clean on 12 engine files · all 4 GPU
+    paths byte-equivalent · @persistent_kernel/@workgraph_node attributes · owned x86-64 stage-1) ·
+    (D) stdlib completeness (string.* · MirEnumLayout · multi-module aux-load · effect-typed wrappers
+    everywhere) · (E) tooling (build-cache · diagnostics-with-carets · hot-reload · golden-pixel testing) ·
+    (F) self-host (csslc compiles csslc · zero-Rust runtime · stage-2 owned GPU emitters). This roadmap
+    plans the 6 axes against the revenue-first ordering : axes A + B + C are revenue-unblock-slice
+    (P0/P1 in spec/76 needs them) · axis D unblocks production-quality alpha · axis E unblocks
+    velocity-multiplier post-revenue · axis F is the terminal sovereignty milestone (post-revenue ·
+    multi-year). Each axis declares now-state · gap · target-state · dependencies · observable-assertions.
+    The roadmap is honest : it does NOT promise self-host in 30 days ; it does identify what MUST land
+    for spec/76 P1 1440p144 production-ceiling to happen.
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS [MANDATORY · per-axis · mechanically-verifiable]
+  ⟦
+    ──── AXIS-A · TYPE-SYSTEM COMPLETENESS ────
+    ASSERT.A.01 · `let v : vec3 = vec3(1.0, 2.0, 3.0) ; v.x` parses + type-checks + lowers to MIR
+                   without surrogate-struct (Vec3F today per engine/render_forward.cssl § Vec3 placeholder)
+                   (per spec/63 item-11 + item-61)
+    ASSERT.A.02 · `let m : mat4 = mat4::identity() ; m * v` parses + type-checks + lowers (const-folded compose)
+                   (per spec/63 item-62)
+    ASSERT.A.03 · `let q : Quat = Quat::slerp(a, b, t)` parses + type-checks + lowers + quaternion mul/inv/conj
+                   recognized as cssl.quat.* MIR ops (per spec/63 item-63)
+    ASSERT.A.04 · `sin(x) + cos(y) - tan(z)` lowers to machine intrinsic (cssl.f32.sin · etc) on CPU + GPU
+                   (per spec/63 item-64 · NOT Taylor-poly source-level workaround)
+    ASSERT.A.05 · `fn f(x : f32) -> {y : f32 | 0.0 ≤ y ≤ 1.0} { saturate(x) }` parses · refinement type
+                   discharged at compile-time via SMT-plugin (per spec/63 item-14 · spec/20 SMT)
+    ASSERT.A.06 · `enum Primitive { Sphere(f32) · Cube(vec3) · Cylinder(vec3 · f32) }` + exhaustive `match` ;
+                   missing case = compile-error (per spec/63 item-13)
+    ASSERT.A.07 · `fn id<T>(x : T) -> T { x }` monomorphized per call-site · serves [N2 · N3]
+                   (per spec/63 item-12 + spec/02 monomorphization pass)
+    ASSERT.A.08 · `const SIZE : usize = compute_at_compile_time(BASE * 2) ; let buf : [u8 ; SIZE]`
+                   const-eval extended to user fns (per spec/63 item-16 + spec/06 STAGING)
+    ASSERT.A.09 · `let x = if cond { 1 } else { 2 }` parses in expression-position (per spec/63 item-19 · spec/70 A19)
+    ASSERT.A.10 · `let p : gpu<Buffer<f32>> = alloc_gpu(...).await()` parses · gpu<T> domain-tag recognized
+                   (per spec/65 § MEMORY-DOMAIN-TYPES · GPU0001 compile-refuse on cross-domain deref)
+
+    ──── AXIS-B · EFFECT-ROW + IFC + CAPABILITY STRUCTURAL THREADING ────
+    ASSERT.B.01 · `fn present(sc : Swapchain) -> Result<i32, GpuError> / {GpuSubmit · Deadline<6944us>}` parses ·
+                   effect-row in fn-sig position (NOT just doc-comment) ; SMT-discharge proves deadline-bound
+                   (per spec/04 § BUILT-IN EFFECTS + spec/63 item-06)
+    ASSERT.B.02 · `fn use_gpu(cap : Cap<Gpu>, dev : Device) -> ...` parses · Cap<Gpu> witness as fn-param
+                   consumed-linearly (per spec/63 item-15 + spec/12 § Pony-6 capabilities)
+    ASSERT.B.03 · linker cross-checks declared-effect-row vs emitted FFI symbols (per spec/70 A06.1) ·
+                   fn declared /{ IO } that emits no IO-FFI fails link with diagnostic
+    ASSERT.B.04 · `fn read_gaze() -> Sensitive<gaze>` AND `fn telemetry_send<T>(t : T)` ·
+                   call-site `telemetry_send(read_gaze())` fails compile with IFC0001 "biometric-egress refused"
+                   (per spec/11 + spec/22 + spec/65 GPU0007)
+    ASSERT.B.05 · `fn step() -> ... / {Realtime<Crit>}` parses · {Realtime<Crit>} effect propagates through call-tree ·
+                   non-Realtime callee invocation fails compile with diagnostic
+    ASSERT.B.06 · `Region<'r> { let a = alloc(); ... }` parses · region-scope arena-alloc + reset on exit
+                   (per spec/63 item-21 + spec/02 cssl.region.{enter,exit})
+    ASSERT.B.07 · `iso<T>` linear-resource captured by handler cannot escape one-shot
+                   (per spec/12 + spec/02 linear × handler one-shot-enforcement pass)
+    ASSERT.B.08 · `@strict_memory_typing` module attribute engages spec/65 enforcement ·
+                   prior code without attribute unaffected (per spec/65 FM.07)
+    ASSERT.B.09 · `fn declass<T>(x : Sensitive<T>) -> T / {Declassify<T>}` requires Cap<Declassify<T>> ·
+                   compile-refuse if cap absent (per spec/11 IFC declassification-validation)
+
+    ──── AXIS-C · CODEGEN COMPLETENESS ────
+    ASSERT.C.01 · `csslc build --emit=object engine/main.cssl` produces valid .o file ·
+                   cranelift-verifier exits 0 (closes BLOCKER-α · per spec/55 PATH-α)
+    ASSERT.C.02 · 4 GPU codegen paths byte-equivalent on @shared struct (per spec/70 item-08) ·
+                   20-module test corpus · max diff = 0 bytes across SPIR-V · DXIL · MSL · WGSL
+    ASSERT.C.03 · `@persistent_kernel fn worker(q : Queue<Job>) -> never { loop { ... } }` compiles to
+                   D3D12 work-graph node (per spec/63 item-31 · UPG_02 § persistent-kernels)
+    ASSERT.C.04 · `@workgraph_node(input=Record<T>, output=Record<U>) fn n(r : T) -> U { ... }` compiles to
+                   SM6.8 work-graph + VK_AMDX_shader_enqueue path (per spec/63 item-32)
+    ASSERT.C.05 · `@indirect_dispatch fn cmd_gen() -> DispatchArgs { ... }` ; dispatch args written by GPU ·
+                   consumed by GPU · NO CPU round-trip (per spec/63 item-33)
+    ASSERT.C.06 · `Queue::Graphics · Queue::Compute · Queue::Copy` first-class · concurrent dispatch
+                   with cross-queue semaphore (per spec/63 item-34 + spec/65 § cross-queue-semaphores)
+    ASSERT.C.07 · `@shared struct Camera { pos : vec3 ; vp : mat4 }` declares once · CPU + GPU use same layout
+                   · packed-parity σ-enforced (per spec/63 item-35 · the UNIVERSAL-COORDINATION-SUBSTRATE)
+    ASSERT.C.08 · `@vram_direct let buf : gpu<f32>` ReBAR-aware · CPU writes straight to VRAM
+                   (per spec/63 item-28 · merged-w/ v1-item-36)
+    ASSERT.C.09 · `wave_ballot(active)` · `active_sum(x)` · `shuffle(v · lane)` · `prefix_sum(x)` recognized
+                   as cssl.gpu.subgroup.* MIR ops · maps to SPIR-V GroupNonUniform + DXIL wave-intrinsic
+                   (per spec/63 item-39 · merged-w/ v1-item-69)
+    ASSERT.C.10 · `csslc --backend=native-x64 engine/main.cssl` uses owned-x86-64 stage-1+ backend ·
+                   zero cranelift dep · hello.exe = 42 (per spec/14 § OWNED x86-64 BACKEND)
+    ASSERT.C.11 · `csslc --backend=spirv --emit-owned engine/shader.cssl` uses owned-SPIR-V stage-1+ emitter ·
+                   validator-identical to spirv-val · zero rspirv runtime dep (per spec/14 § OWNED SPIR-V EMITTER)
+    ASSERT.C.12 · `csslc --backend=dxil --emit-owned engine/shader.cssl` uses owned-DXIL stage-2 emitter ·
+                   zero dxc subproc · feature-parity audit on SM6.6+ (per spec/14 § OWNED DXIL EMITTER)
+    ASSERT.C.13 · structured-CFG-validator (CFG0001-CFG0010 · per spec/02 § STRUCTURED-CFG VALIDATOR) rejects
+                   any post-monomorph MIR with unstructured-control-flow · all 4 GPU emitters require validated marker
+    ASSERT.C.14 · GPU-AD tape (cssl.diff.* on @gpu fn) captures gradients across SPIR-V differentiable shader
+                   fragments (per spec/63 item-66 + spec/17 Jet<T,N>)
+
+    ──── AXIS-D · STDLIB COMPLETENESS ────
+    ASSERT.D.01 · `let s : String = "hello".to_string() ; s.len() ; s.split(',')` parses + lowers ·
+                   cssl-mir body_lower recognizes cssl.string.* ops (closes spec/56 § HIGHEST-VALUE-STUBS
+                   string.* gap)
+    ASSERT.D.02 · `enum E { A · B(i32) · C { x : f32 } }` MirEnumLayout sizes + tags correctly across all
+                   3 variants · cross-target byte-identical (closes spec/56 § HIGHEST-VALUE-STUBS MirEnumLayout)
+    ASSERT.D.03 · `mod a; mod b; use a::foo; use b::bar; foo() + bar()` resolves cross-module · csslc-aux-load
+                   recognizes multi-module compilation unit (closes spec/56 § multi-module-aux-load)
+    ASSERT.D.04 · all stdlib FFI calls use canonical types (i64 not u32/u64 mis-typed) · matches recognizer
+                   expectation (closes HANDOFF_NEXT_SESSION mention "stdlib FFI calls ALL using wrong-types")
+    ASSERT.D.05 · stdlib::gpu cmd_buf_record + cmd_buf_submit stage-1 stubs replaced with real
+                   ID3D12GraphicsCommandList / vkBeginCommandBuffer fleshing (per stdlib/gpu.cssl § stage-0 note 9)
+    ASSERT.D.06 · stdlib::xr (NEW) exposes OpenXR surface · Cap<XR> witness · spec/24 § ABI-STABLE-SYMBOLS § vr-xr lift
+                   (currently DEFERRED per stdlib/gpu.cssl § stage-0 deferred)
+    ASSERT.D.07 · stdlib::ecs (NEW) exposes ECS primitives · World · Query · System · per spec/63 item-51 EPIC reserved
+                   (spec/66 ECS-compiler-supported · separate-spec)
+    ASSERT.D.08 · stdlib asset-pipeline parsers (PNG · GLTF · WAV · TTF per spec/14 § ASSET-PIPELINE) exposed via
+                   stdlib::asset:: surface · async-handle scaffold ready
+    ASSERT.D.09 · stdlib::physics (NEW) exposes MLS-MPM substrate + PGA Motor + rigid-body integrator ·
+                   serves [N1 · N2] (per 1LoA SPEC_SUB_08 · cssl-physics + cssl-pga crates promoted to stdlib)
+
+    ──── AXIS-E · TOOLING ────
+    ASSERT.E.01 · `csslc build engine/main.cssl` with no source-change re-builds in < 1s on cache-hit
+                   (per spec/70 item-87 A87.2 · per-module hash + dependent-rebuild)
+    ASSERT.E.02 · csslc diagnostics include file:line:col + caret pointing at offending token + "did you mean: X?"
+                   suggestion when edit-distance ≤ 2 (per spec/70 item-89 + spec/63 PRINCIPLE-8)
+    ASSERT.E.03 · diagnostics use ANSI color when stderr is tty (rustc-style)
+    ASSERT.E.04 · `@hot_reload_preserve` attribute marks state that survives across csslc compile-and-reload
+                   per spec/63 R13 hot-reload + spec/18 ORTHOPERSIST · 1ms hot-reload reached (per spec/26)
+    ASSERT.E.05 · `cssl_test_observe(...)` harness API · CI test-runner refuses to mark PASS without
+                   observable side-effect (per spec/70 item-05 A05.1 + spec/63 PRINCIPLE-5 Gate-E)
+    ASSERT.E.06 · golden-pixel-regression : per-backend per-example golden-frame test passes
+                   (RMSE ≤ 1/255 per channel) for ≥ 10 canonical-scenes
+    ASSERT.E.07 · build-artifact-manifest : csslc emits expected-symbols.json · linker verifies hash-match
+                   on every link (per spec/70 item-04 A04.1)
+    ASSERT.E.08 · source-map preservation : MIR → SPIR-V/DXIL preserves source line+col through OpLine ·
+                   RenderDoc shows .cssl source on shader-step (per spec/63 item-10)
+    ASSERT.E.09 · `csslc --debug-borrow` flag enables @debug_borrow gpu<T> CPU-inspection · gated by
+                   Cap<DebugInspect> (per spec/65 OQ.05 escalation)
+
+    ──── AXIS-F · SELF-HOST ────
+    ASSERT.F.01 · csslc compiles csslc · CSSL source for parser + lexer + HIR + MIR pipeline · zero-Rust at csslc
+                   (per spec/63 item-51 + spec/67 EPIC csslc-self-host)
+    ASSERT.F.02 · csslc canonical CI run-tree : `csslc compile csslc.cssl ; ./csslc_v2 compile engine/main.cssl`
+                   produces byte-identical output to `csslc compile engine/main.cssl` (Rust-bootstrap)
+                   (closure-test for self-host viability · t∞ goal per spec/63 N6 + spec/64 ¬-Rust-eventually)
+    ASSERT.F.03 · cssl-rt runtime ported to CSSL source · zero-Rust at runtime (per spec/63 N6 + spec/56
+                   § cssl-rt → cssl-host DELEGATION sustainable-for-stage-0 ¬-long-term)
+    ASSERT.F.04 · loa-host bootstrap retired · all FFI symbols resolve to CSSL-compiled cssl-rt
+    ASSERT.F.05 · owned-x86-64 backend + 4 owned GPU emitters · zero LLVM dep · zero cranelift dep ·
+                   zero rspirv dep · zero dxc subproc (per spec/14 stage-2 endpoint)
+  ⟧
+
+§I AXIS-A · TYPE-SYSTEM COMPLETENESS · math + collections + refinement + GPU-domain
+  ⟦
+    NOW-STATE (2026-05-18) :
+      ✓ base-types : i8/i16/i32/i64 · u8/u16/u32/u64 · f32/f64 · bool
+      ✓ struct + enum + tuple-variants (single-expression match-arms)
+      ✓ Vec<T> + Box<T> + Option<T> + Result<T,E> (stdlib · monomorph)
+      ✓ generic-fn-monomorphization (partial · spec/63 item-12 graduation pending)
+      ✓ refinement T'tag + {v:T|P(v)} (spec/03 ; SMT-discharge via spec/20)
+      ✓ Jet<T,N> (spec/17 ; cssl-jets crate)
+      ◐ vec2/vec3/vec4/mat4/quat (spec/03 declares language-builtin · parser uneven · engine uses Vec3F/Mat4F surrogate)
+      ◐ refinement-types in fn-sig position (parser parses · SMT-discharge integration partial)
+      ◐ const-eval extended to user-fns (spec/06 STAGING partial · @staged works · const-fn deferred)
+      ✗ if-else in expression-position (spec/63 item-19 P0 · pending Phase-A depth-1 fanout)
+      ✗ gpu<T> / shared<T> / staged<T> / transfer<T> (spec/65 DRAFT · 0/8 ASSERTs implemented)
+      ✗ exhaustive-match enforced (sum-types parsed · exhaustiveness-check missing per item-13)
+
+    GAP-ANALYSIS :
+      G.A.01 · vec/mat/quat surrogate structs (Vec3F · Mat4F per engine/render_forward.cssl § Vec3/Mat4 placeholder)
+              are technical-debt · collapse blocked on parser-slice for shape-type fields
+              ⇒ blocks ASSERT.A.01-04 · spec/63 P0 items 61-63
+              ⇒ this is the v13 substrate scalar-shim ceremony per spec/63 item-19 connection
+      G.A.02 · if-else as expression-position partial-impl needs graduation (per spec/70 item-19 A19.1-A19.4)
+              ⇒ blocks ASSERT.A.09 · canonical-test : v13 substrate.cssl drops branchless-flag-trick after this lands
+      G.A.03 · gpu<T> family from spec/65 needs IMPLEMENTATION (currently DRAFT)
+              ⇒ blocks ASSERT.A.10 · blocks spec/76 P2 async-compute typed surface
+              ⇒ estimated 42-58 agent-hours per spec/65 § IMPLEMENTATION-NOTES
+      G.A.04 · transcendental builtins as machine-intrinsic (sin/cos/tan/exp/log/pow/atan2)
+              ⇒ blocks ASSERT.A.04 · per spec/63 item-64
+              ⇒ kills v13 Taylor-poly-in-source ceremony
+      G.A.05 · exhaustive-match enforcement
+              ⇒ blocks ASSERT.A.06 · enum-typed shader-parameters need this for sum-type discipline
+      G.A.06 · refinement-types tied to runtime asserts (zero-cost @ hot path)
+              ⇒ blocks ASSERT.A.05 · shader-clamped colors · normalized-vec3 invariants
+
+    TARGET-STATE (post-Phase-B math half + post-spec/65 ratification) :
+      → vec/mat/quat as first-class · @vector + @matrix language attributes lower to SIMD on CPU + native on GPU
+      → if-else expression-position · let-bindings of computed-conditionals
+      → gpu<T>/shared<T>/staged<T>/transfer<T> language-level + GPU0001-GPU0010 diag-codes active
+      → transcendentals lower to cssl.f32.{sin · cos · ...} · backend emits CPU intrinsic OR GPU hw-op
+      → exhaustive-match · refinement-types static + runtime · const-fn deeply integrated
+      → PGA Motor + Jet<T,N> + wavelet promoted to language-level (per spec/63 items 65/66/70)
+
+    DEPENDENCIES :
+      DEP.A.01 · spec/65 GPU_MEMORY_TYPE_DISTINCTION REVIEWED → IMPLEMENTED (gpu<T> family)
+      DEP.A.02 · spec/63 Phase-B math-half items 11-19 + 61-67 (Apocky-greenlight + agent-fanout)
+      DEP.A.03 · spec/70 Phase-A item-02 recognizer-type-mismatch + item-19 if-expression IMPLEMENTED
+      DEP.A.04 · spec/20 SMT-plugin upgrade for refinement-types fn-sig position
+
+    AGENT-HOURS-ESTIMATE :
+      math-builtins (vec/mat/quat) : ~30-40 agent-hr (parser + cgen lowering all 4 GPU paths)
+      transcendentals               : ~20-30 agent-hr (cgen + cross-target verification)
+      gpu<T> family                 : ~42-58 agent-hr (per spec/65 § IMPLEMENTATION-NOTES)
+      sum-type exhaustive-match     : ~15-20 agent-hr (HIR pattern-checker pass)
+      refinement runtime+static     : ~25-35 agent-hr (SMT-plugin + runtime-assert injection pass)
+      if-expression graduation       : ~5-10 agent-hr (parser + HIR · per spec/70 item-19)
+      ────────────────────────────────────────
+      TOTAL AXIS-A                  : ~137-193 agent-hr · ~3-5 sessions parallel-fanout (per spec/58 measured)
+
+  ⟧
+
+§I AXIS-B · EFFECT-ROW + IFC + CAPABILITY STRUCTURAL THREADING
+  ⟦
+    NOW-STATE (2026-05-18) :
+      ✓ effect-row vocabulary defined (spec/04 · Koka row-poly · GpuInit · GpuSubmit · Deadline<N> · Realtime<Crit> · etc)
+      ✓ effect-row as DOC-COMMENT (engine/render_forward.cssl § EFFECT-ROW notes)
+      ✓ IFC-label sum-type (spec/11 · Sensitive<X> · Public · Private)
+      ✓ Cap<X> conceptual model (spec/12 · iso/trn/ref/val/box/tag · capability witness)
+      ✓ Cap<Gpu> as RUNTIME-BITSET (stdlib/gpu.cssl § Cap<Gpu> runtime gate)
+      ✓ Σ-mask cell-granularity (spec/27 · EnforcesΣAtCellTouches · spec/28 bootstrap)
+      ✓ Pony-6 linear-resource cap (spec/12 + spec/02 evidence-passing transform pass)
+      ◐ effect-row in fn-sig STRUCTURAL (parsed · MirEffectRow threading partial · spec/04 staged)
+      ◐ IFC declassification compile-validation (spec/02 IFC-check + declassification-validation pass partial)
+      ◐ {Realtime<Crit>} effect-row in fn-sig recognized (parser slice partial)
+      ◐ Region<'r> arena-alloc + reset (spec/02 cssl.region.{enter,exit} stage-1 partial)
+      ✗ Cap<X> as compile-time fn-param witness (currently trust-the-caller runtime-bitset stub per stdlib/gpu.cssl § T11-W19-β-LIVE-CAPS)
+      ✗ effect-row → emitted-FFI-symbol cross-check at link (per spec/70 item-06 A06.1-3)
+      ✗ Deadline<N> SMT-discharge (spec/20 Lipschitz proof · spec/04 staged)
+      ✗ structural biometric-egress compile-refuse for Sensitive<gaze|face|body|biometric> across PCIe (spec/65 GPU0007)
+
+    GAP-ANALYSIS :
+      G.B.01 · effect-row structural-threading (MirEffectRow) is THE load-bearing language-feature for
+              {Deadline<6944us>} proof on swapchain_present + ¬ heap-alloc-in-hot-path proof
+              ⇒ blocks ASSERT.B.01 · blocks spec/76 P1 ASSERT.P1.01 frame-budget proof
+              ⇒ workaround : doc-comment-only effect-rows · structural-threading incremental landing
+      G.B.02 · Cap<X> as compile-time fn-param witness is THE load-bearing sovereignty-feature
+              ⇒ blocks ASSERT.B.02 · stage-0 runtime-bitset is acceptable as transitional but NOT terminal
+              ⇒ engine-startup grants gpu_cap_engine_full() · per-fn caps_check returns true (trust-caller)
+              ⇒ spec/56 § HIGHEST-VALUE-STUBS sovereignty-real-FFI lands this
+      G.B.03 · IFC biometric-egress compile-refuse (spec/65 GPU0007) needs spec/11 + spec/22 + spec/65 integration
+              ⇒ blocks ASSERT.B.04 · structural-defense for V.4 gaze-collapse (spec/32 R-10)
+              ⇒ critical for monetization-trust-claim per spec/59 sovereignty-USP
+      G.B.04 · Deadline<N> SMT-discharge needs spec/20 § Lipschitz + spec/04 staged collaboration
+              ⇒ blocks ASSERT.B.01 partial · stage-0 doc-comment is acceptable until then
+              ⇒ T9-phase-2 milestone per stdlib/gpu.cssl § EFFECT-ROW note
+      G.B.05 · Region<'r> + iso linear-resource enforcement
+              ⇒ blocks ASSERT.B.06 + B.07 · spec/63 item-21/22 P1 priority
+              ⇒ closure env-capture per spec/02 § CLOSURE-ENV already lands stage-0 conservative path
+
+    TARGET-STATE :
+      → effect-row in fn-sig STRUCTURAL · cross-checked at link (per spec/70 item-06)
+      → Cap<X> as compile-time fn-param witness · consumed-linearly · default-deny structural
+      → biometric-egress compile-refuse via spec/11 + spec/22 + spec/65 GPU0007 absolute
+      → Deadline<N> SMT-discharge at compile · proof-or-error (per spec/04 + spec/20)
+      → Region<'r> arena-alloc + reset · iso linear enforced one-shot
+      → @cross fn auto-derive memory-domain from call-site (per spec/16 DUAL_SURFACE)
+
+    DEPENDENCIES :
+      DEP.B.01 · spec/04 EFFECTS structural-threading slice (cssl-effects crate · MirEffectRow type)
+      DEP.B.02 · spec/12 CAPABILITIES Cap<X> fn-param parser-slice (spec/24 § CSSL-SIDE WRAPPERS)
+      DEP.B.03 · spec/11 IFC + spec/22 TELEMETRY + spec/65 GPU0007 cross-cutting integration
+      DEP.B.04 · spec/20 SMT-plugin for Lipschitz Deadline<N> proof
+      DEP.B.05 · spec/70 Phase-A item-06 effect-row-runtime-validation (linker cross-check)
+
+    AGENT-HOURS-ESTIMATE :
+      effect-row structural-threading : ~50-70 agent-hr (cssl-effects + cssl-mir + cssl-hir + cssl-linker integration)
+      Cap<X> compile-time witness     : ~40-60 agent-hr (parser-slice + monomorph + caps audit)
+      IFC biometric-egress refuse     : ~25-35 agent-hr (cssl-ifc + cssl-telemetry + spec/65 integration)
+      Deadline<N> SMT-discharge       : ~30-50 agent-hr (spec/20 SMT-plugin upgrade + Lipschitz pass)
+      Region + iso linear enforce     : ~20-30 agent-hr (cssl-mir region-ops + linear-tracking walker)
+      @cross auto-derive              : ~15-25 agent-hr (cssl-hir + spec/16 dual-surface)
+      ────────────────────────────────────────
+      TOTAL AXIS-B                    : ~180-270 agent-hr · ~4-7 sessions parallel-fanout
+  ⟧
+
+§I AXIS-C · CODEGEN COMPLETENESS · CPU + 4 GPU + work-graphs + owned-emitters
+  ⟦
+    NOW-STATE (2026-05-18) :
+      ✓ cranelift-CPU stage-0 backend (cssl-cgen-cpu-cranelift)
+      ✓ owned x86-64 stage-1+ backend SCAFFOLD (cssl-cgen-cpu-x64 · G1-G7 phases per spec/14 + T11-D85..D97)
+      ✓ 4 GPU codegen paths exist (cssl-cgen-{gpu-spirv,gpu-dxil,gpu-msl,gpu-wgsl})
+      ✓ rspirv-based SPIR-V emit (stage-0)
+      ✓ structured-CFG-validator CFG0001-CFG0010 (per spec/02 + T11-D70)
+      ✓ memref dialect (memref.load + memref.store) stage-0 (per spec/02 + T11-D59)
+      ✓ closure-env layout stage-0 (per spec/02 + T11-D77 + T11-D100)
+      ◐ cssl.gpu.subgroup.* MIR ops (spec/02 declared · per-target lowering partial)
+      ◐ cssl.rt.{trace_ray,intersect} MIR ops (spec/02 declared · hardware-dependent paths)
+      ◐ cssl.xmx.cooperative_matmul MIR op (spec/02 declared · SPIR-V + DXIL lowering partial)
+      ✗ csslc cranelift-CPU emit-object on 12 new engine files (BLOCKER-α per spec/55)
+      ✗ cross-target struct-parity verified (spec/70 item-08 · 20-module corpus · NOT YET tested)
+      ✗ @persistent_kernel / @workgraph_node / @indirect_dispatch attributes (spec/63 items 31-33)
+      ✗ @shared struct decl with packed-parity σ-enforce (item-35 UNIVERSAL-COORDINATION-SUBSTRATE)
+      ✗ owned-DXIL emitter stage-2 (per spec/14 § OWNED DXIL EMITTER)
+      ✗ owned-MSL emitter stage-2 (per spec/14)
+      ✗ owned-WGSL emitter stage-2 (per spec/14)
+      ✗ owned-SPIR-V emitter stage-1+ (per spec/14 · replaces rspirv)
+      ✗ wave_ballot/active_sum/shuffle/prefix_sum subgroup-collectives as builtins (item-39)
+      ✗ GPU-AD tape on cssl.diff.* + @gpu fn (item-66 + spec/05 + spec/17)
+      ✗ source-map preservation through SPIR-V OpLine (item-10)
+
+    GAP-ANALYSIS :
+      G.C.01 · BLOCKER-α (cranelift verifier-errors on 12 engine files) = SHIPABLE-α gate
+              ⇒ blocks ASSERT.C.01 · spec/76 P0.W4
+              ⇒ workaround : PATH-β Rust-bootstrap ships running-binary · α catches-up parallel
+              ⇒ multi-session per spec/55 § FORWARD-PATHS recommendation
+      G.C.02 · cross-target struct-parity on 20-module corpus (spec/70 item-08)
+              ⇒ blocks ASSERT.C.02 · blocks spec/76 P4 cooperative-matrix portability
+              ⇒ depth-1 fanout per spec/70 dependency-graph
+      G.C.03 · @persistent_kernel + @workgraph_node + @indirect_dispatch attributes
+              ⇒ blocks ASSERT.C.03-05 · spec/76 P4 work-graph reach
+              ⇒ per spec/63 items 31-33 + UPG_02 § persistent-kernels + GPU work-graphs research
+      G.C.04 · @shared struct decl (item-35 UNIVERSAL-COORDINATION-SUBSTRATE)
+              ⇒ blocks ASSERT.C.07 · single-definition both-targets · packed-parity σ-enforced
+              ⇒ LOAD-BEARING for N5 coordination
+      G.C.05 · @vram_direct (item-28 merged with 36) + subgroup-collectives (item-39 merged with 69)
+              ⇒ blocks ASSERT.C.08-09 · spec/76 P2.W6 bindless + P1.W7 subgroup-cull
+      G.C.06 · owned-CPU + 4 owned-GPU emitters stage-2 (spec/14)
+              ⇒ blocks ASSERT.C.10-12 · spec/76 P4 sovereignty milestones
+              ⇒ multi-quarter · ~3-5K LOC per owned-emitter
+
+    TARGET-STATE :
+      → BLOCKER-α cleared · all CSSL source compiles to native objects via cranelift OR owned-x86-64
+      → all 4 GPU codegen paths byte-equivalent on @shared structs (cross-target σ-enforced)
+      → @persistent_kernel · @workgraph_node · @indirect_dispatch attributes compile end-to-end
+      → @shared struct decl single-definition CPU+GPU · packed-parity at FFI boundary
+      → @vram_direct allocator ReBAR-aware
+      → subgroup-collectives as builtins · cross-target SPIR-V + DXIL parity
+      → GPU-AD tape captures differentiable shader fragment gradients
+      → source-map preservation MIR → SPIR-V/DXIL via OpLine · RenderDoc shows .cssl source
+      → owned-x86-64 stage-1+ retires cranelift · owned-DXIL/MSL/WGSL stage-2 retire dxc/spirv-cross/Tint
+      → owned-SPIR-V stage-1+ retires rspirv · validator-identical to spirv-val
+
+    DEPENDENCIES :
+      DEP.C.01 · spec/55 PATH-α + β parallel-progression discipline preserved
+      DEP.C.02 · spec/70 Phase-A items 03 (symbol-audit) + 04 (build-manifest) + 08 (cross-target-parity)
+                + 19 (if-expression) IMPLEMENTED
+      DEP.C.03 · spec/14 BACKEND owned-emitter staging schedule honored (stage-0 → stage-1 → stage-2)
+      DEP.C.04 · spec/02 IR + spec/15 MLIR foundation RATIFIED · cssl.* dialect ops stable
+      DEP.C.05 · UPG_02 + UPG_03 + UPG_04 (HW backends + accelerators + memory + HDL) read-pass before P4 attribute design
+
+    AGENT-HOURS-ESTIMATE :
+      BLOCKER-α cranelift fix    : ~40-80 agent-hr (multi-session · cssl-cgen-cpu-cranelift verifier-pass alignment)
+      cross-target struct-parity : ~30-50 agent-hr (20-module corpus + 5-target byte-compare + ~600 LOC test corpus per spec/70 item-08 estimate)
+      @persistent_kernel attr    : ~50-70 agent-hr (cssl-cgen-gpu-dxil work-graph + cssl-cgen-gpu-spirv VK_AMDX path)
+      @workgraph_node attr       : ~40-60 agent-hr (per UPG_02 § GPU work-graphs research-derived)
+      @indirect_dispatch attr    : ~20-30 agent-hr
+      @shared struct decl        : ~30-40 agent-hr (parser + σ-enforce-extended + packed-parity verifier)
+      @vram_direct + subgroup     : ~30-40 agent-hr (cssl-host-d3d12 ReBAR + cssl-cgen-gpu-* subgroup intrinsics)
+      GPU-AD tape                 : ~40-60 agent-hr (spec/05 + spec/17 GPU emission integration)
+      source-map preservation     : ~20-30 agent-hr (OpLine emission · per item-10)
+      owned-x86-64 stage-1        : ~150-300 agent-hr (multi-quarter · per spec/14 ≤ 15K LOC self-hosted)
+      owned-SPIR-V stage-1+       : ~80-150 agent-hr (~3-5K LOC per spec/14)
+      owned-DXIL stage-2          : ~80-150 agent-hr (~3-5K LOC)
+      owned-MSL stage-2           : ~80-150 agent-hr
+      owned-WGSL stage-2          : ~60-120 agent-hr
+      ────────────────────────────────────────
+      TOTAL AXIS-C                : ~750-1330 agent-hr · multi-quarter timeline
+                                    (revenue-unblock subset ~250 agent-hr · BLOCKER-α + cross-target + subgroup + @shared)
+  ⟧
+
+§I AXIS-D · STDLIB COMPLETENESS
+  ⟦
+    NOW-STATE (2026-05-18) :
+      ✓ 14 modules : audio · fs · gpu · input · iter · net · omega · option · result · string · thread · time · vec · window
+      ✓ 35 ABI symbols (per spec/55 § WORK-DELIVERED 100% spec/24 coverage)
+      ✓ 8 host-FFI wrappers in stdlib/gpu.cssl
+      ✓ T11-D76 (fs byte-equal) + T11-D78 (window clean-spawn/close) + T11-D80 (input) + T11-D81 (audio sine-tone)
+        + T11-D82 (net loopback) verified
+      ◐ stdlib::string is minimal (placeholder per spec/56 cssl.string.* lowering gap)
+      ◐ MirEnumLayout sizes some enums correctly (per spec/56 § HIGHEST-VALUE-STUBS · gap on complex enums)
+      ◐ Multi-module aux-load (per spec/56 · partial)
+      ◐ stdlib::time + thread + window stage-0 (per stdlib/gpu.cssl § stage-0 notes · platform impls underway)
+      ✗ cmd_buf_record + cmd_buf_submit real bodies (stage-1 fleshing per stdlib/gpu.cssl § stage-0 note 9)
+      ✗ stdlib::xr OpenXR surface (DEFERRED per stdlib/gpu.cssl § stage-0 deferred · Cap<XR> separate slice)
+      ✗ stdlib::ecs (spec/66 EPIC reserved)
+      ✗ stdlib::asset (PNG/GLTF/WAV/TTF parsers in cssl-host crates · not yet wrapped as stdlib surface)
+      ✗ stdlib::physics (cssl-physics + cssl-pga crates · not yet wrapped as stdlib surface)
+      ✗ stdlib FFI types canonical i64 not u32/u64 (per HANDOFF_NEXT_SESSION mention "stdlib FFI calls ALL using wrong-types")
+
+    GAP-ANALYSIS :
+      G.D.01 · cssl-string MirEnumLayout multi-module aux-load (spec/56 § HIGHEST-VALUE-STUBS)
+              ⇒ blocks existing examples (hello_triangle.cssl 79 errors · audio_callback.cssl 88 errors)
+              ⇒ P0 per spec/56 · 7-10 days estimate
+              ⇒ blocks spec/77 ASSERT.D.01-03
+      G.D.02 · stdlib FFI canonical i64 (vs u32/u64 mis-typed per HANDOFF)
+              ⇒ blocks ASSERT.D.04 · 12 engine files rewrite OR cssl-mir body_lower recognizer fix
+              ⇒ either-way fix · already partial (test_visible_window.cssl rewritten to all-i64)
+              ⇒ recognizer-fix is structural · spec/70 Phase-A item-02 recognizer-type-mismatch alignment
+      G.D.03 · stdlib::gpu cmd-buf record + submit stage-1 fleshing
+              ⇒ blocks ASSERT.D.05 · blocks spec/76 P1.W1 per-pass cmd-buf record bodies
+              ⇒ per stdlib/gpu.cssl § stage-0 note 9 + host_gpu.rs cmd_buf_record_stub_impl pattern
+      G.D.04 · stdlib::xr surface (Cap<XR> slice)
+              ⇒ blocks ASSERT.D.06 · blocks spec/76 P3.W3 gaze-collapse (Stage-2 of spec/32)
+              ⇒ deferred per spec/32 D-4 Quest-2 + DEFERRED indefinite per spec/59 PARKED-list
+              ⇒ revisit when XR-market signals customer-demand
+      G.D.05 · stdlib::ecs (spec/66 EPIC)
+              ⇒ blocks ASSERT.D.07 · spec/63 items 51-60 fanout
+              ⇒ enables north-stars N2 (entities) + N4 (genre-blending)
+      G.D.06 · stdlib::asset surface (parsers exist in cssl-host crates per spec/14 § ASSET-PIPELINE)
+              ⇒ blocks ASSERT.D.08 · blocks spec/76 P0+ visible-engine asset-loading
+              ⇒ async-handle scaffold already specced (AssetHandle<T> per spec/14)
+      G.D.07 · stdlib::physics surface (cssl-physics + cssl-pga crates exist)
+              ⇒ blocks ASSERT.D.09 · blocks spec/76 P2.W8 particle-sim + P3 substrate effects
+              ⇒ promote cssl-pga + cssl-physics from crate-level to language-level (per spec/63 items 65 + 66)
+
+    TARGET-STATE :
+      → All 14 + 3 NEW (xr · ecs · asset · physics) modules stable + production-grade
+      → cssl-string lowering complete · cssl.string.* MIR ops + cross-target σ-enforce
+      → MirEnumLayout correct on all tuple-variant + struct-variant + named enums
+      → Multi-module aux-load · csslc resolves cross-module symbols correctly
+      → stdlib FFI canonical types (all i64 OR recognizer-tolerant of u32/u64)
+      → stdlib::gpu cmd_buf record + submit real (no more stage-1 stubs)
+      → asset-pipeline parsers exposed via stdlib::asset surface · async-handle scaffold engaged
+      → spec/66 ECS spec authored + stdlib::ecs ships
+      → physics: PGA Motor + MLS-MPM + rigid-body integrator via stdlib::physics
+
+    DEPENDENCIES :
+      DEP.D.01 · spec/56 § HIGHEST-VALUE-STUBS string.* + MirEnumLayout + multi-module-aux-load close
+      DEP.D.02 · spec/70 Phase-A item-02 recognizer-type-mismatch IMPLEMENTED (for FFI type-recognition)
+      DEP.D.03 · stdlib/gpu.cssl § stage-0 note 9 cmd-buf record/submit fleshing land
+      DEP.D.04 · spec/66 ECS EPIC reserved-spec authored (Apocky-greenlight)
+      DEP.D.05 · spec/14 § ASSET-PIPELINE parsers (already specced)
+      DEP.D.06 · cssl-pga + cssl-physics + cssl-physics-wave crates promote-to-stdlib decision
+
+    AGENT-HOURS-ESTIMATE :
+      string + MirEnumLayout + multi-module : ~50-70 agent-hr (spec/56 P0 priority · 7-10 days agents)
+      stdlib FFI canonical i64 (recognizer-fix path) : ~10-20 agent-hr (per spec/70 item-02 alignment)
+      stdlib::gpu cmd-buf real bodies        : ~40-60 agent-hr (host_gpu.rs fleshing + cssl-host-d3d12/vulkan integration)
+      stdlib::xr (OpenXR Cap<XR>)            : ~80-150 agent-hr (deferred · multi-month)
+      stdlib::ecs (spec/66 EPIC)             : ~250-500 agent-hr (separate-spec · multi-quarter)
+      stdlib::asset wrapper layer            : ~30-50 agent-hr (parsers exist · wrapper-layer thin)
+      stdlib::physics wrapper layer          : ~40-60 agent-hr (cssl-pga + cssl-physics promote)
+      ────────────────────────────────────────
+      TOTAL AXIS-D revenue-slice (string+enum+module+gpu cmd-buf) : ~100-150 agent-hr · ~2-3 sessions
+      TOTAL AXIS-D long-arc (incl. xr + ecs + asset + physics)    : ~500-910 agent-hr · multi-quarter
+  ⟧
+
+§I AXIS-E · TOOLING
+  ⟦
+    NOW-STATE (2026-05-18) :
+      ✓ scripts/sentinel_build_check.sh (Gate-E · per spec/70 item-01 + PRINCIPLE-5)
+      ✓ scripts/spec-validator + worktree-isolation smoke tests
+      ✓ MCP harness (tools/grok-mcp-harness · csl_parse · csl_to_cssl · infinity_engine_sync stubs)
+      ✓ MNEME cloud-memory system (cssl-edge/lib/mneme · 8 API routes per spec/43-45)
+      ✓ csslc test-runner CI (8330+ tests passing per audit pre-Phase-A · post-T11-D153 parallel-clean)
+      ✓ pixdiff harness inherited from LoA v14 (referenced · could be ported to CSSL)
+      ◐ diagnostics include file:line:col (basic) · NOT caret + suggestion + ANSI-color (per spec/70 item-89)
+      ◐ build-cache (per spec/70 item-87 depth-3 fanout · Phase-A pending)
+      ◐ source-map preservation MIR → SPIR-V (per item-10 partial)
+      ✗ csslc per-module hash + incremental cache · < 1s cache-hit re-build
+      ✗ Diagnostic carets + ANSI color + "did you mean: X?" suggestions
+      ✗ @hot_reload_preserve attribute + 1ms hot-reload (per spec/26 + R13)
+      ✗ cssl_test_observe(...) harness API (per spec/70 item-05 A05.1)
+      ✗ build-artifact-manifest (per spec/70 item-04)
+      ✗ golden-pixel-regression per-backend per-example (per spec/56 § LoA-v14 pixdiff inheritance)
+      ✗ @debug_borrow gpu<T> CPU-inspection (per spec/65 OQ.05 escalation)
+
+    GAP-ANALYSIS :
+      G.E.01 · build-cache incremental (spec/70 item-87)
+              ⇒ blocks ASSERT.E.01 · 10× iteration speed-up per spec/63 N5 coordination claim
+              ⇒ depth-3 fanout per spec/70 (after item-02 type-cache-key stable)
+      G.E.02 · diagnostics-with-carets-and-suggestions (spec/70 item-89)
+              ⇒ blocks ASSERT.E.02 + E.03 · depth-0 fanout per spec/70
+              ⇒ rustc-quality diagnostics is table-stakes for adoption-pitch
+      G.E.03 · hot-reload (per spec/26 HOTFIX-INFRA)
+              ⇒ blocks ASSERT.E.04 · 1ms hot-reload per R13 + spec/63 item-7 deterministic-replay
+              ⇒ key dev-velocity-multiplier post-revenue
+      G.E.04 · cssl_test_observe harness + run-and-observe gate (spec/70 item-05)
+              ⇒ blocks ASSERT.E.05 · depth-0 fanout · UNBLOCKS item-01 A01.3 + A01.4
+              ⇒ structural-defense vs WinMain-class regressions in test-code
+      G.E.05 · golden-pixel-regression per-backend (LoA-v14 pixdiff inheritance)
+              ⇒ blocks ASSERT.E.06 · per-backend per-example golden-frame test
+              ⇒ port pixdiff.exe + tests/golden/ pattern from LoA v14 to CSSL
+      G.E.06 · build-artifact-manifest (spec/70 item-04)
+              ⇒ blocks ASSERT.E.07 · expected-symbols + hashes + linker-verify
+              ⇒ depth-1 fanout per spec/70
+      G.E.07 · @debug_borrow + Cap<DebugInspect>
+              ⇒ blocks ASSERT.E.09 · per spec/65 OQ.05 escalation
+              ⇒ dev-velocity escape-hatch for gpu<T> inspection
+
+    TARGET-STATE :
+      → csslc incremental build · per-module hash · cache-hit < 1s · cache-miss 10× faster than naive
+      → diagnostics rustc-quality · carets + suggestions + ANSI-color + file:line:col
+      → 1ms hot-reload · orthopersist preserves engine-state across reload
+      → CI run-and-observe gate · every test produces observable side-effect (Gate-E)
+      → Per-backend golden-pixel regression on 10+ canonical-scenes (LoA-v14-style)
+      → Build-artifact-manifest · linker-verify on every PE/ELF/Mach-O emit
+      → @debug_borrow + Cap<DebugInspect> for gpu<T> dev-inspection
+      → MNEME persistent-memory tightly integrated with csslc-build + agent-fleet
+
+    DEPENDENCIES :
+      DEP.E.01 · spec/70 Phase-A depth-0 fanout (items 01 · 02 · 05 · 89) IMPLEMENTED
+      DEP.E.02 · spec/70 Phase-A depth-1 (items 03 · 04 · 06) IMPLEMENTED for manifest + audit
+      DEP.E.03 · spec/26 HOTFIX-INFRA + spec/26b HOTFIX-KEYS RATIFIED + IMPLEMENTED
+      DEP.E.04 · spec/63 PRINCIPLE-5 sentinel-build-check (Gate-E) wired to CI
+      DEP.E.05 · LoA v14 pixdiff.exe + tests/golden/ pattern · port-decision (Apocky-greenlight)
+      DEP.E.06 · spec/65 OQ.05 @debug_borrow + Cap<DebugInspect> design REVIEWED
+
+    AGENT-HOURS-ESTIMATE :
+      build-cache incremental    : ~30-50 agent-hr (per spec/70 item-87 ~500 LOC + 200 LOC test)
+      diagnostics-with-carets    : ~40-60 agent-hr (per spec/70 item-89 ~600 LOC + 300 LOC golden)
+      hot-reload 1ms             : ~50-100 agent-hr (per spec/26 + orthopersist spec/18 integration)
+      cssl_test_observe harness  : ~20-30 agent-hr (per spec/70 item-05 ~150 LOC + 80 LOC golden)
+      golden-pixel-regression    : ~30-50 agent-hr (port pixdiff.exe to CSSL · CI integration)
+      build-artifact-manifest    : ~30-50 agent-hr (per spec/70 item-04 ~250 LOC + 80 LOC test)
+      @debug_borrow              : ~15-25 agent-hr (parser + Cap<DebugInspect> + cssl-host-d3d12/vulkan readback path)
+      ────────────────────────────────────────
+      TOTAL AXIS-E               : ~215-365 agent-hr · ~5-8 sessions parallel-fanout
+  ⟧
+
+§I AXIS-F · SELF-HOST · zero-Rust-runtime · csslc compiles csslc
+  ⟦
+    NOW-STATE (2026-05-18) :
+      ✓ compiler-cssl/ meta-circular CSSL-in-CSSL compiler exists (parser + hir + resolve + codegen + fixed_point)
+        NOTE : meta-circular ≠ self-host · compiler-cssl is a SECOND-source-of-truth not csslc-replacement
+      ✓ cssl-rt runtime is Rust-hosted (compiler-rs/crates/cssl-rt)
+      ✓ csslc the binary is Rust-hosted (compiler-rs/crates/csslc)
+      ✓ all 5 GPU host backends are Rust-hosted (cssl-host-{d3d12 · vulkan · metal · webgpu · level-zero})
+      ✓ all 4 GPU codegen paths use Rust-hosted toolchain at stage-0 (cranelift · rspirv · dxc · spirv-cross · Tint)
+      ◐ owned-x86-64 backend stage-1+ SCAFFOLD (cssl-cgen-cpu-x64 · G1-G7 phases per spec/14)
+      ✗ csslc compiles csslc (self-host bootstrap loop · spec/67 EPIC reserved)
+      ✗ cssl-rt ported to CSSL source (zero-Rust at runtime · per spec/63 N6)
+      ✗ loa-host bootstrap retired
+      ✗ owned-x86-64 stage-1+ production (~15K LOC self-hosted target per spec/14)
+      ✗ owned-SPIR-V emitter stage-1+ production (~3-5K LOC per spec/14)
+      ✗ owned-DXIL emitter stage-2 production
+      ✗ owned-MSL emitter stage-2 production
+      ✗ owned-WGSL emitter stage-2 production
+
+    GAP-ANALYSIS :
+      G.F.01 · csslc self-host bootstrap (spec/67 EPIC)
+              ⇒ blocks ASSERT.F.01 + F.02 · spec/63 N6 sovereignty north-star · terminal milestone
+              ⇒ requires AXIS-A + B + C + D all mature first (you can't self-host with missing language features)
+              ⇒ multi-quarter · post-revenue · per spec/56 § cssl-rt → cssl-host DELEGATION 4-8 months post-1440p144-visible
+      G.F.02 · cssl-rt ported to CSSL (zero-Rust runtime)
+              ⇒ blocks ASSERT.F.03 + F.04 · spec/63 N6
+              ⇒ requires AXIS-D stdlib :: completion + owned-x86-64 backend stage-1+ production
+              ⇒ multi-quarter post-self-host
+      G.F.03 · owned-x86-64 stage-1+ retires cranelift
+              ⇒ blocks ASSERT.C.10 + F.05 · spec/14 stage-2 endpoint
+              ⇒ multi-quarter · ~150-300 agent-hr per AXIS-C estimate
+      G.F.04 · owned-{SPIR-V · DXIL · MSL · WGSL} emitters retire rspirv/dxc/spirv-cross/Tint
+              ⇒ blocks ASSERT.C.11/12 + F.05 · multi-quarter
+
+    TARGET-STATE :
+      → csslc compiles csslc · cssl-rt is CSSL-source · zero Rust dep at runtime
+      → loa-host bootstrap retired · all FFI symbols resolve to cssl-rt CSSL-source
+      → owned-x86-64 backend retires cranelift dep · zero LLVM-IR-design influence
+      → 4 owned-GPU emitters retire rspirv + dxc + spirv-cross + Tint deps
+      → entire CSSL stack proprietary · zero rented runtimes · zero LLVM/cranelift/Rust dep at production-time
+
+    DEPENDENCIES :
+      DEP.F.01 · AXIS-A type-system completeness (vec/mat/quat/gpu<T>/etc) IMPLEMENTED
+      DEP.F.02 · AXIS-B effect-row + Cap<X> structural-threading IMPLEMENTED
+      DEP.F.03 · AXIS-C codegen completeness (BLOCKER-α cleared · cross-target-parity · attributes · owned-x86-64 stage-1)
+      DEP.F.04 · AXIS-D stdlib completeness (string · enum · multi-module · cmd-buf real)
+      DEP.F.05 · AXIS-E tooling (build-cache + diagnostics + hot-reload · dev-velocity sustainable for multi-quarter)
+      DEP.F.06 · spec/67 csslc-self-host EPIC RATIFIED (spec authored · path-clear)
+      DEP.F.07 · spec/68 stage-2 EPIC RATIFIED (owned-emitters spec)
+      DEP.F.08 · revenue-track ($5k-20k floor per spec/59) reached · funds multi-quarter sovereignty work
+
+    AGENT-HOURS-ESTIMATE :
+      spec/67 csslc-self-host EPIC : ~500-1000 agent-hr (multi-quarter · est)
+      cssl-rt CSSL-port             : ~300-600 agent-hr
+      owned-x86-64 stage-1+         : ~150-300 agent-hr (per AXIS-C)
+      4 owned-GPU emitters stage-2 : ~300-570 agent-hr (per AXIS-C)
+      loa-host retirement           : ~50-100 agent-hr
+      ────────────────────────────────────────
+      TOTAL AXIS-F                  : ~1300-2570 agent-hr · MULTI-YEAR · post-revenue
+                                       ⊢ "sovereignty terminal milestone · t∞ goal" not "30-day deliverable"
+  ⟧
+
+§I REVENUE-UNBLOCK-SLICE · axes-required-for-spec/76-P1-shipping
+  ⟦
+    Per spec/59 revenue-first ordering · the minimum-viable maturity-set for 1440p144 + alpha-launch :
+
+      AXIS-A revenue-slice :
+        ✗ if-else expression-position (item-19) ← P0 · ~5-10 agent-hr
+        ◐ vec3/vec4/mat4/quat first-class (items 61-63) ← P0 · ~30-40 agent-hr · OPTIONAL for P1
+          (Vec3F/Mat4F surrogate works for P1 minimum-viable · cleaning these later)
+
+      AXIS-B revenue-slice :
+        ◐ effect-row Deadline<6944us> as doc-comment is acceptable for P1
+          (structural-threading deferred to post-revenue)
+        ◐ Cap<Gpu> runtime-bitset trust-the-caller is acceptable for P1
+          (compile-time witness deferred · monetization-trust-claim acceptable on runtime-default-deny)
+
+      AXIS-C revenue-slice :
+        ✗ BLOCKER-α cleared (cranelift verifier-clean on 12 files) ← P0 · ~40-80 agent-hr
+          OR PATH-β Rust-bootstrap as workaround (spec/55 default) → unblocks revenue today
+        ◐ subgroup-collectives partial (cssl.gpu.subgroup.* declared · lowering partial)
+          (full implementation deferred · partial-impl OK for stage-0 forward+)
+
+      AXIS-D revenue-slice :
+        ✗ string + MirEnumLayout + multi-module fixes (P0 per spec/56) ← ~50-70 agent-hr
+          (blocks examples/hello_triangle + audio_callback)
+        ✗ stdlib FFI canonical i64 (recognizer-fix path) ← ~10-20 agent-hr
+        ◐ stdlib::gpu cmd-buf record + submit real bodies ← P0 · ~40-60 agent-hr
+          (REQUIRED for ANY frame to actually render)
+
+      AXIS-E revenue-slice :
+        ✓ scripts/sentinel_build_check.sh (Gate-E) already shipped
+        ✗ cssl_test_observe harness (Phase-A item-05) ← P0 · ~20-30 agent-hr
+        ◐ diagnostics-with-carets nice-to-have but not P1-blocker (deferred to post-revenue)
+
+      AXIS-F revenue-slice :
+        ¬ APPLICABLE · self-host is post-revenue terminal milestone
+        PATH-β Rust-bootstrap is acceptable through revenue-track
+
+    REVENUE-UNBLOCK TOTAL ESTIMATE :
+      ≈ 200-310 agent-hr · ~5-7 sessions parallel-fanout per spec/58 measured 900-1200 LOC/hr
+      ≈ matches Grok's 30-day window per spec/59 § 30-DAY-REVENUE-TARGETS
+      ≈ alpha-keys + landing-page revenue can start as P0 lands (per spec/59 ACTION-1-4)
+
+    The remaining axis-work (AXIS-A polish · AXIS-B structural · AXIS-C owned-emitters · AXIS-D xr+ecs+physics ·
+    AXIS-E hot-reload + cache · AXIS-F self-host) is the MULTI-QUARTER sovereignty arc · funded-by revenue.
+  ⟧
+
+§I NON-GOALS
+  ⟦
+    NG.01 · ¬ promise self-host in 30 days · spec/63 N6 + spec/64 § no-Rust-eventually is t∞ goal
+    NG.02 · ¬ implement any axis-work now · this is planning · Apocky greenlights per-axis cadence
+    NG.03 · ¬ pre-empt Apocky's choice between PATH-α (csslc-self-host) vs PATH-β (Rust-bootstrap) ·
+              parallel-progression remains current default per spec/55 § FORWARD-PATHS
+    NG.04 · ¬ design new language-axes beyond A-F · 6 axes is the right grain · further-decomposition is
+              spec-level not roadmap-level
+    NG.05 · ¬ tie agent-hour estimates to specific calendar-dates · spec/58 measured velocity is
+              hours-of-output not days-of-calendar · revenue-track + Phase-A status throttle pacing
+    NG.06 · ¬ promote any axis to "shippable now" beyond what spec/55 + spec/59 + spec/70 already declared ·
+              this roadmap respects existing strategic-direction
+    NG.07 · ¬ require Apocky to ratify in one sitting · per-axis-greenlight is supported pattern
+    NG.08 · ¬ design language-features outside the 6 axes (parallelism · macros · etc) ·
+              those have dedicated specs (spec/13 MACROS · spec/02 closure-env · etc) and are out-of-roadmap-scope
+  ⟧
+
+§I DEPENDENCIES (roadmap-wide)
+  ⟦
+    DEP.01 · spec/63_IMPROVEMENT_BACKLOG_100 v2 RATIFIED · 100-item canonical N1-N6-tagged list
+    DEP.02 · spec/65_GPU_MEMORY_TYPE_DISTINCTION DRAFT → REVIEWED → RATIFIED (gpu<T> family enabling-spec)
+    DEP.03 · spec/70_PHASE_A_CORRECTNESS RATIFIED · 12 items in fanout · item-01 IMPLEMENTED
+    DEP.04 · spec/55_NORMAL_ENGINE_PIVOT historical · provides 2026-05-03 conventional Forward+ pivot baseline
+    DEP.05 · spec/59_GROK_VELOCITY_RESPONSE historical · revenue-first 7-action re-prioritization
+    DEP.06 · spec/56_GROK_AUDIT historical · HIGHEST-VALUE-STUBS list (string + MirEnumLayout + multi-module)
+    DEP.07 · spec/14_BACKEND RATIFIED · stage-0 → stage-1 → stage-2 owned-emitter schedule
+    DEP.08 · spec/02_IR + spec/15_MLIR RATIFIED · cssl.* dialect ops + structured-CFG + memref + closure-env
+    DEP.09 · spec/04_EFFECTS + spec/11_IFC + spec/12_CAPABILITIES + spec/20_SMT cross-cutting integration roadmap
+    DEP.10 · spec/76 GPU_RENDERING_MATURATION_PLAN companion · cross-references axis-work to phase-gates
+    DEP.11 · spec/66 ECS-compiler-supported EPIC reserved (Apocky-greenlight + author)
+    DEP.12 · spec/67 csslc-self-host EPIC reserved (Apocky-greenlight + author · multi-year horizon)
+    DEP.13 · spec/68 stage-2 owned-emitters EPIC reserved (Apocky-greenlight + author)
+    DEP.14 · spec/69 wasm32 EPIC reserved (Apocky-greenlight · post-revenue)
+  ⟧
+
+§I FAILURE-MODES
+  ⟦
+    FM.01 · scenario : revenue-slice estimate ~200-310 agent-hr over-runs · alpha-launch slips
+            detection : spec/58 measured velocity drops below 900 LOC/hr OR Phase-A items stall
+            mitigation : per spec/59 ¬-half-measures · find way through · PATH-β Rust-bootstrap unblocks
+                          revenue today · α + B + C maturity completes post-revenue
+
+    FM.02 · scenario : AXIS-A vec/mat/quat first-class breaks existing engine code (surrogate Vec3F/Mat4F deletion churn)
+            detection : engine/render_forward.cssl test-corpus regression
+            mitigation : surrogate-struct migration is mechanical · scripted-rewrite tool · parallel deletion +
+                          test-corpus-update in same PR · grace-period if needed (per spec/63 PRINCIPLE-7 stop-when-wrong)
+
+    FM.03 · scenario : AXIS-B Cap<X> compile-time witness breaks existing runtime-bitset trust-the-caller pattern
+            detection : engine_init Step 1 returns CapDenied (per stdlib/gpu.cssl § T11-W19-β-LIVE-CAPS commentary)
+            mitigation : graceful-migration · cap-grant-on-init synthesized · transitional grace-period · existing
+                          code WORKS during migration · structural threading lands incremental
+
+    FM.04 · scenario : AXIS-C BLOCKER-α (cranelift) stays unfixable multi-session
+            detection : ASSERT.C.01 stays ✗ across 4+ sessions
+            mitigation : skip-to owned-x86-64 stage-1+ directly (zero cranelift) · longer-tail but sovereign-correct
+                          PATH-β covers revenue-window
+
+    FM.05 · scenario : AXIS-D stdlib::ecs spec/66 takes longer than estimated (spec is ambitious)
+            detection : item-51 EPIC remains drafting > 1 quarter
+            mitigation · per spec/63 item-51 acknowledged as EPIC · decomposed by-Reza-review into sub-specs ·
+                          partial-completion (Bevy-style sparse-set as MVP per item-52) ships before full-spec/66
+
+    FM.06 · scenario : AXIS-E hot-reload breaks deterministic-replay (spec/63 item-7)
+            detection : replay-equivalence test fails after hot-reload roundtrip
+            mitigation : orthopersist spec/18 isolation pattern preserves engine-state across reload · hot-reload
+                          MUST honor replay-discipline · spec-amendment if conflict surfaces
+
+    FM.07 · scenario : AXIS-F self-host stalls due to language-feature-circular-dependency
+            detection : spec/67 EPIC reveals csslc requires feature X that requires csslc to compile to test
+            mitigation · classical bootstrap pattern : minimal-CSSL-subset csslc compiles · subset grows until
+                          full-CSSL-csslc bootstraps · multi-step pattern · plan iteration in spec/67
+
+    FM.08 · scenario : axis-A through F estimates compound · total > available solo-augmented runway
+            detection : total estimated agent-hours ÷ measured-throughput > Apocky's runway
+            mitigation : spec/59 CUT-list applies · indefinite-park · ship minimum-viable-revenue first ·
+                          revenue funds long-arc work · per spec/63 N6 sovereignty is t∞ goal not 30-day deliverable
+
+    FM.09 · scenario : spec/65 GPU_MEMORY_TYPE_DISTINCTION never reaches RATIFIED · gpu<T> family stays DRAFT
+            detection : spec/65 § LIFECYCLE-HISTORY stays at REVIEWED
+            mitigation : AXIS-A.10 + AXIS-B.08 + AXIS-C.07 all degrade · plan-amendment if spec/65 stays DRAFT >
+                          1 quarter · stage-0 runtime-bitset pattern survives without spec/65 type-system-level upgrade
+
+    FM.10 · scenario : Cranelift project moves away or gets discontinued
+            detection : cranelift-codegen 2.0 breaking-change OR project-archive announcement
+            mitigation : owned-x86-64 backend stage-1+ becomes urgent · cranelift was always stage-0 expedient ·
+                          per spec/14 BACKEND stage-1+ is the long-term plan · no architectural regression
+  ⟧
+
+§I COMPATIBILITY
+  ⟦
+    COMPAT.01 · existing engine/* + stdlib/* + cssl-rt + csslc · status : PRESERVED IN-FULL during axis-work
+                  this roadmap extends · refactor-deletions are mechanical scripted migrations + test-corpus updates
+    COMPAT.02 · existing spec/03 + spec/04 + spec/11 + spec/12 + spec/14 + spec/24 etc · status : PRESERVED
+                  axis-work IMPLEMENTS what these specs DECLARED · zero spec-deprecation expected
+    COMPAT.03 · existing T11-D* decision-ledger · status : APPENDED · new decisions T11-D(225+) per phase-completion
+    COMPAT.04 · existing PATH-α + β parallel-progression · status : PRESERVED · AXIS-F is α terminal endpoint ·
+                  β bootstrap survives until α self-host validated
+    COMPAT.05 · existing cssl-cgen-cpu-{cranelift,x64} + cssl-cgen-{gpu-spirv,gpu-dxil,gpu-msl,gpu-wgsl} crates
+                  · status : PRESERVED · axis-C IMPLEMENTS what's scaffolded · zero rename
+    COMPAT.06 · existing PRIME-DIRECTIVE consent-as-OS posture · status : INVIOLATE · every axis-work
+                  enforces in-full · spec/65 GPU0007 biometric-egress-ban absolutely-strengthened
+    COMPAT.07 · existing spec/76 GPU_RENDERING_MATURATION_PLAN companion · status : SYMBIOTIC ·
+                  spec/76 phases require spec/77 axes · axes enable phases · no circular-dep
+  ⟧
+
+§I PRIOR-ART
+  ⟦
+    PA.01 · Rust language evolution (epochs / editions) · per-feature-gating · backwards-compat preserved
+              what-we-take : per-axis lifecycle (DRAFT → REVIEWED → RATIFIED → IMPLEMENTED → VERIFIED)
+              what-we-diverge : Apocky-direct-rule + AI-co-authorship-first-class · no committee-process
+
+    PA.02 · Bevy Cart's measured-velocity blog (Bevy yr-1 ~10K LOC/yr) · per spec/58 velocity-comparison
+              what-we-take : honest velocity-anchoring against benchmarks
+              what-we-diverge : parallel-AI-augmented velocity = 50-100× indie-typical per spec/58
+
+    PA.03 · Zig language self-host bootstrap (Andrew Kelley · circa 2022-2023)
+              what-we-take : sequential bootstrap pattern (minimal-subset compiler grows to full-language)
+              what-we-diverge : CSL3-density advantage · effects-first-class · sovereignty-by-construction
+
+    PA.04 · Pony's Pony-6 capability system · per spec/12 Pony-6 acknowledgement
+              what-we-take : iso/trn/ref/val/box/tag taxonomy is canonical
+              what-we-diverge : CSSL extends with capability witnesses + IFC labels + GPU domain types
+
+    PA.05 · Koka effect-row system (Daan Leijen · Microsoft Research) · per spec/04 Koka acknowledgement
+              what-we-take : row-poly ⟨e|ε⟩ + handler-effect-evidence-passing transform
+              what-we-diverge : CSSL combines with cap-system + IFC + Deadline<N> SMT-discharge
+
+    PA.06 · Unison (Paul Chiusano · Runar Bjarnason) · content-addressed code · per UPG_05 + UPG_06 alignment
+              what-we-take : content-addressed hash-of-AST as build-cache-key (item-87)
+              what-we-diverge : CSSL uses content-addressing for spec/18 ORTHOPERSIST + hot-reload not just dep-management
+
+    PA.07 · MLIR (Chris Lattner · LLVM-but-multi-level) · per spec/15 MLIR adoption
+              what-we-take : dialect-pattern + structured-region model + memref/scf/arith dialects
+              what-we-diverge : cssl.* dialect is custom from-day-one · structured-CFG-only validator (no goto)
+
+    PA.08 · D3D12 Work Graphs (Microsoft · 2024 · per UPG_02 + AXIS-C.04)
+              what-we-take : @workgraph_node + record-based input/output + SV_DispatchGrid pattern
+              what-we-diverge : structural CSSL attribute · cross-emitted to SPIR-V (VK_AMDX_shader_enqueue) ·
+              not D3D12-only
+
+    PA.09 · Cranelift (Bytecode Alliance) · per UPG_02 § 1 (going-below-LLVM)
+              what-we-take : single-level IR + e-graph mid-end + ISLE-style isel + hardening-by-default
+              what-we-diverge : we use cranelift stage-0 expedient · owned-x86-64 stage-1+ retires it per spec/14
+
+    PA.10 · NASA JPL "Power-of-10" rules (per spec/70 PA.04)
+              what-we-take : observable-side-effect as proof-of-aliveness · sentinel_build_check.sh Gate-E
+              what-we-diverge : adapted to compiler/CI scale not aerospace-criticality
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS
+  ⟦
+    § no surveillance vector introduced
+       · type-system maturity DOES NOT introduce surveillance · IFC-labels EXTEND structural-refuse posture
+       · spec/65 GPU0007 + spec/11 + spec/22 biometric-egress-ban STRENGTHENED at axis-B IFC compile-validation
+
+    § no consent-bypass mechanism introduced
+       · Cap<X> compile-time witness UPGRADES sovereignty (axis-B target) · NOT downgrade
+       · transitional runtime-bitset trust-the-caller pattern (current) is acceptable-during-migration
+       · per-axis ratification preserves Apocky-final-say
+
+    § no biometric-egress (PD0018) path opened
+       · AXIS-B target-state strengthens : structural compile-refuse for Sensitive<gaze|face|body|biometric> across PCIe
+       · spec/65 GPU0007 absolute · NO Cap-override
+
+    § no sovereignty-denial (PD0020) primitive added
+       · AXIS-F entire AXIS IS the sovereignty-completion · self-host + zero-Rust + owned-emitters
+       · planning roadmap does NOT compromise any sovereignty axiom · STRENGTHENS them
+
+    § cosmetic-only-axiom (monetization-relevant)
+       · AXIS-A through F MATURITY does NOT add pay-for-power · capability-gating + IFC + caps preserve cosmetic-only
+       · alpha-keys + tiered access COSMETIC per spec/59 + spec/63 N6
+       · DRM forbidden · rootkit forbidden · kernel-driver forbidden · telemetry-by-default forbidden
+
+    § AI-co-authorship · Reza-pattern
+       · this roadmap authored by Tech-Lead-Claude-Opus-4.7-1M under Apocky directive 2026-05-18
+       · subagent-fanout for read-pass (CSSLv3 deep audit · LoA v14 reference scan · 1LoA reference scan)
+       · per spec/63 PRINCIPLE-6 + spec/64 §FM.06 + spec/70 § ATTESTATION patterns honored
+       · canonical-ref : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES
+  ⟦
+    where-this-lands (per axis) :
+      AXIS-A · cssl-parse + cssl-hir + cssl-mir + cssl-types + cssl-effects + cssl-cgen-* + cssl-smt
+      AXIS-B · cssl-effects + cssl-ifc + cssl-caps + cssl-hir + cssl-mir + cssl-smt + cssl-linker
+      AXIS-C · cssl-cgen-cpu-* + cssl-cgen-gpu-* + cssl-host-{d3d12,vulkan,metal,webgpu,level-zero} + cssl-mir
+      AXIS-D · stdlib/*.cssl + cssl-mir body_lower recognizers + cssl-host-* fleshing
+      AXIS-E · cssl-build-cache + cssl-diagnostics + cssl-test-{coordinator,verifier,harness} + scripts/* + MNEME integration
+      AXIS-F · csslc-self-host-bootstrap path + spec/67 EPIC + cssl-rt CSSL-port + owned-emitters
+
+    revenue-slice spawn-pattern :
+      depth-0 (parallel · simultaneous) :
+        spawn 4-6 agents on : {axis-A.A.09 if-expression · axis-D.D.04 stdlib FFI canonical i64 ·
+                                axis-E.E.05 cssl_test_observe harness · axis-A.A.06 sum-type exhaustive-match}
+      depth-1 (parallel · after depth-0 merges) :
+        spawn 4-6 agents on : {axis-D.D.01 string + MirEnumLayout + multi-module · axis-D.D.05 cmd-buf real bodies ·
+                                axis-C.C.01 BLOCKER-α cranelift fix · axis-A.A.10 spec/65 gpu<T>}
+      depth-2 (sequential after depth-1 lands) :
+        spawn 2-3 agents on : {axis-A.A.01-04 vec/mat/quat first-class · axis-C.C.07 @shared struct decl}
+
+    full-roadmap multi-quarter pattern :
+      Q-current (revenue-track) : revenue-slice depth-0 + depth-1 (~200-310 agent-hr per § REVENUE-UNBLOCK-SLICE)
+      Q+1                       : axis-A polish (vec/mat/quat first-class + transcendentals + refinement-runtime)
+                                   + axis-D xr + ecs scaffolding + axis-E hot-reload
+      Q+2                       : axis-B structural (effect-row + Cap<X> compile-time + IFC refuse-on-egress)
+                                   + axis-C @persistent_kernel + @workgraph_node + cross-target-parity
+      Q+3                       : axis-C owned-x86-64 stage-1+ production + axis-E build-cache + golden-pixel-regression
+      Q+4..Q+8                  : axis-C owned-{SPIR-V,DXIL,MSL,WGSL} stage-2 + axis-F self-host bootstrap
+      t∞                        : zero-Rust-runtime · zero-LLVM/cranelift dep · pure-CSSL stack
+
+    estimated-LOC-total (all axes) :
+      AXIS-A : ~5K LOC Rust + CSSL (parser-extensions · cgen lowerings · SMT integration · tests)
+      AXIS-B : ~6K LOC Rust (cssl-effects · cssl-ifc · cssl-caps · cssl-linker integration)
+      AXIS-C : ~30K LOC Rust + CSSL (owned-x86-64 + 4 owned-GPU emitters + work-graph + persistent-kernel)
+      AXIS-D : ~10K LOC CSSL (stdlib::xr + ecs + asset + physics + cmd-buf real)
+      AXIS-E : ~5K LOC Rust + scripts (build-cache + diagnostics + harness + golden-pixel)
+      AXIS-F : ~20K LOC CSSL (csslc self-host + cssl-rt CSSL-port + loa-host retirement)
+      ────────────────────────────────────────
+      TOTAL  : ~76K LOC across all axes · multi-year · with parallel-AI-augmented velocity per spec/58
+                = ~76-100 sessions @ 900-1200 LOC/hr · ~12-18 months calendar @ 4-5 sessions/wk
+                = consistent with spec/56 § cssl-rt → cssl-host DELEGATION 4-8 months estimate (subset)
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · should AXIS-A vec/mat/quat first-class land BEFORE or AFTER AXIS-D string + MirEnumLayout?
+             default · STRING + ENUM first (blocks more · enables examples) · math-types-cleanup follows
+             rationale · revenue-slice item-list prioritizes string + enum + multi-module per spec/56 § HIGHEST-VALUE
+
+    OQ.02 · should AXIS-B Cap<X> compile-time witness become a BREAKING CHANGE (replaces runtime-bitset entirely)
+             or LAYERED CHANGE (compile-time supplements runtime)?
+             default · LAYERED · runtime-bitset survives as belt-and-braces · compile-time is structural-strengthening
+             rationale · matches spec/65 @strict_memory_typing module-attribute opt-in pattern (spec/65 COMPAT.01)
+
+    OQ.03 · should AXIS-C @persistent_kernel + @workgraph_node be specced separately as spec/78 GPU_WORKGRAPH_LANGUAGE
+             rather than absorbed into AXIS-C of this roadmap?
+             default · YES · author spec/78 when reaching spec/76 P4 plan-refinement · roadmap stays high-level
+
+    OQ.04 · should AXIS-D stdlib::ecs (spec/66 EPIC) be authored as part of revenue-slice OR post-revenue?
+             default · POST-REVENUE · per spec/63 item-51 EPIC tag · MVP via sparse-set (item-52) acceptable for revenue
+
+    OQ.05 · should AXIS-E hot-reload be revenue-pre-req OR post-revenue dev-velocity-multiplier?
+             default · POST-REVENUE · spec/26 + spec/63 R13 indicates 1ms hot-reload is post-MVP polish
+             rationale · csslc 10× build-cache speedup (axis-E.E.01) is more impactful for revenue-track
+
+    OQ.06 · for AXIS-F self-host · should we author spec/67 csslc-self-host EPIC NOW or defer until AXIS-A-D mature?
+             default · DEFER · spec/67 author should-come-after axis-A through D are at ≥ IMPLEMENTED-PARTIAL
+             rationale · self-host bootstrap circular-dep mapping needs language-feature-state-clarity first
+
+    OQ.07 · is the 200-310 agent-hr revenue-slice estimate plausible against spec/58 measured 900-1200 LOC/hr?
+             default · YES PLAUSIBLE · per spec/58 single-session 22-csslc-fixes + 8510 LOC delivered in 8-10 hr ·
+             revenue-slice is ~5-7 such sessions at parallel-fanout · fits Grok 30-day window per spec/59
+
+    OQ.08 · should the roadmap call out the proprietary-everything tradeoff vs ecosystem-fragmentation risk?
+             default · YES (per spec/56 § PROPRIETARY-EVERYTHING-THESIS) · spec/56 already names this
+             rationale · honest-direction-naming · MOAT vs CURSE acknowledgment
+
+    OQ.09 · should we surface @debug_borrow + Cap<DebugInspect> in axis-E or axis-B?
+             default · AXIS-E (tooling) primarily · axis-B has the Cap<X> framing · OQ.05 of spec/65 escalation
+
+    OQ.10 · what's the priority ordering if Apocky must pick ONE axis to focus this session?
+             default · AXIS-D revenue-slice (string + enum + multi-module + cmd-buf real) ·
+             rationale · highest-impact-per-hour for unblocking spec/76 P0 + P1 · spec/56 explicit § HIGHEST-VALUE-STUBS
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-18 · DRAFT · Tech-Lead-Claude-Opus-4.7-1M · single-session synthesis (per Apocky directive)
+    [pending]   · REVIEWED · awaits Apocky + Reza/Tech-Lead-agent pass · OQ.01-10 to resolve
+    [pending]   · RATIFIED · awaits Apocky-Tech-Lead approval · per-axis-ratification is supported pattern
+    [pending]   · IMPLEMENTED-PARTIAL/A · awaits AXIS-A revenue-slice (if-expression + sum-types-exhaustive + vec/mat/quat)
+    [pending]   · IMPLEMENTED-PARTIAL/B · awaits AXIS-B structural-threading (effect-row + Cap<X> + IFC)
+    [pending]   · IMPLEMENTED-PARTIAL/C · awaits AXIS-C BLOCKER-α + cross-target-parity + attributes
+    [pending]   · IMPLEMENTED-PARTIAL/D · awaits AXIS-D revenue-slice (string + enum + multi-module + cmd-buf real)
+    [pending]   · IMPLEMENTED-PARTIAL/E · awaits AXIS-E revenue-slice (cssl_test_observe + build-cache + diagnostics)
+    [pending]   · IMPLEMENTED-PARTIAL/F · awaits AXIS-F self-host bootstrap (multi-year · post-revenue)
+    [pending]   · VERIFIED · all ASSERT.{A,B,C,D,E,F}.NN passing on CI · self-host bootstrap closes loop
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § ¬ flattery · ¬ option-dumping · ¬ scope-creep · ¬ silent-success-claims
+    § every axis has now-state ✓◐✗-marked · gap-analysis · target-state · deps · agent-hour estimates · OBSERVABLE-ASSERTIONS
+    § revenue-unblock-slice explicitly factored (per spec/59 revenue-first ordering)
+    § self-host is honestly multi-year t∞ goal (per spec/63 N6) · NOT 30-day promise
+    § proprietary-everything tradeoff named honestly (per spec/56 § PROPRIETARY-EVERYTHING-THESIS MOAT vs CURSE)
+    § PRIME-DIRECTIVE-INVARIANTS preserved · sovereignty STRENGTHENED at every axis · IFC + Cap<X> structural-upgrades
+    § AI-co-authorship · Tech-Lead-Claude-Opus-4.7-1M under Apocky directive · subagent-fanout for read-pass
+    § canonical-ref : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+    § t∞
+
+    "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

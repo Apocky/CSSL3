@@ -248,6 +248,325 @@ pub fn reset_for_tests() {
             *g = Slab::new();
         }
     }
+    if let Some(t) = BUFFER_TABLE.get() {
+        if let Ok(mut g) = t.lock() {
+            *g = Slab::new();
+        }
+    }
+    if let Some(t) = CMD_BUF_TABLE_V2.get() {
+        if let Ok(mut g) = t.lock() {
+            *g = Slab::new();
+        }
+    }
+    d3d12_transport_backend::clear_for_tests();
+}
+
+#[cfg(test)]
+static GPU_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+fn lock_and_reset() -> std::sync::MutexGuard<'static, ()> {
+    let g = match GPU_TEST_LOCK.lock() {
+        Ok(g) => g,
+        Err(p) => {
+            GPU_TEST_LOCK.clear_poison();
+            p.into_inner()
+        }
+    };
+    reset_for_tests();
+    g
+}
+
+
+// ─── D3D12 transport backend registry ──────────────────────────────
+//
+// § ROLE
+//   Real-driver backing for the W-1 transport symbols when D3D12 is available.
+//   The public ABI handle remains the slot-table u64; this thread-local registry
+//   pins the actual cssl-host-d3d12 objects behind that handle. If D3D12 is not
+//   available (CI/headless/non-Windows), every function gracefully falls back to
+//   the slot-table-only semantics already covered by tests.
+
+#[cfg(target_os = "windows")]
+mod d3d12_transport_backend {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    use cssl_host_d3d12::{
+        AdapterPreference, CommandAllocator, CommandList, CommandListType, CommandQueue,
+        CommandQueuePriority, Device, Factory, Resource, ResourceDesc,
+        UploadBuffer,
+    };
+
+    pub struct BackendDevice {
+        device: Device,
+    }
+
+    enum BackendBuffer {
+        DeviceLocal { resource: Resource, shadow: Vec<u8> },
+        Upload { upload: UploadBuffer, shadow: Vec<u8> },
+    }
+
+    struct BackendCmdBuf {
+        device: u64,
+        allocator: CommandAllocator,
+        list: CommandList,
+        submitted: bool,
+    }
+
+    #[derive(Default)]
+    struct Registry {
+        devices: HashMap<u64, BackendDevice>,
+        buffers: HashMap<u64, BackendBuffer>,
+        cmds: HashMap<u64, BackendCmdBuf>,
+    }
+
+    thread_local! {
+        static REGISTRY: RefCell<Registry> = RefCell::new(Registry::default());
+    }
+
+    pub fn clear_for_tests() {
+        REGISTRY.with(|r| *r.borrow_mut() = Registry::default());
+    }
+
+    pub fn create_device(flags: u32) -> Option<BackendDevice> {
+        let debug = (flags & 0x1) != 0;
+        let factory = if debug {
+            Factory::new_with_debug().or_else(|_| Factory::new()).ok()?
+        } else {
+            Factory::new().ok()?
+        };
+        let device = Device::new(&factory, AdapterPreference::Hardware).ok()?;
+        Some(BackendDevice { device })
+    }
+
+    pub fn store_device(handle: u64, device: BackendDevice) {
+        REGISTRY.with(|r| {
+            r.borrow_mut().devices.insert(handle, device);
+        });
+    }
+
+    pub fn remove_device(handle: u64) {
+        REGISTRY.with(|r| {
+            let mut r = r.borrow_mut();
+            r.devices.remove(&handle);
+            r.cmds.retain(|_, c| c.device != handle);
+            // Buffers are global handles without parent lookup in the ABI. Keep
+            // them until explicit buffer_destroy/reset to avoid surprising alias
+            // invalidation across fallback mode.
+        });
+    }
+
+    pub fn has_device(handle: u64) -> bool {
+        REGISTRY.with(|r| r.borrow().devices.contains_key(&handle))
+    }
+
+    pub fn has_buffer(handle: u64) -> bool {
+        REGISTRY.with(|r| r.borrow().buffers.contains_key(&handle))
+    }
+
+    pub fn has_cmd(handle: u64) -> bool {
+        REGISTRY.with(|r| r.borrow().cmds.contains_key(&handle))
+    }
+
+    pub fn create_buffer(
+        handle: u64,
+        device_handle: u64,
+        size_bytes: usize,
+        usage: u32,
+        mem_kind: u32,
+    ) -> bool {
+        REGISTRY.with(|r| {
+            let mut r = r.borrow_mut();
+            let Some(dev) = r.devices.get(&device_handle) else {
+                return false;
+            };
+            let shadow = vec![0u8; size_bytes];
+            let created = match mem_kind {
+                0 => {
+                    let desc = if matches!(usage, 3 | 4) {
+                        ResourceDesc::buffer(size_bytes as u64).with_uav()
+                    } else {
+                        ResourceDesc::buffer(size_bytes as u64)
+                    };
+                    match Resource::new_default_buffer(&dev.device, desc) {
+                        Ok(resource) => BackendBuffer::DeviceLocal { resource, shadow },
+                        Err(_) => return false,
+                    }
+                }
+                1 | 2 => match UploadBuffer::new(&dev.device, size_bytes as u64) {
+                    Ok(upload) => BackendBuffer::Upload { upload, shadow },
+                    Err(_) => return false,
+                },
+                _ => return false,
+            };
+            r.buffers.insert(handle, created);
+            true
+        })
+    }
+
+    pub fn destroy_buffer(handle: u64) {
+        REGISTRY.with(|r| {
+            r.borrow_mut().buffers.remove(&handle);
+        });
+    }
+
+    #[allow(unsafe_code)]
+    pub fn upload_buffer(handle: u64, offset: usize, src_ptr: *const u8, src_len: usize) -> bool {
+        if src_len == 0 {
+            return REGISTRY.with(|r| r.borrow().buffers.contains_key(&handle));
+        }
+        if src_ptr.is_null() {
+            return false;
+        }
+        // SAFETY: FFI caller guarantees src_ptr is valid for src_len bytes; the
+        // public ABI already rejected null+nonzero before this function is called.
+        let src = unsafe { std::slice::from_raw_parts(src_ptr, src_len) };
+        REGISTRY.with(|r| {
+            let mut r = r.borrow_mut();
+            let Some(buf) = r.buffers.get_mut(&handle) else {
+                return false;
+            };
+            let end = match offset.checked_add(src_len) {
+                Some(v) => v,
+                None => return false,
+            };
+            match buf {
+                BackendBuffer::DeviceLocal { shadow, .. } => {
+                    if end > shadow.len() {
+                        return false;
+                    }
+                    shadow[offset..end].copy_from_slice(src);
+                    true
+                }
+                BackendBuffer::Upload { upload, shadow } => {
+                    if end > shadow.len() {
+                        return false;
+                    }
+                    shadow[offset..end].copy_from_slice(src);
+                    upload.write_at(offset, src).is_ok()
+                }
+            }
+        })
+    }
+
+    pub fn begin_cmd(handle: u64, device_handle: u64) -> bool {
+        REGISTRY.with(|r| {
+            let mut r = r.borrow_mut();
+            let Some(dev) = r.devices.get(&device_handle) else {
+                return false;
+            };
+            let allocator = match CommandAllocator::new(&dev.device, CommandListType::Direct) {
+                Ok(a) => a,
+                Err(_) => return false,
+            };
+            let list = match CommandList::new(&dev.device, &allocator, None) {
+                Ok(l) => l,
+                Err(_) => return false,
+            };
+            r.cmds.insert(
+                handle,
+                BackendCmdBuf {
+                    device: device_handle,
+                    allocator,
+                    list,
+                    submitted: false,
+                },
+            );
+            true
+        })
+    }
+
+    pub fn end_cmd(handle: u64) -> bool {
+        REGISTRY.with(|r| {
+            let r = r.borrow();
+            let Some(cmd) = r.cmds.get(&handle) else {
+                return false;
+            };
+            let _keep_allocator_alive = &cmd.allocator;
+            if cmd.list.is_closed() {
+                true
+            } else {
+                cmd.list.close().is_ok()
+            }
+        })
+    }
+
+    pub fn dispatch(handle: u64, x: u32, y: u32, z: u32) -> bool {
+        REGISTRY.with(|r| {
+            let r = r.borrow();
+            let Some(cmd) = r.cmds.get(&handle) else {
+                return false;
+            };
+            cmd.list.dispatch(x, y, z).is_ok()
+        })
+    }
+
+    #[allow(unsafe_code)]
+    pub fn submit(handle: u64, signal_fence_out: *mut u64) -> bool {
+        REGISTRY.with(|r| {
+            let mut r = r.borrow_mut();
+            let Some(device_handle) = r.cmds.get(&handle).map(|c| c.device) else {
+                return false;
+            };
+            let Some(dev) = r.devices.get(&device_handle) else {
+                return false;
+            };
+            let queue = match CommandQueue::new(
+                &dev.device,
+                CommandListType::Direct,
+                CommandQueuePriority::Normal,
+            ) {
+                Ok(q) => q,
+                Err(_) => return false,
+            };
+            let Some(cmd) = r.cmds.get_mut(&handle) else {
+                return false;
+            };
+            if !cmd.list.is_closed() && cmd.list.close().is_err() {
+                return false;
+            }
+            if queue.submit(&[&cmd.list]).is_err() {
+                return false;
+            }
+            cmd.submitted = true;
+            if !signal_fence_out.is_null() {
+                // SAFETY: optional scalar out pointer per ABI.
+                unsafe { *signal_fence_out = 1; }
+            }
+            true
+        })
+    }
+
+    pub fn buffer_shadow_len(handle: u64) -> Option<usize> {
+        REGISTRY.with(|r| {
+            r.borrow().buffers.get(&handle).map(|b| match b {
+                BackendBuffer::DeviceLocal { shadow, .. } | BackendBuffer::Upload { shadow, .. } => {
+                    shadow.len()
+                }
+            })
+        })
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+mod d3d12_transport_backend {
+    pub struct BackendDevice;
+    pub fn clear_for_tests() {}
+    pub fn create_device(_flags: u32) -> Option<BackendDevice> { None }
+    pub fn store_device(_handle: u64, _device: BackendDevice) {}
+    pub fn remove_device(_handle: u64) {}
+    pub fn has_device(_handle: u64) -> bool { false }
+    pub fn has_buffer(_handle: u64) -> bool { false }
+    pub fn has_cmd(_handle: u64) -> bool { false }
+    pub fn create_buffer(_handle: u64, _device_handle: u64, _size_bytes: usize, _usage: u32, _mem_kind: u32) -> bool { false }
+    pub fn destroy_buffer(_handle: u64) {}
+    pub fn upload_buffer(_handle: u64, _offset: usize, _src_ptr: *const u8, _src_len: usize) -> bool { false }
+    pub fn begin_cmd(_handle: u64, _device_handle: u64) -> bool { false }
+    pub fn end_cmd(_handle: u64) -> bool { false }
+    pub fn dispatch(_handle: u64, _x: u32, _y: u32, _z: u32) -> bool { false }
+    pub fn submit(_handle: u64, _signal_fence_out: *mut u64) -> bool { false }
+    pub fn buffer_shadow_len(_handle: u64) -> Option<usize> { None }
 }
 
 // ─── _impl helpers (Rust-side counterparts to the FFI symbols) ──────
@@ -309,9 +628,13 @@ pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
         Err(p) => p.into_inner(),
     };
     let handle = tbl.insert(record);
+    let real_d3d12 = real_attempt.is_some();
+    if let Some(device) = real_attempt {
+        d3d12_transport_backend::store_device(handle, device);
+    }
     scope.success(serde_json::json!({
         "handle":      handle,
-        "real_d3d12":  real_attempt.is_some(),
+        "real_d3d12":  real_d3d12,
     }));
     handle
 }
@@ -324,15 +647,12 @@ pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
 /// Stage-1 will store the `cssl_host_d3d12::Device` in a per-handle
 /// thread-local registry (matching the host_window pattern) so that
 /// pipeline_compile / cmd_buf paths can reach the real ID3D12Device.
-fn real_device_create_d3d12(_adapter_idx: u32, _flags: u32) -> Option<()> {
+fn real_device_create_d3d12(_adapter_idx: u32, flags: u32) -> Option<d3d12_transport_backend::BackendDevice> {
     // SWAP-POINT : cssl_host_d3d12::Factory::new() →
     // Device::new(&factory, AdapterPreference::Hardware). Today we
     // construct + immediately drop to validate driver presence ;
     // stage-1 stores the Device alongside the slot-table entry.
-    use cssl_host_d3d12::{AdapterPreference, Device, Factory};
-    let factory = Factory::new().ok()?;
-    let _device = Device::new(&factory, AdapterPreference::Hardware).ok()?;
-    Some(())
+    d3d12_transport_backend::create_device(flags)
 }
 
 #[must_use]
@@ -348,6 +668,7 @@ pub fn device_destroy_impl(device: u64) -> i32 {
         Err(p) => p.into_inner(),
     };
     if tbl.remove(device).is_some() {
+        d3d12_transport_backend::remove_device(device);
         scope.success(serde_json::json!({"rc": GPU_I32_OK_SENTINEL}));
         GPU_I32_OK_SENTINEL
     } else {
@@ -721,22 +1042,6 @@ pub mod ffi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static GPU_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    fn lock_and_reset() -> std::sync::MutexGuard<'static, ()> {
-        let g = match GPU_TEST_LOCK.lock() {
-            Ok(g) => g,
-            Err(p) => {
-                GPU_TEST_LOCK.clear_poison();
-                p.into_inner()
-            }
-        };
-        reset_for_tests();
-        g
-    }
-
     #[test]
     fn pipeline_kind_lut_matches_enum_order() {
         assert_eq!(pipeline_kind_from_u32(0), Some(GpuPipelineKind::Spirv));
@@ -990,3 +1295,659 @@ mod tests {
 // GPU surface is capability-gated at the CSSL source level via §§ 12
 // Cap<Gpu>. This stage-0 shim does NOT bypass the cap-check. No
 // telemetry, no surveillance, no covert resource sharing.
+
+// ─── W-1 GPU transport-tier ABI (2026-05-20 autopilot) ─────────────
+//
+// § ROLE
+//   Stage-0 implementations for the 16 transport-tier symbols documented
+//   in specs/16_TRANSPORT_TIERS.csl + specs/24_HOST_FFI.csl appendix.
+//   These are intentionally conservative slot-table stubs : they validate
+//   handle relationships, preserve ABI shapes, and expose the symbols to
+//   the linker. Stage-1 swaps the bodies onto real D3D12/Vulkan resources.
+//
+// § PRIME_DIRECTIVE
+//   No surveillance · no resource sharing · no buffer deref except the
+//   caller-owned `signal_fence_out` write in submit_v2.
+
+pub const GPU_BUFFER_CREATE_SYMBOL: &str = "__cssl_gpu_buffer_create";
+pub const GPU_BUFFER_DESTROY_SYMBOL: &str = "__cssl_gpu_buffer_destroy";
+pub const GPU_BUFFER_MAP_SYMBOL: &str = "__cssl_gpu_buffer_map";
+pub const GPU_BUFFER_UNMAP_SYMBOL: &str = "__cssl_gpu_buffer_unmap";
+pub const GPU_BUFFER_UPLOAD_SYMBOL: &str = "__cssl_gpu_buffer_upload";
+pub const GPU_CMD_BUF_BEGIN_SYMBOL: &str = "__cssl_gpu_cmd_buf_begin";
+pub const GPU_CMD_BUF_END_SYMBOL: &str = "__cssl_gpu_cmd_buf_end";
+pub const GPU_CMD_BUF_BIND_PIPELINE_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_pipeline";
+pub const GPU_CMD_BUF_BIND_VBUF_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_vbuf";
+pub const GPU_CMD_BUF_BIND_IBUF_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_ibuf";
+pub const GPU_CMD_BUF_BIND_DESCRIPTOR_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_descriptor";
+pub const GPU_CMD_BUF_PUSH_CONSTANTS_SYMBOL: &str = "__cssl_gpu_cmd_buf_push_constants";
+pub const GPU_CMD_BUF_DRAW_INDEXED_SYMBOL: &str = "__cssl_gpu_cmd_buf_draw_indexed";
+pub const GPU_CMD_BUF_DRAW_INDIRECT_SYMBOL: &str = "__cssl_gpu_cmd_buf_draw_indirect";
+pub const GPU_CMD_BUF_DISPATCH_SYMBOL: &str = "__cssl_gpu_cmd_buf_dispatch";
+pub const GPU_CMD_BUF_SUBMIT_V2_SYMBOL: &str = "__cssl_gpu_cmd_buf_submit_v2";
+
+pub const GPU_PUSH_CONSTANT_MAX_BYTES: usize = 128;
+
+#[derive(Debug, Clone)]
+pub struct BufferRecord {
+    pub device: u64,
+    pub size_bytes: usize,
+    pub usage: u32,
+    pub mem_kind: u32,
+    pub mapped: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CmdBufRecord {
+    pub device: u64,
+    pub ended: bool,
+    pub op_count: u32,
+}
+
+static BUFFER_TABLE: OnceLock<Mutex<Slab<BufferRecord>>> = OnceLock::new();
+static CMD_BUF_TABLE_V2: OnceLock<Mutex<Slab<CmdBufRecord>>> = OnceLock::new();
+
+fn buffer_table() -> &'static Mutex<Slab<BufferRecord>> {
+    BUFFER_TABLE.get_or_init(|| Mutex::new(Slab::new()))
+}
+
+fn cmd_buf_table_v2() -> &'static Mutex<Slab<CmdBufRecord>> {
+    CMD_BUF_TABLE_V2.get_or_init(|| Mutex::new(Slab::new()))
+}
+
+fn device_exists_for_transport(device: u64) -> bool {
+    let dt = match device_table().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    dt.contains(device)
+}
+
+fn pipeline_exists_for_transport(pipeline: u64) -> bool {
+    let pt = match pipeline_table().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    pt.contains(pipeline)
+}
+
+fn buffer_exists_for_transport(buffer: u64) -> bool {
+    let bt = match buffer_table().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    bt.contains(buffer)
+}
+
+fn cmd_exists_for_transport(cmd: u64) -> bool {
+    let ct = match cmd_buf_table_v2().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    ct.contains(cmd)
+}
+
+#[must_use]
+pub fn d3d12_backend_device_active(device: u64) -> bool {
+    d3d12_transport_backend::has_device(device)
+}
+
+#[must_use]
+pub fn d3d12_backend_buffer_active(buffer: u64) -> bool {
+    d3d12_transport_backend::has_buffer(buffer)
+}
+
+#[must_use]
+pub fn d3d12_backend_cmd_active(cmd: u64) -> bool {
+    d3d12_transport_backend::has_cmd(cmd)
+}
+
+#[must_use]
+pub fn d3d12_backend_buffer_shadow_len(buffer: u64) -> Option<usize> {
+    d3d12_transport_backend::buffer_shadow_len(buffer)
+}
+
+#[must_use]
+pub fn buffer_create_impl(device: u64, size_bytes: usize, usage: u32, mem_kind: u32) -> u64 {
+    if !device_exists_for_transport(device) || size_bytes == 0 || usage > 5 || mem_kind > 2 {
+        return GPU_HANDLE_ERROR_SENTINEL;
+    }
+    let mut bt = match buffer_table().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    let handle = bt.insert(BufferRecord {
+        device,
+        size_bytes,
+        usage,
+        mem_kind,
+        mapped: false,
+    });
+    let _backend_active = d3d12_transport_backend::create_buffer(
+        handle,
+        device,
+        size_bytes,
+        usage,
+        mem_kind,
+    );
+    handle
+}
+
+#[must_use]
+pub fn buffer_destroy_impl(buffer: u64) -> i32 {
+    let mut bt = match buffer_table().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    if bt.remove(buffer).is_some() {
+        d3d12_transport_backend::destroy_buffer(buffer);
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn buffer_map_impl(buffer: u64, offset: usize, size: usize) -> *mut u8 {
+    let bt = match buffer_table().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    let Some(rec) = bt.get(buffer) else {
+        return std::ptr::null_mut();
+    };
+    if offset > rec.size_bytes || size > rec.size_bytes.saturating_sub(offset) {
+        return std::ptr::null_mut();
+    }
+    // Stage-0 : no real mapped allocation yet. Return null to force callers
+    // down buffer_upload until stage-1 wires UploadHeap / persistent maps.
+    std::ptr::null_mut()
+}
+
+#[must_use]
+pub fn buffer_unmap_impl(buffer: u64) -> i32 {
+    if buffer_exists_for_transport(buffer) {
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn buffer_upload_impl(buffer: u64, offset: usize, src_ptr: *const u8, src_len: usize) -> i32 {
+    let bt = match buffer_table().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    let Some(rec) = bt.get(buffer) else {
+        return GPU_I32_ERROR_SENTINEL;
+    };
+    if offset > rec.size_bytes || src_len > rec.size_bytes.saturating_sub(offset) {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    if src_len > 0 && src_ptr.is_null() {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    if d3d12_transport_backend::has_buffer(buffer)
+        && !d3d12_transport_backend::upload_buffer(buffer, offset, src_ptr, src_len)
+    {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    GPU_I32_OK_SENTINEL
+}
+
+#[must_use]
+pub fn cmd_buf_begin_impl(device: u64) -> u64 {
+    if !device_exists_for_transport(device) {
+        return GPU_HANDLE_ERROR_SENTINEL;
+    }
+    let mut ct = match cmd_buf_table_v2().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    let handle = ct.insert(CmdBufRecord {
+        device,
+        ended: false,
+        op_count: 0,
+    });
+    let _backend_active = d3d12_transport_backend::begin_cmd(handle, device);
+    handle
+}
+
+#[must_use]
+pub fn cmd_buf_end_impl(cmd: u64) -> i32 {
+    if !cmd_exists_for_transport(cmd) {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    if d3d12_transport_backend::has_cmd(cmd) && !d3d12_transport_backend::end_cmd(cmd) {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    GPU_I32_OK_SENTINEL
+}
+
+#[must_use]
+pub fn cmd_buf_bind_pipeline_impl(cmd: u64, pipeline: u64) -> i32 {
+    if cmd_exists_for_transport(cmd) && pipeline_exists_for_transport(pipeline) {
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn cmd_buf_bind_vbuf_impl(cmd: u64, _slot: u32, buffer: u64, _offset: usize) -> i32 {
+    if cmd_exists_for_transport(cmd) && buffer_exists_for_transport(buffer) {
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn cmd_buf_bind_ibuf_impl(cmd: u64, buffer: u64, _offset: usize, idx_kind: u32) -> i32 {
+    if cmd_exists_for_transport(cmd) && buffer_exists_for_transport(buffer) && idx_kind <= 1 {
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn cmd_buf_bind_descriptor_impl(cmd: u64, _set: u32, _slot: u32, buffer: u64) -> i32 {
+    if cmd_exists_for_transport(cmd) && buffer_exists_for_transport(buffer) {
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn cmd_buf_push_constants_impl(
+    cmd: u64,
+    _stages: u32,
+    offset: u32,
+    size: u32,
+    data_ptr: *const u8,
+) -> i32 {
+    let end = offset as usize + size as usize;
+    if !cmd_exists_for_transport(cmd) || end > GPU_PUSH_CONSTANT_MAX_BYTES {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    if size > 0 && data_ptr.is_null() {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    GPU_I32_OK_SENTINEL
+}
+
+#[must_use]
+pub fn cmd_buf_draw_indexed_impl(
+    cmd: u64,
+    idx_count: u32,
+    instance_count: u32,
+    _first_idx: u32,
+    _vtx_off: i32,
+    _first_inst: u32,
+) -> i32 {
+    if cmd_exists_for_transport(cmd) && idx_count > 0 && instance_count > 0 {
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn cmd_buf_draw_indirect_impl(
+    cmd: u64,
+    args_buffer: u64,
+    _args_offset: usize,
+    draw_count: u32,
+    stride: u32,
+) -> i32 {
+    if cmd_exists_for_transport(cmd)
+        && buffer_exists_for_transport(args_buffer)
+        && draw_count > 0
+        && stride >= 20
+    {
+        GPU_I32_OK_SENTINEL
+    } else {
+        GPU_I32_ERROR_SENTINEL
+    }
+}
+
+#[must_use]
+pub fn cmd_buf_dispatch_impl(cmd: u64, group_x: u32, group_y: u32, group_z: u32) -> i32 {
+    if !(cmd_exists_for_transport(cmd) && group_x > 0 && group_y > 0 && group_z > 0) {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    if d3d12_transport_backend::has_cmd(cmd)
+        && !d3d12_transport_backend::dispatch(cmd, group_x, group_y, group_z)
+    {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    GPU_I32_OK_SENTINEL
+}
+
+#[allow(unsafe_code)]
+#[must_use]
+pub fn cmd_buf_submit_v2_impl(cmd: u64, signal_fence_out: *mut u64) -> i32 {
+    if !cmd_exists_for_transport(cmd) {
+        return GPU_I32_ERROR_SENTINEL;
+    }
+    if d3d12_transport_backend::has_cmd(cmd) {
+        if !d3d12_transport_backend::submit(cmd, signal_fence_out) {
+            return GPU_I32_ERROR_SENTINEL;
+        }
+    } else if !signal_fence_out.is_null() {
+        // SAFETY : caller provided an optional out-pointer per ABI. We only
+        // write a scalar fence value when non-null.
+        unsafe { *signal_fence_out = 1; }
+    }
+    GPU_I32_OK_SENTINEL
+}
+
+#[allow(unsafe_code)]
+pub mod transport_ffi {
+    //! W-1 extern "C" surface. These functions are exported with the exact
+    //! ABI-stable names from specs/16 + specs/24.
+
+    use super::*;
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_buffer_create(
+        device: u64,
+        size_bytes: usize,
+        usage: u32,
+        mem_kind: u32,
+    ) -> u64 {
+        buffer_create_impl(device, size_bytes, usage, mem_kind)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_buffer_destroy(buffer: u64) -> i32 {
+        buffer_destroy_impl(buffer)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_buffer_map(
+        buffer: u64,
+        offset: usize,
+        size: usize,
+    ) -> *mut u8 {
+        buffer_map_impl(buffer, offset, size)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_buffer_unmap(buffer: u64) -> i32 {
+        buffer_unmap_impl(buffer)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_buffer_upload(
+        buffer: u64,
+        offset: usize,
+        src_ptr: *const u8,
+        src_len: usize,
+    ) -> i32 {
+        buffer_upload_impl(buffer, offset, src_ptr, src_len)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_begin(device: u64) -> u64 {
+        cmd_buf_begin_impl(device)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_end(cmd_buf: u64) -> i32 {
+        cmd_buf_end_impl(cmd_buf)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_bind_pipeline(cmd_buf: u64, pipeline: u64) -> i32 {
+        cmd_buf_bind_pipeline_impl(cmd_buf, pipeline)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_bind_vbuf(
+        cmd_buf: u64,
+        slot: u32,
+        buffer: u64,
+        offset: usize,
+    ) -> i32 {
+        cmd_buf_bind_vbuf_impl(cmd_buf, slot, buffer, offset)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_bind_ibuf(
+        cmd_buf: u64,
+        buffer: u64,
+        offset: usize,
+        idx_kind: u32,
+    ) -> i32 {
+        cmd_buf_bind_ibuf_impl(cmd_buf, buffer, offset, idx_kind)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_bind_descriptor(
+        cmd_buf: u64,
+        set: u32,
+        slot: u32,
+        buffer: u64,
+    ) -> i32 {
+        cmd_buf_bind_descriptor_impl(cmd_buf, set, slot, buffer)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_push_constants(
+        cmd_buf: u64,
+        stages: u32,
+        offset: u32,
+        size: u32,
+        data_ptr: *const u8,
+    ) -> i32 {
+        cmd_buf_push_constants_impl(cmd_buf, stages, offset, size, data_ptr)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_draw_indexed(
+        cmd_buf: u64,
+        idx_count: u32,
+        instance_count: u32,
+        first_idx: u32,
+        vtx_off: i32,
+        first_inst: u32,
+    ) -> i32 {
+        cmd_buf_draw_indexed_impl(cmd_buf, idx_count, instance_count, first_idx, vtx_off, first_inst)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_draw_indirect(
+        cmd_buf: u64,
+        args_buffer: u64,
+        args_offset: usize,
+        draw_count: u32,
+        stride: u32,
+    ) -> i32 {
+        cmd_buf_draw_indirect_impl(cmd_buf, args_buffer, args_offset, draw_count, stride)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_dispatch(
+        cmd_buf: u64,
+        group_x: u32,
+        group_y: u32,
+        group_z: u32,
+    ) -> i32 {
+        cmd_buf_dispatch_impl(cmd_buf, group_x, group_y, group_z)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn __cssl_gpu_cmd_buf_submit_v2(
+        cmd_buf: u64,
+        signal_fence_out: *mut u64,
+    ) -> i32 {
+        cmd_buf_submit_v2_impl(cmd_buf, signal_fence_out)
+    }
+
+    #[allow(dead_code)]
+    const _BUFFER_CREATE_WITNESS: unsafe extern "C" fn(u64, usize, u32, u32) -> u64 =
+        __cssl_gpu_buffer_create;
+    #[allow(dead_code)]
+    const _BUFFER_DESTROY_WITNESS: unsafe extern "C" fn(u64) -> i32 = __cssl_gpu_buffer_destroy;
+    #[allow(dead_code)]
+    const _BUFFER_MAP_WITNESS: unsafe extern "C" fn(u64, usize, usize) -> *mut u8 =
+        __cssl_gpu_buffer_map;
+    #[allow(dead_code)]
+    const _BUFFER_UNMAP_WITNESS: unsafe extern "C" fn(u64) -> i32 = __cssl_gpu_buffer_unmap;
+    #[allow(dead_code)]
+    const _BUFFER_UPLOAD_WITNESS: unsafe extern "C" fn(u64, usize, *const u8, usize) -> i32 =
+        __cssl_gpu_buffer_upload;
+    #[allow(dead_code)]
+    const _CMD_BUF_BEGIN_WITNESS: unsafe extern "C" fn(u64) -> u64 = __cssl_gpu_cmd_buf_begin;
+    #[allow(dead_code)]
+    const _CMD_BUF_END_WITNESS: unsafe extern "C" fn(u64) -> i32 = __cssl_gpu_cmd_buf_end;
+    #[allow(dead_code)]
+    const _CMD_BUF_BIND_PIPELINE_WITNESS: unsafe extern "C" fn(u64, u64) -> i32 =
+        __cssl_gpu_cmd_buf_bind_pipeline;
+    #[allow(dead_code)]
+    const _CMD_BUF_BIND_VBUF_WITNESS: unsafe extern "C" fn(u64, u32, u64, usize) -> i32 =
+        __cssl_gpu_cmd_buf_bind_vbuf;
+    #[allow(dead_code)]
+    const _CMD_BUF_BIND_IBUF_WITNESS: unsafe extern "C" fn(u64, u64, usize, u32) -> i32 =
+        __cssl_gpu_cmd_buf_bind_ibuf;
+    #[allow(dead_code)]
+    const _CMD_BUF_BIND_DESCRIPTOR_WITNESS: unsafe extern "C" fn(u64, u32, u32, u64) -> i32 =
+        __cssl_gpu_cmd_buf_bind_descriptor;
+    #[allow(dead_code)]
+    const _CMD_BUF_PUSH_CONSTANTS_WITNESS: unsafe extern "C" fn(u64, u32, u32, u32, *const u8) -> i32 =
+        __cssl_gpu_cmd_buf_push_constants;
+    #[allow(dead_code)]
+    const _CMD_BUF_DRAW_INDEXED_WITNESS: unsafe extern "C" fn(u64, u32, u32, u32, i32, u32) -> i32 =
+        __cssl_gpu_cmd_buf_draw_indexed;
+    #[allow(dead_code)]
+    const _CMD_BUF_DRAW_INDIRECT_WITNESS: unsafe extern "C" fn(u64, u64, usize, u32, u32) -> i32 =
+        __cssl_gpu_cmd_buf_draw_indirect;
+    #[allow(dead_code)]
+    const _CMD_BUF_DISPATCH_WITNESS: unsafe extern "C" fn(u64, u32, u32, u32) -> i32 =
+        __cssl_gpu_cmd_buf_dispatch;
+    #[allow(dead_code)]
+    const _CMD_BUF_SUBMIT_V2_WITNESS: unsafe extern "C" fn(u64, *mut u64) -> i32 =
+        __cssl_gpu_cmd_buf_submit_v2;
+}
+
+#[cfg(test)]
+mod w1_transport_tests {
+    use super::*;
+
+    struct TestDevice {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        handle: u64,
+    }
+
+    fn setup_device() -> TestDevice {
+        let guard = lock_and_reset();
+        let handle = device_create_impl(0, 0);
+        TestDevice {
+            _guard: guard,
+            handle,
+        }
+    }
+
+    #[test]
+    fn w1_buffer_lifecycle_validates_handles() {
+        let setup = setup_device();
+        let dev = setup.handle;
+        let b = buffer_create_impl(dev, 1024, 3, 0);
+        assert_ne!(b, 0);
+        assert_eq!(buffer_upload_impl(b, 0, [1u8; 4].as_ptr(), 4), GPU_I32_OK_SENTINEL);
+        assert_eq!(buffer_upload_impl(b, 1025, [1u8; 4].as_ptr(), 4), GPU_I32_ERROR_SENTINEL);
+        assert_eq!(buffer_unmap_impl(b), GPU_I32_OK_SENTINEL);
+        assert_eq!(buffer_destroy_impl(b), GPU_I32_OK_SENTINEL);
+        assert_eq!(buffer_destroy_impl(b), GPU_I32_ERROR_SENTINEL);
+    }
+
+    #[test]
+    fn w1_cmd_buf_lifecycle_and_draws_validate() {
+        let setup = setup_device();
+        let dev = setup.handle;
+        let dummy = [0u8; 64];
+        let pipe = pipeline_compile_impl(dev, 0, dummy.len());
+        assert_ne!(pipe, 0);
+        let vbuf = buffer_create_impl(dev, 4096, 0, 0);
+        let ibuf = buffer_create_impl(dev, 4096, 1, 0);
+        let ssbo = buffer_create_impl(dev, 4096, 3, 0);
+        let indirect = buffer_create_impl(dev, 256, 4, 0);
+        let cb = cmd_buf_begin_impl(dev);
+        assert_ne!(cb, 0);
+        assert_eq!(cmd_buf_bind_pipeline_impl(cb, pipe), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_bind_vbuf_impl(cb, 0, vbuf, 0), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_bind_ibuf_impl(cb, ibuf, 0, 1), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_bind_descriptor_impl(cb, 0, 0, ssbo), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_push_constants_impl(cb, 3, 0, 80, dummy.as_ptr()), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_push_constants_impl(cb, 3, 120, 16, dummy.as_ptr()), GPU_I32_ERROR_SENTINEL);
+        assert_eq!(cmd_buf_draw_indexed_impl(cb, 36, 1_000_000, 0, 0, 0), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_draw_indirect_impl(cb, indirect, 0, 1, 20), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_dispatch_impl(cb, 3907, 1, 1), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_end_impl(cb), GPU_I32_OK_SENTINEL);
+        let mut fence = 0u64;
+        assert_eq!(cmd_buf_submit_v2_impl(cb, &mut fence as *mut u64), GPU_I32_OK_SENTINEL);
+        assert_eq!(fence, 1);
+    }
+
+    #[test]
+    fn w1_d3d12_backend_resources_activate_when_driver_available() {
+        let setup = setup_device();
+        let dev = setup.handle;
+        if !d3d12_backend_device_active(dev) {
+            assert_eq!(device_destroy_impl(dev), GPU_I32_OK_SENTINEL);
+            return;
+        }
+        let buf = buffer_create_impl(dev, 256, 3, 0);
+        assert_ne!(buf, 0);
+        assert!(d3d12_backend_buffer_active(buf));
+        assert_eq!(d3d12_backend_buffer_shadow_len(buf), Some(256));
+        let bytes = [1u8, 2, 3, 4];
+        assert_eq!(
+            buffer_upload_impl(buf, 16, bytes.as_ptr(), bytes.len()),
+            GPU_I32_OK_SENTINEL
+        );
+        assert_eq!(buffer_destroy_impl(buf), GPU_I32_OK_SENTINEL);
+        assert!(!d3d12_backend_buffer_active(buf));
+        assert_eq!(device_destroy_impl(dev), GPU_I32_OK_SENTINEL);
+        assert!(!d3d12_backend_device_active(dev));
+    }
+
+    #[test]
+    fn w1_d3d12_backend_cmd_records_dispatch_when_driver_available() {
+        let setup = setup_device();
+        let dev = setup.handle;
+        if !d3d12_backend_device_active(dev) {
+            assert_eq!(device_destroy_impl(dev), GPU_I32_OK_SENTINEL);
+            return;
+        }
+        let cb = cmd_buf_begin_impl(dev);
+        assert_ne!(cb, 0);
+        assert!(d3d12_backend_cmd_active(cb));
+        assert_eq!(cmd_buf_dispatch_impl(cb, 1, 1, 1), GPU_I32_OK_SENTINEL);
+        assert_eq!(cmd_buf_end_impl(cb), GPU_I32_OK_SENTINEL);
+        let mut fence = 0u64;
+        assert_eq!(cmd_buf_submit_v2_impl(cb, &mut fence as *mut u64), GPU_I32_OK_SENTINEL);
+        assert_eq!(fence, 1);
+        assert_eq!(device_destroy_impl(dev), GPU_I32_OK_SENTINEL);
+    }
+
+    #[test]
+    #[allow(unsafe_code)]
+    fn w1_transport_ffi_symbols_have_correct_arity() {
+        let setup = setup_device();
+        let dev = setup.handle;
+        let b = unsafe { transport_ffi::__cssl_gpu_buffer_create(dev, 1024, 3, 0) };
+        assert_ne!(b, 0);
+        let data = [7u8; 16];
+        assert_eq!(unsafe { transport_ffi::__cssl_gpu_buffer_upload(b, 0, data.as_ptr(), data.len()) }, GPU_I32_OK_SENTINEL);
+        let cb = unsafe { transport_ffi::__cssl_gpu_cmd_buf_begin(dev) };
+        assert_ne!(cb, 0);
+        assert_eq!(unsafe { transport_ffi::__cssl_gpu_cmd_buf_dispatch(cb, 1, 1, 1) }, GPU_I32_OK_SENTINEL);
+        assert_eq!(unsafe { transport_ffi::__cssl_gpu_cmd_buf_end(cb) }, GPU_I32_OK_SENTINEL);
+        assert_eq!(unsafe { transport_ffi::__cssl_gpu_buffer_destroy(b) }, GPU_I32_OK_SENTINEL);
+    }
+}

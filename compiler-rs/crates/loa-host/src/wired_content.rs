@@ -32,8 +32,8 @@
 
 pub use cssl_content_rating::{
     AggregateView, AggregateVisibility, Rating, RatingStore, Review,
-    StoreError as RatingStoreError, TagBitset, CAP_AGGREGATE_PUBLIC, CAP_RATE,
-    K_FLOOR_SINGLE, K_FLOOR_TRENDING,
+    StoreError as RatingStoreError, TagBitset, CAP_AGGREGATE_PUBLIC, CAP_RATE, K_FLOOR_SINGLE,
+    K_FLOOR_TRENDING,
 };
 
 pub use cssl_content_moderation::{
@@ -229,7 +229,15 @@ mod tests {
         use cssl_content_rating::TagBitset;
         // sigma_mask=0 means the rating itself doesn't have CAP_RATE.
         // Rating::new should reject this — verify.
-        let result = Rating::new(0xDEAD_BEEF, 1234, 4, TagBitset::from_bits(0b0001), 0, 0, 128);
+        let result = Rating::new(
+            0xDEAD_BEEF,
+            1234,
+            4,
+            TagBitset::from_bits(0b0001),
+            0,
+            0,
+            128,
+        );
         assert!(result.is_err());
     }
 
@@ -259,16 +267,8 @@ mod tests {
         use cssl_content_rating::TagBitset;
         let mut s = ContentState::new();
         for i in 0..3u64 {
-            let rating = Rating::new(
-                i,
-                1234,
-                4,
-                TagBitset::from_bits(0b0001),
-                CAP_RATE,
-                0,
-                128,
-            )
-            .unwrap();
+            let rating =
+                Rating::new(i, 1234, 4, TagBitset::from_bits(0b0001), CAP_RATE, 0, 128).unwrap();
             tick(
                 &mut s,
                 16.6,

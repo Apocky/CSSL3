@@ -1,0 +1,65 @@
+⟨spec⟩ UPG_01_OVERVIEW · opening framing & structural thesis
+⟨ctx⟩ specs/Upgrade/ · CSSLv3 frontier map · part 0 of 4
+⟨refs⟩ UPG_00_README.csl
+
+──────────────────────────────────────────────────────────────────────
+# CSSLv3 / SIGIL at the Asymptote — A Frontier Map for a Sovereign Language
+
+This document is a frontier map, not a roadmap. It is structured as
+the user requested: hardware → representation → computational model →
+synthesis. Every section names the primary research, characterizes the
+design space, and flags where claims are cited fact versus
+extrapolation. The constraint set is taken as given: sovereignty (no
+permanent foreign substrates like LLVM, MLIR, Slang), the Prime
+Directive (consent-as-OS, capability-secure, no surveillance/coercion
+features), a solo developer working with an AI fleet, and an unbounded
+time horizon.
+
+The thesis that emerges across all forty-four sub-questions is this:
+**the frontier is not in any single dimension but in the
+orthogonalities that have never been combined.** Content-addressed
+code (Unison) has never been combined with interaction-net runtimes
+(HVM2). Algebraic effects (Koka) have never been combined with
+choreographic projection (Pirouette). Probabilistic semantics (Gen)
+have never been combined with linear capabilities (Pony) and
+projectional editing (Hazel). Rank-polymorphic arrays (Remora) have
+never been the *base type system* of a dependently-typed prover
+(Lean 4). Each pair is a research paper waiting to be written; the
+cartesian product is a language that has never existed. The sections
+below identify the load-bearing primitives in each line and the
+adjacencies that compound them.
+
+A consistent thread: **the canonical form must not be text, must not
+be SSA-over-scalars, and must not be a single-tier IR.** Every
+frontier in this document points away from "source file → AST → SSA →
+machine code" and toward "content-addressed hypergraph → multi-tier
+projection → multi-substrate execution." That is the structural
+conclusion.
+
+# Layout of the arc
+
+- **Part I** (UPG_02–UPG_04): Hardware-Level Frontiers
+- **Part II** (UPG_05–UPG_06): Representation-Level Frontiers
+- **Part III** (UPG_07–UPG_09): Computational-Model-Level Frontiers
+- **Part IV** (UPG_10–UPG_11): Synthesis, Vision, Cartesian Product
+- **Appendix** (UPG_12): Engineering notes, sovereignty path, honest
+  bottom line
+
+# How to read this
+
+If you only have time for one file: read UPG_11 (the cartesian
+product). It is the synthesis. Everything else is the underlying
+research that justifies the claims there.
+
+If you have time for two files: add UPG_08 (the type-system
+unification — graded modal types as the load-bearing mechanism).
+Almost every Prime-Directive-relevant claim in the synthesis grounds
+out in graded modal types plus capabilities.
+
+If you have time for three: add UPG_06 (hypergraph canonical form +
+self-modifying AST + content addressing + AI-native source). This is
+the *representation* frontier that makes the synthesis possible.
+
+The remaining files fill in the hardware, the orthogonal computational
+models, the landscape of current ambitious languages, and the
+engineering bootstrap path.

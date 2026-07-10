@@ -104,13 +104,25 @@ impl ShaderTarget {
     }
 
     #[must_use]
-    pub fn with_uniform(mut self) -> Self { self.uniform_buffer = true; self }
+    pub fn with_uniform(mut self) -> Self {
+        self.uniform_buffer = true;
+        self
+    }
     #[must_use]
-    pub fn with_push_constant(mut self) -> Self { self.push_constant = true; self }
+    pub fn with_push_constant(mut self) -> Self {
+        self.push_constant = true;
+        self
+    }
     #[must_use]
-    pub fn with_sampled_image(mut self) -> Self { self.sampled_image = true; self }
+    pub fn with_sampled_image(mut self) -> Self {
+        self.sampled_image = true;
+        self
+    }
     #[must_use]
-    pub fn with_storage_buffer(mut self) -> Self { self.storage_buffer = true; self }
+    pub fn with_storage_buffer(mut self) -> Self {
+        self.storage_buffer = true;
+        self
+    }
 }
 
 /// Errors raised during lowering.
@@ -142,21 +154,27 @@ struct TypeCache {
 
 impl TypeCache {
     fn type_void(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.void { return id; }
+        if let Some(id) = self.void {
+            return id;
+        }
         let id = b.alloc_id();
         b.push_op(Op::TypeVoid, &[id]);
         self.void = Some(id);
         id
     }
     fn type_bool(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.bool_ { return id; }
+        if let Some(id) = self.bool_ {
+            return id;
+        }
         let id = b.alloc_id();
         b.push_op(Op::TypeBool, &[id]);
         self.bool_ = Some(id);
         id
     }
     fn type_u32(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.u32 { return id; }
+        if let Some(id) = self.u32 {
+            return id;
+        }
         let id = b.alloc_id();
         // OpTypeInt : <id> result, <lit> width = 32, <lit> signedness = 0.
         b.push_op(Op::TypeInt, &[id, 32, 0]);
@@ -164,7 +182,9 @@ impl TypeCache {
         id
     }
     fn type_f32(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.f32 { return id; }
+        if let Some(id) = self.f32 {
+            return id;
+        }
         let id = b.alloc_id();
         // OpTypeFloat : <id> result, <lit> width = 32.
         b.push_op(Op::TypeFloat, &[id, 32]);
@@ -172,7 +192,9 @@ impl TypeCache {
         id
     }
     fn type_vec4_f32(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.vec4_f32 { return id; }
+        if let Some(id) = self.vec4_f32 {
+            return id;
+        }
         let f = self.type_f32(b);
         let id = b.alloc_id();
         // OpTypeVector : <id> result, <id> component_type, <lit> count.
@@ -181,7 +203,9 @@ impl TypeCache {
         id
     }
     fn type_vec3_u32(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.vec3_u32 { return id; }
+        if let Some(id) = self.vec3_u32 {
+            return id;
+        }
         let u = self.type_u32(b);
         let id = b.alloc_id();
         b.push_op(Op::TypeVector, &[id, u, 3]);
@@ -191,7 +215,9 @@ impl TypeCache {
     fn type_pointer(&mut self, b: &mut SpirvBinary, sc: StorageClass, pointee: u32) -> u32 {
         let key = (sc.as_u32(), pointee);
         for &(k, v) in &self.ptrs {
-            if k == key { return v; }
+            if k == key {
+                return v;
+            }
         }
         let id = b.alloc_id();
         // OpTypePointer : <id> result, <enum> storage_class, <id> pointee.
@@ -203,7 +229,9 @@ impl TypeCache {
         let mut key = vec![ret];
         key.extend_from_slice(params);
         for (k, v) in &self.fns {
-            if *k == key { return *v; }
+            if *k == key {
+                return *v;
+            }
         }
         let id = b.alloc_id();
         let mut operands = vec![id, ret];
@@ -213,27 +241,42 @@ impl TypeCache {
         id
     }
     fn type_image_2d_f32(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.image_2d_f32 { return id; }
+        if let Some(id) = self.image_2d_f32 {
+            return id;
+        }
         let f = self.type_f32(b);
         let id = b.alloc_id();
         // OpTypeImage : sampled_type, dim, depth, arrayed, ms, sampled, format
         // (+ optional access qualifier — omitted for Vulkan).
         b.push_op(
             Op::TypeImage,
-            &[id, f, Dim::Dim2D as u32, 0, 0, 0, 1, ImageFormat::Unknown as u32],
+            &[
+                id,
+                f,
+                Dim::Dim2D as u32,
+                0,
+                0,
+                0,
+                1,
+                ImageFormat::Unknown as u32,
+            ],
         );
         self.image_2d_f32 = Some(id);
         id
     }
     fn type_sampler(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.sampler { return id; }
+        if let Some(id) = self.sampler {
+            return id;
+        }
         let id = b.alloc_id();
         b.push_op(Op::TypeSampler, &[id]);
         self.sampler = Some(id);
         id
     }
     fn type_sampled_image_2d(&mut self, b: &mut SpirvBinary) -> u32 {
-        if let Some(id) = self.sampled_image_2d { return id; }
+        if let Some(id) = self.sampled_image_2d {
+            return id;
+        }
         let img = self.type_image_2d_f32(b);
         let id = b.alloc_id();
         b.push_op(Op::TypeSampledImage, &[id, img]);
@@ -254,10 +297,7 @@ impl TypeCache {
 ///   7. Annotations : `OpDecorate`.
 ///   8. Type / constant / global declarations.
 ///   9. Function definitions.
-pub fn lower_function(
-    func: &MirFunc,
-    target: &ShaderTarget,
-) -> Result<SpirvBinary, LowerError> {
+pub fn lower_function(func: &MirFunc, target: &ShaderTarget) -> Result<SpirvBinary, LowerError> {
     if target.entry_name != func.name {
         return Err(LowerError::EntryNameMismatch {
             got: target.entry_name.clone(),
@@ -395,13 +435,22 @@ pub fn lower_function(
         b.push_op(Op::TypeStruct, &[block_ty, vec4f]);
         let ptr_ty = tc.type_pointer(&mut b, StorageClass::PushConstant, block_ty);
         let var_id = b.alloc_id();
-        globals.push(GlobalDecl::PushConstantBlock { block_ty, ptr_ty, id: var_id });
+        globals.push(GlobalDecl::PushConstantBlock {
+            block_ty,
+            ptr_ty,
+            id: var_id,
+        });
     }
     if target.sampled_image {
         let si = tc.type_sampled_image_2d(&mut b);
         let ptr_ty = tc.type_pointer(&mut b, StorageClass::UniformConstant, si);
         let var_id = b.alloc_id();
-        globals.push(GlobalDecl::SampledImage2D { ptr_ty, id: var_id, set: 0, binding: 1 });
+        globals.push(GlobalDecl::SampledImage2D {
+            ptr_ty,
+            id: var_id,
+            set: 0,
+            binding: 1,
+        });
     }
     if target.storage_buffer {
         let f = tc.type_f32(&mut b);
@@ -451,7 +500,10 @@ pub fn lower_function(
             // tooling that expects it.
         }
         ShaderStage::Fragment => {
-            b.push_op(Op::ExecutionMode, &[entry_id, ExecutionMode::OriginUpperLeft as u32]);
+            b.push_op(
+                Op::ExecutionMode,
+                &[entry_id, ExecutionMode::OriginUpperLeft as u32],
+            );
         }
     }
 
@@ -504,9 +556,24 @@ enum GlobalDecl {
         location: Option<u32>,
         set_binding: Option<(u32, u32)>,
     },
-    UniformBlock { block_ty: u32, ptr_ty: u32, id: u32, set: u32, binding: u32 },
-    PushConstantBlock { block_ty: u32, ptr_ty: u32, id: u32 },
-    SampledImage2D { ptr_ty: u32, id: u32, set: u32, binding: u32 },
+    UniformBlock {
+        block_ty: u32,
+        ptr_ty: u32,
+        id: u32,
+        set: u32,
+        binding: u32,
+    },
+    PushConstantBlock {
+        block_ty: u32,
+        ptr_ty: u32,
+        id: u32,
+    },
+    SampledImage2D {
+        ptr_ty: u32,
+        id: u32,
+        set: u32,
+        binding: u32,
+    },
     StorageBufferBlock {
         block_ty: u32,
         #[allow(dead_code)]
@@ -520,9 +587,18 @@ enum GlobalDecl {
 
 fn emit_decorations(b: &mut SpirvBinary, g: &GlobalDecl) {
     match *g {
-        GlobalDecl::Variable { id, builtin, location, set_binding, .. } => {
+        GlobalDecl::Variable {
+            id,
+            builtin,
+            location,
+            set_binding,
+            ..
+        } => {
             if let Some(builtin) = builtin {
-                b.push_op(Op::Decorate, &[id, Decoration::Builtin.as_u32(), builtin as u32]);
+                b.push_op(
+                    Op::Decorate,
+                    &[id, Decoration::Builtin.as_u32(), builtin as u32],
+                );
             }
             if let Some(loc) = location {
                 b.push_op(Op::Decorate, &[id, Decoration::Location.as_u32(), loc]);
@@ -532,23 +608,46 @@ fn emit_decorations(b: &mut SpirvBinary, g: &GlobalDecl) {
                 b.push_op(Op::Decorate, &[id, Decoration::Binding.as_u32(), binding]);
             }
         }
-        GlobalDecl::UniformBlock { block_ty, id, set, binding, .. } => {
+        GlobalDecl::UniformBlock {
+            block_ty,
+            id,
+            set,
+            binding,
+            ..
+        } => {
             b.push_op(Op::Decorate, &[block_ty, Decoration::Block.as_u32()]);
-            b.push_op(Op::MemberDecorate, &[block_ty, 0, Decoration::Offset.as_u32(), 0]);
+            b.push_op(
+                Op::MemberDecorate,
+                &[block_ty, 0, Decoration::Offset.as_u32(), 0],
+            );
             b.push_op(Op::Decorate, &[id, Decoration::DescriptorSet.as_u32(), set]);
             b.push_op(Op::Decorate, &[id, Decoration::Binding.as_u32(), binding]);
         }
         GlobalDecl::PushConstantBlock { block_ty, .. } => {
             b.push_op(Op::Decorate, &[block_ty, Decoration::Block.as_u32()]);
-            b.push_op(Op::MemberDecorate, &[block_ty, 0, Decoration::Offset.as_u32(), 0]);
+            b.push_op(
+                Op::MemberDecorate,
+                &[block_ty, 0, Decoration::Offset.as_u32(), 0],
+            );
         }
-        GlobalDecl::SampledImage2D { id, set, binding, .. } => {
+        GlobalDecl::SampledImage2D {
+            id, set, binding, ..
+        } => {
             b.push_op(Op::Decorate, &[id, Decoration::DescriptorSet.as_u32(), set]);
             b.push_op(Op::Decorate, &[id, Decoration::Binding.as_u32(), binding]);
         }
-        GlobalDecl::StorageBufferBlock { block_ty, id, set, binding, .. } => {
+        GlobalDecl::StorageBufferBlock {
+            block_ty,
+            id,
+            set,
+            binding,
+            ..
+        } => {
             b.push_op(Op::Decorate, &[block_ty, Decoration::Block.as_u32()]);
-            b.push_op(Op::MemberDecorate, &[block_ty, 0, Decoration::Offset.as_u32(), 0]);
+            b.push_op(
+                Op::MemberDecorate,
+                &[block_ty, 0, Decoration::Offset.as_u32(), 0],
+            );
             b.push_op(Op::Decorate, &[id, Decoration::DescriptorSet.as_u32(), set]);
             b.push_op(Op::Decorate, &[id, Decoration::Binding.as_u32(), binding]);
         }
@@ -564,13 +663,22 @@ fn emit_global_variable(b: &mut SpirvBinary, g: &GlobalDecl) {
             b.push_op(Op::Variable, &[ptr_ty, id, StorageClass::Uniform.as_u32()]);
         }
         GlobalDecl::PushConstantBlock { ptr_ty, id, .. } => {
-            b.push_op(Op::Variable, &[ptr_ty, id, StorageClass::PushConstant.as_u32()]);
+            b.push_op(
+                Op::Variable,
+                &[ptr_ty, id, StorageClass::PushConstant.as_u32()],
+            );
         }
         GlobalDecl::SampledImage2D { ptr_ty, id, .. } => {
-            b.push_op(Op::Variable, &[ptr_ty, id, StorageClass::UniformConstant.as_u32()]);
+            b.push_op(
+                Op::Variable,
+                &[ptr_ty, id, StorageClass::UniformConstant.as_u32()],
+            );
         }
         GlobalDecl::StorageBufferBlock { ptr_ty, id, .. } => {
-            b.push_op(Op::Variable, &[ptr_ty, id, StorageClass::StorageBuffer.as_u32()]);
+            b.push_op(
+                Op::Variable,
+                &[ptr_ty, id, StorageClass::StorageBuffer.as_u32()],
+            );
         }
     }
 }
@@ -588,7 +696,9 @@ fn find_back_op_len(words: &[u32]) -> usize {
     while i < words.len() {
         let header = words[i];
         let wc = (header >> 16) as usize;
-        if wc == 0 { break; }
+        if wc == 0 {
+            break;
+        }
         last_start = i;
         i += wc;
     }

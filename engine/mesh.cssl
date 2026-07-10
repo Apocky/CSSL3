@@ -1,0 +1,380 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/mesh.cssl  —  W-3 MeshPool · column-store geometry registry
+//
+// CSSLv3 engine module · pure CSSL · stage-0 scaffold.
+// Spec : specs/16_TRANSPORT_TIERS.csl § P3 COLUMN-STORE · § THE TIER LADDER T2
+//        specs/08_ENGINE.csl § PRIMITIVES (Buffer<T> · Mesh · iso ownership)
+//
+// Wave : W-3 MESH/INSTANCE COLUMNS  (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § ROLE
+//   The MeshPool is the single source of truth for mesh geometry in CSSL.
+//   §A6 transcript-distill P3 : the COLUMN is the buffer. We split mesh
+//   information into three columns :
+//
+//     descriptors   : MeshDescriptor[]  · per-mesh metadata (counts · AABB)
+//     gpu_residency : MeshGpuResources[] · per-mesh GPU sub-allocation info
+//     vbuf_arena    : ONE big Buffer<Vertex>  · sub-allocated across meshes
+//     ibuf_arena    : ONE big Buffer<u32>     · sub-allocated across meshes
+//
+//   Rationale : at 1M entities sharing ~256 unique meshes, the arena pattern
+//   means ONE vbuf-bind + ONE ibuf-bind per frame · forever. Per-mesh draw
+//   calls reference (vtx_offset, idx_offset) into the arena ; the GPU does
+//   the rest. This is the §A6-step-1 batch-rendering pattern at its limit.
+//
+// § STAGE-0 NOTES
+//   1. Mesh handles are u32 indices into the descriptors column.
+//   2. AABB structs use stage-0 Vec3F surrogate (mirrors render_forward.cssl).
+//   3. The Vertex struct is a stage-0 shape ; W-3 follow-up may refine.
+//   4. glTF GLB parsing lives in engine/asset.cssl (refactored separately).
+//   5. mesh_pool_upload returns a MeshHandle ; idempotent on duplicate-load.
+//
+// § PRIME_DIRECTIVE preserved
+//   Vertex data is Public IFC ; no surveillance ; no override.
+
+module com.apocky.engine.mesh
+
+use std::vec::Vec
+use std::vec::vec_new
+use std::vec::vec_with_capacity
+use std::vec::vec_len
+use std::vec::vec_push
+use std::vec::vec_index
+
+use std::gpu::Device
+use std::gpu::GpuError
+
+use std::gpu_transport::Buffer
+use std::gpu_transport::BufferUsage
+use std::gpu_transport::MemKind
+use std::gpu_transport::IdxKind
+use std::gpu_transport::buffer_create
+use std::gpu_transport::buffer_destroy
+use std::gpu_transport::buffer_upload
+use std::gpu_transport::idx_kind_u32
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Vertex — canonical vertex layout for the engine.
+//
+//   Layout-locked from W-3 forward. ABI-stable in vertex-attribute order :
+//
+//     position : vec3   · world-space pre-instance (instance shader composes mat4)
+//     normal   : vec3   · world-normal-space ; transformed by inv(world_mat)
+//     uv       : vec2   · texture coordinates (V-down per §CONVENTIONS card)
+//     color    : vec4   · per-vertex linear-RGBA
+//
+//   Total : 56 bytes per vertex. Aligned to 16 for std430.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct Vertex {
+    px : f32,   py : f32,   pz : f32,   _pad0 : f32,    // position
+    nx : f32,   ny : f32,   nz : f32,   _pad1 : f32,    // normal
+    u  : f32,   v  : f32,
+    r  : f32,   g  : f32,   b  : f32,   a  : f32,
+}
+
+// `vertex_stride_bytes()` — bytes per Vertex (vec4-aligned).
+fn vertex_stride_bytes() -> u32 {
+    56
+}
+
+// `vertex_new(px, py, pz, nx, ny, nz, u, v, r, g, b, a)` — convenience.
+fn vertex_new(px : f32, py : f32, pz : f32,
+              nx : f32, ny : f32, nz : f32,
+              u  : f32, v  : f32,
+              r  : f32, g  : f32, b  : f32, a : f32) -> Vertex {
+    Vertex {
+        px : px, py : py, pz : pz, _pad0 : 0.0,
+        nx : nx, ny : ny, nz : nz, _pad1 : 0.0,
+        u  : u,  v  : v,
+        r  : r,  g  : g,  b  : b,  a  : a,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Local AABB — for per-mesh frustum cull (real geometry, not unit cube).
+// ═══════════════════════════════════════════════════════════════════════
+
+struct AabbLocal {
+    min_x : f32, min_y : f32, min_z : f32,
+    max_x : f32, max_y : f32, max_z : f32,
+}
+
+fn aabb_local_empty() -> AabbLocal {
+    AabbLocal {
+        min_x :  1000000000.0, min_y :  1000000000.0, min_z :  1000000000.0,
+        max_x : -1000000000.0, max_y : -1000000000.0, max_z : -1000000000.0,
+    }
+}
+
+fn aabb_local_extend(a : AabbLocal, px : f32, py : f32, pz : f32) -> AabbLocal {
+    AabbLocal {
+        min_x : if px < a.min_x { px } else { a.min_x },
+        min_y : if py < a.min_y { py } else { a.min_y },
+        min_z : if pz < a.min_z { pz } else { a.min_z },
+        max_x : if px > a.max_x { px } else { a.max_x },
+        max_y : if py > a.max_y { py } else { a.max_y },
+        max_z : if pz > a.max_z { pz } else { a.max_z },
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § MeshDescriptor — per-mesh metadata column.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct MeshDescriptor {
+    vtx_count    : u32,
+    idx_count    : u32,
+    vtx_offset   : u32,    // offset into MeshPool.vbuf_arena (in vertices)
+    idx_offset   : u32,    // offset into MeshPool.ibuf_arena (in u32 indices)
+    material_idx : u32,    // W-3 follow-up : material column
+    local_aabb   : AabbLocal,
+}
+
+fn mesh_descriptor_new(vtx_count : u32, idx_count : u32, vtx_offset : u32, idx_offset : u32, material_idx : u32, aabb : AabbLocal) -> MeshDescriptor {
+    MeshDescriptor {
+        vtx_count    : vtx_count,
+        idx_count    : idx_count,
+        vtx_offset   : vtx_offset,
+        idx_offset   : idx_offset,
+        material_idx : material_idx,
+        local_aabb   : aabb,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § MeshHandle — typed u32 handle into MeshPool.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct MeshHandle {
+    id : u32,
+}
+
+fn mesh_handle_null() -> MeshHandle {
+    MeshHandle { id : 4294967295 }
+}
+
+fn mesh_handle_is_null(h : MeshHandle) -> bool {
+    h.id == 4294967295
+}
+
+fn mesh_handle_new(id : u32) -> MeshHandle {
+    MeshHandle { id : id }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § MeshPool — the column-store mesh registry.
+//
+//   The ARENA pattern : ONE big vbuf · ONE big ibuf · descriptors track
+//   per-mesh sub-allocation. At render time the engine binds the arena
+//   ONCE then draws each mesh by (vtx_offset, idx_offset) into the arena.
+//
+//   This is the §A6-step-1 transcript-win, applied at the architecture
+//   level : we never bind a vbuf or ibuf per mesh ; ONE bind, ONE submit,
+//   N indirect draws (W-5 lands the indirect path).
+// ═══════════════════════════════════════════════════════════════════════
+
+struct MeshPool {
+    descriptors : Vec<MeshDescriptor>,
+    vbuf_arena  : Buffer<Vertex>,
+    ibuf_arena  : Buffer<u32>,
+    vtx_used    : u32,         // cursor into vbuf_arena
+    idx_used    : u32,         // cursor into ibuf_arena
+}
+
+// `mesh_pool_new(dev, vtx_capacity, idx_capacity)` — engine_init-time allocation.
+//
+// § EFFECT-ROW : {GpuInit}-effecting.
+// § BUDGET : default 256K vertices + 1M indices = ~12 MiB vbuf + 4 MiB ibuf.
+//   Tunable per-game-genre.
+fn mesh_pool_new(dev : Device, vtx_capacity : u32, idx_capacity : u32) -> Result<MeshPool, GpuError> {
+    let vbuf_r = buffer_create::<Vertex>(dev, vtx_capacity, BufferUsage::Vertex, MemKind::DeviceLocal) ;
+    let vbuf = match vbuf_r {
+        Err(e) => { return Err(e) ; },
+        Ok(b)  => b,
+    } ;
+
+    let ibuf_r = buffer_create::<u32>(dev, idx_capacity, BufferUsage::Index, MemKind::DeviceLocal) ;
+    let ibuf = match ibuf_r {
+        Err(e) => { return Err(e) ; },
+        Ok(b)  => b,
+    } ;
+
+    Ok(MeshPool {
+        descriptors : vec_with_capacity::<MeshDescriptor>(256),
+        vbuf_arena  : vbuf,
+        ibuf_arena  : ibuf,
+        vtx_used    : 0,
+        idx_used    : 0,
+    })
+}
+
+// `mesh_pool_default_1m_entities(dev)` — the Apocky-mandate default profile.
+//   256K vertices · 1M indices · 256 mesh-descriptor slots.
+fn mesh_pool_default_1m_entities(dev : Device) -> Result<MeshPool, GpuError> {
+    mesh_pool_new(dev, 262144, 1048576)
+}
+
+// `mesh_pool_upload(pool, vertices, indices, material_idx)` — register a mesh.
+//
+// § EFFECT-ROW : {GpuInit}-effecting (one-time per mesh ; load-time only).
+// § RETURNS : MeshHandle with the new mesh's id.
+// § INVARIANT : succeeds iff vbuf_arena has cap for vertices.len AND
+//   ibuf_arena has cap for indices.len.
+fn mesh_pool_upload(pool : MeshPool, vertices : Vec<Vertex>, indices : Vec<u32>, material_idx : u32) -> Result<MeshPool, GpuError> {
+    let vtx_count = vec_len::<Vertex>(vertices) as u32 ;
+    let idx_count = vec_len::<u32>(indices) as u32 ;
+
+    if pool.vtx_used + vtx_count > pool.vbuf_arena.capacity {
+        return Err(GpuError::OutOfMemory) ;
+    }
+    if pool.idx_used + idx_count > pool.ibuf_arena.capacity {
+        return Err(GpuError::OutOfMemory) ;
+    }
+
+    // Compute the local AABB by walking the vertex list.
+    let mut aabb = aabb_local_empty() ;
+    let mut k : i64 = 0 ;
+    while k < (vtx_count as i64) {
+        let v = vec_index::<Vertex>(vertices, k) ;
+        aabb = aabb_local_extend(aabb, v.px, v.py, v.pz) ;
+        k = k + 1 ;
+    }
+
+    // Upload vertices at the arena cursor.
+    let vtx_byte_offset = (pool.vtx_used as i64) * (vertex_stride_bytes() as i64) ;
+    let vtx_src_ptr = vec_as_ptr_i64::<Vertex>(vertices) ;
+    let vtx_src_len = (vtx_count as i64) * (vertex_stride_bytes() as i64) ;
+    let _vup = buffer_upload::<Vertex>(pool.vbuf_arena, vtx_byte_offset, vtx_src_ptr, vtx_src_len) ;
+
+    // Upload indices.
+    let idx_byte_offset = (pool.idx_used as i64) * 4 ;
+    let idx_src_ptr = vec_as_ptr_i64::<u32>(indices) ;
+    let idx_src_len = (idx_count as i64) * 4 ;
+    let _iup = buffer_upload::<u32>(pool.ibuf_arena, idx_byte_offset, idx_src_ptr, idx_src_len) ;
+
+    let desc = mesh_descriptor_new(vtx_count, idx_count, pool.vtx_used, pool.idx_used, material_idx, aabb) ;
+    let new_descs = vec_push::<MeshDescriptor>(pool.descriptors, desc) ;
+
+    Ok(MeshPool {
+        descriptors : new_descs,
+        vbuf_arena  : pool.vbuf_arena,
+        ibuf_arena  : pool.ibuf_arena,
+        vtx_used    : pool.vtx_used + vtx_count,
+        idx_used    : pool.idx_used + idx_count,
+    })
+}
+
+// `mesh_pool_handle_for_last(pool)` — the handle for the most recently uploaded mesh.
+fn mesh_pool_handle_for_last(pool : MeshPool) -> MeshHandle {
+    let n = vec_len::<MeshDescriptor>(pool.descriptors) ;
+    if n == 0 {
+        mesh_handle_null()
+    } else {
+        mesh_handle_new((n - 1) as u32)
+    }
+}
+
+// `mesh_pool_get(pool, h)` — descriptor lookup by handle.
+fn mesh_pool_get(pool : MeshPool, h : MeshHandle) -> MeshDescriptor {
+    vec_index::<MeshDescriptor>(pool.descriptors, h.id as i64)
+}
+
+// `mesh_pool_count(pool)` — number of registered meshes.
+fn mesh_pool_count(pool : MeshPool) -> u32 {
+    vec_len::<MeshDescriptor>(pool.descriptors) as u32
+}
+
+// `mesh_pool_destroy(pool)` — release GPU buffers ; pair with new().
+fn mesh_pool_destroy(pool : MeshPool) -> Result<i32, GpuError> {
+    let _ = buffer_destroy::<Vertex>(pool.vbuf_arena) ;
+    let _ = buffer_destroy::<u32>(pool.ibuf_arena) ;
+    Ok(0)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Internal helper — Vec → ptr-as-i64.
+//   Stage-0 placeholder ; the real form lowers through stdlib/vec
+//   memref-as-ptr op. Until then this is a compile-stub.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn vec_as_ptr_i64<T>(v : Vec<T>) -> i64 {
+    v.data
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Built-in primitive meshes  (for hello_cubes example + bring-up).
+//
+//   These are the test-fixtures the engine ships with. cube_vertices()
+//   returns the 24-vertex unit cube (6 faces × 4 corners) ; cube_indices()
+//   returns the 36-index triangulation. Static fixed-array form so they
+//   work even before glTF ingest lands.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `make_unit_cube_vertices()` — 24 vertices (one per face corner ; flat-shaded).
+//   Local AABB : [-0.5, +0.5]^3. UV layout : 1 quad per face.
+fn make_unit_cube_vertices() -> Vec<Vertex> {
+    let mut v = vec_new::<Vertex>() ;
+    // +X face (red)
+    v = vec_push::<Vertex>(v, vertex_new( 0.5, -0.5, -0.5,  1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.2, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5,  0.5, -0.5,  1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.2, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5,  0.5,  0.5,  1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5, -0.5,  0.5,  1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.2, 0.2, 1.0)) ;
+    // -X face (orange)
+    v = vec_push::<Vertex>(v, vertex_new(-0.5, -0.5,  0.5, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.6, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5,  0.5,  0.5, -1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.6, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5,  0.5, -0.5, -1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.6, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5, -0.5, -0.5, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.6, 0.2, 1.0)) ;
+    // +Y face (green)
+    v = vec_push::<Vertex>(v, vertex_new(-0.5,  0.5, -0.5,  0.0, 1.0, 0.0, 0.0, 0.0, 0.2, 1.0, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5,  0.5,  0.5,  0.0, 1.0, 0.0, 1.0, 0.0, 0.2, 1.0, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5,  0.5,  0.5,  0.0, 1.0, 0.0, 1.0, 1.0, 0.2, 1.0, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5,  0.5, -0.5,  0.0, 1.0, 0.0, 0.0, 1.0, 0.2, 1.0, 0.2, 1.0)) ;
+    // -Y face (yellow)
+    v = vec_push::<Vertex>(v, vertex_new(-0.5, -0.5,  0.5,  0.0,-1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5, -0.5, -0.5,  0.0,-1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5, -0.5, -0.5,  0.0,-1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.2, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5, -0.5,  0.5,  0.0,-1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.2, 1.0)) ;
+    // +Z face (blue)
+    v = vec_push::<Vertex>(v, vertex_new(-0.5, -0.5,  0.5,  0.0, 0.0, 1.0, 0.0, 0.0, 0.2, 0.2, 1.0, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5, -0.5,  0.5,  0.0, 0.0, 1.0, 1.0, 0.0, 0.2, 0.2, 1.0, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5,  0.5,  0.5,  0.0, 0.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5,  0.5,  0.5,  0.0, 0.0, 1.0, 0.0, 1.0, 0.2, 0.2, 1.0, 1.0)) ;
+    // -Z face (purple)
+    v = vec_push::<Vertex>(v, vertex_new( 0.5, -0.5, -0.5,  0.0, 0.0,-1.0, 0.0, 0.0, 0.6, 0.2, 1.0, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5, -0.5, -0.5,  0.0, 0.0,-1.0, 1.0, 0.0, 0.6, 0.2, 1.0, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new(-0.5,  0.5, -0.5,  0.0, 0.0,-1.0, 1.0, 1.0, 0.6, 0.2, 1.0, 1.0)) ;
+    v = vec_push::<Vertex>(v, vertex_new( 0.5,  0.5, -0.5,  0.0, 0.0,-1.0, 0.0, 1.0, 0.6, 0.2, 1.0, 1.0)) ;
+    v
+}
+
+// `make_unit_cube_indices()` — 36 indices ; CCW from visible side.
+fn make_unit_cube_indices() -> Vec<u32> {
+    let mut idx = vec_new::<u32>() ;
+    let mut face : u32 = 0 ;
+    while face < 6 {
+        let b = face * 4 ;
+        idx = vec_push::<u32>(idx, b) ;
+        idx = vec_push::<u32>(idx, b + 1) ;
+        idx = vec_push::<u32>(idx, b + 2) ;
+        idx = vec_push::<u32>(idx, b) ;
+        idx = vec_push::<u32>(idx, b + 2) ;
+        idx = vec_push::<u32>(idx, b + 3) ;
+        face = face + 1 ;
+    }
+    idx
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//
+//   The MeshPool implements the §A6 transcript-distill P3 column-store
+//   pattern at the engine level. Single vbuf + single ibuf arena means
+//   ONE bind per frame regardless of N meshes ; per-mesh draws read by
+//   (vtx_offset, idx_offset). At 1M entities sharing 256 unique meshes,
+//   this collapses the per-frame bind cost from O(unique meshes) to O(1).
+//
+//   No surveillance · vertex data is Public IFC · the local AABB column
+//   pre-empts §A9 (per-mesh AABB stub → real cull from real geometry).
+// ═══════════════════════════════════════════════════════════════════════

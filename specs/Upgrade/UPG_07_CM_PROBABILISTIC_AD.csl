@@ -1,0 +1,175 @@
+⟨spec⟩ UPG_07_CM_PROBABILISTIC_AD · probabilistic-by-default · diff-everywhere · reversible · quantum
+⟨ctx⟩ specs/Upgrade/ · Part III/3 · computational-model frontiers (1 of 3)
+⟨covers⟩ §19 probabilistic · §20 differentiable · §21 time-reversible · §22 quantum-superposition
+
+──────────────────────────────────────────────────────────────────────
+# Part III — Computational-Model-Level Frontiers
+
+## §19. Probabilistic-by-default
+
+The mature probabilistic programming languages (PPLs) divide cleanly:
+- **Stan** (Carpenter et al., JSS 2017) — restricted model language,
+  NUTS-HMC for inference, Stanc3 compiler. Production-grade,
+  statistician-friendly.
+- **Pyro / NumPyro** (Bingham et al., JMLR 2019; Phan et al., 2019) —
+  Python/PyTorch (Pyro) and JAX (NumPyro) embedded; **variational
+  inference** is the central design.
+- **Gen** (Cusumano-Towner, Saad, Lew, Mansinghka, PLDI 2019 "Gen: A
+  General-Purpose Probabilistic Programming System with Programmable
+  Inference") — MIT; *programmable inference* as the central
+  abstraction; you write the inference algorithm in Gen too.
+- **Anglican** (Tolpin, van de Meent, Yang, Wood, IFL 2016) — Clojure-
+  embedded; particle-based inference.
+- **Edward / Edward2 / TFP** (Tran, Blei et al., ICLR 2017) —
+  TensorFlow Probability.
+- **WebPPL** (Goodman, Stuhlmüller) — JS-embedded; pedagogical
+  reference.
+- **Compiling between them**: Baudart, Burroni, Hirzel, Mandel,
+  Shinnar — "Compiling Stan to Generative Probabilistic Languages
+  and Extension to Deep Probabilistic Programming" (PLDI 2021) —
+  shows that Stan models can be lowered to Pyro/NumPyro and gain
+  access to programmable inference and variational guides, with
+  NumPyro yielding 2.3× geometric-mean speedup over Stan on 26
+  benchmarks.
+
+The "what if every value is a distribution" framing has a precedent
+in **measure-theoretic semantics** (Borgström, Lago, Gordon,
+Szymczak, ESOP 2016; Heunen et al.'s monads work). The key technical
+concept is that `=` in a probabilistic language is **conditioning**,
+not assignment — `x = sample(p)` introduces a random variable, and
+`observe(y == f(x))` updates the joint distribution by Bayes' rule.
+The combinator algebra is standard now (Tagless-final encodings,
+`sample` and `factor` primitives).
+
+The compiler-level work that matters for a sovereign language:
+- **Inference compilers** that translate model declarations into
+  specialized samplers (Stan → HMC; symbolic algebraic simplification
+  before MCMC, as in PSI; Gen's inference compiler).
+- **Differential privacy as a type system** — Fuzz (Reed & Pierce,
+  ICFP 2010), DPpy. A typed `ε`-DP function has bounded sensitivity;
+  composition is automatic. The language can enforce DP at the type
+  level for any function that touches user data.
+- **Sound inference**: most PPLs cannot guarantee inference
+  correctness in the presence of arbitrary control flow; restricting
+  the model language to a fragment with formal semantics (Stan's
+  stance) is one path, programmable inference (Gen) is another. Both
+  are viable for SIGIL.
+
+## §20. Differentiable-everywhere
+
+The taxonomy:
+- **Forward-mode AD** — dual numbers; `O(n)` to compute the full
+  Jacobian where `n = inputs`; cheap for low-input-dim problems.
+- **Reverse-mode AD** — backpropagation; `O(m)` for `m = outputs`;
+  the workhorse for ML.
+- **Source-to-source AD** — Tapenade (Hascoët, ACM TOMS 2013),
+  Zygote (Innes 2019), Enzyme (Moses & Churavy, NeurIPS 2020). The
+  transformation is on the program text/IR.
+- **Operator-overloading AD** — PyTorch autograd, JAX (which is
+  technically tracing-based, a hybrid). Easier to implement but
+  limited by language semantics (can't differentiate through
+  mutation/control flow as easily).
+
+The state-of-the-art positions:
+- **JAX** (Bradbury et al., 2018) — Python-embedded; trace-based;
+  `jit`, `vmap`, `pmap`, `grad`, `pjit`. The XLA compiler is the
+  lowering target. Forward + reverse, higher-order.
+- **Enzyme** (Moses, Churavy) — LLVM-IR-level AD, language-agnostic.
+  Differentiates after optimization. Documented 4.2× speedup over
+  Zygote on Julia, and provides AD for C/C++/Fortran/Rust/Swift/
+  Julia from a single implementation. The frontier feature in
+  Enzyme: AD of GPU kernels (Moses et al., SC 2021; SC 2022).
+- **Zygote.jl** (Innes 2019) — source-to-source for Julia;
+  differentiates almost arbitrary Julia code via IR rewriting.
+- **Diffractor.jl** (Keno Fischer) — next-gen Zygote successor with
+  higher-order AD via category-theoretic foundations (compiling to
+  categories per Elliott).
+- **PyTorch 2 / TorchDynamo / TorchInductor** — graph capture +
+  Triton kernel codegen.
+
+The frontier the user invites: **`∂` as a language primitive.**
+Concretely:
+
+```sigil
+let f : Float → Float = λx. x^3 - 2*x + 1
+let f' = ∂ f         // forward AD: Float → Float
+let f'' = ∂ (∂ f)    // higher-order, also fine
+let grad_f : (Float, Float) → (Float, Float) = ∂ g  // for g : (Float, Float) → Float
+```
+
+The hard part is not the typing — it's making `∂` work through *all*
+of:
+- Mutation (Enzyme handles this; Zygote partially)
+- Custom data types (Enzyme handles this via type analysis)
+- Control flow (all modern systems handle this, but with caveats
+  around discontinuities — see the "if-problem" critique by Plotkin
+  and the Medium article on AD pitfalls)
+- Side effects / IO (interaction with effect systems is research-
+  grade)
+- Higher-order functions (Diffractor's claim to fame)
+- Loops over data structures (efficient via checkpointing —
+  Griewank's Treeverse algorithm, Math. Prog. 1992)
+
+For SIGIL: build AD into the IR, not the language surface. The IR-
+level approach (Enzyme's bet) lets you avoid duplicate
+implementations for every language feature. A sovereign IR with
+explicit effect tracking can have AD as a built-in *transformation
+pass* that operates on the IR, and any source language atop the IR
+gets AD for free.
+
+## §21. Time-reversible execution
+
+The lineage: reversible computing (Landauer 1961's thermodynamic
+argument that reversibility is necessary for zero-energy computation,
+Bennett 1973 reversible Turing machine), Janus (Lutz & Derby 1986,
+then Yokoyama & Glück, PEPM 2007 "A Reversible Programming Language
+and Its Invertible Self-Interpreter"), R (Frank, PhD thesis MIT 1999),
+Yves Lafont's interaction nets (which are inherently locally
+reversible).
+
+Practical applications:
+- **Time-travel debuggers** — `rr` (Mozilla, 2017), Pernosco, GDB
+  reverse-execution, WhyLine, Replay.io. The rr implementation
+  strategy is to record everything non-deterministic and replay.
+- **Undo as a primitive in OSs** — Eros / Coyotos OS (Shapiro),
+  checkpoint/restart for HPC.
+- **Reversible CRDTs / databases** — operational transform, CRDTs
+  with explicit "remove" operations.
+
+The frontier: **reversibility as a language-level property tracked by
+the type system.** A function annotated `reversible` has an inverse
+derived by the compiler; the function and its inverse share a hash
+structure (modulo direction). Linear types (per §26) are the natural
+enforcement mechanism — a linear value can't be duplicated, so the
+function is structurally reversible.
+
+The interaction with §22: **reversibility is the bridge to quantum.**
+All quantum gates are unitary hence reversible; classical reversible
+computation is the gate-by-gate base case. A language where the
+classical-reversible subset compiles to *both* a CPU and a quantum
+substrate is the cleanest hybrid.
+
+## §22. Quantum-superposition values
+
+Beyond Silq's safe uncomputation: the type-system tradition has
+produced:
+- **QML** (Altenkirch, Grattage, LICS 2005) — first dependently-typed
+  quantum language.
+- **Quipper** (Green et al., PLDI 2013) — circuit-as-data Haskell DSL.
+- **QWire** (Paykin, Rand, Zdancewic, POPL 2017) — wire-based linear
+  type system; sound semantics in Coq.
+- **Silq** (Bichsel et al., PLDI 2020) — `qfree` / `mfree` annotations
+  enable safe automatic uncomputation.
+
+The categorical foundation is **dagger compact closed categories**
+(Abramsky-Coecke; Selinger's CPM construction for mixed states). The
+ZX-calculus (Coecke, Duncan, 2008; van de Wetering's 2020 PhD; PyZX
+implementations) provides a *complete equational theory* for
+stabilizer quantum mechanics — rewriting ZX diagrams is sound and
+complete for that fragment. Vilmart's 2018 work extends this.
+
+For SIGIL: the linear-type substrate (§26) is the prerequisite. A
+`Qubit` is a linear type (no-cloning theorem prevents duplication),
+and unitary operations consume and produce linear `Qubit` values.
+Measurement is the only non-linear operation; it converts a `Qubit`
+to a classical `Bool` with an associated probability distribution.

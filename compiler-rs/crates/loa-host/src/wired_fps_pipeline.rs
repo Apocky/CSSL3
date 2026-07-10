@@ -24,8 +24,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 use crate::fps_pipeline::{
-    FpsPipeline, FrameMetrics,
-    FRAME_BUDGET_120HZ_MS, FRAME_BUDGET_144HZ_MS, FRAME_BUDGET_60HZ_MS,
+    FpsPipeline, FrameMetrics, FRAME_BUDGET_120HZ_MS, FRAME_BUDGET_144HZ_MS, FRAME_BUDGET_60HZ_MS,
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -33,10 +32,9 @@ use crate::fps_pipeline::{
 // ──────────────────────────────────────────────────────────────────────────
 
 pub use crate::fps_pipeline::{
-    CmdBufferEntry, CmdBufferPool, CullingPlan, FrustumPlane, InstanceBuffer,
-    InstanceEntry, PassDescriptor, RingBuffer, UniformStaging,
-    DEFAULT_RING_DEPTH, INSTANCE_CAP, MAX_RING_DEPTH, PASS_COUNT,
-    SUB_FRAME_LATENCY_MS, UNIFORM_STAGING_BYTES_PER_FRAME,
+    CmdBufferEntry, CmdBufferPool, CullingPlan, FrustumPlane, InstanceBuffer, InstanceEntry,
+    PassDescriptor, RingBuffer, UniformStaging, DEFAULT_RING_DEPTH, INSTANCE_CAP, MAX_RING_DEPTH,
+    PASS_COUNT, SUB_FRAME_LATENCY_MS, UNIFORM_STAGING_BYTES_PER_FRAME,
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -207,9 +205,17 @@ mod tests {
         assert!(line.starts_with('{'));
         assert!(line.ends_with('}'));
         for key in [
-            "frame_id", "frame_ms", "cmd_buffers", "cmd_recycles",
-            "inst_in", "inst_pass", "vrs_ratio", "present", "budget_ms",
-            "miss_120", "miss_144",
+            "frame_id",
+            "frame_ms",
+            "cmd_buffers",
+            "cmd_recycles",
+            "inst_in",
+            "inst_pass",
+            "vrs_ratio",
+            "present",
+            "budget_ms",
+            "miss_120",
+            "miss_144",
         ] {
             assert!(line.contains(key), "missing key {key} in {line}");
         }

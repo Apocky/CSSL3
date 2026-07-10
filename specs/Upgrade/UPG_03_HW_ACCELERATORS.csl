@@ -1,0 +1,151 @@
+⟨spec⟩ UPG_03_HW_ACCELERATORS · AI accelerator primitives · RT cores as tree-walkers
+⟨ctx⟩ specs/Upgrade/ · Part I/3 · hardware-level frontiers (2 of 3)
+⟨covers⟩ §3 AI accelerators as language values · §4 RT units as general-purpose
+
+──────────────────────────────────────────────────────────────────────
+## §3. AI accelerator primitives as language values
+
+The 2023–2026 landscape of AI accelerators is so heterogeneous that
+**adopting any vendor's IR as a permanent dependency is a sovereignty
+violation per the constraint set.** The list of substrates that need
+first-class treatment:
+
+- **NVIDIA Hopper / Blackwell** — fourth-/fifth-generation tensor
+  cores, FP8 (E4M3, E5M2), and on Blackwell, **FP4 / FP6 microscaling
+  formats (MXFP4, MXFP6)** standardized as OCP Microscaling Formats
+  v1.0 (2023). Hopper introduced the **Transformer Engine** (FP8 with
+  dynamic block scaling); Blackwell extended this. cuDNN 9 and the
+  WMMA / `wgmma` (warp-group matrix-multiply-accumulate) instructions
+  in PTX/SASS are the actual programming surface.
+- **AMD CDNA 3 / RDNA 4** — Matrix Cores with FP8, BF16, INT8; the
+  **MFMA** instructions are the primitive. ROCm's
+  composable_kernel library and HIP are the existing software layer;
+  a sovereign language emits MFMA directly via the ROCm ISA reference.
+- **Apple Neural Engine** — undocumented internal ISA, but accessible
+  through Core ML / MPSGraph; on M-series, also tile-based matmul via
+  the Apple AMX coprocessor with hidden instructions (`amx_set`,
+  `amx_clr`, etc., reverse-engineered by the Asahi Linux project and
+  by Dougall Johnson's writeups). The frontier is that **the AMX
+  coprocessor is reachable from userspace** on macOS; a sovereign
+  language can target it directly with documented opcodes.
+- **Intel NPU** (Meteor Lake / Lunar Lake / Panther Lake) — accessible
+  via OpenVINO; based on Movidius/Keembay VLIW DSP heritage. ~13 TOPS
+  on Lunar Lake; ~48 TOPS claimed on Panther Lake.
+- **AMD Ryzen AI / XDNA / XDNA2** — derived from the Xilinx AI Engine
+  (Versal AIE-ML); the XDNA driver and AIE compiler are open. AIE is
+  a **dataflow** architecture: a 2D mesh of VLIW DSP tiles with
+  explicit local memory and stream interconnects. This maps
+  beautifully onto stream/dataflow languages (§32).
+- **Qualcomm Hexagon NPU** — VLIW DSP heritage; HVX vector extensions;
+  programmable via the Hexagon SDK.
+- **Groq LPU** — a deterministic, statically-scheduled architecture;
+  the compiler schedules every cycle of every functional unit. The
+  Groq compiler is the **most extreme example of a "the language
+  defines the hardware schedule" architecture in production.**
+  Kondylis et al.'s ISCA 2020 paper "Think Fast: A Tensor Streaming
+  Processor" describes the model.
+- **Cerebras WSE-2/3** — wafer-scale, ~900K cores, 44 GB on-die SRAM.
+  Programmable through CSL (Cerebras SDK Language), a SIMD-style
+  language with explicit fabric routing. The frontier is that there
+  is no DRAM — all state is on-die — which changes the language's
+  memory model fundamentally.
+- **Tenstorrent Tensix / Blackhole / Wormhole** — RISC-V cores plus
+  tensor units in a 2D mesh; programmed via TT-Metal and TT-NN, both
+  open-source. Tenstorrent is the most credible vendor for a
+  *sovereign-friendly* AI accelerator stack because the entire stack
+  is open.
+- **SambaNova RDU** — reconfigurable dataflow units. The programming
+  model is closer to FPGA HLS than to CUDA: you describe a dataflow
+  graph and the compiler maps it to the array.
+- **Graphcore IPU (Bow/Mk2)** — fine-grained MIMD with 1472 independent
+  tiles per chip, BSP-style synchronization, programmed via Poplar
+  (graph-based) and PopART. The hardware is being de-emphasized
+  commercially but the *programming model* is one of the most
+  interesting precedents.
+
+The unifying observation: **every accelerator has a "tile" or
+"matrix" or "block" type as its native unit of computation.** The
+language abstraction that subsumes them is what Halide and TVM tried
+to express with their schedule languages, and what MLIR's `vector`
+and `tile` dialects encode, and what Mojo's tile types try to
+capture. **Without depending on MLIR**, a sovereign language can
+adopt the same abstraction at the *source* level:
+
+```sigil
+type Tile[T: Numeric, dims: Shape] : layout(L)
+where L : MemoryLayout
+```
+
+The key primitives, hoisted to language level rather than library
+level:
+- `matmul[A, B] -> C` as a typed operator with shape inference, with
+  the compiler choosing tensor-core / MFMA / WMMA / AMX / Hexagon HVX
+  based on target.
+- `attention[Q, K, V, mask]` as a fused primitive (FlashAttention 1/2/3,
+  Dao 2022/2023/2024; the FA3 paper specifically targets Hopper's
+  `wgmma` and TMA — the language-level abstraction can ship the FA3
+  algorithm as the canonical implementation and let the backend
+  specialize).
+- `conv[X, W, stride, dilation]` similarly.
+- **Sparsity as a type qualifier**: `Sparse2:4[Tile]` for NVIDIA's 2:4
+  sparsity, `BlockSparse[k]` for general block-sparse,
+  `Sparse[density]` for unstructured. NVIDIA's cuSPARSELt and the 2:4
+  pattern have been first-class in tensor cores since Ampere (CUDA
+  11+, 2020).
+- **Numeric type lattice with named formats**: `FP32`, `TF32`, `BF16`,
+  `FP16`, `FP8_E4M3`, `FP8_E5M2`, `FP6_E2M3`, `FP6_E3M2`, `FP4_E2M1`,
+  `INT8`, `INT4`, with explicit scale/zero-point typed parameters.
+  This corresponds to the OCP Microscaling spec.
+
+The sovereignty-relevant insight: **the formats are standardized
+(OCP MX); the instructions are vendor-specific; the language can own
+the formats and emit per-vendor instructions.** No MLIR required.
+
+## §4. Ray-tracing units as general-purpose tree-walkers
+
+RT cores on NVIDIA Turing+ and the comparable units on RDNA 2/3/4 and
+Arc Alchemist/Battlemage are **fixed-function BVH traversal engines.**
+The realization (in research from 2020 onward — see Wald et al.,
+HPG 2014/2019 on RT acceleration, plus more recent: Evangelou et al.,
+"Fast Radius Search Exploiting Ray Tracing Frameworks," JCGT 2021;
+Zellmann et al., 2020 on RTX-accelerated k-NN; Salaün et al. 2022 on
+RT for collision in robotics) is that BVH traversal is a generic
+accelerator for **any spatial/proximity/tree-walking query.**
+Demonstrated non-graphics uses:
+
+- **Collision detection** (game physics, robotics).
+- **Audio occlusion / propagation** (NVIDIA's VRWorks Audio, AMD's
+  TrueAudio Next).
+- **k-NN search** on point clouds (RTNN, Zhu 2022).
+- **Database joins** as ray-AABB intersections (paper: "Speeding Up
+  Database Joins with RTX," Salaün 2021; not yet mainstream).
+- **String matching / pattern search** via geometric encoding.
+- **SAT/CSP search** — speculative but mentioned in NVIDIA research
+  blogs.
+
+The programmable surface:
+- **NVIDIA OptiX 8 / 9** — a host API with shader programs
+  (closest-hit, any-hit, intersection, miss) written in CUDA.
+  **OptiX 8 added curves, motion blur, and crucially, support for
+  opacity micromaps and displaced micro-mesh primitives** — Ada
+  Lovelace / Blackwell features.
+- **Vulkan ray tracing pipeline / ray-query** — cross-vendor;
+  KHR_ray_tracing_pipeline, KHR_ray_query. The latter lets
+  compute/fragment shaders issue ray queries without committing to a
+  full RT pipeline.
+- **DXR (DirectX Raytracing) 1.1+** with `RayQuery` objects in HLSL.
+- **AMD Radeon Rays / HIP-RT** — open-source on RDNA 2+; RDNA4 added
+  improved BVH traversal hardware.
+
+The language-level abstraction: **`Trace[Geom, Payload]`** as a typed
+operation that, given an acceleration structure of geometry and a ray,
+returns a payload by running user-defined intersection/hit programs.
+This is essentially a typed CPS computation where the continuations
+are the hit-shaders. A sovereign language can expose this as a
+first-class effect (per §24) — `trace : Ray → <bvh> Hit` — and lower
+it to OptiX or HIP-RT or Vulkan ray-query.
+
+Speculative: there is no reason a content-addressed BVH (per §12)
+cannot be globally shared across processes/machines, allowing a
+queried geometry to be *fetched on demand by hash.* That collapses
+the boundary between asset storage and computation.

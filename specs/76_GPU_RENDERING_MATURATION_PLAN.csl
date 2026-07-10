@@ -1,0 +1,908 @@
+§ 76_GPU_RENDERING_MATURATION_PLAN · 1440p@144Hz+ proprietary-CSSL renderer · 5-phase road
+  ← author : Tech-Lead-Claude-Opus-4.7-1M · 2026-05-18
+  ← supersedes : —
+  ← superseded-by : —
+  ← status : DRAFT · awaits Apocky ratification
+  ← scope : cross-cutting · GPU codegen + host backends + render-graph + frame-pacing + memory model + content-pipeline
+  ← parent-template : specs/_TEMPLATE.csl
+  ← discipline : authored under specs/64_SPEC_FIRST_DISCIPLINE.csl
+  ← purpose : Apocky directive 2026-05-18 — "begin planning out GPU rendering and maturing this language for
+                                                 a game engine capable of rendering 1440p 144hz or better efficiently"
+  ← companion : 75_MENTAL_MAP_2026-05-18.csl (substrate-snapshot) · 77_LANGUAGE_MATURATION_ROADMAP.csl (language-axis)
+  ← honors : spec/55 NORMAL_ENGINE_PIVOT (Forward+ mainline) + spec/59 GROK_VELOCITY_RESPONSE (revenue-first)
+              + spec/32 SIGNATURE_RENDERING (substrate-effect-pass · DEMOTED-TO-OPTIONAL)
+  ← prior-art-cited : LoA v14 (Odin+wgpu prototype · M1 achieved 144FPS@1440p Arc-A770) · 1LoA (math-substrate research)
+
+§I THESIS
+  ⟦
+    Plan to mature CSSLv3 from "Forward+ scaffold compiles to MIR" into a sovereign · proprietary GPU rendering
+    stack capable of 1440p @ 144Hz sustained (6.944ms / frame) on Intel Arc A770 reference HW · with headroom to
+    144Hz @ 4K on RTX-50-class and 240Hz @ 1440p on future-HW. The plan is five sequenced phases — P0 (first-frame
+    on screen) · P1 (1440p144 production-ceiling) · P2 (AAA-feature parity) · P3 (substrate-effect-pass opt-in) ·
+    P4 (RTX-50 headroom + work-graph reach) — each gated by mechanically-verifiable observable-assertions. No phase
+    advances by claim ; every phase advances by perf-timer + golden-frame-diff + symbol-audit. Substrate-rendering
+    (spec/32 6-novelty-paths · 12-stage pipeline) stays as P3 opt-in effect-pass · DEMOTED per the 2026-05-03 pivot ·
+    structural compatibility preserved. The renderer is proprietary all the way down : owned-CPU x86-64 backend
+    (stage-1) · owned GPU emitters all four IRs at stage-2 (SPIR-V · DXIL · MSL · WGSL) · hand-rolled FFI per
+    platform · zero rented runtimes · zero LLVM dependency at the IR layer. LoA v14 lessons absorbed : procgen-IS-
+    renderer thesis (D-008 · validated at 144FPS@1440p Arc-A770 in M1) lands as opt-in bytecode-VM effect-pass in
+    P3 ; AABB-pre-cull + bindless + subgroup-AABB-cull + TAA Halton-jitter + VRS-T2 + raw WM_INPUT all land as
+    P1 perf-multipliers. 1LoA math-substrate (PGA Cl(3,0,1) Motor as entity-pose · SDF substrate-math · MLS-MPM
+    as compute primitive) lands as P2 language-level upgrades (per items 61-67 in spec/63 + spec/65 GPU-memory).
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS [MANDATORY · all-mechanical · all-verifiable-on-Arc-A770-reference-HW]
+  ⟦
+    ──── P0 · FIRST-FRAME-ON-SCREEN (visible-window milestone) ────
+    ASSERT.P0.01 · `cssl-built engine.exe` opens a visible 2560×1440 window within 500ms of process-start
+                    (per stdlib/window::window_spawn ; verified by Windows window-enumeration + bounds-rect probe)
+    ASSERT.P0.02 · the swapchain clears the backbuffer to a non-default color (e.g. RGB 0x4A·0x40·0x80) for ≥ 60 frames
+                    consecutively (verified by pixel-readback at center (1280·720) RMSE ≤ 1/255 from-target across 60 frames)
+    ASSERT.P0.03 · per-frame budget : average present-to-present interval ≤ 7.0ms across 600-frame window @ 144Hz config
+                    (verified by stdlib/time::time_monotonic_ns timestamp series ; report stored as JSON in dist/perf/P0_ms.json)
+    ASSERT.P0.04 · WinMain-class regression : objdump --disassemble engine.exe shows user-main symbol at PE entry-point
+                    (sentinel_build_check.sh PASS · Gate-E per spec/70 item-01·03)
+    ASSERT.P0.05 · cssl-rt sentinel writes 0xC0FFEE + 0xDEADBEEF to %CSSL_SENTINEL_PATH% before/after user-main
+                    (per spec/70 A01.1 + A01.2 · already IMPLEMENTED commit b7fb3e3)
+    ASSERT.P0.06 · BLOCKER-α cleared : csslc cranelift-CPU backend emits valid object files for ALL 12 current engine
+                    files (engine/{main · frame_clock · ecs · scene · render_forward · asset}.cssl + stdlib equivalents)
+                    (verified by `csslc build --emit=object engine/main.cssl ; objdump engine.main.o ; cranelift-verifier exits 0`)
+
+    ──── P1 · 1440p144 PRODUCTION-CEILING (canonical-target achievement) ────
+    ASSERT.P1.01 · forward+ 5-pass scene (depth-prepass + light-cull-16×16 + opaque-main + transparent + post-tonemap) renders
+                    a "canonical-1440p-test-scene" (50 lights · 200 visible meshes · HDR10 + sRGB targets) at
+                    p99 frame-time ≤ 6.94ms across 10000-frame stress-run on Arc A770
+    ASSERT.P1.02 · light-cull dispatch : 16×16 tiles × 256 threads (per engine/render_forward.cssl § light_cull constants)
+                    completes within 0.8ms p99 for 256-light scene (verified by D3D12 timestamp-query per-pass)
+    ASSERT.P1.03 · depth-prepass : per-mesh draw via Hi-Z occlusion-cull achieves ≥ 40% triangle-rejection on canonical
+                    indoor-scene (verified by RenderDoc capture · pipeline-statistics query)
+    ASSERT.P1.04 · TAA Halton-jitter (8-sample) eliminates per-pixel temporal flicker on canonical static scene
+                    (verified by pixel-delta-RMSE between consecutive frames ≤ 2/255 over 100-frame window)
+    ASSERT.P1.05 · VRS Tier-2 (per spec/56 ref) reduces fragment-shader cost by ≥ 30% on canonical foveated-scene
+                    (verified by D3D12_FEATURE_DATA_D3D12_OPTIONS6 query + per-tile shading-rate readback +
+                     ms-per-frame delta with VRS on vs off)
+    ASSERT.P1.06 · bindless descriptor heap (per spec/14 § BACKEND-MATRIX VK_EXT_descriptor_indexing) supports
+                    ≥ 4096 textures + ≥ 1024 buffers concurrently bound (verified by allocator stress-test)
+    ASSERT.P1.07 · waitable-swap-chain mouse-to-photon : LOA_FRAME_LATENCY=1 (per stdlib/gpu) keeps mouse-input
+                    → visible-cursor-move within 1 frame @ 144Hz (verified by high-speed-camera capture · ≤ 13.9ms)
+    ASSERT.P1.08 · subgroup-AABB-cull warp-vote pattern (D3D12 wave32/wave64) prunes ≥ 30% sub-trees in stress-scene
+                    (verified by D3D12 timestamp + sub-tree count counter on light-cull pass)
+    ASSERT.P1.09 · all 5 passes pass-index ordinals stable per engine/render_forward.cssl § _test_pass_indices_are_distinct
+    ASSERT.P1.10 · raw WM_INPUT path (per spec/56 D-028) keeps keyboard/mouse latency ≤ 1ms reflex-grade
+                    (verified by GetTickCount delta · keypress-to-handler ≤ 1ms)
+
+    ──── P2 · AAA-FEATURE-PARITY (advanced-rendering · pre-monetization-demo-quality) ────
+    ASSERT.P2.01 · GPU-driven indirect-draw : visible-list culled + emitted on GPU · CPU writes zero per-mesh draws
+                    (verified by D3D12 indirect-draw count + CPU-side draw-call counter == 0 in pass-2)
+    ASSERT.P2.02 · async-compute Stage-3 + Stage-4 overlap : compute-queue runs Worley-noise procgen
+                    in parallel with graphics-queue depth-prepass · GPU-utilization ≥ 92% on Arc A770
+                    (verified by Intel GPU Performance Counters · GT_active_util ≥ 92% over 100-frame avg)
+    ASSERT.P2.03 · cooperative-matrix (XMX via SPV_INTEL_subgroup_matrix_multiply_accumulate OR
+                    KHR_cooperative_matrix) accelerates GBuffer-pack fp16 ops by ≥ 4× on Arc A770
+                    (verified by per-pass timestamp delta · XMX-on vs XMX-off)
+    ASSERT.P2.04 · shadow-map atlas with cascaded-shadow-maps (4-cascade · 2048² per cascade) renders sun-shadow
+                    at < 1.0ms per frame on canonical outdoor-scene
+    ASSERT.P2.05 · SSAO (HBAO or GTAO) on full-screen at < 0.4ms per frame at native-1440p
+    ASSERT.P2.06 · screen-space reflections (SSR) on metallic surfaces < 0.6ms per frame
+    ASSERT.P2.07 · bloom + tonemap (ACES-2 + per-channel transfer) total < 0.5ms per frame (per spec/32 Stage-10 budget)
+    ASSERT.P2.08 · particle-GPU-sim : 100k particles · per-frame simulate+render < 1.2ms total
+                    (verified by D3D12 timestamp + particle-counter readback)
+    ASSERT.P2.09 · mesh shaders (D3D12 SM6.5+ / VK_EXT_mesh_shader) demonstrably render ≥ 1M triangles/frame
+                    via meshlet pipeline at 1440p144 (verified by primitive-counter + p99 frame-time)
+    ASSERT.P2.10 · spatial-audio HRTF mixing parallel with rendering (per spec/14 § HOST-AUDIO + cssl-host-audio)
+                    < 256-frame buffer underrun-free for 1-hour soak-test
+    ASSERT.P2.11 · drop-checker (per spec/63 item-30) catches GPU-resource leak in stress-test (100k Buffer alloc/drop
+                    cycles · zero leaked handles per cssl-host-rt allocator audit)
+
+    ──── P3 · SUBSTRATE-EFFECT-PASS OPT-IN (signature-rendering as opt-in mode) ────
+    ASSERT.P3.01 · `engine.exe --substrate-effect=spectral-render` adds Stage-6 spectral KAN-BRDF on top of
+                    forward+ opaque-main · per-pixel hero-wavelength + 4-accomp-N samples ; ≤ +1.2ms / frame budget
+                    (per spec/32 Stage-6 Quest-3 ≤ 1.8ms · Arc-A770 expect ≤ 1.2ms with XMX cooperative-matrix)
+    ASSERT.P3.02 · `engine.exe --substrate-effect=fractal-amp` adds Stage-7 sub-pixel-fractal-tessellation as
+                    post-opaque-main displacement-pass · ≤ +0.8ms per frame (per spec/32 Stage-7 budget)
+    ASSERT.P3.03 · `engine.exe --substrate-effect=gaze-collapse` adds Stage-2 fovea-mask + Σ-mask-update IFF
+                    Cap<XR> granted + eye-tracker present ; ≤ +0.3ms · Sensitive<gaze> structural-refuse
+                    (per spec/32 Stage-2 + spec/11 IFC + spec/22 telemetry)
+    ASSERT.P3.04 · `engine.exe --substrate-effect=mise-en-abyme` adds Stage-9 recursive-witness · KAN-budget caps
+                    recursion ≤ 4 · ≤ +0.4ms per frame (per spec/32 Stage-9 budget)
+    ASSERT.P3.05 · `engine.exe --substrate-effect=wave-unity` adds Stage-4 LBM ψ-field multi-rate solver
+                    on compute-queue concurrent with graphics-queue ; STRICT-ZERO LIGHT→MANA + AUDIO→MANA enforced
+                    (per spec/32 V.1 R-4 + R-11 reimpl-contracts · grep-gate)
+    ASSERT.P3.06 · `engine.exe --procgen-bytecode-vm` enables LoA-v14-style WGSL bytecode-VM evaluator
+                    for procgen-IS-renderer mode · per-pixel rule-evaluation · 80-op stack-machine subset
+                    (per LoA-v14 SUBSTRATE_BYTECODE_VM.md · ports to CSSL @gpu fn via cssl.gpu.* MIR ops)
+    ASSERT.P3.07 · grep-no-RGB-mid : Stage-6 spectral source has no RGB conversion before Stage-10 tonemap
+                    (mechanical-grep across cssl-spectral-render crate + emitted GPU IR shows zero RGB ops upstream of tonemap)
+    ASSERT.P3.08 · grep-no-spy-mirror : Stage-9 mise-en-abyme uses true-recursive-ray-cast not cubemap-cache
+                    (mechanical-grep + RenderDoc capture confirms cssl.rt.trace_ray ops · no cubemap-sample)
+
+    ──── P4 · RTX-50 HEADROOM + WORK-GRAPH REACH (future-HW + emerging-tech) ────
+    ASSERT.P4.01 · D3D12 Work Graphs 1.0 (SM6.8 · SV_DispatchGrid · record-based input/output nodes per Microsoft
+                    devblog 2024-03) compiles via cssl-cgen-gpu-dxil with @workgraph_node attribute
+                    (per spec/63 item-32 · UPG_02_HW_BACKEND § GPU-resident-state)
+    ASSERT.P4.02 · VK_AMDX_shader_enqueue (Vulkan work-graph extension) emits via cssl-cgen-gpu-spirv equivalent path
+                    (per UPG_02 + spec/63 item-32)
+    ASSERT.P4.03 · @persistent_kernel attribute compiles to GPU-loop kernel that consumes work-items from queue
+                    without CPU round-trip (per spec/63 item-31 · UPG_02 § persistent-kernels)
+    ASSERT.P4.04 · RTX-50 reference test : canonical-1440p-test-scene runs at p99 ≤ 4.0ms / frame on RTX 5090
+                    (= 240Hz headroom · verified by per-pass timestamp on test-bench)
+    ASSERT.P4.05 · 4K@144Hz reference test : canonical-test-scene at 3840×2160 runs at p99 ≤ 6.94ms / frame on RTX 5090
+    ASSERT.P4.06 · cross-target-struct-parity (spec/70 item-08) : all @shared structs byte-identical SPIR-V · DXIL · MSL · WGSL
+                    on 20-module test corpus (max diff = 0)
+    ASSERT.P4.07 · owned-DXIL-emitter (stage-2 per spec/14) compiles 100% of canonical pipeline against AMPAS reference
+                    (no dxc subproc dep · validator-identical to dxc output for matching-features subset)
+    ASSERT.P4.08 · owned-SPIR-V-emitter (stage-1+ per spec/14) emits validator-identical to spirv-val ALL targets
+                    (zero rspirv runtime dep)
+  ⟧
+
+§I PHASE-DECOMPOSITION · concrete-ordered-roadmap
+  ⟦
+    ────────────────────────────────────────────────────────────────────────
+    PHASE P0 · FIRST-FRAME-ON-SCREEN  (visible-window milestone)
+    ────────────────────────────────────────────────────────────────────────
+    GOAL    : visible 2560×1440 window on screen with cleared backbuffer · 144Hz pacing achieved
+    NORTH-STAR : N1 (frame-rate) · revenue-pre-req per spec/59 § 3 minimal-visible-demo
+    EFFORT  : ~2-3 sessions (per HANDOFF_NEXT_SESSION priorities 1+2+3)
+
+    WORK-UNITS :
+      P0.W1 · diagnose BLOCKER-β (fs_trace at cssl_window_spawn_impl entry not firing)
+              · investigate __cssl_window_spawn symbol-resolution
+              · tools : strings + Python regex + cargo build -v
+              · ASSERT-on : Trace file at %TEMP%/cssl_trace.log appears within 100ms
+              · estimate : 1-2 hr
+      P0.W2 · IMPLEMENT visible 1440p window opening end-to-end
+              · cssl-host-window/src/backend/win32.rs already has CreateWindowExW + ShowWindow + WNDPROC pump
+              · ASSERT-on : ASSERT.P0.01 (visible 2560×1440 within 500ms)
+              · estimate : 2-4 hr
+      P0.W3 · clear-and-present D3D12 SwapChain minimal-viable
+              · steps : ID3D12Device + ID3D12CommandQueue + IDXGISwapChain1 (CreateSwapChainForHwnd)
+                         + 2 buffers + Rgba16FloatHdr10 + DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING + RTV-heap +
+                         clear + present
+              · skip : PSO · root-sig · shaders
+              · ASSERT-on : ASSERT.P0.02 (60-frame clear visible)
+              · estimate : ~200 LOC · 4-6 hr per spec/56
+      P0.W4 · close BLOCKER-α : csslc cranelift-CPU emit-object on all 12 engine files
+              · cranelift-codegen stage-0 verifier-errors on simple no-arg fns (e.g. ns_per_sec)
+              · ASSERT-on : ASSERT.P0.06 (12-file build emits valid .o)
+              · estimate : multi-session per spec/55 § FORWARD-PATHS (parallel α track)
+              · WORKAROUND : ship PATH-β (Rust loa-host bootstrap) for revenue-demo while α completes
+
+    P0-EXIT-GATE : ASSERT.P0.01 + 02 + 03 + 04 + 05 all pass (06 OPTIONAL via PATH-β workaround)
+                    · revenue-demo unblocked · alpha-keys launchable per spec/59 § ACTION-5
+
+    ────────────────────────────────────────────────────────────────────────
+    PHASE P1 · 1440p144 PRODUCTION-CEILING  (canonical-target)
+    ────────────────────────────────────────────────────────────────────────
+    GOAL    : sustained p99 ≤ 6.94ms / frame at 1440p144 on Arc A770 for canonical-test-scene
+    NORTH-STAR : N1 (frame-rate) primary · N5 (coord) secondary
+    EFFORT  : ~6-10 sessions (depends on P0 completion + Phase-A correctness depth-2)
+
+    WORK-UNITS :
+      P1.W1 · flesh per-pass cmd-buf record bodies (5 passes · per engine/render_forward.cssl § STAGE-0-NOTES note-2)
+              · stage-1 ID3D12GraphicsCommandList encoding for each forward_pass_*
+              · ASSERT-on : ASSERT.P1.01 (full canonical-scene render p99 ≤ 6.94ms)
+              · estimate : ~3 sessions
+      P1.W2 · light-cull compute shader (16×16 tile · 256 threads/tile · 14400 tiles @ 1440p)
+              · canonical Forward+ : DOOM-2016 / Battlefield-V / Cyberpunk-2077 pattern
+              · ASSERT-on : ASSERT.P1.02 (light-cull ≤ 0.8ms p99 for 256-light scene)
+              · estimate : ~1.5 sessions
+      P1.W3 · Hi-Z depth-pyramid + GPU-driven culling (replaces stage-0 CPU iterate visible-list)
+              · per engine/render_forward.cssl § DEFERRED note-2 stage-1 lift
+              · ASSERT-on : ASSERT.P1.03 (depth-prepass ≥ 40% triangle-reject)
+              · estimate : ~2 sessions
+      P1.W4 · TAA Halton-jitter (8-sample · per spec/56 D-027 from LoA v14)
+              · history-buffer + per-pixel motion-vector + reprojection
+              · ASSERT-on : ASSERT.P1.04 (per-pixel temporal delta ≤ 2/255)
+              · estimate : ~1.5 sessions
+      P1.W5 · VRS Tier-2 (per spec/56 D-024 from LoA v14)
+              · D3D12_FEATURE_DATA_D3D12_OPTIONS6 query + per-tile shading-rate texture write
+              · ASSERT-on : ASSERT.P1.05 (≥ 30% fragment-cost reduction)
+              · estimate : ~1.5 sessions
+      P1.W6 · bindless descriptor-indexing (VK_EXT_descriptor_indexing + Arc A770 workaround
+                  VK_EXT_mutable_descriptor_type per spec/10 driver-bug-surface)
+              · ASSERT-on : ASSERT.P1.06 (≥ 4096 textures concurrent)
+              · estimate : ~1 session
+      P1.W7 · subgroup-AABB-cull (warp-vote pattern · D3D12 wave32/64 · per spec/56 D-026 from LoA v14)
+              · ASSERT-on : ASSERT.P1.08 (≥ 30% sub-tree pruning)
+              · estimate : ~1 session
+      P1.W8 · raw WM_INPUT keyboard/mouse path (per spec/56 D-028 from LoA v14)
+              · already specified in stdlib/input.cssl · wire WNDPROC fast-path
+              · ASSERT-on : ASSERT.P1.10 (≤ 1ms keypress-to-handler)
+              · estimate : ~0.5 session
+
+    P1-EXIT-GATE : ASSERT.P1.01-10 all pass · canonical 1440p144 production-ceiling demonstrated
+                    · monetization-engine ships with confidence
+
+    ────────────────────────────────────────────────────────────────────────
+    PHASE P2 · AAA-FEATURE-PARITY  (advanced-rendering · pre-demo-polish)
+    ────────────────────────────────────────────────────────────────────────
+    GOAL    : feature-set ⊇ {GPU-driven indirect-draw · async-compute · cooperative-matrix · shadows · SSAO ·
+                              SSR · bloom · particle-sim · mesh-shaders · spatial-audio · drop-checker}
+    NORTH-STAR : N1 + N2 (1000 entities) + N5 (coord)
+    EFFORT  : ~10-15 sessions (gated by Phase-B math-half completion per spec/63 items 11-19 + 61-67)
+
+    WORK-UNITS :
+      P2.W1 · GPU-driven indirect-draw (per spec/63 item-33)
+              · cssl.gpu.indirect_dispatch MIR op · D3D12 ExecuteIndirect / VkCmdDrawIndirectCount
+              · ASSERT-on : ASSERT.P2.01 (zero per-mesh CPU draws)
+              · estimate : ~2 sessions
+      P2.W2 · async-compute multi-queue (per spec/63 item-34)
+              · cssl-host-d3d12 + cssl-host-vulkan : Queue::Graphics + Queue::Compute + Queue::Copy
+              · cross-queue semaphore (cssl.gpu.semaphore.{signal,wait} per spec/65 type-system)
+              · ASSERT-on : ASSERT.P2.02 (GPU-util ≥ 92% over 100-frame avg)
+              · estimate : ~3 sessions
+      P2.W3 · cooperative-matrix lowering (per spec/10 § XMX + spec/14 cssl.xmx.cooperative_matmul MIR op)
+              · cssl-cgen-gpu-spirv emit SPV_INTEL_subgroup_matrix_multiply_accumulate OR KHR_cooperative_matrix
+              · cssl-cgen-gpu-dxil emit DXR cooperative-matrix intrinsic
+              · ASSERT-on : ASSERT.P2.03 (≥ 4× speedup on Arc A770)
+              · estimate : ~2.5 sessions
+      P2.W4 · cascaded-shadow-maps (4-cascade · 2048² per cascade · canonical AAA pattern)
+              · ASSERT-on : ASSERT.P2.04 (< 1.0ms per frame)
+              · estimate : ~2 sessions
+      P2.W5 · SSAO (GTAO preferred · better quality than HBAO per Activision 2018)
+              · ASSERT-on : ASSERT.P2.05 (< 0.4ms per frame)
+              · estimate : ~1.5 sessions
+      P2.W6 · SSR (screen-space reflections · stochastic + temporal denoise)
+              · ASSERT-on : ASSERT.P2.06 (< 0.6ms per frame)
+              · estimate : ~2 sessions
+      P2.W7 · bloom + ACES-2 tonemap (per spec/32 Stage-10 spec · cssl-render-v2 tonemap module)
+              · ASSERT-on : ASSERT.P2.07 (< 0.5ms per frame)
+              · estimate : ~1 session
+      P2.W8 · GPU particle-sim (100k particles · simulate+render @ < 1.2ms)
+              · @persistent_kernel pattern emerging (preview of P4 W2)
+              · ASSERT-on : ASSERT.P2.08 (100k particles < 1.2ms)
+              · estimate : ~2 sessions
+      P2.W9 · mesh shaders (D3D12 SM6.5+ / VK_EXT_mesh_shader · per spec/14 § OWNED DXIL EMITTER)
+              · meshlet pipeline (Nanite-style amortization)
+              · ASSERT-on : ASSERT.P2.09 (≥ 1M triangles/frame at 1440p144)
+              · estimate : ~3 sessions
+      P2.W10 · spatial-audio HRTF mixing concurrent with rendering
+              · cssl-host-audio (per spec/14 § HOST-AUDIO) + HRIR convolution on compute-queue
+              · ASSERT-on : ASSERT.P2.10 (1-hour soak underrun-free)
+              · estimate : ~2 sessions
+      P2.W11 · Drop-checker for GPU resources (per spec/63 item-30 · Phase-A depth-2)
+              · GPU Buffer · Texture · DescriptorSet · Semaphore · Fence Drop impls
+              · ASSERT-on : ASSERT.P2.11 (zero leaked handles · 100k stress-cycle)
+              · estimate : ~1.5 sessions
+
+    P2-EXIT-GATE : ASSERT.P2.01-11 all pass · canonical scene is AAA-quality at 1440p144
+                    · LoA alpha-tier shippable at this milestone
+
+    ────────────────────────────────────────────────────────────────────────
+    PHASE P3 · SUBSTRATE-EFFECT-PASS OPT-IN  (signature-rendering as user-choice)
+    ────────────────────────────────────────────────────────────────────────
+    GOAL    : --substrate-effect=<v.1..v.6 OR procgen-bytecode-vm> wires the spec/32 novelty-paths
+              as opt-in passes on top of the forward+ mainline · STRUCTURAL-OK · BUDGET-FITTED
+    NORTH-STAR : N3 + N4 (procgen + genre-blending) · sovereign-aesthetic-claim per spec/56 DIFFERENTIATION
+    EFFORT  : ~12-18 sessions (high uncertainty · per spec/32 budgets target Quest-3 · Arc-A770 should fit easier)
+
+    WORK-UNITS :
+      P3.W1 · spectral-render (cssl-spectral-render Stage-6 KAN-BRDF) wired as forward+ overlay
+              · 16-band hyperspectral path · hero-wavelength + 4-8 accompanying-N · Manuka MIS
+              · NO RGB until Stage-10 (per spec/32 R-3 + grep-gate)
+              · ASSERT-on : ASSERT.P3.01 + P3.07
+              · estimate : ~3 sessions
+      P3.W2 · fractal-amp (cssl-fractal-amp Stage-7) sub-pixel-displacement post-opaque-main
+              · KAN-weight-driven displacement · cache-discipline per spec/32 V.3(c)
+              · ASSERT-on : ASSERT.P3.02
+              · estimate : ~2 sessions
+      P3.W3 · gaze-collapse (cssl-gaze-collapse Stage-2) IFF Cap<XR> + eye-tracker
+              · fovea-mask + Σ-mask-update · Sensitive<gaze> structural-refuse
+              · ASSERT-on : ASSERT.P3.03 + spec/11 IFC compile-refuse check
+              · estimate : ~2.5 sessions (XR-stack work · cssl-host-openxr)
+      P3.W4 · mise-en-abyme (cssl-render-v2::mise_en_abyme Stage-9) recursive-witness rendering
+              · KAN-budget cap recursion ≤ 4 · true-recursive-ray-cast (no cubemap)
+              · ASSERT-on : ASSERT.P3.04 + P3.08
+              · estimate : ~3 sessions
+      P3.W5 · wave-unity (cssl-wave-solver Stage-4) LBM ψ-field on compute-queue
+              · LIGHT + AUDIO + HEAT + SCENT + MANA bands · STRICT-ZERO cross-band per spec/32 V.1
+              · ASSERT-on : ASSERT.P3.05
+              · estimate : ~3 sessions
+      P3.W6 · procgen-IS-renderer (LoA-v14-port bytecode-VM evaluator)
+              · ports LoA v14 SUBSTRATE_BYTECODE_VM.md 80-op stack-machine to CSSL @gpu fn
+              · per-pixel rule-evaluation · Tier-1 (region metadata) + Tier-2 (closed-form rule bytecode) + Tier-3 (noise)
+              · closed-form quadric + Ferrari quartic SDF substrate (per LoA-v14 SUBSTRATE_v14.csl)
+              · target : 367× FLOP headroom achieved on M1 (LoA v14) translates to comfortable 1440p144
+              · ASSERT-on : ASSERT.P3.06
+              · estimate : ~4 sessions
+
+    P3-EXIT-GATE : ASSERT.P3.01-08 all pass · substrate-effect-pass opt-in available
+                    · "signature LoA look" demonstrable on demand without affecting mainline forward+ default
+
+    ────────────────────────────────────────────────────────────────────────
+    PHASE P4 · RTX-50 HEADROOM + WORK-GRAPH REACH  (future-HW + emerging-tech)
+    ────────────────────────────────────────────────────────────────────────
+    GOAL    : 240Hz @ 1440p on RTX-50 · 144Hz @ 4K on RTX-50 · work-graph + persistent-kernel + mesh-shader-WG-nodes
+              · stage-2 owned GPU emitters (zero external compiler dep)
+    NORTH-STAR : N1 (extreme frame-rate ceiling) + N5 (coordination ceiling) + N6 (sovereignty completion)
+    EFFORT  : ~20-30 sessions · post-revenue · multi-quarter
+
+    WORK-UNITS :
+      P4.W1 · D3D12 Work Graphs 1.0 (SM6.8 · per UPG_02 + spec/63 item-32)
+              · cssl-cgen-gpu-dxil emit @workgraph_node attribute
+              · GPU dispatches GPU work without CPU round-trip
+              · ASSERT-on : ASSERT.P4.01
+              · estimate : ~5 sessions
+      P4.W2 · @persistent_kernel attribute (per spec/63 item-31 + UPG_02 § persistent-kernels)
+              · GPU worker runs-forever consuming work-queue
+              · eliminates kernel-launch overhead
+              · ASSERT-on : ASSERT.P4.03
+              · estimate : ~4 sessions
+      P4.W3 · VK_AMDX_shader_enqueue (Vulkan work-graph extension)
+              · cssl-cgen-gpu-spirv equivalent path
+              · ASSERT-on : ASSERT.P4.02
+              · estimate : ~3 sessions
+      P4.W4 · RTX-50 perf-validation
+              · acquire RTX-5090 test-bench OR borrow access
+              · canonical-test-scene perf-target verification
+              · ASSERT-on : ASSERT.P4.04 + P4.05
+              · estimate : ~1 session
+      P4.W5 · cross-target-struct-parity (per spec/70 item-08 · Phase-A depth-1)
+              · 20-module test corpus · 5-target byte-compare
+              · ASSERT-on : ASSERT.P4.06
+              · estimate : ~3 sessions (depth-1 fanout per spec/70)
+      P4.W6 · owned-DXIL-emitter (stage-2 per spec/14 § OWNED DXIL EMITTER)
+              · replace dxc subproc with hand-rolled emitter (3-5K LOC)
+              · ASSERT-on : ASSERT.P4.07
+              · estimate : ~10 sessions
+      P4.W7 · owned-SPIR-V-emitter (stage-1+ per spec/14 § OWNED SPIR-V EMITTER)
+              · replace rspirv with hand-rolled typed-builder (3-5K LOC)
+              · validator-identical to spirv-val
+              · ASSERT-on : ASSERT.P4.08
+              · estimate : ~8 sessions
+
+    P4-EXIT-GATE : ASSERT.P4.01-08 all pass · CSSL renderer is end-to-end proprietary · zero rented runtimes
+                    in the GPU emission path · 4K@144Hz on RTX-50 achieved · 240Hz @ 1440p ceiling reached
+  ⟧
+
+§I CRITICAL-PATH-DEPENDENCY-GRAPH · what-gates-what
+  ⟦
+    P0 ← BLOCKER-β (fs_trace) + BLOCKER-γ (D3D12 SwapChain ~200 LOC)
+         · optionally BLOCKER-α (csslc emit-object) ← workaround = PATH-β Rust-bootstrap
+
+    P1 ← P0 complete (need first-frame to measure perf-ceiling)
+         · depends on Phase-A correctness items {01 · 05 · 89} (sentinel + observe-gate + diagnostics)
+         · depends on engine/render_forward.cssl pass-bodies fleshed (stage-1 lift per § DEFERRED note-1)
+
+    P2 ← P1 complete (need ceiling-achieved before extending features)
+         · depends on Phase-B math-half (items 11-19 + 61-67) for vec3/mat4/quat/transcendentals
+         · depends on spec/65 GPU-memory-types REVIEWED → IMPLEMENTED for async-compute typed surface
+         · depends on Phase-A item-30 (drop-checker) IMPLEMENTED for resource-cleanup
+
+    P3 ← P2 complete (need AAA-baseline to layer signature-render on top of)
+         · depends on substrate-render-v2/v3/v4-dxil crates landed (already in compiler-rs/crates per audit)
+         · depends on cssl-{wave-solver · spectral-render · fractal-amp · gaze-collapse · render-v2} crates landed (already shipped per T11-D113..D125)
+         · gating Apocky-direction : keep DEMOTED or promote to mainline based on alpha-customer feedback
+
+    P4 ← P3 complete OR parallel with P3 (work-graph + persistent_kernel are language-level features,
+                                            not waiting on substrate-effect-pass)
+         · depends on RTX-50 test-bench access (hardware-acquisition)
+         · depends on language-maturation Phase-C (per spec/77 GPU-driven attributes)
+
+    CROSS-CUTS :
+      Σ-MASK consent-threading per spec/27 + spec/28 · MUST land before P3 (any biometric-egress path opens)
+      sovereignty-cap-witness (per spec/63 item-15) · MUST land before any P2 GPU work-graph dispatch
+      cross-target-struct-parity (item-08) · MUST land before P2 cooperative-matrix (XMX vs CooperativeMatrix portability)
+  ⟧
+
+§I CSSL-LANGUAGE-DEPS · what-the-language-needs-for-this-plan
+  ⟦
+    (full detail in 77_LANGUAGE_MATURATION_ROADMAP.csl § AXIS-A through AXIS-F)
+
+    REQUIRED FOR P1 :
+      · csslc cranelift-CPU verifier-clean on 12 engine files (BLOCKER-α)
+      · stdlib::gpu real cmd-buf record/submit (lift stage-1 stubs · per stdlib/gpu.cssl § 9)
+      · effect-row Deadline<6944us> docs → structural threading (MirEffectRow per spec/04 staged)
+
+    REQUIRED FOR P2 :
+      · vec3/vec4/mat4/quat as language-builtin (Phase-B math · items 61-63)
+      · transcendentals → hw-intrinsic (item-64 · sin/cos/tan/exp/log/pow/atan2)
+      · fast-inv-sqrt (item-67)
+      · sum-types with exhaustive match (item-13)
+      · refinement-types tied to runtime asserts (item-14)
+      · @indirect_dispatch attribute (item-33)
+      · @shared struct decl with @-shared-CPU-GPU-struct-decl (item-35 · UNIVERSAL-COORDINATION-SUBSTRATE)
+      · Cap<Gpu> first-class fn-param witness (item-15 · upgrade from runtime bitset)
+      · Drop-checker for GPU resources (item-30)
+      · spec/65 GPU-memory types gpu<T> / shared<T> / staged<T> / transfer<T> REVIEWED → IMPLEMENTED
+
+    REQUIRED FOR P3 :
+      · PGA G(3,0,1) language-level primitive (item-65 from cssl-pga)
+      · Jet<T,N> language-level (item-66 from cssl-jets)
+      · Σ-mask cell-granularity consent threading (spec/27 § EnforcesΣAtCellTouches)
+      · IFC Sensitive<gaze|face|body|biometric> structural-refuse (spec/11)
+      · @cross fn auto-derivation (spec/16 dual-surface)
+
+    REQUIRED FOR P4 :
+      · @persistent_kernel attribute compiles to GPU-loop (item-31)
+      · @workgraph_node attribute compiles to D3D12 work-graph + Vulkan VK_AMDX_shader_enqueue (item-32)
+      · @indirect_dispatch (item-33)
+      · async-compute-queues first-class (item-34)
+      · cssl-cgen-cpu-x64 owned x86-64 backend stage-1+ (per spec/14 + spec/63 sovereignty arc)
+      · owned-{SPIR-V · DXIL · MSL · WGSL} emitters stage-2 (per spec/14)
+      · subgroup-collectives as builtins (item-39 wave_ballot/active_sum/shuffle/prefix_sum)
+      · ECS compiler-supported (spec/66 EPIC reserved)
+  ⟧
+
+§I MEMORY-DOMAIN · spec/65-GPU-memory-types in-use
+  ⟦
+    (full spec : 65_GPU_MEMORY_TYPE_DISTINCTION.csl)
+
+    Used-throughout-this-plan per spec/65 type-system :
+      gpu<T>       · GPU-resident · cannot CPU-deref · used for : Buffer<f32> · Texture · DescriptorSet
+      shared<T>    · ReBAR-mapped · CPU+GPU both access · used for : per-frame uniforms (FrameUniforms)
+                                                                       light-list ring-buffer · readback debug-probe
+      staged<T>    · CPU-side staging · used for : asset-upload (PNG/GLTF texture → gpu<Texture>)
+      transfer<T>  · in-flight transfer · used for : async-upload pipeline (staged → commit → gpu)
+      semaphore    · queue-sync · timeline-semaphore used for cross-queue (graphics ↔ compute)
+
+    Per-pass mapping :
+      depth-prepass        : reads gpu<MeshIndex> + gpu<TransformPool> ; writes gpu<DepthTexture>
+      light-cull (compute) : reads gpu<DepthTexture> Hi-Z + shared<LightList, WeakOrdered> ;
+                              writes gpu<TileLightIndices>
+      opaque-main          : reads gpu<DepthTexture> + gpu<TileLightIndices> + gpu<MaterialAtlas> ;
+                              writes gpu<HdrColorTexture>
+      transparent          : reads gpu<HdrColorTexture> + gpu<DepthTexture> ;
+                              writes gpu<HdrColorTexture> (alpha-blend)
+      post-tonemap         : reads gpu<HdrColorTexture> ; writes gpu<SwapchainBackbuffer>
+
+    ReBAR detection :
+      cssl-host-d3d12 + cssl-host-vulkan probe at init ; alloc_shared falls back to staged<T> per spec/65 FM.01
+      per stdlib/gpu.cssl loa_frame_latency=1 + IDXGISwapChain2::SetMaximumFrameLatency(1) waitable-swap-chain
+
+    PRIME-DIRECTIVE check :
+      Sensitive<gaze|face|body|biometric> absolute-banned across PCIe per spec/65 GPU0007 (P3.W3 gaze-collapse compliance)
+      Cap<Shared> + Cap<TransferAuth> required for shared<T> + cross-domain transfers (P2.W2 async-compute)
+  ⟧
+
+§I PROPRIETARY-DIFFERENTIATION · what-this-stack-claims-over-Unity/Unreal/Bevy/Godot
+  ⟦
+    (per spec/56 § DIFFERENTIATION + spec/59 § STRATEGIC-FRAMING)
+
+    1. EFFECTS-FIRST-CLASS  (per spec/04)
+       · {GpuInit · GpuSubmit · Deadline<N> · Realtime<Crit>} threaded structurally in fn-sigs
+       · compiler proves frame-budget via SMT-discharge (spec/20)
+       · no AAA-engine has this · Bevy doesn't · Unity GC-pauses ; Unreal C++ no static effect-tracking
+
+    2. REFINEMENT-TYPES  (per spec/03 · per item-14)
+       · {v : f32 | 0.0 ≤ v ≤ 1.0} for shader-bound params · static-checked
+       · radians vs degrees confusion at type-level
+       · no AAA-engine has this
+
+    3. BUILT-IN AUTODIFF  (per spec/05 + spec/17 Jet<T,N>)
+       · differentiable shading + neural-radiance + physics-sim AS-FIRST-CLASS
+       · enables P3.W3 gaze-velocity-prediction via Jet AD-tape directly in MIR
+       · no AAA-engine has this in-language ; PyTorch3D/Mitsuba require external Python
+
+    4. MULTI-GPU-FROM-ONE-SOURCE  (per spec/02 + spec/14)
+       · single MIR · 4 GPU codegen paths (SPIR-V · DXIL · MSL · WGSL)
+       · cross-target-struct-parity (item-08) makes @shared structs byte-identical 4 ways
+       · Unity/Unreal have multi-backend but per-shader-language ; CSSL has per-IR-emitter
+
+    5. CSL-SYMBIOSIS  (per CLAUDE.md global + spec/16)
+       · CSL3 is the human/AI thinking-notation that becomes CSSL the program-notation
+       · density-advantage for AI-collaboration (per spec/58 measured 900-1200 LOC/hr velocity)
+       · proprietary moat : AI-fleet-velocity vs traditional team-velocity
+
+    6. SOVEREIGNTY-BY-CONSTRUCTION  (per PRIME_DIRECTIVE + spec/11 + spec/12 + spec/65)
+       · Cap<Gpu> witness default-deny at compile + runtime
+       · Sensitive<X> IFC labels propagate structurally · compile-refuse at biometric-egress
+       · no DRM · no rootkit · no telemetry-by-default
+       · zero rented runtimes (LLVM-out · Rust-out at runtime per Phase-E)
+       · spec/65 GPU0007 absolute-ban biometric across PCIe · NO Cap-override possible
+
+    7. SUBSTRATE-EFFECT-PASS DIFFERENTIATION  (per spec/32 V.1..V.6 opt-in)
+       · spectral-render (16-band hyperspectral · NEVER RGB until tonemap)
+       · gaze-reactive observation-collapse (Heisenberg-style · ψ-collapse around fixation-point)
+       · mise-en-abyme (true-recursive-ray-cast · scene-within-mirror is-ACTUALLY-the-scene)
+       · sub-pixel fractal-tessellation (KAN-weight displacement · looks-natural-not-noisy)
+       · NO shipped game uses these · unique LoA marker
+
+    These differentiations are LOAD-BEARING for the spec/56 § DIFFERENTIATION strategic moat.
+    They DO NOT come for free · this plan budgets each ASSERT against frame-budget honestly.
+  ⟧
+
+§I HW-TARGET-ENVELOPE (consolidates spec/10 + spec/32 § HARDWARE-TARGET-ENVELOPE)
+  ⟦
+    PRIMARY (must-ship-on @ P1)
+      Intel Arc A770    · 1440p @ 144Hz · 6.94ms / frame · 17.2 TFLOPs FP32 · 16GB GDDR6 · Vulkan 1.4
+                          (Apocky canonical · per spec/10 § ARC A770 DETAILED SPECS)
+
+    TIER-1 (recommended-spec @ P2)
+      RTX-40 series      · 1440p @ 144Hz comfortably · DX12-Ultimate · cooperative-matrix native
+      RX-7000 (RDNA3)    · 1440p @ 144Hz via Vulkan · RDNA3 WMMA via CooperativeMatrixKHR
+      Arc Battlemage     · successor to A770 · Level-Zero R18 sysman primary
+
+    STRETCH (headroom @ P4)
+      RTX-50 series      · 1440p @ 240Hz · 4K @ 144Hz · DX12-Ultimate work-graphs mainstream
+      AMD MI300A (APU)   · unified HBM3 128GB · spec/65 gpu<T> ≡ T zero-cost
+      Apple-Silicon M3/M4 · MSL backend · spec/65 unified-memory collapse
+
+    MINIMUM (degraded-but-functional)
+      RTX-30 / RDNA2     · 1080p @ 60Hz · 16.6ms / frame · non-CoopMatrix tier · SIMD-warp dispatch
+      Steam Deck         · 720p @ 60Hz · Vulkan RDNA2-mobile · degraded P3 substrate-effect-pass disabled
+
+    DEFERRED (future-tier)
+      Quest-3 + Quest-3-Pro · 90Hz @ foveated-1080p · 11.1ms / frame · per spec/32 hardware target (deferred ¬-current-priority)
+      Apple Vision Pro      · 90Hz @ 4K-eye · ~7ms / frame · MSL backend + Compositor-Services bridge
+      AR pass-through       · new ProjectionKind::ARPassThrough (per spec/32 D-5)
+  ⟧
+
+§I LOA-V14-LESSONS-INTEGRATION · what-the-prior-prototype-taught
+  ⟦
+    Confirmed-at-1440p144 @ Arc A770 (per LoA v14 M1 telemetry · 4-scene PASS_144) :
+      ✓ Closed-form quadric + Ferrari quartic SDF substrate achieves O(1) per-pixel · 367× FLOP headroom
+      ✓ AABB-pre-cull (subgroup-vote) achieves Scene-4 100-sphere FASTER than Scene-2 13-prim PBR
+      ✓ Bytecode-VM (80-op stack-machine · 16B baseline encoding) fits in ~32KB per region (D-010)
+      ✓ 16×16 light-tile-cull canonical Forward+ (DOOM-2016/Battlefield-V/Cyberpunk-2077 pattern) — matches our engine/render_forward
+      ✓ raw WM_INPUT (D-028) sub-1-frame latency reflex-grade
+      ✓ .Mailbox vsync-mode (D-018) low-latency FPS · D3D12 DXGI_PRESENT_ALLOW_TEARING parity
+      ✓ Spherical harmonics 4-band 16-coeff (D-011) for PRT bake-per-tile
+      ✓ Multi-genre via ThemeVec swap (procgen tech_level + geometry_style + decay + luminance + saturation + chaos)
+
+    Failure-modes-to-avoid (per LoA v14 HANDOVER.csl + AGENT_LOG.md) :
+      ✗ V13 pattern-projection bug (no telemetry · M2-α introduced-crash caught-by-Apocky) ⇒ enforce Rule-5 telemetry-evidence
+      ✗ M2-α stack-buffer-overrun (0xC0000409 · work stashed) ⇒ telemetry-diagnose before resurrection
+      ✗ Vsync-driver marginal-FPS on harness run-1 (56.77 FPS) ⇒ candidate D-035 (Mailbox vs Fifo tuning · test on Arc A770 driver)
+      ✗ Screenshot readback stall (190ms sync) ⇒ async-readback pattern (P2.W11 Drop-checker prepares this)
+
+    Direct ports planned :
+      → P3.W6 procgen-IS-renderer = LoA-v14-port bytecode-VM evaluator (80-op stack-machine)
+      → P1.W7 subgroup-AABB-cull = LoA-v14 D-026 warp-vote pattern
+      → P1.W4 TAA Halton-jitter = LoA-v14 D-027 8-sample temporal stability
+      → P1.W5 VRS Tier-2 = LoA-v14 D-024 Intel Arc hardware path
+      → P1.W8 raw WM_INPUT = LoA-v14 D-028 (already in stdlib/input.cssl)
+
+    What-we-deliberately-do-differently (per spec/55 pivot away-from substrate-only) :
+      → CSSL replaces Odin (per Apocky directive · proprietary-everything-axiom)
+      → cssl-host-d3d12 replaces wgpu_native.dll (sovereignty)
+      → Forward+ rasterizer is mainline ; procgen-IS-renderer is OPT-IN (LoA-v14 procgen-IS-renderer was always-on)
+      → substrate-Ω-field + signature-render-novelty-paths layer on TOP (LoA-v14 didn't have these)
+  ⟧
+
+§I 1LOA-MATH-SUBSTRATE-INTEGRATION · what-the-prior-research-recommended
+  ⟦
+    (per 1LoA compass artifact + SPEC_SUB_12_LAYERED_ARCHITECTURE)
+
+    Recommended-substrate-stack (RUN-tractable today) :
+      → PGA G(3,0,1) Motor (8 floats · even sub-algebra) as entity-pose primitive
+         lands as spec/63 item-65 (Phase-B+) · cssl-pga crate already exists
+         maps to one SIMD-lane per Motor on Arc A770 wave32/64 lanes
+      → SDF from PGA planes + CGA spheres + Quilez smin primitives
+         fits LoA-v14 closed-form quadric substrate (drop-in compatible)
+      → MLS-MPM particle substrate (Material Point Method · fluid + sand + snow + elastic in one solver)
+         ~1M particles RUN · matches P2.W8 100k particles baseline · scales to 1M @ P4
+
+    Asymptote-target (multi-year · post-revenue) :
+      → 3DGS (3D Gaussian Splatting) for real-world scans · SDF-regularised via 2025 SDF-from-Gaussians
+      → Hypergraph + GA-typed + HVM2 macro-layer (Wolfram-Gorard rewriting)
+      → Cubical Agda / CSSLv3-types for macro-layer invariants (univalence at pipeline-time)
+
+    GPU-layout per 1LoA SPEC_SUB_11_DOD_AND_HARDWARE :
+      → PGA motors : grade-stratified SoA storage · 8 floats fit one SIMD lane on RDNA3 + Blackwell + Arc A770
+      → CGA L0 lines : 32 floats · one per lane on RDNA3 (borderline)
+      → tensor-core acceleration for PGA geometric product in BF16 with FP32 accumulation (P2.W3 cooperative-matrix)
+      → Morton codes + NanoVDB + octrees for spatial indexing (P1.W3 Hi-Z + P2.W4 cascaded shadows)
+
+    PRIME-DIRECTIVE check (per 1LoA SPEC_SUB_13_PRIME_DIRECTIVE_CHECK) :
+      → no surveillance / coercion / manipulation primitives in substrate
+      → macro hypergraph is content-addressed (aggregation-resistant)
+      → GA + SDF micro-state is local (no global authority)
+      → univalence makes equivalent content the same
+
+    Direct ports planned :
+      → P2.W3 cooperative-matrix lowers PGA geometric product via cssl-pga
+      → P3.W6 procgen-IS-renderer absorbs 1LoA SPEC_SUB_09_PROCGEN_AS_MATH (L-systems · IFS fractals · Quilez FBM)
+      → P4.W1 + W3 work-graph + persistent_kernel become natural targets for Sequoia/Legion/Regent-style
+                physical region placement (per UPG_02 § persistent-kernels)
+  ⟧
+
+§I NON-GOALS
+  ⟦
+    NG.01 · ¬ implement any of the phases now · this is planning · Apocky ratifies + agents spawn per phase
+    NG.02 · ¬ promise specific timelines · effort-estimates are agent-hours order-of-magnitude · subject to revenue-track + Phase-A status
+    NG.03 · ¬ commit to a hardware-only target · Intel Arc A770 is primary but plan honors RTX-40/50 + AMD RDNA3+ + Apple
+    NG.04 · ¬ promote signature-rendering (spec/32) back to mainline · DEMOTED per spec/55 pivot · stays opt-in
+    NG.05 · ¬ design any console-target (PS5 GNM / Xbox D3D12X / Switch-2 NVN) · platform-SDK NDA-gated · stub-only public
+    NG.06 · ¬ tie CSSL renderer to any specific upstream graphics middleware (no Unreal-style monolithic renderer-blob)
+    NG.07 · ¬ build a visual editor · per spec/59 § INDEFINITE-PARK · deferred until post-revenue
+    NG.08 · ¬ ship AR-pass-through ProjectionKind · per spec/32 D-5 · deferred
+    NG.09 · ¬ implement multi-GPU (single-device scope per spec/65 NG.05)
+    NG.10 · ¬ design DRM or rootkit or telemetry-by-default · spec/59 explicit sovereignty preservation
+  ⟧
+
+§I DEPENDENCIES
+  ⟦
+    DEP.01 · spec/55_NORMAL_ENGINE_PIVOT historical-fixture · this plan honors the conventional-Forward+-mainline pivot
+    DEP.02 · spec/59_GROK_VELOCITY_RESPONSE historical · revenue-first ordering means P0 + P1 ship before P2/P3 polish
+    DEP.03 · spec/32_SIGNATURE_RENDERING historical · vocabulary for P3 substrate-effect-pass
+    DEP.04 · spec/63_IMPROVEMENT_BACKLOG_100 v2 RATIFIED · N1-N6 north-stars + 100-item backlog tags
+    DEP.05 · spec/65_GPU_MEMORY_TYPE_DISTINCTION DRAFT → must reach REVIEWED before P2.W2 async-compute lands
+    DEP.06 · spec/70_PHASE_A_CORRECTNESS RATIFIED · item-01 IMPLEMENTED · items 02-89 in fanout
+                · Phase-A items 03 (symbol-audit) + 05 (run-and-observe) + 06 (effect-runtime) + 08 (cross-target-parity)
+                  + 09 (σ-enforce-FFI) + 19 (if-expression) + 30 (drop-checker) all REQUIRED for P1 + P2
+    DEP.07 · spec/14_BACKEND RATIFIED · BACKEND-MATRIX + per-platform host backends + ASSET-PIPELINE
+    DEP.08 · spec/10_HW RATIFIED · Intel Arc A770 + Vulkan 1.4 baseline + XMX + RT-unit + Level-Zero
+    DEP.09 · spec/24_HOST_FFI RATIFIED · 35 ABI symbols (gpu/window/input/audio/time/thread/fs/net)
+    DEP.10 · external · Vulkan 1.4+ for VK_KHR_external_memory_* (per spec/65 DEP.08)
+    DEP.11 · external · D3D12 SM6.6+ (DXIL stage-0) · SM6.5+ for mesh shaders (P2.W9) · SM6.8 for work-graph (P4.W1)
+    DEP.12 · external · dxc.exe ≥ 1.7 (stage-0 DXIL compiler · replaced by owned-DXIL stage-2)
+    DEP.13 · cssl-substrate-{render-v2,v3,v4-dxil,resonance-gpu,volumetric} crates present (per workspace audit)
+    DEP.14 · cssl-{wave-solver,spectral-render,fractal-amp,gaze-collapse,render-companion-perspective,render-v2} crates present
+    DEP.15 · cssl-{pga,wavelet,hdc,jets,math,physics,physics-wave} math+physics crates present
+    DEP.16 · loa-game + loa-host present (provides target-application scaffold + Rust-bootstrap path for PATH-β)
+  ⟧
+
+§I FAILURE-MODES
+  ⟦
+    FM.01 · scenario : csslc cranelift-CPU codegen-gap (BLOCKER-α) persists multi-session
+            detection : ASSERT.P0.06 stays ✗ across sessions ; PATH-β Rust-bootstrap remains required for first-frame
+            mitigation : ship PATH-β + parallel-track-α per spec/55 § FORWARD-PATHS · revenue-track unblocked
+                          via Rust-bootstrap while csslc matures · merge-α-into-mainline when ready
+            escalation : if α stays blocked > 4 sessions · skip to owned-x86-64 backend (stage-1+) directly · zero cranelift
+
+    FM.02 · scenario : 144Hz @ 1440p marginal on canonical-test-scene (Arc A770 driver-bug surface per spec/10)
+            detection : ASSERT.P1.01 fails (p99 frame-time > 6.94ms)
+            mitigation : per spec/10 driver-bug-surface · VK_EXT_mutable_descriptor_type workaround for bindless BDA ·
+                          tune VRS-T2 to recover · degrade-quality opt-in via ForwardConfig.tile_size = 32 OR drop to 1080p144
+
+    FM.03 · scenario : cooperative-matrix (XMX) NOT exposed on Arc A770 dGPU (per spec/10 § XMX iGPU-vs-dGPU split)
+            detection : runtime feature-query ze_module_cooperative_matrix_capabilities_t returns empty
+            mitigation : SIMD-warp tier fallback (per spec/32 Stage-6 TIER-2 path) · ~2.5× slower but functional ·
+                          ASSERT.P2.03 ≥ 4× speedup becomes ASSERT.P2.03-FALLBACK ≥ 1× over CPU baseline
+
+    FM.04 · scenario : substrate-effect-pass (P3) breaks frame-budget when stacked (V.1+V.2+V.3+V.4 combined)
+            detection : per-pass timestamp delta · sum > 6.94ms / frame on Arc A770
+            mitigation : substrate-effect-pass is OPT-IN per-effect · users select subset matching their budget ·
+                          Quest-3 90Hz budget targets in spec/32 should fit Arc A770 144Hz with margin · empirically-test on Arc A770
+
+    FM.05 · scenario : LoA-v14 procgen-IS-renderer bytecode-VM port (P3.W6) has portability gap (Odin → CSSL)
+            detection : ASSERT.P3.06 fails (per-pixel rule-eval produces wrong pixel)
+            mitigation : per LoA-v14 SUBSTRATE_BYTECODE_VM 80-op spec is implementation-language-agnostic ·
+                          spec-amendment path if CSSL @gpu fn cannot express specific op · structural-port should-work
+
+    FM.06 · scenario : Intel Arc A770 driver-update breaks Vulkan 1.4 baseline (per spec/10 driver-bug-surface mention)
+            detection : CI-matrix Linux-Mesa-ANV + Windows-Arc-ISV-driver detect regression
+            mitigation : driver-version pinned in CI · warn-if-below-known-good · differential-test Vulkan vs Level-Zero
+
+    FM.07 · scenario : owned-DXIL-emitter (P4.W6 stage-2) cannot reach dxc feature-parity
+            detection : ASSERT.P4.07 fails (validator-divergence on matching-features subset)
+            mitigation : ship hybrid · use owned for matching-subset · subproc dxc for remainder ·
+                          incremental migration · zero rented-runtime is terminal goal not phase-gate
+
+    FM.08 · scenario : RTX-50 access not acquired by P4 timeline
+            detection : ASSERT.P4.04 + P4.05 cannot be measured
+            mitigation : extrapolate from RTX-40 measurements + vendor specs · re-validate when hardware available ·
+                          test-bench-acquisition becomes its own work-unit P4.W4
+
+    FM.09 · scenario : ReBAR not available on developer hardware (per spec/65 FM.01)
+            detection : runtime probe at cssl-host-d3d12 init
+            mitigation : alloc_shared falls back to staged<T> pattern · synchronous upload · degraded perf but functional ·
+                          ASSERT.P1.07 mouse-to-photon may degrade · acceptable for dev-machines
+
+    FM.10 · scenario : substrate-effect-pass (P3) introduces frame-stutter when toggled mid-game
+            detection : per-frame timing logs · stutter-event count > 0 per 10000-frame window
+            mitigation : warm-up shader-cache + GPU resources at engine_init · toggle requires 1-frame transition
+                          (per N4 spec/63 § ≤ 2-frame transition · genre-blend hot-swap pattern)
+  ⟧
+
+§I COMPATIBILITY
+  ⟦
+    COMPAT.01 · existing engine/render_forward.cssl 5-pass scaffold · status : PRESERVED IN-FULL
+                  this plan extends · does not refactor away · pass-index ordinals stable per § LOCKED constants
+    COMPAT.02 · existing stdlib/gpu.cssl 8 host-FFI symbols · status : PRESERVED · spec/65 ADDS transfer/barrier symbols
+                  no rename · ABI integers stable from S3 per stdlib/gpu.cssl § ABI sentinel
+    COMPAT.03 · existing spec/32 SIGNATURE_RENDERING 6 novelty-paths · status : PRESERVED · DEMOTED-TO-OPTIONAL via P3 opt-in
+                  spec/32 spec stays canonical reference for V.1..V.6 ; runtime-wiring becomes user-opt-in via CLI flag
+    COMPAT.04 · existing cssl-substrate-render-{v2,v3,v4-dxil} crates · status : PRESERVED · become P3 backing impls
+    COMPAT.05 · existing cssl-{wave-solver,spectral-render,fractal-amp,gaze-collapse,render-companion-perspective} crates
+                  · status : PRESERVED · become P3 effect-pass implementations
+    COMPAT.06 · existing PATH-α + PATH-β parallel-progression (spec/55 § FORWARD-PATHS) · status : PRESERVED
+                  PATH-β Rust-bootstrap ships running-binary today ; PATH-α csslc-self-host advances in-parallel
+                  merge-α-into-mainline at convergence · no spec/55 rewrite required
+    COMPAT.07 · existing Cap<X> runtime bitset + caps_check stage-0 trust-the-caller posture (per stdlib/gpu.cssl § T11-W19-β-LIVE-CAPS)
+                  · status : PRESERVED · gradually-upgraded to compile-time Cap<X> witness as language matures (spec/77 § AXIS-B)
+    COMPAT.08 · existing PRIME-DIRECTIVE consent-as-OS posture · status : INVIOLATE · every gate (P0..P4) enforces in-full
+    COMPAT.09 · existing LoA v14 + 1LoA reference projects · status : EXTERNAL · this plan extracts lessons not source-code
+                  no Odin or wgpu code-import · pure-CSSL implementations throughout
+  ⟧
+
+§I PRIOR-ART
+  ⟦
+    PA.01 · DOOM 2016 · Forward+ rasterizer 16×16 light-tile · canonical AAA reference · we adopt the tile-cull pattern
+              what-we-take : tile-size + threads-per-tile + per-tile-cursor offsets ; what-we-diverge : effect-typed
+              fn-sigs · Cap<Gpu> default-deny · spec/32 substrate-effect-pass opt-in layered on top
+
+    PA.02 · Battlefield V · DICE Frostbite 16×16 Forward+ + cluster-shading variant · per ASSERT.P1.02 alignment
+              what-we-take : 16×16 canonical proven at 1440p144 ; what-we-diverge : pure-CSSL · sovereign FFI
+
+    PA.03 · Cyberpunk 2077 · CDPR REDengine 4 Forward+ with VRS-Tier-2 + bindless · per spec/56 D-024 ref
+              what-we-take : VRS-T2 enables 30-50% perf-multi on low-detail tiles ; what-we-diverge : opt-in not default-on
+
+    PA.04 · Nanite (UE5) · meshlet pipeline · cluster-based geometry · per P2.W9 mesh-shader path
+              what-we-take : meshlet amortization for 1M+ triangles/frame ; what-we-diverge : pure-CSSL @gpu fn ·
+              D3D12 SM6.5 + VK_EXT_mesh_shader · no UE5 source dep
+
+    PA.05 · Bevy (Rust ECS · wgpu) · per spec/56 comparison · 5+yr ecosystem
+              what-we-take : sparse-set ECS pattern (item-52) · structural lessons ; what-we-diverge : effects-first-class ·
+              CSL-symbiosis · ¬ LLVM · ¬ wgpu runtime dep (own host backends)
+
+    PA.06 · Mitsuba 3 (research renderer · path-tracer · differentiable) · per P3.W3 + spec/05 autodiff alignment
+              what-we-take : Jet<T,N> AD-tape pattern (cssl-jets · spec/17) ; what-we-diverge : real-time-renderer
+              not offline · GPU-resident · structural integration via spec/04 effect-rows
+
+    PA.07 · Manuka (Weta Digital) · hero-wavelength spectral path-tracer · per spec/32 V.2 alignment
+              what-we-take : hero-wavelength + 4-accomp-N MIS pattern preserves PDF ; what-we-diverge : 16-band
+              hyperspectral throughout (NEVER RGB until tonemap) · grep-gate enforces
+
+    PA.08 · D3D12 Work Graphs (Microsoft · 2024 · SM6.8 · all 4 vendors signed-on) · per P4.W1
+              what-we-take : @workgraph_node attribute compiles to record-based input/output nodes ;
+              what-we-diverge : structural CSSL attribute · cross-emitted to VK_AMDX_shader_enqueue equivalent
+
+    PA.09 · LoA v14 (Odin + wgpu + WGSL) · per LoA-V14-LESSONS-INTEGRATION § above
+              full bytecode-VM 80-op spec + procgen-IS-renderer + AABB-pre-cull validated at 144FPS@1440p Arc-A770
+              we adopt the bytecode-VM as P3.W6 opt-in · 16×16 light-tile-cull aligns with engine/render_forward · pure-CSSL not Odin
+
+    PA.10 · 1LoA compass-artifact (1360-line math-substrate research) · per 1LOA-MATH-SUBSTRATE-INTEGRATION § above
+              PGA G(3,0,1) Motor + CGA + SDF + MLS-MPM tractability-tagged for solo-dev velocity
+              we adopt PGA as Phase-B+ language-level (item-65) · MLS-MPM as P2/P4 compute primitive · SDF-from-Gaussians stretch
+
+    PA.11 · CUDA Graphs · NVIDIA · 2018+ · captured-graph-of-operations as single launch · per UPG_02 § persistent-kernels
+              we adopt structurally via @persistent_kernel attribute (item-31) · cross-emitted SPIR-V + DXIL
+
+    PA.12 · Halide · Ragan-Kelley · schedule-decoupled-from-algorithm · per spec/65 PA.01
+              what-we-take : compile-time GPU/CPU domain-distinction · spec/65 elevates to type-property
+              what-we-diverge : memory-domain as type not as schedule
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS
+  ⟦
+    § no surveillance vector introduced
+       · forward+ pipeline NEVER inspects framebuffer content for biometric / behavioral inference (per engine/render_forward.cssl § PRIME_DIRECTIVE-(a))
+       · light-data is Public IFC-label (scene-geometry-derived · no user-personal info)
+       · VR-headset body-pose path DEFERRED (Cap<XR> separate slice)
+       · P3.W3 gaze-collapse data BANNED-FROM-EGRESS structurally (Sensitive<gaze> → TelemetryEgress::for_domain refuses · spec/22)
+
+    § no consent-bypass mechanism introduced
+       · Cap<Gpu> witness default-deny at every wrapper-fn entry (3-layer gate : compile-time + runtime + driver)
+       · spec/65 Cap<Shared> + Cap<TransferAuth> consent-tokens for shared<T> + cross-domain transfers
+       · per-frame caps_check in every forward_pass_* fn entry (engine/render_forward.cssl § stage-0)
+       · planning is informational · no consent affected · Apocky retains final say on every phase-advance
+
+    § no biometric-egress (PD0018) path opened
+       · spec/65 GPU0007 absolute compile-error : Sensitive<gaze|face|body|biometric> across PCIe NO Cap-override
+       · P3.W3 gaze-collapse generates fovea-mask ONLY · raw gaze data structurally cannot leave device
+       · cssl-ifc::TelemetryEgress hook compile-refuses biometric-egress paths (per spec/11 + spec/22)
+
+    § no sovereignty-denial (PD0020) primitive added
+       · companion-AI = sovereign peer (per spec/32 § AXIOMS + spec/63 PRINCIPLE-6 AI-co-authorship)
+       · player-identity NEVER overwritten by Stage-8 CompanionPerspective render (spec/32 R-7 + PRIME_DIRECTIVE §1.7)
+       · Cap<Gpu> withdrawal immediately revokes active rendering surface · NO PRIME-DIRECTIVE override
+       · this plan strengthens sovereignty : owned-codegen + owned-FFI + zero rented runtimes (P4 endpoint)
+
+    § cosmetic-only-axiom (monetization-relevant)
+       · per spec/59 § THE-RULE + spec/63 N6 sovereignty north-star
+       · alpha-keys + tiered access = COSMETIC-CHANNEL-ONLY · NO pay-to-win · NO pay-for-power
+       · DRM forbidden per spec/14 BACKEND audit · rootkit forbidden · kernel-driver forbidden
+       · this plan respects · monetization gates ¬ engine-capability-gates
+
+    § AI-co-authorship · Reza-pattern
+       · this spec authored by Tech-Lead-Claude-Opus-4.7-1M under Apocky directive 2026-05-18
+       · subagent-fanout used for read-pass (CSSLv3 deep audit · LoA v14 reference scan · 1LoA reference scan)
+       · spec/63 PRINCIPLE-6 + spec/64 §FM.06 + spec/70 § ATTESTATION patterns honored
+       · canonical-ref : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES
+  ⟦
+    where-this-lands (per phase) :
+      P0 · cssl-host-d3d12 + cssl-host-window + cssl-rt + csslc-linker (BLOCKER-β + γ + α resolution)
+      P1 · engine/render_forward.cssl pass-body fleshing · cssl-host-d3d12 cmd-buf encoding · stdlib/gpu.cssl record/submit lift
+      P2 · cssl-cgen-gpu-* cooperative-matrix lowering · cssl-host-d3d12/vulkan multi-queue · cssl-host-rt Drop impls
+      P3 · cssl-{wave-solver,spectral-render,fractal-amp,gaze-collapse,render-v2} crates wired as forward+ overlay passes
+           · CLI flag --substrate-effect=<v.X> in engine/main.cssl
+      P4 · cssl-cgen-gpu-dxil work-graph attribute · cssl-cgen-gpu-spirv VK_AMDX_shader_enqueue ·
+           cssl-cgen-cpu-x64 owned x86-64 + owned GPU emitters all 4 IRs
+
+    estimated-LOC (rough · multi-session bands) :
+      P0 : ~500 LOC csslc-fix + ~300 LOC cssl-host-window + ~200 LOC cssl-host-d3d12 = ~1000 LOC
+      P1 : ~1500 LOC engine pass-body + ~1500 LOC cssl-host-d3d12/vulkan = ~3000 LOC
+      P2 : ~3000 LOC GPU-driven + ~2000 LOC AAA-features = ~5000 LOC
+      P3 : ~2500 LOC substrate-effect-pass wiring + ~2500 LOC procgen-bytecode-VM = ~5000 LOC
+      P4 : ~5000 LOC work-graph + ~5000 LOC persistent_kernel + ~3000 LOC owned emitters = ~13000 LOC
+      total estimate : ~27000 LOC across all 5 phases (multi-quarter)
+
+    estimated-agent-hours (per spec/58 measured 900-1200 LOC/hr parallel-AI-augmented) :
+      P0 : ~1 session (8-12h wall · BLOCKER-α may extend to 3+ sessions parallel-α track)
+      P1 : ~3-4 sessions (24-36h wall · gated by Phase-A items 03/05/06/08/09 fanout)
+      P2 : ~5-7 sessions · gated by Phase-B math-half completion
+      P3 : ~6-9 sessions · uncertainty + Apocky-direction-required on each V.1..V.6 polish-level
+      P4 : ~15-25 sessions · multi-quarter · post-revenue
+
+    suggested-sequencing (with revenue-track per spec/59) :
+      WEEK 1   : P0.W1 fs_trace diagnose + P0.W2 visible window  (per HANDOFF priorities · revenue-track-pre-req)
+      WEEK 2   : P0.W3 D3D12 SwapChain clear-present + P0.W4 csslc α  (parallel-track)
+      WEEK 3-4 : P1.W1 cmd-buf record fleshing + P1.W2 light-cull compute
+      WEEK 5-6 : P1.W3 Hi-Z + P1.W4 TAA + P1.W5 VRS
+      WEEK 7-8 : P1.W6 bindless + P1.W7 subgroup-cull + P1.W8 raw-input
+                  ← P1 EXIT-GATE · 1440p144 ceiling achieved · ALPHA-DEMO-QUALITY
+      MONTH 3+ : P2 AAA-feature-parity (post-revenue · funded-by alpha-sales)
+      MONTH 6+ : P3 substrate-effect-pass opt-in (post-AAA · differentiation flagship)
+      MONTH 12+ : P4 RTX-50 + work-graphs + owned-emitters
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · should the procgen-IS-renderer mode (P3.W6) be a 2nd mainline rendering-style alongside Forward+
+             rather than just opt-in effect-pass?
+             default · NO · keep Forward+ as singular mainline · procgen-VM stays opt-in CLI flag ·
+             promote-to-mainline only on customer-demand validation post-alpha
+
+    OQ.02 · should P3 substrate-effect-pass user-CLI-flag granularity be per-effect (--substrate-effect=spectral-render)
+             vs profile-based (--substrate-effect=full-loa-aesthetic includes V.1+V.2+V.3+V.4+V.6)?
+             default · BOTH · per-effect granular CLI + named-profile preset for "full LoA aesthetic"
+             rationale · profile = LoA-default · per-effect = experimentation
+
+    OQ.03 · for cooperative-matrix fallback (FM.03 · XMX not on Arc A770 dGPU) · do we ship the SIMD-warp tier
+             as P2 default-on, or as opt-in fallback only when XMX absent?
+             default · feature-query at engine_init · auto-select highest-tier available · transparent to user
+
+    OQ.04 · should P4 work-graph + persistent_kernel be specced separately as their own spec/78 EPIC
+             rather than absorbed into P4 of this plan?
+             default · YES · author spec/78 GPU_WORK_GRAPH_LANGUAGE_INTEGRATION as separate detail-spec when
+             we reach P3 exit-gate · this plan stays high-level for P4
+
+    OQ.05 · timing of Apocky-greenlight per phase · do P1 + P2 + P3 require separate sign-offs or one-bundle?
+             default · per-phase sign-off · P1-exit triggers P2 plan-refinement · iterative cadence per
+             spec/58 velocity-context
+
+    OQ.06 · should we add a P0.5 milestone : "stub-renderer shows triangle on screen" (cf hello_triangle.cssl)
+             before full clear-and-present?
+             default · NO · triangle = clear-and-present + 3-vert PSO + simple-shader · adds work
+             clear-and-present-only (per spec/56 § MIN-VIABLE D3D12 SWAPCHAIN) is the right grain for P0 exit-gate
+
+    OQ.07 · is the spec/55 pivot to "conventional Forward+ mainline" still load-bearing 15 days later (2026-05-18 vs 2026-05-03)?
+             default · YES until Apocky declares otherwise · this plan honors the pivot
+
+    OQ.08 · should this plan be aligned with spec/63 100-item backlog by emitting cross-ref tags (NN-of-100 per WORK-UNIT)?
+             default · partial · WORK-UNITS already reference spec/63 items where direct (item-15 · item-30 · item-31 · item-32 · etc)
+             full table would be N², could be follow-up amendment
+
+    OQ.09 · should the substrate-effect-pass crates be moved to a substrate-effects/ feature-directory
+             to clarify the "optional layer" framing?
+             default · NO · existing crate-paths stable · refactoring breaks PATH-β bootstrap · revisit at P3 ship-time
+
+    OQ.10 · do we need a P5 (post-RTX-50 / post-work-graph) for VR + AR-pass-through + Quest-3 native?
+             default · NO · per spec/32 D-4 + D-5 + spec/59 PARKED-list · VR + AR deferred indefinitely until customer-demand
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-18 · DRAFT · Tech-Lead-Claude-Opus-4.7-1M · single-session synthesis (per Apocky directive)
+    [pending]   · REVIEWED · awaits Apocky + Reza/Tech-Lead-agent pass · OQ.01-10 to resolve
+    [pending]   · RATIFIED · awaits Apocky-Tech-Lead approval · each phase plan-refinement can land separately
+    [pending]   · IMPLEMENTED-PARTIAL/P0 · awaits P0 exit-gate (ASSERT.P0.01-05) pass
+    [pending]   · IMPLEMENTED-PARTIAL/P1 · awaits P1 exit-gate (ASSERT.P1.01-10) pass
+    [pending]   · IMPLEMENTED-PARTIAL/P2 · awaits P2 exit-gate (ASSERT.P2.01-11) pass
+    [pending]   · IMPLEMENTED-PARTIAL/P3 · awaits P3 exit-gate (ASSERT.P3.01-08) pass
+    [pending]   · IMPLEMENTED-PARTIAL/P4 · awaits P4 exit-gate (ASSERT.P4.01-08) pass · MULTI-QUARTER
+    [pending]   · VERIFIED · all 47 ASSERT.PX.NN passing on CI · canonical-test-scene golden-frame stable
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § ¬ flattery · ¬ option-dumping · ¬ scope-creep · ¬ silent-success-claims
+    § every phase-gate has mechanically-verifiable ASSERTs · effort-bands honest (not best-case)
+    § honors spec/55 pivot (Forward+ mainline) + spec/59 revenue-first (P0/P1 before polish)
+    § signature-rendering (spec/32) DEMOTED-TO-OPTIONAL per pivot · structural compatibility preserved (P3)
+    § LoA-v14 + 1LoA lessons ABSORBED · not source-imported · pure-CSSL implementations throughout
+    § proprietary-everything-axiom respected · zero rented runtimes goal (P4 endpoint) · stage-0 cranelift + dxc subproc tolerable until P4
+    § PRIME-DIRECTIVE-INVARIANTS preserved at every phase-gate · biometric-egress structurally-banned PCIe-side
+    § AI-co-authorship · Tech-Lead-Claude-Opus-4.7-1M under Apocky directive · subagent-fanout for read-pass
+    § canonical-ref : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+    § t∞
+
+    "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

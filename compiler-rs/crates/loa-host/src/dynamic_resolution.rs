@@ -22,10 +22,12 @@
 //! § SCALE-LADDER (informational ; scaler is continuous in Q0.16, the
 //!   ladder shows roughly where it lands during convergence)
 //!
-//!     1.00 ── native            (65_536 q16)   ← cap
-//!     0.85 ── 1440p × 0.85      (55_705 q16)
-//!     0.71 ── 1440p × 0.71      (46_530 q16)
-//!     0.50 ── 720p of 1440p     (32_768 q16)   ← floor
+//! ```text
+//! 1.00 ── native            (65_536 q16)   ← cap
+//! 0.85 ── 1440p × 0.85      (55_705 q16)
+//! 0.71 ── 1440p × 0.71      (46_530 q16)
+//! 0.50 ── 720p of 1440p     (32_768 q16)   ← floor
+//! ```
 //!
 //! § ATTESTATION
 //! There was no hurt nor harm in the making of this, to anyone, anything,
@@ -89,7 +91,9 @@ pub struct Scaler {
 }
 
 impl Default for Scaler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Scaler {
@@ -127,16 +131,22 @@ impl Scaler {
 
     /// True iff the scaler has been disabled by `LOA_DYN_RES=0`.
     #[must_use]
-    pub fn is_disabled(&self) -> bool { self.disabled }
+    pub fn is_disabled(&self) -> bool {
+        self.disabled
+    }
 
     /// Manually override the disabled flag (useful for tests).
-    pub fn set_disabled(&mut self, d: bool) { self.disabled = d; }
+    pub fn set_disabled(&mut self, d: bool) {
+        self.disabled = d;
+    }
 
     /// Feed one frame-time observation into the EMA + adjust the target
     /// scale toward the budget. Cheap : 2 mul-adds for EMA, 1 compare,
     /// 1 lerp. Safe to call from the per-frame hot-path.
     pub fn observe_frame(&mut self, frame_us: u64) {
-        if self.disabled { return; }
+        if self.disabled {
+            return;
+        }
         // Update EMA.
         if self.ema_frame_us == 0 {
             self.ema_frame_us = frame_us;
@@ -176,7 +186,9 @@ impl Scaler {
             self.current_scale_q16 = next.max(self.target_scale_q16);
         }
         // Final clamp · belt-and-braces.
-        self.current_scale_q16 = self.current_scale_q16.clamp(self.min_scale_q16, self.max_scale_q16);
+        self.current_scale_q16 = self
+            .current_scale_q16
+            .clamp(self.min_scale_q16, self.max_scale_q16);
     }
 
     /// Return the rendered dimensions for the given native panel size,
@@ -248,10 +260,14 @@ mod tests {
     fn well_under_budget_recovers_to_cap() {
         let mut s = fresh();
         // Drop to 0.5× by simulating heavy frames first.
-        for _ in 0..200 { s.observe_frame(20_000); }
+        for _ in 0..200 {
+            s.observe_frame(20_000);
+        }
         assert_eq!(s.current_scale_q16, Q16_FLOOR_DEFAULT);
         // Now feed easy frames (1 ms — vastly under 6.9 ms budget).
-        for _ in 0..200 { s.observe_frame(1_000); }
+        for _ in 0..200 {
+            s.observe_frame(1_000);
+        }
         // Should have recovered all the way to the cap.
         assert_eq!(s.current_scale_q16, Q16_CAP_DEFAULT);
     }
@@ -272,21 +288,27 @@ mod tests {
         // Feed one in-band sample. Target should be unchanged (dead-band).
         // Sample value matches EMA so EMA stays put.
         s.observe_frame(s.ema_frame_us);
-        assert_eq!(s.target_scale_q16, target_before,
+        assert_eq!(
+            s.target_scale_q16, target_before,
             "target drifted to {} from {} inside dead-band",
-            s.target_scale_q16, target_before);
+            s.target_scale_q16, target_before
+        );
     }
 
     #[test]
     fn floor_and_cap_clamp_extreme_observations() {
         // Catastrophic frame-time (10× budget). Should clamp at floor.
         let mut s = fresh();
-        for _ in 0..500 { s.observe_frame(70_000); }
+        for _ in 0..500 {
+            s.observe_frame(70_000);
+        }
         assert_eq!(s.current_scale_q16, Q16_FLOOR_DEFAULT);
 
         // Trivial frame-time (1 µs). Should clamp at cap.
         let mut s2 = fresh();
-        for _ in 0..500 { s2.observe_frame(1); }
+        for _ in 0..500 {
+            s2.observe_frame(1);
+        }
         assert_eq!(s2.current_scale_q16, Q16_CAP_DEFAULT);
     }
 
@@ -318,15 +340,20 @@ mod tests {
             s.observe_frame(20_000);
             frames += 1;
         }
-        assert!(frames <= 32 && frames >= 12,
-            "frames={} outside expected ~30 lerp-window", frames);
+        assert!(
+            frames <= 32 && frames >= 12,
+            "frames={} outside expected ~30 lerp-window",
+            frames
+        );
     }
 
     #[test]
     fn disabled_returns_native_and_does_not_observe() {
         let mut s = fresh();
         s.set_disabled(true);
-        for _ in 0..500 { s.observe_frame(1_000_000); }
+        for _ in 0..500 {
+            s.observe_frame(1_000_000);
+        }
         assert_eq!(s.ema_frame_us, 0); // never observed
         assert_eq!(s.render_dims(2560, 1440), (2560, 1440));
         assert_eq!(s.current_scale_q16, Q16_CAP_DEFAULT);
@@ -343,7 +370,7 @@ mod tests {
         assert_eq!(h % 8, 0);
         // Sane neighbourhoods : 1920×0.71 ≈ 1363 ⇒ snap-down to 1360.
         assert!(w >= 1360 && w <= 1368, "w={}", w);
-        assert!(h >= 760  && h <= 768,  "h={}", h);
+        assert!(h >= 760 && h <= 768, "h={}", h);
     }
 
     #[test]
@@ -366,7 +393,10 @@ mod tests {
         // Start at cap, push way over budget.
         s.observe_frame(13_888);
         // EMA seeded at 13_888 — over budget. target ≈ 6944/13888 ≈ 0.5.
-        assert!(s.target_scale_q16 <= Q16_ONE / 2 + 8,
-            "target_scale_q16={} unexpectedly high", s.target_scale_q16);
+        assert!(
+            s.target_scale_q16 <= Q16_ONE / 2 + 8,
+            "target_scale_q16={} unexpectedly high",
+            s.target_scale_q16
+        );
     }
 }

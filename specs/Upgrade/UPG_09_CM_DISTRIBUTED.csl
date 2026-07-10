@@ -1,0 +1,302 @@
+⟨spec⟩ UPG_09_CM_DISTRIBUTED · choreographic · logic · dataflow · concatenative · array · distributed · capabilities · processes · incremental · bidirectional · synthesis
+⟨ctx⟩ specs/Upgrade/ · Part III/3 · computational-model frontiers (3 of 3)
+⟨covers⟩ §30–§40 — the rest of the computational-model frontier
+
+──────────────────────────────────────────────────────────────────────
+## §30. Choreographic / multi-tier programming
+
+This is one of the most underrated frontiers. Choreographic
+programming (Carbone, Honda, Yoshida, ESOP 2007 "A Calculus of
+Global Interaction"; Montesi's 2013 PhD; Cruz-Filipe & Montesi
+2017–) lets you **write the global protocol** of a distributed system
+in one program, and the compiler does **endpoint projection** to
+derive the per-node code, with **deadlock-freedom-by-design**.
+
+The reference points:
+- **Pirouette** (Hirsch & Garg, POPL 2022) — higher-order functional
+  choreographies; the message language is parameterized; deadlock
+  freedom by construction, all verified in Coq. arXiv:2111.03484.
+- **Choral** (Giallorenzo, Montesi, Peressotti, 2020) — Java-derived;
+  choreographies as objects.
+- **HasChor** (Shen, Kashiwa, Kuper, ICFP 2023) — Haskell library;
+  "Functional Choreographic Programming for All."
+- **Session types** (Honda, Yoshida, Carbone; multiparty session
+  types JACM 2016) — the type-system tradition that choreographies
+  subsume.
+
+The closest non-academic precedents are:
+- **Ur/Web** (Chlipala) — tier-less web programming.
+- **Links** (Cooper, Lindley, Wadler, Yallop) — tier-less web with
+  effects.
+- **ScalaJS / Kotlin Multiplatform / F# Fable** — practical
+  isomorphic dialects.
+
+The convergence with §24: **choreographies are global effects.** A
+"send X from Alice to Bob" is an effect that the choreographic type
+system tracks. The endpoint projection is the same operation as
+effect handler elaboration. A sovereign language with both algebraic
+effects and choreographies has them as facets of one mechanism.
+
+For SIGIL: this is the multi-tier story. The same source describes
+the language fleet's interactions (OmniMindv2's components, the
+human-AI partnership flow), and the compiler emits one component per
+tier (server, client, GPU, NPU, edge device).
+
+## §31. Logic programming, constraint logic programming, Datalog
+
+The renaissance is real and worth understanding:
+- **Souffle** (Scholz, Jordan, Subotic; CC 2016) — Datalog with C++
+  backend; used in pointer analysis at Galois, Mozilla, GrammaTech.
+  Production-grade.
+- **Differential Datalog (DDlog)** (Ryzhyk, Budiu; VMware Research,
+  since acquired) — incremental Datalog over differential dataflow.
+  Used for OVN network configuration in VMware NSX.
+- **Datafrog** (Niko Matsakis) — embedded Datalog in Rust; used in
+  Polonius (Rust's next borrow checker).
+- **Soufflé** continues to evolve.
+- **Picat** (Zhou) — multiparadigm with logic, pattern matching,
+  constraints, planning.
+- **Mercury** (Somogyi, Henderson, Conway) — strongly typed logic +
+  functional; high-performance.
+- **Curry** (Hanus) — Haskell-syntax functional logic.
+- **miniKanren** (Friedman, Byrd) — embeddable relational
+  programming; remarkably small core.
+
+The big idea: **relations are first-class alongside functions.** A
+function is a relation that is total and right-unique. Datalog is a
+sweet spot: it's decidable, polynomial-time, and expressive enough
+for many "program analysis" tasks. Souffle's success in industrial
+program analysis demonstrates this.
+
+The convergence with §32 (dataflow): incremental Datalog
+(Differential Datalog) is *implemented on* differential dataflow.
+The same engine runs both.
+
+## §32. Stream / dataflow programming
+
+The mature lineage:
+- **Lustre** (Caspi, Halbwachs, Pilaud, Plaice; POPL 1987) —
+  synchronous dataflow; the language behind **SCADE Suite** which
+  is used in Airbus avionics (DO-178C Level A certified). The
+  language with arguably the highest stakes-per-line-of-code in
+  production.
+- **Esterel** (Berry; multiple TR/papers from 1992 onward) —
+  synchronous concurrency; instants and signals; preemption
+  primitives.
+- **Signal** (Le Guernic, Gautier; INRIA) — relational synchronous
+  language.
+- **Reactive ML** (Mandel, Pouzet; PADL 2005) — OCaml + reactivity.
+- **FRP** — Elliott's seminal work (Fran, 1997); Conal Elliott's
+  "Genuinely Functional User Interfaces" (Haskell Workshop 2001);
+  Reflex-FRP (Ryan Trinkle); Yampa; Sodium.
+
+The frontier overlap with hardware:
+- The AMD AIE-ML (Ryzen AI) is a 2D dataflow array — **the natural
+  source language is a dataflow language.**
+- Cerebras WSE is dataflow-coded via CSL.
+- SambaNova RDU is dataflow-by-construction.
+- Groq LPU is statically-scheduled dataflow.
+
+A sovereign language with stream/dataflow as a first-class layer has
+a *direct* path onto every modern accelerator that isn't a CUDA/GPU
+clone. This is structurally adjacent to choreographic programming
+(§30) — both describe global behavior in terms of communication.
+
+## §33. Concatenative / point-free languages
+
+Forth, Factor (Slava Pestov), Joy (Manfred von Thun), Cat
+(Christopher Diggins), Kitten (Jon Purdy), Plorth, colorForth (Chuck
+Moore). The stack-based paradigm has distinctive properties:
+
+- **No register allocation in the traditional sense** — the stack
+  *is* the register file conceptually; the compiler maps stack
+  positions to registers.
+- **Composition is concatenation** — `f g` is the function "do f
+  then g." This is a categorical composition, structurally clean.
+- **Stack-effect typing** — Factor's stack-effect types are
+  essentially typed concatenation; Kitten has a more formal version.
+- **Uiua** (Mortensen, 2023) brings stack-based + rank polymorphism +
+  dense glyph — a 2020s synthesis.
+
+For SIGIL: probably not as a primary surface, but **as one
+projection** (per §13). The point-free form is natural for code that
+an AI generates and a human reads at a glance.
+
+## §34. Array languages taken seriously
+
+Already touched on in §13 and §33. The serious reference points:
+- **APL** (Iverson, Turing Award lecture "Notation as a Tool of
+  Thought" 1979).
+- **Remora** (Slepak, Shivers, Manolios; "An Array-Oriented Language
+  with Static Rank Polymorphism," FLOPS 2014; "The Semantics of Rank
+  Polymorphism," JFP, arXiv:1907.00509) — the *formal* semantics of
+  rank-polymorphic typing.
+- **Co-dfns** (Aaron Hsu) — APL compiler implemented in APL;
+  demonstrates self-hosting of a heavily array-oriented language.
+- **ArrayFire**, **Halide** (Ragan-Kelley et al., PLDI 2013) —
+  schedule languages for array computation; Halide's separation of
+  *algorithm* from *schedule* is a foundational idea.
+- **Futhark** (Henriksen et al.) — purely functional array language,
+  compiles to GPU.
+- **Dex** (Maclaurin, Radul, Johnson et al., ICFP 2019 "Dex: array
+  programming with typed indices") — typed indices and effect-free
+  array computation.
+
+Key takeaway: **rank polymorphism as a core type-system feature is
+fully formalized** (Remora) and a sovereign language can adopt it.
+The implementation cost is real but the design space is well-
+explored.
+
+## §35. Distributed-first semantics
+
+The serious primitives:
+- **CRDTs** (Shapiro, Preguiça, Baquero, Zawirski; "Conflict-Free
+  Replicated Data Types," SSS 2011) — algebraic data types that
+  converge under commutative merge. Implementations: Yjs, Automerge,
+  Riak DT, Hypermerge.
+- **CALM theorem** (Hellerstein, "The Declarative Imperative," PODS
+  2010; Hellerstein-Alvaro, "Keeping CALM," CACM 2020) — **a
+  distributed program produces deterministic output without
+  coordination if and only if it is expressible in monotonic logic.**
+  This is one of the deepest theoretical results in distributed
+  computing.
+- **Bloom / Bloom-L** (Conway, Marczak, Alvaro, Hellerstein, Maier) —
+  language designs based on CALM.
+- **Pact** (Kadena) — smart contract language with formal semantics;
+  capability-based effects.
+- **E** (Mark Miller, etc.; ERights.org) — capability-secure
+  distributed language.
+- **Pony's reference capabilities** — for distributed actors with
+  safety guarantees.
+
+The structural conclusion: **monotonicity is the type-system property
+that buys you coordination-freedom.** A function that is provably
+monotonic can be replicated and merged without coordination; one
+that is not requires explicit coordination. A sovereign language can
+track monotonicity in the type system (graded modal types, §26, are
+the natural mechanism).
+
+## §36. Capability-based programming
+
+The reference points:
+- **E** (Miller, Tribble, Shapiro; "Concurrency Among Strangers,"
+  TGC 2005) — the modern object-capability language.
+- **Pony** (Clebsch, Drossopoulou, et al.; OOPSLA 2013, 2015, 2017) —
+  actor model + reference capabilities; production-grade for high-
+  performance concurrent systems. Note the Pony community's
+  clarification that Pony's *reference* capabilities are not Mark
+  Miller's *object* capabilities, though Pony has both.
+- **Monte** (Erights community continuation) — dynamic ocap language.
+- **Joe-E** — Java subset enforcing ocap.
+- **Cap'n Proto** — capability-secure RPC at the network layer.
+- **Austral** (Borretti) — linear + capability-secure systems
+  language.
+- **Newspeak** — capability-secure platform.
+- **Capsicum** — capability-secure OS sandboxing in FreeBSD.
+- **WebAssembly Component Model / WASI Preview 2** — the new WASI
+  uses capability-style imports rather than ambient authority. This
+  is the most consequential mainstream adoption of ocap to date.
+
+For SIGIL: **make capabilities the load-bearing security primitive.**
+Every effect (per §24) requires a capability. The Prime Directive
+then has a mechanical realization: surveillance is an effect that
+requires a "read sensor" capability that consent rules govern;
+coercion is an effect that requires a "constrain agent" capability
+that the OS refuses to grant; manipulation requires a "modify agent
+state" capability with consent scope.
+
+## §37. Bisimulation and process calculi
+
+The serious literature:
+- **CSP** (Hoare; *Communicating Sequential Processes*, 1985) — the
+  basis of occam, of FDR2/FDR3 model checking, conceptually of Go's
+  channels.
+- **CCS** (Milner; *Communication and Concurrency*, 1989) —
+  bisimulation as the semantic equivalence.
+- **π-calculus** (Milner, Parrow, Walker, Info. and Comp. 1992) —
+  mobility; channel passing. Pict (Pierce, Turner) and JoCaml are
+  direct implementations.
+- **Join calculus** (Fournet, Gonthier, POPL 1996) — JoCaml.
+- **Ambient calculus** (Cardelli, Gordon, FoSSaCS 1998) — locations
+  and mobility.
+
+The frontier inverts the usual stance: **what if concurrency is the
+base layer and sequential execution is a special case?** This is
+what HVM2 essentially does — its primitive is parallel rewriting of
+an interaction net; sequential code is just a particular interaction-
+net topology. Bend is the high-level surface; HVM2 is the runtime.
+
+For SIGIL: the IR as a hypergraph (§14) with local rewrite rules is
+*structurally identical* to a process calculus. The names align:
+hyperedges = processes; node identities = channels; rewrites =
+communications. The interaction-combinator model (HVM2) demonstrates
+that this scales to 74,000 MIPS on a single GPU.
+
+## §38. Self-adjusting / incremental computation
+
+Already established in §27. The point worth surfacing: **incremental
+computation, content-addressed code, and differential dataflow are
+facets of one mechanism.**
+
+- Content-addressed code (Unison) — hashes identify code.
+- Provenance (§27) — hashes form a DAG of who-produced-what.
+- Differential dataflow — given the DAG and a delta on inputs,
+  propagate the minimum delta on outputs.
+- Salsa / Adapton — same primitive, different scope.
+- The frontier: **a language where the entire program is in
+  continuous incremental re-evaluation across human edits, AI edits,
+  sensor updates, and user inputs.** The "rebuild" is incremental by
+  construction.
+
+## §39. Bidirectional programming and lenses
+
+The reference points:
+- **Boomerang / Augeas** (Foster, Greenwald, Moore, Pierce, Schmitt;
+  POPL 2005) — bidirectional transformations on strings; production:
+  Augeas for config files.
+- **Profunctor optics** (Pickering, Gibbons, Wu; Bartosz Milewski's
+  writeup; Bryce Clarke's category-theoretic accounts) — the elegant
+  categorical foundation.
+- **Edward Kmett's `lens` library** (Haskell) — the practical
+  workhorse.
+- **Quotient Lenses** (Foster, Pilkiewicz, Pierce; ICFP 2008) —
+  lenses that preserve equivalence classes.
+- **Symmetric Lenses** (Hofmann, Pierce, Wagner; POPL 2011) —
+  symmetric setting.
+
+For SIGIL: bidirectional transformations naturally model *consent
+flows.* "User edits this field" and "system applies a transformation
+to that field" need to be reconcilable; lenses are the formal
+mechanism. Combined with content addressing (§12), every
+transformation is a hash-stable bijection, and undo (§21) is
+automatic.
+
+## §40. Synthesis-by-example, programming-by-demonstration
+
+The mature options:
+- **FlashFill** (Gulwani; POPL 2011) — Excel's flash-fill, by-example
+  synthesis on string transformations. Shipped to billions of users.
+- **FlashExtract** (Le, Gulwani; PLDI 2014) — generalized to data
+  extraction.
+- **Sketch** (Solar-Lezama; OOPSLA 2008) — sketch the structure,
+  synthesize the holes via CEGIS.
+- **Rosette** (Torlak, Bodik; PLDI 2014) — synthesis + verification
+  host language, used in Bagpipe, Wallingford, Synapse.
+- **SyGuS** (Alur et al., FMCAD 2013) — Syntax-Guided Synthesis
+  competition format; standardized.
+- **DreamCoder** (Ellis, Wong, Nye, Sablé-Meyer, Morales, Hewitt,
+  Cary, Solar-Lezama, Tenenbaum; PLDI 2021) — neural-symbolic
+  synthesis with library learning.
+- **AlphaCode** (DeepMind, 2022; AlphaCode 2, 2023) — large-scale
+  neural code synthesis.
+- **Magicoder, Phind, Cody, Aider** — production neural synthesis
+  tools.
+
+The agenda the user invites: **specs synthesize programs; we type-
+check the spec instead of the implementation.** This is realized in
+F* and Dafny *for verification* and in DreamCoder *for synthesis.*
+The combination — **AI synthesizes a candidate program that
+satisfies a refinement-typed spec, and the SMT-checked refinement is
+the contract** — is the practical recipe for AI-fleet partnership.
+The human provides the spec; the AI provides the implementation; the
+type system is the binding contract.

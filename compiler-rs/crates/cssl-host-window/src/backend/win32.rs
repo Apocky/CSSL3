@@ -43,7 +43,7 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{
     GetLastError, BOOL, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM,
 };
-use windows::Win32::Graphics::Gdi::HBRUSH;
+use windows::Win32::Graphics::Gdi::CreateSolidBrush;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{
     SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -183,7 +183,15 @@ impl Win32Window {
             hInstance: hinstance,
             hIcon: Default::default(),
             hCursor: cursor,
-            hbrBackground: HBRUSH(core::ptr::null_mut()),
+            // § T11-W19-β-VISIBLE-COLOR-2026-05-04 : default brush = deep-teal so
+            // the window is OBVIOUSLY non-white when D3D12 hasn't painted a frame
+            // yet. Was HBRUSH(null) → OS would white-clear. CreateSolidBrush takes
+            // COLORREF which is u32 in 0x00BBGGRR layout ; we pass directly.
+            // SAFETY : CreateSolidBrush returns a valid HBRUSH or NULL on OOM ;
+            // a NULL HBRUSH degrades to original-behavior (no erase).
+            hbrBackground: unsafe {
+                CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00806010))
+            },
             lpszMenuName: PCWSTR::null(),
             lpszClassName: PCWSTR(class_name.as_ptr()),
             hIconSm: Default::default(),

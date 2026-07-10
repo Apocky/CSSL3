@@ -22,7 +22,7 @@ pub enum TierAction {
     Recover,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct FrameSample {
     pub frame_n: u64,
     pub fidelity_tier: u8,
@@ -88,9 +88,19 @@ impl AdaptiveDegrader {
 
 #[derive(Debug, Clone)]
 pub struct FrameProfiler {
+    /// Canonical rolling frame window used by p99/jitter queries.
     pub samples: VecDeque<FrameSample>,
+    /// Compatibility alias for callers/tests that pre-date the `samples` name.
+    /// Kept synchronized with `samples` at every committed frame.
+    pub window: VecDeque<FrameSample>,
     pub degrader: AdaptiveDegrader,
+    /// Canonical per-frame budget in microseconds.
     pub budget_us: u32,
+    /// Compatibility alias for `budget_us`.
+    pub budget_micros: u32,
+    /// Total committed frames since profiler creation. This is monotonic and
+    /// intentionally distinct from the rolling window length.
+    pub frames_observed: u64,
     pub current_frame: FrameSample,
 }
 
@@ -98,10 +108,18 @@ impl FrameProfiler {
     pub fn new(budget_us: u32) -> Self {
         Self {
             samples: VecDeque::with_capacity(ROLLING_WINDOW_FRAMES),
+            window: VecDeque::with_capacity(ROLLING_WINDOW_FRAMES),
             degrader: AdaptiveDegrader::new(),
             budget_us,
+            budget_micros: budget_us,
+            frames_observed: 0,
             current_frame: FrameSample::default(),
         }
+    }
+
+    /// Convenience constructor for the crate's canonical 144Hz budget profile.
+    pub fn for_144hz() -> Self {
+        Self::new(crate::BUDGET_144HZ)
     }
 
     pub fn begin_frame(&mut self, fidelity_tier: u8) {
@@ -149,6 +167,11 @@ impl FrameProfiler {
             self.samples.pop_front();
         }
         self.samples.push_back(self.current_frame);
+        if self.window.len() >= ROLLING_WINDOW_FRAMES {
+            self.window.pop_front();
+        }
+        self.window.push_back(self.current_frame);
+        self.frames_observed = self.frames_observed.saturating_add(1);
         action
     }
 
@@ -236,6 +259,20 @@ mod tests {
             p.end_frame(i);
         }
         assert_eq!(p.samples.len(), ROLLING_WINDOW_FRAMES);
+        assert_eq!(p.window.len(), ROLLING_WINDOW_FRAMES);
+        assert_eq!(p.frames_observed, 200);
+    }
+
+    #[test]
+    fn profiler_compatibility_aliases_stay_in_sync() {
+        let mut p = FrameProfiler::for_144hz();
+        assert_eq!(p.budget_us, crate::BUDGET_144HZ);
+        assert_eq!(p.budget_micros, crate::BUDGET_144HZ);
+        p.begin_frame(2);
+        p.record_phase(Phase::Total, 1234);
+        p.end_frame(42);
+        assert_eq!(p.frames_observed, 1);
+        assert_eq!(p.samples, p.window);
     }
 
     #[test]
@@ -250,3 +287,5 @@ mod tests {
         assert!(p.p99_total_us() >= 4000);
     }
 }
+
+

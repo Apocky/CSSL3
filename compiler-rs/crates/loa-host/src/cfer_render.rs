@@ -206,9 +206,8 @@ fn f32_to_f16_le_bytes(value: f32) -> [u8; 2] {
         let mant16 = (mant_with_implicit >> shift) as u16;
         let round_bit = (mant_with_implicit >> (shift - 1)) & 0x1;
         let sticky = (mant_with_implicit & ((1u32 << (shift - 1)) - 1)) != 0;
-        let rounded = mant16
-            + (round_bit as u16)
-                * (if sticky || (mant16 & 1) == 1 { 1 } else { 0 });
+        let rounded =
+            mant16 + (round_bit as u16) * (if sticky || (mant16 & 1) == 1 { 1 } else { 0 });
         let h: u16 = sign | rounded;
         return h.to_le_bytes();
     }
@@ -364,9 +363,7 @@ impl CferRenderer {
     #[must_use]
     pub fn new_uninitialized() -> Self {
         let mask = SigmaMaskPacked::default_mask().with_consent(
-            ConsentBit::Modify.bits()
-                | ConsentBit::Observe.bits()
-                | ConsentBit::Sample.bits(),
+            ConsentBit::Modify.bits() | ConsentBit::Observe.bits() | ConsentBit::Sample.bits(),
         );
         Self {
             field: OmegaField::new(),
@@ -435,8 +432,7 @@ impl CferRenderer {
                 let wy = WORLD_MIN[1] + (ty as f32 + 0.5) * ts[1];
                 let wz = WORLD_MIN[2] + (tz as f32 + 0.5) * ts[2];
                 // Compute the closest-plinth distance in 2D (XZ).
-                let falloff =
-                    plinth_radius_falloff(wx, wz, plinth_positions_xz);
+                let falloff = plinth_radius_falloff(wx, wz, plinth_positions_xz);
                 if falloff <= 0.0 {
                     // Inside the plinth-clear radius : skip entirely.
                     continue;
@@ -449,11 +445,8 @@ impl CferRenderer {
                     // cells.
                     cell.density = 0.002 * falloff;
                     // Pack a cool-blue radiance probe into the lo bits.
-                    cell.radiance_probe_lo = encode_radiance_probe(
-                        0.04 * falloff,
-                        0.08 * falloff,
-                        0.12 * falloff,
-                    );
+                    cell.radiance_probe_lo =
+                        encode_radiance_probe(0.04 * falloff, 0.08 * falloff, 0.12 * falloff);
                     cell.enthalpy = 0.5 * falloff;
                     if self.field.stamp_cell_bootstrap(key, cell).is_ok() {
                         stamped += 1;
@@ -534,11 +527,7 @@ impl CferRenderer {
     /// Detach the KAN handle (subsequent steps don't perform KAN evaluations).
     pub fn detach_kan_handle(&mut self) {
         self.kan_handle = None;
-        log_event(
-            "INFO",
-            "loa-host/cfer",
-            "cfer · KAN handle detached",
-        );
+        log_event("INFO", "loa-host/cfer", "cfer · KAN handle detached");
     }
 
     /// § T11-LOA-USERFIX : set the runtime atmospheric-intensity multiplier.
@@ -703,12 +692,7 @@ impl CferRenderer {
         // on every frame). This is acceptable for the atmospheric-only
         // initial-content path — when richer KAN-modulation lands, the
         // path will switch to the full `set_cell` Σ-checked surface.
-        let keys: Vec<MortonKey> = self
-            .field
-            .cells()
-            .iter()
-            .map(|(k, _)| k)
-            .collect();
+        let keys: Vec<MortonKey> = self.field.cells().iter().map(|(k, _)| k).collect();
         for key in keys {
             if let Some(mut cell) = self.field.cell_opt(key) {
                 let (r0, g0, b0) = decode_radiance_probe(cell.radiance_probe_lo);
@@ -989,10 +973,8 @@ mod tests {
     fn cfer_volumetric_raymarcher_compiles_with_naga() {
         use naga::front::wgsl;
         use naga::valid::{Capabilities, ValidationFlags, Validator};
-        let module =
-            wgsl::parse_str(CFER_WGSL).expect("cfer.wgsl must parse via naga");
-        let mut validator =
-            Validator::new(ValidationFlags::all(), Capabilities::all());
+        let module = wgsl::parse_str(CFER_WGSL).expect("cfer.wgsl must parse via naga");
+        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         validator
             .validate(&module)
             .expect("cfer.wgsl must validate via naga");

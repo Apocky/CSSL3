@@ -68,10 +68,6 @@ impl<'a> LowerCtx<'a> {
         self.arena.fresh_hir_id()
     }
 
-    fn def_id(&mut self) -> DefId {
-        self.arena.fresh_def_id()
-    }
-
     /// Allocate a fresh `DefId` AND record its content-stable attribution-key.
     /// Lowering call-sites for definition-bearing items must call this so the
     /// fixed-point gate can fingerprint the module without depending on `Spur`

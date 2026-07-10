@@ -571,8 +571,7 @@ fn word_contains(haystack: &str, needle: &str) -> bool {
         if &bytes[i..i + nlen] == needle.as_bytes() {
             // Boundary check : prev + next char must be non-alphanum.
             let prev_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
-            let next_ok =
-                i + nlen == bytes.len() || !bytes[i + nlen].is_ascii_alphanumeric();
+            let next_ok = i + nlen == bytes.len() || !bytes[i + nlen].is_ascii_alphanumeric();
             if prev_ok && next_ok {
                 return true;
             }
@@ -714,11 +713,7 @@ impl ManifestationDetector {
     /// Register a list of just-stamped seed-cells. Each entry is
     /// `(MortonKey, kind_hint, label)` from `stamp_seed_cells_into_field`.
     /// `frame` is the host's current frame counter.
-    pub fn register_seeds(
-        &mut self,
-        sown: &[(MortonKey, u32, SeedLabel)],
-        frame: u64,
-    ) {
+    pub fn register_seeds(&mut self, sown: &[(MortonKey, u32, SeedLabel)], frame: u64) {
         for (key, kind, label) in sown {
             self.tracked.insert(
                 *key,
@@ -740,11 +735,7 @@ impl ManifestationDetector {
     ///
     /// The detector REMOVES manifested cells from `tracked` so each seed
     /// fires at most once.
-    pub fn scan_rising_edges(
-        &mut self,
-        field: &OmegaField,
-        frame: u64,
-    ) -> Vec<ManifestationEvent> {
+    pub fn scan_rising_edges(&mut self, field: &OmegaField, frame: u64) -> Vec<ManifestationEvent> {
         let mut events = Vec::new();
         let mut to_remove = Vec::new();
 
@@ -753,9 +744,7 @@ impl ManifestationDetector {
             let (r, g, b) = decode_radiance_probe(cell.radiance_probe_lo);
             let mag = r + g + b;
             // Rising-edge : was below threshold + now above.
-            if seed.last_radiance_mag <= MANIFESTATION_THRESHOLD
-                && mag > MANIFESTATION_THRESHOLD
-            {
+            if seed.last_radiance_mag <= MANIFESTATION_THRESHOLD && mag > MANIFESTATION_THRESHOLD {
                 let (mx, my, mz) = key.decode();
                 let world_pos = [
                     crate::cfer_render::morton_axis_to_world(mx, 0),
@@ -844,11 +833,7 @@ pub struct SowOutcome {
 /// This is the canonical Stage-0 entry point. Both the FFI surface
 /// (`__cssl_world_spontaneous_seed`) and the MCP tool
 /// (`world.spontaneous_seed`) call this.
-pub fn sow_intent(
-    field: &mut OmegaField,
-    text: &str,
-    origin: [f32; 3],
-) -> SowOutcome {
+pub fn sow_intent(field: &mut OmegaField, text: &str, origin: [f32; 3]) -> SowOutcome {
     let seeds = intent_to_seed_cells(text, origin);
     let stamped = stamp_seed_cells_into_field(field, &seeds);
     SowOutcome {
@@ -872,9 +857,7 @@ pub fn position_is_in_spontaneous_pad(wx: f32, wy: f32, wz: f32) -> bool {
     let half = SPONTANEOUS_PAD_HALF_EXTENT;
     let dx = wx - pad[0];
     let dz = wz - pad[2];
-    dx * dx + dz * dz <= half * half
-        && wy >= 0.0
-        && wy <= 12.0
+    dx * dx + dz * dz <= half * half && wy >= 0.0 && wy <= 12.0
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -903,14 +886,8 @@ mod tests {
     // ── 2. intent_to_seed_cells_empty_returns_empty ──
     #[test]
     fn intent_to_seed_cells_empty_returns_empty() {
-        assert_eq!(
-            intent_to_seed_cells("", [0.0, 1.0, 0.0]).len(),
-            0
-        );
-        assert_eq!(
-            intent_to_seed_cells("   \t\n", [0.0, 1.0, 0.0]).len(),
-            0
-        );
+        assert_eq!(intent_to_seed_cells("", [0.0, 1.0, 0.0]).len(), 0);
+        assert_eq!(intent_to_seed_cells("   \t\n", [0.0, 1.0, 0.0]).len(), 0);
         // No keywords → empty.
         assert_eq!(
             intent_to_seed_cells("the quick brown fox", [0.0, 1.0, 0.0]).len(),
@@ -922,24 +899,12 @@ mod tests {
     #[test]
     fn seed_cell_pos_clamps_to_world_bounds() {
         // Origin far outside the envelope — `SeedCell::new` clamps.
-        let s = SeedCell::new(
-            [9999.0, 9999.0, 9999.0],
-            [0.5, 0.5, 0.5],
-            0.5,
-            0,
-            "test",
-        );
+        let s = SeedCell::new([9999.0, 9999.0, 9999.0], [0.5, 0.5, 0.5], 0.5, 0, "test");
         assert!(s.pos[0] <= WORLD_MAX[0]);
         assert!(s.pos[1] <= WORLD_MAX[1]);
         assert!(s.pos[2] <= WORLD_MAX[2]);
         // Negative side too.
-        let s = SeedCell::new(
-            [-9999.0, -9999.0, -9999.0],
-            [0.5, 0.5, 0.5],
-            0.5,
-            0,
-            "test",
-        );
+        let s = SeedCell::new([-9999.0, -9999.0, -9999.0], [0.5, 0.5, 0.5], 0.5, 0, "test");
         assert!(s.pos[0] >= WORLD_MIN[0]);
         assert!(s.pos[1] >= WORLD_MIN[1]);
         assert!(s.pos[2] >= WORLD_MIN[2]);

@@ -1,0 +1,529 @@
+§ 75_MENTAL_MAP_2026-05-18 · audit-snapshot + indexed-architecture-mental-map @ 2026-05-18
+  ← author : Tech-Lead-Claude-Opus-4.7-1M · 2026-05-18
+  ← supersedes : —
+  ← superseded-by : —
+  ← status : DRAFT · audit-product · awaiting Apocky ratification
+  ← scope : cross-cutting · index-of-everything · navigation aid
+  ← parent-template : specs/_TEMPLATE.csl
+  ← discipline : authored under specs/64_SPEC_FIRST_DISCIPLINE.csl
+  ← purpose : Apocky directive 2026-05-18 — "audit the full repo and every file and index everything · hold a mental map"
+  ← related : 76_GPU_RENDERING_MATURATION_PLAN.csl · 77_LANGUAGE_MATURATION_ROADMAP.csl
+  ← attestation-context : ¬ ratifying any direction · ¬ implementing · pure-cartography
+
+§I THESIS
+  ⟦
+    Snapshot of CSSLv3 repository state @ commit-tip 2026-05-18 + indexed pointer-set for navigation by
+    future-agent. CSSLv3 is a sovereign · effect-typed · capability-disciplined systems-language with a
+    stage-0 Rust-hosted compiler (csslc) + 183-crate Cargo workspace · pure-CSSL stdlib (14 modules ·
+    ~3232 LOC) · CSSL-native engine scaffold (6 modules · ~5278 LOC) · 70+ canonical CSL specs ·
+    cross-platform GPU codegen (SPIR-V · DXIL · MSL · WGSL) + 5 host backends (D3D12 · Vulkan · Metal ·
+    WebGPU · Level-Zero). Current strategic posture (per spec/55 pivot 2026-05-03 + spec/59 Grok-revenue-
+    response) : conventional Forward+ rasterizer mainline @ 1440p144 on Arc A770 · substrate-rendering
+    (12-stage / 6-novelty-paths per spec/32) demoted to optional effect-pass · revenue-first ordering
+    per spec/59 § 7-action re-prioritization. Phase-A correctness bundle (spec/70 · 12 items) is in
+    flight · item-01 (sentinel-return) IMPLEMENTED · 02/03/04/05/06/08/09/19/30/87/89 pending depth-0..3
+    fanout. Critical pinned-bug : csslc cranelift-CPU backend cannot emit object-files for the 12 new
+    CSSL engine files (parse-clean ✓ · type-check ✓ · MIR-lower ✓ · object-emit ✗) ; PATH-α+β parallel
+    progression per spec/55 § FORWARD-PATHS recommendation.
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS [MANDATORY · cartography ⊑ verifiable]
+  ⟦
+    ASSERT.01 · `ls C:/Users/Apocky/source/repos/CSSLv3/specs/*.csl | wc -l` ≥ 70
+    ASSERT.02 · `ls C:/Users/Apocky/source/repos/CSSLv3/compiler-rs/crates | wc -l` ≥ 180
+    ASSERT.03 · `ls C:/Users/Apocky/source/repos/CSSLv3/stdlib/*.cssl | wc -l` == 14
+    ASSERT.04 · `ls C:/Users/Apocky/source/repos/CSSLv3/engine/*.cssl | wc -l` == 6
+    ASSERT.05 · grep -l "TARGET_FRAME_US_144HZ\|target_frame_us_144hz\|144" C:/Users/Apocky/source/repos/CSSLv3/stdlib/gpu.cssl exits 0
+    ASSERT.06 · grep -l "target_width_1440p\|target_height_1440p" C:/Users/Apocky/source/repos/CSSLv3/engine/render_forward.cssl exits 0
+    ASSERT.07 · `git -C C:/Users/Apocky/source/repos/CSSLv3 log -1 --format=%h` returns a 7-char SHA (repo is git-init'd)
+    ASSERT.08 · grep -l "cssl-cgen-gpu-spirv\|cssl-cgen-gpu-dxil\|cssl-cgen-gpu-msl\|cssl-cgen-gpu-wgsl" C:/Users/Apocky/source/repos/CSSLv3/compiler-rs/Cargo.toml || ls compiler-rs/crates/cssl-cgen-gpu-spirv exits 0
+    ASSERT.09 · this spec's cross-reference set covers ALL ⟦55 56 57 58 59 60 61 62 63 64 65 70⟧
+                (the strategy + correctness specs that ground 2026-05 direction)
+    ASSERT.10 · per spec/70 lifecycle · item-01 sentinel @ commit b7fb3e3 ⇒ 15/15 cssl-rt loa_startup tests pass
+  ⟧
+
+§I REPOSITORY-CARTOGRAPHY · top-level-directory-map
+  ⟦
+    C:/Users/Apocky/source/repos/CSSLv3/
+    ├─ PRIME_DIRECTIVE.md         · root-of-trust · immutable · §0 consent-axiom + §1-§17 prohibitions
+    ├─ LICENSE.md                 · dual AGPL-3.0 + Commercial · SUBORDINATE to PRIME_DIRECTIVE
+    ├─ README.md                  · ~800-line canonical system overview
+    ├─ CHANGELOG.md               · feature log
+    ├─ CONTRIBUTING.md            · contributor guidelines
+    ├─ SECURITY.md                · vulnerability reporting
+    ├─ DECISIONS.md               · 8265 lines · T-prefix decision ledger (T1-D2 .. T11-D200+)
+    ├─ HANDOFF_NEXT_SESSION.md    · cold-start prompt @ post-WinMain-fix · the 2026-05-03 baseline
+    ├─ HANDOFF_v1.1_to_PHASE_J.csl + HANDOFF_phase-a_item-19_to_depth-1.csl + HANDOFF_v1_to_PHASE_I.csl + PHASE_J_HANDOFF.csl
+    ├─ RELEASE_NOTES_v1.0.md + v1.1.md     · post-v1.0 substrate-evolution narrative
+    ├─ SESSION_{6,7,11,12}_DISPATCH_PLAN.md + SESSION_12_TEAM_DISCIPLINE.md
+    ├─ MNEME_README.md + DIAGNOSTIC_INFRA_PLAN.md + README_CLAUDE_CODE_HANDOFF.md
+    ├─ NOTICE.md                  · attribution + 3rd-party licenses
+    ├─ dist-build.sh + setup.bat  · build orchestration
+    ├─ out_AC.txt                 · session-output artifact
+    │
+    ├─ specs/                     · ⟦KEYSTONE⟧ canonical CSL specs (70+ files · load-bearing)
+    │  ├─ {00..70}_*.csl          · numbered + named ; recent : 55_NORMAL_ENGINE_PIVOT · 56_GROK_AUDIT · 57_MONETIZATION_PIVOT
+    │  │                            58_DEV_VELOCITY · 59_GROK_VELOCITY_RESPONSE · 63_IMPROVEMENT_BACKLOG_100 · 64_SPEC_FIRST_DISCIPLINE
+    │  │                            65_GPU_MEMORY_TYPE_DISTINCTION · 70_PHASE_A_CORRECTNESS
+    │  ├─ Upgrade/UPG_{00..12}_*.csl · 13 files · post-LLVM-frontier research (HW + REPR + CM + SYNTHESIS)
+    │  ├─ grand-vision/{00..25}_*.csl · 25 files · long-arc thesis (paradigms · intelligences · publishing · mycelium)
+    │  ├─ infinity-engine/{00..18}_*.md · 9 markdowns · LoA-GDDs distillation · DGI/CSL/CSSL lineage · gear modularity
+    │  ├─ csslc/T11-W{11,15}-*.csl + _BACKLOG.csl · parser+kwbind+multi-module slice tracking
+    │  ├─ T11-D118-spectral-render-attestation.csl · per-spec dedicated attestation
+    │  ├─ AUDIT_LOG_00_63.csl · meta-audit of specs 00-63 · spec-64 discipline backfill
+    │  ├─ SYNTHESIS_V2.csl · THEOREMS.csl · _TEMPLATE.csl · README.csl
+    │  └─ 60_LAZARUS_AGENT.md + 61_LAZARUS_SWARM.md + 62_LAZARUS_FLEET_REVISED.md · agent-fleet ops infra
+    │
+    ├─ engine/                    · 6 CSSL files · 5278 LOC ⟦ T11-W18-L8-DXIL-DIRECT ⟧
+    │  ├─ main.cssl               · 690 LOC · engine_init + engine_run_frame + engine_main · 1440p144 composer
+    │  ├─ frame_clock.cssl        · 753 LOC · 144Hz pacing + Q0.16 dyn-res EMA + spin-wait-final-1ms
+    │  ├─ ecs.cssl                · 984 LOC · sparse-set ECS · gen-counter · view-iter
+    │  ├─ scene.cssl              · 786 LOC · SoA-transform-pool · DFS-dirty-recompute · Gribb-Hartmann frustum
+    │  ├─ render_forward.cssl    · 1289 LOC · 5-pipeline-stage forward+ · 16×16 light-tile · HDR10-opt-in
+    │  └─ asset.cssl              · 776 LOC · ccpkg + GLTF-stub + DDS-stub + spec/30 80-byte header
+    │
+    ├─ stdlib/                    · 14 CSSL files · ~3232 LOC ⟦ S3 + W18-DYNRES ⟧
+    │  ├─ window.cssl + input.cssl + time.cssl + thread.cssl · platform-facade group
+    │  ├─ gpu.cssl                · 859 LOC · 8 host-FFI wrappers · 4-backend enum · 5 SurfaceFormat · GpuError sum
+    │  ├─ audio.cssl              · WASAPI/ALSA/CoreAudio · T11-D81 verified
+    │  ├─ fs.cssl + net.cssl      · Win32 file-IO + Winsock2 · T11-D76 + T11-D82 verified
+    │  ├─ vec.cssl + option.cssl + result.cssl + string.cssl + iter.cssl · collections + sum-types
+    │  └─ omega.cssl              · substrate-integration (effect-rows · cap-tokens · IFC-labels)
+    │
+    ├─ stage1/                    · minimal bootstrap CSSL programs (hello_world etc.)
+    │
+    ├─ examples/                  · end-to-end CSSL test programs
+    │  └─ hello_triangle.cssl + audio_callback.cssl + sdf_shader.cssl + test_visible_window.cssl
+    │
+    ├─ compiler-cssl/             · meta-circular CSSL-in-CSSL compiler (parser + hir + resolve + codegen + fixed_point)
+    │
+    ├─ compiler-rs/               · ⟦ stage-0 Rust-hosted production compiler ⟧
+    │  ├─ Cargo.toml + rust-toolchain.toml (1.85.0 pinned)
+    │  ├─ crates/                 · 183 crates · workspace ; key categories :
+    │  │   csslc                       · the binary compiler entry-point
+    │  │   cssl-{lex,parse,ast,hir,mir,lir,ir} · IR pipeline
+    │  │   cssl-{types,effects,caps,ifc,smt,futamura,jets} · semantics
+    │  │   cssl-cgen-cpu-cranelift     · default CPU backend
+    │  │   cssl-cgen-cpu-x64           · hand-rolled stage-1+ owned x86-64
+    │  │   cssl-cgen-{gpu-spirv,gpu-dxil,gpu-msl,gpu-wgsl,gpu-dxil-wgsl} · GPU codegen ⟦ 5 paths ⟧
+    │  │   cssl-cgen-{dxil,spirv}      · legacy non-gpu-prefixed wrappers
+    │  │   cssl-host-{d3d12,vulkan,metal,webgpu,level-zero} · 5 GPU host backends
+    │  │   cssl-host-{openxr,window,input,audio,net,asset-loader,asset-bundle} · platform hosts
+    │  │   cssl-{render,render-v2,render-companion-perspective} · render-graph crates
+    │  │   cssl-{wave-solver,spectral-render,fractal-amp,gaze-collapse} · signature-render novelty-paths
+    │  │   cssl-substrate-{omega-field,omega-step,omega-tensor,projections,save,prime-directive,sigma-chain,kan,loa-kan,mycelium} · substrate
+    │  │   cssl-substrate-render-{v2,v3,v4-dxil} + cssl-substrate-{volumetric,resonance-gpu} · render-substrate
+    │  │   cssl-{pga,wavelet,hdc,jets,math,physics,physics-wave,anim,anim-procedural} · math + physics
+    │  │   cssl-{work-graph,iter-loop,hot-reload,hotfix,hotfix-client,mycelium-chat-sync} · concurrency + reload
+    │  │   cssl-host-{persistent-orchestrator,replay,roguelike-run,rt-trace,playtest-agent,perf-enforcer} · runtime hosts
+    │  │   cssl-host-{many-worlds,causal-seed,combat-{loop,sim},craft-graph,fab-procgen,procgen-{pipeline,rooms},dm,dmgm-specialists}
+    │  │       · game-systems hosts (LoA content layer)
+    │  │   cssl-host-{stripe-integration,license-attribution,content-{moderation,package,rating,remix,subscription}}
+    │  │       · monetization + content-mgmt hosts
+    │  │   cssl-host-{mp-transport,mp-transport-real,multiplayer-signaling,netcode-fps} · multiplayer hosts
+    │  │   loa-game + loa-host · end-application crates
+    │  │   cssl-rt                      · canonical runtime (host_audio · host_gpu · host_input · host_thread · host_time · host_window · host_xr)
+    │  │   cssl-mcp-server + cssl-{spec-coverage,spec-coverage-macros,test-{coordinator,verifier},testing}
+    │  └─ target/                 · cargo build artifacts
+    │
+    ├─ cssl-edge/                 · React+TypeScript web dashboard · apocky.com/store rendering + MNEME api
+    ├─ cssl-supabase/             · backend schema + migrations
+    ├─ tools/                     · build scripts + validators + MCP harness · grok-mcp-harness/APOCKY_ACTIONS_TO_LAUNCH.md
+    ├─ scripts/                   · spec validator + sentinel_build_check.sh (Gate-E) + worktree-isolation smoke tests
+    ├─ dist/                      · build output staging
+    ├─ research/                  · design history + prior work
+    ├─ _drafts/                   · Phase-J team-discipline drafts (01..04_*.md)
+    ├─ logs/                      · session logs
+    └─ .claude/                   · memory index + plans
+  ⟧
+
+§I ARCHITECTURE-LAYERS · the-5-layer-stack
+  ⟦
+    L0 · OS + GPU-DRIVER  (Win32 · Linux · macOS) + (Vulkan 1.4 · D3D12 · Metal · WebGPU · Level-Zero)
+         ‼ Apocky primary : Win11 + Intel Arc A770 (Vulkan 1.4.333 driver 32.0.101.8629 verified) ‼
+
+    L1 · CSSL-RT runtime  (compiler-rs/crates/cssl-rt)
+         C-ABI heap · IO · panic-hook · exit · audit-bus · telemetry-ring · sentinel-bytes · last-error
+         platform sub-layers : host_window · host_gpu · host_input · host_audio · host_net · host_fs · host_time · host_thread · host_xr
+
+    L2 · CSSL-stdlib  (stdlib/)
+         pure CSSL source · 14 modules · compiles via csslc to native objects ; FFI auto-linked to L1
+         exposes : Vec · String · Option · Result · iter · fs · gpu · window · input · audio · time · thread · net · omega
+
+    L3 · SUBSTRATE  (compiler-rs/crates/cssl-substrate-*)
+         OmegaTensor H1 · omega_step H2 (13-phase) · projections H3 · save H5 · prime-directive H6
+         KAN runtime + Φ-pattern-pool · OmegaField 72B FieldCell (T11-D144 KEYSTONE)
+         deterministic-replay · bit-equal save/load · Σ-mask cell-granularity consent threading
+
+    L4 · GAME / APPLICATION  (engine/ + loa-game + cssl-host-* game-systems)
+         engine/main.cssl · run_frame · 144Hz Deadline · forward+ pipeline composer · ECS · scene-graph
+         loa-game scaffold · per-Q-A..Q-LL spec-hole fills awaiting Apocky direction
+         signature-rendering 6 novelty-paths (V.1..V.6) per spec/32 · DEMOTED-TO-OPTIONAL post pivot
+  ⟧
+
+§I COMPILER-PIPELINE · source.cssl → executable
+  ⟦
+    .cssl source
+      → cssl-lex (tokens)
+      → cssl-parse (AST)
+      → cssl-hir (typed · elaborated · IFC-labeled · cap-annotated · effect-rowed)
+      → cssl-mir (MLIR cssl-dialect · monomorphic · structured-CFG-only)
+        ↳ passes : monomorph · macro-expand · @staged partial-eval · AD source-to-source ·
+                   Jet expansion · IFC-check + declassification · evidence-passing transform ·
+                   linear×handler one-shot · SMT-discharge · telemetry-probe insert ·
+                   structured-CFG validation (CFG0001..CFG0010 stable diag-codes per spec/02)
+      → cssl-lir (target-specific)
+        ↳ CPU : LLVM-dialect → cranelift-object (stage-0 default · BLOCKER : verifier-errors on 12 new files)
+        ↳ CPU : owned-x86-64 (stage-1+ · cssl-cgen-cpu-x64 · ≤ 15K LOC self-hosted target)
+        ↳ GPU : spirv-dialect → rspirv (stage-0) | owned-emitter (stage-1+ · ≤ 5K LOC target)
+        ↳ GPU : DXIL via dxc subproc (stage-0) | owned-DXIL-emitter (stage-2)
+        ↳ GPU : MSL via spirv-cross (stage-0) | owned-MSL-emitter (stage-2)
+        ↳ GPU : WGSL via Tint (stage-0) | owned-WGSL-emitter (stage-2)
+      → object files (.o / .obj / .mach-o)
+      → csslc-linker (rustc-driven currently · WinMain bug FIXED 2026-05-03 commit 19d192a)
+      → fat-binary .exe / .so / .dylib
+      → runtime loader (libcssl-rt) selects per-platform GPU blob at-launch
+
+    pipeline-status @ 2026-05-18 :
+      ✓ stdlib + engine 12 files parse-clean (csslc check)
+      ✓ stdlib + engine 12 files type-check + HIR-lower
+      ✓ stdlib + engine 12 files MIR-lower (cssl-mir succeeds)
+      ✗ stdlib + engine 12 files object-emit (cranelift verifier rejects fn ns_per_sec · gap per spec/55)
+      ✗ end-to-end visible-window @ 1440p (machinery present in cssl-host-window · fs_trace not firing post-WinMain-fix)
+      ✓ examples/test_visible_window.exe runs 5+ seconds via pump_n loop (post 19d192a · genuine entry-pivot)
+  ⟧
+
+§I CRITICAL-PATH-INVENTORY · what-is-blocking-what
+  ⟦
+    BLOCKER-α · csslc cranelift-CPU emit-object verifier-errors on 12 new files
+      → blocks : pure-CSSL .exe production
+      → workaround : PATH-β (Rust loa-host bootstrap) ships running-binary today
+      → fix-target : cssl-cgen-cpu-cranelift verifier-pass alignment with cssl-mir output
+      → effort : multi-session (per spec/55 § FORWARD-PATHS)
+
+    BLOCKER-β · fs_trace at cssl_window_spawn_impl entry not firing post WinMain-fix
+      → blocks : visible-1440p-window milestone
+      → diagnosis : __cssl_window_spawn extern symbol-resolution mystery (per HANDOFF_NEXT_SESSION § fs_trace)
+      → tools : strings + Python regex on .exe + cargo build -v linker invocations
+      → effort : 1-2 hr per Grok estimate
+
+    BLOCKER-γ · D3D12 SwapChain::create_for_hwnd needs CommandQueue ComPtr threading
+      → blocks : first-frame clear-and-present
+      → estimate : ~200 LOC per Grok recommendation (spec/56 § MIN-VIABLE D3D12 SWAPCHAIN)
+      → effort : 4-6 hr
+
+    BLOCKER-δ · cssl-string.* lowering + MirEnumLayout + multi-module aux-load
+      → blocks : existing examples (hello_triangle 79 errors · audio_callback 88 errors) ; advanced-syntax CSSL
+      → priority : P0 per spec/63 item-11 + spec/56 § HIGHEST-VALUE-STUBS
+      → effort : 7-10 days per Grok
+
+    BLOCKER-ε · Phase-A item-05 (run-and-observe gate) not yet implemented
+      → blocks : item-01 ASSERTs A01.3 + A01.4 promotion DRAFT → IMPLEMENTED-PARTIAL
+      → spec/70 § DEPENDENCY-GRAPH depth-0 fanout slot · parallel-spawn-able with 02 + 89
+
+    UNBLOCKED-NOW · revenue-track (per spec/59 prioritization)
+      → action-1 : POLISH + PRODUCTIZE harness + mcp_client (3-4 days)
+      → action-2 : apocky.com monetization-layer (4-5 days)
+      → action-3 : minimal-visible-demo + marketing (3 days · CONTINGENT on BLOCKER-β fix)
+      → action-5 : LAUNCH closed-alpha (2-3 days post-1-4)
+  ⟧
+
+§I STRATEGIC-POSTURE · 2026-05-18 active-direction
+  ⟦
+    ‼ AMENDED-INTRA-DAY 2026-05-18 · Apocky directive : "Pivot towards the game aspects of the language for now,
+      we're putting Apocrypha on hold. The game *IS* the revenue first path so do not try to defer anything.
+      Begin work towards this." See spec/78_GAME_FIRST_PIVOT_2026-05-18.csl for canonical amendment. ‼
+
+    GROUND-TRUTH-AT-PIVOT (verified by direct run of dist/LoA-v0.1.0-alpha-windows-x64/LoA.exe @ 2026-05-18) :
+      ✓ LoA.exe RUNS today · 2560×1440 borderless · Intel Arc A770 Vulkan adapter ·
+        substrate-resonance pixel-field rendering LIVE · KAN-bias procedural · spectral_bake D65/6500K 16 materials/8μs ·
+        cellular-automaton 3D-tex 32×16×32 · forward+ MSAA-4 · HDR Rgba16Float · ACES tonemap · MCP server on :3001
+      ⇒ spec/55 + spec/32 substrate-render "DEMOTED-TO-OPTIONAL" framing is OUT-OF-DATE
+      ⇒ V.1 Wave-Unity + V.5 HDC-Bound-Lenia equivalents are LIVE in this binary today
+      ⇒ engine = THE PRODUCT per cf1c49a § T11-W19-β-ENGINE-FLAGSHIP (prior Apocky pivot · pre-dates this directive)
+
+    DIRECTION-α · GAME (REVENUE-FIRST) · ACTIVE-NOW
+      mainline : the game IS the revenue path · LoA-alpha-keys + game-itself + content + polish all REVENUE-DIRECT
+      engine-track : conventional Forward+ (5-pass) @ 1440p144 on Arc A770 (per spec/55 + engine/render_forward.cssl)
+                     PLUS substrate-resonance pixel-field (LIVE in alpha) PLUS signature-rendering 6-novelty-paths
+                     (per spec/32 · NO LONGER demoted · all paths active-now per no-deferral directive)
+      gating  : sovereign-CSSL D3D12 own-FFI (BLOCKER-γ swapchain create_for_hwnd · ~200-300 LOC) ·
+                pure-CSSL engine emission (BLOCKER-α csslc cranelift) · fs_trace mystery (BLOCKER-β)
+      content-track : LoA spec-hole fills (Q-A..Q-LL per spec/31) · per Apocky direction on game-design
+      distribution : dist/LoA-v0.1.0-alpha-windows-x64.zip already packaged + ships
+
+    DIRECTION-β · LANGUAGE (game-aspects) · ACTIVE-NOW (per "maturing this language for a game engine")
+      math-types : vec3/vec4/mat4/quat first-class · transcendentals as hw-intrinsic · refinement runtime
+                   (per spec/77 AXIS-A · NO LONGER deferred)
+      GPU-domain : gpu<T> / shared<T> / staged<T> / transfer<T> (per spec/65 · NO LONGER DRAFT-only)
+      effect/cap : Cap<X> compile-time witness · MirEffectRow structural · IFC biometric-egress refuse
+                   (per spec/77 AXIS-B · NO LONGER deferred to "structural-threading-later")
+      codegen    : @persistent_kernel · @workgraph_node · @indirect_dispatch · @shared struct decl
+                   (per spec/77 AXIS-C · NO LONGER "P4-eventually")
+      stdlib     : stdlib::xr · stdlib::ecs · stdlib::asset · stdlib::physics
+                   (per spec/77 AXIS-D · NO LONGER "post-revenue")
+
+    DIRECTION-γ · CORRECTNESS-FOUNDATION · ACTIVE-NOW (no-deferral)
+      ← per spec/70 Phase-A bundle · 12 items
+      depth-0 fanout : {01 · 02 · 05 · 89} ; item-01 IMPLEMENTED b7fb3e3
+      depth-1 fanout : {03 · 04 · 06 · 08 · 09 · 19} ← unblocked when depth-0 merges
+      depth-2 : {30} ← needs 09 σ-enforce-extended
+      depth-3 : {87} ← needs 02 type-cache-key stable
+      structural-defense : Gate-E (scripts/sentinel_build_check.sh) catches WinMain-class bugs going-forward
+
+    DIRECTION-δ · APOCRYPHA · ON HOLD
+      ← per Apocky directive 2026-05-18 · Apocrypha (C:/Users/Apocky/source/repos/Apocrypha) is PAUSED
+      ← do not propose Apocrypha work-units · do not author Apocrypha specs / code
+      ← bridge still language-only · runtime-sharing still BANNED per [[feedback_apocrypha_vs_game_separation]]
+      ← Track-A resumes only on explicit Apocky declaration
+      ← if a CSSL feature would only serve Apocrypha · it's out-of-scope this period
+  ⟧
+
+§I CROSS-REFERENCE-INDEX · the-specs-that-matter
+  ⟦
+    ROOT-OF-TRUST
+      PRIME_DIRECTIVE.md           · consent-as-OS · §1 prohibitions · §3 substrate-sovereignty · §11 attestation
+
+    LANGUAGE-CORE
+      02_IR.csl                    · HIR → MIR(MLIR) → LIR pipeline · structured-CFG · cssl.* dialect ops
+      03_TYPES.csl                 · base-types · refinement (T'tag · {v:T|P(v)}) · generic-monomorph · Jet<T,N>
+      04_EFFECTS.csl               · effect-rows (Koka row-poly) · Deadline<N> · GpuSubmit/GpuInit · Realtime<Crit>
+      05_AUTODIFF.csl              · cssl.diff.{primal,fwd,bwd} · F1 differentiable closure
+      06_STAGING.csl               · @staged partial-eval · comptime
+      07_CODEGEN.csl               · cranelift vs hand-rolled-x64 strategy
+      09_SYNTAX.csl                · CSSL surface syntax (lambdas · matches · attrs)
+      11_IFC.csl                   · information-flow-control · Sensitive<gaze|face|body|biometric> bans
+      12_CAPABILITIES.csl          · Pony-6 (iso · trn · ref · val · box · tag) · Cap<X> witness · linear resources
+      13_MACROS.csl                · hygienic macro system (Racket-lineage)
+      14_BACKEND.csl               · stage-0 cranelift+rspirv · stage-1+ owned backends · BACKEND-MATRIX · DXIL/MSL/WGSL/SPIRV emitters · ASSET-PIPELINE (PNG·GLTF·WAV·TTF)
+      15_MLIR.csl                  · MLIR dialect adoption rationale
+      16_DUAL_SURFACE.csl          · @cross fn auto-derive · CSL-native ↔ Rust-hybrid same-AST
+      17_JETS.csl                  · higher-order AD via Jet<T,N> · forward-mode
+      18_ORTHOPERSIST.csl          · orthogonal persistence · save engine-state across recompile
+      19_FUTAMURA3.csl             · Futamura projections · partial-eval as code-generator
+      20_SMT.csl                   · SMT solver-plugin · refinement discharge
+
+    HARDWARE + RUNTIME
+      10_HW.csl                    · Intel Arc A770 primary · Vulkan 1.4.333 baseline · XMX matrix engine · RT-unit · Level-Zero R18
+      22_TELEMETRY.csl             · zes* · PAPI · ETW · Metal-HUD probes · biometric-egress structural refuse
+      23_TESTING.csl               · differential-tests · golden-pixel-regression · per-backend feature-parity matrix
+      24_HOST_FFI.csl              · ABI-stable extern "C" symbols · cap-gated · IFC-labeled · 35 ABI symbols (gpu/window/input/audio/time/thread/fs/net)
+      26_HOTFIX_INFRA.csl + 26b_HOTFIX_KEYS.csl · 1ms hot-reload infrastructure
+      27_SIGMA_MASK_RUNTIME.csl + 28_SIGMA_CHAIN_BOOTSTRAP.csl · Σ-mask cell-granularity consent runtime
+      30_SUBSTRATE.csl + 30_SUBSTRATE_v2.csl · OmegaTensor · Ω-field · 13-phase omega_step · projections · save · prime-directive
+      33_F1_F6_LANGUAGE_FEATURES.csl · F1-F6 effect-feature catalog (Window · Input · Audio · Net · Render · Telemetry)
+      47_RUNTIME_ENV_VARS.csl      · environment variable contract
+
+    RENDERING + ENGINE
+      08_ENGINE.csl                · substrate architecture (pre-v1.0 doc · superseded by 30/31)
+      31_LOA_DESIGN.csl            · LoA game design spec · 38 Q-* SPEC-HOLES (Apocky-fill pending)
+      32_SIGNATURE_RENDERING.csl   · ⟦FLAGSHIP⟧ 6 immutable novelty-paths (V.1..V.6) + 12-stage canonical pipeline · DEMOTED-TO-OPTIONAL per pivot
+      40_WAVE_CSSL_PLAN.csl        · v1.1 spec-corpus plan
+      51_AESTHETIC_FIDELITY_GATE.csl + 52_COHERENCE_AXES_13.csl · aesthetic + coherence quality-gates
+      55_NORMAL_ENGINE_PIVOT.csl   · ⟦PIVOT 2026-05-03⟧ normal-game-engine-in-CSSL @ 1440p144 · 12 files · 8510 LOC · object-emit blocked
+
+    STRATEGIC-DIRECTION (recent · load-bearing)
+      56_GROK_AUDIT.csl            · external Grok-4 brutal-truth assessment · competitive landscape · 7 highest-leverage 30-day actions
+      57_MONETIZATION_PIVOT.csl    · monetization track decisions
+      58_DEV_VELOCITY.csl          · measured 900-1200 LOC/hr parallel-AI-augmented velocity · corrects Grok anchor
+      59_GROK_VELOCITY_RESPONSE.csl · ⟦REVENUE-FIRST⟧ 7-action re-prioritization · $5-20k 30-day target · CUT-list
+      63_IMPROVEMENT_BACKLOG_100.csl · v2 · Reza-reviewed · 100 items across 10 categories · N1-N6 north-stars
+      64_SPEC_FIRST_DISCIPLINE.csl · meta-discipline · OBSERVABLE-ASSERTIONS mandatory · spec-lifecycle (DRAFT/REVIEWED/RATIFIED/IMPLEMENTED/VERIFIED)
+      65_GPU_MEMORY_TYPE_DISTINCTION.csl · ⟦DRAFT⟧ gpu<T> / shared<T> / staged<T> / transfer<T> · ReBAR + async-compute typed · GPU0001-GPU0010 diag-codes
+      70_PHASE_A_CORRECTNESS.csl   · ⟦Phase-A bundle⟧ 12 items · sentinel + recognizer + symbol-audit + observe-gate · item-01 IMPLEMENTED b7fb3e3
+
+    CONTENT + DISTRIBUTION
+      30_CONTENT_PACKAGE.csl       · ccpkg 80-byte header asset-package format
+      42_CONTENT_SUBSCRIPTION.csl  · subscription model
+      43_MNEME.csl + 44_MNEME_PIPELINES.csl + 45_MNEME_SCHEMA.csl · persistent memory system (cloud-sync via cssl-edge)
+      46_T11_W18_PROGRESS.csl + 48_GRAND_VISION_PROGRESS.csl · wave + grand-vision history
+      49_INTEGRATION_ARCHITECTURE.csl · cross-system integration
+      50_T11_W18_CRATE_CATALOG.csl · workspace crate catalog
+      53_EXISTING_FEATURES_CATALOG.csl · feature inventory
+      54_LOCAL_LLM_PROPRIETARY.csl · local-LLM proprietary stack
+
+    UPGRADE-RESEARCH-FRONTIER
+      Upgrade/UPG_{00..12}_*.csl  · post-LLVM backends · GPU work-graphs · persistent kernels · D3D12 mesh nodes · MI300A unified-memory · Cl(p,q,r) algebra zoo · hypergraph-rewriting · HVM2 · category-theoretic foundations
+
+    GRAND-VISION-ARC
+      grand-vision/{00..25}_*.csl · paradigms · data-axes · intent-flow · spontaneous-condensation · intelligences · free-3D-ingest · networking · self-publish-apocky.com · mycelium-desktop · kan-ride · infinite-labyrinth-legacy · sigma-chain · unified-substrate · mycelial-network · akashic-records · distribution-strategy
+
+    INFINITY-ENGINE-LINEAGE
+      infinity-engine/{00,10..18}_*.md · charter + LoA-GDDs · DGI/CSL/CSSL lineage distillations · local-daemon · ANN · apocky-ROM · gear-modularity-canonical
+
+    AGENT-OPS-INFRA
+      60_LAZARUS_AGENT.md + 61_LAZARUS_SWARM.md + 62_LAZARUS_FLEET_REVISED.md · agent-fleet ops + recovery protocols
+      Lazarus-fleet · Reza-pattern · Tech-Lead-pattern · Apocky delegation
+  ⟧
+
+§I REFERENCE-PROJECTS · prior-iterations
+  ⟦
+    C:/Users/Apocky/source/repos/LoA v14/                  · prior game-engine prototype (Odin + wgpu + WGSL)
+      → procgen-IS-renderer thesis (D-008) ; bytecode-VM on GPU ; 80-op stack-machine ; closed-form quadric + Ferrari quartic SDF substrate
+      → M1 result : 144 FPS @ 1440p Arc-A770 achieved on 3/4 test-scenes ; Scene-4 stress 100-sphere 172 FPS via AABB-cull
+      → Lessons : VRS-T2 + bindless + subgroup-AABB-cull + TAA Halton-jitter + raw WM_INPUT all validated as 1440p144 enablers
+      → Failure-modes : v13 pattern-projection bug (no telemetry) · M2-α stack-overrun (stashed) · vsync-driver marginal-FPS-on-harness-run-1
+
+    C:/Users/Apocky/source/repos/1LoA/                     · prior planning/research repo (15 specs + 1360-line compass artifact)
+      → 4-candidate math-substrate analysis : PGA Cl(3,0,1) · CGA Cl(4,1) · STA Cl(1,3) · Hypergraph+GA+HVM2
+      → recommended 4.5-layer synthesis : macro=hypergraph + algebraic=PGA/CGA + field=SDF+MLS-MPM + capture=3DGS + spec=HoTT
+      → tractability matrix (RUN · RUN-with-care · OFF · ASY) per technique across renderer/physics/procgen
+      → PRIME-DIRECTIVE check passed for substrate · consent-as-OS · ¬ surveillance/coercion/manipulation primitives
+  ⟧
+
+§I CURRENT-STATE-VS-ASPIRATIONAL · honest-gap-inventory
+  ⟦
+    NOW                                        →   ASPIRATIONAL                              gap-class
+    ─────────────────────────────────────────────────────────────────────────────────────────────────
+    Forward+ scaffold compiles (12 files)      →   Forward+ runs visible 1440p144 frame      BLOCKER-α + β + γ
+    cranelift CPU codegen (stage-0)            →   owned x86-64 backend (stage-1+ · sovereign) multi-session backend
+    4 GPU codegen paths emit                   →   4 GPU codegen paths byte-equivalent       item-08 cross-target-parity
+    Pipeline IRs route through external tools  →   owned-emitters all 4 GPU paths            stage-2 (~3-5K LOC × 4)
+    cssl-rt Rust-hosted runtime                →   pure-CSSL runtime (zero-Rust @ runtime)   Phase-E · multi-year
+    csslc Rust-hosted compiler                 →   csslc self-hosts in CSSL                  spec/67 EPIC
+    vec3/mat4/quat as workaround structs        →   first-class language types                items 11 · 61-63 (Phase-B math)
+    Cap<X> witness as runtime bitset            →   compile-time Cap<X> fn-parameter type     item-15 (Phase-B)
+    effect-rows as doc-comments                 →   structural MirEffectRow threading         item-06 + 18 · spec/04 staged
+    transcendentals as Taylor-poly source      →   transcendental builtins → hw-intrinsic    item-64
+    GPU-resource manual destroy                 →   Drop-checker auto-cleanup                 item-30
+    triangle-on-screen (smoke)                  →   AAA-quality forward+ at 1440p144         items 31-40 (GPU-driven) + spec/76
+    ¬ ECS-compiler-supported                    →   ECS as compiler-recognized first-class    spec/66 EPIC
+    ¬ procgen-runtime                           →   PCG3D + Worley + WFC + L-systems + chunk-streaming items 41-50
+    ¬ entity-scale-1000                         →   1000 entities @ 144Hz                     items 51-60 + spec/66
+    ¬ persistent_kernel @ GPU                   →   D3D12 work-graph + Vulkan VK_AMDX_shader_enqueue items 31-40 · spec/76
+    ¬ visual-editor                             →   ⟨ DEFERRED indefinitely per spec/59 § PARKED ⟩  out-of-revenue-slice
+    substrate-rendering 6-novelty-paths (spec/32) →  optional effect-pass on top of forward+   PIVOT spec/55 · structural-OK · timing-deferred
+  ⟧
+
+§I NON-GOALS
+  ⟦
+    NG.01 · ¬ ratify any new direction · this is cartography ¬ steering
+    NG.02 · ¬ implement any code-change · per Apocky directive (planning-only · per session prompt)
+    NG.03 · ¬ commit to specific spec-numbering for follow-on plans beyond 75/76/77 · cross-ref discipline only
+    NG.04 · ¬ pre-empt Apocky's choice between PATH-α (csslc-self-host) vs PATH-β (Rust-bootstrap) vs PATH-α+β (parallel · current default)
+    NG.05 · ¬ contradict the 2026-05-03 pivot in spec/55 · the conventional Forward+ mainline is current truth
+    NG.06 · ¬ resurrect substrate-rendering-as-primary · it remains optional effect-pass per pivot
+  ⟧
+
+§I DEPENDENCIES
+  ⟦
+    DEP.01 · PRIME_DIRECTIVE.md immutable root-of-trust · this spec inherits in-full
+    DEP.02 · spec/64_SPEC_FIRST_DISCIPLINE RATIFIED · this spec authored under it
+    DEP.03 · spec/70_PHASE_A_CORRECTNESS RATIFIED · provides item-01..89 vocabulary used in CROSS-REFERENCE-INDEX
+    DEP.04 · spec/63_IMPROVEMENT_BACKLOG_100 v2 RATIFIED · provides N1-N6 north-stars used throughout
+    DEP.05 · spec/55_NORMAL_ENGINE_PIVOT historical · provides 2026-05-03 pivot context
+    DEP.06 · spec/59_GROK_VELOCITY_RESPONSE historical · provides revenue-first ordering
+    DEP.07 · spec/32_SIGNATURE_RENDERING historical · provides 6-novelty-paths + 12-stage pipeline vocabulary
+    DEP.08 · spec/65_GPU_MEMORY_TYPE_DISTINCTION DRAFT · enabling-spec for spec/76 §I MEMORY-DOMAIN
+  ⟧
+
+§I FAILURE-MODES
+  ⟦
+    FM.01 · scenario : this snapshot drifts stale within 1-2 sessions (repo evolves fast per spec/58 measured velocity)
+            detection : LIFECYCLE-HISTORY trailer ; CROSS-REFERENCE-INDEX missing newly-added spec numbers
+            mitigation : re-snapshot on cadence ; treat this spec as 2026-05-18 baseline ; refresh on any new
+                         {strategy + pivot + correctness} spec admission
+
+    FM.02 · scenario : cross-reference set claims a spec exists when it has been deleted/renamed
+            detection : ASSERT.09 fails (cross-reference set claims coverage of N specs but file-system has M ≠ N)
+            mitigation : re-glob specs/ before any consequent action; treat this snapshot's set as best-effort
+
+    FM.03 · scenario : strategic-posture summary mis-states Apocky's actual current direction
+            detection : Apocky directive on any work-day diverges from {α · β · γ · δ} as described
+            mitigation : Apocky directive is canonical · this spec amends or supersedes on conflict
+
+    FM.04 · scenario : audit agent missed a load-bearing spec (false-completeness)
+            detection : new agent finds spec N that ought to have been in CROSS-REFERENCE-INDEX but isn't
+            mitigation : append entry · cross-reference index is amendable in-place
+  ⟧
+
+§I COMPATIBILITY
+  ⟦
+    COMPAT.01 · existing specs 00-70 + Upgrade + grand-vision + infinity-engine + csslc · status : UNAFFECTED
+                  this spec is pure cartography · references but does not modify
+    COMPAT.02 · existing DECISIONS.md ledger · status : UNAFFECTED · no new decision-record proposed
+    COMPAT.03 · spec/55 pivot + spec/59 revenue-first re-prioritization · status : PRESERVED IN-FULL
+                  this spec does not contradict either; describes the post-pivot reality
+    COMPAT.04 · sentinel_build_check.sh Gate-E · status : UNAFFECTED · this spec is .csl source not csslc-built .exe
+  ⟧
+
+§I PRIOR-ART
+  ⟦
+    PA.01 · Linux kernel · Documentation/ tree (mental-map of subsystems) · what-we-take : index-by-subsystem with one-line summaries · what-we-diverge : CSL3-glyph density · navigation-by-status not just topic
+    PA.02 · Rust rfcs/ + std-aux/ tracking-issues · what-we-take : separate strategic vs technical specs · lifecycle-states · what-we-diverge : Apocky-discipline (¬ flattery · ¬ option-dumping · OBSERVABLE-ASSERTIONS mandatory)
+    PA.03 · Bevy Cart's release-blog series · what-we-take : honest current-state-vs-aspirational gap inventory · what-we-diverge : per-spec mechanical assertions ; no marketing prose
+    PA.04 · SQLite test infrastructure documentation · what-we-take : explicit failure-mode enumeration before code · what-we-diverge : applied at spec-cartography not test-design
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS
+  ⟦
+    § no surveillance vector introduced · this spec is internal cartography · zero user-facing telemetry · zero biometric reference
+    § no consent-bypass · planning-only · no cap-grant ; no execution ; Apocky retains final say on any consequent action
+    § no biometric-egress (PD0018) · not applicable · this layer is documentation only
+    § no sovereignty-denial (PD0020) · this spec strengthens sovereignty by making the codebase navigable
+                                          (a navigable substrate is a sovereign-able substrate)
+    § AI-co-authorship · Tech-Lead-Claude-Opus-4.7-1M sole-authored under Apocky directive 2026-05-18 ;
+                          subagent fanout used for read-pass (CSSLv3 deep audit · LoA v14 reference scan · 1LoA reference scan)
+    § canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES
+  ⟦
+    This spec ⊑ documentation-only · no code-implementation required.
+    Re-snapshot cadence : on every {pivot · phase-completion · ≥ 5 new strategic specs · multi-session arc complete}.
+    Suggested companion-spec authoring pattern :
+      spec/75 (this) · MENTAL_MAP @ 2026-05-18    · cartography  (≈ 700 LOC ⟦this file⟧)
+      spec/76         · GPU_RENDERING_PLAN          · forward-direction (≈ 800 LOC ⟦sibling⟧)
+      spec/77         · LANGUAGE_MATURATION_ROADMAP · forward-direction (≈ 700 LOC ⟦sibling⟧)
+    For future re-snapshots : copy this file forward as spec/NN_MENTAL_MAP_YYYY-MM-DD.csl ; mark this DEPRECATED.
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · should the LoA-v14 + 1LoA reference projects be archived into CSSLv3/research/ subdir to make them part of the canonical history?
+             default · no · they are independent prior-work · live in C:/Users/Apocky/source/repos/ separately ;
+             a `research/REFERENCES.md` pointer-doc in CSSLv3 would suffice if cross-ref preservation is desired
+
+    OQ.02 · should 65_GPU_MEMORY_TYPE_DISTINCTION be promoted DRAFT → REVIEWED before spec/76 GPU rendering plan ratifies?
+             default · yes · spec/76 §I MEMORY-DOMAIN depends on spec/65's vocabulary ;
+             review-pass should land before spec/76 leaves DRAFT
+
+    OQ.03 · should this cartography spec be auto-generated from a script that walks specs/ + reads frontmatter,
+             rather than hand-maintained?
+             default · partial · the CROSS-REFERENCE-INDEX section could be machine-built from each spec's frontmatter ;
+             the STRATEGIC-POSTURE + CURRENT-STATE-VS-ASPIRATIONAL sections require human-curated judgement
+
+    OQ.04 · is the "DEMOTED-TO-OPTIONAL" framing of signature-rendering (spec/32) accurate or does Apocky want
+             it brought-back-to-primary now that conventional Forward+ has its scaffold?
+             default · honor spec/55 + spec/59 explicit pivots · keep DEMOTED until Apocky declares otherwise
+
+    OQ.05 · for spec/76 + spec/77 (GPU + LANGUAGE-MATURATION) · should they be written as draft-now-bundle (this session)
+             or queued for separate-session review-cycle?
+             default · author-now @ DRAFT · Apocky ratifies on review-pass ; per spec/64 lifecycle discipline
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-18 · DRAFT · Tech-Lead-Claude-Opus-4.7-1M · single-session audit + cartography (subagent-augmented read-pass)
+    [pending]   · REVIEWED · awaits Apocky + co-reviewer (Reza/Tech-Lead-agent) pass · OQ.01-05 to resolve
+    [pending]   · RATIFIED · awaits Apocky-Tech-Lead approval · cartography is informational-only · no merge gating
+    [pending]   · DEPRECATED · supersede on next MENTAL_MAP_YYYY-MM-DD snapshot @ ≥ 5 strategic specs delta OR phase-completion
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § ¬ flattery · ¬ option-dumping · ¬ scope-creep · ¬ silent-success-claims
+    § audit grounds : direct file-read of HANDOFF_NEXT_SESSION + DECISIONS tail + specs {02 · 10 · 14 · 32 · 55 · 56 · 58 · 59 · 63 · 64 · 65 · 70}
+                       + engine/{main · frame_clock · render_forward}.cssl + stdlib/gpu.cssl
+                       + cross-platform refs LoA-v14 + 1LoA via subagent-fanout summarization
+    § every cross-reference cited by file-path · grep-checkable
+    § strategic-posture honors spec/55 (pivot) + spec/59 (revenue-first) without overriding · cartography only
+    § BLOCKERS listed honestly · α/β/γ/δ/ε named with effort-estimates from prior agent-evaluation
+    § AI-co-authorship · Tech-Lead-Claude-Opus-4.7-1M · per Apocky session-prompt 2026-05-18
+    § canonical-ref : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+    § t∞
+
+    "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

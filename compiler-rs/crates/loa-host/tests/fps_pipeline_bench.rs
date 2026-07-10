@@ -21,9 +21,7 @@
 //!   The bench reads only public-API state ; no surveillance ; no behavior
 //!   profiling. Output is aggregate timings only.
 
-use loa_host::fps_pipeline::{
-    FpsPipeline, InstanceEntry, FRAME_BUDGET_120HZ_MS, FRAME_BUDGET_144HZ_MS,
-};
+use loa_host::fps_pipeline::{InstanceEntry, FRAME_BUDGET_120HZ_MS, FRAME_BUDGET_144HZ_MS};
 use loa_host::wired_fps_pipeline::{default_pipeline, summary_line};
 use std::time::Instant;
 
@@ -45,11 +43,7 @@ fn fps_pipeline_overhead_under_half_ms_p50() {
         for i in 0..INSTANCES_PER_FRAME {
             let _ = pipeline.instances.push(InstanceEntry {
                 instance_id: i,
-                bsphere_center: [
-                    (i as f32) * 0.5,
-                    1.0,
-                    (frame as f32) * 0.1,
-                ],
+                bsphere_center: [(i as f32) * 0.5, 1.0, (frame as f32) * 0.1],
                 bsphere_radius: 1.0,
                 ..Default::default()
             });
@@ -78,8 +72,7 @@ fn fps_pipeline_overhead_under_half_ms_p50() {
     samples_us.sort_unstable();
     let p50 = samples_us[samples_us.len() / 2];
     let p99 = samples_us[(samples_us.len() * 99 / 100).min(samples_us.len() - 1)];
-    let mean: u64 =
-        samples_us.iter().sum::<u64>() / (samples_us.len() as u64);
+    let mean: u64 = samples_us.iter().sum::<u64>() / (samples_us.len() as u64);
 
     let p50_ms = (p50 as f32) / 1000.0;
     let p99_ms = (p99 as f32) / 1000.0;

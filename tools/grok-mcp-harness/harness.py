@@ -38,6 +38,18 @@ try:
 except ImportError:
     def register_project_tools(mcp): pass  # Graceful fallback if file missing
 
+# Import MNEME persistent-memory bridge tools (mneme_recall / mneme_remember / mneme_health)
+try:
+    from mneme_tools import register_mneme_tools
+except ImportError:
+    def register_mneme_tools(mcp): pass  # Graceful fallback if file missing
+
+# Import local development-observability tools.
+try:
+    from dev_observe_tools import register_dev_observe_tools
+except ImportError:
+    def register_dev_observe_tools(mcp): pass  # Graceful fallback if file missing
+
 
 # ====================== CONFIG ======================
 import os
@@ -60,6 +72,7 @@ CSL_PARSER = os.environ.get(
     f'"{CSSL_COMPILER}" check',  # stage-0 : csslc-check is the parser entry
 )
 LOG_FILE = ALLOWED_ROOT / "logs" / "grok-harness.log"
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -245,6 +258,8 @@ def fs_write_file(path: str, content: str, mode: Literal["overwrite", "append"] 
 
 # ====================== REGISTER PROJECT-SPECIFIC TOOLS ======================
 register_project_tools(mcp)
+register_mneme_tools(mcp)
+register_dev_observe_tools(mcp)
 
 # ====================== MAIN ======================
 if __name__ == "__main__":

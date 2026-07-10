@@ -209,11 +209,26 @@ impl GpuContext {
         // useful without a hard dep on a specific wgpu Features API.
         let probe = [
             (wgpu::Features::TIMESTAMP_QUERY, "TIMESTAMP_QUERY"),
-            (wgpu::Features::PIPELINE_STATISTICS_QUERY, "PIPELINE_STATISTICS_QUERY"),
-            (wgpu::Features::TEXTURE_COMPRESSION_BC, "TEXTURE_COMPRESSION_BC"),
-            (wgpu::Features::TEXTURE_COMPRESSION_ETC2, "TEXTURE_COMPRESSION_ETC2"),
-            (wgpu::Features::TEXTURE_COMPRESSION_ASTC, "TEXTURE_COMPRESSION_ASTC"),
-            (wgpu::Features::INDIRECT_FIRST_INSTANCE, "INDIRECT_FIRST_INSTANCE"),
+            (
+                wgpu::Features::PIPELINE_STATISTICS_QUERY,
+                "PIPELINE_STATISTICS_QUERY",
+            ),
+            (
+                wgpu::Features::TEXTURE_COMPRESSION_BC,
+                "TEXTURE_COMPRESSION_BC",
+            ),
+            (
+                wgpu::Features::TEXTURE_COMPRESSION_ETC2,
+                "TEXTURE_COMPRESSION_ETC2",
+            ),
+            (
+                wgpu::Features::TEXTURE_COMPRESSION_ASTC,
+                "TEXTURE_COMPRESSION_ASTC",
+            ),
+            (
+                wgpu::Features::INDIRECT_FIRST_INSTANCE,
+                "INDIRECT_FIRST_INSTANCE",
+            ),
             (wgpu::Features::SHADER_F16, "SHADER_F16"),
             (wgpu::Features::DEPTH_CLIP_CONTROL, "DEPTH_CLIP_CONTROL"),
             (wgpu::Features::PUSH_CONSTANTS, "PUSH_CONSTANTS"),
@@ -287,7 +302,12 @@ impl GpuContext {
             .iter()
             .copied()
             .find(|f| *f == wgpu::TextureFormat::Rgba8UnormSrgb)
-            .or_else(|| caps.formats.iter().copied().find(wgpu::TextureFormat::is_srgb))
+            .or_else(|| {
+                caps.formats
+                    .iter()
+                    .copied()
+                    .find(wgpu::TextureFormat::is_srgb)
+            })
             .unwrap_or_else(|| caps.formats[0]);
 
         // § T11-LOA-TEST-APP : add COPY_SRC if the adapter supports it on
@@ -414,9 +434,7 @@ impl GpuContext {
         let supports_hdr_render_attachment = hdr_features
             .allowed_usages
             .contains(wgpu::TextureUsages::RENDER_ATTACHMENT);
-        let supports_hdr_msaa4 = hdr_features
-            .flags
-            .sample_count_supported(4);
+        let supports_hdr_msaa4 = hdr_features.flags.sample_count_supported(4);
         let (msaa_samples, hdr_active, tonemap_path) =
             if supports_hdr_render_attachment && supports_hdr_msaa4 {
                 log_event(
@@ -434,10 +452,10 @@ impl GpuContext {
                 (1u32, true, true)
             } else {
                 log_event(
-                    "WARN",
-                    "loa-host/gpu",
-                    "fidelity_init.hdr_fallback=disabled · using surface format direct (no tonemap)",
-                );
+                "WARN",
+                "loa-host/gpu",
+                "fidelity_init.hdr_fallback=disabled · using surface format direct (no tonemap)",
+            );
                 (1u32, false, false)
             };
 
@@ -449,7 +467,11 @@ impl GpuContext {
 
         let fidelity = FidelityConfig {
             msaa_samples,
-            hdr_format: if hdr_active { hdr_format } else { surface_format },
+            hdr_format: if hdr_active {
+                hdr_format
+            } else {
+                surface_format
+            },
             present_mode,
             aniso_max,
             tonemap_path,

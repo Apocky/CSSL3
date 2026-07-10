@@ -158,6 +158,25 @@ mod imp {
         pub const fn priority(&self) -> CommandQueuePriority {
             self.priority
         }
+
+        /// Raw `IUnknown*` for the underlying `ID3D12CommandQueue`.
+        ///
+        /// Required by `IDXGIFactory2::CreateSwapChainForHwnd` which takes an
+        /// `IUnknown*` (the queue) as the `pDevice` parameter. The pointer
+        /// remains owned by this `CommandQueue` ; DXGI will call `AddRef`
+        /// internally so the swap-chain holds its own strong reference.
+        ///
+        /// # Safety
+        /// Caller MUST NOT call `Release` on the returned pointer ; that would
+        /// drop our owned ref and corrupt the windows-rs interface wrapper.
+        /// The pointer is only valid for the lifetime of `self`.
+        #[must_use]
+        pub fn raw_iunknown_ptr(&self) -> *mut core::ffi::c_void {
+            use windows::core::Interface;
+            // SAFETY : windows-rs Interface::as_raw() returns the inner *mut c_void
+            // without transferring ownership ; the windows-rs wrapper keeps the ref.
+            self.queue.as_raw()
+        }
     }
 
     /// Command allocator.
@@ -376,6 +395,12 @@ mod imp {
         #[must_use]
         pub const fn priority(&self) -> CommandQueuePriority {
             CommandQueuePriority::Normal
+        }
+
+        /// Stub raw IUnknown pointer — always null on non-Windows.
+        #[must_use]
+        pub fn raw_iunknown_ptr(&self) -> *mut core::ffi::c_void {
+            core::ptr::null_mut()
         }
     }
 

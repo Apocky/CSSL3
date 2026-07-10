@@ -32,11 +32,11 @@
 
 #![allow(clippy::module_name_repetitions)]
 
+pub use cssl_host_gear_archetype::Rarity;
 pub use cssl_host_loot::{
     anchor_drop_to_sigma_chain, attest_no_pay_for_power, roll_loot, DropRateDistribution,
     KanBiasConsent, LootContext, LootDropEvent, LootItem,
 };
-pub use cssl_host_gear_archetype::Rarity;
 
 /// § Per-frame loot-event from the host's combat / encounter system.
 /// `combat_ended` fires the frame the encounter resolves ; `allow_drop`

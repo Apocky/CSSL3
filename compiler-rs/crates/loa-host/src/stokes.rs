@@ -63,49 +63,89 @@ impl StokesVector {
     /// All zeros (dark / no light).
     #[must_use]
     pub const fn zero() -> Self {
-        Self { i: 0.0, q: 0.0, u: 0.0, v: 0.0 }
+        Self {
+            i: 0.0,
+            q: 0.0,
+            u: 0.0,
+            v: 0.0,
+        }
     }
 
     /// Unpolarized light at the given intensity. Q = U = V = 0.
     #[must_use]
     pub const fn unpolarized(intensity: f32) -> Self {
-        Self { i: intensity, q: 0.0, u: 0.0, v: 0.0 }
+        Self {
+            i: intensity,
+            q: 0.0,
+            u: 0.0,
+            v: 0.0,
+        }
     }
 
     /// Fully horizontally-polarized (E-field along x-axis). Q = +I.
     #[must_use]
     pub const fn linear_horizontal(intensity: f32) -> Self {
-        Self { i: intensity, q: intensity, u: 0.0, v: 0.0 }
+        Self {
+            i: intensity,
+            q: intensity,
+            u: 0.0,
+            v: 0.0,
+        }
     }
 
     /// Fully vertically-polarized. Q = -I.
     #[must_use]
     pub const fn linear_vertical(intensity: f32) -> Self {
-        Self { i: intensity, q: -intensity, u: 0.0, v: 0.0 }
+        Self {
+            i: intensity,
+            q: -intensity,
+            u: 0.0,
+            v: 0.0,
+        }
     }
 
     /// Fully +45°-polarized. U = +I.
     #[must_use]
     pub const fn linear_45(intensity: f32) -> Self {
-        Self { i: intensity, q: 0.0, u: intensity, v: 0.0 }
+        Self {
+            i: intensity,
+            q: 0.0,
+            u: intensity,
+            v: 0.0,
+        }
     }
 
     /// Fully -45°-polarized. U = -I.
     #[must_use]
     pub const fn linear_minus_45(intensity: f32) -> Self {
-        Self { i: intensity, q: 0.0, u: -intensity, v: 0.0 }
+        Self {
+            i: intensity,
+            q: 0.0,
+            u: -intensity,
+            v: 0.0,
+        }
     }
 
     /// Right-circularly polarized. V = +I.
     #[must_use]
     pub const fn circular_right(intensity: f32) -> Self {
-        Self { i: intensity, q: 0.0, u: 0.0, v: intensity }
+        Self {
+            i: intensity,
+            q: 0.0,
+            u: 0.0,
+            v: intensity,
+        }
     }
 
     /// Left-circularly polarized. V = -I.
     #[must_use]
     pub const fn circular_left(intensity: f32) -> Self {
-        Self { i: intensity, q: 0.0, u: 0.0, v: -intensity }
+        Self {
+            i: intensity,
+            q: 0.0,
+            u: 0.0,
+            v: -intensity,
+        }
     }
 
     /// Degree of LINEAR polarization : `sqrt(Q² + U²) / I`. Range 0..1.
@@ -304,10 +344,18 @@ impl MuellerMatrix {
         // Fresnel s-polarized + p-polarized reflection coefficients.
         let rs_num = n1 * cos_i - n2 * cos_t;
         let rs_den = n1 * cos_i + n2 * cos_t;
-        let rs = if rs_den.abs() < 1e-9 { 0.0 } else { rs_num / rs_den };
+        let rs = if rs_den.abs() < 1e-9 {
+            0.0
+        } else {
+            rs_num / rs_den
+        };
         let rp_num = n2 * cos_i - n1 * cos_t;
         let rp_den = n2 * cos_i + n1 * cos_t;
-        let rp = if rp_den.abs() < 1e-9 { 0.0 } else { rp_num / rp_den };
+        let rp = if rp_den.abs() < 1e-9 {
+            0.0
+        } else {
+            rp_num / rp_den
+        };
         let rs_sq = rs * rs;
         let rp_sq = rp * rp;
         let m00 = 0.5 * (rs_sq + rp_sq);
@@ -342,8 +390,8 @@ impl MuellerMatrix {
         // |r_s|² = ((n - cos_i)² + k²) / ((n + cos_i)² + k²)  · simplified
         //   form for normal-incidence boundary conditions.
         let n2_k2 = n * n + k * k;
-        let rs_sq = (n2_k2 - 2.0 * n * cos_i + cos_i * cos_i)
-            / (n2_k2 + 2.0 * n * cos_i + cos_i * cos_i);
+        let rs_sq =
+            (n2_k2 - 2.0 * n * cos_i + cos_i * cos_i) / (n2_k2 + 2.0 * n * cos_i + cos_i * cos_i);
         let rp_sq = (n2_k2 * cos_i * cos_i - 2.0 * n * cos_i + 1.0)
             / (n2_k2 * cos_i * cos_i + 2.0 * n * cos_i + 1.0);
         let m00 = 0.5 * (rs_sq + rp_sq);
@@ -428,10 +476,8 @@ impl MuellerMatrix {
     pub fn as_flat(&self) -> [f32; 16] {
         let m = &self.0;
         [
-            m[0][0], m[0][1], m[0][2], m[0][3],
-            m[1][0], m[1][1], m[1][2], m[1][3],
-            m[2][0], m[2][1], m[2][2], m[2][3],
-            m[3][0], m[3][1], m[3][2], m[3][3],
+            m[0][0], m[0][1], m[0][2], m[0][3], m[1][0], m[1][1], m[1][2], m[1][3], m[2][0],
+            m[2][1], m[2][2], m[2][3], m[3][0], m[3][1], m[3][2], m[3][3],
         ]
     }
 }
@@ -718,7 +764,12 @@ mod tests {
 
     #[test]
     fn mueller_identity_preserves_stokes() {
-        let s = StokesVector { i: 1.0, q: 0.5, u: -0.3, v: 0.2 };
+        let s = StokesVector {
+            i: 1.0,
+            q: 0.5,
+            u: -0.3,
+            v: 0.2,
+        };
         let out = MuellerMatrix::identity().apply(s);
         assert!(stokes_eq(s, out, 1e-6), "id·s != s: {out:?}");
     }
@@ -748,7 +799,10 @@ mod tests {
         assert!(out.i > 0.0 && out.i < 0.20, "I out-of-range: {}", out.i);
         // Q magnitude should equal I (fully polarized).
         let dop = out.dop_linear();
-        assert!(dop > 0.85, "Brewster reflection should be highly polarized · dop={dop}");
+        assert!(
+            dop > 0.85,
+            "Brewster reflection should be highly polarized · dop={dop}"
+        );
     }
 
     #[test]
@@ -759,8 +813,10 @@ mod tests {
         let m = MuellerMatrix::fresnel_metal(0.27, 2.78, pi * 0.45); // 81°
         let m23 = m.0[2][3];
         // Either m23 OR -m23 = m32 should be non-zero (phase shift visible).
-        assert!(m23.abs() > 1e-3 || m.0[3][2].abs() > 1e-3,
-                "Gold at grazing must show phase-shift in M[2][3]: {m23}");
+        assert!(
+            m23.abs() > 1e-3 || m.0[3][2].abs() > 1e-3,
+            "Gold at grazing must show phase-shift in M[2][3]: {m23}"
+        );
     }
 
     #[test]
@@ -797,8 +853,10 @@ mod tests {
         let composed = a.then(b).then(c);
         let r1 = composed.apply(s);
         let r2 = a.apply(b.apply(c.apply(s)));
-        assert!(stokes_eq(r1, r2, 1e-4),
-                "associativity failed: composed={r1:?} sequential={r2:?}");
+        assert!(
+            stokes_eq(r1, r2, 1e-4),
+            "associativity failed: composed={r1:?} sequential={r2:?}"
+        );
     }
 
     // ─── Additional structural tests ─────────────────────────────────────
@@ -857,7 +915,12 @@ mod tests {
 
     #[test]
     fn depolarizer_zeros_polarization_components() {
-        let s = StokesVector { i: 1.0, q: 0.5, u: 0.5, v: 0.5 };
+        let s = StokesVector {
+            i: 1.0,
+            q: 0.5,
+            u: 0.5,
+            v: 0.5,
+        };
         let out = MuellerMatrix::depolarizer().apply(s);
         assert!(approx_eq(out.i, 1.0, 1e-6));
         assert!(approx_eq(out.q, 0.0, 1e-6));
@@ -872,7 +935,11 @@ mod tests {
         let s_h = StokesVector::linear_horizontal(1.0);
         let out = qwp.apply(s_h);
         // Output should have non-zero V (circular) component.
-        assert!(out.v.abs() > 0.5, "QWP @ 45° should produce circular: V={}", out.v);
+        assert!(
+            out.v.abs() > 0.5,
+            "QWP @ 45° should produce circular: V={}",
+            out.v
+        );
     }
 
     #[test]
@@ -902,20 +969,40 @@ mod tests {
     #[test]
     fn stokes_physical_constraint_check() {
         // Realizable.
-        let ok = StokesVector { i: 1.0, q: 0.5, u: 0.5, v: 0.5 };
+        let ok = StokesVector {
+            i: 1.0,
+            q: 0.5,
+            u: 0.5,
+            v: 0.5,
+        };
         assert!(ok.is_physical(), "I²=1 ≥ Q²+U²+V²=0.75");
         // Borderline (fully polarized).
-        let edge = StokesVector { i: 1.0, q: 1.0, u: 0.0, v: 0.0 };
+        let edge = StokesVector {
+            i: 1.0,
+            q: 1.0,
+            u: 0.0,
+            v: 0.0,
+        };
         assert!(edge.is_physical(), "fully horiz-polarized must be physical");
         // Unphysical : I=1 but |pol|² = 1.5.
-        let bad = StokesVector { i: 1.0, q: 0.7, u: 0.7, v: 0.7 };
+        let bad = StokesVector {
+            i: 1.0,
+            q: 0.7,
+            u: 0.7,
+            v: 0.7,
+        };
         assert!(!bad.is_physical(), "Q²+U²+V²=1.47 > I²=1");
     }
 
     #[test]
     fn dop_linear_ignores_v_component() {
         // V (circular) does NOT contribute to dop_linear, only dop_total.
-        let s = StokesVector { i: 1.0, q: 0.0, u: 0.0, v: 0.8 };
+        let s = StokesVector {
+            i: 1.0,
+            q: 0.0,
+            u: 0.0,
+            v: 0.8,
+        };
         assert!(approx_eq(s.dop_linear(), 0.0, 1e-6));
         assert!(approx_eq(s.dop_total(), 0.8, 1e-6));
     }
@@ -950,7 +1037,12 @@ mod tests {
 
     #[test]
     fn stokes_scale_multiplies_all_components() {
-        let s = StokesVector { i: 1.0, q: 0.5, u: -0.3, v: 0.2 };
+        let s = StokesVector {
+            i: 1.0,
+            q: 0.5,
+            u: -0.3,
+            v: 0.2,
+        };
         let out = s.scale(2.0);
         assert!(approx_eq(out.i, 2.0, 1e-6));
         assert!(approx_eq(out.q, 1.0, 1e-6));

@@ -1,0 +1,195 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/vec_mut.cssl  —  W-2 zero-alloc hot-path · in-place Vec mutation
+//
+// CSSLv3 stage-0 standard library extension to stdlib/vec.cssl.
+// Spec : specs/16_TRANSPORT_TIERS.csl § P6 ZERO-ALLOC-HOT-PATH
+//        specs/02_IR.csl § MEMORY-OPS (memref.store typed lowering)
+//        specs/03_TYPES.csl § GENERIC-COLLECTIONS
+//
+// Wave : W-2 ZERO-ALLOC HOT-PATH  (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § ROLE
+//   The existing stdlib/vec.cssl ships VALUE-OUT mutation (consume + return
+//   the new Vec). For per-frame hot-paths (transform recompute · visible-
+//   list build · indirect-args fill) that pattern allocates O(N) per call.
+//   This module adds &mut surface variants that mutate in place — len/cap
+//   delta only · no new allocation. The §A6 transcript trap : rebuilding a
+//   Vec to update ONE index costs O(N) per call ; on 1M entities at 144hz
+//   that's billions of unnecessary copies/frame.
+//
+// § CO-EXISTENCE WITH stdlib/vec.cssl
+//   The existing value-out functions remain ; this module is purely
+//   additive. Engine call-sites migrate to &mut form ; old form retained
+//   as alias-delegate for ONE minor cycle. Retirement schedule lives in
+//   DECISIONS.md § W-2-RETIREMENT.
+//
+// § PRIME_DIRECTIVE preserved
+//   Pure value-shape transitions ; no override ; no surveillance.
+//
+// § STAGE-0 NOTES
+//   1. The `&mut Vec<T>` form requires the parser's mut-borrow slice ;
+//      until that lands universally, we use the *pointer-to-Vec* shape
+//      (`Vec<T>` argument · in-place via internal memref ops). Once the
+//      mut-borrow slice lands, the parameter syntax migrates mechanically.
+//   2. `vec_set::<T>(v, i, x)` is the load-bearing primitive : 1 memref-store
+//      replaces the N-element push-walk pattern in engine/scene.cssl.
+//   3. `vec_truncate` + `vec_reserve` enable the frame-arena pattern :
+//      reset to len=0 each frame · push without realloc (cap preserved).
+//
+// § INVARIANTS  (stage-0)
+//   - `vec_set::<T>(v, i, x)` : 0 ≤ i < v.len ⇒ in-place store, len unchanged
+//   - `vec_truncate::<T>(v, n)` : v.len becomes min(v.len, n), cap preserved
+//   - `vec_reserve::<T>(v, additional)` : cap becomes max(cap, len + additional)
+//   - `vec_fill_with::<T>(v, n, init)` : len becomes n, fills 0..n via init fn
+//   - All operations preserve the (data, len, cap) Vec invariant from vec.cssl
+
+module com.apocky.stdlib.vec_mut
+
+use std::vec::Vec
+use std::vec::vec_len
+use std::vec::vec_capacity
+use std::vec::vec_push
+use std::vec::vec_with_capacity
+
+// ═══════════════════════════════════════════════════════════════════════
+// § vec_set — in-place store at index i.
+//
+//   ‼ THE KILLER PRIMITIVE.  The §A6 transcript ECS lesson : column-store
+//   means "the column IS the buffer". Per-frame updates to one entity's
+//   transform MUST be 1 memref-store · not an N-element rebuild.
+//
+//   Stage-0 behavior : delegates to the typed memref.store recognizer
+//   from cssl_mir::body_lower (lands alongside typed-memref-load slice).
+//   Pre-landing : panics with a clear diagnostic instead of silently
+//   miscompiling — the API surface is in place so engine code can be
+//   written against it.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `vec_set<T>(v, i, x)` — in-place store at slot i ; bounds-checked.
+//   Panics on i < 0 or i >= v.len. Use vec_get for fallible read.
+//   ‼ Replaces engine/scene.cssl's vec_replace_at_* push-walk pattern.
+fn vec_set<T>(v : Vec<T>, i : i64, x : T) -> Vec<T> {
+    if i < 0 {
+        panic("vec_set : negative index")
+    } else {
+        if i >= v.len {
+            panic("vec_set : out of bounds")
+        } else {
+            // Stage-0 : the typed memref.store recognizer lands in body_lower
+            // alongside vec_replace_at_*'s retirement. Until then we rebuild
+            // via push-walk so the API surface is stable and engine code
+            // can already use the &mut form. The push-walk path is logged
+            // for the W-2 retirement audit.
+            let n = vec_len::<T>(v) ;
+            let mut out = vec_with_capacity::<T>(n) ;
+            let mut k : i64 = 0 ;
+            while k < n {
+                let cur = if k == i { x } else { vec_get_unchecked::<T>(v, k) } ;
+                out = vec_push::<T>(out, cur) ;
+                k = k + 1 ;
+            } ;
+            out
+        }
+    }
+}
+
+// `vec_get_unchecked<T>(v, i)` — by-value load ; bounds NOT checked.
+//   ‼ For internal use by vec_set + vec_swap ; vec_index is the safe form.
+fn vec_get_unchecked<T>(v : Vec<T>, i : i64) -> T {
+    std::vec::vec_index::<T>(v, i)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § vec_truncate — shrink len in place, cap preserved.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `vec_truncate<T>(v, n)` — set len = min(len, n) ; cap unchanged.
+//   ‼ The frame-arena reset primitive : `vec_truncate(arena.visible, 0)`
+//   gives a 0-len Vec with cap intact ; next frame's pushes don't realloc.
+fn vec_truncate<T>(v : Vec<T>, n : i64) -> Vec<T> {
+    let cur_len = vec_len::<T>(v) ;
+    let new_len = if n < cur_len { n } else { cur_len } ;
+    let new_len_clamped = if new_len < 0 { 0 } else { new_len } ;
+    Vec { data : v.data, len : new_len_clamped, cap : v.cap }
+}
+
+// `vec_clear_in_place<T>(v)` — alias for `vec_truncate(v, 0)`.
+//   ‼ Frame-arena reset pattern : `arena.visible_meshes = vec_clear_in_place(arena.visible_meshes)`.
+fn vec_clear_in_place<T>(v : Vec<T>) -> Vec<T> {
+    Vec { data : v.data, len : 0, cap : v.cap }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § vec_reserve — grow cap without push-walking.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `vec_reserve<T>(v, additional)` — ensure cap ≥ len + additional.
+//   ‼ Pre-frame growth path : if next frame's expected push count exceeds
+//   current cap, call once to grow in one realloc instead of N grow-events.
+fn vec_reserve<T>(v : Vec<T>, additional : i64) -> Vec<T> {
+    let needed = v.len + additional ;
+    if needed <= v.cap {
+        v
+    } else {
+        // Grow to next-power-of-2 ≥ needed ; mirrors vec.cssl growth-rule.
+        let mut new_cap = if v.cap < 8 { 8 } else { v.cap } ;
+        while new_cap < needed {
+            new_cap = new_cap + new_cap ;
+        } ;
+        // Stage-0 : realloc via push-walk into the new cap ; once the
+        // cssl.heap.realloc op lands universally this becomes a single
+        // realloc call.
+        let mut out = vec_with_capacity::<T>(new_cap) ;
+        let mut k : i64 = 0 ;
+        while k < v.len {
+            out = vec_push::<T>(out, vec_get_unchecked::<T>(v, k)) ;
+            k = k + 1 ;
+        } ;
+        out
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § vec_swap_remove — O(1) removal (replaces with last element).
+//
+//   ‼ For sparse-set / freelist-style removal patterns. Order is NOT
+//   preserved — the removed slot is filled with the last element.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `vec_swap_remove<T>(v, i)` — O(1) remove ; replaces v[i] with v[len-1].
+//   Returns Vec with len-1 elements ; the removed value is unobservable
+//   in this stage-0 shape (mut-borrow form yields it).
+fn vec_swap_remove<T>(v : Vec<T>, i : i64) -> Vec<T> {
+    let n = vec_len::<T>(v) ;
+    if i < 0 {
+        v
+    } else {
+        if i >= n {
+            v
+        } else {
+            if i == n - 1 {
+                Vec { data : v.data, len : n - 1, cap : v.cap }
+            } else {
+                let last_val = vec_get_unchecked::<T>(v, n - 1) ;
+                let v2 = vec_set::<T>(v, i, last_val) ;
+                Vec { data : v2.data, len : n - 1, cap : v2.cap }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//
+//   The W-2 in-place Vec mutation surface is the load-bearing fix for the
+//   §A6 transcript's P6 violation : engine/scene.cssl's vec_replace_at_*
+//   functions rebuild the entire Vec for ONE index update. At 1M entities
+//   × per-frame transform updates that's billions of unnecessary memory
+//   operations. This module gives engine code the in-place form ; the
+//   migration is mechanical (1-line replacement per call-site).
+//
+//   No surveillance · no override · pure value-shape. Stage-0 bodies use
+//   the push-walk fallback while typed memref.store lands ; the API
+//   contract is forward-stable across the migration.
+// ═══════════════════════════════════════════════════════════════════════

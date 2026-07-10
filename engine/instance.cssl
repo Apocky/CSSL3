@@ -1,0 +1,292 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/instance.cssl  —  W-3/W-4 InstanceData · raw TRS GPU-compose path
+//
+// CSSLv3 engine module · pure CSSL · stage-0 scaffold.
+// Spec : specs/16_TRANSPORT_TIERS.csl § P4 MOVE-TO-PARALLEL
+//        specs/16_TRANSPORT_TIERS.csl § T2 STORAGE-BUFFER · T4 COMPUTE-KERNEL
+//        engine/conventions.cssl § TARGET-METRIC
+//
+// Wave : W-3 MESH/INSTANCE COLUMNS + W-4 GPU TRS→MAT4 COMPOSE
+//        (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § ROLE
+//   InstanceData is the GPU-facing per-entity payload. The transcript's
+//   biggest win was moving model-matrix construction from CPU to GPU :
+//   upload aligned raw TRS (pos, quat, scale) and compose the matrix in the vertex
+//   shader. This module codifies that as the canonical path.
+//
+// § WHY RAW TRS, NOT MAT4
+//   mat4 path : 64 B/entity upload + CPU compose loop
+//   TRS path  : 48 B logical payload / 64 B aligned stride + GPU compose in vtx shader
+//   1M entities : eliminates ~1M CPU mat4 builds/frame; a future packed variant can also cut upload bytes.
+//   At 144hz, CPU-side mat4 build is disallowed for static-bulk entities.
+//
+// § STORAGE LAYOUT
+//   std430-friendly · 16-byte aligned fields:
+//     pos_scale_flags : vec4  = (pos.xyz, uniform_scale_or_flags)
+//     quat            : vec4  = (x,y,z,w)
+//     scale_mesh      : vec4  = (scale.xyz, mesh_handle_as_f32_bits)
+//     material_lod    : vec4  = (material_idx, lod, flags, reserved)
+//   64 B canonical stride. We preserve 64B alignment even though compact
+//   TRS can fit smaller because GPU cache-lines and std430 alignment win.
+//
+// § PRIME_DIRECTIVE preserved
+//   Instance data is Public scene state. No surveillance. No override.
+
+module com.apocky.engine.instance
+
+use std::vec::Vec
+use std::vec::vec_new
+use std::vec::vec_with_capacity
+use std::vec::vec_len
+use std::vec::vec_push
+use std::vec::vec_index
+
+use std::gpu::GpuError
+use std::gpu_transport::Buffer
+use std::gpu_transport::DrawIndexedIndirectArgs
+use std::gpu_transport::draw_indirect_args_new
+use std::gpu_transport::buffer_upload
+
+use com.apocky.engine.mesh::MeshPool
+use com.apocky.engine.mesh::MeshHandle
+use com.apocky.engine.mesh::MeshDescriptor
+use com.apocky.engine.mesh::mesh_pool_get
+use com.apocky.engine.mesh::mesh_pool_count
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Instance path flags.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn instance_flag_static_bulk() -> u32 { 1 }        // skip CPU mat4 compose
+fn instance_flag_animated_cpu_mat4() -> u32 { 2 }  // CPU dirty-walk path allowed
+fn instance_flag_visible() -> u32 { 4 }            // after cull
+fn instance_flag_cast_shadow() -> u32 { 8 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § InstanceData — canonical GPU-side per-entity payload.
+//
+//   64 B stride, std430-aligned. Vertex shader composes model matrix:
+//     M = T(pos) · R(quat) · S(scale)
+//   Then final clip = push_constants.view_proj · M · vec4(vertex.pos, 1).
+// ═══════════════════════════════════════════════════════════════════════
+
+struct InstanceData {
+    // pos.xyz + flags bits reinterpreted as f32-compatible field at shader side.
+    pos_x : f32,
+    pos_y : f32,
+    pos_z : f32,
+    flags_as_f32 : f32,
+
+    // Quaternion (x,y,z,w) · w scalar.
+    quat_x : f32,
+    quat_y : f32,
+    quat_z : f32,
+    quat_w : f32,
+
+    // scale.xyz + mesh handle encoded as f32 bit-pattern.
+    scale_x : f32,
+    scale_y : f32,
+    scale_z : f32,
+    mesh_handle_as_f32 : f32,
+
+    // material + lod + reserved.
+    material_idx_as_f32 : f32,
+    lod_as_f32 : f32,
+    reserved0 : f32,
+    reserved1 : f32,
+}
+
+fn instance_data_stride_bytes() -> u32 { 64 }
+
+fn instance_data_new(pos_x : f32, pos_y : f32, pos_z : f32,
+                     quat_x : f32, quat_y : f32, quat_z : f32, quat_w : f32,
+                     scale_x : f32, scale_y : f32, scale_z : f32,
+                     mesh_handle : MeshHandle,
+                     material_idx : u32,
+                     lod : u8,
+                     flags : u32) -> InstanceData {
+    InstanceData {
+        pos_x : pos_x,
+        pos_y : pos_y,
+        pos_z : pos_z,
+        flags_as_f32 : flags as f32,
+        quat_x : quat_x,
+        quat_y : quat_y,
+        quat_z : quat_z,
+        quat_w : quat_w,
+        scale_x : scale_x,
+        scale_y : scale_y,
+        scale_z : scale_z,
+        mesh_handle_as_f32 : mesh_handle.id as f32,
+        material_idx_as_f32 : material_idx as f32,
+        lod_as_f32 : lod as f32,
+        reserved0 : 0.0,
+        reserved1 : 0.0,
+    }
+}
+
+fn instance_data_identity(mesh : MeshHandle, material_idx : u32) -> InstanceData {
+    instance_data_new(0.0, 0.0, 0.0,
+                      0.0, 0.0, 0.0, 1.0,
+                      1.0, 1.0, 1.0,
+                      mesh, material_idx, 0, instance_flag_static_bulk() | instance_flag_visible())
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § InstanceBatch — CPU staging column for visible instances.
+//
+//   W-3 CPU path : build_instances_cpu writes this Vec then uploads to
+//   Buffer<InstanceData>. W-5 GPU-driven path skips this CPU batch for
+//   cull; compute writes indirect args + visibility data on GPU.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct InstanceBatch {
+    instances : Vec<InstanceData>,
+    count     : u32,
+    capacity  : u32,
+}
+
+fn instance_batch_new(capacity : u32) -> InstanceBatch {
+    InstanceBatch {
+        instances : vec_with_capacity::<InstanceData>(capacity as i64),
+        count     : 0,
+        capacity  : capacity,
+    }
+}
+
+fn instance_batch_push(b : InstanceBatch, inst : InstanceData) -> InstanceBatch {
+    if b.count >= b.capacity {
+        b
+    } else {
+        InstanceBatch {
+            instances : vec_push::<InstanceData>(b.instances, inst),
+            count     : b.count + 1,
+            capacity  : b.capacity,
+        }
+    }
+}
+
+// `instance_batch_make_grid(mesh, material, n, spacing)` — synthetic 1M benchmark data.
+//   Produces a cubic lattice centered around origin. Used by hello_million_entities.cssl.
+fn instance_batch_make_grid(mesh : MeshHandle, material_idx : u32, n : u32, spacing : f32) -> InstanceBatch {
+    let mut batch = instance_batch_new(n) ;
+    let side = ceil_cuberoot_u32(n) ;
+    let half = (side as f32) * spacing * 0.5 ;
+    let mut i : u32 = 0 ;
+    while i < n {
+        let x_i = i % side ;
+        let y_i = (i / side) % side ;
+        let z_i = i / (side * side) ;
+        let px = (x_i as f32) * spacing - half ;
+        let py = (y_i as f32) * spacing - half ;
+        let pz = -10.0 - ((z_i as f32) * spacing) ;
+        let inst = instance_data_new(px, py, pz,
+                                     0.0, 0.0, 0.0, 1.0,
+                                     1.0, 1.0, 1.0,
+                                     mesh, material_idx, 0,
+                                     instance_flag_static_bulk() | instance_flag_visible()) ;
+        batch = instance_batch_push(batch, inst) ;
+        i = i + 1 ;
+    } ;
+    batch
+}
+
+// `ceil_cuberoot_u32(n)` — small integer helper for grid layout.
+fn ceil_cuberoot_u32(n : u32) -> u32 {
+    let mut x : u32 = 1 ;
+    while x * x * x < n {
+        x = x + 1 ;
+    } ;
+    x
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Upload + indirect-args build.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `instance_batch_upload(buf, batch)` — upload CPU staging batch into T2 SSBO.
+//
+// § EFFECT-ROW : {GpuSubmit}-effecting.
+fn instance_batch_upload(buf : Buffer<InstanceData>, batch : InstanceBatch) -> Result<i32, GpuError> {
+    let ptr = vec_as_ptr_i64::<InstanceData>(batch.instances) ;
+    let len = (batch.count as i64) * (instance_data_stride_bytes() as i64) ;
+    buffer_upload::<InstanceData>(buf, 0, ptr, len)
+}
+
+// `build_single_mesh_indirect_args(meshes, mesh, instance_count)` — one draw for N instances.
+//
+//   For the 1M cube benchmark this returns exactly one DrawIndexedIndirectArgs.
+fn build_single_mesh_indirect_args(meshes : MeshPool, mesh : MeshHandle, instance_count : u32) -> DrawIndexedIndirectArgs {
+    let desc = mesh_pool_get(meshes, mesh) ;
+    draw_indirect_args_new(desc.idx_count, instance_count, desc.idx_offset, desc.vtx_offset as i32, 0)
+}
+
+// `build_indirect_args_for_meshes(meshes, instance_counts)` — one draw per mesh handle.
+//   `instance_counts[i]` = number of instances using mesh i.
+fn build_indirect_args_for_meshes(meshes : MeshPool, instance_counts : Vec<u32>) -> Vec<DrawIndexedIndirectArgs> {
+    let mesh_count = mesh_pool_count(meshes) ;
+    let mut out = vec_with_capacity::<DrawIndexedIndirectArgs>(mesh_count as i64) ;
+    let mut i : u32 = 0 ;
+    while i < mesh_count {
+        let count = vec_index::<u32>(instance_counts, i as i64) ;
+        if count > 0 {
+            let desc = mesh_pool_get(meshes, MeshHandle { id : i }) ;
+            out = vec_push::<DrawIndexedIndirectArgs>(out,
+                draw_indirect_args_new(desc.idx_count, count, desc.idx_offset, desc.vtx_offset as i32, 0)) ;
+        } ;
+        i = i + 1 ;
+    } ;
+    out
+}
+
+// `upload_indirect_args(buf, args)` — upload indirect draw args into T3 buffer.
+fn upload_indirect_args(buf : Buffer<DrawIndexedIndirectArgs>, args : Vec<DrawIndexedIndirectArgs>) -> Result<i32, GpuError> {
+    let ptr = vec_as_ptr_i64::<DrawIndexedIndirectArgs>(args) ;
+    let len = vec_len::<DrawIndexedIndirectArgs>(args) * 20 ;
+    buffer_upload::<DrawIndexedIndirectArgs>(buf, 0, ptr, len)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Vertex-shader compose contract  (W-4)
+//
+//   This section is the language-level contract for the shader-side TRS
+//   compose path. It is duplicated in the actual shader blob until CSSL →
+//   SPIR-V vertex-stage emit is fully wired. The math matches engine/scene.cssl.
+// ═══════════════════════════════════════════════════════════════════════
+
+// `shader_contract_trs_compose_enabled()` — W-4 feature flag.
+fn shader_contract_trs_compose_enabled() -> bool { true }
+
+// `shader_contract_instance_stride()` — vertex shader expects 64-byte InstanceData.
+fn shader_contract_instance_stride() -> u32 { instance_data_stride_bytes() }
+
+// `shader_contract_push_constant_bytes()` — Push constants : view_proj mat4 (64B) + frame/time vec4 (16B) = 80B.
+fn shader_contract_push_constant_bytes() -> u32 { 80 }
+
+// `shader_contract_max_entities()` — the Apocky target metric.
+fn shader_contract_max_entities() -> u32 { 1000000 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Internal helper — Vec → ptr-as-i64.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn vec_as_ptr_i64<T>(v : Vec<T>) -> i64 { v.data }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Inline tests / assertions.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn _test_instance_stride_is_64() -> bool { instance_data_stride_bytes() == 64 }
+fn _test_push_constants_fit_t0() -> bool { shader_contract_push_constant_bytes() <= 128 }
+fn _test_1m_grid_cuberoot() -> bool { ceil_cuberoot_u32(1000000) == 100 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION
+//
+//   InstanceData is the canonical data-path for 1M entities : CPU sends
+//   raw TRS, GPU composes model matrices. This ports the transcript's
+//   largest measured win into CSSLv3 as a first-class layout contract.
+//   No surveillance · Public scene data · no PRIME_DIRECTIVE override.
+// ═══════════════════════════════════════════════════════════════════════

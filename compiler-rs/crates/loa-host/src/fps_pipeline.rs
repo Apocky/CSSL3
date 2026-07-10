@@ -162,7 +162,10 @@ impl PassKind {
     /// fragment work on the graphics queue).
     #[must_use]
     pub fn is_async_compute(self) -> bool {
-        matches!(self, PassKind::GpuCull | PassKind::Shadow | PassKind::SsEffects)
+        matches!(
+            self,
+            PassKind::GpuCull | PassKind::Shadow | PassKind::SsEffects
+        )
     }
 
     /// Stable u8 tag (matches `repr(u8)`).
@@ -392,13 +395,12 @@ impl FrameSlot {
     /// · Tonemap · Cfer · Ui (6 mandatory bits).
     #[must_use]
     pub fn mandatory_passes_recorded(&self) -> bool {
-        const MANDATORY_MASK: u16 =
-            (1 << PassKind::DepthPrepass as u8)
-                | (1 << PassKind::Opaque as u8)
-                | (1 << PassKind::Transparent as u8)
-                | (1 << PassKind::Tonemap as u8)
-                | (1 << PassKind::Cfer as u8)
-                | (1 << PassKind::Ui as u8);
+        const MANDATORY_MASK: u16 = (1 << PassKind::DepthPrepass as u8)
+            | (1 << PassKind::Opaque as u8)
+            | (1 << PassKind::Transparent as u8)
+            | (1 << PassKind::Tonemap as u8)
+            | (1 << PassKind::Cfer as u8)
+            | (1 << PassKind::Ui as u8);
         self.pass_recorded_mask & MANDATORY_MASK == MANDATORY_MASK
     }
 
@@ -1195,20 +1197,14 @@ impl FpsPipeline {
     /// Returns `Err` on illegal transition.
     pub fn submit_frame(&mut self, fence_id: u64, now_us: u64) -> Result<(), FrameSlotState> {
         let idx = self.active_slot.ok_or(FrameSlotState::Free)?;
-        let slot = self
-            .ring
-            .slot_mut(idx)
-            .ok_or(FrameSlotState::Free)?;
+        let slot = self.ring.slot_mut(idx).ok_or(FrameSlotState::Free)?;
         slot.submit(fence_id, now_us)
     }
 
     /// Mark the frame as presented. State Submitted → Presented.
     pub fn present_frame(&mut self) -> Result<(), FrameSlotState> {
         let idx = self.active_slot.ok_or(FrameSlotState::Free)?;
-        let slot = self
-            .ring
-            .slot_mut(idx)
-            .ok_or(FrameSlotState::Free)?;
+        let slot = self.ring.slot_mut(idx).ok_or(FrameSlotState::Free)?;
         slot.present()
     }
 
@@ -1247,7 +1243,9 @@ impl FpsPipeline {
             cmd_buffers: PassDescriptor::total_cmd_slots() as u32,
             cmd_buffer_recycles,
             instances_input: self.cull_plan.input_last_frame,
-            instances_passed: self.cull_plan.input_last_frame
+            instances_passed: self
+                .cull_plan
+                .input_last_frame
                 .saturating_sub(self.cull_plan.culled_last_frame),
             vrs_pixel_ratio: self.vrs.average_pixel_ratio(),
             present_mode: self.present_mode as u8,
@@ -1478,7 +1476,12 @@ mod tests {
         let mut plan = CullingPlan::default();
         // Single plane : x = 5 (positive-x clipped), centered at origin.
         // Plane equation : -x + 5 ≥ 0 → reject if x > 5+r.
-        plan.planes[0] = FrustumPlane { a: -1.0, b: 0.0, c: 0.0, d: 5.0 };
+        plan.planes[0] = FrustumPlane {
+            a: -1.0,
+            b: 0.0,
+            c: 0.0,
+            d: 5.0,
+        };
         // Sphere at (10, 0, 0) radius 1 → distance = -10+5 = -5 < -1 = -radius → reject.
         assert!(!plan.sphere_inside([10.0, 0.0, 0.0], 1.0));
         // Sphere at (4, 0, 0) radius 0.5 → distance = -4+5 = 1 > -0.5 → accept.
@@ -1489,11 +1492,28 @@ mod tests {
     #[test]
     fn culling_plan_cull_pass_updates_telemetry() {
         let mut plan = CullingPlan::default();
-        plan.planes[0] = FrustumPlane { a: -1.0, b: 0.0, c: 0.0, d: 5.0 };
+        plan.planes[0] = FrustumPlane {
+            a: -1.0,
+            b: 0.0,
+            c: 0.0,
+            d: 5.0,
+        };
         let instances = vec![
-            InstanceEntry { bsphere_center: [0.0, 0.0, 0.0], bsphere_radius: 1.0, ..Default::default() },
-            InstanceEntry { bsphere_center: [10.0, 0.0, 0.0], bsphere_radius: 1.0, ..Default::default() },
-            InstanceEntry { bsphere_center: [4.0, 0.0, 0.0], bsphere_radius: 0.5, ..Default::default() },
+            InstanceEntry {
+                bsphere_center: [0.0, 0.0, 0.0],
+                bsphere_radius: 1.0,
+                ..Default::default()
+            },
+            InstanceEntry {
+                bsphere_center: [10.0, 0.0, 0.0],
+                bsphere_radius: 1.0,
+                ..Default::default()
+            },
+            InstanceEntry {
+                bsphere_center: [4.0, 0.0, 0.0],
+                bsphere_radius: 0.5,
+                ..Default::default()
+            },
         ];
         let passed = plan.cull_pass(&instances);
         assert_eq!(plan.input_last_frame, 3);
@@ -1564,7 +1584,10 @@ mod tests {
             }
         }
         // Synthetic frame_ms ≈ 5ms, so all frames under 8.33ms.
-        assert_eq!(over_120hz, 0, "1000 sim-5ms frames exceed 120Hz : {max_frame_ms}");
+        assert_eq!(
+            over_120hz, 0,
+            "1000 sim-5ms frames exceed 120Hz : {max_frame_ms}"
+        );
         // Last metrics carry the budget threshold.
         assert!((p.last_metrics.budget_ms - FRAME_BUDGET_120HZ_MS).abs() < 0.01);
     }

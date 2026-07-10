@@ -1,0 +1,191 @@
+⟨spec⟩ UPG_02_HW_BACKEND · below-LLVM backends · GPU-resident kernels
+⟨ctx⟩ specs/Upgrade/ · Part I/3 · hardware-level frontiers (1 of 3)
+⟨covers⟩ §1 silicon-aware compilation · §2 GPU work graphs & persistent kernels
+
+──────────────────────────────────────────────────────────────────────
+# Part I — Hardware-Level Frontiers
+
+## §1. Going below LLVM: what Cranelift, QBE, and friends actually demonstrate
+
+The empirical lesson from the post-LLVM backend generation is that
+**LLVM IR is not the only viable codegen interface, and its design
+choices are historical, not necessary.** Cranelift (Bytecode Alliance,
+2016–present, Apache-2.0) was measured in the 2024 TUM compile-time
+analysis paper (Engelke et al., CGO 2024) to be ~10× faster than LLVM
+in compile-time while producing code only ~14% slower than LLVM on
+Wasm benchmarks. Crucially, the Cranelift documentation in
+`wasmtime/cranelift/docs/compare-llvm.md` enumerates the design
+choices that *differ* from LLVM and matter for a sovereign language:
+
+- **Single-level IR (CLIF)** — no UB by design, no GEP, no metadata
+  sidechannels. The 2022 e-graph–based mid-end (egraph optimizer,
+  Chris Fallin) treats optimization as equality saturation rather
+  than pass scheduling, which is structurally simpler than LLVM's
+  pass pipeline and has correctness benefits (translation validation
+  is being researched for VeriWasm/Veriff).
+- **ISel via ISLE** — a pattern-matching DSL for instruction selection
+  that emits Rust. The instruction-selector itself is generated. This
+  is structurally similar to how MLIR's TableGen works but is far
+  smaller and self-contained.
+- **Hardening-by-default** — Spectre v1 mitigation, CFI, no unbounded
+  recursion, fuzz-tested for OOM/timeout. Cranelift is "specifically
+  hardened against malicious compiler input."
+- **No middle-end** — by design. The vision in the docs is that
+  frontends produce *codegen* IR, with optimizer IR being a
+  *projection out of* codegen IR rather than a layer above.
+
+QBE (Quentin Carbonneaux) is a counter-example in the opposite
+direction: ~10K LOC, no register allocator more advanced than a
+graph-coloring variant, targets only amd64/aarch64/riscv64. The HARE
+language uses it; Cproc uses it. It demonstrates that a *single
+person* can ship an SSA backend covering three major ISAs.
+
+Other points on the spectrum worth knowing:
+
+- **mir** (Vladimir Makarov, Red Hat) — a JIT/AOT light backend used
+  by MRuby; ~15K LOC; explicit goal of being a "tiny LLVM" with
+  predictable performance.
+- **copy-and-patch** (Xu and Kjolstad, PLDI 2021) — uses stencils
+  generated from C templates, achieving compile times ~100× faster
+  than Cranelift with reasonable codegen quality. The stencil
+  database is itself a compile-target.
+- **bjorn3's cg_clif** — the Rust-to-Cranelift glue (>3,000 commits)
+  demonstrates that you can attach a foreign frontend to a foreign
+  backend through a thin lowering library. The total custom code is
+  small.
+
+**What "self-hosted backend without LLVM design inheritance" looks
+like.** The design choices to consciously *not* inherit from LLVM are
+well-documented in the Cranelift comparison page and in the
+literature critiquing LLVM IR (notably the absence of clean
+infinite-loop semantics, the GEP encoding of address arithmetic, the
+way SSA-with-phi conflates control and data dependence). A sovereign
+SIGIL backend can take the following positions:
+
+1. **No undefined behavior at the IR level**, matching Cranelift's
+   stance. The IR's semantics are total; every program means
+   something. Side-effect freedom and pointer provenance are
+   first-class in the IR rather than retrofitted via attributes.
+2. **Basic blocks with block parameters instead of phi nodes** (the
+   "Swift SIL" / "Cranelift CLIF" style). This eliminates an entire
+   class of phi-placement bugs and is structurally identical to
+   functional CPS.
+3. **E-graph–based middle-end** — equality saturation (Tate, Stepp,
+   Tatlock, Lerner, POPL 2009; ægraphs in Cranelift, Fallin 2023)
+   replaces the ordered pass-pipeline model. The IR becomes a
+   database of equivalent forms; rewriting is non-destructive. This
+   is structurally adjacent to interaction-combinator rewriting
+   (HVM2) and graph-rewriting (Maude/K Framework) — see §14 and §41.
+4. **ISA selection as pattern matching over a typed term language** —
+   ISLE-style, but with the patterns generated from a *hardware
+   specification* (Sail, the formal ISA semantics used for ARMv8 and
+   RISC-V) rather than hand-written. This is the Sail-to-ISLE path
+   that the rems-project has been exploring (Sail is the official
+   RISC-V ISA model and now the official ARM-A semantics; ARM
+   publishes Sail in the ARM ARM as the source of truth as of
+   ARMv8.6+).
+5. **Register allocation as a constraint problem**, not a heuristic.
+   Regalloc2 (Cranelift's allocator, Fallin 2021–2024) is a
+   backtracking single-pass allocator. The next frontier is
+   SAT/SMT-encoded regalloc as a fallback for hot kernels, with
+   deterministic heuristics for cold code. The papers to read:
+   Pereira-Palsberg "Register Allocation by Puzzle Solving"
+   (PLDI 2008), Lozano et al.'s Unison constraint-based assembler
+   (note: unrelated to Unison-lang).
+
+**Bootstrap path.** A solo developer can realistically:
+- Year 0–1: Use Cranelift as a bootstrap backend (this is what you
+  have). Ship CLIF emission. Get a working language.
+- Year 1–3: Build a SIGIL-IR → x86-64 direct backend in SIGIL itself,
+  using Sail as the formal-semantics source, generating instruction
+  encodings by table. Cover the integer/scalar subset first; SIMD
+  comes later. The Wasm reference interpreter pattern is a good
+  model — a slow-but-correct backend that becomes the oracle for the
+  fast backend.
+- Year 3–5: AArch64 and RISC-V via the same Sail-derived approach. By
+  this point the IR is independent of Cranelift, and Cranelift can
+  be dropped.
+- Year 5+: The backend is itself written in SIGIL, the language
+  bootstraps, and the e-graph optimizer is shared between the
+  language's middle-end and its peephole optimizer.
+
+The unfashionable insight: **modern instruction encoding tables are
+small enough to type into a file.** x86-64 has roughly 1500 distinct
+instruction encodings; AArch64's base ISA has roughly 1000; RISC-V's
+base + M + A + F + D + C is roughly 200. The cost of "writing an x86
+assembler from scratch" in person-months is real but bounded. What
+used to require LLVM's monumental TableGen infrastructure is now a
+few thousand lines of Sail-generated code.
+
+## §2. GPU-resident state and persistent kernels: kernels that never return
+
+This is one of the most consequential frontiers because the underlying
+hardware reality has shifted **in 2024–2025** in a way most languages
+have not yet absorbed.
+
+The GPU has stopped being a function-call accelerator. With
+**D3D12 Work Graphs 1.0 (March 2024)** and **Work Graphs 1.1 with
+mesh nodes (2024–2025)**, the hardware-vendor consensus (Microsoft,
+AMD, NVIDIA, Intel, Qualcomm all signed onto the spec) is that **a
+live shader kernel can dispatch new workloads on the GPU itself,
+without round-tripping to the CPU.** The Microsoft DirectX devblog
+from March 2024 and the AMD GPUOpen primer state this directly: work
+graphs eliminate inter-pass barriers, allow the GPU scheduler to
+handle synchronization and data-flow, and reduce CPU↔GPU
+communication. AMD's Adrenalin 23.40 driver shipped support on RDNA3+;
+NVIDIA shipped it on RTX 30+ with driver 551.76; Intel and Qualcomm
+followed. Authoring uses HLSL shader model 6.8 with `SV_DispatchGrid`
+and record-based input/output nodes.
+
+Persistent kernels (kernels that loop forever, pulling work from a
+queue) are an older idea — Aila & Laine "Understanding the Efficiency
+of Ray Traversal on GPUs" (HPG 2009) introduced "persistent threads"
+for ray tracing. The CUDA Graphs API (CUDA 10+, 2018) lets you submit
+a captured graph of operations as a single launch. Vulkan timeline
+semaphores (Vulkan 1.2, 2020) provide monotonic fence-style
+synchronization that allows the kernel to coordinate with itself
+across queues without CPU intervention.
+
+The frontier these point at is: **what would a language look like
+where "a kernel that never returns" is a first-class type?**
+
+Candidate semantics:
+- A `Persistent[A,B]` type representing a coroutine-style kernel that
+  consumes work-items of type `A`, produces type `B`, and is
+  parameterized by a queue capability.
+- Region inference for GPU-resident vs CPU-resident state, similar to
+  how Sequoia/Legion/Regent (Stanford, Aiken's group; Bauer et al.,
+  "Legion: Expressing Locality and Independence with Logical
+  Regions," SC12) tracked physical region placement.
+- Spawn/dispatch as an *effect* (per §24) — a function with a
+  `<gpu_dispatch>` effect can launch sub-work on the GPU itself, and
+  the type system forbids that effect from being raised outside a
+  `Persistent` body.
+- Treating CUDA Graphs / work graphs as the *compilation target* of a
+  structured-concurrency block. The CSP/Pi-calculus tradition (§37)
+  already has the right algebraic structure for this; what's new is
+  mapping it to silicon-level work-graph nodes.
+
+Cross-vendor reality: AMD's **MI300A** (APU; Zen 4 + CDNA 3 chiplets +
+128 GB HBM3 unified memory; ~5.3 TB/s) and **MI300X** (CDNA3 only,
+192 GB HBM3, ~5.3 TB/s) collapse the host/device distinction at the
+*hardware* level. The 2025 ACM SC paper on Mojo's portability (Godoy
+et al., arXiv:2509.21039) reports that Mojo on MI300A matches HIP on
+memory-bound stencils — the relevance to a sovereign language is not
+the Mojo result but the *implication that a single source language
+can hit AMD and NVIDIA with the same kernel,* if the IR is rich
+enough. That's exactly what a non-LLVM, non-MLIR sovereign IR has to
+support.
+
+**Mesh shaders + work-graph mesh nodes (Shader Model 6.8, 2024)**
+make the entire rasterization frontend programmable. The frontier is
+no longer just compute kernels — it's a programmable, GPU-resident,
+work-graph-driven *rendering pipeline.* A language that compiles the
+same source to a work-graph node, a mesh-shader stage, and a compute
+kernel is the natural unification.
+
+Speculative but warranted extrapolation: **`forever` as a control
+flow primitive**, alongside `if`/`while`, with a type that says "this
+function does not return, it produces an effect stream, and it can be
+detached and run on a remote substrate." This is the GPU analog of
+choreographic programming (§30).

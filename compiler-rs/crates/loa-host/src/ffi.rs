@@ -611,11 +611,7 @@ pub fn take_pending_gltf_spawns() -> Vec<GltfPendingSpawn> {
 /// `instance_id = 0` for the C ABI.
 ///
 /// This is the path the MCP `world.spawn_gltf` tool calls.
-pub fn spawn_gltf_path(
-    path: PathBuf,
-    world_pos: [f32; 3],
-    scale: f32,
-) -> Result<u32, String> {
+pub fn spawn_gltf_path(path: PathBuf, world_pos: [f32; 3], scale: f32) -> Result<u32, String> {
     let parsed = gltf_loader::load_gltf(&path).map_err(|e| {
         GLTF_SPAWN_REJECTS_TOTAL.fetch_add(1, Ordering::Relaxed);
         crate::telemetry::global().record_gltf_spawn_reject("parse_fail");
@@ -760,9 +756,8 @@ pub extern "C" fn __cssl_world_gltf_spawns_total() -> u64 {
 
 /// Pending intent-sow request from the FFI side. The window-loop drains
 /// these on the next frame just like the MCP-side requests.
-static SPONTANEOUS_FFI_PENDING: std::sync::Mutex<
-    Vec<(String, [f32; 3])>,
-> = std::sync::Mutex::new(Vec::new());
+static SPONTANEOUS_FFI_PENDING: std::sync::Mutex<Vec<(String, [f32; 3])>> =
+    std::sync::Mutex::new(Vec::new());
 
 /// Submit an intent-sow request from pure-CSSL (or a host-side test).
 /// `text` is a UTF-8 byte buffer + length. `(x, y, z)` is the world-space
@@ -810,9 +805,7 @@ pub unsafe extern "C" fn __cssl_world_spontaneous_seed(
     log_event(
         "INFO",
         "loa-host/ffi",
-        &format!(
-            "world.spontaneous_seed · queued · text={text:?} · origin=({x:.2},{y:.2},{z:.2})"
-        ),
+        &format!("world.spontaneous_seed · queued · text={text:?} · origin=({x:.2},{y:.2},{z:.2})"),
     );
     0
 }
@@ -975,11 +968,7 @@ pub extern "C" fn __cssl_chat_history_role(idx: u32) -> u32 {
 /// # Safety
 /// Caller guarantees `out_ptr` is a writable buffer of `max_len` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn __cssl_chat_history_read(
-    idx: u32,
-    out_ptr: *mut u8,
-    max_len: u32,
-) -> u32 {
+pub unsafe extern "C" fn __cssl_chat_history_read(idx: u32, out_ptr: *mut u8, max_len: u32) -> u32 {
     let s = match chat_panel_mirror().lock() {
         Ok(g) => g
             .history
@@ -1007,10 +996,7 @@ pub unsafe extern "C" fn __cssl_chat_history_read(
 /// # Safety
 /// `text_ptr` must point to `text_len` valid bytes alive for this call.
 #[no_mangle]
-pub unsafe extern "C" fn __cssl_chat_submit_enqueue(
-    text_ptr: *const u8,
-    text_len: u32,
-) -> i32 {
+pub unsafe extern "C" fn __cssl_chat_submit_enqueue(text_ptr: *const u8, text_len: u32) -> i32 {
     if text_ptr.is_null() || text_len == 0 {
         return -3;
     }
@@ -1054,10 +1040,22 @@ pub enum UiDrawCmd {
     /// Solid-fill rectangle. (x_norm, y_norm) is top-left ; (w_norm, h_norm)
     /// is size · all in 0..1 normalized coordinates. `rgba` is packed
     /// 0xRRGGBBAA.
-    Quad { x: f32, y: f32, w: f32, h: f32, rgba: u32 },
+    Quad {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        rgba: u32,
+    },
     /// Text string. Same coord convention as Quad. `scale` is glyph-height
     /// pixel-multiplier (1.0 = 8px tall, 2.0 = 16px tall).
-    Text { x: f32, y: f32, scale: f32, text: String, rgba: u32 },
+    Text {
+        x: f32,
+        y: f32,
+        scale: f32,
+        text: String,
+        rgba: u32,
+    },
 }
 
 fn ui_draw_queue() -> &'static Mutex<Vec<UiDrawCmd>> {
@@ -1323,15 +1321,7 @@ mod tests {
     #[test]
     fn ffi_spawn_gltf_rejects_null_path() {
         let id = unsafe {
-            __cssl_world_spawn_gltf(
-                std::ptr::null(),
-                0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                SOVEREIGN_CAP_U64,
-            )
+            __cssl_world_spawn_gltf(std::ptr::null(), 0, 0.0, 0.0, 0.0, 1.0, SOVEREIGN_CAP_U64)
         };
         assert_eq!(id, 0);
     }
@@ -1386,14 +1376,7 @@ mod tests {
         let _ = take_pending_spontaneous_ffi();
         let text = b"cube";
         let rc = unsafe {
-            __cssl_world_spontaneous_seed(
-                text.as_ptr(),
-                text.len(),
-                0.0,
-                0.0,
-                0.0,
-                0xDEAD,
-            )
+            __cssl_world_spontaneous_seed(text.as_ptr(), text.len(), 0.0, 0.0, 0.0, 0xDEAD)
         };
         assert_eq!(rc, -2);
         // No queue side-effect.
@@ -1406,27 +1389,13 @@ mod tests {
         let _ = take_pending_spontaneous_ffi();
         // Null pointer → -3.
         let rc = unsafe {
-            __cssl_world_spontaneous_seed(
-                std::ptr::null(),
-                0,
-                0.0,
-                0.0,
-                0.0,
-                SOVEREIGN_CAP_U64,
-            )
+            __cssl_world_spontaneous_seed(std::ptr::null(), 0, 0.0, 0.0, 0.0, SOVEREIGN_CAP_U64)
         };
         assert_eq!(rc, -3);
         // Zero-length text → -3.
         let text = b"x";
         let rc = unsafe {
-            __cssl_world_spontaneous_seed(
-                text.as_ptr(),
-                0,
-                0.0,
-                0.0,
-                0.0,
-                SOVEREIGN_CAP_U64,
-            )
+            __cssl_world_spontaneous_seed(text.as_ptr(), 0, 0.0, 0.0, 0.0, SOVEREIGN_CAP_U64)
         };
         assert_eq!(rc, -3);
     }
@@ -1462,9 +1431,7 @@ mod tests {
         let _g = chat_test_lock();
         publish_chat_panel(true, "hi there".to_string(), Vec::new());
         let mut buf = [0u8; 64];
-        let n = unsafe {
-            __cssl_chat_buffer_read(buf.as_mut_ptr(), buf.len() as u32)
-        };
+        let n = unsafe { __cssl_chat_buffer_read(buf.as_mut_ptr(), buf.len() as u32) };
         assert_eq!(n, 8);
         assert_eq!(&buf[..8], b"hi there");
         assert_eq!(buf[8], 0); // NUL terminator
@@ -1474,10 +1441,22 @@ mod tests {
     fn ffi_chat_history_count_and_role_reflect_publish() {
         let _g = chat_test_lock();
         let history = vec![
-            ChatPanelEntry { role_id: 0, text: "hi gm".to_string() },
-            ChatPanelEntry { role_id: 1, text: "the room hums".to_string() },
-            ChatPanelEntry { role_id: 0, text: "snapshot".to_string() },
-            ChatPanelEntry { role_id: 1, text: "ok · snapshot queued".to_string() },
+            ChatPanelEntry {
+                role_id: 0,
+                text: "hi gm".to_string(),
+            },
+            ChatPanelEntry {
+                role_id: 1,
+                text: "the room hums".to_string(),
+            },
+            ChatPanelEntry {
+                role_id: 0,
+                text: "snapshot".to_string(),
+            },
+            ChatPanelEntry {
+                role_id: 1,
+                text: "ok · snapshot queued".to_string(),
+            },
         ];
         publish_chat_panel(false, String::new(), history);
         assert_eq!(__cssl_chat_history_count(), 4);
@@ -1495,9 +1474,7 @@ mod tests {
         }];
         publish_chat_panel(false, String::new(), history);
         let mut buf = [0u8; 256];
-        let n = unsafe {
-            __cssl_chat_history_read(0, buf.as_mut_ptr(), buf.len() as u32)
-        };
+        let n = unsafe { __cssl_chat_history_read(0, buf.as_mut_ptr(), buf.len() as u32) };
         assert_eq!(n, "ok · snapshot queued (PNG forthcoming)".len() as u32);
         let s = std::str::from_utf8(&buf[..n as usize]).expect("valid UTF-8");
         assert_eq!(s, "ok · snapshot queued (PNG forthcoming)");
@@ -1601,7 +1578,9 @@ mod tests {
         let pending = take_pending_ui_draws();
         assert_eq!(pending.len(), 1);
         match &pending[0] {
-            UiDrawCmd::Text { text, scale, rgba, .. } => {
+            UiDrawCmd::Text {
+                text, scale, rgba, ..
+            } => {
                 assert_eq!(text, "hello");
                 assert!((scale - 2.0).abs() < 1e-6);
                 assert_eq!(*rgba, 0xFF_FF_FF_FF);

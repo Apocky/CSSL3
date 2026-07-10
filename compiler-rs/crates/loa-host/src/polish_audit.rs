@@ -8,13 +8,15 @@
 //!   five disjoint polish-pass concerns wired into a single audit-report
 //!   surface :
 //!
-//!     1. KeymapAuditor   · validates ALL keymap-assignments are reachable
-//!     2. WcagContrast    · WCAG-2.1 AA color-contrast check for HUD text
-//!     3. AccessibilityTunables · 5 player-tunable axes (heat / smoke / hammer / bloom / fog)
-//!     4. LoadingSpinner  · ≥1s no-feedback detection · spinner-trigger
-//!     5. RenderModeFlash · 30-frame visual-flash on render-mode cycle
-//!     6. PerfBudget      · per-tick frame-time budget (60fps 16.67ms · 120fps 8.33ms)
-//!     7. PolishIssue     · JSONL audit-trail (severity + status + Σ-mask-gated)
+//! ```text
+//! 1. KeymapAuditor   · validates ALL keymap-assignments are reachable
+//! 2. WcagContrast    · WCAG-2.1 AA color-contrast check for HUD text
+//! 3. AccessibilityTunables · 5 player-tunable axes (heat / smoke / hammer / bloom / fog)
+//! 4. LoadingSpinner  · ≥1s no-feedback detection · spinner-trigger
+//! 5. RenderModeFlash · 30-frame visual-flash on render-mode cycle
+//! 6. PerfBudget      · per-tick frame-time budget (60fps 16.67ms · 120fps 8.33ms)
+//! 7. PolishIssue     · JSONL audit-trail (severity + status + Σ-mask-gated)
+//! ```
 //!
 //!   Accessibility-axiom (Apocky-greenlit, LOA_PILLARS § 5) :
 //!     ALL sensory-intense effects (heat-shimmer · smoke-density · hammer-sound-volume
@@ -158,7 +160,11 @@ impl AccessibilityTunables {
     /// Setter : subtitle-duration (in seconds, clamped to [0.5, 16.0],
     /// stored as normalized 0..1).
     pub fn set_subtitle_duration_seconds(&mut self, seconds: f32) {
-        let s = if seconds.is_nan() { 4.0 } else { seconds.clamp(0.5, 16.0) };
+        let s = if seconds.is_nan() {
+            4.0
+        } else {
+            seconds.clamp(0.5, 16.0)
+        };
         self.subtitle_duration = s / 16.0;
     }
 
@@ -230,42 +236,166 @@ pub fn canonical_keymap() -> &'static [KeymapEntry] {
     // 32 entries · all stable · used by MCP help submenu, tooltips, audit
     &[
         // Movement
-        KeymapEntry { key: "W", action: "move forward", reachable: true },
-        KeymapEntry { key: "A", action: "strafe left", reachable: true },
-        KeymapEntry { key: "S", action: "move backward", reachable: true },
-        KeymapEntry { key: "D", action: "strafe right", reachable: true },
-        KeymapEntry { key: "Space", action: "rise / jump", reachable: true },
-        KeymapEntry { key: "LCtrl", action: "descend / crouch", reachable: true },
-        KeymapEntry { key: "LShift", action: "sprint modifier", reachable: true },
+        KeymapEntry {
+            key: "W",
+            action: "move forward",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "A",
+            action: "strafe left",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "S",
+            action: "move backward",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "D",
+            action: "strafe right",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "Space",
+            action: "rise / jump",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "LCtrl",
+            action: "descend / crouch",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "LShift",
+            action: "sprint modifier",
+            reachable: true,
+        },
         // Modal
-        KeymapEntry { key: "Esc", action: "open menu / cancel chat", reachable: true },
-        KeymapEntry { key: "Tab", action: "pause / resume", reachable: true },
-        KeymapEntry { key: "`", action: "toggle debug overlay", reachable: true },
-        KeymapEntry { key: "/", action: "focus chat with GM", reachable: true },
-        KeymapEntry { key: "Backspace", action: "delete char (in chat)", reachable: true },
-        KeymapEntry { key: "Enter", action: "submit chat / activate menu item", reachable: true },
+        KeymapEntry {
+            key: "Esc",
+            action: "open menu / cancel chat",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "Tab",
+            action: "pause / resume",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "`",
+            action: "toggle debug overlay",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "/",
+            action: "focus chat with GM",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "Backspace",
+            action: "delete char (in chat)",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "Enter",
+            action: "submit chat / activate menu item",
+            reachable: true,
+        },
         // Render-mode (F1-F10)
-        KeymapEntry { key: "F1", action: "render mode 0 · DEFAULT", reachable: true },
-        KeymapEntry { key: "F2", action: "render mode 1 · WIREFRAME", reachable: true },
-        KeymapEntry { key: "F3", action: "render mode 2 · NORMALS", reachable: true },
-        KeymapEntry { key: "F4", action: "render mode 3 · DEPTH", reachable: true },
-        KeymapEntry { key: "F5", action: "render mode 4 · ALBEDO", reachable: true },
-        KeymapEntry { key: "F6", action: "render mode 5 · LIGHTING", reachable: true },
-        KeymapEntry { key: "F7", action: "render mode 6 · COMPASS · run tour", reachable: true },
-        KeymapEntry { key: "F8", action: "render mode 7 · SUBSTRATE · video toggle", reachable: true },
-        KeymapEntry { key: "F9", action: "render mode 8 · SPECTRAL-KAN · burst", reachable: true },
-        KeymapEntry { key: "F10", action: "render mode 9 · DEBUG", reachable: true },
+        KeymapEntry {
+            key: "F1",
+            action: "render mode 0 · DEFAULT",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F2",
+            action: "render mode 1 · WIREFRAME",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F3",
+            action: "render mode 2 · NORMALS",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F4",
+            action: "render mode 3 · DEPTH",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F5",
+            action: "render mode 4 · ALBEDO",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F6",
+            action: "render mode 5 · LIGHTING",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F7",
+            action: "render mode 6 · COMPASS · run tour",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F8",
+            action: "render mode 7 · SUBSTRATE · video toggle",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F9",
+            action: "render mode 8 · SPECTRAL-KAN · burst",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F10",
+            action: "render mode 9 · DEBUG",
+            reachable: true,
+        },
         // Capture
-        KeymapEntry { key: "F11", action: "fullscreen toggle (window.rs)", reachable: true },
-        KeymapEntry { key: "F12", action: "screenshot", reachable: true },
+        KeymapEntry {
+            key: "F11",
+            action: "fullscreen toggle (window.rs)",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "F12",
+            action: "screenshot",
+            reachable: true,
+        },
         // Polarization + atmospheric
-        KeymapEntry { key: "P", action: "cycle polarization view (5 sub-modes)", reachable: true },
-        KeymapEntry { key: "C", action: "CFER atmospheric toggle", reachable: true },
+        KeymapEntry {
+            key: "P",
+            action: "cycle polarization view (5 sub-modes)",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "C",
+            action: "CFER atmospheric toggle",
+            reachable: true,
+        },
         // Menu navigation
-        KeymapEntry { key: "ArrowUp", action: "menu up / scroll help", reachable: true },
-        KeymapEntry { key: "ArrowDown", action: "menu down / scroll help", reachable: true },
-        KeymapEntry { key: "ArrowLeft", action: "render-mode -1 (in menu)", reachable: true },
-        KeymapEntry { key: "ArrowRight", action: "render-mode +1 (in menu)", reachable: true },
+        KeymapEntry {
+            key: "ArrowUp",
+            action: "menu up / scroll help",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "ArrowDown",
+            action: "menu down / scroll help",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "ArrowLeft",
+            action: "render-mode -1 (in menu)",
+            reachable: true,
+        },
+        KeymapEntry {
+            key: "ArrowRight",
+            action: "render-mode +1 (in menu)",
+            reachable: true,
+        },
     ]
 }
 
@@ -482,7 +612,11 @@ pub fn audit_hud_contrast() -> Vec<WcagAuditRow> {
         ("white-on-black", [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]),
         ("white-on-darkpanel", [1.0, 1.0, 1.0], [0.04, 0.05, 0.10]),
         ("dim-on-darkpanel", [0.75, 0.78, 0.85], [0.04, 0.05, 0.10]),
-        ("highlight-on-darkpanel", [1.0, 0.85, 0.20], [0.04, 0.05, 0.10]),
+        (
+            "highlight-on-darkpanel",
+            [1.0, 0.85, 0.20],
+            [0.04, 0.05, 0.10],
+        ),
         ("white-on-midgray", [1.0, 1.0, 1.0], [0.5, 0.5, 0.5]),
         ("chat-cyan-on-black", [0.55, 0.90, 1.00], [0.0, 0.0, 0.0]),
         ("chat-violet-on-black", [0.85, 0.65, 1.00], [0.0, 0.0, 0.0]),
@@ -492,7 +626,13 @@ pub fn audit_hud_contrast() -> Vec<WcagAuditRow> {
         .map(|(label, fg, bg)| {
             let ratio = contrast_ratio(*fg, *bg);
             let grade = ContrastGrade::from_ratio(ratio);
-            WcagAuditRow { label, fg: *fg, bg: *bg, ratio, grade }
+            WcagAuditRow {
+                label,
+                fg: *fg,
+                bg: *bg,
+                ratio,
+                grade,
+            }
         })
         .collect()
 }
@@ -1155,17 +1295,36 @@ mod tests {
     fn keymap_roundtrip_covers_all_virtual_keys_minus_other() {
         // Every VirtualKey except Other must roundtrip to an entry.
         let all = [
-            VirtualKey::W, VirtualKey::A, VirtualKey::S, VirtualKey::D,
-            VirtualKey::Space, VirtualKey::LCtrl, VirtualKey::LShift,
-            VirtualKey::Escape, VirtualKey::Tab, VirtualKey::Backtick,
-            VirtualKey::Slash, VirtualKey::Backspace, VirtualKey::Enter,
+            VirtualKey::W,
+            VirtualKey::A,
+            VirtualKey::S,
+            VirtualKey::D,
+            VirtualKey::Space,
+            VirtualKey::LCtrl,
+            VirtualKey::LShift,
+            VirtualKey::Escape,
+            VirtualKey::Tab,
+            VirtualKey::Backtick,
+            VirtualKey::Slash,
+            VirtualKey::Backspace,
+            VirtualKey::Enter,
             VirtualKey::P,
-            VirtualKey::F1, VirtualKey::F2, VirtualKey::F3, VirtualKey::F4,
-            VirtualKey::F5, VirtualKey::F6, VirtualKey::F7, VirtualKey::F8,
-            VirtualKey::F9, VirtualKey::F10, VirtualKey::F12,
+            VirtualKey::F1,
+            VirtualKey::F2,
+            VirtualKey::F3,
+            VirtualKey::F4,
+            VirtualKey::F5,
+            VirtualKey::F6,
+            VirtualKey::F7,
+            VirtualKey::F8,
+            VirtualKey::F9,
+            VirtualKey::F10,
+            VirtualKey::F12,
             VirtualKey::C,
-            VirtualKey::ArrowUp, VirtualKey::ArrowDown,
-            VirtualKey::ArrowLeft, VirtualKey::ArrowRight,
+            VirtualKey::ArrowUp,
+            VirtualKey::ArrowDown,
+            VirtualKey::ArrowLeft,
+            VirtualKey::ArrowRight,
         ];
         for vk in all {
             assert!(
@@ -1180,7 +1339,11 @@ mod tests {
     #[test]
     fn canonical_keymap_at_least_30_entries() {
         let km = canonical_keymap();
-        assert!(km.len() >= 30, "expected ≥30 keymap entries · got {}", km.len());
+        assert!(
+            km.len() >= 30,
+            "expected ≥30 keymap entries · got {}",
+            km.len()
+        );
         // Stable order : F1 must precede F10
         let f1_idx = km.iter().position(|e| e.key == "F1").unwrap();
         let f10_idx = km.iter().position(|e| e.key == "F10").unwrap();

@@ -1,0 +1,176 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// examples/loa_substrate_stress_lab.cssl
+// § LoA/Substrate operator stress-lab menu + room catalog.
+// Source synthesis:
+//   - Labyrinth of Apocalypse/scenes/test_room.cssl
+//   - Labyrinth of Apocalypse/scenes/stress_objects.cssl
+//   - Labyrinth of Apocalypse/scenes/ui_hud.cssl
+//   - LoA v14/specs/architecture/TEST_ROOM_SPEC.csl.md
+//   - infinite-labyrinth/specs/16_RENDERING.md
+//   - infinite-labyrinth/specs/20_UI_DESIGN_BIBLE.md
+//   - TIL5/08_RENDERING.md
+//
+// Runtime bridge:
+//   LOA_V3_STRESS_ROOM={shells|printer|material|hair|portal|arena}
+//   tools/render-v3/run_stress_lab_bench.cmd -Quick -Open
+
+module com.apocky.loa.substrate_stress_lab
+
+const ROOM_SHELLS   : u32 = 0
+const ROOM_PRINTER  : u32 = 1
+const ROOM_MATERIAL : u32 = 2
+const ROOM_HAIR     : u32 = 3
+const ROOM_PORTAL   : u32 = 4
+const ROOM_ARENA    : u32 = 5
+const ROOM_COUNT    : u32 = 6
+
+const MENU_MAIN     : u32 = 0
+const MENU_ROOM     : u32 = 1
+const MENU_METRICS  : u32 = 2
+const MENU_EVIDENCE : u32 = 3
+
+struct StressRoom {
+    id              : u32,
+    key_hash        : u32,
+    target_kind     : u32,
+    world_crystals  : u32,
+    active_cap      : u32,
+    required_views  : u32,
+    budget_144_us   : u32,
+    budget_240_us   : u32,
+}
+
+struct StressMenu {
+    screen          : u32,
+    selected_room   : u32,
+    selected_item   : u32,
+    overlay_mask    : u32,
+    show_metrics    : bool,
+    show_evidence   : bool,
+}
+
+fn room_catalog(index : u32) -> StressRoom {
+    if index == ROOM_PRINTER {
+        return StressRoom {
+            id: ROOM_PRINTER,
+            key_hash: 0x7052494Eu32,        // PRIN
+            target_kind: 1u32,              // calibration/printer hard edges
+            world_crystals: 1024u32,
+            active_cap: 128u32,
+            required_views: 3u32,
+            budget_144_us: 6944u32,
+            budget_240_us: 4166u32,
+        }
+    }
+    if index == ROOM_MATERIAL {
+        return StressRoom {
+            id: ROOM_MATERIAL,
+            key_hash: 0x4D41544Cu32,        // MATL
+            target_kind: 2u32,              // material/PBR diversity proxy
+            world_crystals: 1024u32,
+            active_cap: 128u32,
+            required_views: 3u32,
+            budget_144_us: 6944u32,
+            budget_240_us: 4166u32,
+        }
+    }
+    if index == ROOM_HAIR {
+        return StressRoom {
+            id: ROOM_HAIR,
+            key_hash: 0x48414952u32,        // HAIR
+            target_kind: 3u32,              // hair/fractal/fuzz density
+            world_crystals: 1024u32,
+            active_cap: 128u32,
+            required_views: 3u32,
+            budget_144_us: 6944u32,
+            budget_240_us: 4166u32,
+        }
+    }
+    if index == ROOM_PORTAL {
+        return StressRoom {
+            id: ROOM_PORTAL,
+            key_hash: 0x504F5254u32,        // PORT
+            target_kind: 4u32,              // portal/moire/interference
+            world_crystals: 1024u32,
+            active_cap: 128u32,
+            required_views: 3u32,
+            budget_144_us: 6944u32,
+            budget_240_us: 4166u32,
+        }
+    }
+    if index == ROOM_ARENA {
+        return StressRoom {
+            id: ROOM_ARENA,
+            key_hash: 0x4152454Eu32,        // AREN
+            target_kind: 5u32,              // competitive readability
+            world_crystals: 1024u32,
+            active_cap: 128u32,
+            required_views: 3u32,
+            budget_144_us: 6944u32,
+            budget_240_us: 4166u32,
+        }
+    }
+    StressRoom {
+        id: ROOM_SHELLS,
+        key_hash: 0x53484C4Cu32,            // SHLL
+        target_kind: 0u32,
+        world_crystals: 1024u32,
+        active_cap: 128u32,
+        required_views: 3u32,
+        budget_144_us: 6944u32,
+        budget_240_us: 4166u32,
+    }
+}
+
+fn menu_default() -> StressMenu {
+    StressMenu {
+        screen: MENU_MAIN,
+        selected_room: ROOM_PRINTER,
+        selected_item: 0u32,
+        overlay_mask: 0b111u32,
+        show_metrics: true,
+        show_evidence: true,
+    }
+}
+
+fn menu_select_next_room(menu : StressMenu) -> StressMenu {
+    let next = (menu.selected_room + 1u32) % ROOM_COUNT
+    StressMenu { selected_room: next, ..menu }
+}
+
+fn menu_select_prev_room(menu : StressMenu) -> StressMenu {
+    let prev = if menu.selected_room == 0u32 { ROOM_COUNT - 1u32 } else { menu.selected_room - 1u32 }
+    StressMenu { selected_room: prev, ..menu }
+}
+
+fn room_is_release_gate(room : StressRoom) -> bool {
+    room.budget_144_us == 6944u32
+        && room.budget_240_us == 4166u32
+        && room.required_views >= 3u32
+        && room.world_crystals >= 1000u32
+}
+
+fn room_active_scene_gap(room : StressRoom) -> bool {
+    room.active_cap < 1000u32
+}
+
+fn suite_has_known_active_gap() -> bool {
+    let mut i : u32 = 0u32
+    while i < ROOM_COUNT {
+        if room_active_scene_gap(room_catalog(i)) {
+            return true
+        }
+        i = i + 1u32
+    }
+    false
+}
+
+fn main() -> i32 {
+    let menu = menu_default()
+    let room = room_catalog(menu.selected_room)
+    if room_is_release_gate(room) && suite_has_known_active_gap() {
+        return 1
+    }
+    2
+}

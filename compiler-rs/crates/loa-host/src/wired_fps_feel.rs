@@ -24,8 +24,8 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub use cssl_host_fps_feel::{
-    AdsState, BloomState, CrosshairSkin, CrosshairState, FpsFeelInput, FpsFeelTick,
-    HitFlashKind, RecoilState, WeaponArchetype,
+    AdsState, BloomState, CrosshairSkin, CrosshairState, FpsFeelInput, FpsFeelTick, HitFlashKind,
+    RecoilState, WeaponArchetype,
 };
 
 /// § Per-frame fps-feel input bundle from the host's `InputFrame`.

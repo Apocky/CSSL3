@@ -1,0 +1,155 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § examples/hello_million_entities.cssl
+//
+// Pure-CSSL bring-up target for the 6-wave renderer refactor.
+// Spec : specs/16_TRANSPORT_TIERS.csl § TARGET-METRIC
+// Target : 1440p fullscreen · 144 Hz · 1_000_000 entities · pure CSSL.
+//
+// This example is intentionally a structural smoke at W-0..W-6 scaffold
+// stage. Once cssl-rt host_gpu transport symbols are driver-active, this
+// becomes the actual perf benchmark: upload one cube mesh, generate 1M raw
+// TRS instances, upload InstanceData SSBO + indirect args, record one
+// indirect draw, present fullscreen.
+
+module examples.hello_million_entities
+
+use std::result::Result
+
+use std::gpu::Device
+use std::gpu::GpuBackend
+use std::gpu::GpuError
+use std::gpu::device_create
+use std::gpu::device_destroy
+
+use com.apocky.engine.conventions::target_resolution_width
+use com.apocky.engine.conventions::target_resolution_height
+use com.apocky.engine.conventions::target_refresh_hz
+use com.apocky.engine.conventions::target_entity_count
+use com.apocky.engine.conventions::target_frame_budget_us
+use com.apocky.engine.conventions::_assert_projection_card_all
+
+use com.apocky.engine.mesh::MeshPool
+use com.apocky.engine.mesh::MeshHandle
+use com.apocky.engine.mesh::mesh_pool_default_1m_entities
+use com.apocky.engine.mesh::mesh_pool_upload
+use com.apocky.engine.mesh::mesh_pool_handle_for_last
+use com.apocky.engine.mesh::mesh_pool_destroy
+use com.apocky.engine.mesh::make_unit_cube_vertices
+use com.apocky.engine.mesh::make_unit_cube_indices
+
+use com.apocky.engine.instance::InstanceBatch
+use com.apocky.engine.instance::instance_batch_make_grid
+use com.apocky.engine.instance::_test_instance_stride_is_64
+use com.apocky.engine.instance::_test_push_constants_fit_t0
+use com.apocky.engine.instance::_test_1m_grid_cuberoot
+
+use com.apocky.engine.frame_arena::ArenaConfig
+use com.apocky.engine.frame_arena::FrameArena
+use com.apocky.engine.frame_arena::arena_config_default_1m_entities
+use com.apocky.engine.frame_arena::frame_arena_new
+use com.apocky.engine.frame_arena::frame_arena_begin_frame
+use com.apocky.engine.frame_arena::frame_arena_destroy
+
+use com.apocky.engine.frame_graph::FrameGraphConfig
+use com.apocky.engine.frame_graph::FrameGraphState
+use com.apocky.engine.frame_graph::frame_graph_config_1m_1440p_144hz
+use com.apocky.engine.frame_graph::frame_graph_state_new
+use com.apocky.engine.frame_graph::_test_push_constant_size_fits
+use com.apocky.engine.frame_graph::_test_1m_dispatch_groups
+use com.apocky.engine.frame_graph::_test_config_targets_1m_144hz
+
+use com.apocky.engine.profiler::FrameProfiler
+use com.apocky.engine.profiler::frame_profiler_new
+use com.apocky.engine.profiler::frame_profiler_begin_frame
+use com.apocky.engine.profiler::_test_build_budget_250us
+use com.apocky.engine.profiler::_test_upload_budget_500us
+use com.apocky.engine.profiler::_test_record_budget_150us
+use com.apocky.engine.profiler::_test_submit_budget_100us
+
+// `smoke_contracts()` — pure-CSSL invariants for the 1M-entity path.
+fn smoke_contracts() -> bool {
+    _assert_projection_card_all()
+        && target_resolution_width() == 2560
+        && target_resolution_height() == 1440
+        && target_refresh_hz() == 144
+        && target_entity_count() == 1000000
+        && target_frame_budget_us() == 6944
+        && _test_instance_stride_is_64()
+        && _test_push_constants_fit_t0()
+        && _test_1m_grid_cuberoot()
+        && _test_push_constant_size_fits()
+        && _test_1m_dispatch_groups()
+        && _test_config_targets_1m_144hz()
+        && _test_build_budget_250us()
+        && _test_upload_budget_500us()
+        && _test_record_budget_150us()
+        && _test_submit_budget_100us()
+}
+
+// `build_1m_scene(dev)` — create cube mesh + 1M raw-TRS instance batch.
+//   The batch is raw TRS; vertex shader composes model matrices on GPU.
+fn build_1m_scene(dev : Device) -> Result<InstanceBatch, GpuError> {
+    let pool_r = mesh_pool_default_1m_entities(dev) ;
+    match pool_r {
+        Err(e) => Err(e),
+        Ok(pool0) => {
+            let verts = make_unit_cube_vertices() ;
+            let inds = make_unit_cube_indices() ;
+            let pool_r2 = mesh_pool_upload(pool0, verts, inds, 0) ;
+            match pool_r2 {
+                Err(e2) => Err(e2),
+                Ok(pool1) => {
+                    let cube = mesh_pool_handle_for_last(pool1) ;
+                    let batch = instance_batch_make_grid(cube, 0, target_entity_count(), 2.0) ;
+                    let _drop = mesh_pool_destroy(pool1) ;
+                    Ok(batch)
+                }
+            }
+        }
+    }
+}
+
+// `main()` — structural smoke for the W-0..W-6 scaffold.
+//
+// Stage-0 returns 0 when contracts hold and the device/arena/scene scaffolds
+// are constructible. Once host_gpu W-1 symbols are wired driver-active, this
+// grows into the fullscreen benchmark loop.
+fn main() -> i32 {
+    if smoke_contracts() == false {
+        return 42 ;
+    }
+
+    let cfg = frame_graph_config_1m_1440p_144hz() ;
+    let _state = frame_graph_state_new(cfg) ;
+    let profiler0 = frame_profiler_new(32) ;
+    let _profiler1 = frame_profiler_begin_frame(profiler0, 0, target_entity_count()) ;
+
+    let dev_r = device_create(0, 0, GpuBackend::D3D12) ;
+    match dev_r {
+        Err(_) => 2,
+        Ok(dev) => {
+            let arena_cfg = arena_config_default_1m_entities() ;
+            let arena_r = frame_arena_new(dev, arena_cfg) ;
+            match arena_r {
+                Err(_) => {
+                    let _d = device_destroy(dev) ;
+                    3
+                },
+                Ok(arena0) => {
+                    let _arena1 = frame_arena_begin_frame(arena0) ;
+                    let scene_r = build_1m_scene(dev) ;
+                    let rc = match scene_r {
+                        Err(_) => 4,
+                        Ok(batch) => {
+                            if batch.count == target_entity_count() { 0 } else { 5 }
+                        }
+                    } ;
+                    let _a = frame_arena_destroy(arena0) ;
+                    let _d = device_destroy(dev) ;
+                    rc
+                }
+            }
+        }
+    }
+}

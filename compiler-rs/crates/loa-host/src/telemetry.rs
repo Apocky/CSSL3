@@ -355,11 +355,7 @@ impl TelemetrySink {
                 Err(_) => true,
             };
             if header_needed {
-                if let Ok(mut f) = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&csv_path)
-                {
+                if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&csv_path) {
                     let _ = writeln!(
                         f,
                         "ts,frame_count,fps,p50_ms,p95_ms,p99_ms,draw_calls,vertices,pipeline_switches,mcp_calls,dm_events"
@@ -441,12 +437,9 @@ impl TelemetrySink {
             // Recompute percentiles every 60 frames.
             if frame_n % 60 == 0 {
                 let (p50, p95, p99) = ring.percentiles();
-                self.last_p50_q14
-                    .store(ms_to_q14(p50), Ordering::Relaxed);
-                self.last_p95_q14
-                    .store(ms_to_q14(p95), Ordering::Relaxed);
-                self.last_p99_q14
-                    .store(ms_to_q14(p99), Ordering::Relaxed);
+                self.last_p50_q14.store(ms_to_q14(p50), Ordering::Relaxed);
+                self.last_p95_q14.store(ms_to_q14(p95), Ordering::Relaxed);
+                self.last_p99_q14.store(ms_to_q14(p99), Ordering::Relaxed);
             }
         }
 
@@ -481,8 +474,7 @@ impl TelemetrySink {
 
     /// Record a pipeline-switch (called by the renderer).
     pub fn record_pipeline_switch(&self) {
-        self.pipeline_switches_total
-            .fetch_add(1, Ordering::Relaxed);
+        self.pipeline_switches_total.fetch_add(1, Ordering::Relaxed);
     }
 
     /// § T11-LOA-FID-MAINSTREAM : record the most-recent frame's GPU
@@ -737,9 +729,7 @@ impl TelemetrySink {
             .join(",");
         let dop_avg = q14_to_dop(self.dop_avg_per_frame_q14.load(Ordering::Relaxed));
         let dop_max = q14_to_dop(self.dop_max_per_frame_q14.load(Ordering::Relaxed));
-        let cfer_intensity = q14_to_dop(
-            self.cfer_intensity_current_q14.load(Ordering::Relaxed),
-        );
+        let cfer_intensity = q14_to_dop(self.cfer_intensity_current_q14.load(Ordering::Relaxed));
         format!(
             "{{\"ts\":\"{}\",\"uptime_ms\":{},\"frame_count\":{},\"fps\":{:.2},\
              \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3},\
@@ -967,7 +957,11 @@ fn iso_utc(unix_ms_v: u64) -> String {
 /// Civil-from-days (Howard-Hinnant algorithm) — matches loa_startup.rs.
 fn days_to_ymd(mut days: i64) -> (i32, u32, u32) {
     days += 719_468;
-    let era = if days >= 0 { days / 146_097 } else { (days - 146_096) / 146_097 };
+    let era = if days >= 0 {
+        days / 146_097
+    } else {
+        (days - 146_096) / 146_097
+    };
     let doe = (days - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;

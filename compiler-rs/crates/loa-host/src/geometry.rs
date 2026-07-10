@@ -50,22 +50,20 @@
 use bytemuck::{Pod, Zeroable};
 
 use crate::material::{
-    MAT_BRUSHED_STEEL, MAT_DEEP_INDIGO, MAT_DICHROIC_VIOLET, MAT_EMISSIVE_CYAN,
+    MATERIAL_LUT_LEN, MAT_BRUSHED_STEEL, MAT_DEEP_INDIGO, MAT_DICHROIC_VIOLET, MAT_EMISSIVE_CYAN,
     MAT_GOLD_LEAF, MAT_GRADIENT_RED, MAT_HAIRY_FUR, MAT_HOLOGRAPHIC, MAT_IRIDESCENT,
-    MAT_MATTE_GREY, MAT_NEON_MAGENTA, MAT_OFF_WHITE, MAT_PINK_NOISE_VOL,
-    MAT_TRANSPARENT_GLASS, MAT_VERMILLION_LACQUER, MAT_WARM_SKY, MATERIAL_LUT_LEN,
+    MAT_MATTE_GREY, MAT_NEON_MAGENTA, MAT_OFF_WHITE, MAT_PINK_NOISE_VOL, MAT_TRANSPARENT_GLASS,
+    MAT_VERMILLION_LACQUER, MAT_WARM_SKY,
 };
 use crate::pattern::{
     PAT_CHECKERBOARD, PAT_CONCENTRIC_RINGS, PAT_EAN13_BARCODE, PAT_FREQUENCY_SWEEP,
     PAT_GRADIENT_GRAYSCALE, PAT_GRADIENT_HUE_WHEEL, PAT_GRID_100MM, PAT_GRID_1M,
     PAT_MACBETH_COLOR_CHART, PAT_PERLIN_NOISE, PAT_QR_CODE_STUB, PAT_RADIAL_GRADIENT,
     PAT_RADIAL_SPOKES, PAT_RAYMARCH_GYROID, PAT_RAYMARCH_JULIA, PAT_RAYMARCH_MANDELBULB,
-    PAT_RAYMARCH_MENGER, PAT_RAYMARCH_SPHERE, PAT_RAYMARCH_TORUS, PAT_SNELLEN_EYE_CHART,
-    PAT_SOLID, PAT_ZONEPLATE,
+    PAT_RAYMARCH_MENGER, PAT_RAYMARCH_SPHERE, PAT_RAYMARCH_TORUS, PAT_SNELLEN_EYE_CHART, PAT_SOLID,
+    PAT_ZONEPLATE,
 };
-use crate::room::{
-    doorways, AxisAlignedBox, Corridor, Direction, Room, CORRIDOR_HEIGHT,
-};
+use crate::room::{doorways, AxisAlignedBox, Corridor, Direction, Room, CORRIDOR_HEIGHT};
 
 // ──────────────────────────────────────────────────────────────────────────
 // § Vertex layout (uber-shader compatible)
@@ -751,13 +749,18 @@ impl RoomGeometry {
         let top = ROOM_HEIGHT;
         let white = [1.0, 1.0, 1.0];
         let dh_half = crate::room::DOORWAY_WIDTH * 0.5; // door half-width = 1.0
-        let door_h = crate::room::DOORWAY_HEIGHT;       // door height = 3.0
+        let door_h = crate::room::DOORWAY_HEIGHT; // door height = 3.0
 
         // North wall : z=+h, inner-face normal -Z.
         // Wall is split horizontally at x ∈ [-dh_half, dh_half] up to y=door_h.
         // 1. Left-of-door : x ∈ [-h, -dh_half], full height
         self.emit_quad_uv(
-            [[-dh_half, 0.0, h], [-h, 0.0, h], [-h, top, h], [-dh_half, top, h]],
+            [
+                [-dh_half, 0.0, h],
+                [-h, 0.0, h],
+                [-h, top, h],
+                [-dh_half, top, h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [0.0, 0.0, -1.0],
             white,
@@ -766,7 +769,12 @@ impl RoomGeometry {
         );
         // 2. Right-of-door : x ∈ [dh_half, h], full height
         self.emit_quad_uv(
-            [[h, 0.0, h], [dh_half, 0.0, h], [dh_half, top, h], [h, top, h]],
+            [
+                [h, 0.0, h],
+                [dh_half, 0.0, h],
+                [dh_half, top, h],
+                [h, top, h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [0.0, 0.0, -1.0],
             white,
@@ -775,7 +783,12 @@ impl RoomGeometry {
         );
         // 3. Lintel above door : x ∈ [-dh_half, dh_half], y ∈ [door_h, top]
         self.emit_quad_uv(
-            [[dh_half, door_h, h], [-dh_half, door_h, h], [-dh_half, top, h], [dh_half, top, h]],
+            [
+                [dh_half, door_h, h],
+                [-dh_half, door_h, h],
+                [-dh_half, top, h],
+                [dh_half, top, h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [0.0, 0.0, -1.0],
             white,
@@ -788,7 +801,12 @@ impl RoomGeometry {
         //    is on +X side because we're facing -Z. Use the same "left of door"
         //    via x-coords, winding stays CCW from inside.)
         self.emit_quad_uv(
-            [[-h, 0.0, -h], [-dh_half, 0.0, -h], [-dh_half, top, -h], [-h, top, -h]],
+            [
+                [-h, 0.0, -h],
+                [-dh_half, 0.0, -h],
+                [-dh_half, top, -h],
+                [-h, top, -h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [0.0, 0.0, 1.0],
             white,
@@ -797,7 +815,12 @@ impl RoomGeometry {
         );
         // 2. Right-of-door
         self.emit_quad_uv(
-            [[dh_half, 0.0, -h], [h, 0.0, -h], [h, top, -h], [dh_half, top, -h]],
+            [
+                [dh_half, 0.0, -h],
+                [h, 0.0, -h],
+                [h, top, -h],
+                [dh_half, top, -h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [0.0, 0.0, 1.0],
             white,
@@ -806,7 +829,12 @@ impl RoomGeometry {
         );
         // 3. Lintel
         self.emit_quad_uv(
-            [[-dh_half, door_h, -h], [dh_half, door_h, -h], [dh_half, top, -h], [-dh_half, top, -h]],
+            [
+                [-dh_half, door_h, -h],
+                [dh_half, door_h, -h],
+                [dh_half, top, -h],
+                [-dh_half, top, -h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [0.0, 0.0, 1.0],
             white,
@@ -817,7 +845,12 @@ impl RoomGeometry {
         // East wall : x=+h, inner-face normal -X.
         // 1. Left-of-door : z ∈ [-h, -dh_half]
         self.emit_quad_uv(
-            [[h, 0.0, -h], [h, 0.0, -dh_half], [h, top, -dh_half], [h, top, -h]],
+            [
+                [h, 0.0, -h],
+                [h, 0.0, -dh_half],
+                [h, top, -dh_half],
+                [h, top, -h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [-1.0, 0.0, 0.0],
             white,
@@ -826,7 +859,12 @@ impl RoomGeometry {
         );
         // 2. Right-of-door : z ∈ [dh_half, h]
         self.emit_quad_uv(
-            [[h, 0.0, dh_half], [h, 0.0, h], [h, top, h], [h, top, dh_half]],
+            [
+                [h, 0.0, dh_half],
+                [h, 0.0, h],
+                [h, top, h],
+                [h, top, dh_half],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [-1.0, 0.0, 0.0],
             white,
@@ -835,7 +873,12 @@ impl RoomGeometry {
         );
         // 3. Lintel
         self.emit_quad_uv(
-            [[h, door_h, -dh_half], [h, door_h, dh_half], [h, top, dh_half], [h, top, -dh_half]],
+            [
+                [h, door_h, -dh_half],
+                [h, door_h, dh_half],
+                [h, top, dh_half],
+                [h, top, -dh_half],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [-1.0, 0.0, 0.0],
             white,
@@ -846,7 +889,12 @@ impl RoomGeometry {
         // West wall : x=-h, inner-face normal +X.
         // 1. Left-of-door : z ∈ [dh_half, h]
         self.emit_quad_uv(
-            [[-h, 0.0, h], [-h, 0.0, dh_half], [-h, top, dh_half], [-h, top, h]],
+            [
+                [-h, 0.0, h],
+                [-h, 0.0, dh_half],
+                [-h, top, dh_half],
+                [-h, top, h],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [1.0, 0.0, 0.0],
             white,
@@ -855,7 +903,12 @@ impl RoomGeometry {
         );
         // 2. Right-of-door : z ∈ [-h, -dh_half]
         self.emit_quad_uv(
-            [[-h, 0.0, -dh_half], [-h, 0.0, -h], [-h, top, -h], [-h, top, -dh_half]],
+            [
+                [-h, 0.0, -dh_half],
+                [-h, 0.0, -h],
+                [-h, top, -h],
+                [-h, top, -dh_half],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [1.0, 0.0, 0.0],
             white,
@@ -864,7 +917,12 @@ impl RoomGeometry {
         );
         // 3. Lintel
         self.emit_quad_uv(
-            [[-h, door_h, dh_half], [-h, door_h, -dh_half], [-h, top, -dh_half], [-h, top, dh_half]],
+            [
+                [-h, door_h, dh_half],
+                [-h, door_h, -dh_half],
+                [-h, top, -dh_half],
+                [-h, top, dh_half],
+            ],
             [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
             [1.0, 0.0, 0.0],
             white,
@@ -902,9 +960,27 @@ impl RoomGeometry {
         self.emit_room_ceiling(b, MAT_WARM_SKY, PAT_SOLID);
         // 4 walls — south wall (z=28) has a doorway for corridor-N.
         self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_SOLID, true);
-        self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
-        self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
-        self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
+        self.emit_room_wall_with_door(
+            b,
+            Direction::North,
+            MAT_OFF_WHITE,
+            PAT_GRADIENT_GRAYSCALE,
+            false,
+        );
+        self.emit_room_wall_with_door(
+            b,
+            Direction::East,
+            MAT_OFF_WHITE,
+            PAT_GRADIENT_GRAYSCALE,
+            false,
+        );
+        self.emit_room_wall_with_door(
+            b,
+            Direction::West,
+            MAT_OFF_WHITE,
+            PAT_GRADIENT_GRAYSCALE,
+            false,
+        );
 
         // 16 spheres (rendered as 1.5m-radius cubes for stage-0 — same
         // approximation used by the diagnostic stress objects). Layout :
@@ -1125,10 +1201,34 @@ impl RoomGeometry {
         //   E (x=-28) : door-side · saturation gradient
         //   S (z=-15) : value gradient
         //   W (x=-58) : Macbeth chart for direct comparison
-        self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRADIENT_HUE_WHEEL, true);
-        self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_GRADIENT_HUE_WHEEL, false);
-        self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
-        self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_MACBETH_COLOR_CHART, false);
+        self.emit_room_wall_with_door(
+            b,
+            Direction::East,
+            MAT_OFF_WHITE,
+            PAT_GRADIENT_HUE_WHEEL,
+            true,
+        );
+        self.emit_room_wall_with_door(
+            b,
+            Direction::North,
+            MAT_OFF_WHITE,
+            PAT_GRADIENT_HUE_WHEEL,
+            false,
+        );
+        self.emit_room_wall_with_door(
+            b,
+            Direction::South,
+            MAT_OFF_WHITE,
+            PAT_GRADIENT_GRAYSCALE,
+            false,
+        );
+        self.emit_room_wall_with_door(
+            b,
+            Direction::West,
+            MAT_OFF_WHITE,
+            PAT_MACBETH_COLOR_CHART,
+            false,
+        );
     }
 
     /// Emit floor for a room (a single quad covering the room footprint).
@@ -1209,21 +1309,32 @@ impl RoomGeometry {
                         [[dxn, yb, z], [xn, yb, z], [xn, yt, z], [dxn, yt, z]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [0.0, 0.0, -1.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Right of door : x ∈ [dxp, xp]
                     self.emit_quad_uv(
                         [[xp, yb, z], [dxp, yb, z], [dxp, yt, z], [xp, yt, z]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [0.0, 0.0, -1.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Lintel : x ∈ [dxn, dxp], y ∈ [door_h, yt]
                     self.emit_quad_uv(
-                        [[dxp, door_h, z], [dxn, door_h, z], [dxn, yt, z], [dxp, yt, z]],
+                        [
+                            [dxp, door_h, z],
+                            [dxn, door_h, z],
+                            [dxn, yt, z],
+                            [dxp, yt, z],
+                        ],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [0.0, 0.0, -1.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                 }
             }
@@ -1250,21 +1361,32 @@ impl RoomGeometry {
                         [[xn, yb, z], [dxn, yb, z], [dxn, yt, z], [xn, yt, z]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [0.0, 0.0, 1.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Right of door
                     self.emit_quad_uv(
                         [[dxp, yb, z], [xp, yb, z], [xp, yt, z], [dxp, yt, z]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [0.0, 0.0, 1.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Lintel
                     self.emit_quad_uv(
-                        [[dxn, door_h, z], [dxp, door_h, z], [dxp, yt, z], [dxn, yt, z]],
+                        [
+                            [dxn, door_h, z],
+                            [dxp, door_h, z],
+                            [dxp, yt, z],
+                            [dxn, yt, z],
+                        ],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [0.0, 0.0, 1.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                 }
             }
@@ -1291,21 +1413,32 @@ impl RoomGeometry {
                         [[x, yb, zn], [x, yb, dzn], [x, yt, dzn], [x, yt, zn]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [-1.0, 0.0, 0.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Right of door
                     self.emit_quad_uv(
                         [[x, yb, dzp], [x, yb, zp], [x, yt, zp], [x, yt, dzp]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [-1.0, 0.0, 0.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Lintel
                     self.emit_quad_uv(
-                        [[x, door_h, dzn], [x, door_h, dzp], [x, yt, dzp], [x, yt, dzn]],
+                        [
+                            [x, door_h, dzn],
+                            [x, door_h, dzp],
+                            [x, yt, dzp],
+                            [x, yt, dzn],
+                        ],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [-1.0, 0.0, 0.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                 }
             }
@@ -1332,21 +1465,32 @@ impl RoomGeometry {
                         [[x, yb, zp], [x, yb, dzp], [x, yt, dzp], [x, yt, zp]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [1.0, 0.0, 0.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Right of door
                     self.emit_quad_uv(
                         [[x, yb, dzn], [x, yb, zn], [x, yt, zn], [x, yt, dzn]],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [1.0, 0.0, 0.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                     // Lintel
                     self.emit_quad_uv(
-                        [[x, door_h, dzp], [x, door_h, dzn], [x, yt, dzn], [x, yt, dzp]],
+                        [
+                            [x, door_h, dzp],
+                            [x, door_h, dzn],
+                            [x, yt, dzn],
+                            [x, yt, dzp],
+                        ],
                         [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
                         [1.0, 0.0, 0.0],
-                        white, mat, pat,
+                        white,
+                        mat,
+                        pat,
                     );
                 }
             }
@@ -1367,14 +1511,38 @@ impl RoomGeometry {
                 Corridor::North | Corridor::South => {
                     // Corridor runs along Z ; side walls are at x=b.min[0] and
                     // x=b.max[0] (extending the full Z range of the corridor).
-                    self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRID_100MM, false);
-                    self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+                    self.emit_room_wall_with_door(
+                        b,
+                        Direction::East,
+                        MAT_OFF_WHITE,
+                        PAT_GRID_100MM,
+                        false,
+                    );
+                    self.emit_room_wall_with_door(
+                        b,
+                        Direction::West,
+                        MAT_OFF_WHITE,
+                        PAT_GRID_100MM,
+                        false,
+                    );
                 }
                 Corridor::East | Corridor::West => {
                     // Corridor runs along X ; side walls are at z=b.min[2] and
                     // z=b.max[2].
-                    self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_GRID_100MM, false);
-                    self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+                    self.emit_room_wall_with_door(
+                        b,
+                        Direction::North,
+                        MAT_OFF_WHITE,
+                        PAT_GRID_100MM,
+                        false,
+                    );
+                    self.emit_room_wall_with_door(
+                        b,
+                        Direction::South,
+                        MAT_OFF_WHITE,
+                        PAT_GRID_100MM,
+                        false,
+                    );
                 }
             }
         }
@@ -1520,9 +1688,7 @@ mod tests {
             }
             i += 4;
         }
-        panic!(
-            "no quad with normal {expected_normal:?} at axis {axis}={value}"
-        );
+        panic!("no quad with normal {expected_normal:?} at axis {axis}={value}");
     }
 
     #[test]
@@ -1533,7 +1699,10 @@ mod tests {
         let q = first_quad_with_normal_and_axis_value(&g, [0.0, 0.0, -1.0], 2, 20.0);
         let n = tri_normal(q[0], q[1], q[2]);
         let d = dot(n, [0.0, 0.0, -1.0]);
-        assert!(d > 0.0, "north wall winding must be CCW from inside (n={n:?})");
+        assert!(
+            d > 0.0,
+            "north wall winding must be CCW from inside (n={n:?})"
+        );
     }
 
     #[test]
@@ -1542,7 +1711,10 @@ mod tests {
         let q = first_quad_with_normal_and_axis_value(&g, [0.0, 0.0, 1.0], 2, -20.0);
         let n = tri_normal(q[0], q[1], q[2]);
         let d = dot(n, [0.0, 0.0, 1.0]);
-        assert!(d > 0.0, "south wall winding must be CCW from inside (n={n:?})");
+        assert!(
+            d > 0.0,
+            "south wall winding must be CCW from inside (n={n:?})"
+        );
     }
 
     #[test]
@@ -1551,7 +1723,10 @@ mod tests {
         let q = first_quad_with_normal_and_axis_value(&g, [-1.0, 0.0, 0.0], 0, 20.0);
         let n = tri_normal(q[0], q[1], q[2]);
         let d = dot(n, [-1.0, 0.0, 0.0]);
-        assert!(d > 0.0, "east wall winding must be CCW from inside (n={n:?})");
+        assert!(
+            d > 0.0,
+            "east wall winding must be CCW from inside (n={n:?})"
+        );
     }
 
     #[test]
@@ -1560,7 +1735,10 @@ mod tests {
         let q = first_quad_with_normal_and_axis_value(&g, [1.0, 0.0, 0.0], 0, -20.0);
         let n = tri_normal(q[0], q[1], q[2]);
         let d = dot(n, [1.0, 0.0, 0.0]);
-        assert!(d > 0.0, "west wall winding must be CCW from inside (n={n:?})");
+        assert!(
+            d > 0.0,
+            "west wall winding must be CCW from inside (n={n:?})"
+        );
     }
 
     #[test]
@@ -1570,7 +1748,10 @@ mod tests {
         let q = first_quad_with_normal(&g, [0.0, 1.0, 0.0]);
         let n = tri_normal(q[0], q[1], q[2]);
         let d = dot(n, [0.0, 1.0, 0.0]);
-        assert!(d > 0.0, "floor winding must be CCW viewed from above (n={n:?})");
+        assert!(
+            d > 0.0,
+            "floor winding must be CCW viewed from above (n={n:?})"
+        );
     }
 
     #[test]
@@ -1621,7 +1802,11 @@ mod tests {
             }
             i += 4;
         }
-        assert_eq!(patterns.len(), 4, "all four floor quadrants must have distinct patterns");
+        assert_eq!(
+            patterns.len(),
+            4,
+            "all four floor quadrants must have distinct patterns"
+        );
     }
 
     /// Look up the pattern_id of the first vertex matching the predicate.
@@ -1693,7 +1878,11 @@ mod tests {
         for k in 0..stress_object_count() {
             bag.insert(stress_object_material(k));
         }
-        assert!(bag.len() >= 8, "at least 8 distinct materials across stress objects (got {})", bag.len());
+        assert!(
+            bag.len() >= 8,
+            "at least 8 distinct materials across stress objects (got {})",
+            bag.len()
+        );
     }
 
     #[test]
@@ -1734,8 +1923,14 @@ mod tests {
                 cube_count += 1;
             }
         }
-        assert_eq!(raymarch_count, 6, "exactly 6 stress objects must be raymarched");
-        assert_eq!(cube_count, 8, "exactly 8 stress objects must stay cube-based");
+        assert_eq!(
+            raymarch_count, 6,
+            "exactly 6 stress objects must be raymarched"
+        );
+        assert_eq!(
+            cube_count, 8,
+            "exactly 8 stress objects must stay cube-based"
+        );
         assert_eq!(raymarch_count + cube_count, total);
     }
 
@@ -1801,10 +1996,7 @@ mod tests {
                 && v.position[0] <= mb.max[0] + 2.0
                 && v.position[2] >= mb.min[2] - 2.0
                 && v.position[2] <= mb.max[2] + 2.0;
-            if inside
-                && (v.normal[1] - 1.0).abs() < 1e-3
-                && (v.position[1] - 4.5).abs() < 1e-3
-            {
+            if inside && (v.normal[1] - 1.0).abs() < 1e-3 && (v.position[1] - 4.5).abs() < 1e-3 {
                 count += 1;
             }
             i += 4;

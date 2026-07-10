@@ -326,9 +326,7 @@ impl GmMemory {
         if hash == 0 {
             return false;
         }
-        self.entries
-            .iter()
-            .any(|e| e.player_utterance_hash == hash)
+        self.entries.iter().any(|e| e.player_utterance_hash == hash)
     }
 
     /// Has the GM emitted this exact response recently ?
@@ -378,12 +376,7 @@ impl GmMemory {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Mythic-axis prefixes (high-mythic prepends an evocative whisper).
-const MYTHIC_PREFIXES: [&str; 4] = [
-    "‼ ",
-    "§ ",
-    "⟨voice in stone⟩ ",
-    "(the corridor breathes) ",
-];
+const MYTHIC_PREFIXES: [&str; 4] = ["‼ ", "§ ", "⟨voice in stone⟩ ", "(the corridor breathes) "];
 
 /// Cryptic-axis suffixes (high-cryptic appends a riddle-tail).
 const CRYPTIC_SUFFIXES: [&str; 4] = [
@@ -402,21 +395,11 @@ const WARMTH_SUFFIXES: [&str; 4] = [
 ];
 
 /// Acerbity-axis adornments (high-acerbity sharpens with a barb).
-const ACERBITY_PREFIXES: [&str; 4] = [
-    "[blunt] ",
-    "(no flourish) ",
-    "‹crisp› ",
-    "(plain) ",
-];
+const ACERBITY_PREFIXES: [&str; 4] = ["[blunt] ", "(no flourish) ", "‹crisp› ", "(plain) "];
 
 /// Substrate-attestation glyphs · only emitted when the persona's mythic
 /// AND mirth axes are BOTH high enough · OR when arc-phase = CLIMAX.
-const SUBSTRATE_GLYPHS: [&str; 4] = [
-    " ✓ Σ ",
-    " § ω ",
-    " ⌈ KAN ⌉ ",
-    " ⟦ mycelium ⟧ ",
-];
+const SUBSTRATE_GLYPHS: [&str; 4] = [" ✓ Σ ", " § ω ", " ⌈ KAN ⌉ ", " ⟦ mycelium ⟧ "];
 
 // ─────────────────────────────────────────────────────────────────────────
 // § COMPOSER
@@ -484,8 +467,7 @@ pub fn decorate_with_persona(
     }
 
     // Substrate attestation · climax OR (mythic+mirth both high).
-    let is_substrate_moment =
-        phase == DmState::Climax || (mythic > 0.5 && mirth > 0.3);
+    let is_substrate_moment = phase == DmState::Climax || (mythic > 0.5 && mirth > 0.3);
     if is_substrate_moment {
         let glyph = SUBSTRATE_GLYPHS[pick(s ^ 0xE4, SUBSTRATE_GLYPHS.len())];
         text.push_str(glyph);
@@ -596,7 +578,11 @@ mod tests {
         }
         assert_eq!(m.total_pushes, 20);
         for old in 1..=4u64 {
-            assert!(!m.has_recent_utterance(old), "hash {} should be evicted", old);
+            assert!(
+                !m.has_recent_utterance(old),
+                "hash {} should be evicted",
+                old
+            );
         }
         for present in 5..=20u64 {
             assert!(
@@ -673,7 +659,10 @@ mod tests {
             archetype_bias: Archetype::Sage,
         };
         let r = decorate_with_persona("First. Second. Third.", &p, DmState::Calm, 1);
-        assert_eq!(r.text, "First.", "brevity-saturated persona should truncate");
+        assert_eq!(
+            r.text, "First.",
+            "brevity-saturated persona should truncate"
+        );
     }
 
     #[test]
@@ -685,8 +674,10 @@ mod tests {
         };
         let r = decorate_with_persona("the lamps lean north tonight", &p, DmState::Calm, 7);
         assert!(
-            r.text.contains("gently") || r.text.contains("here") ||
-            r.text.contains("breathe") || r.text.contains("lit"),
+            r.text.contains("gently")
+                || r.text.contains("here")
+                || r.text.contains("breathe")
+                || r.text.contains("lit"),
             "warmth-saturated persona must add softening suffix · got: {}",
             r.text,
         );
@@ -699,7 +690,10 @@ mod tests {
             player_seed: 1,
             archetype_bias: Archetype::Warrior,
         };
-        assert_eq!(p.response_kind_bias(DmState::Buildup), ResponseKind::Cautionary);
+        assert_eq!(
+            p.response_kind_bias(DmState::Buildup),
+            ResponseKind::Cautionary
+        );
     }
 
     #[test]
@@ -709,7 +703,10 @@ mod tests {
             player_seed: 1,
             archetype_bias: Archetype::Healer,
         };
-        assert_eq!(p.response_kind_bias(DmState::Relief), ResponseKind::Affirmative);
+        assert_eq!(
+            p.response_kind_bias(DmState::Relief),
+            ResponseKind::Affirmative
+        );
     }
 
     #[test]

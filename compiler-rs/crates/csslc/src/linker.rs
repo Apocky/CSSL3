@@ -114,6 +114,8 @@ pub enum LinkerKind {
     RustcDriven {
         /// Absolute path to `rustc` (typically rustup-managed shim).
         rustc_path: PathBuf,
+        /// Absolute path to rustup-bundled `llvm-ar`.
+        llvm_ar_path: PathBuf,
         /// Absolute path to `libcssl_rt.rlib` (compiler-rs/target/release).
         cssl_rt_rlib: PathBuf,
         /// `compiler-rs/target/release/deps/` for transitive rlib lookup.
@@ -293,11 +295,12 @@ pub fn detect_linker() -> Result<LinkerKind, LinkError> {
         if let Some(info) = find_rustc_driven() {
             return Ok(LinkerKind::RustcDriven {
                 rustc_path: info.rustc_path,
+                llvm_ar_path: info.llvm_ar_path,
                 cssl_rt_rlib: info.cssl_rt_rlib,
                 deps_dir: info.deps_dir,
             });
         }
-        tried.push("rustc-driven (libcssl_rt.rlib)".to_string());
+        tried.push("rustc-driven (libcssl_rt.rlib + llvm-ar)".to_string());
     }
 
     // § 2. MSVC link.exe with auto-resolved lib paths (Windows preferred).
@@ -505,6 +508,7 @@ fn find_msvc_link_auto() -> Option<MsvcLinkInfo> {
 /// Triple of paths needed to drive rustc as the link driver.
 struct RustcDrivenInfo {
     rustc_path: PathBuf,
+    llvm_ar_path: PathBuf,
     cssl_rt_rlib: PathBuf,
     deps_dir: PathBuf,
 }
@@ -560,11 +564,45 @@ fn find_rustc_driven() -> Option<RustcDrivenInfo> {
         let rlib = parent.join("libcssl_rt.rlib");
         let deps = parent.join("deps");
         if rlib.is_file() && deps.is_dir() {
+            let workspace_root = workspace_root_for_rlib(&rlib);
+            let llvm_ar_path = find_rustup_tool("llvm-ar", workspace_root.as_deref())?;
             return Some(RustcDrivenInfo {
                 rustc_path,
+                llvm_ar_path,
                 cssl_rt_rlib: rlib,
                 deps_dir: deps,
             });
+        }
+    }
+    None
+}
+
+fn workspace_root_for_rlib(rlib: &Path) -> Option<PathBuf> {
+    // <workspace>/target/<profile>/libcssl_rt.rlib
+    rlib.parent()?.parent()?.parent().map(Path::to_path_buf)
+}
+
+fn find_rustup_tool(tool: &str, cwd: Option<&Path>) -> Option<PathBuf> {
+    let mut cmd = Command::new("rustc");
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
+    let out = cmd.arg("--print=sysroot").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sysroot = String::from_utf8(out.stdout).ok()?.trim().to_string();
+    let rustlib = Path::new(&sysroot).join("lib").join("rustlib");
+    let exe = if cfg!(windows) {
+        format!("{tool}.exe")
+    } else {
+        tool.to_string()
+    };
+    let entries = std::fs::read_dir(&rustlib).ok()?;
+    for entry in entries.flatten() {
+        let candidate = entry.path().join("bin").join(&exe);
+        if candidate.is_file() {
+            return Some(candidate);
         }
     }
     None
@@ -690,7 +728,11 @@ impl DiscoveryEnv {
 #[must_use]
 pub fn discover_cssl_rt_staticlib_with(env: &DiscoveryEnv) -> Option<PathBuf> {
     let verbose = env.rt_verbose.as_deref().is_some_and(|s| !s.is_empty());
-    if env.no_default_link.as_deref().is_some_and(|s| !s.is_empty()) {
+    if env
+        .no_default_link
+        .as_deref()
+        .is_some_and(|s| !s.is_empty())
+    {
         if verbose {
             let _ = writeln!(
                 std::io::stderr(),
@@ -971,6 +1013,66 @@ fn loa_host_staticlib_names() -> Vec<&'static str> {
     }
 }
 
+fn rustc_static_lib_name(path: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("cssluser");
+    stem.strip_prefix("lib").unwrap_or(stem).to_string()
+}
+
+fn rustc_driven_user_archive_path(output: &Path) -> PathBuf {
+    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    let stem = output
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(sanitize_static_lib_component)
+        .unwrap_or_else(|| "out".to_string());
+    parent.join(format!("libcssluser_{stem}.a"))
+}
+
+fn sanitize_static_lib_component(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() {
+        "out".to_string()
+    } else {
+        out
+    }
+}
+
+fn archive_user_objects_for_rustc_driven(
+    llvm_ar_path: &Path,
+    object_inputs: &[PathBuf],
+    output: &Path,
+) -> Result<PathBuf, LinkError> {
+    let archive = rustc_driven_user_archive_path(output);
+    let _ = std::fs::remove_file(&archive);
+    let mut cmd = Command::new(llvm_ar_path);
+    cmd.arg("rcs").arg(&archive);
+    for obj in object_inputs {
+        cmd.arg(obj);
+    }
+    let out = cmd.output().map_err(|e| LinkError::SpawnFailed {
+        binary: llvm_ar_path.display().to_string(),
+        err: e,
+    })?;
+    if out.status.success() {
+        return Ok(archive);
+    }
+    Err(LinkError::NonZeroExit {
+        binary: llvm_ar_path.display().to_string(),
+        status: out.status.code(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+    })
+}
+
 // ───────────────────────────────────────────────────────────────────────
 // § build_command — synthesize the subprocess Command
 // ───────────────────────────────────────────────────────────────────────
@@ -988,23 +1090,26 @@ pub fn build_command(
     match kind {
         LinkerKind::RustcDriven {
             rustc_path,
+            llvm_ar_path: _,
             cssl_rt_rlib,
             deps_dir,
         } => {
             // § T11-W19-α-CSSLC-LINKER-RT
             //   rustc as link driver. We write a tiny `#![no_main]` stub
             //   crate that depends on cssl_rt (so rustc threads its rlib +
-            //   transitive deps + rust-std into the link) and pass the
-            //   user's CSSL-emitted .obj files as `-C link-arg=`.
+            //   transitive deps + rust-std into the link). The caller wraps
+            //   CSSL-emitted .obj files into a per-output `libcssluser_*.a`
+            //   first, then this command passes it as
+            //   `-L native=<dir> -l static=<archive-name>`.
             //
             //   The cssl-emitted obj exports a `main` symbol (whichever
             //   CSSL fn is named `main`). On windows-gnu the mingw startup
             //   has a fallback `main` declaration in libmingw32.a's
-            //   crtexewin.o, hence `-Wl,--allow-multiple-definition` so the
-            //   user's `main` wins. The same crtexewin.o references
-            //   `WinMain` unconditionally — the stub provides a zero-stub
-            //   `WinMain` that's never actually called (console subsystem
-            //   uses `main`, not `WinMain`).
+            //   crtexewin.o. Static-archive linking pulls user `main` before
+            //   the libmingw32 chain, so no duplicate-main allowance is
+            //   needed. The same crtexewin.o references `WinMain`
+            //   unconditionally ; the stub forwards it to `main` for the
+            //   misconfigured subsystem path.
             //
             //   On windows-msvc rustc invokes link.exe directly + the
             //   /SUBSYSTEM:CONSOLE pulls in mainCRTStartup which expects
@@ -1035,8 +1140,6 @@ pub fn build_command(
             cmd.arg("--crate-type").arg("bin");
             cmd.arg("-C").arg("opt-level=2");
             cmd.arg("-C").arg("panic=abort");
-            // Tolerate duplicate `main` from libmingw32.a's startup glue.
-            cmd.arg("-C").arg("link-arg=-Wl,--allow-multiple-definition");
             cmd.arg("-L").arg(deps_dir);
             // § T11-W19-β-RT-DELEG-WINDOW : forward `cargo:rustc-link-search`
             // directives recorded by sibling-crate build-scripts (notably
@@ -1076,12 +1179,14 @@ pub fn build_command(
                     }
                 }
             }
-            cmd.arg("--extern").arg(format!(
-                "cssl_rt={}",
-                cssl_rt_rlib.display()
-            ));
-            for o in object_inputs {
-                cmd.arg("-C").arg(format!("link-arg={}", o.display()));
+            cmd.arg("--extern")
+                .arg(format!("cssl_rt={}", cssl_rt_rlib.display()));
+            for archive in object_inputs {
+                if let Some(parent) = archive.parent() {
+                    cmd.arg("-L").arg(format!("native={}", parent.display()));
+                }
+                cmd.arg("-l")
+                    .arg(format!("static={}", rustc_static_lib_name(archive)));
             }
             for lib in extra_libs {
                 // User-supplied extra libs are passed as link-arg as well ;
@@ -1217,7 +1322,19 @@ pub fn link(
     } else {
         inject_default_cssl_rt_link(extra_libs)
     };
-    let mut cmd = build_command(&kind, object_inputs, output, &effective_libs);
+    let rustc_archive;
+    let command_inputs: &[PathBuf] = match &kind {
+        LinkerKind::RustcDriven { llvm_ar_path, .. } => {
+            rustc_archive = vec![archive_user_objects_for_rustc_driven(
+                llvm_ar_path,
+                object_inputs,
+                output,
+            )?];
+            &rustc_archive
+        }
+        _ => object_inputs,
+    };
+    let mut cmd = build_command(&kind, command_inputs, output, &effective_libs);
     let display = format!("{kind:?}");
     let out = cmd.output().map_err(|e| LinkError::SpawnFailed {
         binary: display.clone(),
@@ -1343,18 +1460,18 @@ const WINDOWS_LOA_HOST_SYS_LIBS: &[&str] = &[
     "propsys.lib",
     "uuid.lib",
     "synchronization.lib",
-    "uxtheme.lib",         // SetWindowTheme — winit dark-mode probe
-    "runtimeobject.lib",   // RoOriginateErrorW — windows_result error-info
-    "comdlg32.lib",        // common-dialog facilities (winit / wgpu fallback)
-    "comctl32.lib",        // common-controls (winit dialog facilities)
-    "msimg32.lib",         // GDI extended fns (legacy wgpu fallback)
-    "winspool.lib",        // print-spooler (winit cursor-set ICM probe)
-    "version.lib",         // version-info (wgpu adapter probe)
-    "winmm.lib",           // multimedia timer (wgpu vsync fallback)
-    "secur32.lib",         // SSPI / GSSAPI (rust-std network)
-    "credui.lib",          // credential UI (rust-std auth fallback)
-    "iphlpapi.lib",        // IP helper API (rust-std network adapter)
-    "kernel32.lib",        // already added by build_command, idempotent
+    "uxtheme.lib",       // SetWindowTheme — winit dark-mode probe
+    "runtimeobject.lib", // RoOriginateErrorW — windows_result error-info
+    "comdlg32.lib",      // common-dialog facilities (winit / wgpu fallback)
+    "comctl32.lib",      // common-controls (winit dialog facilities)
+    "msimg32.lib",       // GDI extended fns (legacy wgpu fallback)
+    "winspool.lib",      // print-spooler (winit cursor-set ICM probe)
+    "version.lib",       // version-info (wgpu adapter probe)
+    "winmm.lib",         // multimedia timer (wgpu vsync fallback)
+    "secur32.lib",       // SSPI / GSSAPI (rust-std network)
+    "credui.lib",        // credential UI (rust-std auth fallback)
+    "iphlpapi.lib",      // IP helper API (rust-std network adapter)
+    "kernel32.lib",      // already added by build_command, idempotent
 ];
 
 // ───────────────────────────────────────────────────────────────────────
@@ -1769,19 +1886,21 @@ mod tests {
     // skips gracefully when the rlib is absent.
 
     /// build_command for RustcDriven includes `--extern cssl_rt=...`,
-    /// passes the user obj as `-C link-arg=`, threads `-L deps_dir`, and
-    /// finishes with `-o output stub.rs`. Exercising this without spawning
-    /// rustc is fine because the Command's argv shape is what matters.
+    /// passes the user archive as `-L native=... -l static=cssluser`,
+    /// threads `-L deps_dir`, and finishes with `-o output stub.rs`.
+    /// Exercising this without spawning rustc is fine because the Command's
+    /// argv shape is what matters.
     #[test]
     fn build_command_for_rustc_driven_shape() {
         let kind = LinkerKind::RustcDriven {
             rustc_path: PathBuf::from("/fake/rustc.exe"),
+            llvm_ar_path: PathBuf::from("/fake/llvm-ar.exe"),
             cssl_rt_rlib: PathBuf::from("/fake/target/release/libcssl_rt.rlib"),
             deps_dir: PathBuf::from("/fake/target/release/deps"),
         };
         let cmd = build_command(
             &kind,
-            &[PathBuf::from("/tmp/user.obj")],
+            &[PathBuf::from("/tmp/libcssluser.a")],
             Path::new("/tmp/out.exe"),
             &[],
         );
@@ -1799,16 +1918,20 @@ mod tests {
             "rustc-driven must pass --extern cssl_rt=..."
         );
         assert!(
-            args.iter().any(|a| a.contains("user.obj")),
-            "rustc-driven must thread the user obj as link-arg"
+            args.iter().any(|a| a == "native=/tmp"),
+            "rustc-driven must add user archive search dir"
+        );
+        assert!(
+            args.iter().any(|a| a == "static=cssluser"),
+            "rustc-driven must thread the user archive as -l static=cssluser"
         );
         assert!(
             args.iter().any(|a| a == "panic=abort"),
             "rustc-driven must set panic=abort to match rlib's strategy"
         );
         assert!(
-            args.iter().any(|a| a.contains("allow-multiple-definition")),
-            "rustc-driven must allow duplicate `main` from libmingw32",
+            !args.iter().any(|a| a.contains("allow-multiple-definition")),
+            "rustc-driven must not tolerate duplicate `main` after archive fix",
         );
     }
 
@@ -1822,6 +1945,7 @@ mod tests {
     fn rustc_driven_skips_legacy_inject_path() {
         let kind = LinkerKind::RustcDriven {
             rustc_path: PathBuf::from("/fake/rustc.exe"),
+            llvm_ar_path: PathBuf::from("/fake/llvm-ar.exe"),
             cssl_rt_rlib: PathBuf::from("/fake/target/release/libcssl_rt.rlib"),
             deps_dir: PathBuf::from("/fake/target/release/deps"),
         };
@@ -1830,7 +1954,7 @@ mod tests {
         let user_libs = vec!["kernel32.lib".to_string(), "ws2_32.lib".to_string()];
         let cmd = build_command(
             &kind,
-            &[PathBuf::from("/tmp/user.obj")],
+            &[PathBuf::from("/tmp/libcssluser.a")],
             Path::new("/tmp/out.exe"),
             &user_libs,
         );
@@ -1849,6 +1973,10 @@ mod tests {
                 "RustcDriven must wrap user-lib `{ul}` as `-C link-arg=` ; got args = {args:?}"
             );
         }
+        assert!(
+            args.iter().any(|a| a == "static=cssluser"),
+            "RustcDriven must link the archived user objects ; got args = {args:?}"
+        );
     }
 
     /// `find_rustc_driven` returns Some when libcssl_rt.rlib is on disk
@@ -1884,6 +2012,15 @@ mod tests {
                     .unwrap_or(false),
                 "rustc_path stem should be `rustc` ; got {:?}",
                 info.rustc_path,
+            );
+            assert!(
+                info.llvm_ar_path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .map(|s| s == "llvm-ar")
+                    .unwrap_or(false),
+                "llvm_ar_path stem should be `llvm-ar` ; got {:?}",
+                info.llvm_ar_path,
             );
         }
     }

@@ -1,0 +1,180 @@
+# 16 : TRANSPORT-TIERS — data-routing ladder for CSSL→GPU dataflow
+# ══════════════════════════════════════════════════════════════════
+#  ‼ encodes the 8 patterns P1..P8 derived from the §A6 transcript-distill
+#  ‼ Apocky-greenlit (autopilot-mode 2026-05-20)
+#  ‼ load-bearing : every engine + stdlib + host crate routes data through one of these tiers
+
+§ THESIS
+  ‼ same datum at different scales lives on different tiers
+  ‼ pick the smallest tier that fits · escalate only when measured
+  rendering @ 1440p 144hz 1M-entities ≡ correct tier-choice per data-class
+  ¬ choose tier by habit ; ¬ choose tier by convenience ; choose by ⟨size, lifetime, fan-out⟩
+
+§ THE TIER LADDER  ‼ LOCKED  · ordinal-stable
+
+  T0  PUSH-CONSTANT     ≤ 128 B        per-frame globals       time · vp · frame_idx
+                                       ¬ descriptor set        ¬ buffer alloc
+                                       cmd-inline ; cheapest possible transport
+                                       host-FFI : __cssl_gpu_cmd_buf_push_constants
+                                       guarantees : zero-alloc · zero-bind · zero-sync
+
+  T1  UNIFORM-BUFFER    ≤ 16 KiB       per-pass / per-material light cfg · scene cfg
+                                       descriptor-set bound once-per-pass
+                                       host-FFI : __cssl_gpu_buffer_create(usage=Uniform)
+                                                  __cssl_gpu_cmd_buf_bind_descriptor(set, slot, buf)
+                                       guarantees : 1 bind per pass · cacheable
+
+  T2  STORAGE-BUFFER    ≤ device-cap   per-instance / per-frame  InstanceData[N] · meshes · lights
+                                       SSBO ; bindless-or-bound
+                                       host-FFI : __cssl_gpu_buffer_create(usage=Storage)
+                                                  __cssl_gpu_buffer_upload(buf, offset, src, len)
+                                       guarantees : O(N) data · O(1) bind · GPU-side indexed access
+
+  T3  INDIRECT-BUFFER   GPU-only       per-draw args            DrawIndexedIndirectArgs[N]
+                                       written by GPU compute · read by GPU draw
+                                       host-FFI : __cssl_gpu_cmd_buf_draw_indirect(cb, args_buf, draw_count, stride)
+                                       guarantees : CPU does ZERO per-draw work · 1 submit per frame
+
+  T4  COMPUTE-KERNEL    GPU-only       N independent jobs       cull · skin · mat4-compose · sim · sort
+                                       host-FFI : __cssl_gpu_cmd_buf_dispatch(cb, x, y, z)
+                                       guarantees : SoA in/out ; GPU does ALL the per-item work
+
+§ THE 8 PATTERNS  ‼ derived from the §A6 transcript-distill ; load-bearing
+                  invariants for all transport-routing decisions
+
+  P1  TIER-LADDER                  pick smallest tier that fits
+                                   « same datum at different N lives on different tier »
+
+  P2  BUILD → UPLOAD → RECORD      canonical per-frame pipeline · profile separately
+                                   build  : CPU SoA pack
+                                   upload : DMA / memcpy to mapped GPU buf
+                                   record : 1 × drawIndexed(instanceCount=N) OR drawIndirect
+
+  P3  COLUMN-STORE                 ECS-as-data-orientation · the column IS the buffer
+                                   adding a component = adding a column ¬ refactor entities
+
+  P4  MOVE-TO-PARALLEL             cost(CPU, N) = N·T_cpu  ;  cost(GPU, N) = upload + (N/k)·T_gpu
+                                   triple-win for TRS→mat4 :
+                                     · upload-shrinks (28B TRS vs 64B mat4)
+                                     · CPU work vanishes
+                                     · GPU does it free in vtx-shader
+
+  P5  CONVENTION-SURFACE           depth [0,1] · RH · col-maj · Y-up · UV-Y-flipped
+                                   ⌈ pick once · document at module-top · cite at every projection fn ⌉
+                                   ⌈ build-system + library-defines + shader-side must agree ⌉
+
+  P6  ZERO-ALLOC-HOT-PATH          frame-arena : alloc-once · reset-not-free · grow out-of-band
+                                   ⌈ per-frame syscalls ≤ Cap-check ; ¬ malloc on critical path ⌉
+
+  P7  MEASURE-FIRST                ¬ benchmark in debug · ¬ benchmark with validation-on
+                                   profile build / upload / record SEPARATELY
+                                   ⌈ silent-killer = toggle you forgot, not algorithm chosen ⌉
+
+  P8  ITERATIVE-SLICE              triangle → mesh → glTF → ECS → batch → GPU-compose → indirect
+                                   ⌈ each step : observable side-effect ⊕ small diff ⊕ rollback ⌉
+
+§ TIER-ROUTING-CHEATSHEET  by data-class
+                                                 SIZE       LIFETIME      TIER
+  view-projection-matrix                         64 B       per-frame     T0
+  current-time / frame-idx                       8 B        per-frame     T0
+  per-material parameter struct                  256 B-2KB  per-pass      T1
+  per-light array                                ≤ 16 KB    per-pass      T1
+  per-instance TRS array (1M entities)           32 B × N   per-frame     T2
+  visible-mesh list                              16 B × N   per-frame     T2
+  draw-indexed-indirect args                     20 B × M   per-frame     T3 (compute-written)
+  frustum-cull worker                            kernel     per-frame     T4
+  TRS → mat4 compose                             kernel     per-frame     T4 (in vtx-shader)
+  particle sim step                              kernel     per-frame     T4
+  vertex-buffer + index-buffer (mesh data)       MB         static        T2 (uploaded-once · arena)
+
+§ INVARIANTS  ‼ checked at every wave-landing per spec/24 § INTEGRATION
+
+  I1  ⌈ ∀ data-class : choose ONE tier · document choice in module header ⌉
+  I2  ⌈ ∀ wrapper : carry effect-row {GpuInit | GpuSubmit | Deadline<>} per spec/04 ⌉
+  I3  ⌈ ∀ wrapper : consume Cap<Gpu> per spec/12 · default-deny ⌉
+  I4  ⌈ ∀ buffer : carry IFC-label · Public default · Sensitive<Frame> for VR-output ⌉
+  I5  ⌈ ABI symbols append-only · renames bump major-version · old stubs retained 1 minor ⌉
+  I6  ⌈ stdlib value-out form keeps alias-delegate to &mut form for 1 minor cycle ⌉
+  I7  ⌈ benchmarks in release-build with validation-off (W-0 trap-fence) ⌉
+  I8  ⌈ each wave feature-flagged ; old + new paths coexist 1 minor cycle ⌉
+  I9  ⌈ §CONVENTIONS card cross-referenced wherever depth/handedness/up-axis matters ⌉
+  I10 ⌈ each wave ships an example/* file with observable end-to-end side-effect ⌉
+
+§ TARGET-METRIC (Apocky-mandate · 2026-05-20)
+  ‼ 1440p fullscreen · 144 Hz · 1_000_000 entities · PURE CSSL · all six waves landed
+  derivation :
+    1440p             → 2560 × 1440 pixels
+    144 Hz            → 6_944 µs per frame (spec/gpu target_frame_us_144hz)
+    1M entities       → InstanceData buffer = 64 B × 1_000_000 = 64 MiB SSBO (well under device-cap)
+    PURE CSSL         → all engine modules .cssl-authored ; Rust = stage-0 throwaway only
+    144 Hz × 1M       → GPU must do : cull + mat4-compose + draw per-instance ; CPU does ONE submit
+                          ∴ T3 (indirect) + T4 (compute-cull + vtx-compose) are mandatory
+    CPU per-frame budget : ≤ ~1 ms (build + upload + record) ; rest is GPU-driven
+
+§ THE WAVE-PLAN  ‼ Apocky-signed-off 2026-05-20
+
+  W-0  TRAP-FENCE                 spec/16 + §CONVENTIONS card + ValidationMode toggle
+  W-1  TRANSPORT-TIER LADDER      16 new ABI symbols (P1 tiers + cmd-buf + dispatch + indirect)
+  W-2  ZERO-ALLOC HOT-PATH        stdlib/vec &mut surface + engine/frame_arena
+  W-3  MESH/INSTANCE COLUMNS      engine/mesh + engine/instance + real glTF parser + batch draw
+  W-4  GPU TRS→MAT4 COMPOSE       vtx-shader composes ; CPU sends raw TRS ; biggest perf win
+  W-5  PHASE-NAMED FRAME-GRAPH    engine/frame_graph + GPU-driven indirect cull
+  W-6  PROFILER + PARALLEL CPU    stdlib timer + engine/profiler + parallel_for
+
+§ INTERACTION-WITH-OTHER-SPECS
+  spec/04 EFFECTS    : every transport tier op carries {GpuInit|GpuSubmit|Deadline<>}
+  spec/08 ENGINE     : Mesh/Material/Instance columns first-class types (P3)
+  spec/11 IFC        : Gpu-buffers Public default · Sensitive<Frame> for output-on-VR
+  spec/12 CAPS       : Cap<Gpu> witness at every tier-wrapper entry
+  spec/14 BACKEND    : tier→backend mapping (T3 indirect = D3D12 ExecuteIndirect | Vulkan vkCmdDrawIndexedIndirect)
+  spec/22 TELEMETRY  : P7 measure-first ; per-tier timing budgets
+  spec/24 HOST_FFI   : ABI surface enumerated below ⇩
+
+§ ABI-SURFACE   (W-1 landing · 16 new symbols)
+  __cssl_gpu_buffer_create(device, size, usage, mem_kind)         → u64
+  __cssl_gpu_buffer_destroy(buffer)                               → i32
+  __cssl_gpu_buffer_map(buffer, offset, size, out_ptr)            → i32
+  __cssl_gpu_buffer_unmap(buffer)                                 → i32
+  __cssl_gpu_buffer_upload(buffer, offset, src_ptr, src_len)      → i32
+
+  __cssl_gpu_cmd_buf_begin(device)                                → u64
+  __cssl_gpu_cmd_buf_end(cmd_buf)                                 → i32
+  __cssl_gpu_cmd_buf_bind_pipeline(cmd_buf, pipeline)             → i32
+  __cssl_gpu_cmd_buf_bind_vbuf(cmd_buf, slot, buffer, offset)     → i32
+  __cssl_gpu_cmd_buf_bind_ibuf(cmd_buf, buffer, offset, idx_kind) → i32
+  __cssl_gpu_cmd_buf_bind_descriptor(cmd_buf, set, slot, buffer)  → i32
+
+  __cssl_gpu_cmd_buf_push_constants(cmd_buf, stages, offset, size, data_ptr) → i32
+
+  __cssl_gpu_cmd_buf_draw_indexed(cmd_buf, idx_count, instance_count,
+                                    first_idx, vtx_off, first_inst)          → i32
+  __cssl_gpu_cmd_buf_draw_indirect(cmd_buf, args_buffer, args_offset,
+                                     draw_count, stride)                     → i32
+  __cssl_gpu_cmd_buf_dispatch(cmd_buf, group_x, group_y, group_z)             → i32
+  __cssl_gpu_cmd_buf_submit_v2(cmd_buf, signal_fence_out)                     → i32
+
+  ‼ STAGE-0 RETENTION : __cssl_gpu_cmd_buf_record_stub + __cssl_gpu_cmd_buf_submit_stub
+                          retained as alias-delegates for ONE minor cycle ; deprecation
+                          schedule lives in DECISIONS.md W-1-RETIREMENT
+
+§ FORBIDDEN-PATTERNS
+  ¬ engine code routes data through a tier different from the one documented in the header
+  ¬ heap-alloc in per-frame build/record phases (P6)
+  ¬ per-entity drawIndexed when instance-count > 16  (P1 + P2 — use indirect or instanced)
+  ¬ CPU-side mat4 compose for N > 10_000 static entities  (P4)
+  ¬ benchmark in debug-build / with validation-on  (P7)
+  ¬ skip §CONVENTIONS card in any new render-stack module  (P5)
+
+§ ATTESTATION
+  ‼ no override : every tier wrapper consumes Cap<Gpu> ; spec/24 PRIME_DIRECTIVE preserved
+  ‼ no surveillance : Gpu-buffers Public ; output-frame Sensitive<Frame> only on VR-headset path
+  ‼ measured ≠ assumed : §A6 transcript reports + LoA-host fps_pipeline_bench validates
+    each tier-choice in release-build
+  PRIME_DIRECTIVE.md §1 preserved at every tier · t∞.
+
+§ REFERENCE-IMPLEMENTATION
+  CSSL-host evidence : compiler-rs/crates/loa-host/src/fps_pipeline.rs
+                       compiler-rs/crates/loa-host/src/render.rs
+                       compiler-rs/crates/cssl-host-d3d12/src/resource.rs (GpuBufferIso · UploadBuffer)
+  these are the Rust-side analogs ; the .cssl-native ports land in W-1..W-6
+∎

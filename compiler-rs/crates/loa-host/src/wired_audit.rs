@@ -19,9 +19,7 @@ pub use cssl_host_audit::{
 /// Convenience : ingest every `*.log` / `*.jsonl` under `dir` into a single
 /// [`AuditIndex`]. Wraps [`AuditIndex::ingest_dir`] for symmetry with the
 /// other `wired_*` modules (one short-form helper per crate).
-pub fn ingest_logs_dir(
-    dir: impl AsRef<std::path::Path>,
-) -> std::io::Result<AuditIndex> {
+pub fn ingest_logs_dir(dir: impl AsRef<std::path::Path>) -> std::io::Result<AuditIndex> {
     AuditIndex::ingest_dir(dir)
 }
 

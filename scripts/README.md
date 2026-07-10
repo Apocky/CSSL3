@@ -38,6 +38,7 @@ Stop pasting cmd-lines · double-click batch-files · sovereignty-clean.
 .\scripts\dev\test_all.ps1 -Only cargo   # only cargo tests
 .\scripts\dev\clean.ps1 -All -Yes        # full clean
 .\scripts\dev\csslc_check_all.ps1 -Verbose   # which-.csl-files-pass-csslc
+.\scripts\dev\validate_renderer_transport.ps1 # renderer transport product-path gate
 
 # KEYS
 .\scripts\keys\generate_cap.ps1 -Role A   # generate cap-A

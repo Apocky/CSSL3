@@ -123,9 +123,7 @@ fn singleton() -> &'static Mutex<LoaCoderRuntime> {
 /// so the audit-log + sandbox observations are unified.
 #[must_use]
 pub fn lock<'a>() -> MutexGuard<'a, LoaCoderRuntime> {
-    singleton()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
+    singleton().lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// Reset the global runtime back to a fresh `default()` state. ONLY safe

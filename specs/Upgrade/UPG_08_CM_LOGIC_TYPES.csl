@@ -1,0 +1,252 @@
+⟨spec⟩ UPG_08_CM_LOGIC_TYPES · logic lattices · effects · continuations · graded types · provenance · refinement · totality
+⟨ctx⟩ specs/Upgrade/ · Part III/3 · computational-model frontiers (2 of 3)
+⟨covers⟩ §23 lattice/fuzzy/paraconsistent · §24 algebraic effects · §25 continuations · §26 linear/graded · §27 provenance · §28 refinement/dependent · §29 totality
+
+──────────────────────────────────────────────────────────────────────
+## §23. Lattice-valued / fuzzy / paraconsistent logic
+
+The theoretical menu:
+- **Heyting algebras** for intuitionistic logic — the standard
+  semantics of propositions-as-types.
+- **Łukasiewicz logic** — continuous-valued [0,1] truth; basis for
+  fuzzy logic; algebraic structure: MV-algebras.
+- **Belnap's 4-valued logic** — {T, F, both, neither}; useful for
+  reasoning about contradictory information sources (the database-
+  merging motivation).
+- **Paraconsistent type systems** — LFI (Logics of Formal
+  Inconsistency, Carnielli & Marcos); useful when you have to reason
+  in the presence of contradictions without exploding.
+- **Linear logic** (Girard 1987) — already structural in linear types
+  (§26) and reversibility (§21).
+
+Practical languages:
+- **FCL** (Fuzzy Control Language, IEC 61131-7) — industrial,
+  embedded.
+- **Type-2 fuzzy logic** in Python, MATLAB.
+
+The frontier: a type system that **carries certainty / trust values
+as type-level metadata,** and the compiler reasons about how
+operations combine them. This is directly relevant to the AI-fleet
+partnership: an LLM-generated value is at some certainty level; a
+human-verified value is at another; combining them in a function
+should propagate the right certainty composition. This is
+structurally similar to differential-privacy type systems (per §19) —
+the type tracks a budget that combines algebraically.
+
+Speculative: a *type-level lattice* (rather than a single linear
+privacy budget) tracking multiple dimensions of "trust": source,
+verification status, consent scope, recency. This is the language-
+level realization of "consent as OS."
+
+## §24. Algebraic effects and handlers
+
+The mature reference set:
+- **Plotkin & Power (2002)** — algebraic effects as the source-
+  language analog of equational presentations of monads.
+- **Plotkin & Pretnar (2009/2013)** — effect handlers; "Eff" the
+  language.
+- **Koka** (Leijen, Microsoft Research) — production-quality; the
+  canonical PL reference is Leijen 2017 "Type Directed Compilation
+  of Row-Typed Algebraic Effects" (POPL 2017). Koka's row-typed
+  effects with scoped labels are the cleanest design; the Microsoft
+  Research TR (algeff-tr-2016-v2.pdf) is the readable account. Koka
+  compiles to JavaScript and C with selective CPS.
+- **Frank** (Lindley, McBride, McLaughlin; "Do Be Do Be Do,"
+  arXiv:1611.09259, 2017) — *handlers all the way down*; no separate
+  function abstraction. Continuation variables are *shallow* (caller-
+  side, do not re-invoke handler implicitly), in contrast to Koka
+  and Multicore OCaml which are *deep*.
+- **OCaml 5 / Multicore OCaml** (Dolan, Sivaramakrishnan et al.,
+  2015–2022; landed in OCaml 5.0, 2022) — runtime support for effect
+  handlers, used for the new concurrency story (eio, miou). Effects
+  are *not type-tracked* in OCaml 5, which is a deliberate-but-
+  controversial choice.
+- **Effekt** (Brachthäuser et al.) — research language with
+  capability-passing style effects.
+- **Unison's abilities** — Frank-derived; effects are first-class in
+  Unison's type system.
+
+The frontier the user asks about: **effect inference, scoped effects,
+control effects.** Koka has all three. The deep practical insight is
+that **effect handlers subsume**:
+- Exceptions (a handler that doesn't resume)
+- State (a handler that threads state through `resume`)
+- Async / await (a handler that schedules continuations)
+- Backtracking / nondeterminism (a handler that resumes multiple
+  times — shallow only)
+- Generators / iterators (a handler that resumes lazily)
+- Probabilistic sampling (a handler that interprets `sample`
+  operations — see §19; this is in fact how Gen and Pyro structure
+  their effects)
+
+A sovereign language with effects-as-the-control-primitive collapses
+a half-dozen language features into one. Koka's `<exn,div,console>`
+effect rows are how this looks in practice. The capability-system
+angle (§36): every effect is a capability; raising an effect requires
+a token. The Prime Directive falls out: surveillance and coercion
+are *effects* that require capabilities that the OS/governance
+refuses to grant.
+
+## §25. Continuations as first-class
+
+Delimited control (`reset`/`shift`, Felleisen 1988; Danvy & Filinski
+1990) is the structural primitive that effect handlers reduce to
+under the hood. The mature references:
+
+- Scheme's `call/cc` — full unrestricted continuations; powerful but
+  composes poorly.
+- **Racket's delimited continuations** (Flatt, Yu, Findler, Felleisen,
+  ICFP 2007) — `reset`/`shift`/`prompt`/`control`/`abort` with
+  prompt tags.
+- **One-shot continuations** (Bruggeman, Waddell, Dybvig, PLDI
+  1996) — the common case; cheaper to implement.
+- **Multi-prompt delimited control** (Gunter, Rémy, Riecke, FPCA
+  1995; Dyvbig, Peyton-Jones, Sabry, JFP 2007).
+
+Effect handlers are *implemented* via delimited continuations under
+the hood (Koka's compilation uses CPS). For a sovereign language, the
+choice is **expose effect handlers as the source language, use
+delimited continuations in the IR**, and let users who need lower-
+level control reach for them. This is the Koka model.
+
+## §26. Linear / affine / relevant / graded types
+
+The mature options:
+- **Rust's affine types** — values can be used at most once (drop OK);
+  the borrow checker layers reference rules on top. Production-
+  quality.
+- **Linear Haskell** (Bernardy, Boespflug, Newton, Peyton-Jones,
+  Spiwack, POPL 2018) — multiplicities `1` and `ω` (used exactly
+  once / arbitrarily many); retrofit onto Haskell.
+- **Idris 2 / Quantitative Type Theory** (McBride 2016, "I Got
+  Plenty o' Nuttin'"; Atkey 2018 "Syntax and Semantics of QTT") —
+  quantities `0`, `1`, `ω` at the *type* level, distinguishing
+  erasable, linear, and unrestricted. The QTT calculus is the
+  cleanest formal foundation for combining linearity with dependent
+  types.
+- **Granule** (Orchard, Liepelt, Eades; ICFP 2019 "Quantitative
+  Program Reasoning with Graded Modal Types") — full graded
+  modalities over arbitrary semirings; subsumes linear, affine,
+  security levels, sensitivity, sensitivity-for-DP, ...
+- **ATS** (Xi) — linear types + theorem proving; production but with
+  steep learning curve.
+- **Mezzo** (Pottier, Protzenko) — region-based + capability tracking.
+- **Vale** — generational references, an alternative to borrow-
+  checking with similar safety.
+- **Austral** (Fernando Borretti) — systems language with linear
+  types + capability security; the design is closest to "Rust +
+  ocap."
+
+The unifying observation: **graded modal types (Granule's framework)
+subsume virtually every other resource-tracking discipline.** A grade
+can be:
+- A multiplicity (Linear Haskell)
+- A privacy budget (DP)
+- A security clearance (information-flow types — Jif, Flow Caml)
+- A consent scope (the Prime Directive realized at the type level)
+- A trust level (per §23)
+- A region (per §5, Legion-style)
+
+For SIGIL, the right move is to **commit to graded modal types as
+the core type-system feature.** Then linearity (for quantum, for
+resources), DP (for privacy-preserving computation), capability (for
+security), and region (for placement) are all *instances* of one
+mechanism. The implementation cost is higher than mono-purpose
+linear types but the conceptual unification is enormous.
+
+## §27. Causal types tracking provenance
+
+Database provenance research is a goldmine (Cheney, Chiticariu, Tan,
+"Provenance in Databases: Why, How, and Where," FnT in Databases
+2009). The frontier languages:
+- **Adapton** (Hammer, Acar, Khoo, Hicks; PLDI 2014, OOPSLA 2014) —
+  incremental computation; values carry their *demand graph*.
+- **Salsa** (Niko Matsakis et al., Rust ecosystem) — query-based
+  incremental computation, used in rust-analyzer. Inspired by
+  Adapton.
+- **Differential Dataflow** (McSherry, Murray, Isaacs, Isard, Abadi;
+  CIDR 2013 "Differential Dataflow" paper) — fully general
+  incremental computation with nested iteration; the Naiad runtime;
+  production-quality.
+- **Skip** (Facebook, ~2017–2019, since wound down) — a language
+  designed around reactive incremental recomputation.
+- **Frappuccino** — incremental computation research.
+
+The fundamental insight: **every value has a provenance DAG, which
+is just the data-dependency graph that produced it.** Content
+addressing (§12) gives every node in this DAG a hash. Combining
+these:
+- A value's hash = hash(operation, hashes of operands) — fully
+  content-addressed
+- Provenance is free: walk the DAG by hash
+- Incremental recomputation is free: if a leaf hash changes, only
+  its hash-dependents are recomputed
+- Tests cache by hash (Unison already does this)
+- The "why" of any computation is recoverable by walking the DAG
+- **The Prime Directive gets teeth**: any output that was produced
+  from a non-consented input is detectable by walking the provenance
+  to a non-consented hash.
+
+This is the closest the language gets to making consent enforceable
+rather than aspirational.
+
+## §28. Refinement and dependent types beyond Idris/Agda
+
+The production-grade options:
+- **F\*** (Microsoft Research, INRIA; Swamy et al.) — SMT-backed
+  refinements; used for HACL\* verified cryptography, Project
+  Everest's verified TLS. The "tactic" subsystem allows interactive
+  proof when SMT is insufficient.
+- **Liquid Haskell** (Vazou, Jhala, et al.; ICFP 2014 and onward) —
+  refinement types over Haskell via SMT (Z3). Production-usable for
+  Haskell codebases.
+- **Dafny** (Leino, Microsoft Research) — verification language; SMT-
+  backed; used in AWS for verifying critical infrastructure (the
+  Dafny/CryptoCom2 work).
+- **Why3** (Filliâtre, Paskevich) — back-end for multiple
+  verification frontends.
+- **Lean 4** (de Moura, Ullrich; mathlib4) — dependent types +
+  tactics; used for mathlib (1M+ lines of formalized math);
+  programming-language fragment is becoming credible (the Lean 4
+  compiler is in Lean 4).
+- **Coq / Rocq** (INRIA) — Calculus of Inductive Constructions; the
+  venerable workhorse.
+- **Agda** (Norell, Chalmers) — dependent types with type-driven
+  editor support.
+
+For SIGIL: the realistic asymptote is **SMT-backed refinements for
+everyday code, full dependent types for hot paths that need
+verification.** The F* model is the most practical: write code, write
+refinements, the SMT solver checks them, fall back to tactics for
+the hard cases. Liquid Haskell shows this scales to large codebases.
+
+The interaction with §17 (AI-native source): **LLM-generated code
+with SMT-checked refinements** is a credible recipe for AI
+partnership. The AI writes both the code and the refinement; the SMT
+solver acts as the third party that doesn't trust either. This is
+the "specification synthesis" recipe (DreamCoder-style, see §40)
+realized as language ergonomics.
+
+## §29. Total functional programming
+
+Idris 2's totality checker, Agda's termination checker, Coq's guarded
+recursion / structural recursion, Lean 4's well-founded recursion —
+these are all variants of the same theorem: every recursive call
+must be on a structurally smaller (or otherwise well-founded)
+argument. Codata / corecursion is the dual: every productive
+corecursive call must produce a structurally smaller (more
+determined) tail.
+
+Specific designs:
+- **Total functional programming** (Turner, 2004) — the original
+  argument.
+- **Beluga** (Pientka, Cave) — contextual modal type theory for
+  higher-order abstract syntax + total recursion.
+- **Cocon** (Pientka, Schöpp) — combining inductive and coinductive
+  definitions cleanly.
+
+For SIGIL: totality should be a *tracked effect* (per §24), not a
+global property. Most code does not need to be total. Code that
+does — kernels in a long-running system, code that handles untrusted
+input, code that the AI fleet has generated — can be type-required to
+be total. The capability to *be non-total* is itself a capability.

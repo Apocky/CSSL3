@@ -1,0 +1,249 @@
+=== A1 ===
+On branch cssl/session-11/T11-W18-L8-DXIL-DIRECT
+Your branch is up to date with 'origin/cssl/session-11/T11-W18-L8-DXIL-DIRECT'.
+
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	deleted:    GDDs/AI_NPC_BEHAVIOR.csl
+	deleted:    GDDs/COMBAT_SYSTEM.csl
+	deleted:    GDDs/CRAFT_DECONSTRUCT_ALCHEMY.csl
+	deleted:    GDDs/GEAR_RARITY_SYSTEM.csl
+	deleted:    GDDs/INFINITE_LABYRINTH_CHARTER.csl
+	deleted:    GDDs/LOA_PILLARS.md
+	deleted:    GDDs/MAGIC_SYSTEM.csl
+	deleted:    GDDs/MULTIPLAYER_MATRIX.csl
+	deleted:    GDDs/PROCGEN_WORLD.csl
+	deleted:    GDDs/PROPRIETARY_TECH_STACK.csl
+	deleted:    GDDs/ROGUELIKE_LOOP.csl
+	deleted:    Labyrinth of Apocalypse/.gitignore
+	deleted:    Labyrinth of Apocalypse/build.bat
+	deleted:    Labyrinth of Apocalypse/build.sh
+=== A2 ===
+cssl/session-11/T11-W18-L8-DXIL-DIRECT
+=== A3 ===
+dd59670 ┬º FIX cssl-mir/body_lower.rs ┬╖ thread cast target type into lower_cast
+85a1d65 ┬º T11-W19-╬▓-LIFECYCLE ┬╖ cssl-rt fs_event_jsonl + cssl-test-verifier crate
+aef6f5d ┬º Phase-A.foundation ┬╖ ratify spec-70 + commit foundational specs
+da2c742 fix admin-chat return-path Γèù legacy-/chat ΓåÆ workbench
+0da54d6 redesign admin-workbench Γèù real-Lazarus-context ΓåÆ queue-gated-chat
+bd5a72a add Lazarus admin chat Γèù secure control-plane ΓåÆ deployed app
+8d62de7 ┬º T11-W19-╬▓-HANDOFF ┬╖ cold-start prompt for next-session ┬╖ accountability + setup
+19d192a ┬º T11-W19-╬▓-WINMAIN-FIX ┬╖ CSSL-exe entry-point bug ┬╖ USER-MAIN was dead-code
+2bc3fe5 ┬º T11-W19-╬▓-FS-TRACE ┬╖ file-write trace replaces stderr eprintln (unreliable on PowerShell)
+9a293bc ┬º T11-W19-╬▓-DIAGNOSTIC ┬╖ examples/test_visible_window.cssl
+=== A4 ===
+ab6a090 ┬º phase-a/U-D Γ£ô toy-cli ΓèÉ iccombs ΓèÉ unified driver L1+L3+PD
+8e910ee ┬º phase-a/U-D ΓùÉ lower-iccombs ΓèÉ L1ΓåÆL3 : ╬╗_lin ΓåÆ SIC interaction net
+0f784cb ┬º phase-a/U-D-prelude ΓùÉ toy-cli ΓèÉ end-to-end-driver : S-exp ΓåÆ elab ΓåÆ pd-check
+506f510 ┬º phase-a/U-G-prelude ΓùÉ pd-check ΓèÉ elab+effects-row+ocap+consent integration
+42b846b ┬º phase-a/U-B ΓùÉ elab-skeleton ΓèÉ graded-modal-kernel(over-hgraph)
+1bf2ca7 ┬º phase-a/09 Γ£ô ╧â-enforce ΓèÉ FFI-ABI-check + UPG-impl-plan(IMPL_00..05) + foundation-crates├ù8 + workspace-clippy-baseline-debt-purge Γ£ô
+85ae794 spec-70 ┬º item-06 PR-1 ┬╖ effect-row runtime preflight (A06.1┬╖A06.2┬╖A06.3 Γ£ô)
+c3c3ff5 spec-70 ┬º item-04 PR-1 ┬╖ build manifest seam (A04.1┬╖A04.2┬╖A04.3 Γ£ô)
+c4610ba spec-70 ┬º item-03 PR-1 ┬╖ object symbol audit (A03.1┬╖A03.2┬╖A03.3 Γ£ô)
+e4ca84a spec-70 ┬º item-19 PR-1 ┬╖ if-expression graduation (A19.1┬╖A19.2┬╖A19.3 Γ£ô)
+647fe1f spec-70 ┬º item-89 PR-3 ┬╖ did_you_mean adoption (A89.2 ΓùÉ ΓåÆ Γ£ô)
+d5dcdf1 spec-70 ┬º item-02 ┬╖ recognizer-type-mismatch (A02.1 Γ£ô A02.2 Γ£ô A02.3 Γ£ô)
+08b51d8 spec-70 ┬º item-05 ┬╖ run-and-observe-gate in cssl-test-verifier (A05.1 Γ£ô A05.2 Γ£ô A05.3 Γ£ô)
+b7fb3e3 spec-70 ┬º item-01 ┬╖ sentinel envelope writes in cssl-rt prologue + atexit hook (A01.1 Γ£ô A01.2 Γ£ô)
+56290b8 spec-70 ┬º item-89 PR-2 ┬╖ wire csslc::diag through cssl_ast::Renderer (A89.3 fully landed)
+16c7f19 spec-70 ┬º item-89 PR-1 ┬╖ diagnostic Renderer + did_you_mean carrier (A89.1 Γ£ô ┬╖ A89.2 ΓùÉ ┬╖ A89.3 Γ£ô)
+0624a21 ┬º RZ.open ┬╖ phase-a/89-diagnostics-carets ┬╖ ASSERT-mapped scaffolding
+bfb63fa ┬º RZ.open ┬╖ phase-a/05-run-observe-gate ┬╖ ASSERT-mapped scaffolding
+7853c87 ┬º RZ.open ┬╖ phase-a/02-recognizer-mismatch ┬╖ ASSERT-mapped scaffolding
+11af4e9 ┬º RZ.open ┬╖ phase-a/01-sentinel-return ┬╖ ASSERT-mapped scaffolding
+dd59670 ┬º FIX cssl-mir/body_lower.rs ┬╖ thread cast target type into lower_cast
+85a1d65 ┬º T11-W19-╬▓-LIFECYCLE ┬╖ cssl-rt fs_event_jsonl + cssl-test-verifier crate
+aef6f5d ┬º Phase-A.foundation ┬╖ ratify spec-70 + commit foundational specs
+da2c742 fix admin-chat return-path Γèù legacy-/chat ΓåÆ workbench
+0da54d6 redesign admin-workbench Γèù real-Lazarus-context ΓåÆ queue-gated-chat
+=== A5 ===
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_00_README.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_01_OVERVIEW.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_02_HW_BACKEND.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_03_HW_ACCELERATORS.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_04_HW_MEMORY_AND_HDL.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_05_REPR_PROJECTION.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_06_REPR_HYPERGRAPH.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_07_CM_PROBABILISTIC_AD.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_08_CM_LOGIC_TYPES.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_09_CM_DISTRIBUTED.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_10_SYNTHESIS_LANDSCAPE.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_11_SYNTHESIS_CARTESIAN.csl
+C:\Users\Apocky\source\repos\CSSLv3\specs\Upgrade\UPG_12_APPENDIX.csl
+=== C ===
+C:/Users/Apocky/source/repos/CSSLv3                                               dd59670 [cssl/session-11/T11-W18-L8-DXIL-DIRECT]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a0c1515b7c81a69ef     6404d7c [worktree-agent-a0c1515b7c81a69ef] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a1e2f36048636a9f4     f1f307c [worktree-agent-a1e2f36048636a9f4] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a209e0d379c23c8d6     fc7de85 [worktree-agent-a209e0d379c23c8d6] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a264a4c6d3803453b     673b20c [worktree-agent-a264a4c6d3803453b] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a29a932d286ffb90a     a78f828 [worktree-agent-a29a932d286ffb90a] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a2e7d34369df890a5     40ce783 [cssl/session-11/T11-W18-L7-spirv-direct] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a3998f78eb548252c     f56fca7 [worktree-agent-a3998f78eb548252c] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a3c1499fa01d0189c     8787a50 [worktree-agent-a3c1499fa01d0189c] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a4609e89478eb2acd     4432cd7 [worktree-agent-a4609e89478eb2acd] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a46ddd3924e06e3a5     c2a1899 [cssl/session-11/T11-W18-N-gpu-compose-rewire] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a4a880dcc7b30a481     4739adc [worktree-agent-a4a880dcc7b30a481] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a4daa63633b2d2e3a     0542794 [worktree-agent-a4daa63633b2d2e3a] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a658a70a6b1e853dc     da5d52a [worktree-agent-a658a70a6b1e853dc] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a6747ba05b73e40f3     7600523 [worktree-agent-a6747ba05b73e40f3] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a6ad2e3c2845501af     ff11472 [worktree-agent-a6ad2e3c2845501af] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a6ce61b23a3bd95dd     d31d61e [worktree-agent-a6ce61b23a3bd95dd] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a7713bca1b99cc1e5     e708f00 [worktree-agent-a7713bca1b99cc1e5] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-a7a1649eb81cac32b     b6dbb25 [worktree-agent-a7a1649eb81cac32b] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-aa27f9d7461e404e3     230a5d7 [worktree-agent-aa27f9d7461e404e3] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-ab96d76462926922e     7e12c48 [cssl/session-11/T11-W18-L7-PRESENT] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-abda8422d478f1ca0     a382266 [worktree-agent-abda8422d478f1ca0] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-ac5e1c7128fdd2129     03a370e [cssl/session-11/T11-W18-L7-INTEGRATE] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-ace8ad27c7051ad84     746a17d [worktree-agent-ace8ad27c7051ad84] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-ae12c4d564b6446da     b250643 [worktree-agent-ae12c4d564b6446da] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-ae792383478ff9eaf     3b26b34 [worktree-agent-ae792383478ff9eaf] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/agent-aef5ad69be4868749     a78f828 [worktree-agent-aef5ad69be4868749] locked
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/AI-BEHAV                    44696ff [cssl/session-9/V1-ai-behav]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/angry-newton-d9333b         e399815 [claude/angry-newton-d9333b]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/angry-pare-02423f           fed76b6 [claude/angry-pare-02423f]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/ANIM                        a65f6ed [cssl/session-9/T1-animation]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/ASSET                       6793343 [cssl/session-9/N1-asset-pipeline]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/AUDIO-MIX                   88eed85 [cssl/session-9/O1-audio-mixer]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/blissful-goldwasser-13477c  0f7c74c [claude/blissful-goldwasser-13477c]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/blissful-mendeleev-53bbed   a99746d [claude/blissful-mendeleev-53bbed]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/busy-poitras-6441e4         45bb600 [claude/busy-poitras-6441e4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/confident-einstein-b8da79   1ad9275 [claude/confident-einstein-b8da79]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/crazy-easley-e961b6         9effbc0 [claude/crazy-easley-e961b6]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D113                        382d7a9 [cssl/session-9/D113-omega-field-cell]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D114                        382d7a9 [cssl/T11-D114-wave-solver]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D116                        382d7a9 [cssl/T11-D116-sdf-raymarch]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D117                        382d7a9 [cssl/session-11/D117-sdf-xpbd-physics]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D118                        382d7a9 [cssl/T11-D118-spectral-kan-brdf]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D120                        382d7a9 [cssl/T11-D120-gaze-collapse]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D123                        382d7a9 [cssl/T11-D123-work-graph-pipeline]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D124                        7b63403 [cssl/T11-D124-openxr-host]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D126                        8a13c68 [cssl/session-11/T11-D126-layout-attr]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D152                        bf671e3 [cssl/session-12/T11-D152-host-net-wsastartup-pin]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D153                        7221536 [cssl/session-12/T11-D153-cssl-rt-cold-cache-fix]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D154                        77a7b02 [cssl/session-12/T11-D154-cgen-gpu-wgsl-dlltool-fix]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D155                        5b95891 [cssl/session-12/T11-D155-cssl-error]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D156                        781d297 [cssl/session-12/T11-D156-cssl-log]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D157                        02e34d5 [cssl/session-12/T11-D157-cssl-metrics]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D158                        8044203 [cssl/session-12/T11-D158-frame-time-instrumentation]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D159                        900dbd6 [cssl/session-12/T11-D159-health-probes]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D160                        84ed8d4 [cssl/session-12/T11-D160-spec-coverage-tracker]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D161                        cc4365a [cssl/session-12/T11-D161-replay-determinism]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D162                        9de614e [cssl/session-12/T11-D162-cssl-inspect]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D163                        9de614e [cssl/session-12/T11-D163-cssl-hot-reload]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D163-redo                   49580e7 [cssl/session-12/T11-D163-cssl-hot-reload-redo]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D228-phase-3-test-room      0755265 [cssl/session-12/T11-D228-phase-3-test-room]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D229-mcp-server-skeleton    cba8c3c [cssl/session-12/T11-D229-mcp-server-skeleton]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/D233-iter-loop              06de2a6 [cssl/session-12/T11-D233-iter-loop-fixtures]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/elastic-mcnulty-6d4f2f      4268caa [claude/elastic-mcnulty-6d4f2f]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/elegant-jones-5ed655        0f64841 [claude/elegant-jones-5ed655]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/flamboyant-sammet-523fec    a99746d [claude/flamboyant-sammet-523fec]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/G-axis-integration          7fef329 [cssl/session-7/G-axis-integration]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/G10                         27f59f2 [cssl/session-7/G10-cross-fn-calls]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/G11                         bd60435 [cssl/session-7/G11-sse2-float]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/G8                          dccc86e [cssl/session-7/G8-lsra-pipeline]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/G9                          b8529c9 [cssl/session-7/G9-multi-block]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/gracious-dirac-939a7d       9effbc0 [claude/gracious-dirac-939a7d]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/heuristic-khayyam-fb5767    1faa2c6 [claude/heuristic-khayyam-fb5767]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/J1                          a61873c [cssl/session-7/J1-trait-dispatch]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/J2                          8d3f816 [cssl/session-7/J2-closures-callable]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/jolly-saha-1729da           c10eb8a [claude/jolly-saha-1729da]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/lucid-williams-bcb581       76e125c [claude/lucid-williams-bcb581]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/MATH                        6e0f096 [cssl/session-9/M1-math-lib]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/modest-euler-433e05         9b2f5ae [claude/modest-euler-433e05]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/mystifying-bardeen-dcb4d6   7600523 [claude/mystifying-bardeen-dcb4d6]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/peaceful-blackburn-2595d8   9d74870 [claude/peaceful-blackburn-2595d8]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/PGM1-D320                   1e74ed9 [cssl/session-13/T11-D320-W-S-PGM-1-xpbd]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/01                  b7fb3e3 [phase-a/01-sentinel-return]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/02                  d5dcdf1 [phase-a/02-recognizer-mismatch]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/03                  c4610ba [phase-a/03-symbol-audit]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/04                  c3c3ff5 [phase-a/04-build-manifest]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/05                  08b51d8 [phase-a/05-run-observe-gate]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/06                  85ae794 [phase-a/06-effect-row-runtime]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/09                  ab6a090 [phase-a/U-D-toy-cli-iccombs]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/19                  e4ca84a [phase-a/19-if-expression]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/phase-a/89                  647fe1f [phase-a/89-diagnostics-carets]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/PHYS                        f788386 [cssl/session-9/P1-physics]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/RENDER                      1062a28 [cssl/session-9/R1-renderer]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-B1                       16185d7 [cssl/session-6/B1]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-B2                       ec22dea [cssl/session-6/B2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-B3                       40a8b22 [cssl/session-6/B3]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-B4                       ace2f74 [cssl/session-6/B4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-B5                       de0302c [cssl/session-6/B5]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-C1                       57b27fb [cssl/session-6/C1]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-C2                       a51896d [cssl/session-6/C2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-C3                       29858aa [cssl/session-6/C3]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-C4                       f571938 [cssl/session-6/C4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-C5                       4579fa9 [cssl/session-6/C5]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-C5-redo                  90beda1 [cssl/session-6/C5-redo]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-D1                       a4e09a5 [cssl/session-6/D1]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-D2                       7734c65 [cssl/session-6/D2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-D3                       620da8a [cssl/session-6/D3]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-D4                       69cc584 [cssl/session-6/D4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-D5                       0d8e2c7 [cssl/session-6/D5]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-E1                       aaa17e0 [cssl/session-6/E1]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-E2                       7a7764e [cssl/session-6/E2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-E3                       35cb146 [cssl/session-6/E3]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-E4                       5e17b4a [cssl/session-6/E4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S6-E5                       cf9b47f [cssl/session-6/E5]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-F1                       4d93063 [cssl/session-7/F1]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-F2                       bcac2c6 [cssl/session-7/F2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-F3                       5c43f84 [cssl/session-7/F3]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-F4                       771b2ba [cssl/session-7/F4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-G1                       34ea8de [cssl/session-7/G1]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-G2                       d54e329 [cssl/session-7/G2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-G3                       a745b0c [cssl/session-7/G3]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-G4                       08af647 [cssl/session-7/G4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-G5                       6947e81 [cssl/session-7/G5]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-G6                       8664cd4 [cssl/session-7/G6]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S7-G7                       0d475b7 [cssl/session-7/G7]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S8-H0                       56c7278 [cssl/session-8/H0-design]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S8-H1                       3d9fd18 [cssl/session-8/H1]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S8-H2                       457cbf4 [cssl/session-8/H2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S8-H3                       85e6aa5 [cssl/session-8/H3]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S8-H4                       b725f8b [cssl/session-8/H4]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S8-H5                       af5a330 [cssl/session-8/H5]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S8-H6                       2f698cc [cssl/session-8/H6]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/S9-I0                       739aaff [cssl/session-9/I0]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/SESSION-CLOSE               f28366d [cssl/session-close-v1.0]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/T11-W18-D-cl                f51be7d [cssl/session-11/T11-W18-D-combat-loop]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/UI                          7f1886b [cssl/session-9/U1-ui-framework]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/upbeat-merkle-7a80b2        9effbc0 [claude/upbeat-merkle-7a80b2]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/vigilant-shannon-a29545     c97927a [claude/vigilant-shannon-a29545]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/vigorous-chaum-157d42       9effbc0 [claude/vigorous-chaum-157d42]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3-beta-02                  64cce0f [cssl/session-11/T11-D127-substrate-effect-rows]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3b-05                      f7a8632 [cssl/session-11/T11-D130-path-hash-discipline]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3B-06                      ceb7fa9 [cssl/session-11/T11-D131-real-crypto-wire]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3B-12                      8b1ac7a [cssl/session-11/T11-D137-sigma-mask-packed]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3g-01                      57fa399 [cssl/session-11/T11-D138-sigma-enforce-pass]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3g-02                      6b707f4 [cssl/session-11/T11-D139-gpu-ad-tape]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3g-03                      ea3fd42 [cssl/session-11/T11-D140-call-and-control-flow-ad]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3g-04                      96ecdc7 [cssl/session-11/T11-D141-comptime-run-eval]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3g-05                      ab35024 [cssl/session-11/T11-D142-specialization-pass]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3g-06                      7a3646d [cssl/session-11/T11-D143-kan-extension-phi-table]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3g-07                      d5e0f3a [cssl/session-11/T11-D144-omega-field-crate]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3╬▓-04                      c2cd031 [cssl/session-11/T11-D129-on-device-only-ifc]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3╬▓-07                      65c7a16 [cssl/session-11/T11-D132-biometric-compile-refusal]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3╬▓-08                      44c350d [cssl/session-11/T11-D133-jet-higher-order-ad]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3╬▓-09                      a7fd758 [cssl/session-11/T11-D134-cssl-pga-crate]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3╬▓-10                      5129b5d [cssl/session-11/T11-D135-cssl-wavelet-crate]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W3╬▓-11                      6c4e7aa [cssl/session-11/T11-D136-cssl-hdc-crate]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-01                       707761b [cssl/session-11/T11-D114-wave-solver]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-02                       93341db [cssl/session-11/T11-D116-render-v2-sdf]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-03                       f949ae7 [cssl/session-11/T11-D117-physics-wave]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-04                       162ef07 [cssl/session-11/T11-D118-spectral-render]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-05                       b6287fd [cssl/session-11/T11-D119-fractal-amplifier]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-06                       35dad37 [cssl/session-11/T11-D120-gaze-collapse]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-07                       0a83a38 [cssl/session-11/T11-D121-companion-perspective]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-08                       06d1916 [cssl/session-11/T11-D122-mise-en-abyme]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-09                       363078c [cssl/session-11/T11-D123-work-graph]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-11                       ec73d6b [cssl/session-11/T11-D125a-anim-procedural]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/W4-12                       07f7e59 [cssl/session-11/T11-D125b-wave-audio]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/wonderful-diffie-f2d04e     a99746d [claude/wonderful-diffie-f2d04e]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/youthful-heisenberg-3c362f  22d890e [claude/youthful-heisenberg-3c362f]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/zealous-mclean-2fc5c8       9effbc0 [claude/zealous-mclean-2fc5c8]
+C:/Users/Apocky/source/repos/CSSLv3/.claude/worktrees/zen-cohen-869fa7            242e0ba [claude/zen-cohen-869fa7]
+C:/Users/Apocky/source/repos/CSSLv3-wt-csslc-strings                              d8c8075 [cssl/session-11/T11-W18-CSSLC-STRINGS]
+C:/Users/Apocky/source/repos/CSSLv3-wt-sigma-coherence                            e1a68ae [cssl/session-11/T11-W18-SIGMA-COHERENCE]
+C:/Users/Apocky/source/repos/CSSLv3-wt-spec-port-v10                              a99746d [cssl/session-11/T11-W18-V10-SPEC-PORT]

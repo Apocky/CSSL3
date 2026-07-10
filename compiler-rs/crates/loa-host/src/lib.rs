@@ -73,12 +73,12 @@ pub mod telemetry;
 
 // DM-sibling catalog
 pub mod dm_director;
-pub mod gm_narrator;
 pub mod dm_runtime;
+pub mod gm_narrator;
 // § T11-W11-GM-DM-DEEPEN — persona-state + narrative-arc state machine.
 //   Sibling modules to gm_narrator + dm_director ; no cross-crate deps.
-pub mod gm_persona;
 pub mod dm_arc;
+pub mod gm_persona;
 
 // UI-overlay catalog (CPU-side text/menu logic always built ; GPU pipeline
 // gated on `runtime` feature inside the module).
@@ -207,23 +207,23 @@ pub mod content_pipeline;
 // foundational surface so future agents can reach for `loa_host::wired_*`
 // instead of re-naming the path-deps at every call-site.
 // ──────────────────────────────────────────────────────────────────────────
-pub mod wired_replay;
-pub mod wired_audit;
-pub mod wired_stereoscopy;
-pub mod wired_golden;
-pub mod wired_procgen_rooms;
-pub mod wired_histograms;
 pub mod wired_attestation;
+pub mod wired_audit;
+pub mod wired_causal_seed;
+pub mod wired_cocreative;
+pub mod wired_config;
+pub mod wired_frame_recorder;
+pub mod wired_golden;
+pub mod wired_histograms;
+pub mod wired_input_virtual;
+pub mod wired_license_attribution;
+pub mod wired_multiplayer;
+pub mod wired_procgen_rooms;
+pub mod wired_replay;
 pub mod wired_rt_trace;
 pub mod wired_spectral_grader;
-pub mod wired_frame_recorder;
-pub mod wired_input_virtual;
-pub mod wired_config;
-pub mod wired_cocreative;
-pub mod wired_causal_seed;
-pub mod wired_license_attribution;
+pub mod wired_stereoscopy;
 pub mod wired_voice;
-pub mod wired_multiplayer;
 
 // § T11-W7-G-LOA-HOST-WIRE — wave-7 (KAN-real · DM · GM · MP-transport-real)
 //   thin wrappers. Each wired_* module re-exports the canonical public types
@@ -254,12 +254,12 @@ pub mod wired_coder_runtime;
 //     - cssl-content-rating           (W12-7 · rating ingest)
 //     - cssl-content-moderation       (W12-11 · flag-handling)
 //     - cssl-host-playtest-agent      (W12-10 · automated-GM playtests)
-pub mod wired_weapons;
-pub mod wired_fps_feel;
-pub mod wired_movement_aug;
-pub mod wired_loot;
-pub mod wired_mycelium_heartbeat;
 pub mod wired_content;
+pub mod wired_fps_feel;
+pub mod wired_loot;
+pub mod wired_movement_aug;
+pub mod wired_mycelium_heartbeat;
+pub mod wired_weapons;
 
 /// § LoaSubsystems — aggregator owned by App that holds per-frame state for
 /// every wave-W11..W15 host crate that the event-loop calls. Constructed once
@@ -288,7 +288,8 @@ impl LoaSubsystems {
     /// service for its emitter-id. Test-friendly default exists.
     #[must_use]
     pub fn new(node_handle: u64) -> Self {
-        let svc = wired_mycelium_heartbeat::MyceliumHeartbeatState::build_default_service(node_handle);
+        let svc =
+            wired_mycelium_heartbeat::MyceliumHeartbeatState::build_default_service(node_handle);
         Self {
             weapons: wired_weapons::WeaponsState::new(),
             fps_feel: wired_fps_feel::FpsFeelState::default(),
@@ -443,9 +444,7 @@ pub use camera::Camera;
 pub use geometry::{plinth_positions, RoomGeometry, Vertex};
 pub use room::{Corridor, Direction, Doorway, Room, ROOM_COUNT};
 
-pub use mcp_server::{
-    spawn_mcp_server, EngineState, McpServerConfig, RenderMode, SOVEREIGN_CAP,
-};
+pub use mcp_server::{spawn_mcp_server, EngineState, McpServerConfig, RenderMode, SOVEREIGN_CAP};
 pub use mcp_tools::{tool_registry, ToolHandler, ToolRegistry};
 
 #[cfg(feature = "runtime")]
@@ -474,32 +473,79 @@ fn log_startup_banner() {
         ("LOA_RENDER_V3", "0", "ash-direct-vulkan path"),
         ("LOA_RENDER_V2", "0", "v2-substrate compute path"),
         ("LOA_VK_PRESENT_MODE", "IMMEDIATE", "vulkan present-mode"),
-        ("LOA_FRAME_LATENCY", "1", "wgpu desired_maximum_frame_latency"),
+        (
+            "LOA_FRAME_LATENCY",
+            "1",
+            "wgpu desired_maximum_frame_latency",
+        ),
         ("LOA_FRAME_PACE", "poll", "winit event-loop control-flow"),
+        (
+            "LOA_V3_OBSERVER_YAW_MILLI",
+            "camera",
+            "v3 validation observer-yaw override",
+        ),
+        (
+            "LOA_V3_MIXED_BENCH",
+            "0",
+            "v3 synthetic mixed gameplay/input load telemetry",
+        ),
+        (
+            "LOA_V3_STRESS_ROOM",
+            "shells",
+            "v3 operator stress-lab room selector",
+        ),
         ("LOA_DYN_RES", "1", "adaptive resolution-scaler"),
         ("LOA_DYN_RES_FLOOR_Q16", "32768", "min scale Q0.16 (0.5×)"),
-        ("LOA_DYN_RES_TARGET_US", "6944", "frame-budget µs (1440p144)"),
-        ("LOA_DISPLAY_PROFILE", "<auto-detect>", "display-class override"),
+        (
+            "LOA_DYN_RES_TARGET_US",
+            "6944",
+            "frame-budget µs (1440p144)",
+        ),
+        (
+            "LOA_DISPLAY_PROFILE",
+            "<auto-detect>",
+            "display-class override",
+        ),
         ("LOA_DISPLAY_HDR_NITS", "1000", "HDR peak nits"),
-        ("LOA_KAN_BIAS_PATH", "~/.loa/kan_bias.bin", "KAN-bias persist path"),
+        (
+            "LOA_KAN_BIAS_PATH",
+            "~/.loa/kan_bias.bin",
+            "KAN-bias persist path",
+        ),
         ("LOA_KAN_DISABLE", "0", "suspend learning"),
-        ("LOA_SUBSTRATE_BENCH", "0", "log gpu_dispatch_us every-N frames"),
+        (
+            "LOA_SUBSTRATE_BENCH",
+            "0",
+            "log gpu_dispatch_us every-N frames",
+        ),
         ("LOA_SUBSTRATE_PACKED", "0", "64B-packed-GpuCrystal path"),
-        ("LOA_DXIL_PRESENT_TEAR", "1", "D3D12 ALLOW_TEARING (when L8 lands)"),
-        ("LOA_QUICK_QUIT", "0", "auto-quit after N frames (smoke-test)"),
-        ("LOA_KAN_BAND_TRACE", "0", "log per-band KAN-checksums every 120 frames"),
-        ("LOA_MYCELIUM_LOAD", "0", "load + merge peer-bias-shards from cache"),
+        (
+            "LOA_DXIL_PRESENT_TEAR",
+            "1",
+            "D3D12 ALLOW_TEARING (when L8 lands)",
+        ),
+        (
+            "LOA_QUICK_QUIT",
+            "0",
+            "auto-quit after N frames (smoke-test)",
+        ),
+        (
+            "LOA_KAN_BAND_TRACE",
+            "0",
+            "log per-band KAN-checksums every 120 frames",
+        ),
+        (
+            "LOA_MYCELIUM_LOAD",
+            "0",
+            "load + merge peer-bias-shards from cache",
+        ),
     ];
     for &(key, default, _semantic) in knobs {
         let (val, src) = match std::env::var(key) {
             Ok(v) => (v, "env"),
             Err(_) => (default.to_string(), "default"),
         };
-        log_event(
-            "INFO",
-            "loa-host/env",
-            &format!("{key}={val} · src={src}"),
-        );
+        log_event("INFO", "loa-host/env", &format!("{key}={val} · src={src}"));
     }
     log_event(
         "INFO",
@@ -533,7 +579,11 @@ pub fn run_engine() -> std::io::Result<()> {
         );
         Ok(())
     };
-    log_event("INFO", "loa-host/lib", "run_engine exit · stage-0 host done");
+    log_event(
+        "INFO",
+        "loa-host/lib",
+        "run_engine exit · stage-0 host done",
+    );
     r
 }
 
@@ -592,7 +642,9 @@ mod tests {
         use naga::valid::{Capabilities, ValidationFlags, Validator};
         let module = wgsl::parse_str(SCENE_WGSL).expect("scene.wgsl must parse via naga");
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-        validator.validate(&module).expect("scene.wgsl must validate via naga");
+        validator
+            .validate(&module)
+            .expect("scene.wgsl must validate via naga");
     }
 
     #[test]
@@ -604,7 +656,9 @@ mod tests {
         use naga::valid::{Capabilities, ValidationFlags, Validator};
         let module = wgsl::parse_str(CFER_WGSL).expect("cfer.wgsl must parse via naga");
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-        validator.validate(&module).expect("cfer.wgsl must validate via naga");
+        validator
+            .validate(&module)
+            .expect("cfer.wgsl must validate via naga");
     }
 
     #[test]

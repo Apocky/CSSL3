@@ -185,14 +185,38 @@ pub struct EventTemplate {
 
 /// 8-template registry. Indexed by `EventTemplateId as usize`.
 pub const EVENT_TEMPLATE_REGISTRY: [EventTemplate; 8] = [
-    EventTemplate { id: EventTemplateId::SpawnNpcArrival, intensity: 0.2 },
-    EventTemplate { id: EventTemplateId::SpawnAmbientCreature, intensity: 0.3 },
-    EventTemplate { id: EventTemplateId::SpawnBossTeaser, intensity: 0.6 },
-    EventTemplate { id: EventTemplateId::SpawnLootDrop, intensity: 0.4 },
-    EventTemplate { id: EventTemplateId::SpawnEliteEncounter, intensity: 0.7 },
-    EventTemplate { id: EventTemplateId::TriggerWeatherChange, intensity: 0.3 },
-    EventTemplate { id: EventTemplateId::TriggerLoreReveal, intensity: 0.5 },
-    EventTemplate { id: EventTemplateId::TriggerRestArea, intensity: 0.1 },
+    EventTemplate {
+        id: EventTemplateId::SpawnNpcArrival,
+        intensity: 0.2,
+    },
+    EventTemplate {
+        id: EventTemplateId::SpawnAmbientCreature,
+        intensity: 0.3,
+    },
+    EventTemplate {
+        id: EventTemplateId::SpawnBossTeaser,
+        intensity: 0.6,
+    },
+    EventTemplate {
+        id: EventTemplateId::SpawnLootDrop,
+        intensity: 0.4,
+    },
+    EventTemplate {
+        id: EventTemplateId::SpawnEliteEncounter,
+        intensity: 0.7,
+    },
+    EventTemplate {
+        id: EventTemplateId::TriggerWeatherChange,
+        intensity: 0.3,
+    },
+    EventTemplate {
+        id: EventTemplateId::TriggerLoreReveal,
+        intensity: 0.5,
+    },
+    EventTemplate {
+        id: EventTemplateId::TriggerRestArea,
+        intensity: 0.1,
+    },
 ];
 
 /// A proposed event — what the DM director hands to the consumer per tick.
@@ -247,11 +271,7 @@ impl Default for DmDirector {
 impl DmDirector {
     /// Construct a director starting in `CALM`.
     pub fn new() -> Self {
-        log_event(
-            "INFO",
-            "loa-host/dm",
-            "init · state=CALM · tension=0.0",
-        );
+        log_event("INFO", "loa-host/dm", "init · state=CALM · tension=0.0");
         Self {
             state: DmState::Calm,
             frame_in_state: 0,
@@ -556,6 +576,9 @@ mod tests {
                 }
             }
         }
-        assert!(!saw_repeat, "cooldown ring should suppress repeat within window");
+        assert!(
+            !saw_repeat,
+            "cooldown ring should suppress repeat within window"
+        );
     }
 }

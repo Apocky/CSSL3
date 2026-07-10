@@ -24,7 +24,9 @@ fn find_op<'a>(words: &'a [u32], opcode: u16) -> Option<&'a [u32]> {
         let header = words[i];
         let wc = (header >> 16) as usize;
         let oc = (header & 0xFFFF) as u16;
-        if wc == 0 { return None; }
+        if wc == 0 {
+            return None;
+        }
         if oc == opcode {
             return Some(&words[i..i + wc]);
         }
@@ -40,8 +42,12 @@ fn count_op(words: &[u32], opcode: u16) -> usize {
         let header = words[i];
         let wc = (header >> 16) as usize;
         let oc = (header & 0xFFFF) as u16;
-        if wc == 0 { break; }
-        if oc == opcode { n += 1; }
+        if wc == 0 {
+            break;
+        }
+        if oc == opcode {
+            n += 1;
+        }
         i += wc;
     }
     n
@@ -71,8 +77,16 @@ fn test_2_type_table_dedup() {
     let f = MirFunc::new("main", vec![], vec![]);
     let bin = lower_function(&f, &ShaderTarget::compute("main", (1, 1, 1))).unwrap();
     let words = bin.finalize();
-    assert_eq!(count_op(&words, Op::TypeVoid.opcode()), 1, "void emitted once");
-    assert_eq!(count_op(&words, Op::TypeFunction.opcode()), 1, "fn-type emitted once");
+    assert_eq!(
+        count_op(&words, Op::TypeVoid.opcode()),
+        1,
+        "void emitted once"
+    );
+    assert_eq!(
+        count_op(&words, Op::TypeFunction.opcode()),
+        1,
+        "fn-type emitted once"
+    );
 }
 
 #[test]
@@ -131,7 +145,9 @@ fn test_5_vertex_shader_emits_position() {
         let header = words[i];
         let wc = (header >> 16) as usize;
         let oc = (header & 0xFFFF) as u16;
-        if wc == 0 { break; }
+        if wc == 0 {
+            break;
+        }
         if oc == Op::Decorate.opcode() && wc >= 4 {
             let deco = words[i + 2];
             if deco == cssl_cgen_spirv::op::Decoration::Builtin.as_u32() && words[i + 3] == 0 {
@@ -141,7 +157,10 @@ fn test_5_vertex_shader_emits_position() {
         }
         i += wc;
     }
-    assert!(found_position, "vertex shader must declare Builtin Position");
+    assert!(
+        found_position,
+        "vertex shader must declare Builtin Position"
+    );
 }
 
 #[test]
@@ -153,7 +172,10 @@ fn test_6_fragment_shader_origin_upper_left() {
     let entry = find_op(&words, Op::EntryPoint.opcode()).unwrap();
     assert_eq!(entry[1], ExecutionModel::Fragment.as_u32());
     let em = find_op(&words, Op::ExecutionMode.opcode()).expect("OpExecutionMode");
-    assert_eq!(em[2], cssl_cgen_spirv::op::ExecutionMode::OriginUpperLeft as u32);
+    assert_eq!(
+        em[2],
+        cssl_cgen_spirv::op::ExecutionMode::OriginUpperLeft as u32
+    );
 }
 
 #[test]
@@ -173,14 +195,21 @@ fn test_7_compute_with_uniform_and_push_constant() {
         let header = words[i];
         let wc = (header >> 16) as usize;
         let oc = (header & 0xFFFF) as u16;
-        if wc == 0 { break; }
-        if oc == Op::Decorate.opcode() && wc >= 3
-            && words[i + 2] == cssl_cgen_spirv::op::Decoration::Block.as_u32() {
+        if wc == 0 {
+            break;
+        }
+        if oc == Op::Decorate.opcode()
+            && wc >= 3
+            && words[i + 2] == cssl_cgen_spirv::op::Decoration::Block.as_u32()
+        {
             block_count += 1;
         }
         i += wc;
     }
-    assert!(block_count >= 2, "uniform + push-const both decorated Block, got {block_count}");
+    assert!(
+        block_count >= 2,
+        "uniform + push-const both decorated Block, got {block_count}"
+    );
 }
 
 #[test]

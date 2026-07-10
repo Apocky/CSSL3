@@ -921,6 +921,22 @@ fn host_ffi_gpu_kind(op_name: &str) -> Option<crate::cgen_gpu::GpuFfiSymbolKind>
         "cssl.gpu.device_destroy" => Some(GpuFfiSymbolKind::DeviceDestroy),
         "cssl.gpu.cmd_buf_record_stub" => Some(GpuFfiSymbolKind::CmdBufRecordStub),
         "cssl.gpu.cmd_buf_submit_stub" => Some(GpuFfiSymbolKind::CmdBufSubmitStub),
+        "cssl.gpu.buffer_create" => Some(GpuFfiSymbolKind::BufferCreate),
+        "cssl.gpu.buffer_destroy" => Some(GpuFfiSymbolKind::BufferDestroy),
+        "cssl.gpu.buffer_map" => Some(GpuFfiSymbolKind::BufferMap),
+        "cssl.gpu.buffer_unmap" => Some(GpuFfiSymbolKind::BufferUnmap),
+        "cssl.gpu.buffer_upload" => Some(GpuFfiSymbolKind::BufferUpload),
+        "cssl.gpu.cmd_buf_begin" => Some(GpuFfiSymbolKind::CmdBufBegin),
+        "cssl.gpu.cmd_buf_end" => Some(GpuFfiSymbolKind::CmdBufEnd),
+        "cssl.gpu.cmd_buf_bind_pipeline" => Some(GpuFfiSymbolKind::CmdBufBindPipeline),
+        "cssl.gpu.cmd_buf_bind_vbuf" => Some(GpuFfiSymbolKind::CmdBufBindVbuf),
+        "cssl.gpu.cmd_buf_bind_ibuf" => Some(GpuFfiSymbolKind::CmdBufBindIbuf),
+        "cssl.gpu.cmd_buf_bind_descriptor" => Some(GpuFfiSymbolKind::CmdBufBindDescriptor),
+        "cssl.gpu.cmd_buf_push_constants" => Some(GpuFfiSymbolKind::CmdBufPushConstants),
+        "cssl.gpu.cmd_buf_draw_indexed" => Some(GpuFfiSymbolKind::CmdBufDrawIndexed),
+        "cssl.gpu.cmd_buf_draw_indirect" => Some(GpuFfiSymbolKind::CmdBufDrawIndirect),
+        "cssl.gpu.cmd_buf_dispatch" => Some(GpuFfiSymbolKind::CmdBufDispatch),
+        "cssl.gpu.cmd_buf_submit_v2" => Some(GpuFfiSymbolKind::CmdBufSubmitV2),
         _ => None,
     }
 }
@@ -1083,6 +1099,22 @@ fn declare_host_ffi_imports_for_fn(
             "cssl.gpu.device_destroy" => "cssl.gpu.device_destroy",
             "cssl.gpu.cmd_buf_record_stub" => "cssl.gpu.cmd_buf_record_stub",
             "cssl.gpu.cmd_buf_submit_stub" => "cssl.gpu.cmd_buf_submit_stub",
+            "cssl.gpu.buffer_create" => "cssl.gpu.buffer_create",
+            "cssl.gpu.buffer_destroy" => "cssl.gpu.buffer_destroy",
+            "cssl.gpu.buffer_map" => "cssl.gpu.buffer_map",
+            "cssl.gpu.buffer_unmap" => "cssl.gpu.buffer_unmap",
+            "cssl.gpu.buffer_upload" => "cssl.gpu.buffer_upload",
+            "cssl.gpu.cmd_buf_begin" => "cssl.gpu.cmd_buf_begin",
+            "cssl.gpu.cmd_buf_end" => "cssl.gpu.cmd_buf_end",
+            "cssl.gpu.cmd_buf_bind_pipeline" => "cssl.gpu.cmd_buf_bind_pipeline",
+            "cssl.gpu.cmd_buf_bind_vbuf" => "cssl.gpu.cmd_buf_bind_vbuf",
+            "cssl.gpu.cmd_buf_bind_ibuf" => "cssl.gpu.cmd_buf_bind_ibuf",
+            "cssl.gpu.cmd_buf_bind_descriptor" => "cssl.gpu.cmd_buf_bind_descriptor",
+            "cssl.gpu.cmd_buf_push_constants" => "cssl.gpu.cmd_buf_push_constants",
+            "cssl.gpu.cmd_buf_draw_indexed" => "cssl.gpu.cmd_buf_draw_indexed",
+            "cssl.gpu.cmd_buf_draw_indirect" => "cssl.gpu.cmd_buf_draw_indirect",
+            "cssl.gpu.cmd_buf_dispatch" => "cssl.gpu.cmd_buf_dispatch",
+            "cssl.gpu.cmd_buf_submit_v2" => "cssl.gpu.cmd_buf_submit_v2",
             // Unknown — should not happen given is_host_ffi_op pre-filter
             // + the host_ffi_sig_and_symbol returned Some, but be defensive.
             other => {
@@ -1748,12 +1780,30 @@ fn lower_one_op(
         // remainder. Symmetric with the existing add/sub/mul triple ; needed
         // for `let q = x / y` style straight-line code that body_lower emits
         // as `arith.divi`.
-        "arith.divi" | "arith.divsi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
-            b.ins().sdiv(a, c)
-        }),
-        "arith.divui" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
-            b.ins().udiv(a, c)
-        }),
+        //
+        // § FLOAT-FALLBACK · 2026-05-06 :
+        //   body_lower occasionally emits `arith.divsi` even when both operands
+        //   are f32 (HIR-side type-inference loses float-ness when divisor
+        //   comes from a `let inv = 1.0 / x` expression). The cgen must guard
+        //   against this : if-operand-types-are-float emit fdiv via the
+        //   `binary_int_or_float` helper instead of unconditional sdiv (which
+        //   produces invalid `sdiv.f32` IR that the verifier rejects).
+        "arith.divi" | "arith.divsi" => binary_int_or_float(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            |b, a, c| b.ins().sdiv(a, c),
+            |b, a, c| b.ins().fdiv(a, c),
+        ),
+        "arith.divui" => binary_int_or_float(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            |b, a, c| b.ins().udiv(a, c),
+            |b, a, c| b.ins().fdiv(a, c),
+        ),
         "arith.remi" | "arith.remsi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().srem(a, c)
         }),

@@ -151,15 +151,12 @@ impl DmRuntime {
     /// Time-of-day defaults to `Day` at the stage-0 layer ; sibling slices
     /// extend with a clock-aware variant.
     pub fn describe_neighborhood(&mut self, camera_pos: Vec3) -> String {
-        self.narrator.describe_environment(camera_pos, TimeOfDay::Day)
+        self.narrator
+            .describe_environment(camera_pos, TimeOfDay::Day)
     }
 
     /// As `describe_neighborhood`, but with explicit time-of-day.
-    pub fn describe_neighborhood_at(
-        &mut self,
-        camera_pos: Vec3,
-        time_of_day: TimeOfDay,
-    ) -> String {
+    pub fn describe_neighborhood_at(&mut self, camera_pos: Vec3, time_of_day: TimeOfDay) -> String {
         self.narrator.describe_environment(camera_pos, time_of_day)
     }
 

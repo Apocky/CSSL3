@@ -1,0 +1,2761 @@
+§ 79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.spec                 ◐
+date: 2026-05-20
+status: DRAFT
+scope: LoA.v13 + LoA.v14 + CSSLv3
+owner: Apocky
+
+§ GOAL
+  what: CSSL-only LoA/Substrate engine → rich-scene high-refresh action runtime
+  why:  proprietary substrate > Odin/Rust/WGSL/wgpu dependency surface
+
+  W! LoA.runtime ∈ CSSL
+  W! LoA.engine ∈ CSSL
+  W! Substrate.math ∈ CSSL
+  W! GPU.kernels ∈ CSSL
+  W! host.abi surface owned-by CSSLv3
+  N! Odin/Rust runtime path as engine endpoint
+  N! CPU framebuffer loop as render path
+  N! "working in v14" ⇒ accepted unless reauthored+verified in CSSL
+
+§ SOURCE-EVIDENCE
+  repo.LoA_v13:
+    path: C:\Users\Apocky\source\repos\LoA v13
+    ✓ math: closed-form quadric ray/substrate in src/substrate.cssl
+    ✓ current.render: CPU loop → framebuffer → Win32 StretchDIBits
+    ✓ target: 1440p144 Arc.A770 stated in README/specs
+    ✓ PRISM: hardware RT + algebraic intersection design in specs/PRISM_v13.md
+    ⚠ mismatch: display.cssl extern render_pixel(..., time) vs substrate.cssl render_pixel(...6 args)
+    ⚠ blocker: csslc link/hang rootcause documented; W! static-archive/user-main fix
+
+  repo.LoA_v14:
+    path: C:\Users\Apocky\source\repos\LoA v14
+    role: oracle.math+perf only ; N! runtime donor
+    ✓ GPU path: Odin+wGPU host → WGSL compute → storage texture → blit
+    ✓ perf.evidence: scene1..6 clean ≈167-180 FPS @1440p ; p99≈6.25-6.78ms
+    ✓ lesson: AABB/bucket cull gives perf win at 100-object scene
+    ✓ assets: ray_sphere/ray_box/ray_ellipsoid/ray_cylinder_y + VM op-table + telemetry gates
+    N! copy WGSL/Odin as production path
+    R! port semantics → CSSL GPU library + CSSL compiler tests
+
+  repo.CSSLv3:
+    path: C:\Users\Apocky\source\repos\CSSLv3
+    ✓ existing.direction: CSSL-first authoring, host FFI, GPU memory typing, render maturation roadmaps
+    ◐ engine/render_forward.cssl: Forward+ scaffold, pass graph, frame budget, stubs remain
+    ◐ stdlib/gpu.cssl: device/swapchain/pipeline/cmd interfaces, cap checks stubbed
+    ◐ host.d3d12/vulkan/wgsl/dxil/spirv emitters: bootstrap skeletons exist
+    W! convert skeletons → owned CSSL implementations + verified backends
+
+  repo.Apocrypha.WorkEthic:
+    path: C:\Users\Apocky\source\repos\Apocrypha\WorkEthic.md
+    ✓ loaded: 2026-05-19
+    W! understand problem+constraints+tools before generation
+    W! staff-scope architecture + junior-cadence verified slices
+    W! plan small → execute small → verify small → repeat fast
+    W! deep modules over shallow wrappers
+    W! Agans debug pipeline for failures
+    W! observability/security always-on
+    N! guess-fix ; N! invented facts ; N! skipped verification
+    N! human-calendar pessimism when task decomposable+verifiable+rollbackable
+
+  repo.CSSLv3.WorkEthic:
+    path: C:\Users\Apocky\source\repos\CSSLv3\WorkEthic.md
+    ✓ loaded: 2026-05-20
+    W! tests validate behavior, not checkbox pass
+    W! observe running system, metrics, logs, traces, output artifacts
+    W! failure = system signal ; update invariant+plan+test after correction
+
+  Claude.instructions:
+    global:
+      C:\Users\Apocky\.claude\CLAUDE.md
+      C:\Users\Apocky\.claude\PERSONA.csl
+      C:\Users\Apocky\.claude\mcp.json
+      C:\Users\Apocky\.claude\memories\tool-use.md
+    project.memory.loaded:
+      CSSLv3 feedback_iterative_logging_telemetry
+      CSSLv3 feedback_spec_validation_via_reimpl
+      CSSLv3 feedback_engine_is_runtime_procedural_gen
+      CSSLv3 feedback_pm_tech_lead_mandate
+      LoA_v13 feedback_active_autonomy
+      LoA_v13 feedback_v13_is_novel
+      LoA_v14 feedback_anti_echo_chamber
+      LoA_v14 feedback_pm_pixel_inspection
+    correction:
+      N! pass/fail report alone as success
+      N! reviewer agreement as success
+      N! render telemetry without output/pixel inspection
+      W! classify evidence + expose gaps + measure against target use-case
+
+§ THESIS
+  I> CSSL = language+engine+substrate sovereignty boundary
+  I> Rust/Odin/WGSL/wgpu = evidence/oracle/bootstrap debt, not architecture
+  I> rich scene/high refresh requires GPU-first dataflow + CPU job graph + explicit memory domains
+  I> proprietary-better-than-Rust/Odin means:
+      typed CPU/GPU/RAM ownership
+      effect/capability rows
+      deterministic gameplay by construction
+      render graph compiled from CSSL facts
+      substrate algebra native in compiler IR
+      no permanent foreign runtime semantics
+
+§ TARGETS
+  target.floor:
+    resolution: 2560x1440
+    refresh: 144Hz
+    frame_budget: 6.944ms
+    p99: ≤ 6.944ms
+    visible: rich scene + action input + gameplay tick
+
+  target.competitive:
+    refresh: 240Hz
+    frame_budget: 4.166ms
+    sim_tick: 120Hz | 240Hz fixed-step
+    input_sample: raw-input ≤ 1ms jitter
+    present: mailbox/immediate low-latency mode
+    p99.9: tracked ; avg FPS insufficient
+
+  target.hardware.Arc_A770:
+    vram: 16GB GDDR6
+    bandwidth: ≈560GB/s
+    fp32: ≈17.2TFLOP/s
+    units: 32 Xe cores + 32 RT units + XMX
+    W! renderer saturates GPU before CPU for visual work
+    W! CPU feeds GPU via wide task graph, no hot-path single-thread choke
+
+§ TEST_DISCIPLINE_REBASE                                             ‼
+  date: 2026-05-20
+  trigger: Apocky challenge "are we validating like a human dev team or checking boxes?"
+  verdict.current:
+    correctness.evidence: ◐ meaningful
+      CSSL source parsed → SPIR-V emitted
+      real Vulkan dispatch/readback
+      CPU/GPU byte-exact small tiles
+      runtime-array > old cap
+    real_world_metric.evidence: ◐ partial
+      ✓ persistent headless probe resources implemented
+      ✓ GPU timestamp query isolation implemented for compute probe + present telemetry API
+      ✓ live Win32 V3 present loop measured at 2560x1440 for 1000 frames
+      ✓ bounded 128-crystal V3 present scene measured at 2560x1440 for 5000 frames
+      ✓ p99/p99.9 captured for wall frame gap + CPU present segments + GPU dispatch
+      ✓ live V3 present pixel-capture probe samples swapchain output before present
+      ✓ material-coded crystal field produces runtime-inspected full-frame artifact
+      ✓ camera-yaw sweep produces full-frame capture diff and parseable yaw telemetry
+      ◐ CPU/RAM process counters sampled; GPU Engine OS counters rejected as incoherent vs Vulkan timestamps
+      ◐ current live pass is bounded 128-crystal kernel, not 1000+ primitive rich scene
+      no accepted GPU/RAM/VRAM system-wide utilization capture
+      no rich-scene/competitive-input workload
+    prior.telemetry.classification: smoke+probe, not production gate
+
+  binding.rules:
+    W! every test emits/records classification:
+      smoke | behavioral | integration | benchmark | e2e | production-shape
+    W! telemetry line labels `realworld_gate=false` unless it directly tests target use-case
+    W! p99/p99.9 required before "high-refresh" claim
+    W! screenshot/pixel/output inspection required before "render success" claim
+    W! threshold change requires spec/decision revision first
+    N! "test passed" ⇒ "engine ready"
+    N! 8x8/64x64/256x256 probe ⇒ 1440p readiness
+    N! average FPS as competitive-gameplay proof
+
+  current.measurement.v0:
+    8x8:
+      use_case: correctness_smoke
+      realworld_gate: false
+      p99: unmeasured
+    256x256:
+      use_case: scaled_probe_not_production
+      realworld_gate: false
+      target_pixel_coverage: 17777ppm ≈1.78%.1440p
+      observed.current: p95≈22321us end_to_end
+      interpretation:
+        ✗ not real-world ready
+        ◐ useful diagnostic of allocation+submit+wait+readback overhead
+        R! isolate GPU-only with timestamp queries + persistent resources
+
+  current.measurement.v1:
+    change:
+      persistent extent-keyed headless session
+      reusable buffers/image/view/descriptor-set/command-buffer/query-pool
+      GPU timestamp query around compute dispatch when device supports it
+    8x8:
+      use_case: correctness_smoke
+      realworld_gate: false
+      observed.current: end_to_end p95≈1423-1504us ; GPU p95≈14us
+      interpretation:
+        ✓ CPU/GPU output parity preserved
+        ✓ GPU timestamp path active on current Vulkan device
+        ◐ p95 dominated by host submit/wait/readback, not shader dispatch
+    256x256:
+      use_case: scaled_probe_not_production
+      realworld_gate: false
+      target_pixel_coverage: 17777ppm ≈1.78%.1440p
+      observed.current: end_to_end p95≈21775-22069us ; GPU p95≈15-32us
+      interpretation:
+        ✗ still not production-shaped
+        ✓ shader dispatch not current bottleneck at probe scale
+        R! next bottleneck = queue pacing + readback removal + present-loop timings
+    256x256.120_frame:
+      use_case: persistent_probe_not_production
+      realworld_gate: false
+      sample_count: 120
+      observed.current: end_to_end p50≈19350-19423us ; p95≈20038-20181us ; p99≈20881-21153us
+      observed.outlier.direct: p99≈24069us
+      observed.gpu: p95≈16-20us
+      interpretation:
+        ✓ p99 now measured for probe path, not inferred from tiny sample
+        ✗ p99 exceeds 144Hz/240Hz budgets even at 1.78%.1440p when readback+wait remain in loop
+        R! remove per-frame readback from present path + measure submit/present separately
+    present_loop.instrumentation:
+      use_case: present_loop_probe
+      realworld_gate: false
+      implementation:
+        `dispatch_with_present_profiled` returns CPU wait/acquire/upload/record/submit/present timings
+        per-frame timestamp query pools record GPU dispatch timing once frame-slot fence signals
+        telemetry line labels p99/p99.9 unmeasured until harness aggregates frames
+        optional `LOA_V3_PRESENT_CAPTURE` inserts non-production transfer/readback and emits sampled swapchain pixels
+        V3 runtime path initializes before legacy wgpu/CFER so conventional renderer panic cannot block V3 validation
+        V3 runtime path uses metadata-only substrate tick so CPU pixel-field raster no longer runs before GPU present
+        telemetry includes wall_since_prev_us, selected Vulkan present_mode, and cpu_substrate_tick=false
+      evidence:
+        5-frame live probe @2560x1440 emitted present telemetry ✓
+        120-frame live probe @2560x1440 IMMEDIATE: wall p99≈1517us p99.9≈2844us ; GPU dispatch p99≈300us p99.9≈2136us ✓
+        1000-frame live probe @2560x1440 IMMEDIATE: wall p99≈1291us p99.9≈3502us ; GPU dispatch p99≈300us p99.9≈376us ✓
+        5000-frame live probe @2560x1440 IMMEDIATE active_crystals=32: wall p99≈1080us p99.9≈1423us max≈4098us ; GPU dispatch p99≈865us p99.9≈896us max≈1127us ✓
+        5000-frame live probe @2560x1440 IMMEDIATE active_crystals=128: wall p99≈1789us p99.9≈2047us max≈2690us ; GPU dispatch p99≈1585us p99.9≈1690us max≈1765us ✓
+        live pixel-capture probe @2560x1440 active_crystals=128: sample_count=5 nonzero_samples=5 checksum=8904398173532002093 samples=0,0:ff00ff00,1280,720:ff80ff80,2559,1439:ffffffff,640,480:ff40ff55,1920,960:ffbfffaa ✓
+        direct exe 120 frames telemetry-off: ≈975.61ms process wall incl startup/window ✓
+        prior CPU-raster path 120 frames: ≈72.78s process wall ✗
+      interpretation:
+        ✓ readback-free present path now has live 1440p timing hooks and aggregate p99/p99.9
+        ✓ removing legacy CPU substrate raster changed V3 from unusable wall pacing to competitive-class simple-present pacing
+        ✓ current world1024/active128 V3 present path meets 144Hz and 240Hz frame budgets by p99 and p99.9 on this machine
+        ✓ pixel probe confirms the live swapchain path produced nonblank sampled output before present
+        ✓ full-frame artifact + 1024-world scene tier implemented after initial pixel probe
+        ✗ still no rich-scene semantic material pass/input-loop/accepted GPU-utilization telemetry for production claim
+
+  next.gates:
+    gate.T0:
+      name: persistent-headless-resources
+      status: ✓ 120-frame 256x256 probe implemented; production frame loop pending
+      require: no per-sample buffer/image/descriptor allocation
+      metric: end_to_end p50/p95/p99 across 120 frames @256x256
+    gate.T1:
+      name: gpu-timestamp-query
+      status: ✓ compute dispatch probe + present loop GPU timestamps implemented
+      require: GPU compute time separated from host/readback time
+      metric: GPU p50/p95/p99 + CPU submit p50/p95/p99
+    gate.T1b:
+      name: live-present-loop-120
+      status: ✓ live 120+ and 1000-frame Win32 swapchain probes captured @2560x1440
+      require: real Win32 swapchain, no readback, frame telemetry emitted for 120+ frames
+      metric: CPU wait/acquire/upload/record/submit/present p50/p95/p99 + delayed GPU dispatch p50/p95/p99
+    gate.T2:
+      name: staged-resolution-sweep
+      require: 256→512→1280x720→1920x1080→2560x1440
+      metric: p99 + p99.9 + memory bytes/frame + allocation count/frame
+    gate.T3:
+      name: rich-scene-workload
+      require: 1000+ procedural primitives or equivalent shader work
+      metric: 1440p144 p99≤6944us
+    gate.T4:
+      name: competitive-preset
+      require: reduced visual preset + input tick simulation
+      metric: p99≤4166us + p99.9 tracked
+
+§ ARCHITECTURE
+  L4 LoA.game:
+    files: *.cssl only
+    owns: gameplay, input mapping, rules, camera, combat, abilities, net/replay policy
+
+  L3 engine.Substrate:
+    files: *.cssl only
+    owns: render_graph, scene_graph, ECS/data-oriented store, physics, animation, audio, particles, substrate VM
+
+  L2 stdlib.CSSL:
+    owns: gpu, window, input, audio, fs, time, thread, simd, math, asset, telemetry
+    W! Cap<Gpu> + Cap<Window> + Cap<Input> structural witnesses
+    W! effect rows protect host/device/stateful ops
+
+  L1 runtime.host:
+    owns: OS ABI, D3D12/Vulkan/LevelZero/Win32/XInput/rawinput direct calls
+    W! no LoA dependency on Rust crates/wgpu/ash/windows-rs
+    ◐ bootstrap debt allowed only behind replacement milestones
+
+  L0 hardware:
+    owns: CPU cores, GPU queues, VRAM, RAM, storage, display
+    W! exposed upward as typed capabilities, not ad hoc handles
+
+§ RENDERING
+  §R1 forward_compute.mainline
+    goal: replace v13 CPU display with CSSL GPU visible frame
+    source: engine/render_forward.cssl + stdlib/gpu.cssl + v14 compute lessons
+    pipeline:
+      depth_prepass.cssl
+      light_tile_cull.cssl       # 16x16 or adaptive tiles
+      opaque_forward.cssl
+      transparent_forward.cssl
+      substrate_compute.cssl     # procedural/quadric layer
+      post_taa_vrs_tonemap.cssl
+      present.cssl
+    W! storage_texture writes from CSSL compute kernel
+    W! bind groups/layouts generated from CSSL type facts
+    W! no per-frame heap allocation
+    W! hot-reload compiles CSSL → backend IR → pipeline
+    gate:
+      first_frame: 1440p visible ≤ 16.6ms
+      floor: 1440p144 p99≤6.944ms simple-rich scene
+      parity: CPU reference pixdiff within ε
+
+  §R2 substrate_PRISM
+    goal: algebraic LoA rendering proprietary-native
+    source: LoA.v13 specs/SUBSTRATE_v13.csl + specs/PRISM_v13.md
+    primitives:
+      quadric
+      ellipsoid
+      sphere
+      cylinder
+      box
+      cone
+      torus/quartic phase-b
+      interval_CSG
+    phases:
+      PRISM.compute: CSSL compute closed-form intersections over SoA primitive buffers
+      PRISM.rtquery: CSSL ray-query abstraction over hardware RT where available
+      PRISM.intersection_shader: CSSL @intersect/@closesthit path
+      PRISM.gi: radiance-cascade/ReSTIR opt-in after p99 stable
+    W! hardware RT = accelerator, not design dependency
+    W! compute fallback identical semantics
+    gate:
+      simple_quadric_scene: GPU p99≤6.944ms @1440p
+      1000 primitive AABB culled scene: GPU util↑, CPU util bounded
+      CPU/GPU hit t/material parity ε≤1e-4
+
+  §R3 substrate_VM
+    goal: data-as-renderer without Odin op table
+    source: v14 op_table.odin + SUBSTRATE_BYTECODE_VM.md semantics
+    W! canonical op table becomes CSSL source
+    W! bytecode encoder/decoder in CSSL
+    W! VM evaluator in CSSL CPU+GPU targets
+    limits:
+      ops_per_region: ≤2048
+      bytes_per_region: ≤32KB
+      recursion_depth: ≤2
+      frame_stack: ≤8
+    gate:
+      256 sample parity CPU/GPU ✓
+      invalid op fails closed ✓
+      region budget violation diagnosed ✓
+
+  §R4 competitive_render_features
+    needs:
+      skeletal animation GPU skinning
+      projectiles/trails/particles GPU simulation
+      decals + damage marks
+      shadow maps/cascades
+      screen-space contact shadows
+      temporal AA with low-latency mode
+      VRS tier2/foveated optional
+      debug overlays zero-cost when disabled
+    W! visual richness never steals sim determinism
+
+§ CPU_GPU_RAM_UTILIZATION
+  CPU:
+    W! CSSL job system: work-stealing queues + fibers/tasks + frame graph dependencies
+    W! SIMD math: vec/mat/quat first-class + AVX2/AVX512 backend
+    W! gameplay fixed-step decoupled from render interpolation
+    W! asset IO/decompression async
+    W! physics broadphase parallel
+    W! CPU hot paths SoA/archetype layouts
+
+  GPU:
+    W! queues: graphics + compute + copy exposed as typed resources
+    W! async compute for particles, culling, light tiles, substrate prepass
+    W! indirect dispatch/draw generated by GPU cull
+    W! subgroup ops for reductions/prefix/cull
+    W! persistent buffers/ring allocators
+    R! work graphs/mesh shaders when backend support verified
+    R! XMX path for denoise/upscale/ML only after deterministic render gates pass
+
+  RAM_VRAM:
+    W! gpu<T> = device-only
+    W! shared<T, Coherent|WeakOrdered|NonCoherent> = explicit coherency
+    W! staged<T> = upload/download transfer
+    W! transfer<T> = copy-queue ownership
+    W! barriers/semaphores required by type/effect system
+    W! arenas: frame, level, streaming, scratch, gpu-upload
+    W! texture/mesh/material streaming uses residency budget + LRU + prefetch
+    W! ReBAR fast path ; fallback staged copies
+
+§ COMPILER_LANGUAGE_WORK
+  W! @gpu
+  W! @compute
+  W! @workgroup_size(x,y,z)
+  W! @push_const
+  W! @storage_buffer
+  W! @storage_texture
+  W! @uniform_buffer
+  W! @shared_memory
+  W! @barrier
+  W! @raygen @miss @intersect @anyhit @closesthit
+  W! if-expressions
+  W! vec2/vec3/vec4 mat3/mat4 quat first-class
+  W! fma/sqrt/rsqrt/sin/cos/noise intrinsics with CPU/GPU parity profile
+  W! explicit layout: std140/std430/DXIL/Vulkan/HLSL compatible
+  W! owned IR emit:
+    SPIR-V
+    DXIL
+    WGSL only as debug/export backend, not engine dependency
+    x64 native
+
+§ HOST_WORK
+  P0:
+    fix csslc user-main link order via static archive wrapper
+    D3D12 swapchain create_for_hwnd real path
+    command buffer record/submit real path
+    GPU fence/timeline semaphore
+    storage texture create/bind/present blit
+    raw input window pump
+
+  P1:
+    Vulkan parity path
+    LevelZero telemetry/copy/compute optional path
+    shader hot reload from CSSL source
+    GPU crash breadcrumbs
+    pixdiff framebuffer readback with async staging
+
+  P2:
+    remove wgpu/ash/windows-rs style semantics from public engine surface
+    CSSL host ABI wrappers generated from owned definitions
+    self-host runtime modules begin replacing bootstrap host crates
+
+§ MIGRATION
+  from.LoA_v13:
+    keep:
+      substrate.cssl closed-form math
+      SUBSTRATE_v13.csl theory
+      PRISM_v13.md RT plan
+      CPU reference tests
+    change:
+      display.cssl CPU loop → gpu_display.cssl
+      framebuffer DIB path → debug fallback only
+      render_pixel arity mismatch → canonical signature
+      reference.c → CSSL reference or generated oracle only
+    delete_when_replaced:
+      C shim math/display hot path
+
+  from.LoA_v14:
+    keep_as_oracle:
+      primitive intersection formulas
+      AABB/bucket cull evidence
+      VM op taxonomy
+      telemetry JSON schema
+      perf thresholds
+      scene6 validation lab semantics
+    reauthor:
+      clear_compute.wgsl → substrate_kernels.cssl
+      op_table.odin → substrate_ops.cssl
+      render.odin frame graph → render_graph.cssl
+      scene.odin data layouts → scene_schema.cssl
+    N! link/import/copy runtime Odin/WGSL as final system
+
+  in.CSSLv3:
+    promote:
+      engine/render_forward.cssl from scaffold → real framegraph
+      stdlib/gpu.cssl stubs → host-backed ops
+      specs/65 GPU memory types → compiler enforced
+      specs/76/77/78 → this CSSL-only invariant
+    add:
+      compiler tests for @gpu kernels
+      golden pixel tests
+      p99 perf harness
+      CPU/GPU parity harness
+      no-foreign-runtime audit
+
+§ PHASES
+  §P0 CSSL_ONLY_GATE
+    deliver:
+      banlist.audit: Odin/Rust/WGSL/wgpu symbols in LoA runtime fail build unless tagged oracle/bootstrap
+      repo map: source-of-truth CSSL modules
+      csslc link fix
+      canonical render_pixel signature
+    gate:
+      `rg "Odin|wgpu|WGSL|ash|windows-rs" LoA_runtime` → no unapproved runtime hit
+      csslc builds v13 headless+bench ✓
+
+  §P1 FIRST_GPU_FRAME_CSSL
+    deliver:
+      `gpu_display.cssl`
+      CSSL compute kernel writes storage texture
+      D3D12 or Vulkan present path
+      CPU reference parity
+    gate:
+      1440p visible frame ✓
+      no CPU pixel loop in hot path ✓
+      GPU timestamp query records dispatch+present ✓
+
+  §P2 MEMORY_COMMANDS_REAL
+    deliver:
+      gpu<T>/shared<T>/staged<T>/transfer<T> compiler checks
+      command buffer body recording
+      barriers/fences/semaphores typed
+      ring upload allocator
+    gate:
+      0 resource-state validation errors
+      0 per-frame heap alloc hot path
+      async readback no p99 spike >1ms
+
+  §P3 RICH_SCENE_FORWARD_PLUS
+    deliver:
+      mesh/material/texture asset path
+      GPU culling + indirect draws
+      tiled/clustered light cull
+      shadows + particles + decals
+      TAA/VRS low-latency controls
+    gate:
+      1440p144 p99≤6.944ms rich test-room
+      240Hz mode p99≤4.166ms reduced/competitive preset
+      input-to-sim sample jitter≤1ms
+
+  §P4 SUBSTRATE_PRISM_NATIVE
+    deliver:
+      quadric/CSG primitive buffers
+      compute intersection kernel
+      RT query/intersection shader backend
+      material/radiance integration
+    gate:
+      1000+ primitive procedural scene p99≤6.944ms @1440p
+      compute vs RT parity ✓
+      CPU/GPU t/normal/material parity ε≤1e-4
+
+  §P5 SUBSTRATE_VM_NATIVE
+    deliver:
+      CSSL op table
+      bytecode packer
+      CPU VM
+      GPU VM
+      region streaming
+    gate:
+      VM sample suite parity ✓
+      invalid programs fail closed ✓
+      per-region budgets enforced ✓
+
+  §P6 GAME_ENGINE_COMPETITIVE
+    deliver:
+      deterministic ECS/gameplay
+      rollback/replay hooks
+      parallel physics
+      animation/audio/input finalization
+      gameplay debug capture
+    gate:
+      fixed tick deterministic replay ✓
+      frame pacing p99.9 tracked ✓
+      simulation never depends on render frame time ✓
+
+  §P7 BOOTSTRAP_RETIREMENT
+    deliver:
+      CSSL runtime host modules
+      owned SPIR-V/DXIL/x64 emitters
+      csslc self-host milestones
+      foreign-runtime-free LoA build
+    gate:
+      LoA clean build from CSSL source only ✓
+      bootstrap crates removable from shipping runtime ✓
+
+§ TESTS
+  correctness:
+    CPU/GPU primitive intersection parity
+    CPU/GPU VM parity
+    shader/kernel deterministic output
+    resource-state/barrier validation
+    replay deterministic across runs
+
+  performance:
+    p50/p95/p99/p99.9 frame time
+    GPU occupancy
+    CPU core utilization
+    queue overlap
+    VRAM bandwidth
+    upload/download bytes/frame
+    heap allocations/frame
+    input latency/jitter
+
+  scene_ladders:
+    L0 single quadric
+    L1 v13 ellipsoid-minus-sphere
+    L2 v14 validation lab reauthored
+    L3 100-object AABB scene
+    L4 1000 procedural primitive scene
+    L5 competitive gameplay arena
+    L6 rich art scene with particles/lights/shadows
+
+§ INVARIANTS
+  t∞: CSSL source = canonical behavior
+  t∞: foreign implementation = oracle/bootstrap debt only
+  t∞: GPU-visible resources carry type-domain proof
+  t∞: p99 > budget = release blocker
+  t∞: CPU reference exists for every new GPU math primitive
+  t∞: render richness cannot violate deterministic gameplay
+  t∞: telemetry local+consensual; N! surveillance
+  t∞: no TODO without owner+gate+phase
+
+§ RISKS
+  risk.bootstrap_stasis:
+    symptom: Rust/Odin scaffold becomes permanent
+    mitigation: banlist + phase gate + replacement owner
+
+  risk.compiler_surface_too_wide:
+    symptom: GPU attrs added faster than emitters validate
+    mitigation: vertical slices; one kernel→one backend→one test before expansion
+
+  risk.frame_pacing_lies:
+    symptom: avg FPS passes while p99 fails
+    mitigation: p99/p99.9 gates; timestamp queries; capture overhead isolated
+
+  risk.memory_unsafety:
+    symptom: hidden CPU/GPU coherency bugs
+    mitigation: gpu<T>/shared<T>/staged<T> enforced by compiler
+
+  risk.visual_without_game:
+    symptom: renderer advances, competitive feel absent
+    mitigation: P3+P6 simultaneous; input/sim gates active from P1
+
+§ ANTI-PATTERNS
+  ✗ port LoA to Odin/wgpu ∵ violates CSSL-only invariant
+  ✗ keep v13 CPU DIB renderer as mainline ∵ wastes GPU + blocks high refresh
+  ✗ add ad hoc host handles ∵ bypasses Cap/effect safety
+  ✗ optimize average FPS ∵ competitive gameplay needs p99/p99.9
+  ✗ accept WGSL as source of truth ∵ CSSL compiler must own kernels
+  ✗ defer gameplay until renderer "done" ∵ engine target = action runtime, not demo
+
+§ IMMEDIATE_WORK_QUEUE
+  1. csslc.link.fix:
+     implement static archive wrapper for user object ; stop WinMain recursion/hang
+
+  2. gpu.host.slice:
+     D3D12 create window+device+swapchain+storage_texture+cmd_submit from CSSL stdlib calls
+
+  3. gpu.kernel.slice:
+     write `substrate_first_pixel.cssl` compute kernel from v13 quadric math
+
+  4. parity.slice:
+     CSSL CPU reference renders L1 scene ; GPU output pixdiff ε gate
+
+  5. v14.reauth.slice:
+     port ray_sphere/ray_box/ray_ellipsoid/ray_cylinder_y + AABB cull semantics into CSSL
+
+  6. memory.slice:
+     enforce gpu<T>/staged<T> upload/download rules in compiler diagnostics
+
+  7. render_graph.slice:
+     turn engine/render_forward.cssl pass stubs into executable pass graph
+
+  8. vm.slice:
+     create CSSL canonical op table ; generate CPU+GPU decoder tests
+
+  9. perf.slice:
+     local telemetry JSON: p50/p95/p99/p99.9, GPU time, CPU cores, allocs/frame, bytes/frame
+
+  10. audit.slice:
+      CI/local command fails LoA runtime build on unapproved Odin/Rust/WGSL/wgpu dependency
+
+§ PROGRESS_2026_05_19
+  p0.csslc_link_fix:
+    status: ✓ implemented
+    file: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\csslc\src\linker.rs
+    change:
+      RustcDriven discovers rustup `llvm-ar`
+      CSSL object(s) → fresh per-output `libcssluser_<stem>.a`
+      rustc link uses `-L native=<dir> -l static=cssluser_<stem>`
+      removed duplicate-main allowance
+      stale archive removed before each build
+    evidence:
+      `cargo test -p csslc linker` → 23 passed ✓
+      `cargo build -p csslc --release` → finished ✓
+      `csslc build examples/hello_main.cssl --emit=exe` → exe exit=0 ✓
+      `csslc build examples/hello_main_time.cssl --emit=exe` → exe exit=0 ✓
+      `llvm-nm %TEMP%\libcssluser_csslc_link_smoke_*.a` → one current `main` symbol per archive ✓
+
+  p0.v13_render_signature:
+    status: ✓ implemented
+    file: C:\Users\Apocky\source\repos\LoA v13\src\substrate.cssl
+    change:
+      render_pixel(px,py,pz,dx,dy,dz) → render_pixel(px,py,pz,dx,dy,dz,t)
+      pillar radius now sourced through pillar0_r(t)
+    evidence:
+      `csslc check src/substrate.cssl` → OK ✓
+      `csslc check src/display_min.cssl` → OK ✓
+      `csslc check src/display.cssl` → OK ✓
+
+  p0.dev_observe_loop:
+    status: ✓ implemented
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\tools\dev-observe\dev_observe.py
+      C:\Users\Apocky\source\repos\CSSLv3\tools\dev-observe\README.md
+      C:\Users\Apocky\source\repos\CSSLv3\tools\grok-mcp-harness\dev_observe_tools.py
+      C:\Users\Apocky\source\repos\CSSLv3\tools\grok-mcp-harness\harness.py
+    change:
+      command evidence → local JSONL telemetry
+      latest evidence snapshot → JSON
+      constructive CSL review → fail/warn/slowest/next
+      FastMCP tools → dev_observe_latest/dev_observe_recent/dev_observe_review/dev_observe_record
+      harness log dir creation explicit
+    evidence:
+      `python -m py_compile ...` → OK ✓
+      observer run `cargo test -p csslc rustc_driven` → exit=0 ; warning debt classified ◐
+      observer run `csslc check LoA v13/src/substrate.cssl` → exit=0 ; benign stderr recognized ✓
+      `dev_observe.py review --limit 5` → CSL critique emitted ✓
+    invariant:
+      local-only ; raw absolute paths redacted ; cwd/command hashed
+
+  p1.substrate_source_truth_gate:
+    status: ✓ implemented
+    discipline:
+      C:\Users\Apocky\source\repos\TEST_DISCIPLINE.md loaded ✓
+      test.intent: behavioral drift detection > smoke/shape-only
+      N! hard-coded Rust mirror can pass while CSSL source missing
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\lib.rs
+    change:
+      restored canonical CSSL substrate-kernel source in primary repo
+      SubstrateKernelSpec::canonical() now parses repository CSSL source
+      source deletion/drift now breaks compiler path before SPIR-V lowering
+      required declarations: kernel name, Compute stage, workgroup, entry, SPIR-V/Vulkan backend, no-wgpu/no-naga/no-wgsl markers
+      required bindings: observer uniform b0, crystals storage b1, output storage-image b2
+      new tests reject missing output binding + missing no-wgsl marker
+      new test verifies source workgroup drift changes emitted SPIR-V
+    evidence:
+      `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 8 passed ✓
+      `cargo test -p cssl-host-substrate-render-v3 -- --nocapture` → 3 passed ✓
+      `cargo test -p cssl-host-substrate-render-v3 --features runtime -- --nocapture` → 6 passed ✓
+      runtime gate included vk_loader_smoketest + headless_compute_dispatch + per_frame_determinism ✓
+      dev_observe phases p1-substrate-source-gate/p1-host-artifact-source-gate/p1-vulkan-runtime-source-artifact logged ✓
+      clean reruns after warning-debt fix → dev_observe critique = evidence adequate ✓
+    critique:
+      ✓ shader-body shape-only gap reduced by p1.substrate_canary_body_gate below
+      ◐ full renderer still absent: next slice must move v13 math into image-writing kernel body or explicit CPU/GPU parity harness
+      ✓ prior cssl-hir warning debt removed ; green evidence no longer carrying Rust warning output
+
+  p1.substrate_canary_body_gate:
+    status: ✓ implemented
+    discipline:
+      behavioral gate > smoke gate
+      source declaration must affect real SPIR-V body op, not only module header
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\lib.rs
+    change:
+      substrate emitter now uses CSSL-owned MIR-body SPIR-V path via validated MirModule
+      canonical kernel body emits source canary:
+        canary = workgroup_invocations + resource_binding_count
+        canonical = (8*8*1) + 3 = 67
+      source workgroup drift to ⟨16,16,1⟩ changes canary to 259
+      tests assert body contains OpIAdd
+      tests assert source-declared LocalSize 8 8 1 survives emitted SPIR-V
+      host runtime accepts body-bearing shader in Vulkan dispatch path
+    evidence:
+      `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 11 passed ✓
+      dev_observe phase p1-substrate-canary-body-final → pass ; critique evidence adequate ✓
+      dev_observe phase p1-cgen-gpu-spirv-full-after-canary → 135 unit + 16 integration + 0 doctest passed ✓
+      `cargo test -p cssl-host-substrate-render-v3 --features runtime -- --nocapture` → 6 passed ✓
+      dev_observe phase p1-vulkan-runtime-canary-body-final → pass ; critique evidence adequate ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ source → parsed spec → owned SPIR-V instruction → Vulkan dispatch now covered
+      ✓ pixel-output gap reduced by p1.storage_image_first_pixel_parity below
+      ✓ `rspirv` removed from canonical substrate emit path ; owned `cssl-cgen-spirv` binary writer now emits v13 probe shader
+
+  p1.storage_image_first_pixel_parity:
+    status: ✓ implemented
+    discipline:
+      behavior observable through GPU output bytes
+      no unbound-descriptor dispatch allowed
+      CPU expectation derived from same parsed CSSL source declarations
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-spirv\src\op.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      owned SPIR-V op table adds StorageImageExtendedFormats capability
+      substrate kernel now emits UniformConstant Rgba8 storage image at set=0 binding=2
+      shader body:
+        load GlobalInvocationId
+        coord = ⟨gid.x,gid.y⟩
+        canary = workgroup_invocations + resource_binding_count = 67
+        color = ⟨canary/255,0,1,1⟩
+        OpImageWrite(output-image, coord, color)
+      headless runtime now allocates 1×1 R8G8B8A8 storage image + dummy b0/b1 buffers
+      headless runtime binds descriptor set, dispatches, transitions image, copies to readback buffer
+      new test compares GPU pixel to CPU expected `[67,0,255,255]`
+      previous unbound-descriptor dispatch failure observed as ERROR_DEVICE_LOST and fixed
+    evidence:
+      pre-fix `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_compute_dispatch -- --nocapture` → failed ERROR_DEVICE_LOST ◐
+      post-fix `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 12 passed ✓
+      dev_observe p1-storage-image-kernel-cgen-full → 136 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-owned-spirv-op-table-after-image → 11 unit + 8 integration + 0 doctest passed ✓
+      dev_observe p1-headless-first-pixel-parity → 7 runtime tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ first real GPU-visible byte parity exists
+      ✓ canary-only gap reduced by p1.v13_center_ray_scalar_probe below
+      ◐ present path binds swapchain storage image but lacks automated desktop readback/pixel QA
+      R! next slice = expand v13 scalar probe to pillar/CSG branch or multi-pixel ray input
+
+  p1.v13_center_ray_scalar_probe:
+    status: ✓ implemented
+    discipline:
+      port actual v13 math, not constant-color stand-in
+      CPU oracle mirrors named source subset from LoA v13 `render_pixel`
+      GPU output compared as byte-exact RGBA8 readback
+    files:
+      C:\Users\Apocky\source\repos\LoA v13\src\substrate.cssl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-spirv\src\op.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      owned SPIR-V op table adds GLSL.std.450 Sqrt/FMax numeric enum
+      substrate shader imports GLSL.std.450 through owned binary writer
+      red channel now computes v13 center-ray scalar subset:
+        camera p=⟨0,0,0⟩ ; d=⟨0,0,1⟩
+        outer ellipsoid quadric coefficients
+        discriminant max + sqrt
+        outer hit position + normal normalization
+        key-light at ⟨2,3,-2⟩
+        Lambert + inverse-square direct + ambient
+        fixed wall albedo 0.4
+      green channel preserves source-canary byte 67
+      expected GPU readback becomes `[18,67,255,255]`
+      host test renamed to headless_first_pixel_matches_v13_center_ray
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 14 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_first_pixel_matches_v13_center_ray -- --nocapture` → passed ✓
+      dev_observe p1-v13-center-ray-cgen-full → 138 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-owned-spirv-glsl-extinst-table → 12 unit + 8 integration + 0 doctest passed ✓
+      dev_observe p1-v13-center-ray-runtime-parity → 7 runtime tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ v13 outer-ellipsoid/key-light math now executes on GPU and readbacks byte-exact against CPU oracle
+      ✓ pillar CSG gap reduced by p1.v13_pillar_csg_probe below
+      ◐ subset excludes checker modulation, reflection, observer-buffer input, multi-pixel dispatch/readback
+      R! next slice = add checker modulation or observer-buffer-driven ray input
+
+  p1.v13_pillar_csg_probe:
+    status: ✓ implemented
+    discipline:
+      branchless CSG first-hit math from v13 source, not visual placeholder
+      two independent rays encoded in one readback pixel
+      CPU/GPU byte-exact parity
+    files:
+      C:\Users\Apocky\source\repos\LoA v13\src\substrate.cssl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-spirv\src\op.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      owned GLSL.std.450 enum adds FMin for branchless min/clamp path
+      GPU shader now computes shared v13 probe helper for:
+        red   = center wall ray `p=⟨0,0,0⟩ d=⟨0,0,1⟩` → byte 18
+        green = pillar ray `p=⟨0,3,0⟩ d=⟨0,-1,0⟩` → byte 39
+        blue  = source canary 67
+        alpha = 255
+      helper includes:
+        outer ellipsoid quadratic
+        inner sphere quadratic r=1.5
+        p_hit_flag/p_valid/t_inner
+        branchless s=min(t_outer,t_inner)
+        inner_wins clamp
+        normal mix outer/inner
+        key-light + ambient
+        albedo mix wall=0.4 pillar=0.3
+      host test now `headless_first_pixel_matches_v13_probe`
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 14 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_first_pixel_matches_v13_probe -- --nocapture` → passed ✓
+      dev_observe p1-v13-pillar-csg-cgen-full → 138 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-owned-spirv-glsl-fmin-table → 12 unit + 8 integration + 0 doctest passed ✓
+      dev_observe p1-v13-pillar-csg-runtime-parity → 7 runtime tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ v13 wall + pillar branches now execute on GPU and readback byte-exact
+      ◐ no observer-buffer ray input yet ; rays are compile-time probe constants
+      ◐ no full-frame/multi-pixel readback yet ; output still one packed test pixel
+      R! next slice = bind/read observer uniform dimensions/camera and generate ray from `GlobalInvocationId`
+
+  p1.gid_driven_probe_row:
+    status: ✓ implemented
+    discipline:
+      multi-invocation output must be read back as pixels, not inferred from pipeline success
+      workgroup geometry must match storage-image extent
+      CPU/GPU byte parity remains exact
+    files:
+      C:\Users\Apocky\source\repos\LoA v13\src\substrate.cssl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      shader now derives selection weight from `GlobalInvocationId.x`
+        weight = clamp(f32(gid.x), 0, 1)
+      shader emits both canonical v13 probe rays and mixes red channel by weight
+        gid.x=0 → wall-center ray `[18,0,67,255]`
+        gid.x>=1 → pillar ray `[39,255,67,255]`
+      host readback target is 8×8, not 8×1
+        reason: canonical LocalSize = 8×8×1 ; 8×1 would let gid.y=1..7 write out of bounds
+      host API returns first-row RGBA8 pixels for probe assertions
+      runtime test renamed to `headless_probe_row_matches_v13_oracles`
+      test asserts:
+        row[0] == center oracle
+        row[1] == pillar oracle
+        row[2..] all remain clamped to pillar oracle
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 14 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_probe_row_matches_v13_oracles -- --nocapture` → passed ✓
+      dev_observe p1-gid-driven-probe-cgen-full → 138 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-gid-driven-probe-runtime-parity → 7 runtime tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ `GlobalInvocationId.x` now changes observable GPU output across pixels
+      ✓ storage-image extent now respects full 8×8 local invocation footprint
+      ◐ dynamic SSA ray-parameter path failed first runtime attempt:
+        gid.x=1 produced `[11,255,67,255]` vs expected `[39,255,67,255]`
+        likely defect area = parameterized CSG lighting path or branchless min/max semantics under dynamic SSA
+      ◐ observer uniform still unused ; camera/ray generation still constant probes
+      R! next slice = bind observer uniform, read dimensions/camera, generate per-pixel ray from gid without foreign runtime
+
+  p1.observer_uniform_live:
+    status: ✓ implemented
+    discipline:
+      descriptor-bound observer data must affect GPU-visible output
+      present path must compile with same observer write contract as headless path
+      uniform read must be visible in SPIR-V body, not just descriptor layout
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      owned SPIR-V emitter now declares binding=0 observer uniform block
+        Block-decorated struct with first member offset=0
+        descriptor set=0 binding=0
+        shader body uses OpAccessChain + OpLoad
+      observer.width word folds into blue-channel canary
+        source canary = 67
+        headless observer width = 8
+        expected blue byte = 75
+      headless runtime writes observer uniform words before descriptor bind
+        ⟨width,height,0,artifact.id_bound⟩
+      present runtime writes observer uniform words each frame before descriptor update
+        ⟨swapchain.width,swapchain.height,observer.yaw_milli,frame_count⟩
+      test oracle now asks for observer-width-specific expected row
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_probe_row_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime -- --nocapture` → 7 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-observer-uniform-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-observer-uniform-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-observer-uniform-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ observer binding no longer inert ; GPU output changes from descriptor data
+      ✓ present path no longer risks uninitialized observer reads
+      ◐ width only affects canary, not ray construction yet
+      ◐ crystal storage remains inert
+      R! next slice = use observer.width/height and gid to generate a real per-pixel camera ray
+
+  p1.crystal_storage_live:
+    status: ✓ implemented
+    discipline:
+      all declared descriptor bindings must become behaviorally live
+      storage-buffer bytes must influence GPU-visible output through SPIR-V body load
+      present + headless paths must share descriptor-write contract
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      owned SPIR-V emitter now declares binding=1 crystal storage block
+        Block-decorated struct with first member offset=0
+        descriptor set=0 binding=1
+        StorageBuffer pointer + OpAccessChain + OpLoad
+      blue-channel descriptor canary now folds:
+        source canary 67
+        observer width 8
+        first crystal word 5
+        expected blue byte 80
+      headless runtime writes first crystal word before dispatch
+      present runtime writes first crystal strength + count each frame before descriptor update
+      cgen test requires >=2 access chains and binding 0/1 decorations
+      runtime row oracle compares `[18,0,80,255]` and `[39,255,80,255]`
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_probe_row_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-crystal-storage-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-crystal-storage-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-crystal-storage-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ binding 0/1/2 all now have behavioral GPU-output evidence
+      ✓ present path writes observer + crystal bytes before command recording
+      ◐ crystal data still canary-only, not scene contribution
+      ◐ no per-pixel camera ray yet ; gid only selects between two canonical probes
+      R! next slice = replace probe selection with observer+gid ray generation and crystal-influenced shading
+
+  p1.camera_ray_row:
+    status: ✓ implemented
+    discipline:
+      `GlobalInvocationId` + observer.width must generate camera rays, not select canned probes
+      full first-row readback must match CPU oracle byte-for-byte
+      dynamic SSA ray math must be validated on real Vulkan readback
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      shader derives camera x from observer.width and `gid.x`
+        x_norm = clamp(gid.x / max(observer.width-1, 1), 0, 1)
+        dx_raw = (x_norm - 0.5) * 0.5
+        ray = normalize(⟨dx_raw,0,1⟩)
+      red channel now runs v13 ellipsoid/CSG lighting over dynamic ray
+      green channel encodes x_norm as row ramp
+      blue channel preserves descriptor canary:
+        source 67 + observer width 8 + crystal salt 5 = 80
+      host test now compares all 8 first-row pixels:
+        `headless_camera_tile_matches_v13_oracles`
+      CPU oracle added:
+        `v13_camera_row8_rgba8_for_descriptors(width, crystal_salt)`
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime -- --nocapture` → 7 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-camera-ray-row-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-camera-ray-row-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-camera-ray-row-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ dynamic ray parameters now pass exact GPU readback for horizontal camera-row case
+      ✓ old canned-pillar selection removed from active shader output
+      ◐ camera basis still simplified: yaw/pitch/FOV/height not consumed
+      ◐ crystal data still canary-only, not scene shading
+      R! next slice = fold first crystal strength into v13 lighting contribution, then add observer yaw/FOV basis
+
+  p1.crystal_emissive_shading:
+    status: ✓ implemented
+    discipline:
+      storage-buffer value must affect shading channel, not only debug/canary channel
+      contribution must be bounded and byte-exact against CPU oracle
+      present path must clamp first crystal strength into shader's byte-scale contract
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      shader converts first crystal word to normalized emissive:
+        crystal_norm = min(crystal_word / 255, 1)
+        crystal_emissive = crystal_norm * 0.5
+        red = min(v13_camera_ray_intensity + crystal_emissive, 1)
+      CPU oracle mirrors same contribution:
+        `v13_camera_ray_shaded_intensity(width, x, crystal_salt)`
+      cgen test asserts first crystal word increases at least one red byte
+      present path writes `min(strength_milli,255)` into first crystal word
+      headless path keeps deterministic first crystal word = 5
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      dev_observe p1-crystal-emissive-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-crystal-emissive-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-crystal-emissive-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ crystal storage now participates in visible shading channel
+      ✓ descriptor canary remains as independent binding-liveness signal
+      ◐ contribution is one scalar emissive, not ray/crystal intersection or scene loop
+      ◐ only first crystal word consumed ; no array traversal yet
+      R! next slice = add observer yaw/FOV basis, then first-crystal signed position influence
+
+  p1.observer_yaw_basis:
+    status: ✓ implemented
+    discipline:
+      observer camera data must alter visible ray output at byte level
+      non-visible float drift is insufficient evidence
+      present path and headless path must write same observer word contract
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      observer word[2] now feeds camera ray:
+        yaw_norm = min(observer.yaw_milli / 1000, 1)
+        yaw_offset = yaw_norm * 0.25
+        dx_raw = ((x_norm - 0.5) * 0.5) + yaw_offset
+      headless observer yaw set to 500 milli for byte-visible validation
+      CPU oracle accepts yaw:
+        `v13_camera_ray_intensity_for_yaw`
+        `v13_camera_ray_shaded_intensity_for_yaw`
+        `v13_camera_row8_rgba8_for_inputs`
+      cgen test caught yaw=125 as not byte-visible, then upgraded gate to yaw=500
+      runtime tile test uses yaw-aware expected bytes
+    evidence:
+      pre-adjustment cgen test failed because yaw=125 produced no RGBA8 byte delta ◐
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      dev_observe p1-observer-yaw-basis-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-observer-yaw-basis-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-observer-yaw-basis-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ observer yaw is now behaviorally visible in GPU row output
+      ✓ gate evaluates displayed bytes, not hidden float movement
+      ◐ yaw model is scalar x-offset, not full 3D basis rotation
+      ◐ observer height/FOV/pitch still unused
+      R! next slice = add first-crystal signed position influence or full 2D tile readback
+
+  p1.camera_tile_2d:
+    status: ✓ implemented
+    discipline:
+      `gid.y` and observer.height must be validated through readback, not assumed
+      full 8×8 local workgroup footprint must be copied and compared
+      output channels should expose both camera axes during maturation
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      shader now derives 2D camera ray:
+        x_norm = clamp(gid.x / max(observer.width-1,1),0,1)
+        y_norm = clamp(gid.y / max(observer.height-1,1),0,1)
+        dx_raw = ((x_norm - 0.5) * 0.5) + yaw_offset
+        dy_raw = (0.5 - y_norm) * 0.5
+        ray = normalize(⟨dx_raw,dy_raw,1⟩)
+      output encoding:
+        red   = v13 shaded camera ray + crystal emissive
+        green = x_norm
+        blue  = descriptor canary
+        alpha = y_norm
+      host runtime now exposes `headless_probe_tile_rgba8`
+      runtime test compares all 64 RGBA8 pixels:
+        `headless_camera_tile_matches_v13_oracles`
+      row helper preserved by slicing first row from full tile
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      dev_observe p1-camera-tile-2d-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-camera-tile-2d-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-camera-tile-2d-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ full local workgroup now has exact CPU/GPU parity
+      ✓ observer width/height/yaw + gid.x/y are behaviorally live
+      ◐ camera still simplified; no aspect/FOV/pitch/roll
+      ◐ crystal influence still first-word scalar, no spatial position or array loop
+      R! next slice = first-crystal signed position influence in ray-space shading
+
+  p1.crystal_spatial_influence:
+    status: ✓ implemented
+    discipline:
+      crystal storage must carry spatial data, not only scalar strength
+      spatial decode must be represented in CPU oracle and GPU SPIR-V
+      present path must pack host crystal position into the same byte-scale contract
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      first crystal storage words now mean:
+        word0 = strength byte
+        word1 = biased x byte (`x_bias = clamp(x,-128,127)+128`)
+        word2 = biased y byte
+        word3 = reserved
+      shader decodes x/y offset into ray-space:
+        offset = ((word - 128) / 128) * 0.5
+        dist = sqrt((dx_raw-offset_x)^2 + (dy_raw-offset_y)^2)
+        influence = max(1 - dist*2, 0)
+        emissive = strength_norm * 0.5 * influence
+      headless crystal words = ⟨5,160,96,0⟩
+      present path packs first `Crystal { x,y,strength_milli }` into same storage words
+      CPU oracle added:
+        `v13_camera_ray_shaded_intensity_2d_for_crystal`
+        `v13_camera_tile8_rgba8_for_scene_inputs`
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      dev_observe p1-crystal-spatial-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-crystal-spatial-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-crystal-spatial-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 5` → 5 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ first crystal now contributes spatially to visible shading
+      ✓ headless and present paths share a concrete crystal-packing contract
+      ◐ only one crystal is consumed ; no loop over crystal array yet
+      ◐ position is ray-space byte bias, not world-space transform/intersection
+      R! next slice = fixed-count crystal loop or promote kernel body from hand-emitted adapter toward MIR lowering
+
+  p1.two_crystal_accumulation:
+    status: ✓ implemented
+    discipline:
+      second storage slot must visibly affect pixels, not only descriptor metadata
+      CPU oracle + SPIR-V body + headless Vulkan readback must share one ABI
+      present path must pack same fixed two-slot contract as headless path
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      crystal storage block expanded:
+        slot0 = vec4u(strength,x_bias,y_bias,reserved)
+        slot1 = vec4u(strength,x_bias,y_bias,reserved)
+      SPIR-V emits member offsets:
+        crystal[0] @ offset 0
+        crystal[1] @ offset 16
+      shader loads both slots, folds both strength words into blue canary, and accumulates both spatial emissive terms into red
+      CPU oracle added:
+        `descriptor_canary_value_for_crystals`
+        `v13_camera_ray_shaded_intensity_2d_for_crystals`
+        `v13_camera_tile8_rgba8_for_scene2_inputs`
+      headless probe crystal words:
+        ⟨⟨5,160,96,0⟩,⟨7,96,160,0⟩⟩
+      present path packs `crystals[0]` + `crystals[1]`; missing slots become inert ⟨0,128,128,0⟩
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-two-crystal-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-two-crystal-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-two-crystal-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ second crystal slot now has pixel-visible GPU effect and exact CPU parity
+      ✓ blue canary proves both storage strength words are live
+      ✓ headless and present hosts write the same fixed two-slot ABI
+      ◐ still fixed unrolled slots, not variable-length scene arrays
+      ◐ crystal position is still screen/ray-space byte bias, not world-space substrate transform
+      R! next slice = variable crystal-count header + bounded storage-buffer loop OR promote this body to MIR-lowered CSSL compute
+
+  p1.variable_crystal_count_header:
+    status: ✓ implemented
+    discipline:
+      scene buffer must encode active count explicitly, not rely on host zero-fill only
+      inactive slots must be ignored by both visible red shading and blue canary evidence
+      runtime readback must validate exact header+slots ABI
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      canonical CSSL source now declares:
+        `Storage⟨GpuCrystalScene⟩`
+        observer vec4u words
+        crystal header + four slot offsets
+        bounded active-mask scan semantics
+      crystal storage block now:
+        header vec4u @ offset 0:
+          word0 = active_crystal_count
+          word1..3 = reserved
+        slot0 vec4u @ offset 16
+        slot1 vec4u @ offset 32
+        slot2 vec4u @ offset 48
+        slot3 vec4u @ offset 64
+      shader loads four bounded slots and computes branchless active masks:
+        active_i = clamp((count - i) * 1_000_000, 0, 1)
+      red accumulates spatial emissive * active_i
+      blue canary folds strength_i * active_i, proving inactive slots are ignored
+      CPU oracle added:
+        `MAX_SCENE_CRYSTALS = 4`
+        `descriptor_canary_value_for_crystal_count`
+        `v13_camera_ray_shaded_intensity_2d_for_crystal_count`
+        `v13_camera_tile8_rgba8_for_scene4_inputs`
+      headless writes header count=2 + four slots
+      present path writes `min(crystals.len,4)` header + four packed slots
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 15 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-variable-crystal-count-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-variable-crystal-count-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-variable-crystal-count-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+      dev_observe p1-canonical-cssl-scene-abi-cgen-full → 139 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-canonical-cssl-scene-abi-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-canonical-cssl-scene-abi-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ active count now gates visible contribution and canary contribution
+      ✓ bounded scene ABI is explicit and shared by headless/present
+      ✓ canonical CSSL source now declares the storage ABI being emitted
+      ✓ shader consumes more RAM-backed scene data without external GPU abstraction
+      ◐ loop is branchless unrolled math, not OpLoopMerge/Phi variable iteration
+      ◐ max crystal count is 4; needs scalable SSBO array and GPU occupancy plan
+      R! next slice = move body emission from hand-authored adapter into CSSL MIR dialect OR add true SPIR-V loop over bounded slots
+
+  p1.canonical_scene_abi_parse_gate:
+    status: ✓ implemented
+    discipline:
+      canonical CSSL ABI text must be load-bearing, not documentary only
+      offset/count/active-mask drift must reject before SPIR-V emission
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+    change:
+      `SubstrateKernelSpec::from_csl_source` now requires:
+        `MAX_SCENE_CRYSTALS = 4`
+        `GpuCrystalScene = struct`
+        header offset 0
+        slot offsets 16/32/48/64
+        `GpuCrystalWord = vec4u`
+        strength/x_bias/y_bias/reserved words
+        active-mask expression over `crystals.header.active_crystal_count`
+      regression tests added:
+        `test_t11_w18_scene_crystal_abi_drift_is_rejected`
+        `test_t11_w18_scene_crystal_active_mask_drift_is_rejected`
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 17 passed ✓
+      dev_observe p1-canonical-scene-abi-parse-gate-cgen-full → 141 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-canonical-scene-abi-parse-gate-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-canonical-scene-abi-parse-gate-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ CSSL source now owns ABI enough to break stale Rust assumptions
+      ✓ ABI drift has negative tests, not just golden pass tests
+      ◐ parser is still string-pattern based, not a full CSSL AST/schema validation pass
+      R! next slice = parse ABI into typed source model OR lower kernel body from CSSL MIR
+
+  p1.scene_abi_spec_fields:
+    status: ✓ implemented
+    discipline:
+      parsed CSSL ABI facts must be visible on compiler artifact model
+      downstream host/tests should be able to inspect source-declared crystal limits/offsets
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+    change:
+      `SubstrateKernelSpec` now carries:
+        `max_scene_crystals: u32`
+        `crystal_slot_offsets: [u32; MAX_SCENE_CRYSTALS]`
+      `from_csl_source` parses these from canonical CSSL source after ABI drift gates
+      source-declaration test asserts:
+        max_scene_crystals = 4
+        crystal_slot_offsets = ⟨16,32,48,64⟩
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 17 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      dev_observe p1-scene-abi-spec-fields-cgen-full → 141 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-scene-abi-spec-fields-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-scene-abi-spec-fields-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ source-declared scene ABI is now part of compiler model, not hidden comment text
+      ✓ host artifact callers can inspect crystal limit/offsets through spec
+      ◐ emitter still uses fixed Rust-side struct emission; next step should consume parsed offsets in layout assertions or generate layout from typed ABI
+
+  p1.source_derived_scene_offsets:
+    status: ✓ implemented
+    discipline:
+      parsed CSSL layout facts must influence emitted SPIR-V layout
+      generated SPIR-V must expose source-declared slot offsets structurally
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+    change:
+      crystal `OpMemberDecorate Offset` operands now use:
+        `spec.crystal_slot_offsets[0..3]`
+      structural test added:
+        `canonical_emit_uses_source_scene_slot_offsets`
+      full cgen unit count now includes 18 substrate-kernel tests
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 18 passed ✓
+      dev_observe p1-source-derived-scene-offsets-cgen-full → 142 unit + 16 integration + 0 doctest passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ CSSL source-declared offsets now feed SPIR-V decoration emission
+      ✓ emitted binary has structural evidence for those offsets
+      ◐ still fixed 4-slot shape; array/runtime-loop generation remains future work
+
+  p1.structured_crystal_loop:
+    status: ✓ implemented
+    discipline:
+      crystal accumulation must use real SPIR-V structured control flow, not only branchless unrolled arithmetic
+      GPU readback must remain byte-exact against CPU oracle after loop conversion
+      structural test must fail if loop collapses back to straight-line emission
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-spirv\src\op.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+    change:
+      owned SPIR-V opcode catalog added:
+        `OpSelect`
+      substrate shader body now emits structured loop:
+        preheader → loop.header → loop.body → loop.continue → loop.merge
+        loop.header carries `OpPhi` for:
+          i
+          red_accum
+          blue_canary_accum
+        `OpLoopMerge` + `OpBranchConditional` govern i < 4
+        loop.body selects current bounded slot payload by loop index using `OpSelect`
+        loop.body applies active-count mask and accumulates visible emissive + canary strength
+      test added:
+        `canonical_emit_contains_structured_crystal_loop`
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-structured-crystal-loop-cgen-full → 143 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-structured-crystal-loop-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-structured-crystal-loop-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ accumulation now uses real SPIR-V loop/phi control flow
+      ✓ Windows Vulkan driver accepted looped shader and exact RGBA8 tile parity held
+      ✓ structural test covers `LoopMerge` + `Phi` + conditional branch
+      ✓ follow-up p1.array_indexed_crystal_slots replaces slot-select with indexed storage-array access
+      ◐ next improvement = runtime-sized scene arrays beyond fixed 4-slot bound
+
+  p1.array_indexed_crystal_slots:
+    status: ✓ implemented
+    discipline:
+      loop counter must index storage-buffer slot array directly
+      source ABI must declare contiguous slot array + stride
+      Vulkan runtime readback must prove dynamic `OpAccessChain` indexing works on real driver
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+    change:
+      canonical CSSL ABI now declares:
+        `slots : GpuCrystalWord[MAX_SCENE_CRYSTALS] @ offset 16 stride 16`
+        derived slot offsets remain documented for host-byte-layout audit
+      `SubstrateKernelSpec` now parses:
+        `crystal_slot_stride`
+      owned SPIR-V emitter now declares:
+        `OpTypeArray vec4u[4]`
+        `OpDecorate ArrayStride 16`
+        `GpuCrystalScene = { header:vec4u, slots:array<vec4u,4> }`
+      loop body now loads current slot with:
+        `OpAccessChain crystal_var, slots_member, loop_i`
+      old per-slot preload + `OpSelect` payload mux removed from active shader body
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-array-indexed-crystal-slots-cgen-full → 143 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-array-indexed-crystal-slots-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-array-indexed-crystal-slots-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ scene slot payload now flows through array layout + loop-index access, not manual mux
+      ✓ source stride feeds SPIR-V `ArrayStride`
+      ✓ existing host memory layout remained compatible and exact GPU parity held
+      ✓ follow-up p1.runtime_array_crystal_slots replaces fixed `OpTypeArray[4]` with runtime-array storage
+      ◐ next = raise host/CPU cap beyond 4 and load larger scene sets through same ABI
+
+  p1.runtime_array_crystal_slots:
+    status: ✓ implemented
+    discipline:
+      storage ABI should not bake scene capacity into SPIR-V type length
+      keep current safety cap in loop/oracle while moving descriptor layout to runtime-array form
+      exact GPU parity must hold after changing block type
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+    change:
+      canonical CSSL ABI now declares:
+        `slots : GpuCrystalWord[] @ offset 16 stride 16`
+      parser requires:
+        unsized `GpuCrystalWord[]`
+        stride 16
+      owned SPIR-V emitter now uses:
+        `OpTypeRuntimeArray vec4u`
+        `OpDecorate ArrayStride 16`
+        block struct `{ header:vec4u, slots:runtime_array<vec4u> }`
+      structural test now asserts `OpTypeRuntimeArray`
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-runtime-array-crystal-slots-cgen-full → 143 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-runtime-array-crystal-slots-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-runtime-array-crystal-slots-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ SPIR-V storage type no longer hardcodes 4-slot array length
+      ✓ current bounded loop can index runtime-array slots safely under host-written count/cap
+      ✓ Windows Vulkan driver accepted runtime-array storage block
+      ✓ follow-up p1.eight_crystal_runtime_array raises host/oracle cap and proves >4 active crystals
+
+  p1.eight_crystal_runtime_array:
+    status: ✓ implemented
+    discipline:
+      source-declared runtime-array cap must drive shader loop bound, host packing, and CPU oracle together
+      real GPU readback must prove active_crystal_count > 4 changes exact output
+      present path must compile against same widened scene ABI
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      canonical CSSL ABI now declares:
+        `MAX_SCENE_CRYSTALS = 8`
+        runtime-array slots at offset 16 stride 16
+        derived audit anchors slot0..slot7 at offsets 16..128
+      source parser now requires/parses eight bounded audit anchors
+      emitted loop bound now uses parsed `spec.max_scene_crystals`, not hard-coded 4
+      cgen CPU oracle and host runtime/present packers now use 8-slot arrays
+      headless scene now writes `active_crystal_count = 5`, proving runtime-array access beyond old cap
+      stale `scene4` naming replaced with `scene_slots` naming in active host/oracle APIs
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-eight-crystal-runtime-array-cgen-full → 143 unit + 16 integration + 0 doctest passed ✓
+      dev_observe p1-eight-crystal-runtime-array-runtime-parity → 7 runtime tests passed ✓
+      dev_observe p1-eight-crystal-runtime-array-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ runtime-array shader path now consumes five active crystals on a real Vulkan driver
+      ✓ source cap, SPIR-V loop bound, CPU oracle, headless host, and present host agree on 8 slots
+      ✓ documentation sweep found old four-slot assumptions only in historical plan entries, not active code
+      ✓ follow-up p1.formula_derived_slot_layout removes explicit per-slot source boilerplate
+      ◐ eight slots proves architecture, not rich-scene scale; next should stress 32/64 slots
+
+  p1.formula_derived_slot_layout:
+    status: ✓ implemented
+    discipline:
+      runtime-array storage layout must be derived from source formula, not hand-enumerated slot anchors
+      compiler must reject mismatch between `slots @ offset/stride` and derived layout formula
+      Vulkan readback must remain exact after source ABI shape changes
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+    change:
+      canonical CSSL ABI now declares:
+        `derived.slot-layout:`
+        `formula : offset(slot_i) = 16 + i * 16`
+        `domain  : i ∈ ⟨0..MAX_SCENE_CRYSTALS-1⟩`
+      explicit source anchors `slot0..slot7` removed from active ABI
+      parser computes `crystal_slot_offsets[i] = slot_base + i * stride`
+      parser rejects formula/slot-line mismatch via negative ABI drift test
+      source cap support is now centralized through parser + compile-time cap gate
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-formula-derived-slot-layout-cgen-full → 19 substrate tests passed ✓
+      dev_observe p1-formula-derived-slot-layout-runtime-parity → headless parity passed ✓
+      dev_observe p1-formula-derived-slot-layout-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ source layout is now compact and scale-ready
+      ✓ formula mismatch has a failing test, not just a happy-path parse
+      ✓ emitted SPIR-V still carries source-derived base offset and stride
+      ✓ follow-up p1.32_slot_scene_buffer_stress raises cap and proves larger active-count readback
+
+  p1.32_slot_scene_buffer_stress:
+    status: ✓ implemented
+    discipline:
+      source cap must scale without adding per-slot CSSL boilerplate
+      headless readback must prove active slots beyond the previous 8-slot ceiling
+      artifact API must export the canonical scene cap instead of leaking stale fixed-size signatures
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      canonical CSSL source now declares:
+        `MAX_SCENE_CRYSTALS = 32`
+      compiler-owned `MAX_SCENE_CRYSTALS` now equals 32 and is re-exported for host artifact APIs
+      source parser computes 32 offsets from `offset(slot_i) = 16 + i * 16`
+      headless runtime writes 32-slot scene buffer with `active_crystal_count = 17`
+      nonzero strengths after slot7 keep the blue canary below saturation, so old 8-slot behavior would differ
+      host runtime and present packers now share the widened cap
+    evidence:
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_camera_tile_matches_v13_oracles -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 11 passed ✓
+      dev_observe p1-32-slot-scene-buffer-stress-cgen-full → 19 substrate tests passed ✓
+      dev_observe p1-32-slot-scene-buffer-stress-runtime-parity → headless parity passed ✓
+      dev_observe p1-32-slot-scene-buffer-stress-present-compile → 11 present-feature tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ runtime-array path is now proven past the old 8-slot cap on real Vulkan
+      ✓ formula layout made the 8→32 source change one-line instead of 32 anchor edits
+      ✓ fixed-size host API drift was caught by compile failures and corrected by re-exporting canonical cap
+      ✓ follow-up p1.headless_dispatch_telemetry adds repeated timing samples
+      ✓ follow-up p1.multi_workgroup_telemetry proves 256x256 multi-workgroup dispatch
+
+  p1.headless_dispatch_telemetry:
+    status: ✓ implemented
+    discipline:
+      runtime tests must emit machine-parseable timing evidence, not only pass/fail correctness
+      timing samples must keep byte-exact CPU/GPU oracle checks attached
+      telemetry must be ASCII-safe for Windows JSON/stdout capture
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      added `headless_dispatch_timing_telemetry`
+      samples 8 repeated 8x8 headless dispatch+readback runs
+      emits:
+        `telemetry.headless_dispatch sample_count=8 scene_slots=32 active_crystals=17 min_us=... p50_us=... p95_us=...`
+      verifies every sampled tile against CPU oracle before recording timing
+    evidence:
+      direct runtime test telemetry sample → min_us=844 p50_us=1054 p95_us=1902 ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime -- --nocapture` → 8 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 12 passed ✓
+      dev_observe p1-headless-dispatch-telemetry-runtime-full → 8 runtime tests passed; telemetry captured ✓
+      dev_observe p1-headless-dispatch-telemetry-present-full → 12 present tests passed; telemetry captured ✓
+      dev_observe p1-headless-dispatch-telemetry-cgen-full → 19 substrate tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ engine path now has durable timing output alongside correctness evidence
+      ✓ telemetry output was revised from `§` prefix to ASCII after Windows JSON capture showed mojibake
+      ◐ timings include host allocation, driver submit, queue wait, and readback; next = isolate GPU timestamps and reuse resources
+
+  p1.multi_workgroup_telemetry:
+    status: ✓ implemented
+    discipline:
+      headless runtime must prove dispatch beyond one 8x8 workgroup
+      scaled timing must verify sampled pixels against CPU oracle
+      invalid non-aligned headless extents must reject before unsafe Vulkan dispatch
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+    change:
+      added `AshSubstrateRenderer::headless_probe_tile_rgba8_for_size(width,height)`
+      fixed 8x8 helper now wraps the size-parameterized path
+      headless extent validation requires nonzero dimensions divisible by source-declared workgroup
+      command buffer now dispatches `(width/workgroup.x, height/workgroup.y, 1)`
+      added `headless_scaled_dispatch_timing_telemetry`
+      scaled telemetry dispatches 256x256 output as 8x8 workgroups and checks pixels:
+        top-left
+        center
+        bottom-right
+    evidence:
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_scaled_dispatch_timing_telemetry -- --nocapture` → passed; use_case=scaled_probe_not_production realworld_gate=false p95_us=22321 ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime -- --nocapture` → 9 passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 13 passed ✓
+      direct `cargo test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      dev_observe p1-multi-workgroup-telemetry-runtime-full → 9 runtime tests passed; scaled telemetry captured ✓
+      dev_observe p1-multi-workgroup-telemetry-present-full → 13 present tests passed; scaled telemetry captured ✓
+      dev_observe p1-multi-workgroup-telemetry-cgen-full → 19 substrate tests passed ✓
+      `dev_observe.py review --limit 8` → 8 pass / 0 fail / 0 warn.stderr ✓
+    critique:
+      ✓ dispatch is no longer only a single workgroup smoke-test
+      ✓ scaled path validates representative pixels instead of treating timing as correctness
+      ✓ extent validation blocks obvious out-of-bounds shader writes for non-workgroup-aligned sizes
+      ✗ 256x256 p95≈22.3ms end_to_end does not meet 1440p/240Hz claims and is only 1.78% of 1440p pixels
+      ◐ next = persistent resource reuse + GPU timestamp queries + 512/720p/1080p/1440p staged telemetry
+
+  p1.testing_discipline_rebase_probe_instrumentation:
+    status: ✓ implemented
+    discipline:
+      tests must classify evidence before any readiness claim
+      telemetry must label non-production probes as `realworld_gate=false`
+      GPU timings must be separated from host allocation/submit/wait/readback timings
+      rendered output still needs pixel/oracle validation; timing alone is not correctness
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      added `HeadlessProbeFrame` with `pixels` + `gpu_elapsed_ns`
+      added extent-keyed reusable headless session:
+        observer buffer
+        crystal buffer
+        readback buffer
+        storage image + view
+        descriptor pool/set
+        resettable command pool/buffer
+        optional timestamp query pool
+      `headless_probe_tile_rgba8_for_size` now routes through profiled session path
+      telemetry lines now include:
+        use_case
+        realworld_gate=false
+        target pixel coverage
+        p99_us=unmeasured
+        GPU timestamp sample summary
+      added `headless_profiled_dispatch_reuses_session_and_preserves_oracle`
+    evidence:
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime headless_profiled_dispatch_reuses_session_and_preserves_oracle -- --nocapture` → passed ✓
+      direct `cargo test -p cssl-host-substrate-render-v3 --features runtime -- --nocapture` → 11 passed ✓
+      dev_observe p1-testing-discipline-default-build → 4 default tests passed ✓
+      dev_observe p1-testing-discipline-runtime-full → 11 runtime tests passed ✓
+      dev_observe p1-testing-discipline-present-full → 15 present-feature tests passed ✓
+      dev_observe p1-testing-discipline-cgen-full → 19 substrate-kernel tests passed ✓
+      telemetry 8x8 → end_to_end p95≈1423-1504us ; GPU p95≈14us ; realworld_gate=false ✓
+      telemetry 256x256 → end_to_end p95≈21775-22069us ; GPU p95≈15-32us ; realworld_gate=false ✓
+      120-frame telemetry reruns → p50≈19350-19423us p95≈20038-20181us p99≈20881-21153us GPU_p95≈16-20us ; realworld_gate=false ✓
+    critique:
+      ✓ prior checkbox risk corrected into explicit evidence taxonomy
+      ✓ GPU query path shows shader dispatch is not current probe-scale bottleneck
+      ✓ 120-frame probe now reports real p99 instead of tiny-sample pseudo-percentiles
+      ✗ still no 1440p/p99/p99.9/rich-scene/input-loop/utilization validation
+      R! next slice = present-loop timestamping + readback-free frame pacing + 120-frame p99 harness
+
+  p1.present_loop_telemetry_api:
+    status: ✓ implemented
+    discipline:
+      present-path timing must be measured on the readback-free swapchain path, not inferred from headless readback
+      single-frame telemetry is instrumentation only; p99/p99.9 require aggregation harness
+      GPU dispatch timestamps from frame ring are delayed until slot fence signals
+      telemetry line must remain `realworld_gate=false` until live target workload validates p99
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      added `PresentFrameTelemetry`
+      added `dispatch_with_present_profiled(observer, crystals)`
+      kept `dispatch_with_present` as compatibility wrapper
+      added per-frame timestamp query pools to `AshSwapchainPresenter`
+      telemetry captures:
+        CPU fence wait
+        acquire next image
+        observer/crystal upload
+        command buffer record
+        queue submit
+        queue present
+        previous-slot GPU dispatch time when available
+      added `present_frame_telemetry_line_is_explicitly_non_production`
+    evidence:
+      dev_observe p1-present-loop-telemetry-present-full → 17 present-feature tests passed ✓
+      dev_observe p1-present-loop-telemetry-runtime-full → 12 runtime tests passed ✓
+      dev_observe p1-present-loop-telemetry-default-build → 4 default tests passed ✓
+      dev_observe p1-present-loop-telemetry-cgen-full → 19 substrate-kernel tests passed ✓
+    critique:
+      ✓ present path now has readback-free timing surface for real runs
+      ✓ telemetry contract explicitly refuses p99/high-refresh readiness claim
+      ◐ unit tests cannot drive real Win32 swapchain frame pacing
+      ✗ no screenshots/pixel inspection/utilization telemetry for present loop yet
+      R! next slice = live present-loop harness emitting 120-frame telemetry + screenshot/pixel capture
+
+  p1.live_present_loop_metadata_only:
+    status: ✓ implemented
+    discipline:
+      p99/p99.9 must be computed from captured frame rows, not inferred from mean FPS
+      CPU substrate pixel-field work must be absent from V3 render path unless V3 explicitly samples it
+      telemetry remains `realworld_gate=false` because scene content is minimal/simple-kernel, not rich target workload
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\substrate_render.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      `LOA_RENDER_V3=1` initializes V3 before legacy `GpuContext`/CFER renderer
+      V3 standalone startup suppresses legacy wgpu/CFER startup so SparseMortonGrid panic cannot block V3 probes
+      `FramePace::Poll` direct-drives frames in `about_to_wait`; RedrawRequested drives only wait-paced modes
+      V3 frame path calls `SubstrateRenderState::tick_metadata_only` instead of CPU pixel-field `tick`
+      present telemetry appends `wall_since_prev_us`, `frame_pace`, and `cpu_substrate_tick=false`
+      `AshSwapchainPresenter` records selected Vulkan present mode and preserves it on swapchain resize
+      test cleanup removed unrelated warning noise from snapshot/fps pipeline tests
+    evidence:
+      GNU toolchain blocked by missing `dlltool.exe` ✗ ; MSVC toolchain used for runtime validation ✓
+      prior live V3 with legacy CPU substrate tick: 120 frames ≈72.78s process wall ✗
+      after metadata-only V3 tick, direct exe telemetry-off 120 frames ≈975.61ms process wall incl startup/window ✓
+      120-frame telemetry @2560x1440 IMMEDIATE:
+        lines=121 wall_numeric=120 gpu_numeric=118
+        wall p50=487us p95=1195us p99=1517us p99.9=2844us
+        CPU total p50=449us p95=1102us p99=1427us p99.9=1456us
+        GPU dispatch p50=283us p95=284us p99=300us p99.9=2136us
+      1000-frame telemetry @2560x1440 IMMEDIATE:
+        lines=1001 wall_numeric=1000 gpu_numeric=998
+        wall p50=484us p95=990us p99=1291us p99.9=3502us
+        CPU total p50=445us p95=869us p99=1173us p99.9=1435us
+        GPU dispatch p50=283us p95=284us p99=300us p99.9=376us
+      focused tests:
+        `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present present_frame_telemetry_line_is_explicitly_non_production -- --nocapture` → passed ✓
+        `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime metadata_only_tick_advances_frame_without_cpu_pixel_raster -- --nocapture` → passed ✓
+        `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+        dev_observe p1-live-present-v3-present-full → 17 present-feature tests passed ✓
+        dev_observe p1-live-present-v3-loa-runtime-check → cargo check passed; cargo-progress stderr classified non-warning ✓
+        warning/error scan for loa-host runtime check + present telemetry test → none ✓
+    critique:
+      ✓ V3 no longer renders from CPU on the measured path
+      ✓ simple 1440p V3 present loop now passes 144Hz and 240Hz frame budgets by p99 and p99.9
+      ✓ GPU dispatch is sub-0.4ms p99.9 over 1000-frame sample; host wait/record/present jitter now dominates
+      ◐ process-wall includes startup/window cost; frame telemetry is the better loop metric
+      ✗ no rich-scene load, no input latency simulation, no screenshot/pixel validation, no CPU/GPU/RAM/VRAM utilization capture yet
+      R! next slice = rich CSSL kernel scene + pixel capture + utilization + input-loop harness
+
+  p1.live_present_loop_crystal32:
+    status: ✓ implemented
+    discipline:
+      scene payload must come from substrate crystals, not synthetic empty array
+      no per-frame heap allocation in crystal packing
+      p99/p99.9 must be rerun after active scene payload changes
+      still `realworld_gate=false` because kernel cap is 32 crystals and no screenshot/utilization/input loop yet
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\substrate_render.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      added `write_v3_present_crystals_for_observer(observer, out[32])`
+      packer selects nearest visible substrate crystals with fixed 32-slot insertion sort
+      packer maps world-relative x/y into V3 kernel bias domain -128..127 and extent into strength 1..255
+      V3 present loop passes packed crystals to `dispatch_with_present_profiled`
+      telemetry includes `active_crystals=32`
+      added `v3_present_crystal_packer_emits_nearest_bounded_scene`
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime v3_present_crystal_packer_emits_nearest_bounded_scene -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime metadata_only_tick_advances_frame_without_cpu_pixel_raster -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      dev_observe p1-live-present-crystal32-loa-runtime-check → passed ✓
+      dev_observe p1-live-present-crystal32-present-full → 17 present-feature tests passed ✓
+      dev_observe p1-live-present-crystal32-packer-test → packer test passed; stderr startup banner classified non-warning ✓
+      warning/error scan for runtime check + packer test + present full → none ✓
+      1000-frame live telemetry @2560x1440 IMMEDIATE active_crystals=32:
+        lines=1001 wall_numeric=1000 gpu_numeric=998
+        wall p50=492us p95=842us p99=1105us p99.9=3976us
+        CPU total p50=422us p95=739us p99=967us p99.9=1144us
+        GPU dispatch p50=283us p95=300us p99=865us p99.9=998us
+      5000-frame live telemetry @2560x1440 IMMEDIATE active_crystals=32:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=491us p95=826us p99=1080us p99.9=1423us max=4098us
+        CPU total p50=422us p95=716us p99=967us p99.9=1036us max=1346us
+        GPU dispatch p50=283us p95=301us p99=865us p99.9=896us max=1127us
+    critique:
+      ✓ live V3 path now exercises actual substrate scene data, not empty crystals
+      ✓ 5000-frame wall p99.9 stays under 240Hz 4166us budget for this bounded kernel
+      ✓ no CPU pixel raster, no wgpu/CFER startup, no readback in the present loop
+      ◐ shader still fixed-cap 32 crystals; 1000+ primitive/RT/PRISM scene not represented
+      ✗ no visual screenshot/pixel-present validation, utilization capture, or competitive input simulation
+      ✓ follow-up p1.live_present_loop_crystal128 expanded kernel+host cap and reran live timing
+      R! next slice = pixel capture + utilization probe around active_crystals=128, then expand CSSL kernel scene complexity
+
+  p1.live_present_loop_crystal128:
+    status: ✓ implemented
+    discipline:
+      CSSL source cap must drive compiler constant, host export, LoA packer, and present telemetry
+      128-slot run must keep `cpu_substrate_tick=false` and no legacy wgpu/CFER startup
+      p99/p99.9 must be measured over 1000+ and 5000-frame live-window runs
+      still `realworld_gate=false` because scene is 128 bounded crystals, not 1000+ rich arena + input/utilization/full-frame screenshot gate
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\substrate_render.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      `MAX_SCENE_CRYSTALS = 128` in canonical CSSL kernel
+      cgen parser/test expectation raised to 128 from source truth
+      render-v3 crate re-exports `MAX_SCENE_CRYSTALS` for host-owned fixed arrays
+      headless crystal seed words converted from fixed array constant to cap-sized constructor
+      LoA V3 packer and present loop now allocate/pack exactly CSSL-owned `MAX_SCENE_CRYSTALS`
+      stale 32-cap comments/spec claims corrected
+    evidence:
+      `cargo fmt -p cssl-cgen-gpu-spirv -p cssl-host-substrate-render-v3 -p loa-host` → passed ✓
+      dev_observe p1-crystal128-cgen-substrate → 19 substrate tests passed ✓
+      dev_observe p1-crystal128-present-invariants → present invariant passed ✓
+      dev_observe p1-crystal128-loa-packer → packer test passed; stderr cargo/runtime banners classified non-warning ✓
+      dev_observe p1-crystal128-loa-runtime-build → loa-runtime build passed ✓
+      dev_observe p1-crystal128-loa-runtime-check → loa-host runtime check passed ✓
+      dev_observe p1-crystal128-present-full → 17 present-feature tests passed ✓
+      1000-frame live telemetry @2560x1440 IMMEDIATE active_crystals=128:
+        lines=1001 wall_numeric=1000 gpu_numeric=998
+        wall p50=1193us p95=1650us p99=1814us p99.9=2178us max=2992us
+        CPU total p50=1040us p95=1427us p99=1621us p99.9=1740us max=1806us
+        GPU dispatch p50=982us p95=1409us p99=1587us p99.9=1770us max=1770us
+      5000-frame live telemetry @2560x1440 IMMEDIATE active_crystals=128:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=1191us p95=1646us p99=1789us p99.9=2047us max=2690us
+        CPU total p50=1029us p95=1380us p99=1622us p99.9=1741us max=1775us
+        GPU dispatch p50=982us p95=1325us p99=1585us p99.9=1690us max=1765us
+    critique:
+      ✓ 128-crystal live path remains inside 144Hz and 240Hz budgets by p99/p99.9 on this machine
+      ✓ scaling from 32→128 raises GPU p99 ≈865us→1585us and wall p99 ≈1080us→1789us, still practical headroom
+      ✓ CSSL source cap now propagates through compiler, host ABI, LoA packer, and telemetry without hard-coded 32-slot arrays
+      ◐ 128 crystals is still a bounded shader stress, not a production arena with material diversity, occlusion, animation, particles, UI, and input
+      ◐ headless probe CPU timing worsened at scene_slots=128 because it includes submit/wait/readback; live present path remains the relevant frame-loop evidence
+      ✓ follow-up p1.live_present_pixel_capture samples live swapchain pixels before present
+      ✓ follow-up p1.live_present_full_frame_artifact and p1.world1024_visible128_scene_tier close the first artifact/world-scale gaps
+      ✗ no accepted GPU/RAM/VRAM utilization capture, thermal/power stability, or input latency harness yet
+      R! next slice = visual-semantic crystal/material pass + accepted GPU utilization source
+
+  p1.live_present_pixel_capture:
+    status: ✓ implemented
+    discipline:
+      capture path must be opt-in and non-production; normal V3 present path stays readback-free
+      pixel evidence must come from the swapchain image after compute write and before present
+      capture telemetry must label `realworld_gate=false` until screenshot/visual-regression harness and rich workload exist
+      capture wait/readback timings must not be mixed into normal frame-budget claims
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      swapchain image usage now includes TRANSFER_SRC when supported
+      added `PresentPixelSample`, `PresentCapturedPixel`, `PresentCaptureTelemetry`
+      added `dispatch_with_present_profiled_capture(observer, crystals, samples)`
+      capture records compute → transfer barrier, copies live swapchain image to host-visible buffer, samples requested pixels, then presents
+      LoA runtime env `LOA_V3_PRESENT_CAPTURE=N|on|true` captures first N V3 frames
+      telemetry emits `telemetry.present_capture ... nonzero_samples ... checksum ... samples=...`
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 18 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      live `LOA_RENDER_V3=1 LOA_V3_PRESENT_CAPTURE=1 LOA_QUICK_QUIT=3` probe:
+        present telemetry lines=4 active_crystals=128 cpu_substrate_tick=false present_mode=IMMEDIATE
+        capture telemetry: sample_count=5 nonzero_samples=5 alpha255_samples=1 checksum=8904398173532002093
+        samples=0,0:ff00ff00,1280,720:ff80ff80,2559,1439:ffffffff,640,480:ff40ff55,1920,960:ffbfffaa
+        parser validation passed=True ✓
+    critique:
+      ✓ live V3 render is no longer validated only by frame timing; sampled swapchain pixels prove nonblank output
+      ✓ capture is opt-in and isolated so production frame-loop evidence remains no-readback
+      ✓ follow-up p1.live_present_full_frame_artifact writes a full-frame PPM capture artifact
+      ◐ sampled pixels are necessary but not sufficient; full-frame artifact exists but no image diff or perceptual visual check yet
+      ◐ sample values show output gradient/alpha channel, not semantic rich-scene correctness
+      ✓ follow-up p1.world1024_visible128_scene_tier adds 1024 world primitives with bounded visible GPU set
+      ✗ no accepted GPU/RAM/VRAM utilization capture, input latency, or semantic rich-scene workload yet
+      R! next slice = visual-semantic crystal/material pass + accepted GPU utilization source
+
+  p1.live_present_full_frame_artifact:
+    status: ✓ implemented
+    discipline:
+      artifact path must be explicit via env; no surprise per-frame screenshot writes
+      normal V3 present path remains readback-free when capture env is unset
+      full-frame artifact proves inspectable output, not rich-scene correctness
+      capture/write timing is excluded from high-refresh frame-budget evidence
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      `PresentCaptureTelemetry` now carries `artifact_path`
+      added `dispatch_with_present_profiled_capture_artifact(observer, crystals, samples, artifact_path)`
+      added PPM writer for captured swapchain image bytes: P6, RGB24, width×height
+      LoA runtime reads `LOA_V3_PRESENT_CAPTURE_PATH` and writes one artifact per captured frame
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present present_capture_telemetry_line_reports_pixel_evidence -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      live `LOA_RENDER_V3=1 LOA_V3_PRESENT_CAPTURE=1 LOA_V3_PRESENT_CAPTURE_PATH=...\present_capture_v3_crystal128.ppm LOA_QUICK_QUIT=3` probe:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_crystal128.ppm
+        artifact_length=11059217 bytes = header + 2560*1440*3 RGB bytes ✓
+        PPM header valid: `P6\n2560 1440\n255\n` ✓
+        capture telemetry: sample_count=5 nonzero_samples=5 checksum=8904398173532002093 artifact_path set ✓
+        converted preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_crystal128.png ✓
+    critique:
+      ✓ full-frame output can now be inspected by a human and by future image-diff automation
+      ✓ output is nonblank and dimensionally correct at target 1440p
+      ◐ visual content is a simple magenta/white gradient from current bounded kernel, not LoA/PRISM rich scene
+      ◐ artifact is PPM-first for dependency-light correctness; PNG preview currently uses Python Pillow as an operator convenience, not runtime dependency
+      ✗ no perceptual metric, golden-image threshold, camera motion sweep, or rich-scene material/occlusion validation yet
+      R! next slice = CSSL 1000+ primitive scene tier with capture-diff and Vulkan timestamp summary
+
+  p1.world1024_visible128_scene_tier:
+    status: ✓ implemented
+    discipline:
+      1000+ world primitives must not force 1000+ per-pixel brute force when high-refresh is the target
+      V3 present telemetry must report both host world count and GPU active visible count
+      culling/scoping is accepted as production-shaped only if p99/p99.9 remain under high-refresh budgets
+      visual richness remains unproven until the kernel/material system uses the larger scene semantically
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\substrate_render.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      `STARTUP_CRYSTAL_COUNT` raised 128→1024
+      shell counts raised to inner=128 middle=384 outer=512
+      content-pipeline host cap raised to 2048
+      added `world_crystal_count()`
+      V3 present telemetry now emits `world_crystals=... active_crystals=...`
+      present packer still selects nearest 128 visible crystals without heap allocation
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime shell_classification_partitions_1024_into_128_384_512 -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime v3_present_crystal_packer_emits_nearest_bounded_scene -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime substrate_render::tests -- --nocapture` → 17 passed, 1 ignored GPU-adapter test ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      1000-frame live telemetry @2560x1440 IMMEDIATE world_crystals=1024 active_crystals=128:
+        lines=1001 wall_numeric=1000 gpu_numeric=998
+        wall p50=1240us p95=1682us p99=1929us p99.9=2199us max=3549us
+        CPU total p50=591us p95=962us p99=1198us p99.9=1445us max=1532us
+        GPU dispatch p50=982us p95=1382us p99=1663us p99.9=2372us max=2372us
+      5000-frame live telemetry @2560x1440 IMMEDIATE world_crystals=1024 active_crystals=128:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=1231us p95=1607us p99=1847us p99.9=2090us max=3285us
+        CPU total p50=585us p95=904us p99=1026us p99.9=1272us max=1606us
+        GPU dispatch p50=983us p95=1372us p99=1491us p99.9=1679us max=2087us
+      full-frame capture @2560x1440 world_crystals=1024 active_crystals=128:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128.ppm
+        artifact_length=11059217 bytes ; PPM header valid ✓
+        preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128.png ✓
+    critique:
+      ✓ LoA now owns a deterministic 1024-crystal world scene while preserving high-refresh V3 present timings
+      ✓ p99 and p99.9 remain under the 240Hz 4166us budget on this machine with culling to 128 visible GPU slots
+      ✓ telemetry distinguishes world-scale from active GPU workload, preventing false 1000+ shader-work claims
+      ◐ this validates scene ownership+culling, not 1000+ per-pixel shader traversal
+      ◐ visual output remains the current simple gradient; 1024 world crystals are not yet visually rich/material-diverse
+      ✗ no occlusion, material variety, animation density, camera sweep, or competitive input harness yet
+      R! next slice = make crystal field visually semantic in CSSL kernel, then compare capture-diff across camera/world states
+
+  p1.crystal_emissive_normalized_visual:
+    status: ◐ partial
+    discipline:
+      visual fixes must be backed by full-frame artifact inspection, not just shader tests
+      normalization must preserve CPU/GPU oracle parity and high-refresh frame timing
+      do not call gradient output a rich scene
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      CPU oracle now averages bounded crystal emissive contribution by active count
+      SPIR-V emitter now multiplies per-crystal red contribution by `1 / max(active_crystal_count, 1)`
+      initial normalized capture still left descriptor/canary blue visually dominant; superseded by p1.visual_rgb_composite_present
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 18 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      full-frame capture @2560x1440 world_crystals=1024 active_crystals=128:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_norm.ppm
+        preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_norm.png
+        image extrema: R=29..74, G=0..255, B=255..255
+        mean RGB≈58.34,127.5,255
+        sample checksum=7507639207840996513 ; nonzero_samples=5 ✓
+      5000-frame live telemetry @2560x1440 IMMEDIATE world_crystals=1024 active_crystals=128 after normalization:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=1227us p95=1598us p99=1778us p99.9=2033us max=3261us
+        CPU total p50=570us p95=886us p99=990us p99.9=1167us max=1263us
+        GPU dispatch p50=984us p95=1371us p99=1482us p99.9=1669us max=1836us
+    critique:
+      ✓ normalization stops many-crystal red saturation and keeps 240Hz p99/p99.9 headroom
+      ✓ full-frame capture visibly changes from saturated magenta/white to blue/cyan gradient with non-saturated red channel
+      ◐ this is visual hygiene, not rich scene rendering; crystal structure is still too smooth/subtle
+      ◐ superseded visual-mix slice removes constant saturated-blue output while keeping canary contribution observable
+      ✗ no visible individual crystal silhouettes, occlusion, material bands, motion, particles, or semantic LoA scene composition yet
+      R! next slice = make bounded crystal field produce visible spatial structure through material/color accumulation, then capture-diff camera movement
+
+  p1.visual_rgb_composite_present:
+    status: ◐ partial
+    discipline:
+      visible output must be judged from full-frame artifacts + channel statistics + live telemetry
+      do not accept debug-channel gradients as production visual progress
+      CPU oracle, SPIR-V emitter, Vulkan readback, and live present capture must agree
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      kernel now computes normalized crystal average + peak emissive lift: `avg + peak * 0.75`
+      visible RGB now composes:
+        R = lit.r
+        G = lit.r * 0.65 + x_norm * 0.35
+        B = lit.r * 0.45 + y_norm * 0.35 + descriptor_canary * 0.20
+        A = y_norm
+      canary remains visible as a contributor instead of saturating the entire blue plane
+      host oracle expected pixels updated to match visual RGB composition
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 18 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime substrate_render::tests -- --nocapture` → 17 passed, 1 ignored GPU-adapter test ✓
+      full-frame capture @2560x1440 world_crystals=1024 active_crystals=128:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_visualmix.ppm
+        preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_visualmix.png
+        image extrema: R=71..169, G=46..189, B=83..213
+        mean RGB≈137.906,134.261,157.68
+        unique channel bins: R=99, G=144, B=131
+        sample checksum=1849090603653843874 ; nonzero_samples=5 ✓
+        sample pixels:
+          0,0:472e5300
+          1280,720:a095a880
+          2559,1439:8ab3caff
+          640,480:7c678855
+          1920,960:a6afb9aa
+      visualmix vs normalized capture:
+        changed_pixels=1000000ppm
+        mean_abs_delta RGB≈79.563,34.028,97.32
+        max_delta RGB=96,91,172
+      5000-frame live telemetry @2560x1440 IMMEDIATE world_crystals=1024 active_crystals=128:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=1322us p95=1677us p99=1822us p99.9=2125us max=5232us
+        CPU total p50=716us p95=1053us p99=1093us p99.9=1364us max=1422us
+        GPU dispatch p50=1103us p95=1456us p99=1484us p99.9=1762us max=2073us
+        CPU substrate tick=false ; frame_pace=Poll ; present_mode=IMMEDIATE
+    critique:
+      ✓ visual output no longer wastes an RGB channel as constant saturated blue
+      ✓ full-frame artifact now has scene signal across all RGB channels
+      ✓ live 5000-frame p99 and p99.9 still clear competitive 240Hz budget on this machine
+      ◐ still a smooth field; channel statistics show more range, not rich scene complexity
+      ◐ current kernel has no depth-tested silhouettes, temporal motion, particle density, material IDs, or post stack
+      ✗ no camera sweep/capture-diff, input latency, combat load, AI load, netcode load, or OS-level GPU counter acceptance yet
+      R! next slice = add semantic crystal/material bands + camera-sweep capture diff, then validate p99.9 under mixed simulation/render load
+
+  p1.material_semantic_camera_sweep:
+    status: ◐ partial
+    discipline:
+      material signal must be encoded in CSSL-owned scene ABI, not foreign renderer convention
+      camera response must be proven by runtime artifact diff, not code review
+      timing evidence must stay readback-free except explicit capture runs
+      `realworld_gate=false` remains until rich arena + input/sim workload exists
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\substrate_render.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      `GpuCrystalWord.word3` repurposed from reserved to `material_code_u8`
+      material code = `shell_code * 8 + CrystalClass(0..7)` ; domain 0..23
+      LoA present packer writes material code for nearest 128 active crystals
+      CPU oracle and SPIR-V kernel compute contribution-weighted `material_mix`
+      visual RGB now composes:
+        R = lit.r
+        G = lit.r * 0.55 + x_norm * 0.25 + material_mix * 0.20
+        B = lit.r * 0.35 + y_norm * 0.25 + descriptor_canary * 0.15 + (1-material_mix) * 0.25
+        A = y_norm
+      `LOA_V3_OBSERVER_YAW_MILLI` adds deterministic validation yaw override
+      V3 present telemetry emits `observer_yaw_milli=...`
+      startup banner logs the yaw override source/value
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 18 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime substrate_render::tests -- --nocapture` → 18 passed, 1 ignored GPU-adapter test ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      material full-frame capture @2560x1440 world_crystals=1024 active_crystals=128:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material.ppm
+        preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material.png
+        image extrema: R=71..169, G=69..179, B=89..184
+        mean RGB≈137.906,137.829,144.508
+        unique channel bins: R=99, G=111, B=96
+        sample checksum=11487190915300354228 ; nonzero_samples=5 ✓
+      material vs visualmix capture:
+        changed_pixels=3682021/3686400 ; changed_ppm≈998812
+        mean_abs_delta RGB≈0.0,7.939,13.438
+        max_delta RGB=0,24,29
+      yaw sweep captures:
+        yaw000 artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material_yaw000.ppm
+        yaw000 PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material_yaw000.png
+        yaw500 artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material_yaw500.ppm
+        yaw500 PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material_yaw500.png
+        amplified diff PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material_yaw000_vs_yaw500_diff.png
+        telemetry yaw labels: yaw000=`observer_yaw_milli=0` ; yaw500=`observer_yaw_milli=500` ✓
+        yaw000 checksum=11487190915300354228 ; yaw500 checksum=13126021750630485520
+        yaw diff changed_pixels=3658539/3686400 ; changed_ppm≈992442
+        yaw diff mean_abs_delta RGB≈19.812,10.695,7.202 ; max_delta RGB=41,22,15
+      5000-frame live telemetry @2560x1440 IMMEDIATE yaw500 world_crystals=1024 active_crystals=128:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=1473us p95=1938us p99=2173us p99.9=2480us max=5354us
+        CPU total p50=800us p95=1255us p99=1475us p99.9=1625us max=1862us
+        GPU dispatch p50=1241us p95=1616us p99=1637us p99.9=1922us max=1975us
+        CPU substrate tick=false ; frame_pace=Poll ; present_mode=IMMEDIATE ; observer_yaw_milli=500
+    critique:
+      ✓ semantic material code now crosses LoA world → packer → Vulkan storage buffer → CSSL kernel → full-frame artifact
+      ✓ deterministic camera yaw override proves observer input materially changes rendered output across nearly the whole frame
+      ✓ 5000-frame p99/p99.9 still clears 144Hz and 240Hz budgets for this bounded probe
+      ◐ material signal is smooth and global; it improves semantic color but still lacks crisp object identity
+      ◐ nearest-128 cull keeps timing strong, but does not prove 1000+ per-pixel primitive traversal
+      ✗ still no occlusion, depth ordering, animation, particles, lighting grid, input latency, combat sim, AI load, netcode load, VRAM, power, clocks, or accepted OS/GPU utilization source
+      R! next slice = add geometric depth/silhouette workload + mixed gameplay-sim telemetry while keeping readback-free present path
+
+  p1.compact_core_visual_structure:
+    status: ◐ partial
+    discipline:
+      visual structure must improve measured artifact statistics, not only "look better"
+      added shader work must be judged against readback-free present telemetry and readback-heavy probe separately
+      if local contrast improves but p99 fails, reject or gate behind preset
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      crystal spatial contribution changed from broad linear falloff to compact core + low halo
+      CPU oracle: `core=max(1-dist*8,0)` + `halo=max(1-dist*2.25,0)*0.12`
+      SPIR-V emitter mirrors the same core/halo math using owned GLSL.std.450 FMin/FMax ops
+      CSSL kernel note changed from generic `resonance` to `compact-resonance`
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 18 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      compact full-frame capture @2560x1440 world_crystals=1024 active_crystals=128:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_compact.ppm
+        preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_compact.png
+        material-vs-compact diff PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_material_vs_compact_diff.png
+        image extrema: R=26..128, G=46..164, B=71..172
+        mean RGB≈91.128,112.307,127.875
+        unique channel bins: R=103, G=119, B=102
+        local roughness dx8 avg RGB≈0.565,0.389,0.215 ; dy8 avg RGB≈0.932,0.511,0.503
+        prior material roughness dx8 avg RGB≈0.316,0.299,0.113 ; dy8 avg RGB≈0.326,0.180,0.407
+        compact vs material changed_pixels=3686400/3686400 ; changed_ppm=1000000
+        compact vs material mean_abs_delta RGB≈46.777,25.522,16.633 ; max_delta RGB=85,48,29
+      5000-frame live telemetry @2560x1440 IMMEDIATE compact-core world_crystals=1024 active_crystals=128:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=1732us p95=2292us p99=2524us p99.9=2778us max=5138us
+        CPU total p50=1085us p95=1655us p99=1848us p99.9=1973us max=2006us
+        GPU dispatch p50=1487us p95=1858us p99=1874us p99.9=1897us max=2422us
+        CPU substrate tick=false ; frame_pace=Poll ; present_mode=IMMEDIATE ; observer_yaw_milli=0
+      readback-heavy headless probe caveat:
+        `headless_persistent_probe_120` emitted p99≈8087us after compact-core
+        classification: persistent_probe_not_production ; realworld_gate=false
+        interpretation: readback path worsened; do not use it as high-refresh proof
+    critique:
+      ✓ compact-core increases measured local image structure and preserves readback-free live 240Hz p99/p99.9 headroom
+      ✓ artifact diff is complete-frame and inspectable, not sampled-only
+      ◐ output is still field-like; roughness improved but not enough to call it rich-scene or silhouette-complete
+      ◐ more shader work increased live frame time versus material-only p99≈2173us → compact p99≈2524us
+      ✗ headless readback p99 now exceeds 144Hz budget, confirming readback must stay out of normal present path
+      R! next slice = real depth/occlusion + object IDs, then input/sim mixed load; reject any visual step that breaks live p99.9 budget
+
+  p1.object_mask_depth_signal:
+    status: ◐ partial
+    discipline:
+      object/depth signal must be derived from the CSSL-owned crystal loop and match CPU oracle + SPIR-V output
+      yaw/camera response must be revalidated after every visual-composition change
+      readback-heavy probe timing remains diagnostic only; live present path is the high-refresh timing source
+      still label `realworld_gate=false` until scene has real occlusion/depth ordering plus mixed gameplay input/sim load
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-host-substrate-render-v3\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      CPU oracle now carries `(red_lit, material_mix, object_mask)`
+      SPIR-V crystal loop adds `object_phi = max(object_phi, compact_influence * active)`
+      visual composition adds edge/depth terms:
+        edge = clamp(object_mask * (1-object_mask) * 4, 0, 1)
+        R = lit.r*(0.82+object_mask*0.18)+edge*0.18
+        G = (lit.r*0.48+x_norm*0.20+material_mix*0.16)*(1-object_mask*0.18)+object_mask*material_mix*0.25+edge*0.10
+        B = (lit.r*0.30+y_norm*0.20+descriptor_canary*0.12+(1-material_mix)*0.20)*(1-object_mask*0.22)+object_mask*(1-material_mix)*0.25+edge*0.06
+      host headless expected-pixel oracle mirrors the object/depth formula
+      yaw byte test adjusted: row-byte quantization can hide yaw, so raw ray math + 2D tile bytes now guard yaw response
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 18 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      dev_observe p1.object_mask_depth_signal:
+        cgen substrate_kernel → pass ; critique adequate ✓
+        host-substrate-render-v3 present → pass ; critique adequate ✓
+        loa-runtime build → pass ; critique adequate ✓
+      object-mask capture @2560x1440 world_crystals=1024 active_crystals=128:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_objectmask.ppm
+        preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_objectmask.png
+        compact-vs-objectmask diff PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_compact_vs_objectmask_diff.png
+        image extrema: R=48..134, G=66..158, B=72..140
+        mean RGB≈105.072,120.540,111.652
+        unique channel bins: R=87, G=93, B=69
+        local roughness dx8 avg RGB≈0.523,0.309,0.227 ; dy8 avg RGB≈0.938,0.492,0.452
+        compact vs objectmask changed_pixels=3686400/3686400 ; changed_ppm=1000000
+        compact vs objectmask mean_abs_delta RGB≈13.943,11.720,16.833 ; max_delta RGB=43,36,38
+        sample checksum=5684899345696591073 ; yaw telemetry label=0 ✓
+      object-mask yaw sweep:
+        yaw500 artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_objectmask_yaw500.ppm
+        yaw500 PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_objectmask_yaw500.png
+        yaw diff PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_objectmask_yaw000_vs_yaw500_diff.png
+        yaw labels: yaw000=`observer_yaw_milli=0` ; yaw500=`observer_yaw_milli=500` ✓
+        yaw000 checksum=5684899345696591073 ; yaw500 checksum=12798177251270608399
+        yaw diff changed_pixels=3686053/3686400 ; changed_ppm≈999906
+        yaw diff mean_abs_delta RGB≈22.589,10.706,8.777 ; max_delta RGB=90,59,29
+      5000-frame live telemetry @2560x1440 IMMEDIATE object-mask world_crystals=1024 active_crystals=128:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=1824us p95=2543us p99=2768us p99.9=3169us max=6305us
+        CPU total p50=1144us p95=1775us p99=1970us p99.9=2082us max=2151us
+        GPU dispatch p50=1577us p95=1956us p99=1983us p99.9=2400us max=2443us
+        CPU substrate tick=false ; frame_pace=Poll ; present_mode=IMMEDIATE ; observer_yaw_milli=0
+      readback-heavy headless caveat:
+        host persistent_probe_not_production p99≈7646us ; realworld_gate=false
+        interpretation: readback path exceeds 144Hz budget; not used as live-present proof
+    critique:
+      ✓ object/depth mask now participates in CPU oracle, SPIR-V loop, Vulkan readback, and full-frame present artifact
+      ✓ camera yaw still drives nearly whole-frame output after the composition change
+      ✓ live readback-free p99 and p99.9 stay under 240Hz budget for the bounded 128-active-crystal probe
+      ◐ structure is stronger than pure material field but still projection-mask based, not true depth-sorted occlusion
+      ◐ visual contrast tightened blue range and reduced channel-bin diversity; inspect artifact before deciding palette/tonemap direction
+      ✗ no true nearest-depth resolve, CSG/mesh occlusion, shadowing, animation, particles, input latency, combat/AI/net mixed load, VRAM, clocks, power, or accepted adapter utilization source yet
+      R! next slice = depth-resolve/occlusion truth table over multiple projected crystals, then mixed simulation/input harness
+
+  p1.front_to_back_depth_resolve:
+    status: ◐ partial
+    discipline:
+      depth/occlusion must be represented in the per-crystal loop, not only in post-color composition
+      nearest-crystal ordering from the LoA packer is now semantically load-bearing and must stay deterministic
+      readback-heavy headless p99 remains diagnostic; live present p99/p99.9 is the budget gate
+      still not rich-scene readiness because this is projected crystal transmittance, not CSG/mesh/RT occlusion
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\Labyrinth of Apocalypse\systems\substrate_v2_kernel.csl
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-cgen-gpu-spirv\src\substrate_kernel.rs
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      CPU oracle adds front-to-back transmittance over nearest-sorted active crystals
+      SPIR-V loop adds `trans_phi` and updates visible contribution:
+        visible_influence = influence * active * transmittance
+        visible_emissive = emissive * active * transmittance
+        transmittance *= 1 - clamp(influence * active * 0.65, 0, 0.95)
+      material mix, peak emissive, and object mask now use visible contributions
+      CSSL kernel spec records `transmittance = 1.0` and per-slot visibility update
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-cgen-gpu-spirv substrate_kernel -- --nocapture` → 19 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p cssl-host-substrate-render-v3 --features present -- --nocapture` → 18 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      dev_observe p1.front_to_back_depth_resolve:
+        cgen substrate_kernel → pass ; critique adequate ✓
+        host-substrate-render-v3 present → pass ; critique adequate ✓
+        loa-runtime build → pass ; critique adequate ✓
+      depth-resolve capture @2560x1440 world_crystals=1024 active_crystals=128:
+        artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_depthresolve.ppm
+        preview PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_depthresolve.png
+        objectmask-vs-depthresolve diff PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_objectmask_vs_depthresolve_diff.png
+        image extrema: R=29..122, G=47..148, B=59..126
+        mean RGB≈71.935,103.305,95.447
+        unique channel bins: R=94, G=102, B=68
+        local roughness dx8 avg RGB≈0.533,0.415,0.172 ; dy8 avg RGB≈0.739,0.557,0.343
+        objectmask vs depthresolve changed_pixels=3686376/3686400 ; changed_ppm≈999993
+        objectmask vs depthresolve mean_abs_delta RGB≈34.953,19.949,16.380 ; max_delta RGB=93,55,30
+        sample checksum=2518771338332404642 ; yaw telemetry label=0 ✓
+      depth-resolve yaw sweep:
+        yaw500 artifact: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_depthresolve_yaw500.ppm
+        yaw500 PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_depthresolve_yaw500.png
+        yaw diff PNG: C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_depthresolve_yaw000_vs_yaw500_diff.png
+        yaw labels: yaw000=`observer_yaw_milli=0` ; yaw500=`observer_yaw_milli=500` ✓
+        yaw000 checksum=2518771338332404642 ; yaw500 checksum=4279718297457053130
+        yaw diff changed_pixels=3685591/3686400 ; changed_ppm≈999781
+        yaw diff mean_abs_delta RGB≈30.055,20.510,9.318 ; max_delta RGB=80,58,31
+      5000-frame live telemetry @2560x1440 IMMEDIATE depth-resolve world_crystals=1024 active_crystals=128:
+        lines=5001 wall_numeric=5000 gpu_numeric=4998
+        wall p50=2102us p95=2487us p99=2709us p99.9=3001us max=5544us
+        CPU total p50=1437us p95=1812us p99=1865us p99.9=2156us max=2425us
+        GPU dispatch p50=1867us p95=2251us p99=2278us p99.9=2324us max=2868us
+        CPU substrate tick=false ; frame_pace=Poll ; present_mode=IMMEDIATE ; observer_yaw_milli=0
+      readback-heavy headless caveat:
+        host persistent_probe_not_production p99≈7094us ; realworld_gate=false
+        interpretation: readback path remains over 144Hz budget; useful as regression/profiling signal only
+    critique:
+      ✓ nearest-slot front-to-back visibility now gives the bounded crystal scene a real occlusion/transmittance rule
+      ✓ CPU oracle, SPIR-V, Vulkan readback, full-frame artifact, yaw diff, and live timing all passed
+      ✓ live p99/p99.9 remain under the 240Hz budget for the bounded probe
+      ◐ GPU dispatch p50 increased to ≈1867us; this is acceptable now but narrows budget for particles/input/sim
+      ◐ output is darker and more visibility-ordered, but still lacks true CSG/mesh depth, shadows, and object silhouettes
+      ✗ no mixed simulation/input benchmark, no accepted VRAM/GPU utilization source, no animation/particle/shadow workload
+      R! next slice = mixed gameplay-sim/input telemetry harness + per-frame CPU/GPU budget split before adding more visual cost
+
+  p1.benchmark_gate_harness_v1:
+    status: ✓ implemented ; production_evidence=✗ incomplete
+    discipline:
+      benchmark command success ≠ production readiness
+      p99/p99.9 budget pass must be separated from evidence-gate pass
+      harness bugs discovered by real artifacts become regression tests before trusting report
+      dev_observe/MCP review must warn on production-evidence gaps even when command exit=0
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\v3_present_bench.py
+      C:\Users\Apocky\source\repos\CSSLv3\tools\dev-observe\dev_observe.py
+      C:\Users\Apocky\source\repos\CSSLv3\tools\dev-observe\README.md
+      C:\Users\Apocky\source\repos\CSSLv3\tools\grok-mcp-harness\dev_observe_tools.py
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      added dependency-free Render V3 benchmark analyzer:
+        parses `telemetry.present_frame` + `telemetry.present_capture`
+        computes nearest-rank p50/p95/p99/p99.9 for wall/cpu/gpu/CPU segments
+        enforces 144Hz budget 6944us and 240Hz budget 4166us
+        parses P6 PPM full-frame artifacts
+        computes extrema, mean RGB, unique bins, roughness, FNV-1a checksum
+        compares image pairs and emits changed pixels/ppm/mean_abs_delta/max_delta
+        writes JSON report + CSL summary
+      added `self-test` with synthetic log/image/diff and whitespace-leading-pixel PPM regression
+      added optional `run` wrapper for V3 `loa-runtime.exe` telemetry capture
+      added MCP tool `dev_observe_render_v3_analyze`
+      dev_observe now captures subprocess output as UTF-8 and warns when benchmark report says:
+        `pass_benchmark_budget_fail_production_evidence`
+    evidence:
+      direct `python -m py_compile tools\dev-observe\dev_observe.py tools\render-v3\v3_present_bench.py tools\grok-mcp-harness\dev_observe_tools.py` → passed ✓
+      direct `python tools\render-v3\v3_present_bench.py self-test` → passed ✓
+      MCP loader import of render benchmark module → schema `apocky.render_v3_bench.v1` ✓
+      pre-fix real artifact parse failed because PPM first pixel byte equaled whitespace and parser skipped it ✗
+      post-fix regression preserves leading whitespace pixel byte ✓
+      pre-fix dev_observe captured CSL glyphs as mojibake ✗
+      post-fix dev_observe stdout_tail preserves `§`/`∎` ✓
+      dev_observe p1.benchmark_gate_harness_selftest → pass ✓
+      dev_observe p1.benchmark_gate_harness_depthresolve_utf8 → command pass + critique warns production evidence gaps ✓
+      report artifact:
+        C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_depthresolve_bench_report.json
+      report diff artifact:
+        C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\present_capture_v3_world1024_active128_depthresolve_yaw000_vs_yaw500_benchdiff.ppm
+      depth-resolve benchmark verdict:
+        status: pass_benchmark_budget_fail_production_evidence
+        frames: 5001
+        wall p50=2102us p95=2487us p99=2709us p99.9=3004us max=5544us
+        cpu p50=1437us p95=1812us p99=1865us p99.9=2156us max=2425us
+        gpu p50=1867us p95=2251us p99=2279us p99.9=2324us max=2868us
+        144Hz budget pass ✓
+        240Hz budget pass ✓
+        image checksum=9290127949240960461 ; mean RGB≈71.935,103.305,95.447
+        yaw diff changed_pixels=3685591 ; changed_ppm≈999780.545 ; mean_abs_delta RGB≈30.055,20.510,9.318
+      evidence.gaps:
+        telemetry_realworld_gate_false
+        rich_scene_workload_not_declared
+        active_gpu_scene_lt_1000
+        mixed_gameplay_sim_absent
+        input_latency_jitter_absent
+        accepted_cpu_gpu_ram_vram_utilization_absent
+        production_shape_flag_absent
+    critique:
+      ✓ high-refresh budget gate is currently met for bounded depth-resolve probe
+      ✓ benchmark now fails readiness honestly through evidence gaps instead of greenwashing a smoke/probe
+      ✓ MCP/dev_observe can surface the same report to external review loops
+      ◐ nearest-rank p99.9 differs slightly from earlier ad hoc aggregation; harness is now canonical for future comparisons
+      ✗ production-shape remains blocked by missing mixed gameplay/input/utilization + active scene scale
+      R! freeze additional visual-cost features until mixed-sim/input/utilization harness exists or an explicit benchmark-waiver decision is recorded
+
+  p1.mixed_gameplay_input_probe_v0:
+    status: ◐ partial ; synthetic-input only
+    discipline:
+      mixed workload must be measured in the live V3 present loop before adding more shader cost
+      synthetic input can stress plumbing but cannot satisfy real raw-input latency/jitter gate
+      analyzer must infer mixed evidence from telemetry fields; assertions/flags alone are insufficient
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\v3_present_bench.py
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      added `LOA_V3_MIXED_BENCH=1`
+      live V3 present path can run deterministic synthetic mixed load before dispatch:
+        32-lane synthetic action sampler
+        1024-entity × 8-step integer sim checksum workload
+        frame-varying checksum proves load depends on frame state
+      present telemetry appends:
+        `mixed_sim_tick_us`
+        `synthetic_input_sample_us`
+        `synthetic_input_jitter_us`
+        `synthetic_actions`
+        `mixed_sim_checksum`
+      startup banner logs `LOA_V3_MIXED_BENCH`
+      analyzer now computes mixed-workload stats when fields exist
+      analyzer derives timestamp occupancy:
+        gpu_dispatch_frame_pct = GPU dispatch percentile / wall percentile
+        cpu_frame_pct = CPU total percentile / wall percentile
+        role: proprietary bottleneck signal ; not a replacement for accepted adapter VRAM/power/clocks
+      analyzer no longer removes real input gap for synthetic input fields; emits `synthetic_input_only`
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc fmt -p loa-host` → passed ✓
+      `python -m py_compile tools\dev-observe\dev_observe.py tools\render-v3\v3_present_bench.py tools\grok-mcp-harness\dev_observe_tools.py` → passed ✓
+      `python tools\render-v3\v3_present_bench.py self-test` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime v3_mixed_bench_sample_is_parseable_and_load_bearing -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      live `LOA_RENDER_V3=1 LOA_V3_MIXED_BENCH=1 LOA_QUICK_QUIT=5000` → exit 0 ✓
+      mixed report artifact:
+        C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_depthresolve_mixed_bench_report.json
+      mixed benchmark verdict:
+        status: pass_benchmark_budget_fail_production_evidence
+        frames: 5001
+        wall p50=2162us p95=2731us p99=2924us p99.9=3291us max=6209us
+        cpu p50=1347us p95=1896us p99=1987us p99.9=2182us max=2326us
+        gpu p50=1867us p95=2484us p99=2520us p99.9=2705us max=2929us
+        derived occupancy:
+          gpu/frame p50≈86.36% p95≈90.96% p99≈86.18%
+          cpu/frame p50≈62.30% p95≈69.43% p99≈67.95%
+        mixed_sim_tick_us p50=76us p95=123us p99=148us
+        synthetic_input_sample_us p50=0us p95=1us p99=1us
+        synthetic_input_jitter_us p50=48us p95=92us p99=95us
+        144Hz budget pass ✓
+        240Hz budget pass ✓
+      dev_observe p1.mixed_bench_window_unit → pass ✓
+      dev_observe p1.mixed_bench_report → command pass + critique warns production evidence gaps ✓
+      dev_observe p1.mixed_bench_report_occupancy → command pass + critique warns production evidence gaps ✓
+    critique:
+      ✓ V3 depth-resolve remains under 240Hz p99/p99.9 with added synthetic mixed workload
+      ✓ analyzer now sees mixed_sim telemetry directly and removes `mixed_gameplay_sim_absent`
+      ✓ evidence gap shifted from "no mixed sim at all" to "synthetic input only + no accepted utilization"
+      ◐ synthetic sim is intentionally light; it is a plumbing/latency perturbation probe, not combat/AI/net production load
+      ✗ real raw-input latency/jitter still absent
+      ✗ accepted GPU/RAM/VRAM utilization still absent
+      ✗ full-frame artifact/state diff absent for the mixed run because timing run stayed readback-free
+      R! next non-visual slice = real raw-input latency telemetry or accepted proprietary utilization source; do not add more visual cost first
+
+  p1.input_process_utilization_probe_v1:
+    status: ◐ partial ; real-input instrumentation present, automated run has no real input events
+    discipline:
+      real input telemetry requires actual winit input events; synthetic input cannot satisfy that gate
+      process CPU/RAM is accepted as process-local evidence, not adapter-wide proof
+      Vulkan timestamp occupancy is a proprietary bottleneck signal; it does not replace VRAM/power/clock telemetry
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\v3_present_bench.py
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    change:
+      added `V3InputLatencyProbe`:
+        records actual `WindowEvent::KeyboardInput`
+        records actual grabbed `DeviceEvent::MouseMotion`
+        emits `raw_input_events`, `raw_input_latency_us`, `input_jitter_us` on next V3 telemetry frame when real events occurred
+      added Windows process sampler:
+        `GetProcessTimes` → machine-normalized `process_cpu_pct`
+        `GetProcessMemoryInfo` → `working_set_mb` + `private_bytes_mb`
+        values are also mirrored into `sense.engine_load`
+      V3 present telemetry appends process fields every frame:
+        `process_cpu_pct`
+        `working_set_mb`
+        `private_bytes_mb`
+      analyzer now:
+        accepts process CPU/RAM + timestamp occupancy as partial utilization evidence
+        keeps `adapter_vram_power_clock_absent` until adapter/VRAM/power/clock source exists
+        keeps `input_latency_jitter_absent` unless real input fields appear
+      benchmark runner can post OS window input during `run --send-input`
+        first attempt: `PostMessageW` only → did not reach winit input path
+        second attempt: foregrounded `keybd_event` + `PostMessageW` → still no `raw_input_latency_us` rows
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc fmt -p loa-host` → passed ✓
+      `python -m py_compile tools\render-v3\v3_present_bench.py tools\dev-observe\dev_observe.py tools\grok-mcp-harness\dev_observe_tools.py` → passed ✓
+      `python tools\render-v3\v3_present_bench.py self-test` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime v3_input_latency_probe_reports_real_event_gap -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime v3_mixed_bench_sample_is_parseable_and_load_bearing -- --nocapture` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      live `LOA_RENDER_V3=1 LOA_V3_MIXED_BENCH=1 LOA_QUICK_QUIT=5000` after process telemetry → exit 0 ✓
+      report artifact:
+        C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_depthresolve_mixed_process_bench_report.json
+      artifact-paired report:
+        C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_depthresolve_mixed_process_artifact_bench_report.json
+      input-injection attempts:
+        OS PostMessage run 1500 frames → no raw_input_latency rows ; gap preserved ◐
+        foreground keybd_event run 1500 frames → no raw_input_latency rows ; gap preserved ◐
+      mixed+process benchmark verdict:
+        status: pass_benchmark_budget_fail_production_evidence
+        frames: 5001
+        wall p50=2121us p95=2775us p99=2931us p99.9=3081us max=4378us
+        cpu p50=1399us p95=2015us p99=2218us p99.9=2276us max=2376us
+        gpu p50=1867us p95=2243us p99=2268us p99.9=2554us max=2567us
+        144Hz budget pass ✓
+        240Hz budget pass ✓
+        derived occupancy:
+          gpu/frame p50≈88.02% p95≈80.83% p99≈77.38%
+          cpu/frame p50≈65.96% p95≈72.61% p99≈75.67%
+        mixed_sim_tick_us p50=74us p95=94us p99=130us
+        process_cpu_pct p50≈1.87% p95≈7.53% p99≈7.61%
+        working_set_mb p50≈64.688 p95≈64.688 p99≈64.688
+        private_bytes_mb p50≈56.551 p95≈56.609 p99≈56.609
+      artifact-paired verdict:
+        status: pass_benchmark_budget_fail_production_evidence
+        full-frame artifact present ✓
+        yaw state diff present ✓
+        remaining gaps:
+          telemetry_realworld_gate_false
+          rich_scene_workload_not_declared
+          active_gpu_scene_lt_1000
+          input_latency_jitter_absent
+          synthetic_input_only
+          adapter_vram_power_clock_absent
+          production_shape_flag_absent
+      dev_observe p1.input_process_probe_unit → pass ✓
+      dev_observe p1.mixed_process_bench_report → command pass + critique warns production evidence gaps ✓
+      dev_observe p1.mixed_process_artifact_report → command pass + critique warns production evidence gaps ✓
+    critique:
+      ✓ process CPU/RAM is now present in live V3 telemetry and MCP engine-load mirror
+      ✓ raw input event-to-frame latency path exists and is unit-tested with exact event timing
+      ✓ high-refresh budgets still pass after telemetry/process sampling
+      ✓ paired timing report now includes full-frame artifact + yaw state diff without mixing capture overhead into frame timing
+      ◐ automated quick-quit run has no actual keyboard/mouse events, so real input latency remains unmeasured in live benchmark
+      ◐ OS message/keybd injection did not pass through winit in this environment; next input path must use winit-native event injection, focused interactive capture, or a test app hook that is explicitly classified
+      ◐ process CPU/RAM + timestamp occupancy are useful but still not adapter VRAM/power/clock evidence
+      ✗ active GPU scene remains 128
+      R! next non-visual slice = run interactive/input-injection benchmark with actual winit events OR add adapter VRAM/power/clock capture; visual-cost work still gated
+
+  p1.operator_graphical_benchmark_runner:
+    status: ✓ implemented ; operator-gate ready ; production_evidence=✗ incomplete
+    discipline:
+      post-pass validation must be one-command runnable by project owner
+      graphical benchmark must show actual rendered images, not only timing rows
+      failed budget passes must still emit dashboard/report/images so failure can be inspected
+      quick mode is local sanity; full 5000-frame mode is current operator gate
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\run_graphical_bench.ps1
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\run_graphical_bench.cmd
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\v3_present_bench.py
+      C:\Users\Apocky\source\repos\CSSLv3\tools\dev-observe\README.md
+      C:\Users\Apocky\source\repos\CSSLv3\specs\79_CSSL_ONLY_LOA_SUBSTRATE_ENGINE_PLAN.csl
+    command:
+      quick sanity:
+        `tools\render-v3\run_graphical_bench.cmd -Quick`
+      full operator pass:
+        `tools\render-v3\run_graphical_bench.cmd -Frames 5000 -Open`
+      evidence-log wrapper:
+        `python tools\dev-observe\dev_observe.py run --repo CSSLv3 --phase p1.graphical_bench_wrapper_quick -- tools\render-v3\run_graphical_bench.cmd -Quick -NoBuild -AllowBudgetFail`
+    change:
+      added PowerShell/CMD benchmark runner:
+        builds `loa-runtime` unless `-NoBuild`
+        opens graphical V3 path
+        captures yaw A and yaw B full-frame PPM artifacts
+        runs readback-free mixed timing pass
+        analyzes timing + image + camera-diff into JSON/CSL
+        converts PPM captures/diff to BMP previews
+        writes operator HTML dashboard with report links + images
+      added `-AllowBudgetFail`:
+        preserves non-zero budget behavior by default
+        permits dev_observe evidence collection on known-failing runs without masking verdict in report
+      removed fragile generic `$LASTEXITCODE` post-scriptblock check:
+        native failures now checked at owning call site
+        PowerShell-only work no longer inherits stale native exit codes
+      wrapper emits ASCII step labels for Windows console stability
+    evidence:
+      `python -m py_compile tools\render-v3\v3_present_bench.py tools\dev-observe\dev_observe.py tools\grok-mcp-harness\dev_observe_tools.py` → passed ✓
+      `python tools\render-v3\v3_present_bench.py self-test` → passed ✓
+      `tools\render-v3\run_graphical_bench.cmd -Quick -NoBuild` initial run → passed budget, dashboard emitted ✓
+        dashboard:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_20260521_104328_dashboard.html
+      `tools\render-v3\run_graphical_bench.cmd -Quick -NoBuild` rerun → failed 240Hz p99.9 gate ✗
+        wall p99=2974us ; p99.9=4394us ; 240Hz budget=4166us
+        critique: real sporadic spike observed; quick-run p99.9 can fail and must not be greenwashed
+      `tools\render-v3\run_graphical_bench.cmd -Quick -NoBuild -AllowBudgetFail` after wrapper hardening → passed budget, dashboard emitted ✓
+        report:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_20260521_104500_report.json
+        dashboard:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_20260521_104500_dashboard.html
+      dev_observe p1.graphical_bench_wrapper_quick → command pass + critique warns production evidence gaps ✓
+        report:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_20260521_104522_report.json
+        dashboard:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_20260521_104522_dashboard.html
+        wall p50=2213us p95=2661us p99=2860us p99.9=3152us max=3926us
+        gpu p50=1867us p95=2455us p99=2612us p99.9=2734us max=2868us
+        cpu p50=1293us p95=1714us p99=1879us p99.9=2095us max=2185us
+        144Hz budget pass ✓
+        240Hz budget pass ✓
+      full 5000-frame operator wrapper:
+        `tools\render-v3\run_graphical_bench.cmd -Frames 5000 -NoBuild -AllowBudgetFail` → passed budget, dashboard emitted ✓
+        report:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_20260521_104654_report.json
+        dashboard:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_20260521_104654_dashboard.html
+        wall p50=2196us p95=2644us p99=2861us p99.9=3199us max=6437us
+        gpu p50=1867us p95=2395us p99=2565us p99.9=2834us max=3204us
+        cpu p50=1289us p95=1710us p99=1843us p99.9=2039us max=5206us
+        144Hz budget pass ✓
+        240Hz budget pass ✓
+    critique:
+      ✓ owner now has a one-command graphical benchmark after each development pass
+      ✓ output includes dashboard + frame captures + amplified camera diff + JSON/CSL metrics
+      ✓ observed flaky/host jitter budget failure is preserved as data, not hidden
+      ◐ quick 1500-frame run is useful for pass-local sanity but too short/noisy for release confidence
+      ◐ reports still say `pass_benchmark_budget_fail_production_evidence`, not production-ready
+      ✗ production-shape gaps remain: active_gpu_scene_lt_1000, real raw input absent, adapter VRAM/power/clock absent, rich-scene workload absent
+      R! every future render pass must run at least quick graphical gate; full 5000-frame gate before claiming metric improvement
+      R! if quick/full fail budget, stop visual expansion and analyze p99/p99.9 contributor before continuing
+
+  p1.loa_substrate_stress_lab_v0:
+    status: ✓ implemented ; stress_suite=◐ proxy-rich ; production_evidence=✗ incomplete
+    discipline:
+      stress rooms must change actual V3 scene data, not only labels
+      benchmark failure is data; emit dashboard/report before nonzero exit
+      quick-suite outliers must trigger richer telemetry before any visual expansion
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\substrate_render.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\window.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\loa-host\src\lib.rs
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\v3_present_bench.py
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\run_graphical_bench.ps1
+      C:\Users\Apocky\source\repos\CSSLv3\tools\render-v3\run_stress_lab_bench.ps1
+      C:\Users\Apocky\source\repos\CSSLv3\examples\loa_substrate_stress_lab.cssl
+      C:\Users\Apocky\source\repos\CSSLv3\specs\80_LOA_SUBSTRATE_STRESS_LAB.csl
+    assimilation:
+      LoA v13 closed-form substrate + bench discipline
+      Labyrinth of Apocalypse test_room/stress_objects/ui_hud/render_pipeline
+      LoA v14 test-room/menu/help/material/fuzz/printer spec
+      Infinite Labyrinth SDF renderer + codex UI design
+      TIL5 SDF+splat+spectral render budget
+      Infinity Engine Forward+ frame-budget taxonomy
+    change:
+      added `V3StressRoom`:
+        shells | printer | material | hair | portal | arena
+      `LOA_V3_STRESS_ROOM` selects deterministic 1024-crystal field at runtime
+      present telemetry now emits `stress_room`
+      analyzer report includes stress_room + top wall-frame outliers
+      graphical runner accepts `-StressRoom`
+      stress-lab runner emits suite JSON + HTML menu linking per-room dashboards
+      CSSL catalog declares canonical room/menu ids + release-gate helpers
+    evidence:
+      `cargo +stable-x86_64-pc-windows-msvc fmt -p loa-host` → passed ✓
+      `python -m py_compile tools\render-v3\v3_present_bench.py tools\dev-observe\dev_observe.py tools\grok-mcp-harness\dev_observe_tools.py` → passed ✓
+      `python tools\render-v3\v3_present_bench.py self-test` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime v3_stress_room -- --nocapture` → 2 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+      single printer quick:
+        `tools\render-v3\run_graphical_bench.cmd -Quick -NoBuild -StressRoom printer -AllowBudgetFail` → pass budget ✓
+        report:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_printer_20260521_111959_report.json
+      stress-lab quick suite:
+        `tools\render-v3\run_stress_lab_bench.cmd -Quick -NoBuild -AllowBudgetFail` → artifacts emitted ✓
+        menu:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_stress_lab_20260521_112026_menu.html
+        suite:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_stress_lab_20260521_112026_suite.json
+        printer/material/portal/arena passed 144+240 p99/p99.9 budgets ✓
+        hair quick initially failed 240Hz p99.9:
+          wall p99=2859us ; p99.9=4643us ; 240Hz budget=4166us ✗
+      analyzer outlier upgrade:
+        `hair` rerun quick → pass p99/p99.9 ; outliers showed one wall frame >240Hz budget with GPU dispatch ≈1866us
+        `hair` full 5000-frame → pass p99/p99.9 ; max wall outliers 10641us/8384us did not correlate with GPU dispatch spike
+        report:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_hair_20260521_112357_report.json
+      stress-lab quick suite after outlier upgrade:
+        `tools\render-v3\run_stress_lab_bench.cmd -Quick -NoBuild -AllowBudgetFail` → all rooms budget-pass ; production-shape still fails honestly ✓
+        menu:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_stress_lab_20260521_112948_menu.html
+        suite:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_stress_lab_20260521_112948_suite.json
+        dev_observe phase p1.stress_lab_quick_suite → pass ; warns production-evidence gaps + slow loop ✓
+        printer:  p99=2967us ; p99.9=3202us ; gpu.p99=2705us ; over240=0
+        material: p99=2942us ; p99.9=3253us ; gpu.p99=2711us ; over240=1 max=4431us
+        hair:     p99=2980us ; p99.9=3233us ; gpu.p99=2758us ; over240=0
+        portal:   p99=2953us ; p99.9=3106us ; gpu.p99=2714us ; over240=0
+        arena:    p99=2937us ; p99.9=3180us ; gpu.p99=2722us ; over240=0
+    critique:
+      ✓ stress suite now produces human-reviewable visual dashboards per room
+      ✓ hard render ideas are represented as practical current-V3 crystal fields
+      ✓ outlier telemetry prevents false-clean benchmark interpretation
+      ◐ room workloads are proxy-rich because V3 kernel is still crystal-field, not full SDF/BSDF torus/glass/hair renderer
+      ◐ quick-suite p99/p99.9 budgets pass across stress rooms, but suite status remains `pass_benchmark_budget_fail_production_evidence`
+      ◐ wall-clock max spikes remain; p99/p99.9 pass, but jitter needs scheduler/PresentMon/ETW-quality attribution before production claim
+      ✗ active_gpu_scene_lt_1000 remains because V3 ABI cap is 128
+      R! next slice = active-scene cap/culling proof OR native V3 codex menu overlay; no new visual-cost work without stress-lab quick + full gate evidence
+
+  p1.utilization_probe_v0:
+    status: ◐ partial ; GPU counter rejected
+    discipline:
+      utilization evidence must be internally consistent with Vulkan timestamp telemetry and frame-loop rate
+      impossible percentages or two-order contradictions are bugs in measurement, not surprising wins
+      CPU/RAM process counters can be accepted separately from GPU adapter utilization
+    evidence:
+      live V3 128-crystal process sampled during 12000-frame run with `LOA_RENDER_V3=1`
+      CPU process avg≈0.875%.machine max≈1.33%.machine across 4 accepted samples
+      working_set avg≈61.7MB max≈61.77MB ; private avg≈54.0MB max≈54.15MB
+      initial Windows GPU Engine cooked values were impossible: 21M%→121M% ; rejected ✗
+      corrected raw-running-time pass produced ≈0.97%.GPU 3D, but this conflicts with Vulkan timestamp occupancy:
+        5000-frame wall p50≈1191us and GPU dispatch p50≈982us ⇒ dispatch occupies ≈82.5%.frame-time
+        5000-frame wall p99≈1789us and GPU dispatch p99≈1585us ⇒ dispatch occupies ≈88.6%.frame-time
+      corrected raw-running-time script also emitted null-array errors after process exit; CPU/RAM rows before exit remain usable but GPU rows are not accepted
+    critique:
+      ✓ CPU is no longer hot-path saturated for the measured V3 present loop
+      ✓ RAM footprint is stable and tiny for this bounded probe
+      ✓ internal Vulkan timestamps show the workload is GPU-dominated relative to the frame loop
+      ✗ Windows GPU Engine counters are not yet a trustworthy adapter-utilization source for this Vulkan path
+      ✗ no VRAM, bandwidth, power, temperature, clocks, occupancy, queue-depth, or ETW scheduler evidence yet
+      R! next slice = durable ETW/PresentMon/GPUView/Intel GPA capture path OR proprietary Vulkan timestamp+queue-depth telemetry sufficient for acceptance
+
+  p1.warning_debt_telemetry_cleanup:
+    status: ✓ implemented
+    files:
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-hir\src\exhaustiveness.rs
+      C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\crates\cssl-hir\src\lower.rs
+      C:\Users\Apocky\source\repos\CSSLv3\tools\dev-observe\dev_observe.py
+      C:\Users\Apocky\source\repos\CSSLv3\tools\grok-mcp-harness\dev_observe_tools.py
+    change:
+      exhaustiveness module public API made coherent after public module promotion
+      removed unused LowerCtx::def_id helper
+      VariantSet::contains now used through difference implementation
+      dev_observe benign-stderr classifier distinguishes cargo progress from warning/error debt
+      MCP review uses same classifier
+      dev_observe benign-stderr classifier now treats LoA startup banners as expected test-runner noise
+    evidence:
+      `cargo test -p cssl-hir -- --nocapture` → 239 passed ✓
+      rerun `cargo test -p cssl-hir -- --nocapture` through dev_observe → critique evidence adequate ✓
+      `python -m py_compile dev_observe.py dev_observe_tools.py` → OK ✓
+      p1 substrate + runtime gates rerun through dev_observe → critique evidence adequate ✓
+      `python -m py_compile tools\dev-observe\dev_observe.py tools\grok-mcp-harness\dev_observe_tools.py` → OK ✓
+      `python tools\dev-observe\dev_observe.py review --limit 8` → pass=8 fail=0 warn.stderr=0 ✓
+
+§ DONE_DEFINITION
+  done.P0:
+    CSSL-only gate active
+    v13 CPU render path demoted to debug
+    csslc build stable
+
+  done.P1:
+    CSSL source → GPU visible frame
+    1440p GPU dispatch/present
+    CPU/GPU parity
+
+  done.engine_floor:
+    rich arena @1440p144 p99≤6.944ms
+    competitive mode @240Hz p99≤4.166ms
+    deterministic gameplay replay
+    no foreign runtime in LoA shipping path
+
+  done.sovereign:
+    CSSL compiler/runtime/engine emit+run LoA without Rust/Odin/WGSL as canonical runtime
+∎

@@ -23,7 +23,11 @@ pub use cssl_host_input_virtual::{
 /// the `scenarios::*` declaration in the underlying crate.
 #[must_use]
 pub fn list_scenarios() -> &'static [&'static str] {
-    &["navigate_test_room", "type_intent_phrase", "full_qa_session"]
+    &[
+        "navigate_test_room",
+        "type_intent_phrase",
+        "full_qa_session",
+    ]
 }
 
 #[cfg(test)]

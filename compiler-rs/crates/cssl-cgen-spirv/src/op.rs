@@ -106,6 +106,7 @@ pub enum Op {
     LogicalOr = 166,
     LogicalAnd = 167,
     LogicalNot = 168,
+    Select = 169,
     IEqual = 170,
     INotEqual = 171,
     SGreaterThan = 173,
@@ -155,7 +156,9 @@ pub enum ExecutionModel {
 
 impl ExecutionModel {
     #[must_use]
-    pub fn as_u32(self) -> u32 { self as u32 }
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
 }
 
 /// SPIR-V `AddressingModel` enum (§ 3.4).
@@ -216,7 +219,9 @@ pub enum StorageClass {
 
 impl StorageClass {
     #[must_use]
-    pub fn as_u32(self) -> u32 { self as u32 }
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
 }
 
 /// SPIR-V `Decoration` enum (§ 3.20) — partial.
@@ -240,7 +245,9 @@ pub enum Decoration {
 
 impl Decoration {
     #[must_use]
-    pub fn as_u32(self) -> u32 { self as u32 }
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
 }
 
 /// SPIR-V Builtin enum (§ 3.21) — partial.
@@ -276,6 +283,7 @@ pub enum Capability {
     SampledBuffer = 46,
     ImageBuffer = 47,
     StorageImageWriteWithoutFormat = 56,
+    StorageImageExtendedFormats = 57,
     StorageBuffer = 5304,
     PhysicalStorageBufferAddresses = 5347,
     VulkanMemoryModel = 5345,
@@ -284,7 +292,9 @@ pub enum Capability {
 
 impl Capability {
     #[must_use]
-    pub fn as_u32(self) -> u32 { self as u32 }
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
 }
 
 /// SPIR-V `FunctionControl` mask (§ 3.24) — none + inline + nodef + pure +
@@ -325,6 +335,22 @@ pub enum ImageFormat {
     Rgba8 = 4,
 }
 
+/// GLSL.std.450 extended instruction numbers used by owned shader emission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum GlslStd450 {
+    Sqrt = 31,
+    FMin = 37,
+    FMax = 40,
+}
+
+impl GlslStd450 {
+    #[must_use]
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,6 +368,13 @@ mod tests {
         assert_eq!(Op::Label.opcode(), 248);
         assert_eq!(Op::Return.opcode(), 253);
         assert_eq!(Op::FAdd.opcode(), 129);
+    }
+
+    #[test]
+    fn glsl_std_450_numeric_matches_spec() {
+        assert_eq!(GlslStd450::Sqrt.as_u32(), 31);
+        assert_eq!(GlslStd450::FMin.as_u32(), 37);
+        assert_eq!(GlslStd450::FMax.as_u32(), 40);
     }
 
     #[test]

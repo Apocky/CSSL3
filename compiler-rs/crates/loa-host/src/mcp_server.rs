@@ -103,25 +103,25 @@ pub const ERR_NO_SOVEREIGN: i32 = -32_001;
 #[repr(u8)]
 pub enum RenderMode {
     /// Final-color path (default).
-    Normal           = 0,
+    Normal = 0,
     /// Albedo-only debug pass.
-    Albedo           = 1,
+    Albedo = 1,
     /// Linear-depth visualization.
-    Depth            = 2,
+    Depth = 2,
     /// World-space normals.
-    Normals          = 3,
+    Normals = 3,
     /// Surface-type discriminant overlay.
-    SurfType         = 4,
+    SurfType = 4,
     /// Raw SDF distance-isolines.
-    Sdf              = 5,
+    Sdf = 5,
     /// Raymarcher step-count heatmap.
-    Steps            = 6,
+    Steps = 6,
     /// W-coordinate distance (4D Substrate slice).
-    WDistance        = 7,
+    WDistance = 7,
     /// Reference grid overlay.
-    Grid             = 8,
+    Grid = 8,
     /// Field-vs-analytic-SDF differential.
-    FieldVsAnalytic  = 9,
+    FieldVsAnalytic = 9,
 }
 
 impl RenderMode {
@@ -176,7 +176,11 @@ pub struct Vec3 {
 
 impl Vec3 {
     /// Origin (0, 0, 0).
-    pub const ZERO: Self = Self { x: 0.0, y: 0.0, z: 0.0 };
+    pub const ZERO: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
 
     #[must_use]
     pub const fn new(x: f32, y: f32, z: f32) -> Self {
@@ -216,7 +220,12 @@ pub struct Plinth {
 impl Plinth {
     #[must_use]
     pub const fn new(x: f32, z: f32, color_rgb: u32) -> Self {
-        Self { x, z, color_rgb, half_extent: 0.5 }
+        Self {
+            x,
+            z,
+            color_rgb,
+            half_extent: 0.5,
+        }
     }
 }
 
@@ -229,7 +238,10 @@ pub struct DmState {
 
 impl Default for DmState {
     fn default() -> Self {
-        Self { intensity: 1, event_count: 0 }
+        Self {
+            intensity: 1,
+            event_count: 0,
+        }
     }
 }
 
@@ -890,11 +902,7 @@ impl EngineState {
     /// counter + appends to the recent-command ring.
     pub fn record_mcp_command(&mut self, entry: McpCommandEntry) {
         // Update per-client invocation count.
-        if let Some(found) = self
-            .mcp_clients
-            .iter_mut()
-            .find(|c| c.addr == entry.caller)
-        {
+        if let Some(found) = self.mcp_clients.iter_mut().find(|c| c.addr == entry.caller) {
             found.invocations = found.invocations.saturating_add(1);
         }
         if self.mcp_command_history.len() >= SENSE_MCP_CMD_CAP {
@@ -1069,7 +1077,11 @@ pub fn dispatch(
         &format!(
             "tool-invoked · name={} · cap-status={}",
             tool.meta.name,
-            if tool.meta.mutating { "sovereign-OK" } else { "read-only" }
+            if tool.meta.mutating {
+                "sovereign-OK"
+            } else {
+                "read-only"
+            }
         ),
     );
 
@@ -1102,11 +1114,7 @@ pub fn dispatch(
 /// error response with `id = null`.
 pub fn parse_request_line(line: &str) -> Result<JsonRpcRequest, JsonRpcResponse> {
     serde_json::from_str::<JsonRpcRequest>(line).map_err(|e| {
-        JsonRpcResponse::err(
-            Value::Null,
-            ERR_PARSE_ERROR,
-            format!("parse error: {e}"),
-        )
+        JsonRpcResponse::err(Value::Null, ERR_PARSE_ERROR, format!("parse error: {e}"))
     })
 }
 
@@ -1156,11 +1164,7 @@ pub fn spawn_mcp_server(
     Ok((handle, bound))
 }
 
-fn accept_loop(
-    listener: TcpListener,
-    state: Arc<Mutex<EngineState>>,
-    registry: Arc<ToolRegistry>,
-) {
+fn accept_loop(listener: TcpListener, state: Arc<Mutex<EngineState>>, registry: Arc<ToolRegistry>) {
     for incoming in listener.incoming() {
         match incoming {
             Ok(stream) => {
@@ -1189,11 +1193,7 @@ fn accept_loop(
                     });
             }
             Err(e) => {
-                log_event(
-                    "ERROR",
-                    "loa-host/mcp",
-                    &format!("accept-error · {e}"),
-                );
+                log_event("ERROR", "loa-host/mcp", &format!("accept-error · {e}"));
                 // On accept failure (e.g. listener closed), exit the loop
                 // rather than spin. Caller may re-spawn via spawn_mcp_server.
                 break;
@@ -1202,11 +1202,7 @@ fn accept_loop(
     }
 }
 
-fn client_loop(
-    stream: TcpStream,
-    state: Arc<Mutex<EngineState>>,
-    registry: Arc<ToolRegistry>,
-) {
+fn client_loop(stream: TcpStream, state: Arc<Mutex<EngineState>>, registry: Arc<ToolRegistry>) {
     let peer = stream
         .peer_addr()
         .map_or_else(|_| "unknown".to_string(), |a| a.to_string());

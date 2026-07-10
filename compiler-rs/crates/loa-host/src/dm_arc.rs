@@ -124,19 +124,19 @@ pub const PHASE_KNOBS: [ArcKnobs; ARC_PHASE_COUNT] = [
 // ─────────────────────────────────────────────────────────────────────────
 
 pub const MIN_DWELL_FRAMES: [u32; ARC_PHASE_COUNT] = [
-    300,   // Discovery — 5s @ 60fps
-    600,   // Tension   — 10s
-    900,   // Crisis    — 15s
-    600,   // Catharsis — 10s
-    600,   // Quiet     — 10s
+    300, // Discovery — 5s @ 60fps
+    600, // Tension   — 10s
+    900, // Crisis    — 15s
+    600, // Catharsis — 10s
+    600, // Quiet     — 10s
 ];
 
 pub const SOFT_CAP_FRAMES: [u32; ARC_PHASE_COUNT] = [
-    1800,  // Discovery — 30s
-    3600,  // Tension   — 60s
-    1800,  // Crisis    — 30s
-    1200,  // Catharsis — 20s
-    2400,  // Quiet     — 40s
+    1800, // Discovery — 30s
+    3600, // Tension   — 60s
+    1800, // Crisis    — 30s
+    1200, // Catharsis — 20s
+    2400, // Quiet     — 40s
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -392,7 +392,11 @@ impl DmArc {
             "loa-host/dm-arc",
             &format!(
                 "transition · {} → {} · why={} · frame={} · total={}",
-                from, next.label(), why, frame, self.total_transitions,
+                from,
+                next.label(),
+                why,
+                frame,
+                self.total_transitions,
             ),
         );
     }
@@ -468,41 +472,49 @@ mod tests {
     fn arc_advances_through_all_5_phases_in_order() {
         let mut a = DmArc::new();
         let (p1, f1) = drive_until_transition(
-            &mut a, 0,
+            &mut a,
+            0,
             (MIN_DWELL_FRAMES[ArcPhase::Discovery as usize] as u64) + 100,
             NudgeKind::Push,
         );
         assert_eq!(p1, ArcPhase::Tension);
 
         let (p2, f2) = drive_until_transition(
-            &mut a, f1,
+            &mut a,
+            f1,
             (MIN_DWELL_FRAMES[ArcPhase::Tension as usize] as u64) + 100,
             NudgeKind::Aggression,
         );
         assert_eq!(p2, ArcPhase::Crisis);
 
         let (p3, f3) = drive_until_transition(
-            &mut a, f2,
+            &mut a,
+            f2,
             (MIN_DWELL_FRAMES[ArcPhase::Crisis as usize] as u64) + 200,
             NudgeKind::Push,
         );
         assert_eq!(p3, ArcPhase::Catharsis);
 
         let (p4, f4) = drive_until_transition(
-            &mut a, f3,
+            &mut a,
+            f3,
             (MIN_DWELL_FRAMES[ArcPhase::Catharsis as usize] as u64) + 200,
             NudgeKind::Push,
         );
         assert_eq!(p4, ArcPhase::Quiet);
 
         let (p5, _f5) = drive_until_transition(
-            &mut a, f4,
+            &mut a,
+            f4,
             (MIN_DWELL_FRAMES[ArcPhase::Quiet as usize] as u64) + 200,
             NudgeKind::Push,
         );
         assert_eq!(p5, ArcPhase::Discovery);
 
-        assert!(a.total_transitions() >= 5, "should have seen ≥5 transitions");
+        assert!(
+            a.total_transitions() >= 5,
+            "should have seen ≥5 transitions"
+        );
     }
 
     #[test]
@@ -537,7 +549,8 @@ mod tests {
     fn arc_regress_works_from_tension() {
         let mut a = DmArc::new();
         let (p1, f1) = drive_until_transition(
-            &mut a, 0,
+            &mut a,
+            0,
             (MIN_DWELL_FRAMES[ArcPhase::Discovery as usize] as u64) + 50,
             NudgeKind::Push,
         );

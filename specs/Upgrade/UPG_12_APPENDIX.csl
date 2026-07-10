@@ -1,0 +1,111 @@
+⟨spec⟩ UPG_12_APPENDIX · engineering notes · sovereignty path · honest bottom line
+⟨ctx⟩ specs/Upgrade/ · Appendix · closing discipline
+
+──────────────────────────────────────────────────────────────────────
+# Appendix — Engineering Notes, Sovereignty Path, and the Honest Bottom Line
+
+A few last items that don't fit cleanly into the four parts but
+matter for SIGIL's trajectory.
+
+## On the Cranelift bootstrap dependency
+
+The user explicitly accepts Cranelift as a bootstrap. The honest
+engineering observation: Cranelift's e-graph mid-end (Fallin 2023's
+ægraphs) is the *exact same mechanism* that should live at SIGIL's
+IR level for the long-term. Studying Cranelift's `cranelift-egraph`
+and `cranelift-codegen-meta` is not just bootstrap work — it's
+reading the reference implementation of where SIGIL's permanent IR
+optimizer should land. The Sail-based ISA semantics (riscv-sail at
+github.com/riscv/sail-riscv; the ARMv8/9 Sail model published by
+ARM) are what should drive the eventual replacement of Cranelift's
+ISLE machine descriptions.
+
+The migration path is:
+1. Cranelift
+2. SIGIL emitting CLIF
+3. SIGIL emitting its own IR that lowers to CLIF
+4. SIGIL emitting its own IR that lowers to native via Sail-derived
+   backends
+5. Cranelift dropped
+
+Each stage is a year or two of work, and at no point is there a flag
+day.
+
+## On HVM2 as inspiration vs. dependency
+
+Bend/HVM2 demonstrates that interaction-combinator evaluation is
+viable on GPU at 74,000 MIPS. The runtime is 4–5K LOC of CUDA/C. The
+implementation is studyable. The frontier work for SIGIL is to *not*
+depend on HVM2 the project but to adopt the interaction-net
+evaluation strategy as one of SIGIL's runtime modes — alongside the
+scalar JIT and the eventual native backend. Lafont's 1997 paper
+"Interaction Combinators" is the foundational reference; Mazza's
+2007 extension to multiport interaction combinators (the version
+HVM2 uses) is the one relevant to concurrency.
+
+## On the AI-fleet ergonomics
+
+The Prime Directive ("AI as sovereign partners, consent as the OS")
+and the capability-secure foundations of §36 should be implemented
+*before* the cleverness of §42 lands. The order matters because once
+the AI fleet is editing content-addressed code, every edit's
+auditability depends on the capability discipline. Building
+capabilities later as a retrofit is the way every other ecosystem
+has failed (Unix → Capsicum, JavaScript → JS-realms, Linux →
+SELinux, all retrofits).
+
+## On sovereignty as discipline, not isolation
+
+The constraint set forbids permanent dependencies on LLVM/MLIR/Slang.
+It does not forbid *learning from* them or even *cross-referencing*
+them during bootstrapping. The Sail ISA models, the OCP MX format
+specs, the OpenQASM 3 spec, the CXL Consortium specs, the
+WebAssembly Component Model, the RISC-V Unprivileged ISA, the
+OpenPOWER ISA, all the academic papers cited above — these are
+*standards and research*, not substrates. Sovereignty means
+"implementable without leaning on a foreign compiler stack as a
+runtime dependency"; it does not mean "ignorant of how others solved
+adjacent problems."
+
+## On time horizon and pacing
+
+The "decades" framing is real. The Lean theorem prover started in
+2013; Lean 4 landed in 2021; mathlib4's port took 2022–2024. That's
+an 11-year arc for a project with a small core team and substantial
+community help. Unison started 2013 and reached production in 2024 —
+another 11 years. Rust took 2006–2015 to 1.0 — 9 years.
+
+The pattern is clear: an ambitious language with novel ideas is a
+decade-plus project even with full institutional backing. A solo
+developer with an AI fleet can plausibly hit the same milestones on
+the same timescale if the AI fleet actually pulls weight — and the
+design choices above (content addressing, refinement types,
+capability security, graded modals) are precisely the disciplines
+that *make AI contribution safe enough to accept at scale.*
+
+## On the genuinely unbuilt
+
+The most honest summary of where the frontier is: every individual
+idea in this document has a research paper or a small-scale demo
+behind it. The frontier is in **the cartesian product**: graded-
+modal-typed, refinement-checked, content-addressed, projectionally-
+edited, choreographically-projected, capability-secure, algebraic-
+effect-handled, interaction-combinator-evaluated, hardware-tier-
+aware, AI-partnered programs running on a sovereign multi-substrate
+runtime.
+
+Nobody has built that.
+
+The hardest part is not the math; it's the *assembly* — the careful
+integration of forty or so independent research threads into one
+consistent design that survives the Prime Directive and ships.
+That's the work SIGIL is for.
+
+──────────────────────────────────────────────────────────────────────
+
+This arc has not proposed features or made recommendations; it has
+named the research and characterized the design space, as requested.
+The frontier is real, the components are mostly cited fact, and the
+assembly is yours.
+
+End of UPG arc, initial drop 2026-05-14.

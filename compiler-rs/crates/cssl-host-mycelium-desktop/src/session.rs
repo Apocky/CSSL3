@@ -77,6 +77,18 @@ impl Session {
         }
     }
 
+    /// Next monotonic turn id for this session.
+    ///
+    /// The in-memory ring may evict old turns, so the last retained turn is
+    /// the source of truth. New sessions start at `1` ; saturated sessions
+    /// stay at `u64::MAX` instead of wrapping.
+    #[must_use]
+    pub fn next_turn_id(&self) -> u64 {
+        self.turns
+            .back()
+            .map_or(1, |turn| turn.turn_id.saturating_add(1))
+    }
+
     /// Record a completed turn. Evicts the oldest if at capacity.
     pub fn record(&mut self, turn: StoredTurn) {
         while self.turns.len() >= self.max_turns {

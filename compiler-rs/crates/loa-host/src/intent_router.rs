@@ -142,18 +142,27 @@ impl Intent {
             Intent::SetCferIntensity { intensity } => {
                 json!({"kind": "set_cfer_intensity", "intensity": intensity})
             }
-            Intent::SetFloorPattern { quadrant, pattern_id } => json!({
+            Intent::SetFloorPattern {
+                quadrant,
+                pattern_id,
+            } => json!({
                 "kind": "set_floor_pattern",
                 "quadrant": quadrant,
                 "pattern_id": pattern_id,
             }),
             Intent::SetIlluminant { name } => json!({"kind": "set_illuminant", "name": name}),
-            Intent::SetMaterial { quad_id, material_id } => json!({
+            Intent::SetMaterial {
+                quad_id,
+                material_id,
+            } => json!({
                 "kind": "set_material",
                 "quad_id": quad_id,
                 "material_id": material_id,
             }),
-            Intent::SetWallPattern { wall_id, pattern_id } => json!({
+            Intent::SetWallPattern {
+                wall_id,
+                pattern_id,
+            } => json!({
                 "kind": "set_wall_pattern",
                 "wall_id": wall_id,
                 "pattern_id": pattern_id,
@@ -699,12 +708,14 @@ pub fn classify(text: &str) -> Intent {
             .map(|p| p + 1)
             .unwrap_or(dir_idx + 1);
         let pat_word = toks.get(pat_idx).copied();
-        let pattern_id = pat_word.and_then(|w| {
-            parse_u32_lenient(w).or_else(|| pattern_id_from_name(w))
-        });
+        let pattern_id =
+            pat_word.and_then(|w| parse_u32_lenient(w).or_else(|| pattern_id_from_name(w)));
         match (wall_id, pattern_id) {
             (Some(w), Some(p)) => {
-                let i = Intent::SetWallPattern { wall_id: w, pattern_id: p };
+                let i = Intent::SetWallPattern {
+                    wall_id: w,
+                    pattern_id: p,
+                };
                 bump_per_kind(&i);
                 return i;
             }
@@ -732,12 +743,14 @@ pub fn classify(text: &str) -> Intent {
             .map(|p| p + 1)
             .unwrap_or(dir_idx + 1);
         let pat_word = toks.get(pat_idx).copied();
-        let pattern_id = pat_word.and_then(|w| {
-            parse_u32_lenient(w).or_else(|| pattern_id_from_name(w))
-        });
+        let pattern_id =
+            pat_word.and_then(|w| parse_u32_lenient(w).or_else(|| pattern_id_from_name(w)));
         match (quadrant, pattern_id) {
             (Some(q), Some(p)) => {
-                let i = Intent::SetFloorPattern { quadrant: q, pattern_id: p };
+                let i = Intent::SetFloorPattern {
+                    quadrant: q,
+                    pattern_id: p,
+                };
                 bump_per_kind(&i);
                 return i;
             }
@@ -767,17 +780,23 @@ pub fn classify(text: &str) -> Intent {
         let mat_idx_start = if quad_id.is_some() { idx + 1 } else { idx };
         // Skip "to" / "is" filler.
         let mat_idx = if let Some(t) = toks.get(mat_idx_start) {
-            if matches!(*t, "to" | "is") { mat_idx_start + 1 } else { mat_idx_start }
+            if matches!(*t, "to" | "is") {
+                mat_idx_start + 1
+            } else {
+                mat_idx_start
+            }
         } else {
             mat_idx_start
         };
         let mat_word = toks.get(mat_idx).copied();
-        let material_id = mat_word.and_then(|w| {
-            parse_u32_lenient(w).or_else(|| material_id_from_name(w))
-        });
+        let material_id =
+            mat_word.and_then(|w| parse_u32_lenient(w).or_else(|| material_id_from_name(w)));
         match (quad_id, material_id) {
             (Some(q), Some(m)) => {
-                let i = Intent::SetMaterial { quad_id: q, material_id: m };
+                let i = Intent::SetMaterial {
+                    quad_id: q,
+                    material_id: m,
+                };
                 bump_per_kind(&i);
                 return i;
             }
@@ -848,18 +867,27 @@ pub fn intent_to_params(intent: &Intent, sovereign: &str) -> Value {
         Intent::SetCferIntensity { intensity } => {
             out.insert("intensity".to_string(), json!(intensity));
         }
-        Intent::SetFloorPattern { quadrant, pattern_id } => {
+        Intent::SetFloorPattern {
+            quadrant,
+            pattern_id,
+        } => {
             out.insert("quadrant_id".to_string(), json!(quadrant));
             out.insert("pattern_id".to_string(), json!(pattern_id));
         }
         Intent::SetIlluminant { name } => {
             out.insert("name".to_string(), json!(name));
         }
-        Intent::SetMaterial { quad_id, material_id } => {
+        Intent::SetMaterial {
+            quad_id,
+            material_id,
+        } => {
             out.insert("quad_id".to_string(), json!(quad_id));
             out.insert("material_id".to_string(), json!(material_id));
         }
-        Intent::SetWallPattern { wall_id, pattern_id } => {
+        Intent::SetWallPattern {
+            wall_id,
+            pattern_id,
+        } => {
             out.insert("wall_id".to_string(), json!(wall_id));
             out.insert("pattern_id".to_string(), json!(pattern_id));
         }
@@ -943,7 +971,11 @@ pub fn dispatch(intent: &Intent, sovereign: &str, state: &mut EngineState) -> Va
                 state.push_event(
                     "INFO",
                     "loa-host/intent",
-                    &format!("intent.dispatch · {} · ok={}", tool, !r.get("error").is_some()),
+                    &format!(
+                        "intent.dispatch · {} · ok={}",
+                        tool,
+                        !r.get("error").is_some()
+                    ),
                 );
                 r
             }
@@ -1000,7 +1032,11 @@ pub fn route(text: &str, sovereign: &str, state: &mut EngineState) -> Value {
     state.push_event(
         "INFO",
         "loa-host/intent",
-        &format!("intent.classify · {} · '{}'", intent.kind_tag(), text.trim()),
+        &format!(
+            "intent.classify · {} · '{}'",
+            intent.kind_tag(),
+            text.trim()
+        ),
     );
     let mut out = dispatch(&intent, sovereign, state);
     if let Some(obj) = out.as_object_mut() {
@@ -1116,7 +1152,13 @@ mod tests {
         let _g = test_lock();
         let _ = fresh();
         let i = classify("spawn cube at 5 5 5");
-        assert!(matches!(i, Intent::SpawnAt { kind: 0, pos: [5.0, 5.0, 5.0] }));
+        assert!(matches!(
+            i,
+            Intent::SpawnAt {
+                kind: 0,
+                pos: [5.0, 5.0, 5.0]
+            }
+        ));
     }
 
     #[test]
@@ -1124,7 +1166,13 @@ mod tests {
         let _g = test_lock();
         let _ = fresh();
         let i = classify("drop sphere at 1.5 0.0 -3.25");
-        assert!(matches!(i, Intent::SpawnAt { kind: 1, pos: [1.5, 0.0, -3.25] }));
+        assert!(matches!(
+            i,
+            Intent::SpawnAt {
+                kind: 1,
+                pos: [1.5, 0.0, -3.25]
+            }
+        ));
     }
 
     #[test]
@@ -1133,7 +1181,10 @@ mod tests {
         let _ = fresh();
         let i = classify("set wall north pattern qr");
         match i {
-            Intent::SetWallPattern { wall_id, pattern_id } => {
+            Intent::SetWallPattern {
+                wall_id,
+                pattern_id,
+            } => {
                 assert_eq!(wall_id, 0);
                 assert_eq!(pattern_id, 6); // QR-Code
             }
@@ -1147,7 +1198,10 @@ mod tests {
         let _ = fresh();
         let i = classify("set floor ne pattern checker");
         match i {
-            Intent::SetFloorPattern { quadrant, pattern_id } => {
+            Intent::SetFloorPattern {
+                quadrant,
+                pattern_id,
+            } => {
                 assert_eq!(quadrant, 0);
                 assert_eq!(pattern_id, 3); // Checkerboard
             }
@@ -1281,7 +1335,10 @@ mod tests {
         let _ = fresh();
         let i = classify("material on plinth 3 brass");
         match i {
-            Intent::SetMaterial { quad_id, material_id } => {
+            Intent::SetMaterial {
+                quad_id,
+                material_id,
+            } => {
                 assert_eq!(quad_id, 3);
                 assert_eq!(material_id, 3); // brass
             }
@@ -1289,7 +1346,10 @@ mod tests {
         }
         let i2 = classify("set material 5 to gold");
         match i2 {
-            Intent::SetMaterial { quad_id, material_id } => {
+            Intent::SetMaterial {
+                quad_id,
+                material_id,
+            } => {
                 assert_eq!(quad_id, 5);
                 assert_eq!(material_id, 5); // gold
             }
@@ -1384,7 +1444,10 @@ mod tests {
     fn intent_to_params_carries_sovereign_cap() {
         // No counter-mutation here, but classify is used elsewhere — safe
         // to skip the lock for pure-pure-function tests like this.
-        let intent = Intent::SetWallPattern { wall_id: 0, pattern_id: 6 };
+        let intent = Intent::SetWallPattern {
+            wall_id: 0,
+            pattern_id: 6,
+        };
         let v = intent_to_params(&intent, "0xDEAD_BEEF");
         assert_eq!(v["sovereign_cap"], "0xDEAD_BEEF");
         assert_eq!(v["wall_id"], 0);
@@ -1405,7 +1468,10 @@ mod tests {
             match classify(input) {
                 Intent::SpawnAt { pos, .. } => {
                     for (a, b) in pos.iter().zip(want.iter()) {
-                        assert!((a - b).abs() < 1e-5, "input={input} got={pos:?} want={want:?}");
+                        assert!(
+                            (a - b).abs() < 1e-5,
+                            "input={input} got={pos:?} want={want:?}"
+                        );
                     }
                 }
                 other => panic!("expected SpawnAt for '{input}', got {:?}", other),
@@ -1467,7 +1533,10 @@ mod tests {
             let i = classify(p);
             classified_kinds.insert(i.kind_tag());
             // None of these reference inputs should fall into Unknown.
-            assert!(!matches!(i, Intent::Unknown { .. }), "phrase fell through : {p}");
+            assert!(
+                !matches!(i, Intent::Unknown { .. }),
+                "phrase fell through : {p}"
+            );
         }
         // We expect ≥ 9 distinct intent kinds across the corpus.
         assert!(classified_kinds.len() >= 9);

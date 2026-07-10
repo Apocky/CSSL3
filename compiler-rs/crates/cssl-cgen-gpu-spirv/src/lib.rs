@@ -87,7 +87,8 @@ pub use emit::{emit_module, SpirvEmitError};
 pub use module::{SpirvModule, SpirvSection};
 pub use substrate_kernel::{
     emit_substrate_kernel_spirv, emit_substrate_kernel_spirv_bytes, SubstrateKernelEmitError,
-    SubstrateKernelSpec,
+    SubstrateKernelSourceError, SubstrateKernelSpec, CANONICAL_SUBSTRATE_KERNEL_SOURCE,
+    MAX_SCENE_CRYSTALS,
 };
 pub use target::{AddressingModel, ExecutionModel, MemoryModel, SpirvTargetEnv};
 

@@ -392,9 +392,7 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
                             cssl_hir::HirLiteralKind::Int | cssl_hir::HirLiteralKind::Float
                         ) {
                             // Slice the original source to get the literal text.
-                            if let Some(text) =
-                                file.slice(lit.span.start, lit.span.end)
-                            {
+                            if let Some(text) = file.slice(lit.span.start, lit.span.end) {
                                 let ty = match lit.kind {
                                     cssl_hir::HirLiteralKind::Int => {
                                         cssl_mir::MirType::Int(cssl_mir::IntWidth::I32)

@@ -1,0 +1,379 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/frame_graph.cssl  —  W-5 phase-named frame graph
+//
+// CSSLv3 engine module · pure CSSL · stage-0 scaffold.
+// Spec : specs/16_TRANSPORT_TIERS.csl § P2 BUILD → UPLOAD → RECORD
+//        specs/16_TRANSPORT_TIERS.csl § P7 MEASURE-FIRST
+//        specs/08_ENGINE.csl § CmdBuf · Buffer · render primitives
+//
+// Wave : W-5 PHASE-NAMED FRAME-GRAPH  (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § ROLE
+//   Names the render loop phases as first-class functions:
+//     frame_build  → frame_upload → frame_record → frame_submit
+//   This is the transcript's most important performance epistemology:
+//   profile build/upload/record separately, then move work to the tier
+//   that parallelizes it. Without named phases, every perf conclusion is
+//   guesswork.
+//
+// § TARGET
+//   1440p fullscreen · 144 Hz · 1_000_000 entities · pure CSSL.
+//   CPU budget : ≤ 1_000 µs / frame across all four phases.
+//
+// § PRIME_DIRECTIVE preserved
+//   Frame graph is local render orchestration. No surveillance. No override.
+
+module com.apocky.engine.frame_graph
+
+use std::result::Result
+use std::vec::Vec
+use std::vec::vec_new
+use std::vec::vec_len
+use std::vec::vec_push
+
+use std::gpu::Device
+use std::gpu::Swapchain
+use std::gpu::Pipeline
+use std::gpu::CmdBuf
+use std::gpu::GpuError
+use std::gpu::swapchain_acquire
+use std::gpu::swapchain_present
+use std::gpu::target_frame_us_144hz
+
+use std::gpu_transport::Buffer
+use std::gpu_transport::DrawIndexedIndirectArgs
+use std::gpu_transport::cmd_buf_begin
+use std::gpu_transport::cmd_buf_end
+use std::gpu_transport::cmd_buf_submit_v2
+use std::gpu_transport::cmd_buf_bind_pipeline
+use std::gpu_transport::cmd_buf_bind_vbuf
+use std::gpu_transport::cmd_buf_bind_ibuf
+use std::gpu_transport::cmd_buf_bind_descriptor
+use std::gpu_transport::cmd_buf_push_constants
+use std::gpu_transport::cmd_buf_draw_indirect
+use std::gpu_transport::cmd_buf_dispatch
+use std::gpu_transport::draw_indirect_args_stride
+use std::gpu_transport::shader_stage_vertex_fragment
+use std::gpu_transport::IdxKind
+
+use com.apocky.engine.mesh::MeshPool
+use com.apocky.engine.mesh::MeshHandle
+use com.apocky.engine.mesh::Vertex
+use com.apocky.engine.mesh::mesh_pool_get
+use com.apocky.engine.instance::InstanceData
+use com.apocky.engine.instance::InstanceBatch
+use com.apocky.engine.instance::instance_batch_upload
+use com.apocky.engine.instance::build_single_mesh_indirect_args
+use com.apocky.engine.instance::upload_indirect_args
+use com.apocky.engine.frame_arena::FrameArena
+use com.apocky.engine.profiler::FrameProfiler
+use com.apocky.engine.profiler::profiler_begin_section
+use com.apocky.engine.profiler::profiler_end_section
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Frame phase ordinals — stable from W-5.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn frame_phase_build() -> u32  { 0 }
+fn frame_phase_upload() -> u32 { 1 }
+fn frame_phase_record() -> u32 { 2 }
+fn frame_phase_submit() -> u32 { 3 }
+fn frame_phase_gpu_cull() -> u32 { 4 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Push constants — T0 per-frame globals.
+//   80 bytes : view_proj mat4 (64B) + time/frame vec4 (16B).
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FramePushConstants {
+    // mat4 view_proj as 16 f32 named fields (stage-0 array-field fallback).
+    m00 : f32, m01 : f32, m02 : f32, m03 : f32,
+    m10 : f32, m11 : f32, m12 : f32, m13 : f32,
+    m20 : f32, m21 : f32, m22 : f32, m23 : f32,
+    m30 : f32, m31 : f32, m32 : f32, m33 : f32,
+    time_sec  : f32,
+    frame_idx : f32,
+    entity_count : f32,
+    reserved : f32,
+}
+
+fn frame_push_constants_identity(frame_idx : u64, entity_count : u32) -> FramePushConstants {
+    FramePushConstants {
+        m00 : 1.0, m01 : 0.0, m02 : 0.0, m03 : 0.0,
+        m10 : 0.0, m11 : 1.0, m12 : 0.0, m13 : 0.0,
+        m20 : 0.0, m21 : 0.0, m22 : 1.0, m23 : 0.0,
+        m30 : 0.0, m31 : 0.0, m32 : 0.0, m33 : 1.0,
+        time_sec : 0.0,
+        frame_idx : frame_idx as f32,
+        entity_count : entity_count as f32,
+        reserved : 0.0,
+    }
+}
+
+fn frame_push_constants_size_bytes() -> u32 { 80 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § FrameGraphConfig — switches between CPU and GPU-driven paths.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameGraphConfig {
+    target_width : u32,
+    target_height : u32,
+    target_hz : u32,
+    entity_target : u32,
+    enable_gpu_cull : bool,
+    enable_gpu_trs_compose : bool,
+    enable_indirect_draw : bool,
+    fullscreen : bool,
+}
+
+fn frame_graph_config_1m_1440p_144hz() -> FrameGraphConfig {
+    FrameGraphConfig {
+        target_width : 2560,
+        target_height : 1440,
+        target_hz : 144,
+        entity_target : 1000000,
+        enable_gpu_cull : true,
+        enable_gpu_trs_compose : true,
+        enable_indirect_draw : true,
+        fullscreen : true,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § FrameGraphState — persistent per-renderer state.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameGraphState {
+    cfg : FrameGraphConfig,
+    frame_idx : u64,
+    last_visible_count : u32,
+    last_draw_count : u32,
+    cpu_budget_us : u64,
+}
+
+fn frame_graph_state_new(cfg : FrameGraphConfig) -> FrameGraphState {
+    FrameGraphState {
+        cfg : cfg,
+        frame_idx : 0,
+        last_visible_count : 0,
+        last_draw_count : 0,
+        cpu_budget_us : 1000,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Phase 0 — BUILD.
+//
+//   CPU path : build visible InstanceBatch + DrawIndexedIndirectArgs.
+//   GPU path : build nothing except the indirect dispatch constants;
+//              GPU cull writes the indirect buffer.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameBuildReport {
+    instance_count : u32,
+    draw_count : u32,
+    used_gpu_cull : bool,
+}
+
+fn frame_build_static_single_mesh(state : FrameGraphState,
+                                  mesh : MeshHandle,
+                                  batch : InstanceBatch,
+                                  profiler : FrameProfiler) -> FrameBuildReport {
+    let s = profiler_begin_section(profiler, frame_phase_build(), "build") ;
+    // Static single-mesh bring-up path : the batch is already built by caller
+    // (e.g. instance_batch_make_grid) and reused. No CPU per-entity build here.
+    let r = FrameBuildReport {
+        instance_count : batch.count,
+        draw_count : 1,
+        used_gpu_cull : false,
+    } ;
+    let _p = profiler_end_section(s.profiler, s.handle) ;
+    r
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Phase 1 — UPLOAD.
+//
+//   Upload InstanceData SSBO + indirect draw args. In W-5 GPU-cull path,
+//   indirect args are GPU-written so CPU only uploads camera/push constants.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameUploadReport {
+    instance_bytes : u64,
+    indirect_bytes : u64,
+}
+
+fn frame_upload_static_single_mesh(arena : FrameArena,
+                                   meshes : MeshPool,
+                                   mesh : MeshHandle,
+                                   batch : InstanceBatch,
+                                   profiler : FrameProfiler) -> Result<FrameUploadReport, GpuError> {
+    let s = profiler_begin_section(profiler, frame_phase_upload(), "upload") ;
+    let up_inst = instance_batch_upload(arena.instance_stage, batch) ;
+    match up_inst {
+        Err(e) => Err(e),
+        Ok(_) => {
+            let args = build_single_mesh_indirect_args(meshes, mesh, batch.count) ;
+            let mut arg_vec = vec_new::<DrawIndexedIndirectArgs>() ;
+            arg_vec = vec_push::<DrawIndexedIndirectArgs>(arg_vec, args) ;
+            let up_ind = upload_indirect_args(arena.indirect_args, arg_vec) ;
+            match up_ind {
+                Err(e2) => Err(e2),
+                Ok(_) => {
+                    let _p = profiler_end_section(s.profiler, s.handle) ;
+                    Ok(FrameUploadReport {
+                        instance_bytes : (batch.count as u64) * 64,
+                        indirect_bytes : 20,
+                    })
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Phase 2 — RECORD.
+//
+//   Bind pipeline + mesh arenas + instance SSBO + indirect args; push the
+//   per-frame T0 constants; then issue draw_indirect.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameRecordReport {
+    recorded_draw_count : u32,
+    recorded_dispatch_count : u32,
+}
+
+fn frame_record_opaque_indirect(dev : Device,
+                                arena : FrameArena,
+                                meshes : MeshPool,
+                                pipeline : Pipeline,
+                                frame_idx : u64,
+                                instance_count : u32,
+                                profiler : FrameProfiler) -> Result<FrameRecordReport, GpuError> {
+    let s = profiler_begin_section(profiler, frame_phase_record(), "record") ;
+    let cb_r = cmd_buf_begin(dev) ;
+    match cb_r {
+        Err(e) => Err(e),
+        Ok(cb) => {
+            let _b0 = cmd_buf_bind_pipeline(cb, pipeline) ;
+            let _b1 = cmd_buf_bind_vbuf::<Vertex>(cb, 0, meshes.vbuf_arena, 0) ;
+            let _b2 = cmd_buf_bind_ibuf::<u32>(cb, meshes.ibuf_arena, 0, IdxKind::U32) ;
+            let _b3 = cmd_buf_bind_descriptor::<InstanceData>(cb, 0, 0, arena.instance_stage) ;
+            let pc = frame_push_constants_identity(frame_idx, instance_count) ;
+            let _pc = cmd_buf_push_constants(cb, shader_stage_vertex_fragment(), 0, frame_push_constants_size_bytes(), ptr_frame_push_constants(pc)) ;
+            let _draw = cmd_buf_draw_indirect(cb, arena.indirect_args, 0, 1, draw_indirect_args_stride()) ;
+            let end_r = cmd_buf_end(cb) ;
+            match end_r {
+                Err(e2) => Err(e2),
+                Ok(_) => {
+                    let _p = profiler_end_section(s.profiler, s.handle) ;
+                    Ok(FrameRecordReport { recorded_draw_count : 1, recorded_dispatch_count : 0 })
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Phase 2b — GPU-CULL (future active path).
+//
+//   This is the W-5 endgame: compute shader culls 1M instances and writes
+//   the indirect args buffer. Stage-0 records the dispatch shape.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn frame_record_gpu_cull(dev : Device,
+                         arena : FrameArena,
+                         gpu_cull_pipeline : Pipeline,
+                         entity_count : u32,
+                         profiler : FrameProfiler) -> Result<FrameRecordReport, GpuError> {
+    let s = profiler_begin_section(profiler, frame_phase_gpu_cull(), "gpu_cull") ;
+    let cb_r = cmd_buf_begin(dev) ;
+    match cb_r {
+        Err(e) => Err(e),
+        Ok(cb) => {
+            let _b0 = cmd_buf_bind_pipeline(cb, gpu_cull_pipeline) ;
+            let _b1 = cmd_buf_bind_descriptor::<InstanceData>(cb, 0, 0, arena.instance_stage) ;
+            let _b2 = cmd_buf_bind_descriptor::<DrawIndexedIndirectArgs>(cb, 0, 1, arena.indirect_args) ;
+            let groups = ceil_div_u32(entity_count, 256) ;
+            let _d = cmd_buf_dispatch(cb, groups, 1, 1) ;
+            let end_r = cmd_buf_end(cb) ;
+            match end_r {
+                Err(e2) => Err(e2),
+                Ok(_) => {
+                    let _p = profiler_end_section(s.profiler, s.handle) ;
+                    Ok(FrameRecordReport { recorded_draw_count : 0, recorded_dispatch_count : 1 })
+                }
+            }
+        }
+    }
+}
+
+fn ceil_div_u32(a : u32, b : u32) -> u32 {
+    if b == 0 { 0 } else { (a + b - 1) / b }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Phase 3 — SUBMIT/PRESENT.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameSubmitReport {
+    image_idx : u32,
+    over_budget_us : i32,
+}
+
+fn frame_submit_present(swap : Swapchain, cb : CmdBuf, profiler : FrameProfiler) -> Result<FrameSubmitReport, GpuError> {
+    let sec = profiler_begin_section(profiler, frame_phase_submit(), "submit") ;
+    let timeout_ns = target_frame_us_144hz() * 1000 ;
+    let img_r = swapchain_acquire(swap, timeout_ns) ;
+    match img_r {
+        Err(e) => Err(e),
+        Ok(img) => {
+            let sub_r = cmd_buf_submit_v2(cb) ;
+            match sub_r {
+                Err(e2) => Err(e2),
+                Ok(_) => {
+                    let pr = swapchain_present(swap, img) ;
+                    match pr {
+                        Err(e3) => Err(e3),
+                        Ok(over) => {
+                            let _p = profiler_end_section(sec.profiler, sec.handle) ;
+                            Ok(FrameSubmitReport { image_idx : img, over_budget_us : over })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Helper — address of push-constant struct.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn ptr_frame_push_constants(pc : FramePushConstants) -> i64 {
+    // Stage-0 placeholder; typed address-of lowers once raw-pointer surface lands.
+    let _ = pc ;
+    0
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Inline assertions.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn _test_push_constant_size_fits() -> bool { frame_push_constants_size_bytes() <= 128 }
+fn _test_1m_dispatch_groups() -> bool { ceil_div_u32(1000000, 256) == 3907 }
+fn _test_config_targets_1m_144hz() -> bool {
+    let cfg = frame_graph_config_1m_1440p_144hz() ;
+    cfg.target_width == 2560 && cfg.target_height == 1440 && cfg.target_hz == 144 && cfg.entity_target == 1000000
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION
+//
+//   The W-5 frame graph names build/upload/record/submit so profiling is
+//   impossible to skip. It is the conductor that turns W-1 transport tiers,
+//   W-2 zero-alloc arena, W-3 MeshPool/InstanceData, and W-4 GPU-compose
+//   into the 1440p/144hz/1M target path. No surveillance · no override.
+// ═══════════════════════════════════════════════════════════════════════

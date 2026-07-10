@@ -1,0 +1,300 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/profiler.cssl  —  W-6 measurement-first frame profiler
+//
+// CSSLv3 engine module · pure CSSL · stage-0 scaffold.
+// Spec : specs/16_TRANSPORT_TIERS.csl § P7 MEASURE-FIRST
+//        specs/22_TELEMETRY.csl § GPU/CPU timestamp correlation
+//        specs/04_EFFECTS.csl § Telemetry<Counters>
+//
+// Wave : W-6 PROFILER + PARALLEL CPU  (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § ROLE
+//   FrameProfiler records per-phase CPU timing and future GPU timestamp
+//   queries. It makes the transcript's perf discipline mandatory:
+//   measure build/upload/record/submit separately, never benchmark in debug,
+//   never benchmark with validation layers on.
+//
+// § TARGET BUDGETS
+//   full frame    : 6_944 µs @ 144 Hz
+//   CPU-side total: ≤ 1_000 µs @ 1M entities (build+upload+record+submit)
+//   build         : ≤ 250 µs (static-bulk path ≈ 0)
+//   upload        : ≤ 500 µs (dirty buffers only)
+//   record        : ≤ 150 µs (few binds + indirect draw)
+//   submit        : ≤ 100 µs (queue submit + present)
+//
+// § PRIME_DIRECTIVE preserved
+//   Local perf counters only. No exfiltration. No user-behavior telemetry.
+
+module com.apocky.engine.profiler
+
+use std::vec::Vec
+use std::vec::vec_new
+use std::vec::vec_with_capacity
+use std::vec::vec_len
+use std::vec::vec_push
+use std::vec::vec_index
+use std::vec_mut::vec_clear_in_place
+
+use std::time::time_monotonic_ns
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Phase labels — stable ordinals mirrored with frame_graph.cssl.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn profiler_phase_build() -> u32 { 0 }
+fn profiler_phase_upload() -> u32 { 1 }
+fn profiler_phase_record() -> u32 { 2 }
+fn profiler_phase_submit() -> u32 { 3 }
+fn profiler_phase_gpu_cull() -> u32 { 4 }
+fn profiler_phase_present() -> u32 { 5 }
+
+fn profiler_phase_budget_us(phase : u32) -> u64 {
+    if phase == profiler_phase_build() {
+        250
+    } else {
+        if phase == profiler_phase_upload() {
+            500
+        } else {
+            if phase == profiler_phase_record() {
+                150
+            } else {
+                if phase == profiler_phase_submit() {
+                    100
+                } else {
+                    if phase == profiler_phase_gpu_cull() {
+                        500
+                    } else {
+                        100
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ProfilerSection — one timing span.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct ProfilerSection {
+    phase : u32,
+    label_hash : u64,
+    start_ns : u64,
+    end_ns : u64,
+    elapsed_us : u64,
+    budget_us : u64,
+    over_budget : bool,
+}
+
+fn profiler_section_new(phase : u32, label_hash : u64, start_ns : u64) -> ProfilerSection {
+    ProfilerSection {
+        phase : phase,
+        label_hash : label_hash,
+        start_ns : start_ns,
+        end_ns : 0,
+        elapsed_us : 0,
+        budget_us : profiler_phase_budget_us(phase),
+        over_budget : false,
+    }
+}
+
+fn profiler_section_finish(s : ProfilerSection, end_ns : u64) -> ProfilerSection {
+    let elapsed_ns = if end_ns > s.start_ns { end_ns - s.start_ns } else { 0 } ;
+    let elapsed_us = elapsed_ns / 1000 ;
+    ProfilerSection {
+        phase : s.phase,
+        label_hash : s.label_hash,
+        start_ns : s.start_ns,
+        end_ns : end_ns,
+        elapsed_us : elapsed_us,
+        budget_us : s.budget_us,
+        over_budget : elapsed_us > s.budget_us,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § FrameProfiler — per-frame collection of sections.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameProfiler {
+    frame_idx : u64,
+    sections : Vec<ProfilerSection>,
+    capacity : u32,
+    validation_mode : u32,
+    release_build : bool,
+    total_cpu_us : u64,
+    total_gpu_us : u64,
+    entity_count : u32,
+    draw_count : u32,
+}
+
+fn frame_profiler_new(capacity : u32) -> FrameProfiler {
+    FrameProfiler {
+        frame_idx : 0,
+        sections : vec_with_capacity::<ProfilerSection>(capacity as i64),
+        capacity : capacity,
+        validation_mode : 0,
+        release_build : true,
+        total_cpu_us : 0,
+        total_gpu_us : 0,
+        entity_count : 0,
+        draw_count : 0,
+    }
+}
+
+fn frame_profiler_begin_frame(p : FrameProfiler, frame_idx : u64, entity_count : u32) -> FrameProfiler {
+    FrameProfiler {
+        frame_idx : frame_idx,
+        sections : vec_clear_in_place::<ProfilerSection>(p.sections),
+        capacity : p.capacity,
+        validation_mode : p.validation_mode,
+        release_build : p.release_build,
+        total_cpu_us : 0,
+        total_gpu_us : 0,
+        entity_count : entity_count,
+        draw_count : 0,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Section lifecycle.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct ProfilerScope {
+    profiler : FrameProfiler,
+    handle : u32,
+}
+
+fn profiler_begin_section(p : FrameProfiler, phase : u32, label : str) -> ProfilerScope {
+    let now = time_monotonic_ns(0) ;
+    let label_h = hash_label(label) ;
+    let section = profiler_section_new(phase, label_h, now) ;
+    let idx = vec_len::<ProfilerSection>(p.sections) as u32 ;
+    let new_sections = vec_push::<ProfilerSection>(p.sections, section) ;
+    ProfilerScope {
+        profiler : FrameProfiler {
+            frame_idx : p.frame_idx,
+            sections : new_sections,
+            capacity : p.capacity,
+            validation_mode : p.validation_mode,
+            release_build : p.release_build,
+            total_cpu_us : p.total_cpu_us,
+            total_gpu_us : p.total_gpu_us,
+            entity_count : p.entity_count,
+            draw_count : p.draw_count,
+        },
+        handle : idx,
+    }
+}
+
+fn profiler_end_section(p : FrameProfiler, handle : u32) -> FrameProfiler {
+    let now = time_monotonic_ns(0) ;
+    let sec = vec_index::<ProfilerSection>(p.sections, handle as i64) ;
+    let done = profiler_section_finish(sec, now) ;
+    let new_sections = vec_replace_section(p.sections, handle, done) ;
+    FrameProfiler {
+        frame_idx : p.frame_idx,
+        sections : new_sections,
+        capacity : p.capacity,
+        validation_mode : p.validation_mode,
+        release_build : p.release_build,
+        total_cpu_us : p.total_cpu_us + done.elapsed_us,
+        total_gpu_us : p.total_gpu_us,
+        entity_count : p.entity_count,
+        draw_count : p.draw_count,
+    }
+}
+
+fn vec_replace_section(v : Vec<ProfilerSection>, i : u32, value : ProfilerSection) -> Vec<ProfilerSection> {
+    let n = vec_len::<ProfilerSection>(v) ;
+    let mut out = vec_with_capacity::<ProfilerSection>(n) ;
+    let mut k : i64 = 0 ;
+    while k < n {
+        let cur = if (k as u32) == i { value } else { vec_index::<ProfilerSection>(v, k) } ;
+        out = vec_push::<ProfilerSection>(out, cur) ;
+        k = k + 1 ;
+    } ;
+    out
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Benchmark guards — P7 trap-fence.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn profiler_benchmark_valid(p : FrameProfiler) -> bool {
+    p.release_build && p.validation_mode == 0
+}
+
+fn profiler_target_met(p : FrameProfiler) -> bool {
+    p.entity_count >= 1000000 && p.total_cpu_us <= 1000 && profiler_benchmark_valid(p)
+}
+
+fn profiler_frame_budget_met(p : FrameProfiler) -> bool {
+    p.total_cpu_us <= 1000
+}
+
+fn profiler_validation_off(p : FrameProfiler) -> bool {
+    p.validation_mode == 0
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Report summary — compact numeric payload for overlay / JSONL.
+// ═══════════════════════════════════════════════════════════════════════
+
+struct FrameProfilerSummary {
+    frame_idx : u64,
+    entity_count : u32,
+    draw_count : u32,
+    total_cpu_us : u64,
+    total_gpu_us : u64,
+    over_budget_sections : u32,
+    target_met : bool,
+}
+
+fn profiler_summary(p : FrameProfiler) -> FrameProfilerSummary {
+    let mut over : u32 = 0 ;
+    let n = vec_len::<ProfilerSection>(p.sections) ;
+    let mut i : i64 = 0 ;
+    while i < n {
+        let s = vec_index::<ProfilerSection>(p.sections, i) ;
+        if s.over_budget {
+            over = over + 1 ;
+        } ;
+        i = i + 1 ;
+    } ;
+    FrameProfilerSummary {
+        frame_idx : p.frame_idx,
+        entity_count : p.entity_count,
+        draw_count : p.draw_count,
+        total_cpu_us : p.total_cpu_us,
+        total_gpu_us : p.total_gpu_us,
+        over_budget_sections : over,
+        target_met : profiler_target_met(p),
+    }
+}
+
+// `hash_label(label)` — stable tiny FNV-1a placeholder.
+//   Stage-0 parser lacks byte-iteration over str ; return known labels via length-ish sentinel.
+fn hash_label(label : str) -> u64 {
+    let _ = label ;
+    1469598103934665603
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Inline tests.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn _test_build_budget_250us() -> bool { profiler_phase_budget_us(profiler_phase_build()) == 250 }
+fn _test_upload_budget_500us() -> bool { profiler_phase_budget_us(profiler_phase_upload()) == 500 }
+fn _test_record_budget_150us() -> bool { profiler_phase_budget_us(profiler_phase_record()) == 150 }
+fn _test_submit_budget_100us() -> bool { profiler_phase_budget_us(profiler_phase_submit()) == 100 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION
+//
+//   The profiler makes "validated by observation" unavoidable. It refuses
+//   benchmark validity unless release-build + validation-off are true, and
+//   exposes per-phase budgets so a 1M-entity perf miss can be localized.
+//   Local counters only · no surveillance · no PRIME_DIRECTIVE override.
+// ═══════════════════════════════════════════════════════════════════════

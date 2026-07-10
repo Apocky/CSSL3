@@ -58,13 +58,7 @@ mod tests {
         // Construct types to confirm re-exports are usable downstream.
         let _store = GoldenStore::new(std::env::temp_dir());
         // Tiny 1×1 RGBA snapshot.
-        let snap = from_rgba(
-            "probe".to_string(),
-            vec![255, 0, 0, 255],
-            1,
-            1,
-        )
-        .expect("snapshot ok");
+        let snap = from_rgba("probe".to_string(), vec![255, 0, 0, 255], 1, 1).expect("snapshot ok");
         assert_eq!(snap.width, 1);
     }
 }

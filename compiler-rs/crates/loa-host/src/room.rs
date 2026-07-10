@@ -122,9 +122,12 @@ impl AxisAlignedBox {
     /// Return `true` if `p` is inside the box (half-open, lower-inclusive).
     #[must_use]
     pub fn contains(&self, p: [f32; 3]) -> bool {
-        p[0] >= self.min[0] && p[0] < self.max[0]
-            && p[1] >= self.min[1] && p[1] < self.max[1]
-            && p[2] >= self.min[2] && p[2] < self.max[2]
+        p[0] >= self.min[0]
+            && p[0] < self.max[0]
+            && p[1] >= self.min[1]
+            && p[1] < self.max[1]
+            && p[2] >= self.min[2]
+            && p[2] < self.max[2]
     }
 
     /// Center of the box.
@@ -278,7 +281,12 @@ pub const CORRIDOR_LENGTH: f32 = 8.0;
 impl Corridor {
     #[must_use]
     pub const fn all() -> [Corridor; 4] {
-        [Corridor::North, Corridor::East, Corridor::South, Corridor::West]
+        [
+            Corridor::North,
+            Corridor::East,
+            Corridor::South,
+            Corridor::West,
+        ]
     }
 
     /// World-space bounds of the corridor box.
@@ -516,9 +524,18 @@ mod tests {
         let lx = b.max[0] - b.min[0];
         let ly = b.max[1] - b.min[1];
         let lz = b.max[2] - b.min[2];
-        assert!((lx - 60.0).abs() < 1e-3, "ScaleRoom must be 60m on X (got {lx})");
-        assert!((ly - 12.0).abs() < 1e-3, "ScaleRoom must be 12m tall (got {ly})");
-        assert!((lz - 30.0).abs() < 1e-3, "ScaleRoom must be 30m on Z (got {lz})");
+        assert!(
+            (lx - 60.0).abs() < 1e-3,
+            "ScaleRoom must be 60m on X (got {lx})"
+        );
+        assert!(
+            (ly - 12.0).abs() < 1e-3,
+            "ScaleRoom must be 12m tall (got {ly})"
+        );
+        assert!(
+            (lz - 30.0).abs() < 1e-3,
+            "ScaleRoom must be 30m on Z (got {lz})"
+        );
         assert!(b.max[2] < -20.0); // strictly south of TestRoom
     }
 
@@ -581,7 +598,12 @@ mod tests {
     #[test]
     fn satellite_rooms_disjoint_from_test_room() {
         let hub = Room::TestRoom.bounds();
-        for r in [Room::MaterialRoom, Room::PatternRoom, Room::ScaleRoom, Room::ColorRoom] {
+        for r in [
+            Room::MaterialRoom,
+            Room::PatternRoom,
+            Room::ScaleRoom,
+            Room::ColorRoom,
+        ] {
             let b = r.bounds();
             // Disjoint iff at least one axis fully separates them.
             let sep_x = b.max[0] <= hub.min[0] || b.min[0] >= hub.max[0];

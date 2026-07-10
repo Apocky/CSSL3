@@ -18,23 +18,70 @@
 
 § INPUTS · resource-bindings
   ⟦set=0, binding=0⟧ observer        : Uniform⟨GpuObserver⟩      ← per-frame camera
-  ⟦set=0, binding=1⟧ crystals        : Storage⟨GpuCrystal[]⟩      ← scene crystals
+  ⟦set=0, binding=1⟧ crystals        : Storage⟨GpuCrystalScene⟩   ← header + bounded scene crystals
   ⟦set=0, binding=2⟧ output-image    : StorageImage⟨RGBA8Unorm⟩   ← per-pixel ω-field write
+
+§ ABI · observer-uniform
+  GpuObserver = vec4u
+    word0 : width
+    word1 : height
+    word2 : yaw_milli
+    word3 : frame_or_artifact_word
+
+§ ABI · crystal-storage
+  MAX_SCENE_CRYSTALS = 128
+  GpuCrystalScene = struct
+    header : vec4u @ offset 0
+      word0 : active_crystal_count ≤ MAX_SCENE_CRYSTALS
+      word1 : reserved
+      word2 : reserved
+      word3 : reserved
+    slots : GpuCrystalWord[] @ offset 16 stride 16
+  derived.slot-layout:
+    formula : offset(slot_i) = 16 + i * 16
+    domain  : i ∈ ⟨0..MAX_SCENE_CRYSTALS-1⟩
+  GpuCrystalWord = vec4u
+    word0 : strength_u8
+    word1 : x_bias_u8  ← encode clamp(x,-128,127)+128
+    word2 : y_bias_u8  ← encode clamp(y,-128,127)+128
+    word3 : material_code_u8  ← shell*8 + CrystalClass(0..7)
 
 § ω-FIELD · per-pixel ray-walk (substrate-resonance)
   ∀ pixel ⟨x, y⟩ ∈ ⟨observer.width, observer.height⟩ :
     ray = make-ray(observer, x, y)            ← from-camera
     accum-rgba = ⟨0, 0, 0, 0⟩
-    ∀ crystal ∈ crystals :
+    peak-rgba  = ⟨0, 0, 0, 0⟩
+    transmittance = 1.0                       ← front-to-back nearest-slot visibility
+    ∀ i ∈ ⟨0..MAX_SCENE_CRYSTALS-1⟩ :
+      active = clamp((crystals.header.active_crystal_count - i) * 1_000_000, 0, 1)
+      crystal = crystals.slot[i]
       Σ-mask-check(crystal, observer)         W! consent-gate
       ⌐(σ-passes) → continue                  ← skip-revoked
-      contribution = resonance(crystal, ray)  ← ω-field projection
-      accum-rgba += contribution               ← linear-blend
-    write(output-image, ⟨x, y⟩, accum-rgba)
+      material = clamp(crystal.material_code_u8, 0, 23) / 23
+      contribution = compact-resonance(crystal, ray)  ← core + low-halo spatial projection
+      visible = transmittance * active
+      average-rgba = contribution * visible / max(active_crystal_count, 1)
+      accum-rgba += average-rgba              ← normalized linear-blend
+      peak-rgba   = max(peak-rgba, contribution * visible)
+      object-mask = max(object-mask, compact-resonance.influence * visible)
+      material-wsum += material * contribution.r * visible
+      material-w    += contribution.r * visible
+      transmittance *= 1 - clamp(compact-resonance.influence * active * 0.65, 0, 0.95)
+    lit-rgba = accum-rgba + peak-rgba * 0.75
+    material-mix = material-wsum / max(material-w, ε)
+    edge = clamp(object-mask * (1 - object-mask) * 4, 0, 1)
+    visual-rgba =
+      ⟨ lit.r * (0.82 + object-mask*0.18) + edge*0.18,
+        (lit.r*0.48 + x_norm*0.20 + material-mix*0.16) * (1-object-mask*0.18)
+          + object-mask*material-mix*0.25 + edge*0.10,
+        (lit.r*0.30 + y_norm*0.20 + descriptor_canary*0.12 + (1-material-mix)*0.20) * (1-object-mask*0.22)
+          + object-mask*(1-material-mix)*0.25 + edge*0.06,
+        y_norm ⟩
+    write(output-image, ⟨x, y⟩, visual-rgba)
 
 § DETERMINISM · invariants
   ✓ single-thread-per-pixel · no-shared-memory
-  ✓ linear-crystal-scan · fixed-iteration-order
+  ✓ bounded-crystal-scan · fixed-iteration-order
   ✓ same-input ⇒ same-output · byte-for-byte
   ✓ no-rng · no-time · no-frame-counter
 
@@ -48,7 +95,7 @@
     vkCmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE)
     → vkCmdBindDescriptorSets
     → vkCmdDispatch(⌈w/8⌉, ⌈h/8⌉, 1)
-    → vkCmdCopyImage(internal → swapchain)
+    → present swapchain image written as storage image
   ¬ wgpu-pipeline-builder · ¬ naga-validator · ¬ WGSL-source
 
 § SPEC-LINKAGE

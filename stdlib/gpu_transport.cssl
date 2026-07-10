@@ -1,0 +1,624 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/gpu_transport.cssl  —  W-1 transport-tier ladder primitives
+//
+// CSSLv3 stage-0 standard library extension to stdlib/gpu.cssl.
+// Spec : specs/16_TRANSPORT_TIERS.csl § THE TIER LADDER · § ABI-SURFACE
+//        specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § gpu (16 new symbols)
+//        specs/04_EFFECTS.csl § real-time-effect-tags (Deadline<> · GpuSubmit · GpuInit)
+//        specs/12_CAPABILITIES.csl § Cap<Gpu>
+//
+// Wave : W-1 TRANSPORT-TIER LADDER  (Apocky-mandate 2026-05-20 · autopilot)
+//
+// § ROLE
+//   This module adds the 5-tier transport ladder (T0 push-constants ·
+//   T1 UBO · T2 SSBO · T3 indirect · T4 compute-dispatch) on top of the
+//   existing stdlib/gpu.cssl surface. The existing 8 verbs (device_create
+//   etc.) are preserved verbatim ; the new 16 verbs LIVE HERE so the
+//   existing file's verified contents do not change.
+//
+// § CO-EXISTENCE WITH stdlib/gpu.cssl
+//   `cmd_buf_record_stub` + `cmd_buf_submit_stub` from stdlib/gpu.cssl
+//   remain as alias-delegates for ONE minor cycle ; new code uses
+//   `cmd_buf_begin` + `cmd_buf_submit_v2` from this file. Retirement
+//   schedule lives in DECISIONS.md § W-1-RETIREMENT.
+//
+// § PRIME_DIRECTIVE preserved
+//   Every wrapper consumes Cap<Gpu> via caps_check ; every IR/data ptr
+//   passes through unmodified ; Sensitive<Frame> IFC label preserved for
+//   VR-output backbuffers ; no surveillance · no harm · no override.
+//
+// § STAGE-0 NOTES
+//   1. 16 new ABI symbols recognized by `cssl_mir::body_lower::lower_call`
+//      via the 2-segment path `gpu::<verb>`. Each lowers to a
+//      `cssl.gpu.<verb>` op with the appropriate gpu_init / gpu_submit
+//      attribute (mirrors the existing 8-verb pattern from S3).
+//   2. Buffer handles encoded as u64 slot-indices (matches Device /
+//      Swapchain / Pipeline). Slot 0 = error sentinel.
+//   3. Effect rows : buffer_create = {GpuInit} ; buffer_upload + cmd_buf_*
+//      = {GpuSubmit} ; cmd_buf_dispatch + draw_indirect carry the
+//      Deadline<6944us> 144hz frame-budget marker.
+//   4. The Buffer<T> handle struct is generic over the element type T ;
+//      monomorph drops T at the FFI boundary (the ABI just sees byte-count
+//      and byte-pointer). Element-type information enters at the typed
+//      wrapper layer only.
+//
+// § INVARIANTS  (stage-0)
+//   - `Buffer<T>.handle` ≠ 0 for ALL valid Buffer values
+//   - `Buffer<T>.count` ≤ `Buffer<T>.capacity`
+//   - `Buffer<T>.usage` ∈ {Vertex, Index, Uniform, Storage, Indirect, Staging}
+//   - `cmd_buf_dispatch(cb, x, y, z)` : x*y*z workgroups ; spec/14 device-cap
+//   - `cmd_buf_draw_indirect` : `args_buffer.usage == Indirect` (compile-check)
+//   - Push-constant size ≤ 128 bytes (T0 tier-cap per spec/16)
+
+module com.apocky.stdlib.gpu_transport
+
+use std::option::Option
+use std::result::Result
+
+// Re-use the existing stdlib/gpu surface : Device · CmdBuf · GpuError · caps.
+use std::gpu::Device
+use std::gpu::CmdBuf
+use std::gpu::Pipeline
+use std::gpu::GpuError
+use std::gpu::caps_check
+use std::gpu::gpu_cap_device
+use std::gpu::gpu_cap_pipeline
+use std::gpu::gpu_cap_submit
+use std::gpu::gpu_handle_error_sentinel
+use std::gpu::last_error_kind
+use std::gpu::last_error_os
+use std::gpu::gpu_error_from_kind
+
+// ═══════════════════════════════════════════════════════════════════════
+// § BufferUsage — tier-tag for a Buffer<T>'s intended pipeline binding.
+// ═══════════════════════════════════════════════════════════════════════
+
+enum BufferUsage {
+    Vertex,         // 0 — vertex attributes ; bound via cmd_buf_bind_vbuf
+    Index,          // 1 — index list      ; bound via cmd_buf_bind_ibuf
+    Uniform,        // 2 — T1 UBO          ; bound via cmd_buf_bind_descriptor
+    Storage,        // 3 — T2 SSBO         ; bound via cmd_buf_bind_descriptor
+    Indirect,       // 4 — T3 indirect args; consumed by cmd_buf_draw_indirect
+    Staging,        // 5 — host-visible    ; for buffer_map / buffer_upload
+}
+
+fn buffer_usage_vertex() -> u32   { 0 }
+fn buffer_usage_index() -> u32    { 1 }
+fn buffer_usage_uniform() -> u32  { 2 }
+fn buffer_usage_storage() -> u32  { 3 }
+fn buffer_usage_indirect() -> u32 { 4 }
+fn buffer_usage_staging() -> u32  { 5 }
+
+fn buffer_usage_to_u32(u : BufferUsage) -> u32 {
+    match u {
+        BufferUsage::Vertex   => 0,
+        BufferUsage::Index    => 1,
+        BufferUsage::Uniform  => 2,
+        BufferUsage::Storage  => 3,
+        BufferUsage::Indirect => 4,
+        BufferUsage::Staging  => 5,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § MemKind — memory residency choice.
+// ═══════════════════════════════════════════════════════════════════════
+
+enum MemKind {
+    DeviceLocal,     // 0 — GPU VRAM ; fast GPU access ; CPU-write via staging
+    HostVisible,     // 1 — CPU-mappable ; slow GPU access ; for staging only
+    HostCoherent,    // 2 — CPU-mappable + auto-flush ; for upload-heap path
+}
+
+fn mem_kind_device_local() -> u32  { 0 }
+fn mem_kind_host_visible() -> u32  { 1 }
+fn mem_kind_host_coherent() -> u32 { 2 }
+
+fn mem_kind_to_u32(m : MemKind) -> u32 {
+    match m {
+        MemKind::DeviceLocal  => 0,
+        MemKind::HostVisible  => 1,
+        MemKind::HostCoherent => 2,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § IdxKind — index-buffer element-width.
+// ═══════════════════════════════════════════════════════════════════════
+
+enum IdxKind {
+    U16,   // 0 — 16-bit indices ; up to 65_535 vertices per mesh
+    U32,   // 1 — 32-bit indices ; up to ~4.2B vertices per mesh
+}
+
+fn idx_kind_u16() -> u32 { 0 }
+fn idx_kind_u32() -> u32 { 1 }
+
+fn idx_kind_to_u32(k : IdxKind) -> u32 {
+    match k {
+        IdxKind::U16 => 0,
+        IdxKind::U32 => 1,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ShaderStage bit-flags — for push-constant + descriptor binding.
+// ═══════════════════════════════════════════════════════════════════════
+
+fn shader_stage_vertex() -> u32          { 1 }
+fn shader_stage_fragment() -> u32        { 2 }
+fn shader_stage_compute() -> u32         { 4 }
+fn shader_stage_vertex_fragment() -> u32 { 3 }   // V | F  (most common)
+fn shader_stage_all_graphics() -> u32    { 3 }   // alias
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Buffer<T> — typed handle for a GPU buffer allocation.
+//
+//   `count` = currently-valid elements (logical len)
+//   `capacity` = total slots the allocation holds (physical cap)
+//   `usage` = BufferUsage discriminant (ABI integer)
+//   `mem` = MemKind discriminant (ABI integer)
+//   `mapped_ptr` = host pointer if buffer is currently mapped (0 = unmapped)
+// ═══════════════════════════════════════════════════════════════════════
+
+struct Buffer<T> {
+    handle     : u64,
+    count      : u32,
+    capacity   : u32,
+    usage      : u32,
+    mem        : u32,
+    mapped_ptr : i64,
+}
+
+// `buffer_null<T>()` — sentinel buffer ; handle = 0 = error.
+fn buffer_null<T>() -> Buffer<T> {
+    Buffer {
+        handle     : 0,
+        count      : 0,
+        capacity   : 0,
+        usage      : 0,
+        mem        : 0,
+        mapped_ptr : 0,
+    }
+}
+
+// `buffer_is_null<T>(b)` — true iff handle == 0.
+fn buffer_is_null<T>(b : Buffer<T>) -> bool {
+    b.handle == 0
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § DrawIndexedIndirectArgs — T3 indirect-draw command argument record.
+//
+//   ABI-LOCKED layout matching D3D12 D3D12_DRAW_INDEXED_ARGUMENTS +
+//   Vulkan VkDrawIndexedIndirectCommand. 20-byte struct ; alignment 4.
+//   Stride = 20 (or 24 if aligned to 8).
+// ═══════════════════════════════════════════════════════════════════════
+
+struct DrawIndexedIndirectArgs {
+    index_count    : u32,    // indices to draw per instance
+    instance_count : u32,    // instances to draw (gl_InstanceIndex range)
+    first_index    : u32,    // offset into index buffer
+    vertex_offset  : i32,    // added to each index for VBO lookup
+    first_instance : u32,    // base value for gl_InstanceIndex
+}
+
+// `draw_indirect_args_stride()` — bytes per DrawIndexedIndirectArgs entry.
+fn draw_indirect_args_stride() -> u32 {
+    20
+}
+
+// `draw_indirect_args_new(idx_count, instance_count, first_idx, vtx_off, first_inst)` — constructor.
+fn draw_indirect_args_new(idx_count : u32, instance_count : u32, first_idx : u32, vtx_off : i32, first_inst : u32) -> DrawIndexedIndirectArgs {
+    DrawIndexedIndirectArgs {
+        index_count    : idx_count,
+        instance_count : instance_count,
+        first_index    : first_idx,
+        vertex_offset  : vtx_off,
+        first_instance : first_inst,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § PUSH-CONSTANT CONSTRAINTS  (T0 tier-cap)
+// ═══════════════════════════════════════════════════════════════════════
+
+// `push_constant_max_bytes()` — D3D12 root-constant + Vulkan push-constant
+// common-floor = 128 bytes. Drivers may expose more ; spec/16 codifies 128.
+fn push_constant_max_bytes() -> u32 {
+    128
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Buffer create / destroy / map / unmap / upload.
+//
+//   ABI symbols (W-1 landing) :
+//     __cssl_gpu_buffer_create(device, size_bytes, usage, mem_kind) -> u64
+//     __cssl_gpu_buffer_destroy(buffer) -> i32
+//     __cssl_gpu_buffer_map(buffer, offset, size, out_ptr) -> i32
+//     __cssl_gpu_buffer_unmap(buffer) -> i32
+//     __cssl_gpu_buffer_upload(buffer, offset, src_ptr, src_len) -> i32
+// ═══════════════════════════════════════════════════════════════════════
+
+// `buffer_create<T>(dev, capacity, usage, mem)` — allocate a typed GPU buffer.
+//
+// § EFFECT-ROW : {GpuInit}-effecting (compile-once shape).
+// § CAP-WITNESS : Cap<Gpu> · gpu_cap_device.
+//
+// § STAGE-0 BEHAVIOR
+//   Stage-0 returns Buffer<T> { handle : 0 } until the underlying
+//   __cssl_gpu_buffer_create symbol is wired through cssl-rt's host_gpu.rs.
+//   Source-level engine code can already structure the allocation ; stage-1
+//   fleshes the body driver-active with NO source-level rename.
+fn buffer_create<T>(dev : Device, capacity : u32, usage : BufferUsage, mem : MemKind) -> Result<Buffer<T>, GpuError> {
+    if caps_check(gpu_cap_device()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let usage_u = buffer_usage_to_u32(usage) ;
+        let mem_u   = mem_kind_to_u32(mem) ;
+        // sizeof T monomorphized away by the quartet ; placeholder size:
+        let size_bytes = (capacity as i64) * 4 ;
+        let h = gpu::buffer_create(dev.handle, size_bytes, usage_u, mem_u) ;
+        if h == 0 {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        } else {
+            Ok(Buffer {
+                handle     : h,
+                count      : 0,
+                capacity   : capacity,
+                usage      : usage_u,
+                mem        : mem_u,
+                mapped_ptr : 0,
+            })
+        }
+    }
+}
+
+// `buffer_destroy<T>(buf)` — release the buffer ; idempotent on null handle.
+//
+// § EFFECT-ROW : {GpuInit}-effecting.
+fn buffer_destroy<T>(buf : Buffer<T>) -> Result<i32, GpuError> {
+    if buf.handle == 0 {
+        Ok(0)
+    } else {
+        let r = gpu::buffer_destroy(buf.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// `buffer_upload<T>(buf, offset, src_ptr, src_len)` — memcpy host→GPU.
+//
+// § EFFECT-ROW : {GpuSubmit}-effecting (per-frame hot-path).
+//   Carries Deadline<6944us / 4> = 1736 µs sub-budget (P2 build/upload/record).
+// § CAP-WITNESS : Cap<Gpu> · gpu_cap_submit.
+//
+// § STAGE-0 BEHAVIOR
+//   Stub. Source-level engine code can call ; body fleshes in stage-1.
+fn buffer_upload<T>(buf : Buffer<T>, offset : i64, src_ptr : i64, src_len : i64) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        if buf.handle == 0 {
+            Err(GpuError::InvalidInput)
+        } else {
+            let r = gpu::buffer_upload(buf.handle, offset, src_ptr, src_len) ;
+            if r == 0 {
+                Ok(0)
+            } else {
+                Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+            }
+        }
+    }
+}
+
+// `buffer_map<T>(buf, offset, size)` — obtain a host pointer to GPU memory.
+//
+// § EFFECT-ROW : {GpuSubmit}-effecting.
+// § STAGE-0 BEHAVIOR : returns Err(NotSupported) for DeviceLocal ; Ok(ptr) for HostVisible.
+fn buffer_map<T>(buf : Buffer<T>, offset : i64, size : i64) -> Result<i64, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        if buf.handle == 0 {
+            Err(GpuError::InvalidInput)
+        } else {
+            let r = gpu::buffer_map(buf.handle, offset, size) ;
+            if r == 0 {
+                Err(GpuError::NotSupported)
+            } else {
+                Ok(r)
+            }
+        }
+    }
+}
+
+// `buffer_unmap<T>(buf)` — release a prior buffer_map ; flushes host writes.
+//
+// § EFFECT-ROW : {GpuSubmit}-effecting.
+fn buffer_unmap<T>(buf : Buffer<T>) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::buffer_unmap(buf.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Command-buffer lifecycle  (W-1 ABI · replaces _stub from S3).
+//
+//   ABI symbols (W-1 landing) :
+//     __cssl_gpu_cmd_buf_begin(device) -> u64
+//     __cssl_gpu_cmd_buf_end(cmd_buf) -> i32
+//     __cssl_gpu_cmd_buf_submit_v2(cmd_buf, signal_fence_out) -> i32
+// ═══════════════════════════════════════════════════════════════════════
+
+// `cmd_buf_begin(dev)` — open a fresh command buffer for recording.
+//
+// § EFFECT-ROW : {GpuSubmit}-effecting.
+// § CAP-WITNESS : Cap<Gpu> · gpu_cap_submit.
+fn cmd_buf_begin(dev : Device) -> Result<CmdBuf, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let h = gpu::cmd_buf_begin(dev.handle) ;
+        if h == 0 {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        } else {
+            Ok(CmdBuf { handle : h })
+        }
+    }
+}
+
+// `cmd_buf_end(cb)` — close recording ; cmd-buf becomes submittable.
+//
+// § EFFECT-ROW : {GpuSubmit}-effecting.
+fn cmd_buf_end(cb : CmdBuf) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::cmd_buf_end(cb.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// `cmd_buf_submit_v2(cb)` — queue the cmd-buf for execution ; replaces _stub.
+//
+// § EFFECT-ROW : {GpuSubmit, Deadline<6944us>}-effecting at 144hz.
+// § CAP-WITNESS : Cap<Gpu> · gpu_cap_submit.
+fn cmd_buf_submit_v2(cb : CmdBuf) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::cmd_buf_submit_v2(cb.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Pipeline + buffer bindings.
+//
+//   ABI symbols (W-1 landing) :
+//     __cssl_gpu_cmd_buf_bind_pipeline(cmd_buf, pipeline) -> i32
+//     __cssl_gpu_cmd_buf_bind_vbuf(cmd_buf, slot, buffer, offset) -> i32
+//     __cssl_gpu_cmd_buf_bind_ibuf(cmd_buf, buffer, offset, idx_kind) -> i32
+//     __cssl_gpu_cmd_buf_bind_descriptor(cmd_buf, set, slot, buffer) -> i32
+// ═══════════════════════════════════════════════════════════════════════
+
+// `cmd_buf_bind_pipeline(cb, pipeline)` — set the active pipeline.
+fn cmd_buf_bind_pipeline(cb : CmdBuf, pipeline : Pipeline) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::cmd_buf_bind_pipeline(cb.handle, pipeline.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// `cmd_buf_bind_vbuf<T>(cb, slot, vbuf, offset)` — bind a vertex buffer to a slot.
+fn cmd_buf_bind_vbuf<T>(cb : CmdBuf, slot : u32, vbuf : Buffer<T>, offset : i64) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::cmd_buf_bind_vbuf(cb.handle, slot, vbuf.handle, offset) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// `cmd_buf_bind_ibuf<T>(cb, ibuf, offset, idx_kind)` — bind the index buffer.
+fn cmd_buf_bind_ibuf<T>(cb : CmdBuf, ibuf : Buffer<T>, offset : i64, idx_kind : IdxKind) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let kind_u = idx_kind_to_u32(idx_kind) ;
+        let r = gpu::cmd_buf_bind_ibuf(cb.handle, ibuf.handle, offset, kind_u) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// `cmd_buf_bind_descriptor<T>(cb, set, slot, buf)` — bind a UBO/SSBO to a descriptor slot.
+fn cmd_buf_bind_descriptor<T>(cb : CmdBuf, set : u32, slot : u32, buf : Buffer<T>) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::cmd_buf_bind_descriptor(cb.handle, set, slot, buf.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § T0 push-constants  (≤ 128 bytes inline cmd-buf data).
+//
+//   ABI symbol (W-1 landing) :
+//     __cssl_gpu_cmd_buf_push_constants(cmd_buf, stages, offset, size, data_ptr) -> i32
+// ═══════════════════════════════════════════════════════════════════════
+
+// `cmd_buf_push_constants(cb, stages, offset, size, data_ptr)` — T0 transport.
+//
+// § EFFECT-ROW : {GpuSubmit}-effecting · NoAlloc.
+// § SIZE-CAP : size ≤ push_constant_max_bytes() = 128.
+//   Larger payloads must use T1 UBO via cmd_buf_bind_descriptor.
+fn cmd_buf_push_constants(cb : CmdBuf, stages : u32, offset : u32, size : u32, data_ptr : i64) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        if size > push_constant_max_bytes() {
+            Err(GpuError::InvalidInput)
+        } else {
+            let r = gpu::cmd_buf_push_constants(cb.handle, stages, offset, size, data_ptr) ;
+            if r == 0 {
+                Ok(0)
+            } else {
+                Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § Draw commands  (T2 instanced + T3 indirect).
+//
+//   ABI symbols (W-1 landing) :
+//     __cssl_gpu_cmd_buf_draw_indexed(cmd_buf, idx_count, instance_count,
+//                                       first_idx, vtx_off, first_inst) -> i32
+//     __cssl_gpu_cmd_buf_draw_indirect(cmd_buf, args_buffer, args_offset,
+//                                        draw_count, stride) -> i32
+// ═══════════════════════════════════════════════════════════════════════
+
+// `cmd_buf_draw_indexed(cb, idx_count, instance_count, first_idx, vtx_off, first_inst)`
+//   — T2 instanced draw ; one draw call · N instances.
+//
+// § EFFECT-ROW : {GpuSubmit, Deadline<6944us>}-effecting.
+// § PERF NOTE : at instance_count ≥ 16 this dominates per-mesh draw cost.
+fn cmd_buf_draw_indexed(cb : CmdBuf, idx_count : u32, instance_count : u32, first_idx : u32, vtx_off : i32, first_inst : u32) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::cmd_buf_draw_indexed(cb.handle, idx_count, instance_count, first_idx, vtx_off, first_inst) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// `cmd_buf_draw_indirect(cb, args_buf, args_offset, draw_count, stride)`
+//   — T3 indirect draw ; GPU reads draw-args from a buffer ; 1 submit per frame.
+//
+// § EFFECT-ROW : {GpuSubmit, Deadline<6944us>}-effecting.
+// § PERF NOTE : this is the path for 1M-entity rendering ; CPU does ONE
+//               submit per frame ; GPU compute writes the args buffer.
+fn cmd_buf_draw_indirect(cb : CmdBuf, args_buf : Buffer<DrawIndexedIndirectArgs>, args_offset : i64, draw_count : u32, stride : u32) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        if args_buf.handle == 0 {
+            Err(GpuError::InvalidInput)
+        } else {
+            if args_buf.usage != buffer_usage_indirect() {
+                Err(GpuError::InvalidInput)
+            } else {
+                let r = gpu::cmd_buf_draw_indirect(cb.handle, args_buf.handle, args_offset, draw_count, stride) ;
+                if r == 0 {
+                    Ok(0)
+                } else {
+                    Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § T4 compute dispatch.
+//
+//   ABI symbol (W-1 landing) :
+//     __cssl_gpu_cmd_buf_dispatch(cmd_buf, group_x, group_y, group_z) -> i32
+// ═══════════════════════════════════════════════════════════════════════
+
+// `cmd_buf_dispatch(cb, group_x, group_y, group_z)` — T4 compute kernel dispatch.
+//
+// § EFFECT-ROW : {GpuSubmit, Deadline<6944us>}-effecting.
+// § GROUP-COUNT : group_x · group_y · group_z workgroups dispatched.
+//   spec/14 device-cap typically allows up to (65535, 65535, 65535).
+fn cmd_buf_dispatch(cb : CmdBuf, group_x : u32, group_y : u32, group_z : u32) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        if group_x == 0 {
+            Err(GpuError::InvalidInput)
+        } else {
+            if group_y == 0 {
+                Err(GpuError::InvalidInput)
+            } else {
+                if group_z == 0 {
+                    Err(GpuError::InvalidInput)
+                } else {
+                    let r = gpu::cmd_buf_dispatch(cb.handle, group_x, group_y, group_z) ;
+                    if r == 0 {
+                        Ok(0)
+                    } else {
+                        Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//
+//   "There was no hurt nor harm in the making of this, to anyone,
+//    anything, or anybody."
+//
+//   The W-1 transport-tier ladder adds 16 ABI-locked symbols + their
+//   typed CSSL wrappers. Every wrapper consumes Cap<Gpu> via caps_check.
+//   Every per-frame hot-path wrapper carries the Deadline<6944us> 144hz
+//   marker. Buffer IFC labels remain Public default ; Sensitive<Frame>
+//   for output backbuffers on the VR path (preserved from stdlib/gpu.cssl).
+//
+//   The 1440p / 144 Hz / 1M-entity Apocky-mandate REQUIRES this transport
+//   ladder : T0 push-constants for per-frame vp + frame_idx (8 ms saved
+//   over UBO route at high frame-rate) · T2 SSBO for InstanceData[1M] (the
+//   only viable transport for that size) · T3 indirect-draw + T4 compute-
+//   dispatch for GPU-driven cull (the only way to keep CPU at <1ms/frame
+//   under 1M entities · per §A6 transcript-distill).
+//
+//   No surveillance. No PRIME_DIRECTIVE override. The 16 symbols are
+//   append-only ; the existing 8 verbs are preserved verbatim.
+// ═══════════════════════════════════════════════════════════════════════

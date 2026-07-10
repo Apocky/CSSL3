@@ -1,0 +1,158 @@
+⟨spec⟩ UPG_06_REPR_HYPERGRAPH · hypergraph source · CA-substrate · topology · AI-native · self-modifying
+⟨ctx⟩ specs/Upgrade/ · Part II/2 · representation-level frontiers (2 of 2)
+⟨covers⟩ §14 hypergraph/categorical · §15 CA-as-substrate · §16 topological/GA · §17 AI-native · §18 self-modifying
+
+──────────────────────────────────────────────────────────────────────
+## §14. Hypergraph and categorical source
+
+Wolfram's Physics Project (2020 onward) uses **hypergraph rewriting**
+as a model of physics — the universe is a hypergraph and physical
+laws are rewrite rules. Setting aside the physics, the *computational
+substrate* is mature: graph-rewriting languages have been studied
+since the 1970s. Key citations:
+
+- **PORGY** (Inria; Andrei, Fernández et al.) — strategic programming
+  over port graphs.
+- **GROOVE** (Twente; Rensink) — graph transformation for model
+  checking.
+- **Maude** (SRI; Clavel et al.) — rewriting logic, used for formal
+  semantics of languages including K Framework.
+- **K Framework** (Roşu, UIUC) — defines language semantics by
+  rewriting; used for formal semantics of C (KCC), Java, JavaScript,
+  EVM (KEVM). Production-grade.
+- **Stratego/XT** (Visser et al.) — strategic term rewriting for
+  program transformation.
+- **Conal Elliott's "compiling to categories"** (ICFP 2017) — Haskell
+  programs are compiled into morphisms of an arbitrary cartesian
+  closed category, generalizing both AD and circuit synthesis as
+  instances.
+- **Catlab.jl** (James Fairbanks et al., AlgebraicJulia) — applied
+  category theory as code; functorial data migration, structured
+  cospans.
+
+The relevance: **a hypergraph with typed ports is a strict
+generalization of both an AST (a tree is a special hypergraph) and
+an SSA/CLIF IR (each value with its uses is a hyperedge) and an
+interaction combinator net (per §41 / HVM2) and a ZX-diagram (a
+particular form of hypergraph for quantum) and a dataflow graph and
+a circuit netlist.**
+
+A sovereign language whose canonical form is a typed hypergraph
+subsumes all of these as projections. The HVM2 interaction-net
+runtime (Taelin et al., 2024) demonstrates that this is not just
+theoretical — interaction-combinator graphs can be evaluated at
+74,000 MIPS on an RTX 4090 with near-ideal parallel scaling (the
+HVM2 paper, docs.rs/crate/hvm/latest/source/paper/PAPER.pdf).
+
+## §15. Code as physics simulation; cellular automata as substrate
+
+Hashlife (Bill Gosper, 1984), Conway's Life Turing-completeness
+(Rendell, 2002; Cook 2004 for Rule 110), Wireworld, the SAT-instance
+"Tetris is Turing-complete" results — the lineage is well-known. The
+serious question is **whether a cellular-automaton-like substrate is
+a practical computational model** at scale.
+
+Speculative but principled: certain GPU-resident workloads (lattice
+Boltzmann, FDTD electromagnetics, agent-based simulations) are
+essentially CA. The Halide compiler's stencil-scheduling work and the
+Devito project (CGO 2019, devitoproject.org) show that the CA-style
+abstraction maps efficiently onto modern hardware. A language that
+treats **stencil computation as a base primitive** with explicit halo
+regions and update rules is essentially "code as physics simulation
+as compilation target."
+
+The bridge to §41: the HVM2 interaction-combinator runtime is
+*structurally* a parallel rewrite system on a graph — which is
+exactly what a CA is, with a different rewrite rule. A sovereign IR
+that supports both is a single graph-rewrite engine.
+
+## §16. Topological and geometric programming
+
+Geometric algebra (Clifford algebra) as a unifying numerical type is
+the agenda of Hestenes, Doran/Lasenby, and Dorst/Fontijne/Mann (the
+GA4CS textbook). Concrete proposals:
+
+- **GAALOP** (Hildenbrand) — optimizing compiler for GA expressions
+  to scalar/SIMD code.
+- **Klein** (Jeremy Ong, 2020) — projective GA library in C++ with
+  SIMD.
+- **Bivector.net** / **Ganja.js** — pedagogical infrastructure.
+
+The pitch is that 3D rotations, reflections, and transformations are
+*messier* in matrix algebra than they need to be — rotors (the GA
+equivalent of quaternions) compose more cleanly and the same operator
+handles all dimensions. For a language whose application targets
+include 3D simulation / rendering / robotics (Infinite Labyrinth,
+etc.), making GA a first-class type system feature has real ergonomic
+value.
+
+**Topological data analysis** (Carlsson, Ghrist; persistent homology)
+and **knot theory in code** (braided monoidal categories, anyonic
+computation) are more speculative. The convergence point: braided
+monoidal categories *are* the algebra of quantum gates and the
+algebra of anyonic computation, so a language that takes ZX-calculus
+seriously (per §9) has a path here.
+
+## §17. AI-native source: LLMs as compiler components
+
+The empirical situation as of mid-2026 is that LLMs are increasingly
+competent as both:
+- **Source generators** (Copilot, Cursor, Claude Code, Aider, Phind,
+  Magicoder, Cody, etc.)
+- **Compiler components** (neural superoptimization — papers like
+  Bansal & Aiken's STOKE 2014, then ML-augmented variants; learning
+  peephole optimizers; learning heuristics for register allocation;
+  learned cost models for autotuning).
+
+The non-obvious direction the user's question invites: **programs
+that are partly text and partly neural weights.** This is plausibly
+achievable via:
+
+- **Differentiable programming** as the source representation (JAX,
+  Zygote, Enzyme, Diffractor, Tapenade — see §20). The Zygote.jl
+  paper (Innes et al., 2019) and the Enzyme paper (Moses & Churavy,
+  NeurIPS 2020; Moses et al., SC2021 "Reverse-Mode Automatic
+  Differentiation and Optimization of GPU Kernels via Enzyme")
+  demonstrate that AD can apply to *arbitrary* code, including LLVM-
+  IR-level kernels. Enzyme's distinguishing property is that it
+  differentiates *after* optimization, which avoids the "AD before
+  optimization" performance penalty by 4.2× in the original
+  benchmarks.
+- **Weights as values** in the language — a `Model[I, O]` is a typed
+  function with a learnable parameter capability.
+- **Inference as an effect** — calling an LLM is a `<llm_query>`
+  effect that can be tracked, capability-gated, and budgeted.
+
+The Prime Directive interaction is sharp here: LLM-as-compiler is
+*the* path to consent-as-OS because the AI fleet is a partner in
+language evolution. The capability-system layer (§36) ensures the
+AI's edits go through explicit consent — the AI proposes a content-
+addressed patch, the human (or governance system) approves it, and
+the hash transitions.
+
+## §18. Self-modifying canonical forms
+
+The lineage runs Lisp → MetaOCaml → Template Haskell → Racket →
+Lean 4 → Idris 2. The clean modern reference is **Lean 4
+metaprogramming**: the elaborator is a monad transformer stack
+(CoreM ⊂ MetaM ⊂ TermElabM ⊂ TacticM), and tactics, macros, syntax
+extensions, and the elaborator itself are all just Lean programs.
+Lean 4 is self-hosted: the Lean 4 compiler is written in Lean 4. The
+metaprogramming book (leanprover-community.github.io/lean4-
+metaprogramming-book) is the practical reference; the Lean 4 design
+paper (de Moura & Ullrich, CADE 2021) is the formal one.
+
+What this enables that LISP didn't: **proofs about the macros**.
+F* tactics, Lean 4 tactics, and Agda reflection all let the
+metaprogram be type-checked against the meta-theory of the host
+language. A macro that constructs a proof can be checked for
+soundness.
+
+The asymptotic frontier: a language where **the rewrite rules of the
+canonical hypergraph are themselves first-class values**, version-
+controlled by hash, and the language can rewrite *its own AST* during
+execution. Combined with content-addressing (§12), this means a
+function's hash changes when it rewrites itself — preserving
+auditability. Combined with capability security (§36), the right to
+rewrite is itself a capability, so the AI fleet cannot silently
+mutate code without consent.

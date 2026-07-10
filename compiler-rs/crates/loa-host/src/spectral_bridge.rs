@@ -49,11 +49,11 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use cssl_rt::loa_startup::log_event;
 use cssl_spectral_render::{
     BandTable, DisplayPrimaries, IridescenceModel, SpectralRadiance, SpectralTristimulus,
     ThinFilmStack, BAND_COUNT, BAND_VISIBLE_END, BAND_VISIBLE_START,
 };
-use cssl_rt::loa_startup::log_event;
 
 use crate::material::{material_lut, Material, MATERIAL_LUT_LEN};
 
@@ -284,15 +284,29 @@ pub fn material_reflectance(material_id: u32) -> [f32; BAND_COUNT] {
         }
         // 1 VERMILLION_LACQUER — strong red peak (600-700 nm), low blue.
         1 => {
-            r[v] = 0.05; r[v+1] = 0.07; r[v+2] = 0.10; r[v+3] = 0.18;
-            r[v+4] = 0.32; r[v+5] = 0.55; r[v+6] = 0.78; r[v+7] = 0.85;
-            r[v+8] = 0.88; r[v+9] = 0.85;
+            r[v] = 0.05;
+            r[v + 1] = 0.07;
+            r[v + 2] = 0.10;
+            r[v + 3] = 0.18;
+            r[v + 4] = 0.32;
+            r[v + 5] = 0.55;
+            r[v + 6] = 0.78;
+            r[v + 7] = 0.85;
+            r[v + 8] = 0.88;
+            r[v + 9] = 0.85;
         }
         // 2 GOLD_LEAF — broadband with steep blue rolloff (warm-yellow).
         2 => {
-            r[v] = 0.05; r[v+1] = 0.10; r[v+2] = 0.18; r[v+3] = 0.42;
-            r[v+4] = 0.72; r[v+5] = 0.88; r[v+6] = 0.95; r[v+7] = 0.96;
-            r[v+8] = 0.96; r[v+9] = 0.95;
+            r[v] = 0.05;
+            r[v + 1] = 0.10;
+            r[v + 2] = 0.18;
+            r[v + 3] = 0.42;
+            r[v + 4] = 0.72;
+            r[v + 5] = 0.88;
+            r[v + 6] = 0.95;
+            r[v + 7] = 0.96;
+            r[v + 8] = 0.96;
+            r[v + 9] = 0.95;
         }
         // 3 BRUSHED_STEEL — flat-ish ~60% across the visible.
         3 => {
@@ -303,15 +317,29 @@ pub fn material_reflectance(material_id: u32) -> [f32; BAND_COUNT] {
         // 4 IRIDESCENT — wavelength-banded peaks (will be modulated again
         //   by IridescenceModel::modulate at view-angle bake time).
         4 => {
-            r[v] = 0.55; r[v+1] = 0.70; r[v+2] = 0.85; r[v+3] = 0.75;
-            r[v+4] = 0.55; r[v+5] = 0.45; r[v+6] = 0.55; r[v+7] = 0.65;
-            r[v+8] = 0.70; r[v+9] = 0.55;
+            r[v] = 0.55;
+            r[v + 1] = 0.70;
+            r[v + 2] = 0.85;
+            r[v + 3] = 0.75;
+            r[v + 4] = 0.55;
+            r[v + 5] = 0.45;
+            r[v + 6] = 0.55;
+            r[v + 7] = 0.65;
+            r[v + 8] = 0.70;
+            r[v + 9] = 0.55;
         }
         // 5 EMISSIVE_CYAN — peaks in cyan-blue region (480-540 nm).
         5 => {
-            r[v] = 0.30; r[v+1] = 0.65; r[v+2] = 0.90; r[v+3] = 0.95;
-            r[v+4] = 0.80; r[v+5] = 0.40; r[v+6] = 0.20; r[v+7] = 0.15;
-            r[v+8] = 0.10; r[v+9] = 0.10;
+            r[v] = 0.30;
+            r[v + 1] = 0.65;
+            r[v + 2] = 0.90;
+            r[v + 3] = 0.95;
+            r[v + 4] = 0.80;
+            r[v + 5] = 0.40;
+            r[v + 6] = 0.20;
+            r[v + 7] = 0.15;
+            r[v + 8] = 0.10;
+            r[v + 9] = 0.10;
         }
         // 6 TRANSPARENT_GLASS — slight aqua tint (light blue-cyan peak).
         6 => {
@@ -321,34 +349,70 @@ pub fn material_reflectance(material_id: u32) -> [f32; BAND_COUNT] {
         }
         // 7 HOLOGRAPHIC — broad multi-peak (rainbow-base).
         7 => {
-            r[v] = 0.55; r[v+1] = 0.72; r[v+2] = 0.65; r[v+3] = 0.60;
-            r[v+4] = 0.70; r[v+5] = 0.55; r[v+6] = 0.50; r[v+7] = 0.65;
-            r[v+8] = 0.75; r[v+9] = 0.60;
+            r[v] = 0.55;
+            r[v + 1] = 0.72;
+            r[v + 2] = 0.65;
+            r[v + 3] = 0.60;
+            r[v + 4] = 0.70;
+            r[v + 5] = 0.55;
+            r[v + 6] = 0.50;
+            r[v + 7] = 0.65;
+            r[v + 8] = 0.75;
+            r[v + 9] = 0.60;
         }
         // 8 HAIRY_FUR — warm-tan ; gradual rise from blue to red.
         8 => {
-            r[v] = 0.32; r[v+1] = 0.42; r[v+2] = 0.55; r[v+3] = 0.65;
-            r[v+4] = 0.72; r[v+5] = 0.78; r[v+6] = 0.82; r[v+7] = 0.85;
-            r[v+8] = 0.84; r[v+9] = 0.80;
+            r[v] = 0.32;
+            r[v + 1] = 0.42;
+            r[v + 2] = 0.55;
+            r[v + 3] = 0.65;
+            r[v + 4] = 0.72;
+            r[v + 5] = 0.78;
+            r[v + 6] = 0.82;
+            r[v + 7] = 0.85;
+            r[v + 8] = 0.84;
+            r[v + 9] = 0.80;
         }
         // 9 DICHROIC_VIOLET — narrow violet peak (400-440 nm) + minor red.
         9 => {
-            r[v] = 0.85; r[v+1] = 0.70; r[v+2] = 0.32; r[v+3] = 0.20;
-            r[v+4] = 0.18; r[v+5] = 0.22; r[v+6] = 0.30; r[v+7] = 0.42;
-            r[v+8] = 0.55; r[v+9] = 0.60;
+            r[v] = 0.85;
+            r[v + 1] = 0.70;
+            r[v + 2] = 0.32;
+            r[v + 3] = 0.20;
+            r[v + 4] = 0.18;
+            r[v + 5] = 0.22;
+            r[v + 6] = 0.30;
+            r[v + 7] = 0.42;
+            r[v + 8] = 0.55;
+            r[v + 9] = 0.60;
         }
         // 10 NEON_MAGENTA — twin peaks in violet + red.
         10 => {
-            r[v] = 0.92; r[v+1] = 0.88; r[v+2] = 0.45; r[v+3] = 0.18;
-            r[v+4] = 0.18; r[v+5] = 0.30; r[v+6] = 0.65; r[v+7] = 0.92;
-            r[v+8] = 0.95; r[v+9] = 0.90;
+            r[v] = 0.92;
+            r[v + 1] = 0.88;
+            r[v + 2] = 0.45;
+            r[v + 3] = 0.18;
+            r[v + 4] = 0.18;
+            r[v + 5] = 0.30;
+            r[v + 6] = 0.65;
+            r[v + 7] = 0.92;
+            r[v + 8] = 0.95;
+            r[v + 9] = 0.90;
         }
         // 11 DEEP_INDIGO — UV-fringe with violet-blue dominance.
         11 => {
-            r[0] = 0.02; r[1] = 0.05; // small UV refl (path demo)
-            r[v] = 0.50; r[v+1] = 0.65; r[v+2] = 0.40; r[v+3] = 0.25;
-            r[v+4] = 0.18; r[v+5] = 0.15; r[v+6] = 0.18; r[v+7] = 0.22;
-            r[v+8] = 0.28; r[v+9] = 0.30;
+            r[0] = 0.02;
+            r[1] = 0.05; // small UV refl (path demo)
+            r[v] = 0.50;
+            r[v + 1] = 0.65;
+            r[v + 2] = 0.40;
+            r[v + 3] = 0.25;
+            r[v + 4] = 0.18;
+            r[v + 5] = 0.15;
+            r[v + 6] = 0.18;
+            r[v + 7] = 0.22;
+            r[v + 8] = 0.28;
+            r[v + 9] = 0.30;
         }
         // 12 OFF_WHITE — flat ~80% (limestone wall).
         12 => {
@@ -358,22 +422,43 @@ pub fn material_reflectance(material_id: u32) -> [f32; BAND_COUNT] {
         }
         // 13 WARM_SKY — slight blue tint, otherwise high white.
         13 => {
-            r[v] = 0.95; r[v+1] = 0.95; r[v+2] = 0.92; r[v+3] = 0.92;
-            r[v+4] = 0.90; r[v+5] = 0.88; r[v+6] = 0.90; r[v+7] = 0.92;
-            r[v+8] = 0.92; r[v+9] = 0.92;
+            r[v] = 0.95;
+            r[v + 1] = 0.95;
+            r[v + 2] = 0.92;
+            r[v + 3] = 0.92;
+            r[v + 4] = 0.90;
+            r[v + 5] = 0.88;
+            r[v + 6] = 0.90;
+            r[v + 7] = 0.92;
+            r[v + 8] = 0.92;
+            r[v + 9] = 0.92;
         }
         // 14 GRADIENT_RED — saturation-marker red (similar to vermillion
         //   but flatter).
         14 => {
-            r[v] = 0.10; r[v+1] = 0.12; r[v+2] = 0.15; r[v+3] = 0.20;
-            r[v+4] = 0.32; r[v+5] = 0.55; r[v+6] = 0.80; r[v+7] = 0.85;
-            r[v+8] = 0.85; r[v+9] = 0.82;
+            r[v] = 0.10;
+            r[v + 1] = 0.12;
+            r[v + 2] = 0.15;
+            r[v + 3] = 0.20;
+            r[v + 4] = 0.32;
+            r[v + 5] = 0.55;
+            r[v + 6] = 0.80;
+            r[v + 7] = 0.85;
+            r[v + 8] = 0.85;
+            r[v + 9] = 0.82;
         }
         // 15 PINK_NOISE_VOL — soft pink (red + light overall).
         15 => {
-            r[v] = 0.65; r[v+1] = 0.62; r[v+2] = 0.58; r[v+3] = 0.55;
-            r[v+4] = 0.62; r[v+5] = 0.70; r[v+6] = 0.82; r[v+7] = 0.90;
-            r[v+8] = 0.90; r[v+9] = 0.85;
+            r[v] = 0.65;
+            r[v + 1] = 0.62;
+            r[v + 2] = 0.58;
+            r[v + 3] = 0.55;
+            r[v + 4] = 0.62;
+            r[v + 5] = 0.70;
+            r[v + 6] = 0.82;
+            r[v + 7] = 0.90;
+            r[v + 8] = 0.90;
+            r[v + 9] = 0.85;
         }
         _ => {
             // Default : flat 50% (matches MATTE_GREY).
@@ -620,7 +705,10 @@ mod tests {
     fn illuminant_d65_total_luminance_normalised() {
         let lum = illuminant_visible_luminance(Illuminant::D65);
         // Sum of the 10 D65 visible-band coefficients is ≈ 10.0.
-        assert!(lum > 9.0 && lum < 12.0, "D65 visible-luminance {lum} out of range");
+        assert!(
+            lum > 9.0 && lum < 12.0,
+            "D65 visible-luminance {lum} out of range"
+        );
     }
 
     /// § Spec-required regression : the spectrally-baked LUT under D65
@@ -634,7 +722,10 @@ mod tests {
         // r ≈ g ≈ b within 0.1 of each other.
         let max_chan = grey[0].max(grey[1]).max(grey[2]);
         let min_chan = grey[0].min(grey[1]).min(grey[2]);
-        assert!(max_chan - min_chan < 0.1, "MATTE_GREY not neutral : {grey:?}");
+        assert!(
+            max_chan - min_chan < 0.1,
+            "MATTE_GREY not neutral : {grey:?}"
+        );
         // And it should be non-zero (not a black hole).
         assert!(max_chan > 0.05, "MATTE_GREY collapsed to black : {grey:?}");
     }
@@ -645,11 +736,14 @@ mod tests {
     fn set_illuminant_a_yields_warmer_colors_than_d65() {
         let d65 = bake_material_color(0, Illuminant::D65); // grey
         let a = bake_material_color(0, Illuminant::A); // grey under tungsten
-        // Under tungsten the same grey reflectance should bake redder + greener
-        // and less blue. R+G > B by a wider margin than under D65.
+                                                       // Under tungsten the same grey reflectance should bake redder + greener
+                                                       // and less blue. R+G > B by a wider margin than under D65.
         let d65_warm = d65[0] + d65[1] - d65[2];
         let a_warm = a[0] + a[1] - a[2];
-        assert!(a_warm > d65_warm, "A-warmth {a_warm} ≤ D65-warmth {d65_warm}");
+        assert!(
+            a_warm > d65_warm,
+            "A-warmth {a_warm} ≤ D65-warmth {d65_warm}"
+        );
     }
 
     /// § Spec-required : iridescent material thin-film peak wavelength
@@ -711,7 +805,10 @@ mod tests {
         // the operator's perception, not a colorimetric exactness.
         let gb_mean = (red[1] + red[2]) * 0.5;
         let r_lead = red[0] - gb_mean;
-        assert!(r_lead > 0.05, "vermillion R-lead = {r_lead} ≤ 0.05 · rgb={red:?}");
+        assert!(
+            r_lead > 0.05,
+            "vermillion R-lead = {r_lead} ≤ 0.05 · rgb={red:?}"
+        );
     }
 
     /// § Iterate-everywhere : telemetry counters increment on bake calls.
@@ -721,10 +818,7 @@ mod tests {
         let _lut = bake_material_lut(Illuminant::D50);
         let post = SPECTRAL_BAKE_COUNT.load(Ordering::Relaxed);
         // 16 materials + 1 bake-batch = 17 increment per call.
-        assert!(
-            post >= pre + 17,
-            "bake-count delta : pre={pre} post={post}"
-        );
+        assert!(post >= pre + 17, "bake-count delta : pre={pre} post={post}");
     }
 
     /// § Iterate-everywhere : illuminant cohort completeness — exactly 4.
@@ -773,9 +867,21 @@ mod tests {
         // All zones inside ColorRoom AABB ([-58, -28] X · [0, 6] Y · [-15, 15] Z).
         for z in &zones {
             let p = z.spawn_xyz;
-            assert!(p[0] >= -58.0 && p[0] <= -28.0, "zone {} X out of range : {p:?}", z.name);
-            assert!(p[1] >= 0.0 && p[1] <= 6.0, "zone {} Y out of range : {p:?}", z.name);
-            assert!(p[2] >= -15.0 && p[2] <= 15.0, "zone {} Z out of range : {p:?}", z.name);
+            assert!(
+                p[0] >= -58.0 && p[0] <= -28.0,
+                "zone {} X out of range : {p:?}",
+                z.name
+            );
+            assert!(
+                p[1] >= 0.0 && p[1] <= 6.0,
+                "zone {} Y out of range : {p:?}",
+                z.name
+            );
+            assert!(
+                p[2] >= -15.0 && p[2] <= 15.0,
+                "zone {} Z out of range : {p:?}",
+                z.name
+            );
         }
     }
 

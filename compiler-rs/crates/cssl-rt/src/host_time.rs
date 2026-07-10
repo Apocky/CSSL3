@@ -313,13 +313,16 @@ pub fn cssl_time_sleep_ns_impl(ns: u64) -> i32 {
 ///   read for the negative case. Past-deadline path bypasses the syscall.
 pub fn cssl_time_deadline_until_impl(deadline_ns: u64) -> i32 {
     let n = DEADLINE_COUNT.fetch_add(1, Ordering::Relaxed);
+    // Read the monotonic clock before constructing/logging the diagnostic
+    // event so the deadline decision reflects call-entry time, not
+    // observability overhead.
+    let now_ns = cssl_time_monotonic_ns_impl();
     // § T11-W19-β-FULL-FIDELITY-2026-05-04 : sampling REMOVED.
     let scope = Some(crate::events::EventScope::new(
         "cssl-rt::host_time",
         "time.deadline_until",
         serde_json::json!({"deadline_ns": deadline_ns, "call_idx": n}),
     ));
-    let now_ns = cssl_time_monotonic_ns_impl();
     let delta = deadline_ns.saturating_sub(now_ns);
     if delta == 0 {
         // Already past — no syscall, no contribution to total_sleep_ns.
@@ -558,19 +561,20 @@ mod tests {
     fn deadline_in_future_sleeps_and_returns_ok() {
         let _g = lock_and_reset();
         let now = cssl_time_monotonic_ns_impl();
-        // 500 µs in the future.
-        let dl = now.saturating_add(500_000);
+        // 100 ms in the future ; wide enough for synchronous full-fidelity event logging.
+        let requested_ns = 100_000_000u64;
+        let dl = now.saturating_add(requested_ns);
         let r = cssl_time_deadline_until_impl(dl);
         assert_eq!(r, TIME_OK);
         // total_sleep_ns received SOME contribution > 0 (the saturating-sub
-        // compute ; bound by 500_000 + a bit of clock-skew slack).
+        // compute ; bounded by the requested window plus scheduler slack).
         assert!(
             total_sleep_ns() > 0,
             "deadline-future should contribute to total_sleep_ns"
         );
         assert!(
-            total_sleep_ns() <= 500_000,
-            "deadline-future contribution {} should be ≤ 500_000 ns",
+            total_sleep_ns() <= requested_ns,
+            "deadline-future contribution {} should be ≤ requested_ns",
             total_sleep_ns()
         );
     }
@@ -716,3 +720,4 @@ mod tests {
 //   the same Wave-D1 slice ; together they expose a complete vertical :
 //   MIR → cranelift `call __cssl_time_*` → cssl-rt impl → OS syscall.
 // ───────────────────────────────────────────────────────────────────────
+

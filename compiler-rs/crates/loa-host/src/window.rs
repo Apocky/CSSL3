@@ -49,7 +49,7 @@
 
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -73,9 +73,7 @@ use crate::mcp_server::{
 use crate::movement::Camera as PlayerCamera;
 use crate::physics::RoomCollider;
 use crate::render::Renderer;
-use crate::snapshot::{
-    default_snapshot_dir, default_video_dir, BurstState, VideoState, TOUR_IDS,
-};
+use crate::snapshot::{default_snapshot_dir, default_video_dir, BurstState, VideoState, TOUR_IDS};
 use crate::telemetry as telem;
 use crate::ui_overlay::{HudContext, MenuAction, MenuState};
 
@@ -113,6 +111,231 @@ impl WindowMode {
             _ => Self::Borderless,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct V3InputLatencyFrame {
+    raw_input_events: u32,
+    raw_input_latency_us: u64,
+    input_jitter_us: u64,
+}
+
+#[derive(Debug, Default)]
+struct V3InputLatencyProbe {
+    last_event_at: Option<Instant>,
+    events_since_frame: u32,
+    previous_latency_us: Option<u64>,
+}
+
+impl V3InputLatencyProbe {
+    fn record_event_now(&mut self) {
+        self.record_event_at(Instant::now());
+    }
+
+    fn record_event_at(&mut self, when: Instant) {
+        self.last_event_at = Some(when);
+        self.events_since_frame = self.events_since_frame.saturating_add(1);
+    }
+
+    fn consume_frame_at(&mut self, frame_start: Instant) -> Option<V3InputLatencyFrame> {
+        if self.events_since_frame == 0 {
+            return None;
+        }
+        let event_at = self.last_event_at?;
+        let latency_us = frame_start.saturating_duration_since(event_at).as_micros() as u64;
+        let jitter_us = self
+            .previous_latency_us
+            .map_or(0, |prior| prior.abs_diff(latency_us));
+        let frame = V3InputLatencyFrame {
+            raw_input_events: self.events_since_frame,
+            raw_input_latency_us: latency_us,
+            input_jitter_us: jitter_us,
+        };
+        self.events_since_frame = 0;
+        self.previous_latency_us = Some(latency_us);
+        Some(frame)
+    }
+}
+
+impl V3InputLatencyFrame {
+    fn telemetry_fields(self) -> String {
+        format!(
+            " raw_input_events={} raw_input_latency_us={} input_jitter_us={}",
+            self.raw_input_events, self.raw_input_latency_us, self.input_jitter_us
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ProcessLoadSample {
+    process_cpu_pct: f32,
+    working_set_mb: f32,
+    private_bytes_mb: f32,
+}
+
+impl ProcessLoadSample {
+    fn telemetry_fields(self) -> String {
+        format!(
+            " process_cpu_pct={:.3} working_set_mb={:.3} private_bytes_mb={:.3}",
+            self.process_cpu_pct, self.working_set_mb, self.private_bytes_mb
+        )
+    }
+}
+
+#[derive(Debug, Default)]
+struct ProcessLoadSampler {
+    last_at: Option<Instant>,
+    last_cpu_100ns: Option<u64>,
+    last_sample: ProcessLoadSample,
+}
+
+impl ProcessLoadSampler {
+    fn sample(&mut self) -> ProcessLoadSample {
+        let now = Instant::now();
+        let memory = process_memory_mb();
+        let cpu_total_100ns = process_cpu_time_100ns();
+        let mut out = self.last_sample;
+        if let Some((working_set_mb, private_bytes_mb)) = memory {
+            out.working_set_mb = working_set_mb;
+            out.private_bytes_mb = private_bytes_mb;
+        }
+        if let (Some(last_at), Some(last_cpu), Some(cpu_now)) =
+            (self.last_at, self.last_cpu_100ns, cpu_total_100ns)
+        {
+            let wall = now.duration_since(last_at);
+            if wall >= Duration::from_millis(50) {
+                let cpu_delta_100ns = cpu_now.saturating_sub(last_cpu);
+                let cpu_seconds = cpu_delta_100ns as f64 / 10_000_000.0;
+                let wall_seconds = wall.as_secs_f64().max(0.000_001);
+                let cores = std::thread::available_parallelism().map_or(1.0, |n| n.get() as f64);
+                out.process_cpu_pct = ((cpu_seconds / wall_seconds) * 100.0 / cores) as f32;
+                self.last_at = Some(now);
+                self.last_cpu_100ns = Some(cpu_now);
+            }
+        } else {
+            self.last_at = Some(now);
+            self.last_cpu_100ns = cpu_total_100ns;
+        }
+        self.last_sample = out;
+        out
+    }
+}
+
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct FileTime {
+    dw_low_date_time: u32,
+    dw_high_date_time: u32,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ProcessMemoryCounters {
+    cb: u32,
+    page_fault_count: u32,
+    peak_working_set_size: usize,
+    working_set_size: usize,
+    quota_peak_paged_pool_usage: usize,
+    quota_paged_pool_usage: usize,
+    quota_peak_non_paged_pool_usage: usize,
+    quota_non_paged_pool_usage: usize,
+    pagefile_usage: usize,
+    peak_pagefile_usage: usize,
+}
+
+#[cfg(windows)]
+impl Default for ProcessMemoryCounters {
+    fn default() -> Self {
+        Self {
+            cb: std::mem::size_of::<Self>() as u32,
+            page_fault_count: 0,
+            peak_working_set_size: 0,
+            working_set_size: 0,
+            quota_peak_paged_pool_usage: 0,
+            quota_paged_pool_usage: 0,
+            quota_peak_non_paged_pool_usage: 0,
+            quota_non_paged_pool_usage: 0,
+            pagefile_usage: 0,
+            peak_pagefile_usage: 0,
+        }
+    }
+}
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GetCurrentProcess() -> *mut std::ffi::c_void;
+    fn GetProcessTimes(
+        h_process: *mut std::ffi::c_void,
+        lp_creation_time: *mut FileTime,
+        lp_exit_time: *mut FileTime,
+        lp_kernel_time: *mut FileTime,
+        lp_user_time: *mut FileTime,
+    ) -> i32;
+}
+
+#[cfg(windows)]
+#[link(name = "psapi")]
+unsafe extern "system" {
+    fn GetProcessMemoryInfo(
+        process: *mut std::ffi::c_void,
+        counters: *mut ProcessMemoryCounters,
+        size: u32,
+    ) -> i32;
+}
+
+#[cfg(windows)]
+fn filetime_to_u64(ft: FileTime) -> u64 {
+    (u64::from(ft.dw_high_date_time) << 32) | u64::from(ft.dw_low_date_time)
+}
+
+#[cfg(windows)]
+fn process_cpu_time_100ns() -> Option<u64> {
+    let mut creation = FileTime::default();
+    let mut exit = FileTime::default();
+    let mut kernel = FileTime::default();
+    let mut user = FileTime::default();
+    let ok = unsafe {
+        GetProcessTimes(
+            GetCurrentProcess(),
+            &mut creation,
+            &mut exit,
+            &mut kernel,
+            &mut user,
+        )
+    };
+    (ok != 0).then(|| filetime_to_u64(kernel).saturating_add(filetime_to_u64(user)))
+}
+
+#[cfg(not(windows))]
+fn process_cpu_time_100ns() -> Option<u64> {
+    None
+}
+
+#[cfg(windows)]
+fn process_memory_mb() -> Option<(f32, f32)> {
+    let mut counters = ProcessMemoryCounters::default();
+    let ok = unsafe {
+        GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            &mut counters,
+            std::mem::size_of::<ProcessMemoryCounters>() as u32,
+        )
+    };
+    (ok != 0).then(|| {
+        let mb = 1024.0 * 1024.0;
+        (
+            counters.working_set_size as f32 / mb,
+            counters.pagefile_usage as f32 / mb,
+        )
+    })
+}
+
+#[cfg(not(windows))]
+fn process_memory_mb() -> Option<(f32, f32)> {
+    None
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -169,6 +392,10 @@ pub struct App {
     has_been_focused: bool,
     /// Cached for tests + headless mode : did we ever bring up the GPU?
     pub gpu_alive: bool,
+    /// V3 latency probe from actual winit input-event arrival to next frame.
+    v3_input_probe: V3InputLatencyProbe,
+    /// Process CPU/RAM sampler for V3 benchmark telemetry and MCP load mirror.
+    process_load_sampler: ProcessLoadSampler,
 
     // § MCP server handle (spawned in resumed)
     mcp_handle: Option<JoinHandle<()>>,
@@ -237,8 +464,7 @@ pub struct App {
     /// field is `Some`. Falls back to `render_v3` (headless) when surface
     /// creation fails (driver-level failure-mode kept observable in logs).
     #[cfg(feature = "runtime")]
-    pub render_v3_present:
-        Option<cssl_host_substrate_render_v3::AshSwapchainPresenter>,
+    pub render_v3_present: Option<cssl_host_substrate_render_v3::AshSwapchainPresenter>,
 }
 
 impl Default for App {
@@ -280,6 +506,8 @@ impl App {
             initial_mode: WindowMode::from_env(),
             has_been_focused: false,
             gpu_alive: false,
+            v3_input_probe: V3InputLatencyProbe::default(),
+            process_load_sampler: ProcessLoadSampler::default(),
             substrate: crate::substrate_render::SubstrateRenderState::new(),
             #[cfg(feature = "runtime")]
             render_v2: None,
@@ -312,18 +540,137 @@ impl App {
     /// Sync the PlayerCamera ([f32;3] form) into the RenderCamera (Vec3 form).
     /// Called once per frame after motion is committed.
     fn sync_render_camera(&mut self) {
-        self.render_camera.position = glam::Vec3::new(
-            self.player.pos[0],
-            self.player.pos[1],
-            self.player.pos[2],
-        );
+        self.render_camera.position =
+            glam::Vec3::new(self.player.pos[0], self.player.pos[1], self.player.pos[2]);
         self.render_camera.yaw = self.player.yaw;
         self.render_camera.pitch = self.player.pitch;
     }
 
+    /// § V3-first startup for CSSL-only renderer validation.
+    ///
+    /// `LOA_RENDER_V3=1` must not depend on the legacy wgpu/CFER renderer
+    /// because that path can fail before the proprietary Vulkan renderer gets
+    /// a chance to emit live telemetry. This helper owns V3 initialization
+    /// before any conventional GPU context is constructed.
+    #[cfg(feature = "runtime")]
+    fn try_init_v3_standalone(&mut self, window: &Window, initial_extent: (u32, u32)) -> bool {
+        if !std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1") {
+            log_event(
+                "INFO",
+                "loa-host/render-v3",
+                "LOA_RENDER_V3 not set · ash-direct vulkan path inactive · using V2/conventional",
+            );
+            return false;
+        }
+
+        match cssl_host_substrate_render_v3::SubstrateKernelArtifact::compile_canonical() {
+            Ok(artifact) => {
+                match cssl_host_substrate_render_v3::AshSwapchainPresenter::try_new_with_swapchain(
+                    window,
+                    artifact.clone(),
+                    initial_extent,
+                ) {
+                    Ok(present) => {
+                        let (w, h) = present.extent();
+                        log_event(
+                            "INFO",
+                            "loa-host/render-v3",
+                            &format!(
+                                "ash-direct vulkan-1.3 substrate render-stack ARMED w/ SWAPCHAIN PRESENT · LOA_RENDER_V3=1 · ZERO wgpu/naga/WGSL · compute+present-queue-family={} · swapchain={}x{} · images={} · present-mode={} · pixels-on-screen=YES",
+                                present.queue_family(),
+                                w,
+                                h,
+                                present.image_count(),
+                                present.present_mode_label(),
+                            ),
+                        );
+                        self.render_v3_present = Some(present);
+                    }
+                    Err(e) => {
+                        log_event(
+                            "WARN",
+                            "loa-host/render-v3",
+                            &format!(
+                                "swapchain-present init failed : {e:?} · falling back to headless V3 dispatch"
+                            ),
+                        );
+                        match cssl_host_substrate_render_v3::AshSubstrateRenderer::try_new(artifact)
+                        {
+                            Ok(mut v3) => {
+                                if let Err(e) = v3.build_pipeline() {
+                                    log_event(
+                                        "WARN",
+                                        "loa-host/render-v3",
+                                        &format!(
+                                            "ash-direct vulkan pipeline-build failed : {e:?} · V3 standalone unavailable"
+                                        ),
+                                    );
+                                } else {
+                                    log_event(
+                                        "INFO",
+                                        "loa-host/render-v3",
+                                        &format!(
+                                            "ash-direct vulkan-1.3 HEADLESS render-stack ARMED · pipeline-built={} · pixels-on-screen=NO (swapchain unavailable)",
+                                            v3.pipeline_built(),
+                                        ),
+                                    );
+                                    self.render_v3 = Some(v3);
+                                }
+                            }
+                            Err(e) => {
+                                log_event(
+                                    "WARN",
+                                    "loa-host/render-v3",
+                                    &format!(
+                                        "ash::Entry / vulkan-loader unavailable : {e:?} · V3 standalone unavailable"
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log_event(
+                    "WARN",
+                    "loa-host/render-v3",
+                    &format!(
+                        "csslc → SPIR-V emit for substrate-kernel failed : {e:?} · V3 standalone unavailable"
+                    ),
+                );
+            }
+        }
+
+        self.render_v3_present.is_some() || self.render_v3.is_some()
+    }
+
+    /// § T11-W18-QUICK-QUIT : deterministic frame-count exit for observed
+    /// runtime probes. Uses substrate frame count because all render paths
+    /// tick substrate before dispatch/present.
+    fn check_quick_quit(&self, event_loop: &ActiveEventLoop) {
+        static QUICK_QUIT_FRAMES: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        let threshold = *QUICK_QUIT_FRAMES.get_or_init(|| {
+            std::env::var("LOA_QUICK_QUIT")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0)
+        });
+        if threshold > 0 && self.substrate.frame_count >= threshold {
+            cssl_rt::loa_startup::log_event(
+                "INFO",
+                "loa-host/window",
+                &format!(
+                    "QUICK_QUIT triggered · frame_count={} · threshold={}",
+                    self.substrate.frame_count, threshold
+                ),
+            );
+            event_loop.exit();
+        }
+    }
+
     /// Update the shared `EngineState` mirror with this frame's data so
     /// MCP `engine.state` / `camera.get` tools reflect live values.
-    fn sync_engine_state(&self) {
+    fn sync_engine_state(&mut self) {
         let Ok(mut g) = self.engine_state.lock() else {
             // Poisoned mutex — log + continue. The MCP server's poison-tolerant
             // dispatch will still work once a future call recovers.
@@ -399,7 +746,7 @@ impl App {
             ..crate::camera::Camera::default()
         };
         let _ = &render_cam; // glam Vec3 + camera default fields constructed
-        // Use the existing CompassDistances API which takes a movement::Camera.
+                             // Use the existing CompassDistances API which takes a movement::Camera.
         let mvmt_cam = self.player; // movement::Camera derives Copy
         let compass = self.collider.compass_distances(&mvmt_cam);
         g.compass_distances_m = compass.dist;
@@ -410,17 +757,20 @@ impl App {
             let telem = crate::telemetry::global();
             let buckets = telem.frame_time_histogram();
             let _ = buckets;
+            let process_load = self.process_load_sampler.sample();
             let mut last_frame_ms = 0.0_f32;
             if let Some(r) = self.renderer.as_ref() {
                 last_frame_ms = r.average_frame_time_ms();
             }
             g.engine_load = crate::mcp_server::EngineLoadMirror {
                 sampled_ms: now_ms,
-                cpu_percent: 0.0, // platform-specific probe deferred to stage-1
-                memory_mb: 0.0,
-                gpu_resolve_us: telem.gpu_resolve_us.load(std::sync::atomic::Ordering::Relaxed),
+                cpu_percent: process_load.process_cpu_pct,
+                memory_mb: process_load.working_set_mb,
+                gpu_resolve_us: telem
+                    .gpu_resolve_us
+                    .load(std::sync::atomic::Ordering::Relaxed),
                 tonemap_us: telem.tonemap_us.load(std::sync::atomic::Ordering::Relaxed),
-                draw_calls: 0,    // Stage-0 : last_frame_metrics not yet mirrored ; can be wired in render_frame return path.
+                draw_calls: 0, // Stage-0 : last_frame_metrics not yet mirrored ; can be wired in render_frame return path.
                 vertices: 0,
                 pipeline_switches: 0,
                 last_frame_ms,
@@ -448,9 +798,7 @@ impl App {
             g.cfer.force_step_pending = false;
             (kan_pending, force_step)
         };
-        let (Some(renderer), (kan_pending, _force_step)) =
-            (self.renderer.as_mut(), pending)
-        else {
+        let (Some(renderer), (kan_pending, _force_step)) = (self.renderer.as_mut(), pending) else {
             return;
         };
         // Apply KAN-handle change.
@@ -489,11 +837,7 @@ impl App {
             return;
         };
         for req in drained {
-            let outcome = renderer.sow_spontaneous_intent(
-                &req.text,
-                req.origin,
-                self.frame_count,
-            );
+            let outcome = renderer.sow_spontaneous_intent(&req.text, req.origin, self.frame_count);
             // Telemetry counter + JSONL event.
             let n_seeds = outcome.seeds.len();
             crate::telemetry::global().record_spontaneous_seed(n_seeds as u32);
@@ -510,8 +854,7 @@ impl App {
                 let (s, m) = renderer.spontaneous_totals();
                 g.spontaneous.seeds_total = s;
                 g.spontaneous.manifests_total = m;
-                g.spontaneous.tracked_count =
-                    renderer.spontaneous_detector.tracked_count() as u32;
+                g.spontaneous.tracked_count = renderer.spontaneous_detector.tracked_count() as u32;
             }
         }
     }
@@ -583,12 +926,10 @@ impl App {
     /// snapshot pipeline. The render loop drains EngineState.snapshot_queue
     /// each frame and writes one PNG.
     fn queue_single_screenshot(&mut self) {
-        let path = default_snapshot_dir().join(format!(
-            "snap_{:08}.png",
-            self.frame_count
-        ));
+        let path = default_snapshot_dir().join(format!("snap_{:08}.png", self.frame_count));
         if let Ok(mut g) = self.engine_state.lock() {
-            g.snapshot_queue.push(SnapshotRequest { path: path.clone() });
+            g.snapshot_queue
+                .push(SnapshotRequest { path: path.clone() });
             g.snapshot_count += 1;
         }
         telem::global().record_screenshot_capture();
@@ -687,10 +1028,7 @@ impl App {
         log_event(
             "INFO",
             "loa-host/window",
-            &format!(
-                "F7 · 5-tour suite queued · total {} snapshots",
-                total
-            ),
+            &format!("F7 · 5-tour suite queued · total {} snapshots", total),
         );
     }
 
@@ -750,16 +1088,16 @@ impl App {
                 g.snapshot_count += 1;
                 g.capture.video_frames_captured = self.video.frames_captured;
                 g.capture.video_recording = self.video.recording;
-                g.capture.video_duration_ms = unix_ms_safe()
-                    .saturating_sub(self.video.started_unix_ms);
+                g.capture.video_duration_ms =
+                    unix_ms_safe().saturating_sub(self.video.started_unix_ms);
             }
             telem::global().record_video_frame();
         } else if let Ok(mut g) = self.engine_state.lock() {
             g.capture.video_recording = self.video.recording;
             g.capture.video_frames_captured = self.video.frames_captured;
             if self.video.recording {
-                g.capture.video_duration_ms = unix_ms_safe()
-                    .saturating_sub(self.video.started_unix_ms);
+                g.capture.video_duration_ms =
+                    unix_ms_safe().saturating_sub(self.video.started_unix_ms);
             }
         }
 
@@ -772,6 +1110,7 @@ impl App {
     /// Returns true if the key was consumed by special handlers (F11 toggles
     /// fullscreen, Esc toggles menu) to suppress double-handling.
     fn route_key(&mut self, event_loop: &ActiveEventLoop, key: KeyEvent) {
+        self.v3_input_probe.record_event_now();
         let pressed = key.state == ElementState::Pressed;
         let physical = key.physical_key;
 
@@ -812,8 +1151,7 @@ impl App {
                         // If menu is on a sub-screen (Help), Esc/Tab pops
                         // that screen off rather than closing the menu
                         // entirely. Otherwise toggles open/closed.
-                        if self.menu.open
-                            && self.menu.screen != crate::ui_overlay::MenuScreen::Main
+                        if self.menu.open && self.menu.screen != crate::ui_overlay::MenuScreen::Main
                         {
                             let _ = self.menu.back();
                         } else {
@@ -1055,10 +1393,8 @@ impl App {
             if !rest.is_empty() {
                 if let Ok(mut g) = self.engine_state.lock() {
                     for p in rest {
-                        g.snapshot_queue.insert(
-                            0,
-                            crate::mcp_server::SnapshotRequest { path: p },
-                        );
+                        g.snapshot_queue
+                            .insert(0, crate::mcp_server::SnapshotRequest { path: p });
                     }
                 }
             }
@@ -1165,11 +1501,7 @@ impl App {
                 // Dispatch via the live MCP-tool registry (same path the
                 // MCP `intent.translate` tool uses).
                 let route_result = if let Ok(mut g) = self.engine_state.lock() {
-                    crate::intent_router::route(
-                        body,
-                        crate::mcp_server::SOVEREIGN_CAP,
-                        &mut g,
-                    )
+                    crate::intent_router::route(body, crate::mcp_server::SOVEREIGN_CAP, &mut g)
                 } else {
                     return (
                         crate::mcp_server::ChatRole::System,
@@ -1313,10 +1645,8 @@ impl App {
             None
         };
         let video_status = if self.video.recording {
-            let duration_s = unix_ms_safe()
-                .saturating_sub(self.video.started_unix_ms)
-                as f32
-                / 1000.0;
+            let duration_s =
+                unix_ms_safe().saturating_sub(self.video.started_unix_ms) as f32 / 1000.0;
             Some((self.video.frames_captured, duration_s))
         } else {
             None
@@ -1338,10 +1668,7 @@ impl App {
         // overlay can render the last 3 entries above the chat-hint pill.
         // Roles + texts are cloned ; capacity (CHAT_LOG_CAP=8) keeps this
         // bounded.
-        let chat_log: Vec<(crate::mcp_server::ChatRole, String)> = match self
-            .engine_state
-            .lock()
-        {
+        let chat_log: Vec<(crate::mcp_server::ChatRole, String)> = match self.engine_state.lock() {
             Ok(g) => g
                 .chat_log
                 .iter()
@@ -1492,8 +1819,28 @@ impl ApplicationHandler for App {
             ),
         );
 
-        // § Try to bring up the GPU. On failure we keep the window open + log.
-        if let Some(gpu) = GpuContext::new(window.clone()) {
+        // § V3 is initialized before legacy GPU/CFER so CSSL-only validation
+        //   cannot be blocked by conventional renderer startup failures.
+        let v3_requested = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
+        let initial_extent = (size.width.max(1), size.height.max(1));
+        let v3_standalone_active = self.try_init_v3_standalone(window.as_ref(), initial_extent);
+        if v3_requested {
+            if v3_standalone_active {
+                log_event(
+                    "INFO",
+                    "loa-host/render-v3",
+                    "LOA_RENDER_V3=1 · standalone V3 active · skipping legacy wgpu/CFER startup",
+                );
+                self.gpu_alive = true;
+            } else {
+                log_event(
+                    "ERROR",
+                    "loa-host/render-v3",
+                    "LOA_RENDER_V3=1 · standalone V3 unavailable · legacy wgpu/CFER startup suppressed for clean validation",
+                );
+                self.gpu_alive = false;
+            }
+        } else if let Some(gpu) = GpuContext::new(window.clone()) {
             let renderer = Renderer::new(&gpu);
 
             // § T11-W18-L6 · build the COMPUTE-ONLY substrate render path
@@ -1513,109 +1860,6 @@ impl ApplicationHandler for App {
                 ),
             );
             self.render_v2 = Some(v2);
-
-            // § T11-W18-L7-PRESENT · ASH-DIRECT VULKAN-1.3 substrate-render
-            //   eagerly initialized when `LOA_RENDER_V3=1`. Owns its own
-            //   ash::Instance + ash::Device + VkSurfaceKHR + VkSwapchainKHR
-            //   entirely separate from this GpuContext. The PRIMARY path is
-            //   the swapchain-present `AshSwapchainPresenter` — the kernel
-            //   writes pixels directly to the swapchain image, no
-            //   vkCmdCopyImage hop. If surface/swapchain creation fails
-            //   (driver-level), we fall back to the headless
-            //   `AshSubstrateRenderer` which exercises the same dispatch path
-            //   on a private GPU image — no pixels but the V3 stack still
-            //   validates end-to-end. Final fallback : V2 / conventional.
-            let v3_enabled = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
-            if v3_enabled {
-                match cssl_host_substrate_render_v3::SubstrateKernelArtifact::compile_canonical()
-                {
-                    Ok(artifact) => {
-                        // § Try the swapchain-present path first.
-                        let initial_extent = (surface_w, surface_h);
-                        match cssl_host_substrate_render_v3::AshSwapchainPresenter::try_new_with_swapchain(
-                            window.as_ref(),
-                            artifact.clone(),
-                            initial_extent,
-                        ) {
-                            Ok(present) => {
-                                let (w, h) = present.extent();
-                                log_event(
-                                    "INFO",
-                                    "loa-host/render-v3",
-                                    &format!(
-                                        "ash-direct vulkan-1.3 substrate render-stack ARMED w/ SWAPCHAIN PRESENT · LOA_RENDER_V3=1 · ZERO wgpu/naga/WGSL · compute+present-queue-family={} · swapchain={}x{} · images={} · pixels-on-screen=YES",
-                                        present.queue_family(),
-                                        w,
-                                        h,
-                                        present.image_count(),
-                                    ),
-                                );
-                                self.render_v3_present = Some(present);
-                            }
-                            Err(e) => {
-                                log_event(
-                                    "WARN",
-                                    "loa-host/render-v3",
-                                    &format!(
-                                        "swapchain-present init failed : {e:?} · falling back to headless V3 dispatch"
-                                    ),
-                                );
-                                // § Fallback : headless V3 (the L7-INTEGRATE path) so
-                                //   the V3 dispatch lifeline still gets exercised.
-                                match cssl_host_substrate_render_v3::AshSubstrateRenderer::try_new(
-                                    artifact,
-                                ) {
-                                    Ok(mut v3) => {
-                                        if let Err(e) = v3.build_pipeline() {
-                                            log_event(
-                                                "WARN",
-                                                "loa-host/render-v3",
-                                                &format!(
-                                                    "ash-direct vulkan pipeline-build failed : {e:?} · falling back to V2/conventional"
-                                                ),
-                                            );
-                                        } else {
-                                            log_event(
-                                                "INFO",
-                                                "loa-host/render-v3",
-                                                &format!(
-                                                    "ash-direct vulkan-1.3 HEADLESS render-stack ARMED · pipeline-built={} · pixels-on-screen=NO (swapchain unavailable)",
-                                                    v3.pipeline_built(),
-                                                ),
-                                            );
-                                            self.render_v3 = Some(v3);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        log_event(
-                                            "WARN",
-                                            "loa-host/render-v3",
-                                            &format!(
-                                                "ash::Entry / vulkan-loader unavailable : {e:?} · falling back to V2/conventional"
-                                            ),
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log_event(
-                            "WARN",
-                            "loa-host/render-v3",
-                            &format!(
-                                "csslc → SPIR-V emit for substrate-kernel failed : {e:?} · falling back to V2/conventional"
-                            ),
-                        );
-                    }
-                }
-            } else {
-                log_event(
-                    "INFO",
-                    "loa-host/render-v3",
-                    "LOA_RENDER_V3 not set · ash-direct vulkan path inactive · using V2/conventional",
-                );
-            }
 
             self.gpu = Some(gpu);
             self.renderer = Some(renderer);
@@ -1660,6 +1904,16 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::Resized(size) => {
+                if let Some(present) = self.render_v3_present.as_mut() {
+                    let extent = (size.width.max(1), size.height.max(1));
+                    if let Err(e) = present.recreate_swapchain(extent) {
+                        log_event(
+                            "WARN",
+                            "loa-host/render-v3",
+                            &format!("swapchain resize failed : {e:?}"),
+                        );
+                    }
+                }
                 if let (Some(gpu), Some(renderer)) = (self.gpu.as_mut(), self.renderer.as_mut()) {
                     gpu.resize(size.width, size.height);
                     renderer.resize(gpu);
@@ -1681,7 +1935,9 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::RedrawRequested => {
-                self.run_one_frame(event_loop);
+                if !matches!(self.frame_pace, FramePace::Poll) {
+                    self.run_one_frame(event_loop);
+                }
             }
 
             // Cursor moved : we use DeviceEvent::MouseMotion for FPS-style
@@ -1702,6 +1958,7 @@ impl ApplicationHandler for App {
         // works normally.
         if let DeviceEvent::MouseMotion { delta } = event {
             if self.cursor_currently_grabbed && !self.menu_open {
+                self.v3_input_probe.record_event_now();
                 let (dx, dy) = delta;
                 self.input.handle_event(&RawEvent::MouseMotion {
                     dx: dx as f32,
@@ -1712,10 +1969,18 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // § T11-W18-EVENTLOOP-PACE : keep the redraw-pump primed every loop
-        // iteration regardless of pace mode. With ControlFlow::Poll this
-        // gives a free-running render loop ; with Wait/WaitUntil it still
-        // requests a redraw so the next event delivers RedrawRequested.
+        if matches!(self.frame_pace, FramePace::Poll) {
+            event_loop.set_control_flow(ControlFlow::Poll);
+            if self.window.is_some() {
+                self.run_one_frame(event_loop);
+            }
+            self.check_quick_quit(event_loop);
+            return;
+        }
+
+        // § T11-W18-EVENTLOOP-PACE : Wait/WaitUntil use the OS redraw event.
+        // Poll is driven above as a direct game loop so Windows paint cadence
+        // cannot cap competitive/high-refresh runtime probes.
         if let Some(w) = self.window.as_ref() {
             w.request_redraw();
         }
@@ -1725,28 +1990,7 @@ impl ApplicationHandler for App {
             let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1);
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
         }
-        // § T11-W18-QUICK-QUIT : LOA_QUICK_QUIT=N exits after N frames.
-        //   Useful for smoke-testing the runtime without manual close.
-        //   Read once and cache via static; check current frame count vs
-        //   threshold every event-loop tick. Off when env-var is unset or 0.
-        static QUICK_QUIT_FRAMES: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
-        let threshold = *QUICK_QUIT_FRAMES.get_or_init(|| {
-            std::env::var("LOA_QUICK_QUIT")
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-                .unwrap_or(0)
-        });
-        if threshold > 0 && self.substrate.frame_count >= threshold {
-            cssl_rt::loa_startup::log_event(
-                "INFO",
-                "loa-host/window",
-                &format!(
-                    "QUICK_QUIT triggered · frame_count={} · threshold={}",
-                    self.substrate.frame_count, threshold
-                ),
-            );
-            event_loop.exit();
-        }
+        self.check_quick_quit(event_loop);
     }
 }
 
@@ -1761,6 +2005,11 @@ impl App {
     fn run_one_frame(&mut self, event_loop: &ActiveEventLoop) {
         // § 1. dt (clamped to a sane range to survive debugger pauses).
         let now = Instant::now();
+        let wall_since_prev_us = self
+            .last_frame_at
+            .map(|prev| now.duration_since(prev).as_micros() as u64);
+        let input_latency_frame = self.v3_input_probe.consume_frame_at(now);
+        let v3_enabled = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
         let dt = if let Some(prev) = self.last_frame_at {
             let elapsed = now.duration_since(prev).as_secs_f32();
             // Clamp to [1ms, 100ms] : skips degenerate-long-pause scenarios
@@ -1869,10 +2118,7 @@ impl App {
             // Push the player's line FIRST so the chat-log shows the prompt
             // even if routing rejects it.
             if let Ok(mut g) = self.engine_state.lock() {
-                g.push_chat_response(
-                    crate::mcp_server::ChatRole::Player,
-                    submitted.clone(),
-                );
+                g.push_chat_response(crate::mcp_server::ChatRole::Player, submitted.clone());
             }
             self.route_chat_submission(submitted);
         }
@@ -1909,10 +2155,7 @@ impl App {
                 self.recent_event = format!("inject: {submitted}");
                 // § T11-W8-CHAT-WIRE : MCP inject → same chat-router path.
                 if let Ok(mut g) = self.engine_state.lock() {
-                    g.push_chat_response(
-                        crate::mcp_server::ChatRole::Player,
-                        submitted.clone(),
-                    );
+                    g.push_chat_response(crate::mcp_server::ChatRole::Player, submitted.clone());
                 }
                 self.route_chat_submission(&submitted);
             }
@@ -1928,8 +2171,7 @@ impl App {
         if let Ok(mut g) = self.engine_state.lock() {
             g.text_input.focused = self.input.text_input.focused;
             g.text_input.buffer = self.input.text_input.buffer.clone();
-            g.text_input.history =
-                self.input.text_input.history.iter().cloned().collect();
+            g.text_input.history = self.input.text_input.history.iter().cloned().collect();
             g.text_input.submissions_total = telem::global()
                 .text_input_submissions_total
                 .load(std::sync::atomic::Ordering::Relaxed);
@@ -1953,14 +2195,10 @@ impl App {
                 "loa-host/window",
                 &format!("text-input · ffi-submit · payload={trimmed:?}"),
             );
-            telem::global()
-                .record_text_input_submission(trimmed.chars().count() as u32);
+            telem::global().record_text_input_submission(trimmed.chars().count() as u32);
             self.recent_event = format!("ffi-input: {trimmed}");
             if let Ok(mut g) = self.engine_state.lock() {
-                g.push_chat_response(
-                    crate::mcp_server::ChatRole::Player,
-                    trimmed.to_string(),
-                );
+                g.push_chat_response(crate::mcp_server::ChatRole::Player, trimmed.to_string());
             }
             self.route_chat_submission(trimmed);
         }
@@ -1969,24 +2207,23 @@ impl App {
         // programs can read live state via __cssl_chat_focused / _buffer_read
         // / _history_count / _history_role / _history_read. The mirror is
         // updated once per frame (lock-free reads from the FFI surface).
-        let chat_history_for_ffi: Vec<crate::ffi::ChatPanelEntry> =
-            match self.engine_state.lock() {
-                Ok(g) => g
-                    .chat_log
-                    .iter()
-                    .map(|e| crate::ffi::ChatPanelEntry {
-                        role_id: match e.role {
-                            crate::mcp_server::ChatRole::Player => 0,
-                            crate::mcp_server::ChatRole::Gm => 1,
-                            crate::mcp_server::ChatRole::Dm => 2,
-                            crate::mcp_server::ChatRole::Coder => 3,
-                            crate::mcp_server::ChatRole::System => 4,
-                        },
-                        text: e.text.clone(),
-                    })
-                    .collect(),
-                Err(_) => Vec::new(),
-            };
+        let chat_history_for_ffi: Vec<crate::ffi::ChatPanelEntry> = match self.engine_state.lock() {
+            Ok(g) => g
+                .chat_log
+                .iter()
+                .map(|e| crate::ffi::ChatPanelEntry {
+                    role_id: match e.role {
+                        crate::mcp_server::ChatRole::Player => 0,
+                        crate::mcp_server::ChatRole::Gm => 1,
+                        crate::mcp_server::ChatRole::Dm => 2,
+                        crate::mcp_server::ChatRole::Coder => 3,
+                        crate::mcp_server::ChatRole::System => 4,
+                    },
+                    text: e.text.clone(),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
         crate::ffi::publish_chat_panel(
             self.input.text_input.focused,
             self.input.text_input.buffer.clone(),
@@ -2111,10 +2348,7 @@ impl App {
             let dist_sq = dx * dx + dy * dy + dz * dz;
             // 0.01m² ≈ player won't notice ; below this it's organic motion.
             // Above, the gap is a teleport from MCP.
-            if dist_sq > 0.01
-                || dyaw.abs() > 0.001
-                || dpitch.abs() > 0.001
-            {
+            if dist_sq > 0.01 || dyaw.abs() > 0.001 || dpitch.abs() > 0.001 {
                 self.player.pos = [cam.pos.x, cam.pos.y, cam.pos.z];
                 self.player.yaw = cam.yaw;
                 self.player.pitch = cam.pitch;
@@ -2173,7 +2407,11 @@ impl App {
         // revoke is wired through cap-grants in W18+.
         {
             let cam = &self.render_camera;
-            let yaw_milli = ((cam.yaw * 1000.0) as i64).rem_euclid(1000) as u32;
+            let yaw_milli = if v3_enabled {
+                v3_observer_yaw_milli(cam.yaw)
+            } else {
+                camera_yaw_milli(cam.yaw)
+            };
             let pitch_milli = ((cam.pitch * 1000.0) as i64).rem_euclid(1000) as u32;
             let observer = self.substrate.observer_for(
                 (cam.position.x * 1000.0) as i32,
@@ -2184,7 +2422,11 @@ impl App {
                 self.frame_count,
                 0xFFFF_FFFF,
             );
-            let _frame_out = self.substrate.tick(observer);
+            if v3_enabled {
+                self.substrate.tick_metadata_only(observer);
+            } else {
+                let _frame_out = self.substrate.tick(observer);
+            }
         }
 
         // § 8e. T11-W18-L7-PRESENT · ASH-DIRECT VULKAN-1.3 substrate render-
@@ -2197,27 +2439,97 @@ impl App {
         //   (FALLBACK : swapchain creation errored at startup) we still
         //   exercise the headless dispatch lifeline so the V3 stack validates
         //   end-to-end ; no pixels reach the screen on that fallback.
-        let v3_enabled = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
         if v3_enabled {
             // § Primary : swapchain-present path.
             if let Some(present) = self.render_v3_present.as_mut() {
                 let frame_token = telem::global().frame_begin();
                 // Build observer for v3-present from current camera.
                 let cam = &self.render_camera;
-                let yaw_milli = ((cam.yaw * 1000.0) as i64).rem_euclid(1000) as u32;
+                let yaw_milli = v3_observer_yaw_milli(cam.yaw);
                 let observer = cssl_host_substrate_render_v3::ObserverCoord {
                     world_x: (cam.position.x * 1000.0) as i32,
                     world_y: (cam.position.y * 1000.0) as i32,
                     world_z: (cam.position.z * 1000.0) as i32,
                     yaw_milli,
                 };
-                // § For now we pass an empty crystal slice — the canonical
-                //   substrate-kernel `.csl` body is empty so the binding is
-                //   inert. When the kernel body lands the observer-tick
-                //   self.substrate.crystals goes here directly.
-                let crystals: &[cssl_host_substrate_render_v3::Crystal] = &[];
-                match present.dispatch_with_present(observer, crystals) {
-                    Ok(()) => {
+                // § V3 scene payload : bounded nearest-crystal pack, no heap.
+                //   The CSSL kernel ABI owns this cap through MAX_SCENE_CRYSTALS,
+                //   so live present probes exercise actual substrate scene data
+                //   instead of a synthetic empty slice.
+                let mut present_crystals = [cssl_host_substrate_render_v3::Crystal::default();
+                    cssl_host_substrate_render_v3::MAX_SCENE_CRYSTALS];
+                let present_crystal_count = self.substrate.write_v3_present_crystals_for_observer(
+                    cssl_host_crystallization::WorldPos::new(
+                        observer.world_x,
+                        observer.world_y,
+                        observer.world_z,
+                    ),
+                    &mut present_crystals,
+                );
+                let crystals = &present_crystals[..present_crystal_count];
+                let mixed_bench = v3_mixed_bench_frame(self.frame_count);
+                let process_load = self.process_load_sampler.sample();
+                let capture_limit = v3_present_capture_limit();
+                let capture_requested =
+                    capture_limit > 0 && self.substrate.frame_count <= capture_limit;
+                let dispatch_result = if capture_requested {
+                    let (w, h) = present.extent();
+                    let max_x = w.saturating_sub(1);
+                    let max_y = h.saturating_sub(1);
+                    let samples = [
+                        cssl_host_substrate_render_v3::PresentPixelSample { x: 0, y: 0 },
+                        cssl_host_substrate_render_v3::PresentPixelSample { x: w / 2, y: h / 2 },
+                        cssl_host_substrate_render_v3::PresentPixelSample { x: max_x, y: max_y },
+                        cssl_host_substrate_render_v3::PresentPixelSample { x: w / 4, y: h / 3 },
+                        cssl_host_substrate_render_v3::PresentPixelSample {
+                            x: (w.saturating_mul(3)) / 4,
+                            y: (h.saturating_mul(2)) / 3,
+                        },
+                    ];
+                    let capture_path = std::env::var_os("LOA_V3_PRESENT_CAPTURE_PATH")
+                        .map(std::path::PathBuf::from);
+                    present
+                        .dispatch_with_present_profiled_capture_artifact(
+                            observer,
+                            crystals,
+                            &samples,
+                            capture_path.as_deref(),
+                        )
+                        .map(|(profile, capture)| (profile, Some(capture)))
+                } else {
+                    present
+                        .dispatch_with_present_profiled(observer, crystals)
+                        .map(|profile| (profile, None))
+                };
+                match dispatch_result {
+                    Ok((profile, capture)) => {
+                        if std::env::var("LOA_V3_PRESENT_TELEMETRY").map_or(false, |v| v == "1") {
+                            let frame_gap = wall_since_prev_us
+                                .map(|us| us.to_string())
+                                .unwrap_or_else(|| "unavailable".to_string());
+                            let mixed_fields = mixed_bench
+                                .map(V3MixedBenchSample::telemetry_fields)
+                                .unwrap_or_default();
+                            let input_fields = input_latency_frame
+                                .map(V3InputLatencyFrame::telemetry_fields)
+                                .unwrap_or_default();
+                            println!(
+                                "{} wall_since_prev_us={} frame_pace={} cpu_substrate_tick=false observer_yaw_milli={} stress_room={} world_crystals={} active_crystals={}{}{}{}",
+                                profile.telemetry_line(),
+                                frame_gap,
+                                self.frame_pace.label(),
+                                yaw_milli,
+                                self.substrate.stress_room_key(),
+                                self.substrate.world_crystal_count(),
+                                present_crystal_count,
+                                mixed_fields,
+                                input_fields,
+                                process_load.telemetry_fields(),
+                            );
+                        }
+                        if let Some(capture) = capture {
+                            println!("{}", capture.telemetry_line());
+                        }
                         telem::global().frame_end(frame_token, 1, 0);
                     }
                     Err(e) => {
@@ -2272,7 +2584,7 @@ impl App {
                     Ok(surface_tex) => {
                         // Build observer for v2 from current camera.
                         let cam = &self.render_camera;
-                        let yaw_milli = ((cam.yaw * 1000.0) as i64).rem_euclid(1000) as u32;
+                        let yaw_milli = camera_yaw_milli(cam.yaw);
                         let pitch_milli = ((cam.pitch * 1000.0) as i64).rem_euclid(1000) as u32;
                         let observer = self.substrate.observer_for(
                             (cam.position.x * 1000.0) as i32,
@@ -2289,7 +2601,9 @@ impl App {
                         if sw != vw || sh != vh {
                             // Recreate v2 with new dims.
                             *v2 = cssl_host_substrate_render_v2::RendererV2::new_dims(
-                                &gpu.device, sw, sh,
+                                &gpu.device,
+                                sw,
+                                sh,
                             );
                         }
                         v2.tick(
@@ -2306,7 +2620,11 @@ impl App {
                         telem::global().frame_end(frame_token, 0, 0);
                     }
                     Err(e) => {
-                        log_event("ERROR", "loa-host/render-v2", &format!("surface error : {e:?}"));
+                        log_event(
+                            "ERROR",
+                            "loa-host/render-v2",
+                            &format!("surface error : {e:?}"),
+                        );
                         telem::global().frame_end(frame_token, 0, 0);
                     }
                 }
@@ -2326,8 +2644,7 @@ impl App {
         ) {
             match renderer.render_frame(gpu, &self.render_camera, window, &hud, &self.menu) {
                 Ok(metrics) => {
-                    telem::global()
-                        .frame_end(frame_token, metrics.draw_calls, metrics.vertices);
+                    telem::global().frame_end(frame_token, metrics.draw_calls, metrics.vertices);
                 }
                 Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                     // Surface stale ; record the frame as "happened" (zero
@@ -2336,11 +2653,7 @@ impl App {
                     telem::global().frame_end(frame_token, 0, 0);
                 }
                 Err(wgpu::SurfaceError::OutOfMemory) => {
-                    log_event(
-                        "ERROR",
-                        "loa-host/render",
-                        "surface OOM · exiting cleanly",
-                    );
+                    log_event("ERROR", "loa-host/render", "surface OOM · exiting cleanly");
                     telem::global().frame_end(frame_token, 0, 0);
                     event_loop.exit();
                 }
@@ -2375,11 +2688,7 @@ impl App {
     }
 
     fn log_dm_event(&self, ev: &DmEvent) {
-        log_event(
-            "INFO",
-            "loa-host/dm",
-            &format!("event-proposed · {ev:?}"),
-        );
+        log_event("INFO", "loa-host/dm", &format!("event-proposed · {ev:?}"));
     }
 }
 
@@ -2403,14 +2712,12 @@ fn unix_ms_safe() -> u64 {
 /// by largest pixel area. Returns `None` if the monitor reports no modes
 /// (some virtual displays / RDP sessions).
 fn pick_highest_hz_video_mode(monitor: &MonitorHandle) -> Option<VideoModeHandle> {
-    monitor
-        .video_modes()
-        .max_by_key(|m| {
-            // Tuple sort : refresh rate first (mHz), area as tiebreaker, then
-            // bit depth as final tiebreaker. All u32 — winit guarantees these.
-            let area = u64::from(m.size().width) * u64::from(m.size().height);
-            (m.refresh_rate_millihertz(), area, u32::from(m.bit_depth()))
-        })
+    monitor.video_modes().max_by_key(|m| {
+        // Tuple sort : refresh rate first (mHz), area as tiebreaker, then
+        // bit depth as final tiebreaker. All u32 — winit guarantees these.
+        let area = u64::from(m.size().width) * u64::from(m.size().height);
+        (m.refresh_rate_millihertz(), area, u32::from(m.bit_depth()))
+    })
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -2468,6 +2775,108 @@ impl FramePace {
             Self::Wait => "Wait(legacy-60Hz)",
             Self::WaitUntil => "WaitUntil(1ms-budget)",
         }
+    }
+}
+
+fn v3_present_capture_limit() -> u64 {
+    match std::env::var("LOA_V3_PRESENT_CAPTURE") {
+        Ok(v) if v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("on") => 1,
+        Ok(v) => v.parse::<u64>().unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
+fn camera_yaw_milli(camera_yaw: f32) -> u32 {
+    ((camera_yaw * 1000.0) as i64).rem_euclid(1000) as u32
+}
+
+fn v3_observer_yaw_milli(camera_yaw: f32) -> u32 {
+    std::env::var("LOA_V3_OBSERVER_YAW_MILLI")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .map(|yaw| yaw.rem_euclid(1000) as u32)
+        .unwrap_or_else(|| camera_yaw_milli(camera_yaw))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct V3MixedBenchSample {
+    mixed_sim_tick_us: u64,
+    synthetic_input_sample_us: u64,
+    synthetic_input_jitter_us: u64,
+    synthetic_actions: u32,
+    mixed_sim_checksum: u64,
+}
+
+impl V3MixedBenchSample {
+    fn telemetry_fields(self) -> String {
+        format!(
+            " mixed_sim_tick_us={} synthetic_input_sample_us={} synthetic_input_jitter_us={} synthetic_actions={} mixed_sim_checksum={}",
+            self.mixed_sim_tick_us,
+            self.synthetic_input_sample_us,
+            self.synthetic_input_jitter_us,
+            self.synthetic_actions,
+            self.mixed_sim_checksum,
+        )
+    }
+}
+
+fn v3_mixed_bench_enabled() -> bool {
+    std::env::var("LOA_V3_MIXED_BENCH").map_or(false, |v| {
+        v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("on")
+    })
+}
+
+fn v3_mixed_bench_frame(frame_count: u64) -> Option<V3MixedBenchSample> {
+    v3_mixed_bench_enabled().then(|| v3_mixed_bench_frame_inner(frame_count))
+}
+
+fn v3_mixed_bench_frame_inner(frame_count: u64) -> V3MixedBenchSample {
+    let input_start = Instant::now();
+    let mut action_mask = 0_u32;
+    let mut input_hash = frame_count ^ 0xA17C_9E37_4D21_6B5F;
+    for lane in 0..32_u32 {
+        input_hash = input_hash
+            .rotate_left(7)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(u64::from(lane) * 0x1000_0001);
+        if (input_hash & 0x7) <= 1 {
+            action_mask |= 1_u32 << lane;
+        }
+    }
+    let synthetic_input_sample_us = input_start.elapsed().as_micros() as u64;
+
+    let sim_start = Instant::now();
+    let mut checksum = frame_count ^ 0xC551_0A5E_D15C_1A55;
+    for entity in 0..1024_u64 {
+        let mut state = checksum
+            .wrapping_add(entity.wrapping_mul(0x9E37_79B9))
+            .rotate_left((entity & 31) as u32);
+        for step in 0..8_u64 {
+            let intent = (u64::from(action_mask) << (step as u32 & 15)) ^ input_hash;
+            state = state
+                .wrapping_mul(1_664_525)
+                .wrapping_add(1_013_904_223)
+                .wrapping_add(intent)
+                .rotate_left(((step + entity) & 31) as u32);
+            let lane_energy = (state >> 24) & 0x3FF;
+            checksum ^= lane_energy
+                .wrapping_mul(entity + 1)
+                .rotate_left((step & 31) as u32);
+        }
+    }
+    let mixed_sim_checksum = std::hint::black_box(checksum);
+    let mixed_sim_tick_us = sim_start.elapsed().as_micros() as u64;
+    let synthetic_input_jitter_us = frame_count
+        .wrapping_mul(17)
+        .wrapping_add(u64::from(action_mask.count_ones()))
+        % 97;
+
+    V3MixedBenchSample {
+        mixed_sim_tick_us,
+        synthetic_input_sample_us,
+        synthetic_input_jitter_us,
+        synthetic_actions: action_mask.count_ones(),
+        mixed_sim_checksum,
     }
 }
 
@@ -2589,13 +2998,51 @@ mod tests {
 
     #[test]
     fn sync_engine_state_writes_camera_pos() {
-        let app = App::new();
+        let mut app = App::new();
         // Default app at (0, 1.55, 0) ; sync should copy.
         app.sync_engine_state();
         let g = app.engine_state.lock().unwrap();
         assert!((g.camera.pos.x - 0.0).abs() < 1e-6);
         assert!((g.camera.pos.y - 1.55).abs() < 1e-6);
         assert!((g.camera.pos.z - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn v3_mixed_bench_sample_is_parseable_and_load_bearing() {
+        let a = v3_mixed_bench_frame_inner(7);
+        let b = v3_mixed_bench_frame_inner(8);
+        assert!(a.synthetic_actions <= 32);
+        assert!(a.telemetry_fields().contains("mixed_sim_tick_us="));
+        assert!(a.telemetry_fields().contains("synthetic_input_sample_us="));
+        assert!(a.telemetry_fields().contains("mixed_sim_checksum="));
+        assert_ne!(
+            a.mixed_sim_checksum, b.mixed_sim_checksum,
+            "frame-count must change synthetic mixed-load checksum"
+        );
+    }
+
+    #[test]
+    fn v3_input_latency_probe_reports_real_event_gap() {
+        let start = Instant::now();
+        let mut probe = V3InputLatencyProbe::default();
+        probe.record_event_at(start);
+        let first = probe
+            .consume_frame_at(start + Duration::from_micros(1500))
+            .expect("input event should produce one latency frame");
+        assert_eq!(first.raw_input_events, 1);
+        assert_eq!(first.raw_input_latency_us, 1500);
+        assert_eq!(first.input_jitter_us, 0);
+        probe.record_event_at(start + Duration::from_micros(4000));
+        probe.record_event_at(start + Duration::from_micros(4500));
+        let second = probe
+            .consume_frame_at(start + Duration::from_micros(5500))
+            .expect("coalesced events should produce next latency frame");
+        assert_eq!(second.raw_input_events, 2);
+        assert_eq!(second.raw_input_latency_us, 1000);
+        assert_eq!(second.input_jitter_us, 500);
+        assert!(probe
+            .consume_frame_at(start + Duration::from_micros(6000))
+            .is_none());
     }
 
     #[test]

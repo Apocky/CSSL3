@@ -15,7 +15,7 @@
 //! § ATTESTATION ¬ harm — wrapper is a re-export shim ; no new state.
 
 pub use cssl_host_replay::{
-    ReplayEvent, ReplayEventKind, Recorder, RecorderStats, Replayer, MAX_BUFFER_BYTES,
+    Recorder, RecorderStats, ReplayEvent, ReplayEventKind, Replayer, MAX_BUFFER_BYTES,
 };
 
 /// Convenience : append a single typed event to an open [`Recorder`].

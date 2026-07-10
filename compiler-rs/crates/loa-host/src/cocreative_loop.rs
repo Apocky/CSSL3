@@ -158,7 +158,10 @@ impl CocreativeCap {
     /// Is the basic Granted-or-better state ?
     #[must_use]
     pub fn is_granted(self) -> bool {
-        matches!(self, CocreativeCap::Granted | CocreativeCap::GrantedWithDrain)
+        matches!(
+            self,
+            CocreativeCap::Granted | CocreativeCap::GrantedWithDrain
+        )
     }
 
     /// Does this cap permit session-log drain ?
@@ -465,14 +468,7 @@ impl CocreativeSession {
             return None;
         }
         let score = p.gm_score.unwrap_or(0);
-        let hash = sigma_attestation_hash(
-            player_seed,
-            id,
-            p.kind,
-            &p.payload,
-            score,
-            p.revisions,
-        );
+        let hash = sigma_attestation_hash(player_seed, id, p.kind, &p.payload, score, p.revisions);
         p.attestation_hash = hash.clone();
         p.state = ProposalState::DraftReady;
         p.last_frame = frame;

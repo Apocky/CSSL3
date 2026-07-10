@@ -16,7 +16,8 @@
 //! § ATTESTATION ¬ harm — wrapper is a re-export shim ; pure aggregator.
 
 pub use cssl_host_attestation::{
-    aggregate, attestation::{AttestationVerdict, HarmFlag, HarmSeverity, SessionAttestation},
+    aggregate,
+    attestation::{AttestationVerdict, HarmFlag, HarmSeverity, SessionAttestation},
     axis::{classify_event, DirectiveAxis},
     report::{render_attestation_block, render_csl_native, render_json_pretty, render_text},
     AttestationStore,

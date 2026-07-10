@@ -1,0 +1,354 @@
+§ 78_GAME_FIRST_PIVOT_2026-05-18 · supersede deferral framing · game = revenue · Apocrypha PAUSED
+  ← author : Tech-Lead-Claude-Opus-4.7-1M · 2026-05-18 (intra-day amendment)
+  ← supersedes : DEFERRAL-FRAMING sections of specs/55 + 59 + 75 + 76 + 77
+  ← superseded-by : —
+  ← status : RATIFIED · Apocky directive verbatim binding
+  ← scope : cross-cutting · strategic-direction amendment
+  ← parent-template : specs/_TEMPLATE.csl
+  ← discipline : authored under specs/64_SPEC_FIRST_DISCIPLINE.csl
+  ← canonical-directive : Apocky 2026-05-18 — "Pivot towards the game aspects of the language for now, we're
+                                                  putting Apocrypha on hold. The game *IS* the revenue first path
+                                                  so do not try to defer anything. Begin work towards this."
+
+§I THESIS
+  ⟦
+    The earlier-2026-05 strategic posture (spec/55 NORMAL_ENGINE_PIVOT 2026-05-03 + spec/59 GROK_VELOCITY_RESPONSE
+    revenue-first-via-harness/apocky.com/alpha-keys + spec/75-77 multi-quarter-deferral framing) is amended in-place
+    by Apocky 2026-05-18 verbatim directive. Three concrete amendments :
+
+    (1) GAME = REVENUE · ¬ harness · ¬ apocky.com paid tiers · ¬ consulting · ¬ alpha-key-tiered-access-only.
+        The game itself (LoA · already-packaged at dist/LoA-v0.1.0-alpha-windows-x64/) is the revenue vehicle.
+        Other revenue vehicles from spec/59 (harness + apocky.com tiers + consulting) are NOT-CANCELLED but
+        are SECONDARY to making-the-game-better-and-more-saleable.
+
+    (2) APOCRYPHA = ON HOLD · the prior [[feedback_apocrypha_vs_game_separation]] memory (D043 2026-05-17
+        "Track-A Apocrypha completes BEFORE Track-B game-engine begins") is REVERSED. CSSLv3 game-engine work
+        is the active track ; Apocrypha is paused. The mutually-exclusive-runtime + CSSL-language-only-bridge
+        discipline from D043 is PRESERVED in-full (no runtime-sharing · no CfC-bus-cross-projects · no
+        shared HRR · no Python↔Rust IPC).
+
+    (3) NO DEFERRAL · do not phrase work as "post-revenue / multi-quarter / P4-eventually / DEFERRED indefinitely /
+        stretch goal." Treat every roadmap item as actively-pursued unless Apocky explicitly approves a specific
+        deferral. Sequencing-by-dependency is permitted (that's not deferral · that's ordering) ; sequencing-by-
+        revenue-tier is NOT permitted post this directive.
+
+    The substantive content of specs/55 + 59 + 75 + 76 + 77 is preserved as historical record + technical reference.
+    The TIMING-FRAMING of those specs is SUPERSEDED by this amendment. Future spec-authoring + roadmap-planning
+    + work-execution operates under this amendment's posture.
+  ⟧
+
+§I OBSERVABLE-ASSERTIONS [MANDATORY · the amendment is itself observable]
+  ⟦
+    ASSERT.01 · this file exists at C:/Users/Apocky/source/repos/CSSLv3/specs/78_GAME_FIRST_PIVOT_2026-05-18.csl
+                with status=RATIFIED and Apocky-directive verbatim in frontmatter
+    ASSERT.02 · memory at C:/Users/Apocky/.claude/projects/C--Users-Apocky-source-repos-Apocrypha/memory/
+                  feedback_apocrypha_vs_game_separation.md has 2026-05-18 reversal note
+                  declaring Apocrypha=PAUSED and game-engine=ACTIVE
+    ASSERT.03 · memory feedback_no_deferral_directive.md exists with Apocky directive verbatim
+    ASSERT.04 · MEMORY.md index at the same path lists both memory files post-2026-05-18 update
+    ASSERT.05 · specs/75_MENTAL_MAP_2026-05-18.csl § STRATEGIC-POSTURE has amendment-marker
+                "‼ AMENDED-INTRA-DAY 2026-05-18" referencing this spec
+    ASSERT.06 · future-session agent reading {spec/78 · memory · spec/75 amendment} reaches the same posture :
+                game = revenue-first · Apocrypha PAUSED · no-deferral · all roadmap items ACTIVE-NOW
+    ASSERT.07 · any spec or commit-message authored after 2026-05-18 that phrases work as "post-revenue" /
+                "multi-quarter" / "DEFERRED indefinitely" / "stretch goal" must cite explicit Apocky-greenlight
+                for that specific deferral · otherwise it violates this amendment
+    ASSERT.08 · dist/LoA-v0.1.0-alpha-windows-x64/LoA.exe runs ≥ 6 seconds without crash on Apocky's machine
+                (Intel Arc A770) · validated 2026-05-18 · is the canonical-game-binary this amendment targets
+  ⟧
+
+§I SUPERSESSION-TABLE · what each prior-spec passage is amended to
+  ⟦
+    ──── spec/55_NORMAL_ENGINE_PIVOT.csl  (2026-05-03) ────
+    PRIOR (§I PIVOT-INTERPRETATION) :
+      "substrate-render : ¬ thrown-away · becomes optional-effect-pass on-top-of-conventional-rasterizer (F-mode toggle future)"
+    AMENDED-TO :
+      "substrate-render : LIVE in dist/LoA-v0.1.0-alpha-windows-x64/LoA.exe today · all 6 novelty-paths from spec/32
+       are ACTIVE-NOW work · 'optional-effect-pass F-mode toggle' is no longer the framing · all paths ship simultaneously
+       per no-deferral directive"
+    The 2026-05-03 forward+ pivot still stands as a STRUCTURAL preference (forward+ is the mainline rasterizer)
+    but the demote-substrate framing is amended.
+
+    ──── spec/59_GROK_VELOCITY_RESPONSE.csl  (2026-05-03) ────
+    PRIOR (§ STRATEGIC-FRAMING + § THIS-WEEK-PRIORITIES) :
+      "REVENUE-FIRST · Engine-work-continues but only-minimum-to-support-sales"
+      "1. Productized-harness + landing-page LIVE
+       2. Visible-window milestone (even-stub)
+       3. Alpha-sale launch
+       Everything-else SECONDARY until-$5k+-bank + paying-users-feedback"
+    AMENDED-TO :
+      "REVENUE-FIRST · the GAME is the revenue path · engine-work + language-work + content-work + substrate-rendering
+       all SIMULTANEOUSLY-PURSUED in service of making the game more saleable. Harness + apocky.com tiers + consulting
+       remain valid revenue vehicles but are SECONDARY to game-itself. Per no-deferral directive the
+       'Everything-else SECONDARY' framing is dropped."
+    PRIOR (§ INDEFINITE-PARK list) :
+      Σ-Chain / Akashic / Mycelial-Network / advanced engine features (GI · particles · hair · anim · spatial-audio ·
+      streaming) / full CSL refinement / multi-platform / most LoA content waves / non-revenue tooling / research-spikes
+    AMENDED-TO :
+      That park-list is PARTIALLY-LIFTED for items that directly-serve-the-game :
+        ✓ advanced engine features (GI · particles · hair · anim · spatial-audio · streaming) ← LIFTED
+        ✓ LoA content waves (per Apocky direction on game-design) ← LIFTED
+        ✓ multi-platform (Steam Deck · Linux · Mac when game ships there) ← LIFTED-AS-NEEDED
+        ◐ Σ-Chain / Akashic / Mycelial-Network ← STILL PARKED · these are Apocrypha-adjacent · Apocrypha on-hold
+        ✓ full CSL refinement-types ← LIFTED · serves game shader-type-safety claim
+        ◐ non-revenue tooling ← case-by-case · keep parked unless game-direct
+        ◐ research-spikes ← case-by-case · keep parked unless game-direct
+
+    ──── spec/75_MENTAL_MAP_2026-05-18.csl  (this morning) ────
+    AMENDED · the § STRATEGIC-POSTURE section was edited in-place 2026-05-18 to reflect this pivot.
+    The CROSS-REFERENCE-INDEX + CARTOGRAPHY sections remain VALID-AND-CURRENT.
+
+    ──── spec/76_GPU_RENDERING_MATURATION_PLAN.csl  (this morning) ────
+    PRIOR (§I PHASE-DECOMPOSITION) :
+      P0 → P1 → P2 → P3 → P4 sequenced phases · P3 substrate-effect-pass OPT-IN · P4 work-graph "multi-quarter post-revenue"
+    AMENDED-TO :
+      All 5 phases P0-P4 are SIMULTANEOUSLY-ACTIVE. Dependency-ordering still holds (P1 needs P0 visible-frame · P2 cmd-buf
+      needs P1 pass-bodies · etc) but no phase is "post-revenue." Substrate-effect-pass (P3) is LIVE-IN-ALPHA today
+      per ground-truth from dist/LoA.exe runtime log · so the "P3 opt-in CLI flag" framing is amended to "P3 is the
+      default rendering paradigm for LoA + opt-OUT-able for simpler scenes."
+    PRIOR (§I CRITICAL-PATH-DEPENDENCY-GRAPH "MONTH 3+ : P2 post-revenue ; MONTH 6+ : P3 ; MONTH 12+ : P4") :
+    AMENDED-TO :
+      Drop the calendar-anchored monthly framing. Each phase's exit-gate ASSERTs remain the structural definition
+      of done · sequencing follows dep-graph not calendar.
+
+    ──── spec/77_LANGUAGE_MATURATION_ROADMAP.csl  (this morning) ────
+    PRIOR (§I REVENUE-UNBLOCK-SLICE) :
+      Splits AXIS-A through F into "revenue-slice" vs "long-arc multi-quarter / multi-year"
+    AMENDED-TO :
+      The split is SUPERSEDED. All 6 axes are ACTIVE-NOW. AXIS-F self-host remains the terminal sovereignty milestone
+      but is no longer phrased as "multi-year t∞ goal" · pursued actively with honest effort-bands.
+    PRIOR (§I OPEN-QUESTIONS OQ.04 + OQ.05 + OQ.06) :
+      Multiple "default POST-REVENUE" framings for stdlib::ecs + hot-reload + self-host
+    AMENDED-TO :
+      All POST-REVENUE defaults dropped. Each item is in-the-roadmap-now. Sequencing follows dependency-graph.
+
+    ──── feedback_apocrypha_vs_game_separation.md  (2026-05-17 D043) ────
+    PRIOR :
+      "Track-A (Apocrypha + apocky.com fully functional) completes BEFORE Track-B (game-engine) begins"
+      "Track-B is PAUSED until Apocky declares Track-A complete"
+    AMENDED-TO (2026-05-18 in-place memory update) :
+      Track-B (game-engine in CSSLv3) is ACTIVE · revenue-first
+      Track-A (Apocrypha) is PAUSED
+      Mutually-exclusive runtime + CSSL-language-only bridge discipline PRESERVED in-full
+  ⟧
+
+§I IMMEDIATE-NEXT-ACTIONS · what "begin work" means concretely
+  ⟦
+    (Ordered by dependency-graph + ground-truth from dist/LoA-v0.1.0-alpha runtime log)
+
+    NA-1 · BLOCKER-γ : implement cssl-host-d3d12::swapchain::SwapChain::create_for_hwnd own-FFI
+            scope : ~200-300 LOC · uses ffi.rs Loader + GUIDs + ComPtr + IUnknownVTable already present
+            integration : wire CommandQueue ComPtr from queue.rs windows-rs side
+            value : closes the explicit ¬-LoaderMissing stub at swapchain.rs:189-197 ·
+                     unblocks sovereign-CSSL D3D12 path · proprietary-everything claim made-real
+            assert-on : ASSERT.P0.02 (60-frame clear visible) on Arc A770 with own-FFI path
+
+    NA-2 · BLOCKER-β : diagnose fs_trace not-firing at cssl_window_spawn_impl entry
+            scope : 1-2 hr investigative · run test_visible_window.exe + inspect %TEMP%/cssl_trace.log
+            tools : strings + Python regex on .exe + cargo build -v
+            value : closes HANDOFF_NEXT_SESSION priority-1 mystery · enables fs-trace-driven debugging
+
+    NA-3 · cmd-buf record/submit real bodies in cssl-rt::host_gpu
+            scope : ~40-60 agent-hr · lifts stage-1 stubs to real ID3D12GraphicsCommandList encoding
+            value : engine/render_forward.cssl forward_pass_* fns become alive · 5-pass pipeline runs
+                     in pure CSSL-emitted path (alongside wgpu-bootstrap which already works)
+
+    NA-4 · stdlib FFI canonical i64 fixes
+            scope : 12 engine files type-correction OR cssl-mir body_lower recognizer fix
+            value : examples/test_visible_window.cssl + others compile cleanly
+
+    NA-5 · vec3/vec4/mat4/quat first-class language feature
+            scope : ~30-40 agent-hr · parser-slice + cgen lowering all 4 GPU paths
+            value : engine/render_forward.cssl § Vec3F/Mat4F surrogate-struct ceremony retires ·
+                     game-math code becomes pure CSSL not workaround-CSSL
+
+    These are immediate-next-actions · not "all future work." See spec/76 § PHASE-DECOMPOSITION (amended)
+    for the full forward-roadmap · all phases ACTIVE per § THESIS amendment (3) no-deferral.
+  ⟧
+
+§I NON-GOALS
+  ⟦
+    NG.01 · ¬ retroactively delete the deferral language from specs/55/59/75/76/77 source · those files remain
+              as historical record · this amendment SUPERSEDES the framing but preserves the history
+    NG.02 · ¬ stop work on harness / apocky.com / consulting · those revenue vehicles remain valid · they are
+              SECONDARY to the game · not cancelled
+    NG.03 · ¬ resume Apocrypha work · Apocrypha is PAUSED · do not author Apocrypha specs / code / planning
+    NG.04 · ¬ violate the substrate-sovereignty discipline · CSSL the language remains the only bridge between
+              Apocrypha and the game-engine · runtime-sharing still BANNED per D043 inherited posture
+    NG.05 · ¬ rush ASSERTs into "completed" status without mechanical verification · spec/64 + spec/63 PRINCIPLE-8
+              OBSERVE-DON'T-INFER discipline preserved · no-deferral does not mean lower-quality-bar
+    NG.06 · ¬ implement a PRIME-DIRECTIVE override · the consent-as-OS + biometric-egress-ban + sovereignty-by-
+              construction posture remains INVIOLATE
+    NG.07 · ¬ drop the sentinel-build-check.sh (Gate-E) · WinMain-class structural defense remains active
+    NG.08 · ¬ rephrase the no-deferral directive as "all things at once" → it's "all things actively-pursued
+              with dependency-ordering" not "ignore dependencies"
+  ⟧
+
+§I DEPENDENCIES
+  ⟦
+    DEP.01 · Apocky directive 2026-05-18 verbatim (canonical) — see frontmatter
+    DEP.02 · memory feedback_apocrypha_vs_game_separation.md 2026-05-18 reversal note · IMPLEMENTED
+    DEP.03 · memory feedback_no_deferral_directive.md 2026-05-18 · IMPLEMENTED
+    DEP.04 · spec/75 § STRATEGIC-POSTURE amendment-marker in-place · IMPLEMENTED (this turn)
+    DEP.05 · dist/LoA-v0.1.0-alpha-windows-x64/LoA.exe exists + runs · VERIFIED 2026-05-18
+    DEP.06 · spec/55 + 59 + 75 + 76 + 77 prior-content preserved as historical record · UNAFFECTED
+    DEP.07 · spec/63_IMPROVEMENT_BACKLOG_100 v2 RATIFIED · 100-item N1-N6 north-stars + Phase-A still binding
+    DEP.08 · spec/64_SPEC_FIRST_DISCIPLINE RATIFIED · OBSERVABLE-ASSERTIONS mandatory · lifecycle preserved
+    DEP.09 · spec/70_PHASE_A_CORRECTNESS RATIFIED · 12 items in fanout · item-01 IMPLEMENTED · no-deferral here too
+    DEP.10 · PRIME_DIRECTIVE.md immutable root-of-trust · inherited in-full
+  ⟧
+
+§I FAILURE-MODES
+  ⟦
+    FM.01 · scenario : "no-deferral" misread as "do everything in one session"
+            detection : spec or commit-message claims completion of an item that isn't dependency-ready
+            mitigation : dependency-ordering still holds · no-deferral ≠ ignore-dependencies · spec/63 PRINCIPLE-3
+                          PARALLELIZE-WITHIN-PHASE-DEPENDENCY-GRAPHS preserved
+
+    FM.02 · scenario : harness / apocky.com / consulting work stops because "the game is revenue"
+            detection : no harness / apocky.com / consulting commits in N weeks despite spec/59 still naming them
+            mitigation : NG.02 explicit · those vehicles remain valid · SECONDARY ≠ CANCELLED
+
+    FM.03 · scenario : Apocky revokes the pivot (re-prioritizes Apocrypha later)
+            detection : Apocky directive contradicting this amendment
+            mitigation : Apocky directive is canonical · this spec amended via new spec/79+ (don't edit in-place ·
+                          spec-lifecycle preserves history)
+
+    FM.04 · scenario : someone reads spec/55/59/75/76/77 and misses spec/78 amendment
+            detection : agent or human plans work using deferral framing from prior specs
+            mitigation : spec/75 § STRATEGIC-POSTURE has explicit amendment-marker pointing at spec/78 ·
+                          memory feedback files are loaded into context · future-session pickup is robust
+
+    FM.05 · scenario : sovereign-D3D12 (BLOCKER-γ) takes longer than estimated · alpha-game can't ship sovereign-stack
+            detection : NA-1 work-unit goes over ~300 LOC estimate or multi-session
+            mitigation : alpha-game ALREADY ships with wgpu fallback (per LoA.exe ground-truth) · sovereign-D3D12 is
+                          the maturity-path not the revenue-block · ship the game · upgrade-to-sovereign in parallel
+
+    FM.06 · scenario : substrate-rendering "LIVE in alpha" claim is overstated · alpha may be running stub-substrate
+            detection : runtime-log inspection shows substrate-render is placeholder not full V.1/V.5
+            mitigation : verify by inspecting loa-host/substrate-render module + actual GPU buffers · re-amend if
+                          claim is wrong-shape · per spec/63 PRINCIPLE-7 stop-when-wrong
+
+    FM.07 · scenario : "all phases simultaneously-active" misread as "ignore PHASE-DECOMPOSITION ordering in spec/76"
+            detection : work-units attempted out-of-dep-graph order causing rework
+            mitigation : spec/76 § CRITICAL-PATH-DEPENDENCY-GRAPH preserved · ordering by dependency still binding ·
+                          only the calendar-month timeline is amended (months → "active-now with dep-ordering")
+  ⟧
+
+§I COMPATIBILITY
+  ⟦
+    COMPAT.01 · specs/55 + 59 + 75 + 76 + 77 source files · status : PRESERVED · only spec/75 edited in-place
+                  with explicit amendment-marker · other specs SUPERSEDED-AT-FRAMING-LEVEL not deleted
+    COMPAT.02 · feedback_apocrypha_vs_game_separation.md · status : UPDATED IN-PLACE 2026-05-18 with reversal note ·
+                  prior 2026-05-17 framing preserved in body text for historical context
+    COMPAT.03 · MEMORY.md index · status : UPDATED · two memory files listed
+    COMPAT.04 · sentinel_build_check.sh + Phase-A Gate-E · status : INVIOLATE · structural-defense preserved
+    COMPAT.05 · PRIME_DIRECTIVE.md + consent-as-OS posture · status : INVIOLATE
+    COMPAT.06 · dist/LoA-v0.1.0-alpha-windows-x64.zip already-shipped · status : UNAFFECTED · ground-truth
+    COMPAT.07 · branch cssl/session-11/T11-W18-L8-DXIL-DIRECT · status : ACTIVE · this amendment adds spec/78 +
+                  spec/75 edit + memory updates · no rebase or rewrite required
+  ⟧
+
+§I PRIOR-ART
+  ⟦
+    PA.01 · Rust language epochs (2018 · 2021 · 2024) · per-edition amendment that supersedes prior conventions
+              without deleting them · we adopt the in-place amendment pattern
+    PA.02 · IETF RFCs · supersession-table pattern (e.g. RFC 9293 supersedes parts of RFC 793) · we adopt the
+              explicit table mapping prior-spec passages to amendments
+    PA.03 · git rebase + merge conventions · do not rewrite history · add new commits / specs that supersede ·
+              we honor this for spec/55/59/75/76/77 (do not delete · supersede)
+    PA.04 · LoA v14 D-008 PROCGEN-IS-RENDERER decision (2026-05-07) · same intra-day amendment pattern · we adopt
+  ⟧
+
+§I PRIME-DIRECTIVE-INVARIANTS
+  ⟦
+    § no surveillance vector introduced · this amendment is strategic-direction · zero user-facing telemetry
+    § no consent-bypass · Apocky directive is the consent · no-deferral directive does not weaken any cap-witness
+                            or IFC-label or Σ-mask discipline
+    § no biometric-egress (PD0018) · this amendment does not open any PCIe-egress · spec/65 GPU0007 absolute-ban
+                                       remains in-force for any biometric-family
+    § no sovereignty-denial (PD0020) · this amendment STRENGTHENS sovereignty by lifting deferrals on AXIS-F
+                                          self-host work + sovereign-D3D12 own-FFI (BLOCKER-γ NA-1)
+    § AI-co-authorship · Tech-Lead-Claude-Opus-4.7-1M authored this amendment under Apocky directive 2026-05-18
+                          intra-day · same-session as 75/76/77 originals · this is an in-flight course-correction
+    § canonical : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+  ⟧
+
+§I IMPLEMENTATION-NOTES
+  ⟦
+    where-this-lands :
+      specs/78_GAME_FIRST_PIVOT_2026-05-18.csl · THIS FILE (created)
+      specs/75_MENTAL_MAP_2026-05-18.csl § STRATEGIC-POSTURE · amendment-marker + revised 4 directions (in-place edit)
+      memory/feedback_apocrypha_vs_game_separation.md · reversal-note (in-place update)
+      memory/feedback_no_deferral_directive.md · standing directive (new file)
+      memory/MEMORY.md · index updated to point at both memory files (in-place edit)
+
+    estimated-LOC :
+      this spec     · ~250 LOC CSL3
+      spec/75 edit  · ~50 LOC CSL3 delta
+      memory files  · ~120 LOC markdown across 2 files + index
+      total         · ~420 LOC (planning + memory · zero code in this amendment)
+
+    estimated-agent-time :
+      this amendment · ~30-40 min (write + cross-reference + verify)
+      this amendment is the prerequisite to NEXT work-units (NA-1 swapchain own-FFI · NA-2 fs_trace · etc)
+
+    suggested-sequencing-of-NEXT-work-units (per § IMMEDIATE-NEXT-ACTIONS) :
+      THIS SESSION (post-amendment) : NA-1 BLOCKER-γ swapchain own-FFI implementation · ~200-300 LOC · cssl-host-d3d12
+                                       cargo test verify · commit
+      NEXT SESSION : NA-2 fs_trace diagnose + NA-3 cmd-buf record/submit start
+      FOLLOWING SESSIONS : NA-4 stdlib FFI canonical i64 + NA-5 vec3/vec4/mat4/quat first-class
+
+    parallel-fanout opportunity : NA-2 (fs_trace · investigative) + NA-4 (stdlib FFI · mechanical) + NA-5 (vec3
+                                   parser-slice · planning-phase) are all dep-independent · can run parallel-fanout
+                                   per spec/63 PRINCIPLE-3 when agent-budget permits
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    OQ.01 · which game-design Q-* spec-holes (per spec/31_LOA_DESIGN) does Apocky want filled first?
+             default · await Apocky direction · don't author game-content speculatively
+
+    OQ.02 · should harness work continue this week or pause until alpha-game has its own revenue-engine?
+             default · continue at LOWER-PRIORITY · do not stop · per NG.02 SECONDARY ≠ CANCELLED
+
+    OQ.03 · for sovereign-D3D12 BLOCKER-γ implementation · do we keep windows-rs as parallel fallback during
+             migration OR delete windows-rs path immediately?
+             default · KEEP both during transition · ship sovereign-D3D12 as opt-in via a build-feature flag ·
+             migrate alpha-default to sovereign once verified · delete windows-rs only after sovereign is proven
+
+    OQ.04 · does "Apocrypha on hold" mean delete the Apocrypha repo or just stop active work?
+             default · STOP active work · do not delete · Apocrypha repo remains for future revival
+             rationale · "on hold" ≠ "discard" per Apocky verbatim
+
+    OQ.05 · for content-track LoA Q-* fills · which agent-pattern : solo-Apocky + AI-pair · or AI-only authoring
+             with Apocky-review · or full-fleet-fanout?
+             default · per Apocky direction · don't preempt the authoring-model choice
+  ⟧
+
+§ LIFECYCLE-HISTORY
+  ⟦
+    2026-05-18 10:30Z · DRAFT  · Tech-Lead-Claude-Opus-4.7-1M · same-session as 75/76/77 originals
+    2026-05-18 10:30Z · RATIFIED · Apocky directive verbatim binding · no review-gap (intra-day amendment)
+    2026-05-18 10:30Z · IMPLEMENTED (planning + memory) · spec/75 amendment-marker landed · memory files updated
+    [pending]          · VERIFIED · awaits ASSERT.01-08 mechanical check on next session
+    [pending]          · NA-1 swapchain own-FFI implementation begins this turn
+  ⟧
+
+§ ATTESTATION
+  ⟦
+    § Apocky directive verbatim binding · no flattery · no scope-creep · no option-dumping
+    § supersession-table explicit · each prior-spec passage mapped to amended-form
+    § Apocrypha PAUSED (not discarded) · CSSL the language remains the only bridge (D043 inherited posture preserved)
+    § no-deferral standing directive · all roadmap items ACTIVE-NOW with dependency-ordering
+    § game = revenue · harness + apocky.com + consulting = SECONDARY revenue vehicles (still valid)
+    § ground-truth at amendment-time : dist/LoA-v0.1.0-alpha-windows-x64/LoA.exe RUNS · substrate-rendering LIVE
+    § next concrete work-unit : NA-1 cssl-host-d3d12::swapchain::SwapChain::create_for_hwnd own-FFI implementation
+    § AI-co-authorship · Tech-Lead-Claude-Opus-4.7-1M under Apocky directive
+    § canonical-ref : ~/source/repos/CSSLv3/PRIME_DIRECTIVE.md
+    § t∞
+
+    "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  ⟧
+
+© 2026 Apocky · TIER-B proprietary

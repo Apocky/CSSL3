@@ -54,7 +54,11 @@ impl SpirvBinary {
     /// New empty binary targeting SPIR-V 1.5.
     #[must_use]
     pub fn new() -> Self {
-        Self { version: SPIRV_VERSION_1_5, words: Vec::new(), max_id: 0 }
+        Self {
+            version: SPIRV_VERSION_1_5,
+            words: Vec::new(),
+            max_id: 0,
+        }
     }
 
     /// Allocate + return a fresh result-id (1-based per Khronos § 2.2).

@@ -1,0 +1,93 @@
+⟨spec⟩ UPG_10_SYNTHESIS_LANDSCAPE · 2023–2026 ambitious language landscape
+⟨ctx⟩ specs/Upgrade/ · Part IV/2 · synthesis & vision (1 of 2)
+⟨covers⟩ §41 — what the field is signaling
+
+──────────────────────────────────────────────────────────────────────
+# Part IV — Synthesis, Vision, and the Cartesian Product
+
+## §41. The 2023–2026 ambitious-language landscape: what the field is signaling
+
+A summary of where credible ambition lives in 2024–2026, with the
+load-bearing primitives surfaced:
+
+- **Unison** (Chiusano, Bjarnason; production, 2024 stable release) —
+  *content-addressed code* as the foundation. The codebase manager is
+  the new "filesystem." Distributed programming where a function can
+  be shipped to a remote node by hash. The economic question (cloud
+  compute via Unison Cloud) is separable from the language idea.
+- **Roc** (Brendlinger; in development) — Haskell-derived; *platforms*
+  abstract away effects, so the same Roc program runs against
+  different effect platforms. The Roc platform model is structurally
+  similar to capability passing.
+- **Mojo** (Modular; Chris Lattner) — *MLIR-based* (sovereignty
+  violation per your constraints); CUDA-portable kernels in a Python-
+  syntactic language; the Sept 2025 SC workshop paper
+  (arXiv:2509.21039) demonstrates HIP-comparable performance on
+  MI300A. The relevance: Mojo demonstrates that *one source language
+  with a multi-dialect IR* can hit AMD and NVIDIA. SIGIL needs to do
+  this with a *sovereign* IR.
+- **Carbon** (Google; Chandler Carruth) — C++ successor; *not* aiming
+  for novelty; relevant only as evidence that "C++ has to die" is now
+  mainstream.
+- **Hazel** (Omar, Hammer, Aldrich) — typed-hole projectional editor
+  with live semantics. The most rigorous projectional-editing
+  research.
+- **Lean 4** (de Moura, Ullrich; mathlib4) — self-hosted; full
+  metaprogramming; the most ambitious dependently-typed language
+  with a real programming-language identity (Lean 4 is now a serious
+  systems-programming option, not just a prover).
+- **Koka** (Leijen, Microsoft Research) — effect handlers with row
+  types; selective CPS compilation; the cleanest design point.
+- **Bend / HVM2** (Taelin, Higher Order Co; 2024 paper) — massively
+  parallel by construction; *interaction combinators* as the
+  runtime; near-ideal parallel scaling on GPU.
+- **Pile** — research; probabilistic-by-default, less mature.
+- **Vale** (Evan Ovadia) — generational references; alternative to
+  Rust's borrow checking; capability-secure variants in development.
+- **Bosque** (Marron, Microsoft Research) — *regularized* programming
+  language; eliminates "accidental complexity" sources (no loops, no
+  reference equality, no aliasing).
+- **Inko** (Yorick Peterse) — concurrency-first; gradual typing;
+  capability-based isolation between actors.
+- **Verse** (Sweeney, Peyton Jones; Epic Games) — *functional logic
+  language*; existential variables; expressions yield multiple
+  values; rewrite-rule semantics; intended as the metaverse
+  substrate. The aspiration: "Strongly typed language that builds
+  upon multiple language families: imperative, object-oriented,
+  functional, logic." Open spec, open-source compiler, with
+  backward-compatibility guarantees over decades. The most
+  institutionally-resourced ambitious language project. The Verse
+  paper "The Verse Calculus" by Augustsson, Breitner, Claessen,
+  Jhala, Peyton-Jones, Sjöberg (2023 arXiv) is the formal
+  description.
+- **Lobster** — research language with linear types + flow-based
+  memory.
+- **Granule** (Orchard, Eades) — graded modal types as the unifying
+  mechanism.
+- **Effekt** (Brachthäuser et al.) — capability-passing style effects.
+- **Austral** (Borretti) — linear + capability + total-by-default;
+  the cleanest "Rust + ocap" point in the design space.
+
+**What the field is signaling**, in aggregate:
+
+1. **Effects > monads** — handlers are winning over monad
+   transformers (Koka, OCaml 5, Frank, Unison, Effekt).
+2. **Content addressing is the new file** — Unison is small but the
+   idea is contagious.
+3. **AD must be language-level, not library-level** — the JAX/Enzyme/
+   Diffractor pattern.
+4. **Linearity is mainstream** — Rust opened the gates; Linear
+   Haskell, Idris 2 QTT, Granule, Austral, Vale, Pony all converge.
+5. **GPU/accelerator portability is a first-class concern** — Mojo,
+   Bend, Triton, Pallas. The MLIR-or-something approach is
+   necessary; the question is what *something* a sovereign language
+   uses.
+6. **Capabilities are the security story** — WASI Preview 2 is the
+   inflection point; the WebAssembly Component Model is essentially
+   ocap.
+7. **Choreographies and tier-less programming are quietly
+   maturing** — Pirouette, HasChor, Choral. Not mainstream yet but
+   the formal foundations are now solid.
+8. **The dependent-types story is finally practical** — Lean 4 +
+   mathlib's success demonstrates this. F\*, Liquid Haskell, Dafny
+   show SMT-backed refinement at scale.

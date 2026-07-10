@@ -90,10 +90,15 @@ fn h2_test_2_swapchain_create_mock_full_lifecycle() {
         d3d12_get_debug_interface: Some(1),
         d3d12_serialize_root_signature: Some(1),
     };
+    // Dummy non-null queue pointer · validation rejects null-HWND BEFORE
+    // touching the queue · per W-H2 (T11-D259) post-NA-1 create_for_hwnd
+    // signature change (queue: *mut c_void was added 2026-05-18).
+    let dummy_queue: *mut core::ffi::c_void = 1 as *mut core::ffi::c_void;
     let err = SwapChain::create_for_hwnd(
         &synth_loader,
         Hwnd::null(),
         SwapChainConfig::default_1080p(),
+        dummy_queue,
     )
     .unwrap_err();
     assert!(matches!(err, D3d12Error::InvalidArgument { .. }));

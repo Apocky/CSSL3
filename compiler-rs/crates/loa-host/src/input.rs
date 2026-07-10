@@ -107,7 +107,7 @@ pub enum RenderMode {
     Depth = 3,
     Albedo = 4,
     Lighting = 5,
-    Compass = 6, // visualize 8-ray proprioception
+    Compass = 6,   // visualize 8-ray proprioception
     Substrate = 7, // ω-field visualization
     SpectralKan = 8,
     Debug = 9,
@@ -790,11 +790,7 @@ impl InputState {
             VirtualKey::F12 => {
                 if pressed {
                     self.screenshot_requested = true;
-                    log_event(
-                        "INFO",
-                        "loa-host/input",
-                        "F12 · screenshot-request fired",
-                    );
+                    log_event("INFO", "loa-host/input", "F12 · screenshot-request fired");
                 }
             }
             VirtualKey::C => {
@@ -1282,7 +1278,10 @@ mod tests {
         assert!(!s.sprint);
         // Even if the renderer/host pushes mouse-motion, the InputState
         // refuses to accumulate it while focused.
-        s.handle_event(&RawEvent::MouseMotion { dx: 50.0, dy: -25.0 });
+        s.handle_event(&RawEvent::MouseMotion {
+            dx: 50.0,
+            dy: -25.0,
+        });
         assert_eq!(s.yaw_delta, 0.0);
         assert_eq!(s.pitch_delta, 0.0);
     }
@@ -1409,10 +1408,7 @@ mod tests {
         for _ in 0..300u32 {
             s.handle_event(&RawEvent::TypeChar { c: 'x' });
         }
-        assert_eq!(
-            s.text_input.buffer.chars().count(),
-            TEXT_INPUT_MAX_BUFFER
-        );
+        assert_eq!(s.text_input.buffer.chars().count(), TEXT_INPUT_MAX_BUFFER);
         assert_eq!(s.text_input.cursor, TEXT_INPUT_MAX_BUFFER);
     }
 

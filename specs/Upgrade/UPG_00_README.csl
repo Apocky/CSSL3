@@ -1,0 +1,64 @@
+⟨spec⟩ UPG_00_README · upgrade research arc · 2026-05-14
+⟨ctx⟩ specs/Upgrade/ — frontier map for CSSLv3/SIGIL at the asymptote
+⟨authority⟩ Apocky · §RZ (PM/Tech-Lead) · research synthesis
+⟨constraints⟩ sovereignty=axiomatic · no_LLVM/MLIR/Slang_permanent · PRIME_DIRECTIVE=load-bearing · horizon=t∞
+
+──────────────────────────────────────────────────────────────────────
+# CSSLv3 / SIGIL Upgrade Arc — Manifest
+
+The Upgrade arc is the **frontier map**, not a roadmap. It catalogs the
+research-cited design space for CSSLv3 at the asymptote, under the
+constraint set: full sovereignty in the limit (no permanent LLVM /
+MLIR / Slang dependencies), the PRIME DIRECTIVE as a positive design
+constraint (consent-as-OS, capability-secure, AI-as-sovereign-partner,
+no surveillance/coercion/manipulation features), solo developer plus
+AI fleet, unbounded time horizon.
+
+The thesis is structural: **the frontier is not in any single
+dimension but in the orthogonalities that have never been combined.**
+Almost every individual component below has a paper or research demo
+behind it. The unbuilt region is the cartesian product, executed.
+
+# File layout
+
+| File | Scope |
+|------|-------|
+| UPG_00_README.csl | this manifest |
+| UPG_01_OVERVIEW.csl | opening framing, thesis, structural conclusion |
+| UPG_02_HW_BACKEND.csl | §1 below-LLVM backends · §2 GPU work graphs / persistent kernels |
+| UPG_03_HW_ACCELERATORS.csl | §3 AI accelerator primitives · §4 RT cores as general tree-walkers |
+| UPG_04_HW_MEMORY_AND_HDL.csl | §5 memory tiering / CXL / PIM · §6 PMU as values · §7 custom ISAs / HDL · §8 neuromorphic / photonic · §9 quantum hybrid · §10 HW/SW co-design |
+| UPG_05_REPR_PROJECTION.csl | §11 projectional editing · §12 content addressing · §13 multi-presentation source |
+| UPG_06_REPR_HYPERGRAPH.csl | §14 hypergraph / categorical · §15 CA-as-substrate · §16 topological / GA · §17 AI-native source · §18 self-modifying canonical forms |
+| UPG_07_CM_PROBABILISTIC_AD.csl | §19 probabilistic-by-default · §20 differentiable-everywhere · §21 time-reversible · §22 quantum-superposition values |
+| UPG_08_CM_LOGIC_TYPES.csl | §23 lattice/fuzzy/paraconsistent · §24 algebraic effects · §25 continuations · §26 linear/graded modal types · §27 causal/provenance · §28 refinement/dependent · §29 totality |
+| UPG_09_CM_DISTRIBUTED.csl | §30 choreographic · §31 logic / Datalog · §32 dataflow · §33 concatenative · §34 array · §35 distributed-first / CALM · §36 capability-based · §37 process calculi · §38 incremental · §39 bidirectional · §40 synthesis-by-example |
+| UPG_10_SYNTHESIS_LANDSCAPE.csl | §41 2023–2026 ambitious-language landscape |
+| UPG_11_SYNTHESIS_CARTESIAN.csl | §42 the intersection · §43 decade-scale compounding · §44 genuinely unbuilt |
+| UPG_12_APPENDIX.csl | engineering notes · sovereignty path · honest bottom line |
+
+# Reading discipline
+
+- Each file is standalone-readable but cross-references neighbors by `§N`.
+- Speculation is flagged inline (`speculative`, `extrapolation`).
+- Citations are primary-source where possible (papers, ISA specs,
+  language manuals). Where a section names a research project, the
+  citation is the project's canonical paper or docs.
+- The bibliography is distributed — citations live where they're used.
+
+# Status
+
+- Initial drop: 2026-05-14 (frontier map)
+- Not implementation specs — these are **landscape documents** that
+  feed forward into implementation specs (which will live under
+  `specs/Upgrade/impl/` once design choices are made).
+- Decision-making against this map is deferred until at least one
+  PM/Tech-Lead review pass and AI-fleet review.
+
+# PRIME DIRECTIVE binding
+
+Every section that discusses surveillance-adjacent, coercion-adjacent,
+or manipulation-adjacent capabilities must surface the capability gate
+(§36) and the consent grade (§23, §26) that mechanically prevents
+abuse. This is not editorial caution — it's the operative discipline
+that keeps the design honest.

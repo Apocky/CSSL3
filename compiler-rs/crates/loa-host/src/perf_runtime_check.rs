@@ -193,7 +193,9 @@ mod tests {
         r.record_frame_ms(20.0);
         let events = r.drain_events();
         // Should contain at least one FrameVerdict (over-budget).
-        assert!(events.iter().any(|e| matches!(e, PerfEvent::FrameVerdict { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, PerfEvent::FrameVerdict { .. })));
     }
 
     #[test]

@@ -474,23 +474,30 @@ pub fn validate_spawn_flags(flags: u32) -> bool {
     true
 }
 
-/// Read a UTF-8 title slice from `(ptr, len)` returning the validated
-/// `String` or `None` on bad-UTF-8 / null-with-nonzero-len / empty-title.
+/// Read a UTF-8 title slice from `(ptr, len)`.
+///
+/// Returns `Ok(None)` for the source-level zero-length fallback title,
+/// `Ok(Some(title))` for a valid non-empty UTF-8 title, and `Err(())` for
+/// null-with-nonzero-len or bad UTF-8.
 ///
 /// # Safety
 /// `ptr` must be valid for `len` bytes if `len > 0` ; reads only the
 /// region `[ptr, ptr+len)`.
-unsafe fn read_title(title_ptr: *const u8, title_len: usize) -> Option<String> {
+unsafe fn read_title(title_ptr: *const u8, title_len: usize) -> Result<Option<String>, ()> {
     if title_len == 0 {
-        return None;
+        return Ok(None);
     }
     if title_ptr.is_null() {
-        return None;
+        return Err(());
     }
     // SAFETY : caller's contract per the FFI doc-block guarantees
     // `title_ptr` is valid for `title_len` bytes when `title_len > 0`.
     let bytes = unsafe { core::slice::from_raw_parts(title_ptr, title_len) };
-    core::str::from_utf8(bytes).ok().map(str::to_owned)
+    let title = core::str::from_utf8(bytes).map_err(|_| ())?;
+    if title.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(title.to_owned()))
 }
 
 /// Implementation : spawn a new window.
@@ -560,8 +567,16 @@ pub unsafe fn cssl_window_spawn_impl(
     //   PRIME-DIRECTIVE no-surveillance posture is preserved.
     // SAFETY : caller's contract on (title_ptr, title_len).
     let title = match unsafe { read_title(title_ptr, title_len) } {
-        Some(t) if !t.is_empty() => t,
-        _ => "CSSL-Window".to_string(),
+        Ok(Some(t)) => t,
+        Ok(None) => "CSSL-Window".to_string(),
+        Err(()) => {
+            fs_trace("spawn_impl REJECT bad-title");
+            scope.error(
+                serde_json::json!({"handle": 0u64}),
+                Some("bad-title"),
+            );
+            return INVALID_WINDOW_HANDLE;
+        }
     };
 
     // Issue handle. Counter starts at 1 ; never re-issues 0. The Relaxed
@@ -1373,9 +1388,17 @@ mod tests {
     }
 
     #[test]
-    fn spawn_rejects_empty_title() {
+    fn spawn_uses_default_title_for_zero_len() {
         let _g = lock_and_reset();
         let handle = unsafe { cssl_window_spawn_impl(core::ptr::null(), 0, 800, 600, 0) };
+        assert_ne!(handle, INVALID_WINDOW_HANDLE);
+        assert_eq!(spawn_count(), 1);
+    }
+
+    #[test]
+    fn spawn_rejects_null_title_with_nonzero_len() {
+        let _g = lock_and_reset();
+        let handle = unsafe { cssl_window_spawn_impl(core::ptr::null(), 1, 800, 600, 0) };
         assert_eq!(handle, INVALID_WINDOW_HANDLE);
     }
 

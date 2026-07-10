@@ -187,12 +187,7 @@ pub fn tool_registry() -> ToolRegistry {
         true,
         engine_shutdown
     );
-    reg!(
-        "engine.pause",
-        "Toggle pause flag.",
-        true,
-        engine_pause
-    );
+    reg!("engine.pause", "Toggle pause flag.", true, engine_pause);
     reg!(
         "camera.set",
         "Teleport camera (params: x · y · z · yaw · pitch).",
@@ -211,12 +206,7 @@ pub fn tool_registry() -> ToolRegistry {
         true,
         render_set_mode
     );
-    reg!(
-        "dm.intensity",
-        "Set DM intensity 0..3.",
-        true,
-        dm_intensity
-    );
+    reg!("dm.intensity", "Set DM intensity 0..3.", true, dm_intensity);
     reg!(
         "dm.event.propose",
         "Trigger a DM event (params: kind · pos).",
@@ -502,7 +492,6 @@ pub fn tool_registry() -> ToolRegistry {
         true,
         text_input_inject
     );
-
 
     // ─ T11-LOA-SENSORY : full MCP sensory + proprioception harness ─
     // 9 axes · 25 sense.* tools · all read-only · all no-cap
@@ -1458,11 +1447,8 @@ fn render_set_wall_pattern(state: &mut EngineState, params: Value) -> Value {
 fn render_set_floor_pattern(state: &mut EngineState, params: Value) -> Value {
     let quadrant_id = p_u32(&params, "quadrant_id", 0);
     let pattern_id = p_u32(&params, "pattern_id", 0);
-    let rc = crate::ffi::__cssl_render_set_floor_pattern(
-        quadrant_id,
-        pattern_id,
-        0xCAFE_BABE_DEAD_BEEF,
-    );
+    let rc =
+        crate::ffi::__cssl_render_set_floor_pattern(quadrant_id, pattern_id, 0xCAFE_BABE_DEAD_BEEF);
     state.push_event(
         "INFO",
         "loa-host/mcp",
@@ -1593,11 +1579,7 @@ fn world_spawn_gltf(state: &mut EngineState, params: Value) -> Value {
             })
         }
         Err(e) => {
-            state.push_event(
-                "ERROR",
-                "loa-host/mcp",
-                &format!("world.spawn_gltf · {e}"),
-            );
+            state.push_event("ERROR", "loa-host/mcp", &format!("world.spawn_gltf · {e}"));
             json!({
                 "ok": false,
                 "error": e,
@@ -1652,7 +1634,11 @@ fn telemetry_histogram(_state: &mut EngineState, _params: Value) -> Value {
     let mut buckets = Vec::with_capacity(crate::telemetry::BUCKET_COUNT);
     for (i, c) in counts.iter().enumerate() {
         let lo = if i == 0 { 0.0 } else { bounds[i - 1] };
-        let hi = if i < bounds.len() { bounds[i] } else { f32::INFINITY };
+        let hi = if i < bounds.len() {
+            bounds[i]
+        } else {
+            f32::INFINITY
+        };
         let hi_str = if hi.is_finite() {
             json!(hi)
         } else {
@@ -1677,8 +1663,8 @@ fn telemetry_gpu_info(_state: &mut EngineState, _params: Value) -> Value {
     if raw == "null" {
         json!({"info": null, "captured": false})
     } else {
-        let parsed: Value =
-            serde_json::from_str(&raw).unwrap_or_else(|_| json!({"error": "gpu_info parse failed"}));
+        let parsed: Value = serde_json::from_str(&raw)
+            .unwrap_or_else(|_| json!({"error": "gpu_info parse failed"}));
         json!({"info": parsed, "captured": true})
     }
 }
@@ -1687,8 +1673,8 @@ fn telemetry_tail_events(_state: &mut EngineState, params: Value) -> Value {
     let limit = p_u32(&params, "limit", 32) as usize;
     let s = crate::telemetry::global();
     let raw = s.tail_events_json(limit);
-    let arr: Value =
-        serde_json::from_str(&raw).unwrap_or_else(|_| json!([{"error": "tail_events parse failed"}]));
+    let arr: Value = serde_json::from_str(&raw)
+        .unwrap_or_else(|_| json!([{"error": "tail_events parse failed"}]));
     json!({
         "events": arr,
         "limit": limit,
@@ -2084,7 +2070,11 @@ fn room_teleport(state: &mut EngineState, params: Value) -> Value {
         "loa-host/mcp",
         &format!(
             "room.teleport · {} → {} ({:.2},{:.2},{:.2})",
-            room_id, room.name(), spawn[0], spawn[1], spawn[2]
+            room_id,
+            room.name(),
+            spawn[0],
+            spawn[1],
+            spawn[2]
         ),
     );
     json!({
@@ -2156,9 +2146,7 @@ fn render_set_polarization_view(state: &mut EngineState, params: Value) -> Value
     state.push_event(
         "INFO",
         "loa-host/mcp",
-        &format!(
-            "render.set_polarization_view · {prior} → {mode} ({mode_name})"
-        ),
+        &format!("render.set_polarization_view · {prior} → {mode} ({mode_name})"),
     );
     json!({
         "ok": true,
@@ -2224,10 +2212,8 @@ fn render_set_illuminant(state: &mut EngineState, params: Value) -> Value {
     );
     // Pre-bake one sample for the response so the operator sees the change
     // without waiting on the renderer.
-    let sample = crate::spectral_bridge::bake_material_color(
-        crate::material::MAT_VERMILLION_LACQUER,
-        illum,
-    );
+    let sample =
+        crate::spectral_bridge::bake_material_color(crate::material::MAT_VERMILLION_LACQUER, illum);
     json!({
         "ok": true,
         "illuminant": illum.name(),
@@ -2317,7 +2303,11 @@ fn telemetry_spectral(state: &mut EngineState, _params: Value) -> Value {
     let count = crate::spectral_bridge::SPECTRAL_BAKE_COUNT.load(Ordering::Relaxed);
     let total_us = crate::spectral_bridge::SPECTRAL_BAKE_US.load(Ordering::Relaxed);
     let changes = crate::spectral_bridge::SPECTRAL_ILLUMINANT_CHANGES.load(Ordering::Relaxed);
-    let avg_us = if changes > 0 { total_us / changes.max(1) } else { 0 };
+    let avg_us = if changes > 0 {
+        total_us / changes.max(1)
+    } else {
+        0
+    };
     json!({
         "spectral_bake_count": count,
         "spectral_bake_us_total": total_us,
@@ -2345,11 +2335,8 @@ fn room_teleport_zone(state: &mut EngineState, params: Value) -> Value {
     // Atomic update : camera + illuminant in one transaction.
     let prior_pos = state.camera.pos;
     let prior_illum = state.illuminant;
-    state.camera.pos = crate::mcp_server::Vec3::new(
-        zone.spawn_xyz[0],
-        zone.spawn_xyz[1],
-        zone.spawn_xyz[2],
-    );
+    state.camera.pos =
+        crate::mcp_server::Vec3::new(zone.spawn_xyz[0], zone.spawn_xyz[1], zone.spawn_xyz[2]);
     if prior_illum != zone.illuminant {
         state.illuminant = zone.illuminant;
         state.illuminant_gen = state.illuminant_gen.saturating_add(1);
@@ -2358,7 +2345,10 @@ fn room_teleport_zone(state: &mut EngineState, params: Value) -> Value {
     }
     // Also notify the FFI control-plane (Room::ColorRoom = 4) so renderer
     // can react if needed.
-    let rc = crate::ffi::__cssl_room_teleport(crate::room::Room::ColorRoom as u32, 0xCAFE_BABE_DEAD_BEEF);
+    let rc = crate::ffi::__cssl_room_teleport(
+        crate::room::Room::ColorRoom as u32,
+        0xCAFE_BABE_DEAD_BEEF,
+    );
     state.push_event(
         "INFO",
         "loa-host/mcp",
@@ -2398,9 +2388,9 @@ fn morton_encode_u32(x: u32, y: u32, z: u32) -> u64 {
         let mut x = u64::from(v) & 0x_001f_ffff;
         x = (x | (x << 32)) & 0x_001f_0000_0000_ffff;
         x = (x | (x << 16)) & 0x_001f_0000_ff00_00ff;
-        x = (x | (x << 8))  & 0x_100f_00f0_0f00_f00f;
-        x = (x | (x << 4))  & 0x_10c3_0c30_c30c_30c3;
-        x = (x | (x << 2))  & 0x_1249_2492_4924_9249;
+        x = (x | (x << 8)) & 0x_100f_00f0_0f00_f00f;
+        x = (x | (x << 4)) & 0x_10c3_0c30_c30c_30c3;
+        x = (x | (x << 2)) & 0x_1249_2492_4924_9249;
         x
     }
     split3_21(x) | (split3_21(y) << 1) | (split3_21(z) << 2)
@@ -2564,11 +2554,7 @@ fn render_start_burst(state: &mut EngineState, params: Value) -> Value {
 fn render_start_video(state: &mut EngineState, params: Value) -> Value {
     let _frame_stride = p_u32(&params, "frame_stride", 1).max(1);
     state.capture.video_start_pending = true;
-    state.push_event(
-        "INFO",
-        "loa-host/mcp",
-        "render.start_video · queued",
-    );
+    state.push_event("INFO", "loa-host/mcp", "render.start_video · queued");
     json!({
         "ok": true,
         "video_id_will_be": state.capture.video_id,
@@ -2578,11 +2564,7 @@ fn render_start_video(state: &mut EngineState, params: Value) -> Value {
 /// `render.stop_video` : sovereign-gated · stops video record.
 fn render_stop_video(state: &mut EngineState, _params: Value) -> Value {
     state.capture.video_stop_pending = true;
-    state.push_event(
-        "INFO",
-        "loa-host/mcp",
-        "render.stop_video · queued",
-    );
+    state.push_event("INFO", "loa-host/mcp", "render.stop_video · queued");
     json!({
         "ok": true,
         "video_id": state.capture.video_id,
@@ -2808,9 +2790,15 @@ fn world_spontaneous_seed(state: &mut EngineState, params: Value) -> Value {
     let position = params.get("position");
     let (ox, oy, oz) = if let Some(p) = position {
         (
-            p.get("x").and_then(Value::as_f64).map_or(default_x, |x| x as f32),
-            p.get("y").and_then(Value::as_f64).map_or(default_y, |y| y as f32),
-            p.get("z").and_then(Value::as_f64).map_or(default_z, |z| z as f32),
+            p.get("x")
+                .and_then(Value::as_f64)
+                .map_or(default_x, |x| x as f32),
+            p.get("y")
+                .and_then(Value::as_f64)
+                .map_or(default_y, |y| y as f32),
+            p.get("z")
+                .and_then(Value::as_f64)
+                .map_or(default_z, |z| z as f32),
         )
     } else {
         (default_x, default_y, default_z)
@@ -2819,8 +2807,7 @@ fn world_spontaneous_seed(state: &mut EngineState, params: Value) -> Value {
     // WILL be sown (the actual stamping happens on the next frame in the
     // window-loop drain). This gives MCP callers immediate feedback even
     // before the renderer applies the request.
-    let preview_seeds =
-        crate::spontaneous::intent_to_seed_cells(&text, [ox, oy, oz]);
+    let preview_seeds = crate::spontaneous::intent_to_seed_cells(&text, [ox, oy, oz]);
     let seeds_array: Vec<Value> = preview_seeds
         .iter()
         .map(|s| {
@@ -3093,11 +3080,10 @@ fn kan_real_canary_check(_state: &mut EngineState, params: Value) -> Value {
     // (within u64 range) or a string (parsed as decimal then hex on fallback).
     let session_id: u128 = match params.get("session_id") {
         Some(Value::Number(n)) => n.as_u64().map_or(0_u128, u128::from),
-        Some(Value::String(s)) => {
-            s.parse::<u128>()
-                .or_else(|_| u128::from_str_radix(s.trim_start_matches("0x"), 16))
-                .unwrap_or(0)
-        }
+        Some(Value::String(s)) => s
+            .parse::<u128>()
+            .or_else(|_| u128::from_str_radix(s.trim_start_matches("0x"), 16))
+            .unwrap_or(0),
         _ => 0,
     };
     let enrolled = crate::wired_kan_real::is_session_in_canary(session_id);
@@ -3109,7 +3095,9 @@ fn kan_real_canary_check(_state: &mut EngineState, params: Value) -> Value {
 
 /// `dm.cap_table_query` : DM cap-table shape probe (3 cap-bits).
 fn dm_cap_table_query(_state: &mut EngineState, _params: Value) -> Value {
-    use crate::wired_dm::{DM_CAP_ALL, DM_CAP_COMPANION_RELAY, DM_CAP_SCENE_EDIT, DM_CAP_SPAWN_NPC};
+    use crate::wired_dm::{
+        DM_CAP_ALL, DM_CAP_COMPANION_RELAY, DM_CAP_SCENE_EDIT, DM_CAP_SPAWN_NPC,
+    };
     json!({
         "caps": DM_CAP_ALL,
         "bits": [
@@ -3396,7 +3384,10 @@ fn coder_revert(state: &mut EngineState, params: Value) -> Value {
     state.push_event(
         "INFO",
         "loa-host/coder",
-        &format!("revert · edit_id={} · outcome={}", edit_id_raw, outcome_label),
+        &format!(
+            "revert · edit_id={} · outcome={}",
+            edit_id_raw, outcome_label
+        ),
     );
 
     let final_state = rt
@@ -3428,9 +3419,7 @@ fn coder_revert(state: &mut EngineState, params: Value) -> Value {
 // CocreativeCap layer ON TOP. Default-deny end-to-end.
 
 fn p_u64(v: &Value, key: &str, default: u64) -> u64 {
-    v.get(key)
-        .and_then(Value::as_u64)
-        .unwrap_or(default)
+    v.get(key).and_then(Value::as_u64).unwrap_or(default)
 }
 
 fn p_string(v: &Value, key: &str, default: &str) -> String {
@@ -4390,10 +4379,7 @@ mod tests {
         assert_eq!(v2["tool"], "render.snapshot_png");
         assert_eq!(v2["classified_kind"], "snapshot");
         // Empty text → error envelope.
-        let v3 = intent_translate(
-            &mut s,
-            json!({"sovereign_cap": SOVEREIGN_CAP, "text": ""}),
-        );
+        let v3 = intent_translate(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP, "text": ""}));
         assert_eq!(v3["ok"], false);
         assert!(v3["error"].as_str().unwrap().contains("text"));
     }
@@ -4431,10 +4417,7 @@ mod tests {
     #[test]
     fn mcp_render_set_illuminant_a_succeeds() {
         let mut s = EngineState::default();
-        let v = render_set_illuminant(
-            &mut s,
-            json!({"sovereign_cap": SOVEREIGN_CAP, "name": "A"}),
-        );
+        let v = render_set_illuminant(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP, "name": "A"}));
         assert_eq!(v["ok"], true);
         assert_eq!(v["illuminant"], "A");
         assert_eq!(v["previous"], "D65");
@@ -4573,7 +4556,8 @@ mod tests {
     #[test]
     fn mcp_telemetry_set_log_level_clamps_to_3() {
         let mut s = EngineState::default();
-        let v = telemetry_set_log_level(&mut s, json!({"level": 99, "sovereign_cap": SOVEREIGN_CAP}));
+        let v =
+            telemetry_set_log_level(&mut s, json!({"level": 99, "sovereign_cap": SOVEREIGN_CAP}));
         assert_eq!(v["level"], 3);
         assert_eq!(v["ok"], true);
     }
@@ -4734,7 +4718,13 @@ mod tests {
         assert_eq!(arr.len(), 5);
         // Spot-check each name appears.
         let names: Vec<&str> = arr.iter().map(|r| r["name"].as_str().unwrap()).collect();
-        for required in &["TestRoom", "MaterialRoom", "PatternRoom", "ScaleRoom", "ColorRoom"] {
+        for required in &[
+            "TestRoom",
+            "MaterialRoom",
+            "PatternRoom",
+            "ScaleRoom",
+            "ColorRoom",
+        ] {
             assert!(names.contains(required), "missing room {required}");
         }
     }
@@ -4833,7 +4823,10 @@ mod tests {
         let i = sun["i"].as_f64().unwrap();
         let q = sun["q"].as_f64().unwrap();
         assert!((i - 1.0).abs() < 1e-3, "I={i}");
-        assert!(q > 0.0, "Q should be slightly positive (atmospheric): Q={q}");
+        assert!(
+            q > 0.0,
+            "Q should be slightly positive (atmospheric): Q={q}"
+        );
         // Per-material array = 16 entries.
         let mats = v["per_material_stokes"].as_array().unwrap();
         assert_eq!(mats.len(), 16, "must have 16 per-material Stokes entries");
@@ -4986,10 +4979,7 @@ mod tests {
     #[test]
     fn mcp_render_start_burst_returns_ok_with_count() {
         let mut s = EngineState::default();
-        let v = render_start_burst(
-            &mut s,
-            json!({"sovereign_cap": SOVEREIGN_CAP, "count": 10}),
-        );
+        let v = render_start_burst(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP, "count": 10}));
         assert_eq!(v["ok"], true);
         assert_eq!(v["count"].as_u64().unwrap(), 10);
         assert_eq!(s.capture.burst_pending_count, Some(10));
@@ -5005,10 +4995,7 @@ mod tests {
         );
         assert_eq!(v["count"].as_u64().unwrap(), 1000);
         // count = 0 clamps to 1
-        let v = render_start_burst(
-            &mut s,
-            json!({"sovereign_cap": SOVEREIGN_CAP, "count": 0}),
-        );
+        let v = render_start_burst(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP, "count": 0}));
         assert_eq!(v["count"].as_u64().unwrap(), 1);
     }
 
@@ -5016,10 +5003,7 @@ mod tests {
     fn mcp_render_start_video_queues_pending_flag() {
         let mut s = EngineState::default();
         assert!(!s.capture.video_start_pending);
-        let v = render_start_video(
-            &mut s,
-            json!({"sovereign_cap": SOVEREIGN_CAP}),
-        );
+        let v = render_start_video(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP}));
         assert_eq!(v["ok"], true);
         assert!(s.capture.video_start_pending);
     }
@@ -5027,10 +5011,7 @@ mod tests {
     #[test]
     fn mcp_render_stop_video_queues_pending_flag() {
         let mut s = EngineState::default();
-        let v = render_stop_video(
-            &mut s,
-            json!({"sovereign_cap": SOVEREIGN_CAP}),
-        );
+        let v = render_stop_video(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP}));
         assert_eq!(v["ok"], true);
         assert!(s.capture.video_stop_pending);
     }
@@ -5051,16 +5032,16 @@ mod tests {
         assert!(v["seeds_count"].as_u64().unwrap() >= 2);
         // The pending request was queued.
         assert_eq!(s.spontaneous.sow_pending.len(), 1);
-        assert_eq!(s.spontaneous.sow_pending[0].text, "a glass cube and a bronze sphere");
+        assert_eq!(
+            s.spontaneous.sow_pending[0].text,
+            "a glass cube and a bronze sphere"
+        );
     }
 
     #[test]
     fn mcp_world_spontaneous_seed_rejects_empty_text() {
         let mut s = EngineState::default();
-        let v = world_spontaneous_seed(
-            &mut s,
-            json!({"sovereign_cap": SOVEREIGN_CAP, "text": ""}),
-        );
+        let v = world_spontaneous_seed(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP, "text": ""}));
         assert_eq!(v["ok"], false);
         assert!(s.spontaneous.sow_pending.is_empty());
     }
@@ -5561,8 +5542,7 @@ mod tests {
     fn cocreative_session_log_drain_denies_without_drain_cap() {
         let mut s = EngineState::default();
         coc_grant(COC_SEED_G, false); // basic Granted, no drain
-        let v =
-            cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_G}));
+        let v = cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_G}));
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("drain"));
     }
@@ -5572,7 +5552,7 @@ mod tests {
     fn cocreative_session_log_drain_clears_entries() {
         let mut s = EngineState::default();
         coc_grant(COC_SEED_H, true); // GrantedWithDrain
-        // Submit + evaluate two proposals so the log has entries.
+                                     // Submit + evaluate two proposals so the log has entries.
         for i in 0..2 {
             let pv = cocreative_proposal_submit(
                 &mut s,
@@ -5589,13 +5569,11 @@ mod tests {
                 json!({"player_seed": COC_SEED_H, "proposal_id": id}),
             );
         }
-        let drain1 =
-            cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_H}));
+        let drain1 = cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_H}));
         assert_eq!(drain1["ok"], true);
         assert!(drain1["drained"].as_u64().unwrap() >= 2);
         // Second drain returns empty (already cleared).
-        let drain2 =
-            cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_H}));
+        let drain2 = cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_H}));
         assert_eq!(drain2["ok"], true);
         assert_eq!(drain2["drained"].as_u64().unwrap(), 0);
     }
@@ -5604,10 +5582,7 @@ mod tests {
     #[test]
     fn cocreative_persona_query_grant_loads_persona() {
         let mut s = EngineState::default();
-        let v = cocreative_persona_query(
-            &mut s,
-            json!({"player_seed": COC_SEED_I, "op": "grant"}),
-        );
+        let v = cocreative_persona_query(&mut s, json!({"player_seed": COC_SEED_I, "op": "grant"}));
         assert_eq!(v["ok"], true);
         assert_eq!(v["cap_state"], "granted");
         assert!(v["persona_axes"].is_array());
@@ -5619,10 +5594,8 @@ mod tests {
     fn cocreative_persona_query_revoke_masks_axes() {
         let mut s = EngineState::default();
         coc_grant(COC_SEED_J, true);
-        let v = cocreative_persona_query(
-            &mut s,
-            json!({"player_seed": COC_SEED_J, "op": "revoke"}),
-        );
+        let v =
+            cocreative_persona_query(&mut s, json!({"player_seed": COC_SEED_J, "op": "revoke"}));
         assert_eq!(v["ok"], true);
         assert_eq!(v["cap_state"], "revoked");
         assert_eq!(v["persona_axes"].as_array().unwrap().len(), 0);

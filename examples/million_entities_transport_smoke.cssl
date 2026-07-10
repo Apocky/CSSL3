@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § examples/million_entities_transport_smoke.cssl
+//
+// Self-contained pure-CSSL runtime smoke for the W-1 transport ladder.
+// Target contract : 1440p fullscreen · 144 Hz · 1_000_000 entities.
+//
+// This does NOT yet draw visible pixels; it proves the CSSL→MIR→Cranelift→
+// cssl-rt ABI path for the 1M-entity data route:
+//   T2 SSBO : InstanceData[1_000_000] = 64_000_000 bytes
+//   T3 args : DrawIndexedIndirectArgs[1] = 20 bytes
+//   T4 cull : dispatch ceil(1_000_000 / 256) = 3907 groups
+//   draw    : cmd_buf_draw_indirect(args, draw_count=1, stride=20)
+//
+// The next visible-render wave binds real pipelines + swapchain present.
+
+module examples.million_entities_transport_smoke
+
+fn main() -> i32 {
+    let entity_count = 1000000 ;
+    let instance_stride = 64 ;
+    let instance_bytes = entity_count * instance_stride ;
+    let indirect_bytes = 20 ;
+    let groups = 3907 ;
+
+    let dev = gpu::device_create(0, 0) ;
+    if dev == 0 { return 1 ; }
+
+    // T2 SSBO : InstanceData[1M]. usage=3 Storage, mem=0 DeviceLocal.
+    let inst = gpu::buffer_create(dev, instance_bytes, 3, 0) ;
+    if inst == 0 { return 2 ; }
+
+    // T3 indirect args buffer. usage=4 Indirect.
+    let args = gpu::buffer_create(dev, indirect_bytes, 4, 0) ;
+    if args == 0 { return 3 ; }
+
+    let cb = gpu::cmd_buf_begin(dev) ;
+    if cb == 0 { return 4 ; }
+
+    // Bind buffers as descriptors (set 0 slot 0 = InstanceData, slot 1 = args).
+    let b0 = gpu::cmd_buf_bind_descriptor(cb, 0, 0, inst) ;
+    if b0 != 0 { return 5 ; }
+    let b1 = gpu::cmd_buf_bind_descriptor(cb, 0, 1, args) ;
+    if b1 != 0 { return 6 ; }
+
+    // T4 GPU-cull/compose placeholder dispatch : 256 threads/workgroup.
+    let dispatch = gpu::cmd_buf_dispatch(cb, groups, 1, 1) ;
+    if dispatch != 0 { return 7 ; }
+
+    // T3 indirect draw placeholder : one args record, stride 20.
+    let draw = gpu::cmd_buf_draw_indirect(cb, args, 0, 1, 20) ;
+    if draw != 0 { return 8 ; }
+
+    let end = gpu::cmd_buf_end(cb) ;
+    if end != 0 { return 9 ; }
+
+    let submit = gpu::cmd_buf_submit_v2(cb, 0) ;
+    if submit != 0 { return 10 ; }
+
+    let da = gpu::buffer_destroy(args) ;
+    if da != 0 { return 11 ; }
+    let di = gpu::buffer_destroy(inst) ;
+    if di != 0 { return 12 ; }
+    let dd = gpu::device_destroy(dev) ;
+    if dd != 0 { return 13 ; }
+
+    // Success : pure CSSL drove the complete 1M transport data-path.
+    0
+}

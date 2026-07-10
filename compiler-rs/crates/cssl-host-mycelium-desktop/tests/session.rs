@@ -35,6 +35,28 @@ fn session_replay_last_n() {
 }
 
 #[test]
+fn session_next_turn_id_is_monotonic() {
+    let mut s = Session::new(10);
+    assert_eq!(s.next_turn_id(), 1);
+    s.record(fake_turn(s.next_turn_id()));
+    assert_eq!(s.next_turn_id(), 2);
+    s.record(fake_turn(s.next_turn_id()));
+    assert_eq!(s.next_turn_id(), 3);
+}
+
+#[test]
+fn session_next_turn_id_survives_eviction() {
+    let mut s = Session::new(2);
+    for _ in 0..5 {
+        let id = s.next_turn_id();
+        s.record(fake_turn(id));
+    }
+    assert_eq!(s.turns.front().unwrap().turn_id, 4);
+    assert_eq!(s.turns.back().unwrap().turn_id, 5);
+    assert_eq!(s.next_turn_id(), 6);
+}
+
+#[test]
 fn session_snapshot_immutable() {
     let mut s = Session::new(10);
     s.record(fake_turn(1));

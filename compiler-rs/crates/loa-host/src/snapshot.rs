@@ -305,12 +305,7 @@ pub fn bgra8_to_rgba8_inplace(buf: &mut [u8]) {
 /// § ERRORS
 ///   - `io::Error::InvalidInput` if buffer size mismatches w·h·4
 ///   - I/O errors from PNG writer / file create / mkdir
-pub fn encode_png(
-    rgba: &[u8],
-    width: u32,
-    height: u32,
-    path: &Path,
-) -> std::io::Result<u64> {
+pub fn encode_png(rgba: &[u8], width: u32, height: u32, path: &Path) -> std::io::Result<u64> {
     let expected = (width as usize) * (height as usize) * 4;
     if rgba.len() != expected {
         return Err(std::io::Error::new(
@@ -527,10 +522,7 @@ impl BurstState {
         if self.frames_remaining == 0 {
             self.active = false;
         }
-        Some(
-            self.output_dir
-                .join(format!("frame_{frame_idx:02}.png")),
-        )
+        Some(self.output_dir.join(format!("frame_{frame_idx:02}.png")))
     }
 }
 
@@ -627,10 +619,7 @@ impl VideoState {
         let idx = self.frames_captured;
         self.frames_captured += 1;
         self.stride_tick = self.frame_stride.saturating_sub(1);
-        Some(
-            self.output_dir
-                .join(format!("frame_{idx:04}.png")),
-        )
+        Some(self.output_dir.join(format!("frame_{idx:04}.png")))
     }
 }
 
@@ -727,10 +716,9 @@ mod runtime {
                 .expect("staging buffer ensured above");
 
             // Encode the copy
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("loa-host/snapshot-copy-encoder"),
-                });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("loa-host/snapshot-copy-encoder"),
+            });
             encoder.copy_texture_to_buffer(
                 wgpu::ImageCopyTexture {
                     texture: source,
@@ -1111,8 +1099,8 @@ mod tests {
     #[test]
     fn burst_state_stride_skips_intermediate_frames() {
         let mut b = BurstState::default();
-        b.start_burst(3, 5); // 3 frames, every 5th
-        // Tick 1 : captures frame 0
+        let _ = b.start_burst(3, 5); // 3 frames, every 5th
+                                     // Tick 1 : captures frame 0
         assert!(b.tick_capture_path().is_some());
         // Ticks 2-5 : skipped
         for _ in 0..4 {

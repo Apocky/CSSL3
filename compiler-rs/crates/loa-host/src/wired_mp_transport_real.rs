@@ -38,7 +38,10 @@ mod tests {
     #[test]
     fn cap_bits_match_send_or_recv() {
         // BOTH must equal the OR of the two atomic caps.
-        assert_eq!(mp_transport_cap_bits(), TRANSPORT_CAP_SEND | TRANSPORT_CAP_RECV);
+        assert_eq!(
+            mp_transport_cap_bits(),
+            TRANSPORT_CAP_SEND | TRANSPORT_CAP_RECV
+        );
     }
 
     #[test]

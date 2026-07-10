@@ -17,9 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
-use loa_host::mcp_server::{
-    dispatch, EngineState, JsonRpcRequest, JSON_RPC_VERSION,
-};
+use loa_host::mcp_server::{dispatch, EngineState, JsonRpcRequest, JSON_RPC_VERSION};
 use loa_host::mcp_tools::tool_registry;
 
 fn shared_state() -> Arc<Mutex<EngineState>> {
@@ -36,7 +34,10 @@ fn invoke(state: &Arc<Mutex<EngineState>>, method: &str, params: Value) -> Value
     };
     let resp = dispatch(state, &reg, &req);
     if let Some(err) = resp.error {
-        panic!("dispatch returned error : {} (code {})", err.message, err.code);
+        panic!(
+            "dispatch returned error : {} (code {})",
+            err.message, err.code
+        );
     }
     resp.result.expect("ok result")
 }
@@ -138,16 +139,18 @@ fn integration_sense_framebuffer_thumbnail_pending_when_no_capture() {
 }
 
 #[test]
-fn integration_tools_list_reports_93_entries() {
-    // § post-WAVE3-grand-merge : 84 (post-userfix) + 2 text-input + 3 gltf
-    // + 2 spontaneous + 2 intent-router = 93.
-    // § T11-W5c-LOA-HOST-WIRE : + 17 wired-* probes = 110.
-    // § T11-W7-G-LOA-HOST-WIRE : + 4 wave-7 probes = 114.
-    // § T11-W8-CHAT-WIRE       : + 4 Coder MCP tools = 118.
+fn integration_tools_list_matches_registry_count() {
+    // Keep integration discovery aligned with the canonical registry instead
+    // of freezing an older wave-count. The registry unit tests own the exact
+    // 126-tool accounting; this test verifies the JSON-RPC discovery payload
+    // reports the same count and does not accidentally drop the sense surface.
     let st = shared_state();
+    let expected_count = tool_registry().len();
+    assert!(expected_count >= 126, "tool surface unexpectedly shrank");
     let v = invoke(&st, "tools.list", json!({}));
-    assert_eq!(v["count"].as_u64().unwrap(), 118);
+    assert_eq!(v["count"].as_u64().unwrap(), expected_count as u64);
     let tools = v["tools"].as_array().expect("array");
+    assert_eq!(tools.len(), expected_count);
     let sense_tools: Vec<&Value> = tools
         .iter()
         .filter(|t| {

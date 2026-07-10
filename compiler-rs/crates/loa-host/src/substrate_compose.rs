@@ -241,9 +241,9 @@ impl SubstrateComposePipeline {
         let initial_sat = 1.15_f32;
         let initial_nits = 800.0_f32;
         let initial_hdr_flag = 0.0_f32; // Amoled is SDR
-        // § T11-W18-LOA_OVERLAY_STRENGTH · env-var override 0.0..=1.0
-        //   default = DEFAULT_OVERLAY_STRENGTH (currently 0.0 = traditional-PRIMARY)
-        //   set LOA_OVERLAY_STRENGTH=1.0 to opt-in to substrate-PRIMARY overlay
+                                        // § T11-W18-LOA_OVERLAY_STRENGTH · env-var override 0.0..=1.0
+                                        //   default = DEFAULT_OVERLAY_STRENGTH (currently 0.0 = traditional-PRIMARY)
+                                        //   set LOA_OVERLAY_STRENGTH=1.0 to opt-in to substrate-PRIMARY overlay
         let initial_overlay = std::env::var("LOA_OVERLAY_STRENGTH")
             .ok()
             .and_then(|v| v.parse::<f32>().ok())
@@ -418,11 +418,7 @@ impl SubstrateComposePipeline {
     /// this is the substrate-resonance GPU crate's `output_view` whose
     /// lifetime is bound to the long-lived `SubstrateRenderState::gpu`
     /// field on the host.
-    pub fn bind_external_view(
-        &mut self,
-        device: &wgpu::Device,
-        external_view: &wgpu::TextureView,
-    ) {
+    pub fn bind_external_view(&mut self, device: &wgpu::Device, external_view: &wgpu::TextureView) {
         self.bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("loa-host/substrate-compose-bg (external GPU view)"),
             layout: &self.bgl,
@@ -703,11 +699,7 @@ impl SubstrateComposePipeline {
     /// Encode a render-pass that draws the fullscreen-triangle compose
     /// onto `view` (the surface texture). Loads existing color (so the
     /// scene shows through where substrate alpha is < 1).
-    pub fn record_pass(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-    ) {
+    pub fn record_pass(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("loa-host/substrate-compose-pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -814,14 +806,20 @@ mod tests {
     fn defaults_table_amoled_re_tuned_to_l9() {
         // § T11-W18-L9-AMOLED-DEEP · re-tuned defaults table.
         let (bt, ct) = DisplayProfile::Amoled.defaults();
-        assert!((bt - 0.003).abs() < 1e-6, "AMOLED black-thr re-tuned to 0.003");
+        assert!(
+            (bt - 0.003).abs() < 1e-6,
+            "AMOLED black-thr re-tuned to 0.003"
+        );
         assert!((ct - 0.40).abs() < 1e-6, "AMOLED contrast bumped to 0.40");
     }
 
     #[test]
     fn defaults_table_hdr_pq_aware() {
         let (bt, ct) = DisplayProfile::HdrExt.defaults();
-        assert!((bt - 0.0001).abs() < 1e-7, "HDR black-thr re-tuned to 0.0001");
+        assert!(
+            (bt - 0.0001).abs() < 1e-7,
+            "HDR black-thr re-tuned to 0.0001"
+        );
         assert!((ct - 0.45).abs() < 1e-6, "HDR contrast bumped to 0.45");
     }
 
@@ -833,13 +831,11 @@ mod tests {
     #[ignore]
     fn pipeline_construction_with_gpu_device() {
         let instance = wgpu::Instance::default();
-        let adapter = pollster::block_on(instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            },
-        ))
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
         .expect("adapter required");
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
@@ -876,13 +872,11 @@ mod tests {
     #[ignore]
     fn bind_external_view_rebinds_bind_group_and_sets_flag() {
         let instance = wgpu::Instance::default();
-        let adapter = pollster::block_on(instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            },
-        ))
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
         .expect("adapter required");
         let (device, _queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
@@ -895,7 +889,10 @@ mod tests {
         ))
         .expect("device required");
         let mut p = SubstrateComposePipeline::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
-        assert!(!p.is_external_view_bound(), "freshly-constructed pipeline must default to CPU-upload path");
+        assert!(
+            !p.is_external_view_bound(),
+            "freshly-constructed pipeline must default to CPU-upload path"
+        );
 
         // Allocate a 1440p Rgba8Unorm texture · stand-in for the GPU
         // compute-shader output. TEXTURE_BINDING usage is required so the
@@ -917,15 +914,24 @@ mod tests {
         let ext_view = ext_tex.create_view(&wgpu::TextureViewDescriptor::default());
 
         p.bind_external_view(&device, &ext_view);
-        assert!(p.is_external_view_bound(), "after bind_external_view the GPU-view flag must be set");
+        assert!(
+            p.is_external_view_bound(),
+            "after bind_external_view the GPU-view flag must be set"
+        );
 
         // ensure_size at the existing dimensions is a no-op (does not flip the flag).
         p.ensure_size(&device, COMPOSE_TEX_W, COMPOSE_TEX_H);
-        assert!(p.is_external_view_bound(), "no-op ensure_size must NOT clear the GPU-view flag");
+        assert!(
+            p.is_external_view_bound(),
+            "no-op ensure_size must NOT clear the GPU-view flag"
+        );
 
         // ensure_size to a different resolution reallocates the local
         // texture + rebuilds the bind-group around it · CPU path is back.
         p.ensure_size(&device, 512, 512);
-        assert!(!p.is_external_view_bound(), "ensure_size with new dims must revert to CPU-upload path");
+        assert!(
+            !p.is_external_view_bound(),
+            "ensure_size with new dims must revert to CPU-upload path"
+        );
     }
 }

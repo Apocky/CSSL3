@@ -19,19 +19,20 @@
 module com.apocky.examples.test_visible_window
 
 // Pump-for-N-frames @ ~60fps (16ms sleep) · tail-recursive · bounded.
-fn pump_n(h : u64, n : i32) -> i32 {
+fn pump_n(h : i64, n : i32) -> i32 {
     if n <= 0 {
         return 0i32
     }
     let _ = window::pump(h, 0i64, 0i64) ;
-    let _ = time::sleep_ns(16_000_000u64) ;
+    let _ = time::sleep_ns(16_000_000i64) ;
     pump_n(h, n - 1i32)
 }
 
 fn main() -> i32 {
     // Spawn 1280×720 RESIZABLE | DPI_AWARE = 1|4 = 5
-    let h : u64 = window::spawn(0i64, 0i64, 1280u32, 720u32, 5u32) ;
-    if h == 0u64 {
+    // § all-i64 args (recognizer tested with all-i64 in body_lower fixture)
+    let h : i64 = window::spawn(0i64, 0i64, 1280i64, 720i64, 5i64) ;
+    if h == 0i64 {
         return 1i32
     }
     // Pump 300 frames · ~5 sec @ 60fps. Window should be visible + responsive.

@@ -39,8 +39,7 @@ mod tests {
     #[test]
     fn wavelengths_json_is_array_of_16() {
         let s = band_wavelengths_json();
-        let parsed: Vec<f32> =
-            serde_json::from_str(&s).expect("wavelengths_json must parse");
+        let parsed: Vec<f32> = serde_json::from_str(&s).expect("wavelengths_json must parse");
         assert_eq!(parsed.len(), 16);
     }
 

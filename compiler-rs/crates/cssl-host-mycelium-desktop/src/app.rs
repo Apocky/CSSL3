@@ -184,13 +184,14 @@ impl MyceliumApp {
         let elapsed_ms = now_unix().saturating_sub(start).saturating_mul(1000);
 
         // Record on session — same shape as run_turn so frontend history works.
+        // The session owns turn-id allocation so IPC/history stay monotonic
+        // even when the reply itself is composed by local substrate intelligence.
         let turn_id = {
             let mut sess = self
                 .session
                 .lock()
                 .map_err(|_| AppError::Session("session mutex poisoned".into()))?;
-            // Use a substrate-derived turn id so it's deterministic + unique.
-            let turn_id: u64 = (seed ^ now_unix()) ^ 0x53_4E_54_52_53_55_42_31u64; // "SNTRSUB1" tag
+            let turn_id = sess.next_turn_id();
             sess.record(StoredTurn {
                 turn_id,
                 user_input: user_input.into(),

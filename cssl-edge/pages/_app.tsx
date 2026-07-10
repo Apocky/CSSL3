@@ -8,12 +8,27 @@
 
 import type { AppProps } from 'next/app';
 import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 import {
   akashicInstall,
   AkashicErrorBoundary,
   capture,
 } from '@/lib/akashic-telemetry';
 import AkashicConsent from '@/components/AkashicConsent';
+import SiteShell from '@/components/SiteShell';
+
+// Auth, admin, and the immersive entity/chat pages render bare (their own chrome / clean for OAuth).
+// Everything else gets the global nav + footer so the whole site is navigable.
+function isBare(pathname: string): boolean {
+  return (
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/admin') ||
+    pathname === '/apocrypha' ||
+    pathname === '/chat'
+  );
+}
 
 // Wire window.onerror + window.onunhandledrejection to capture(). These
 // fallback layers catch errors that escape the React-tree (stage-3
@@ -49,6 +64,7 @@ function attachGlobalErrorListeners(): void {
 }
 
 export default function App({ Component, pageProps }: AppProps): JSX.Element {
+  const router = useRouter();
   useEffect(() => {
     // Install once · idempotent. Pull build-time env-vars (Next exposes
     // anything prefixed NEXT_PUBLIC_ to client). Vercel auto-injects
@@ -93,10 +109,17 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
     }
   }, []);
 
+  const bare = isBare(router.pathname);
   return (
     <AkashicErrorBoundary>
       <AkashicConsent />
-      <Component {...pageProps} />
+      {bare ? (
+        <Component {...pageProps} />
+      ) : (
+        <SiteShell>
+          <Component {...pageProps} />
+        </SiteShell>
+      )}
     </AkashicErrorBoundary>
   );
 }

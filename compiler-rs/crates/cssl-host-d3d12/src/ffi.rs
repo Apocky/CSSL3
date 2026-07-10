@@ -183,6 +183,27 @@ pub const IID_IDXGISwapChain4: Guid = Guid::new(
     0x489e,
     [0xb1, 0xf4, 0x3d, 0xbc, 0xb6, 0x45, 0x2f, 0xfb],
 );
+/// `IID_IDXGIFactory2` — `50c83a1c-e072-4c48-87b0-3630fa36a6d0`.
+pub const IID_IDXGIFactory2: Guid = Guid::new(
+    0x50c8_3a1c,
+    0xe072,
+    0x4c48,
+    [0x87, 0xb0, 0x36, 0x30, 0xfa, 0x36, 0xa6, 0xd0],
+);
+/// `IID_IDXGISwapChain1` — `790a45f7-0d42-4876-983a-0a55cfe6f4aa`.
+pub const IID_IDXGISwapChain1: Guid = Guid::new(
+    0x790a_45f7,
+    0x0d42,
+    0x4876,
+    [0x98, 0x3a, 0x0a, 0x55, 0xcf, 0xe6, 0xf4, 0xaa],
+);
+/// `IID_IDXGISwapChain3` — `94d99bdb-f1f8-4ab0-b236-7da0170edab1`.
+pub const IID_IDXGISwapChain3: Guid = Guid::new(
+    0x94d9_9bdb,
+    0xf1f8,
+    0x4ab0,
+    [0xb2, 0x36, 0x7d, 0xa0, 0x17, 0x0e, 0xda, 0xb1],
+);
 
 // ─── Win32 / D3D12 small types (POD) ──────────────────────────────────────
 
@@ -281,6 +302,54 @@ pub struct SwapChainDesc1 {
     /// `Flags`.
     pub flags: u32,
 }
+
+// ─── DXGI flag constants  (used by SwapChainDesc1 + Present) ──────────────
+
+/// `DXGI_USAGE_RENDER_TARGET_OUTPUT`.
+pub const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 0x0000_0020;
+/// `DXGI_USAGE_SHADER_INPUT`.
+pub const DXGI_USAGE_SHADER_INPUT: u32 = 0x0000_0010;
+
+/// `DXGI_SCALING_STRETCH`.
+pub const DXGI_SCALING_STRETCH: u32 = 0;
+/// `DXGI_SCALING_NONE` — recommended for FlipDiscard at native res.
+pub const DXGI_SCALING_NONE: u32 = 1;
+/// `DXGI_SCALING_ASPECT_RATIO_STRETCH`.
+pub const DXGI_SCALING_ASPECT_RATIO_STRETCH: u32 = 2;
+
+/// `DXGI_SWAP_EFFECT_DISCARD` (legacy bitblt).
+pub const DXGI_SWAP_EFFECT_DISCARD: u32 = 0;
+/// `DXGI_SWAP_EFFECT_SEQUENTIAL` (legacy bitblt).
+pub const DXGI_SWAP_EFFECT_SEQUENTIAL: u32 = 1;
+/// `DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL`.
+pub const DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL: u32 = 3;
+/// `DXGI_SWAP_EFFECT_FLIP_DISCARD` — canonical for D3D12.
+pub const DXGI_SWAP_EFFECT_FLIP_DISCARD: u32 = 4;
+
+/// `DXGI_ALPHA_MODE_UNSPECIFIED` — default for non-composition swap-chains.
+pub const DXGI_ALPHA_MODE_UNSPECIFIED: u32 = 0;
+/// `DXGI_ALPHA_MODE_PREMULTIPLIED`.
+pub const DXGI_ALPHA_MODE_PREMULTIPLIED: u32 = 1;
+/// `DXGI_ALPHA_MODE_STRAIGHT`.
+pub const DXGI_ALPHA_MODE_STRAIGHT: u32 = 2;
+/// `DXGI_ALPHA_MODE_IGNORE`.
+pub const DXGI_ALPHA_MODE_IGNORE: u32 = 3;
+
+/// `DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING` — required for variable-refresh-rate
+/// present-allow-tearing path. Value 0x800 per `dxgi1_5.h` `DXGI_SWAP_CHAIN_FLAG`.
+pub const DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING: u32 = 0x0000_0800;
+
+/// `DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT` — enables waitable-swap-chain
+/// low-latency path (`IDXGISwapChain2::GetFrameLatencyWaitableObject`). Value 0x40
+/// per `dxgi1_3.h` `DXGI_SWAP_CHAIN_FLAG`.
+pub const DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT: u32 = 0x0000_0040;
+
+/// `DXGI_PRESENT_ALLOW_TEARING` — pass with `SyncInterval=0` for VRR /
+/// Mailbox-equivalent low-latency present. Value 0x200 per `dxgi.h`.
+pub const DXGI_PRESENT_ALLOW_TEARING: u32 = 0x0000_0200;
+
+/// `CreateDXGIFactory2` flags : `DXGI_CREATE_FACTORY_DEBUG = 0x01`.
+pub const DXGI_CREATE_FACTORY_DEBUG: u32 = 0x0000_0001;
 
 // ─── Loader (Windows-only) ────────────────────────────────────────────────
 
@@ -429,6 +498,166 @@ impl ComPtr {
 // thread-safe per Microsoft's documentation when used through their COM API.
 unsafe impl Send for ComPtr {}
 unsafe impl Sync for ComPtr {}
+
+// ─── CreateDXGIFactory2 fn-pointer type ───────────────────────────────────
+
+/// `CreateDXGIFactory2(Flags, riid, ppFactory)` — exported by `dxgi.dll`.
+///
+/// Resolved via `Loader::probe()` into `Loader.create_dxgi_factory2: Option<usize>`.
+/// Caller transmutes to this fn-pointer type and invokes.
+///
+/// # Safety
+/// All FFI rules apply : `riid` + `pp_factory` are valid pointers for the
+/// duration of the call ; `pp_factory` receives an owned COM ref on success
+/// (caller must `Release` to drop).
+pub type CreateDXGIFactory2Fn = unsafe extern "system" fn(
+    flags: u32,
+    riid: *const Guid,
+    pp_factory: *mut *mut core::ffi::c_void,
+) -> HRESULT;
+
+// ─── IDXGIFactory2 vtable (partial · slots up to CreateSwapChainForHwnd) ──
+//
+// Layout per IDXGIFactory2 (inherits IDXGIFactory1 → IDXGIFactory → IDXGIObject
+// → IUnknown). The first 14 slots are unused-by-us · padded with `*const ()`
+// stubs. Slot 15 (= 0-indexed 15 ; 3 IUnknown + 4 IDXGIObject + 5 IDXGIFactory
+// + 2 IDXGIFactory1 + 1 IDXGIFactory2-IsWindowedStereoEnabled = 15) is
+// CreateSwapChainForHwnd.
+
+/// `IDXGIFactory2` vtable layout (partial · used slots typed · unused padded).
+#[repr(C)]
+pub struct IDXGIFactory2VTable {
+    /// IUnknown : QueryInterface · AddRef · Release.
+    pub iunknown: IUnknownVTable,
+    // IDXGIObject (4) — SetPrivateData · SetPrivateDataInterface · GetPrivateData · GetParent
+    _set_private_data: *const (),
+    _set_private_data_iface: *const (),
+    _get_private_data: *const (),
+    _get_parent: *const (),
+    // IDXGIFactory (5) — EnumAdapters · MakeWindowAssociation · GetWindowAssociation · CreateSwapChain · CreateSoftwareAdapter
+    _enum_adapters: *const (),
+    _make_window_association: *const (),
+    _get_window_association: *const (),
+    _create_swap_chain: *const (),
+    _create_software_adapter: *const (),
+    // IDXGIFactory1 (2) — EnumAdapters1 · IsCurrent
+    _enum_adapters1: *const (),
+    _is_current: *const (),
+    // IDXGIFactory2 begins — IsWindowedStereoEnabled (1)
+    _is_windowed_stereo_enabled: *const (),
+    /// `CreateSwapChainForHwnd(this, device, hwnd, desc, fullscreen_desc, restrict_to_output, ppSwapChain)`.
+    pub create_swap_chain_for_hwnd: unsafe extern "system" fn(
+        this: *mut core::ffi::c_void,
+        device: *mut core::ffi::c_void,
+        hwnd: *mut core::ffi::c_void,
+        desc: *const SwapChainDesc1,
+        fullscreen_desc: *const core::ffi::c_void,
+        restrict_to_output: *mut core::ffi::c_void,
+        pp_swap_chain: *mut *mut core::ffi::c_void,
+    ) -> HRESULT,
+    // Remaining IDXGIFactory2 methods (11) — padded · we don't call them.
+    _create_swap_chain_for_core_window: *const (),
+    _get_shared_resource_adapter_luid: *const (),
+    _register_stereo_status_window: *const (),
+    _register_stereo_status_event: *const (),
+    _unregister_stereo_status: *const (),
+    _register_occlusion_status_window: *const (),
+    _register_occlusion_status_event: *const (),
+    _unregister_occlusion_status: *const (),
+    _create_swap_chain_for_composition: *const (),
+}
+
+// ─── IDXGISwapChain1 vtable (partial · slots up to Present) ───────────────
+//
+// Layout : IUnknown (3) + IDXGIObject (4) + IDXGIDeviceSubObject (1: GetDevice)
+// + IDXGISwapChain (10) + IDXGISwapChain1 (...). Present is slot 8 inside
+// IDXGISwapChain : `3 + 4 + 1 + 0 = 8` zero-indexed (Present is the 1st method
+// of IDXGISwapChain).
+
+/// `IDXGISwapChain1` vtable layout (partial · used slots typed · unused padded).
+#[repr(C)]
+pub struct IDXGISwapChain1VTable {
+    /// IUnknown : QueryInterface · AddRef · Release.
+    pub iunknown: IUnknownVTable,
+    // IDXGIObject (4)
+    _set_private_data: *const (),
+    _set_private_data_iface: *const (),
+    _get_private_data: *const (),
+    _get_parent: *const (),
+    // IDXGIDeviceSubObject (1) — GetDevice
+    _get_device: *const (),
+    // IDXGISwapChain (10) — Present is slot 0 here
+    /// `Present(this, sync_interval, flags) -> HRESULT`.
+    pub present: unsafe extern "system" fn(
+        this: *mut core::ffi::c_void,
+        sync_interval: u32,
+        flags: u32,
+    ) -> HRESULT,
+    /// `GetBuffer(this, buffer_index, riid, ppSurface) -> HRESULT`.
+    pub get_buffer: unsafe extern "system" fn(
+        this: *mut core::ffi::c_void,
+        buffer_index: u32,
+        riid: *const Guid,
+        pp_surface: *mut *mut core::ffi::c_void,
+    ) -> HRESULT,
+    _set_fullscreen_state: *const (),
+    _get_fullscreen_state: *const (),
+    _get_desc: *const (),
+    /// `ResizeBuffers(this, buffer_count, width, height, format, flags) -> HRESULT`.
+    pub resize_buffers: unsafe extern "system" fn(
+        this: *mut core::ffi::c_void,
+        buffer_count: u32,
+        width: u32,
+        height: u32,
+        format: u32, // DXGI_FORMAT raw
+        flags: u32,
+    ) -> HRESULT,
+    _resize_target: *const (),
+    _get_containing_output: *const (),
+    _get_frame_statistics: *const (),
+    _get_last_present_count: *const (),
+    // IDXGISwapChain1 methods (11) — padded
+    _get_desc1: *const (),
+    _get_fullscreen_desc: *const (),
+    _get_hwnd: *const (),
+    _get_core_window: *const (),
+    _present1: *const (),
+    _is_temporary_mono_supported: *const (),
+    _get_restrict_to_output: *const (),
+    _set_background_color: *const (),
+    _get_background_color: *const (),
+    _set_rotation: *const (),
+    _get_rotation: *const (),
+}
+
+// ─── IDXGISwapChain3 vtable (for GetCurrentBackBufferIndex via QI) ────────
+//
+// Layout = SwapChain1 (28 slots) + SwapChain2 (10 slots) + SwapChain3 (4 slots).
+// We only need GetCurrentBackBufferIndex (1st method of SwapChain3 · slot 38
+// zero-indexed). We re-use the SwapChain1 vtable prefix as a typed layout and
+// pad SwapChain2 + reach SwapChain3.
+
+/// `IDXGISwapChain3` vtable subset · slot for GetCurrentBackBufferIndex.
+#[repr(C)]
+pub struct IDXGISwapChain3VTable {
+    /// SwapChain1 prefix (28 slots).
+    pub sc1: IDXGISwapChain1VTable,
+    // IDXGISwapChain2 (10) — padded · we don't call them
+    _get_source_size: *const (),
+    _set_source_size: *const (),
+    _get_maximum_frame_latency: *const (),
+    _set_maximum_frame_latency: *const (),
+    _get_frame_latency_waitable_object: *const (),
+    _set_matrix_transform: *const (),
+    _get_matrix_transform: *const (),
+    // IDXGISwapChain3 begins
+    /// `GetCurrentBackBufferIndex(this) -> u32`.
+    pub get_current_back_buffer_index:
+        unsafe extern "system" fn(this: *mut core::ffi::c_void) -> u32,
+    _check_color_space_support: *const (),
+    _set_color_space1: *const (),
+    _resize_buffers1: *const (),
+}
 
 // ─── Tests ───────────────────────────────────────────────────────────────
 

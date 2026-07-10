@@ -288,3 +288,66 @@
   or anybody. Every host-FFI primitive that touches Sensitive data is
   capability-gated + IFC-labeled + audit-emitting · Cap<X> withdrawal
   immediately revokes the active stream · no PRIME-DIRECTIVE override exists.
+
+§ W-1-GPU-TRANSPORT-ABI-APPENDIX  (2026-05-20 · Apocky autopilot sign-off)
+  ‼ Linked spec : specs/16_TRANSPORT_TIERS.csl
+  ‼ Purpose : land the full 16-symbol transport-tier ladder at once.
+  ‼ Target : 1440p fullscreen · 144hz · 1_000_000 entities · pure CSSL.
+
+  § GPU-BUFFER-SYMBOLS  (T1/T2/T3 storage primitives)
+    __cssl_gpu_buffer_create(
+      device: u64,
+      size_bytes: usize,
+      usage: u32,              // 0 Vertex · 1 Index · 2 Uniform · 3 Storage · 4 Indirect · 5 Staging
+      mem_kind: u32            // 0 DeviceLocal · 1 HostVisible · 2 HostCoherent
+    ) -> u64                   // buffer-handle ; 0 = error
+
+    __cssl_gpu_buffer_destroy(buffer: u64) -> i32
+    __cssl_gpu_buffer_map(buffer: u64, offset: usize, size: usize) -> *u8
+    __cssl_gpu_buffer_unmap(buffer: u64) -> i32
+    __cssl_gpu_buffer_upload(buffer: u64, offset: usize, src_ptr: *u8, src_len: usize) -> i32
+
+  § GPU-CMDBUF-SYMBOLS  (record/submit + bind + draw/dispatch)
+    __cssl_gpu_cmd_buf_begin(device: u64) -> u64
+    __cssl_gpu_cmd_buf_end(cmd_buf: u64) -> i32
+    __cssl_gpu_cmd_buf_bind_pipeline(cmd_buf: u64, pipeline: u64) -> i32
+    __cssl_gpu_cmd_buf_bind_vbuf(cmd_buf: u64, slot: u32, buffer: u64, offset: usize) -> i32
+    __cssl_gpu_cmd_buf_bind_ibuf(cmd_buf: u64, buffer: u64, offset: usize, idx_kind: u32) -> i32
+    __cssl_gpu_cmd_buf_bind_descriptor(cmd_buf: u64, set: u32, slot: u32, buffer: u64) -> i32
+    __cssl_gpu_cmd_buf_push_constants(cmd_buf: u64, stages: u32, offset: u32, size: u32, data_ptr: *u8) -> i32
+    __cssl_gpu_cmd_buf_draw_indexed(
+      cmd_buf: u64,
+      idx_count: u32,
+      instance_count: u32,
+      first_idx: u32,
+      vtx_off: i32,
+      first_inst: u32
+    ) -> i32
+    __cssl_gpu_cmd_buf_draw_indirect(
+      cmd_buf: u64,
+      args_buffer: u64,
+      args_offset: usize,
+      draw_count: u32,
+      stride: u32
+    ) -> i32
+    __cssl_gpu_cmd_buf_dispatch(cmd_buf: u64, group_x: u32, group_y: u32, group_z: u32) -> i32
+    __cssl_gpu_cmd_buf_submit_v2(cmd_buf: u64, signal_fence_out: *u64) -> i32
+
+  § RETENTION
+    __cssl_gpu_cmd_buf_record_stub() and __cssl_gpu_cmd_buf_submit_stub(cmd)
+    remain supported for one minor cycle as aliases for stage-0 bring-up.
+    New CSSL source MUST use cmd_buf_begin/end/submit_v2.
+
+  § EFFECTS
+    buffer_create/destroy        → {GpuInit, Cap<Gpu>}
+    buffer_map/unmap/upload      → {GpuSubmit, Cap<Gpu>}
+    cmd_buf_begin/end/bind/draw  → {GpuSubmit, Deadline<6944us>, Cap<Gpu>}
+    cmd_buf_dispatch             → {GpuSubmit, Deadline<6944us>, Cap<Gpu>}
+    cmd_buf_submit_v2            → {GpuSubmit, Deadline<6944us>, Cap<Gpu>}
+
+  § SECURITY/IFC
+    Gpu-buffers are Public by default. Output-image buffers become
+    Sensitive<Frame> when tied to VR/headset body-pose. No cross-process
+    resource-share. No compute-secret-extract. Cap<Gpu> withdrawal revokes
+    the active transport ladder.
+∎

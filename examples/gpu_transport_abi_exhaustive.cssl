@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § examples/gpu_transport_abi_exhaustive.cssl
+//
+// Exhaustive W-1 GPU transport ABI executable smoke.
+// Exercises ALL 16 new transport symbols through pure CSSL source:
+//   buffer_create/destroy/map/unmap/upload
+//   cmd_buf_begin/end/bind_pipeline/bind_vbuf/bind_ibuf/bind_descriptor
+//   cmd_buf_push_constants/draw_indexed/draw_indirect/dispatch/submit_v2
+//
+// This is stage-0 form/function validation: symbols lower, object-emit,
+// link against cssl-rt, execute, validate handle/sentinel behavior, exit 0.
+
+module examples.gpu_transport_abi_exhaustive
+
+fn main() -> i32 {
+    let dev = gpu::device_create(0, 0) ;
+    if dev == 0 { return 1 ; }
+
+    // Existing pipeline ABI, needed to exercise bind_pipeline.
+    // Stage-0 host_gpu validates len/kind and intentionally ignores ptr.
+    let pipe = gpu::pipeline_compile(dev, 0, 64, 0) ;
+    if pipe == 0 { return 2 ; }
+
+    // W-1 buffer symbols.
+    let vbuf = gpu::buffer_create(dev, 4096, 0, 0) ;     // Vertex
+    if vbuf == 0 { return 3 ; }
+    let ibuf = gpu::buffer_create(dev, 4096, 1, 0) ;     // Index
+    if ibuf == 0 { return 4 ; }
+    let ssbo = gpu::buffer_create(dev, 64000000, 3, 0) ; // Storage InstanceData[1M]
+    if ssbo == 0 { return 5 ; }
+    let indirect = gpu::buffer_create(dev, 20, 4, 0) ;   // Indirect args[1]
+    if indirect == 0 { return 6 ; }
+
+    // map returns null in stage-0 (no real persistent maps yet) but must validate handle/range.
+    let mapped = gpu::buffer_map(ssbo, 0, 0) ;
+    if mapped != 0 { return 7 ; }
+    let unmap = gpu::buffer_unmap(ssbo) ;
+    if unmap != 0 { return 8 ; }
+    let upload = gpu::buffer_upload(ssbo, 0, 0, 0) ;
+    if upload != 0 { return 9 ; }
+
+    // W-1 command-buffer symbols.
+    let cb = gpu::cmd_buf_begin(dev) ;
+    if cb == 0 { return 10 ; }
+
+    let bp = gpu::cmd_buf_bind_pipeline(cb, pipe) ;
+    if bp != 0 { return 11 ; }
+    let bv = gpu::cmd_buf_bind_vbuf(cb, 0, vbuf, 0) ;
+    if bv != 0 { return 12 ; }
+    let bi = gpu::cmd_buf_bind_ibuf(cb, ibuf, 0, 1) ;
+    if bi != 0 { return 13 ; }
+    let bd0 = gpu::cmd_buf_bind_descriptor(cb, 0, 0, ssbo) ;
+    if bd0 != 0 { return 14 ; }
+    let bd1 = gpu::cmd_buf_bind_descriptor(cb, 0, 1, indirect) ;
+    if bd1 != 0 { return 15 ; }
+
+    // Push constants: 0-byte payload with null ptr is allowed; >128 is rejected by host test.
+    let pc = gpu::cmd_buf_push_constants(cb, 3, 0, 0, 0) ;
+    if pc != 0 { return 16 ; }
+
+    // Draw + compute. This validates shape; real driver-active bodies land next.
+    let draw_i = gpu::cmd_buf_draw_indexed(cb, 36, 1000000, 0, 0, 0) ;
+    if draw_i != 0 { return 17 ; }
+    let draw_ind = gpu::cmd_buf_draw_indirect(cb, indirect, 0, 1, 20) ;
+    if draw_ind != 0 { return 18 ; }
+    let dispatch = gpu::cmd_buf_dispatch(cb, 3907, 1, 1) ;
+    if dispatch != 0 { return 19 ; }
+
+    let end = gpu::cmd_buf_end(cb) ;
+    if end != 0 { return 20 ; }
+    let submit = gpu::cmd_buf_submit_v2(cb, 0) ;
+    if submit != 0 { return 21 ; }
+
+    // Teardown.
+    if gpu::buffer_destroy(indirect) != 0 { return 22 ; }
+    if gpu::buffer_destroy(ssbo) != 0 { return 23 ; }
+    if gpu::buffer_destroy(ibuf) != 0 { return 24 ; }
+    if gpu::buffer_destroy(vbuf) != 0 { return 25 ; }
+    if gpu::device_destroy(dev) != 0 { return 26 ; }
+
+    0
+}

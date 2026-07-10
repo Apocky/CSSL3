@@ -52,8 +52,9 @@
 //!   - **CFG0003** — unstructured `cf.cond_br` op encountered.
 //!   - **CFG0004** — unstructured `cf.br` op encountered.
 //!   - **CFG0005** — `scf.if` with region-count ≠ 2.
-//!   - **CFG0006** — loop-shape (`scf.for` / `scf.while` / `scf.loop`)
-//!                   with region-count ≠ 1.
+//!   - **CFG0006** — loop-shape (`scf.for` / `scf.loop`) with
+//!                   region-count ≠ 1, or `scf.while` with region-count
+//!                   outside 1..=2 (legacy body-only or D318 cond+body).
 //!   - **CFG0007** — multi-block region inside any scf parent
 //!                   (stage-0 expects exactly one entry block per nested
 //!                   region per C1+C2 sealing schedule).
@@ -154,13 +155,15 @@ pub enum CfgViolation {
     )]
     ScfIfWrongRegionCount { fn_name: String, actual: usize },
 
-    /// **CFG0006** — `scf.for`/`scf.while`/`scf.loop` with region-count ≠ 1.
-    /// The C2 lowering requires exactly one body region per loop op.
-    /// `op_name` carries the bare loop-op suffix (`for` / `while` / `loop`)
-    /// for actionable diagnostics.
+    /// **CFG0006** — malformed loop region-count. `scf.for`/`scf.loop`
+    /// require exactly one body region. `scf.while` accepts either the
+    /// legacy body-only shape or the D318 cond+body shape. `op_name` carries
+    /// the bare loop-op suffix (`for` / `while` / `loop`) for actionable
+    /// diagnostics.
     #[error(
         "CFG0006: fn `{fn_name}` has `scf.{op_name}` with {actual} regions ; \
-         expected exactly 1 (body)"
+         expected valid loop region shape (for/loop = 1 body ; while = 1 body \
+         or 2 cond+body)"
     )]
     LoopWrongRegionCount {
         fn_name: String,
@@ -659,18 +662,32 @@ mod tests {
     }
 
     #[test]
-    fn cfg0006_flags_scf_while_with_two_regions() {
+    fn cfg0006_accepts_scf_while_with_two_regions() {
+        let mut module = MirModule::new();
+        let mut f = well_formed_i32_fn("while_cond_body");
+        let mut op = MirOp::std("scf.while");
+        op.regions.push(MirRegion::with_entry(Vec::new()));
+        op.regions.push(MirRegion::with_entry(Vec::new()));
+        f.push_op(op);
+        module.push_func(f);
+        assert!(validate_structured_cfg(&module).is_ok());
+    }
+
+    #[test]
+    fn cfg0006_flags_scf_while_with_three_regions() {
         let mut module = MirModule::new();
         let mut f = well_formed_i32_fn("while_too_many");
         let mut op = MirOp::std("scf.while");
+        op.regions.push(MirRegion::with_entry(Vec::new()));
         op.regions.push(MirRegion::with_entry(Vec::new()));
         op.regions.push(MirRegion::with_entry(Vec::new()));
         f.push_op(op);
         module.push_func(f);
         let violations = validate_structured_cfg(&module).unwrap_err();
         assert_eq!(violations[0].code(), "CFG0006");
-        if let CfgViolation::LoopWrongRegionCount { op_name, .. } = &violations[0] {
+        if let CfgViolation::LoopWrongRegionCount { op_name, actual, .. } = &violations[0] {
             assert_eq!(op_name, "while");
+            assert_eq!(*actual, 3);
         } else {
             panic!("expected LoopWrongRegionCount");
         }

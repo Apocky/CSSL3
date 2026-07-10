@@ -75,8 +75,12 @@ fn lower_fixture_to_mir(rel: &str) -> MirModule {
     let path = fixture_path(rel);
     let source_text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("fixture '{rel}' read-error: {e}"));
-    let source =
-        SourceFile::new(SourceId::first(), path.to_string_lossy().as_ref(), &source_text, Surface::RustHybrid);
+    let source = SourceFile::new(
+        SourceId::first(),
+        path.to_string_lossy().as_ref(),
+        &source_text,
+        Surface::RustHybrid,
+    );
     let tokens = cssl_lex::lex(&source);
     let (cst, parse_diags) = cssl_parse::parse(&source, &tokens);
     assert_eq!(
@@ -136,7 +140,8 @@ fn assert_func_call_with_callee_and_result(
         .unwrap_or_else(|| panic!("expected func.call @{expected_callee} in fn '{fn_name}'"));
     let extra = matches.count();
     assert_eq!(
-        extra, 0,
+        extra,
+        0,
         "expected exactly 1 func.call @{expected_callee} in fn '{fn_name}', got {}",
         extra + 1
     );

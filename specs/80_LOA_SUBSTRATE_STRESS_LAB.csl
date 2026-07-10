@@ -1,0 +1,171 @@
+§ spec.80.loa.substrate_stress_lab
+  status: ◐ implemented.operator-harness ; production_shape=✗ input+adapter+native-menu-gaps ; active_scene=accepted-bounded-culling-proof
+  purpose:
+    synthesize Infinite Labyrinth + Infinity Engine + LoA knowledge into coherent menu/UI/test-room stress suite
+    make owner-run graphical benchmark easy after every render pass
+    expose hard-to-render workloads without claiming final rich-scene readiness
+
+  source.assimilation:
+    LoA.v13:
+      substrate.cssl ⇒ closed-form quadric/csg cheap-by-construction renderer
+      bench.cssl ⇒ timing loop must prevent dead-code elimination
+    Labyrinth.of.Apocalypse:
+      test_room.cssl ⇒ 4-quadrant calibration room: geometry, 4D, procedural, calibration
+      stress_objects.cssl ⇒ torus, chrome, glass, mandelbulb, tesseract, hair, tree, crystal cluster
+      ui_hud.cssl ⇒ HUD + prompt + console + stress-toggle panel + telemetry/MCP panels
+      render_pipeline.cssl ⇒ diagnostic render modes: normal/albedo/depth/normals/sdf/steps/grid/field-vs-analytic
+    LoA.v14:
+      TEST_ROOM_SPEC ⇒ printer wall, diamond floor, material wall, fuzzy hair, menu/help overlay, 144fps gate
+      RENDERER_FRONTIER ⇒ data-driven substrate bytecode, VRS/TAA/PRT/ReSTIR roadmap, low-latency input
+    infinite-labyrinth:
+      16_RENDERING ⇒ SDF/material/emission/shadow/AO/post multi-pass model + bottleneck math
+      20_UI_DESIGN_BIBLE ⇒ diegetic codex menu, SDF UI, field-connected UI effects
+    TIL5:
+      08_RENDERING ⇒ SDF + Gaussian splats + spectral FX + render_stats/MCP tools
+    Infinity.Engine:
+      render_forward.cssl ⇒ Forward+ pass taxonomy, tile-light-cull, frame budget discipline
+
+  UX.menu:
+    mode: operator stress lab
+    primary_surface:
+      HTML evidence-menu from `tools\render-v3\run_stress_lab_bench.cmd`
+      per-room graphical dashboards from `tools\render-v3\run_graphical_bench.cmd`
+    in-engine-canon:
+      `examples\loa_substrate_stress_lab.cssl`
+      rooms selectable by `LOA_V3_STRESS_ROOM`
+      future in-window UI maps to same room ids + telemetry fields
+    controls:
+      quick sanity:
+        `tools\render-v3\run_stress_lab_bench.cmd -Quick -Open`
+      full gate:
+        `tools\render-v3\run_stress_lab_bench.cmd -Frames 5000 -Open`
+      single room:
+        `tools\render-v3\run_graphical_bench.cmd -StressRoom hair -Frames 5000 -Open`
+    evidence.output:
+      suite JSON
+      menu HTML
+      per-room report JSON
+      per-room CSL summary
+      yaw A/B BMP captures
+      amplified yaw-diff BMP
+
+  rooms:
+    shells:
+      role: baseline existing concentric crystal field
+      stress: replay determinism + observer culling + material shell bands
+      gate: regression baseline
+    printer:
+      role: calibration wall
+      stress: high-frequency hard edges, bars, line pairs, checker/moire-like aliasing
+      source: LoA.v14 printer-test wall + LoA test-room calibration
+    material:
+      role: material atrium
+      stress: 16 clustered material families, reflectance/proxy material diversity
+      source: material wall + material-space specs
+    hair:
+      role: hair/fractal/fuzz proxy
+      stress: dense radial strand field, fuzzy sphere/mandelbulb proxy, alpha-like edge density
+      source: stress_objects hairy-mandelbulb + fuzzy hair object
+    portal:
+      role: portal/moire interference
+      stress: concentric rings, diagonal interference, thin geometry readability
+      source: Infinite Labyrinth topology/portal specs + printer moire panel
+    arena:
+      role: competitive action readability
+      stress: high-contrast depth lanes, ceiling/floor targets, high-refresh p99/p99.9 discipline
+      source: LoA combat/competitive visual requirement
+
+  implementation:
+    Rust.host:
+      `compiler-rs\crates\loa-host\src\substrate_render.rs`
+        added `V3StressRoom`
+        added deterministic room-specific 1024-crystal field generators
+        `LOA_V3_STRESS_ROOM` selects actual V3 scene data at runtime
+      `compiler-rs\crates\loa-host\src\window.rs`
+        telemetry now emits `stress_room=<key>`
+      `compiler-rs\crates\loa-host\src\lib.rs`
+        startup banner documents `LOA_V3_STRESS_ROOM`
+    tooling:
+      `tools\render-v3\v3_present_bench.py`
+        report summary includes stress_room
+        run subcommand accepts `--stress-room`
+      `tools\render-v3\run_graphical_bench.ps1`
+        accepts `-StressRoom`
+        file prefixes include room key
+        non-shell rooms pass `--rich-scene` declaration while other gates remain
+      `tools\render-v3\run_stress_lab_bench.ps1`
+        builds once, runs selected rooms, emits menu HTML + suite JSON
+    CSSL.catalog:
+      `examples\loa_substrate_stress_lab.cssl`
+        canonical room/menu ids + acceptance helpers
+
+  validation.observed:
+    smoke:
+      `cargo +stable-x86_64-pc-windows-msvc fmt -p loa-host` → passed ✓
+      `python -m py_compile tools\render-v3\v3_present_bench.py tools\dev-observe\dev_observe.py tools\grok-mcp-harness\dev_observe_tools.py` → passed ✓
+      `python tools\render-v3\v3_present_bench.py self-test` → passed ✓
+    behavioral:
+      `cargo +stable-x86_64-pc-windows-msvc test -p loa-host --features runtime v3_stress_room -- --nocapture` → 2 passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc check -p loa-host --features runtime` → passed ✓
+      `cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --bin loa-runtime` → passed ✓
+    benchmark.quick_suite:
+      command:
+        `python tools\dev-observe\dev_observe.py run --repo CSSLv3 --phase p1.stress_lab_quick_suite -- tools\render-v3\run_stress_lab_bench.cmd -Quick -NoBuild -AllowBudgetFail`
+      verdict:
+        all rooms p99+p99.9 within 144Hz+240Hz frame budgets ✓
+        suite status remains `pass_benchmark_budget_fail_production_evidence` ✓
+        dev_observe critique warns production-evidence gaps + >60s loop ✓
+      artifacts:
+        menu:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_stress_lab_20260521_112948_menu.html
+        suite:
+          C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_stress_lab_20260521_112948_suite.json
+      rooms:
+        printer:  wall.p99=2967us ; wall.p99.9=3202us ; gpu.p99=2705us ; over240=0
+        material: wall.p99=2942us ; wall.p99.9=3253us ; gpu.p99=2711us ; over240=1 ; max=4431us
+        hair:     wall.p99=2980us ; wall.p99.9=3233us ; gpu.p99=2758us ; over240=0
+        portal:   wall.p99=2953us ; wall.p99.9=3106us ; gpu.p99=2714us ; over240=0
+        arena:    wall.p99=2937us ; wall.p99.9=3180us ; gpu.p99=2722us ; over240=0
+    benchmark.full_hair:
+      command:
+        `tools\render-v3\run_graphical_bench.cmd -StressRoom hair -Frames 5000 -NoBuild -AllowBudgetFail`
+      verdict:
+        p99+p99.9 budget-pass ✓
+        max wall outliers not correlated with GPU dispatch spike ◐
+      artifact:
+        C:\Users\Apocky\source\repos\CSSLv3\compiler-rs\target\v3_graphical_bench_hair_20260521_112357_report.json
+
+  validation.required:
+    smoke:
+      rust fmt
+      python py_compile
+      benchmark self-test
+    behavioral:
+      stress room parser tests
+      deterministic 1024-crystal generation per room
+      V3 packer active bounded scene test
+    benchmark:
+      quick stress-lab run with at least printer+hair rooms
+      full 5000-frame run before metric claim
+    e2e.production_shape:
+      remains ✗ until:
+        accepted bounded-culling proof present for 1024 world crystals → V3 bounded active scene
+        real raw-input latency/jitter present in production-gate runs
+        adapter VRAM/power/clock/queue telemetry accepted
+        p99+p99.9 stable under full room suite
+        screenshots/diffs reviewed for every visual-room class
+
+  critique:
+    ✓ stress rooms now change actual V3 scene data, not only report labels
+    ✓ owner gets a single menu command for visual dashboard comparison
+    ✓ hard render ideas are distilled into repeatable room workloads
+    ◐ current V3 shader remains crystal-field/proxy renderer, not full SDF torus/glass/hair implementation
+    ◐ active scene cap remains bounded, but reports now require explicit deterministic culling-proof before clearing the old active≥1000 evidence gap
+    ✗ no in-window native menu yet for V3 standalone; current menu is operator HTML dashboard
+
+  next:
+    R! run full stress-lab benchmark after every render pass
+    R! keep bounded-culling proof pinned while measuring whether a larger active tier is worthwhile
+    R! implement real in-window V3 codex/stress-menu overlay
+    R! add room-specific CPU/GPU visual oracles for printer/material/hair/portal/arena
+∎

@@ -56,13 +56,9 @@
 //!     built once per module.
 //!
 //! § INTEGRATION_NOTE
-//!   Per Wave-A4 hard-constraint, this module is *not* added to `crate::lib.rs`'s
-//!   `pub mod` list in this slice ; it lives as a self-contained unit ready to be
-//!   wired in by the next slice that integrates it into the lowering pipeline.
-//!   Users who want to invoke it in tests reach in via the crate-internal path
-//!   `cssl_hir::exhaustiveness::check_exhaustiveness` once a follow-up adds
-//!   `pub mod exhaustiveness;` to `lib.rs`. For now the unit-tests in this file
-//!   exercise the API directly via `super::*`.
+//!   This module is exported through `crate::lib.rs` so compiler drivers can call
+//!   `cssl_hir::exhaustiveness::check_exhaustiveness` and render the public
+//!   report / diagnostic types directly.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -86,7 +82,7 @@ use crate::symbol::Interner;
 /// future slices may add `E1005` for unreachable arms / `E1006` for
 /// overlapping ranges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExhaustivenessCode {
+pub enum ExhaustivenessCode {
     /// `E1004` — the match-arm-set does not cover every variant of the scrutinee's enum.
     NonExhaustiveMatch,
 }
@@ -94,7 +90,7 @@ pub(crate) enum ExhaustivenessCode {
 impl ExhaustivenessCode {
     /// Canonical short-code string for log-parsing tools.
     #[must_use]
-    pub(crate) const fn code(self) -> &'static str {
+    pub const fn code(self) -> &'static str {
         match self {
             Self::NonExhaustiveMatch => "E1004",
         }
@@ -103,7 +99,7 @@ impl ExhaustivenessCode {
 
 /// One exhaustiveness-check diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExhaustivenessDiagnostic {
+pub struct ExhaustivenessDiagnostic {
     /// Diagnostic code.
     pub code: ExhaustivenessCode,
     /// Span of the offending `match` expression.
@@ -121,12 +117,10 @@ impl ExhaustivenessDiagnostic {
     /// Render a one-line CI-log message in the canonical
     /// `error: non-exhaustive match : missing pattern `<V>` (E1004)` shape.
     #[must_use]
-    pub(crate) fn render(&self) -> String {
+    pub fn render(&self) -> String {
         format!(
             "error: non-exhaustive match : missing pattern `{}` ({})",
-            self.missing_variants
-                .first()
-                .map_or("?", |s| s.as_str()),
+            self.missing_variants.first().map_or("?", |s| s.as_str()),
             self.code.code(),
         )
     }
@@ -134,7 +128,7 @@ impl ExhaustivenessDiagnostic {
 
 /// Aggregate report from an exhaustiveness pass.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ExhaustivenessReport {
+pub struct ExhaustivenessReport {
     /// All diagnostics found in the module.
     pub diagnostics: Vec<ExhaustivenessDiagnostic>,
     /// Number of `match` expressions inspected (regardless of pass/fail).
@@ -149,19 +143,19 @@ pub(crate) struct ExhaustivenessReport {
 impl ExhaustivenessReport {
     /// `true` iff no diagnostics were collected.
     #[must_use]
-    pub(crate) fn is_clean(&self) -> bool {
+    pub fn is_clean(&self) -> bool {
         self.diagnostics.is_empty()
     }
 
     /// Count of diagnostics matching a code.
     #[must_use]
-    pub(crate) fn count(&self, code: ExhaustivenessCode) -> usize {
+    pub fn count(&self, code: ExhaustivenessCode) -> usize {
         self.diagnostics.iter().filter(|d| d.code == code).count()
     }
 
     /// Short summary line for log output.
     #[must_use]
-    pub(crate) fn summary(&self) -> String {
+    pub fn summary(&self) -> String {
         format!(
             "exhaustiveness : {} match-exprs / {} skipped-unresolved / {} E1004",
             self.checked_match_count,
@@ -232,27 +226,11 @@ impl VariantSet {
 
     /// Set-difference : `self ∖ other` ; returns variants in `self` not in `other`.
     fn difference(&self, other: &Self) -> Vec<u32> {
-        match (self, other) {
-            (Self::Bits(a), Self::Bits(b)) => {
-                let diff = *a & !*b;
-                (0..64u32).filter(|i| (diff & (1u64 << i)) != 0).collect()
-            }
-            (Self::Big(a), Self::Big(b)) => a.difference(b).copied().collect(),
-            // Mixed-mode fallback : promote to BTreeSet on one side.
-            (Self::Bits(a), Self::Big(b)) => {
-                let mut out = Vec::new();
-                for i in 0..64u32 {
-                    if (*a & (1u64 << i)) != 0 && !b.contains(&i) {
-                        out.push(i);
-                    }
-                }
-                out
-            }
-            (Self::Big(a), Self::Bits(b)) => a
-                .iter()
-                .copied()
-                .filter(|i| (*b & (1u64 << i)) == 0)
+        match self {
+            Self::Bits(a) => (0..64u32)
+                .filter(|i| (*a & (1u64 << i)) != 0 && !other.contains(*i))
                 .collect(),
+            Self::Big(a) => a.iter().copied().filter(|i| !other.contains(*i)).collect(),
         }
     }
 
@@ -339,10 +317,7 @@ impl<'a> EnumTable<'a> {
 /// regardless of whether violations were found ; callers consume the report and
 /// upgrade `E1004` diagnostics to compile-errors.
 #[must_use]
-pub fn check_exhaustiveness(
-    module: &HirModule,
-    interner: &Interner,
-) -> ExhaustivenessReport {
+pub fn check_exhaustiveness(module: &HirModule, interner: &Interner) -> ExhaustivenessReport {
     let mut report = ExhaustivenessReport::default();
     let table = EnumTable::build(module);
     for item in &module.items {
@@ -690,10 +665,7 @@ fn find_enum_for_arms(arms: &[HirMatchArm], table: &EnumTable<'_>) -> Option<usi
 
 fn first_enum_in_pattern(pat: &HirPattern, table: &EnumTable<'_>) -> Option<usize> {
     match &pat.kind {
-        HirPatternKind::Variant {
-            def: Some(def),
-            ..
-        } => table.lookup(*def).map(|(e, _)| e),
+        HirPatternKind::Variant { def: Some(def), .. } => table.lookup(*def).map(|(e, _)| e),
         HirPatternKind::Or(alts) => {
             for a in alts {
                 if let Some(idx) = first_enum_in_pattern(a, table) {
@@ -779,8 +751,8 @@ mod tests {
     use crate::arena::{DefId, HirArena, HirId};
     use crate::expr::{HirBlock, HirExpr, HirExprKind, HirLiteral, HirLiteralKind, HirMatchArm};
     use crate::item::{
-        HirEnum, HirEnumVariant, HirFn, HirFnParam, HirGenerics, HirItem, HirModule,
-        HirStructBody, HirVisibility,
+        HirEnum, HirEnumVariant, HirFn, HirFnParam, HirGenerics, HirItem, HirModule, HirStructBody,
+        HirVisibility,
     };
     use crate::pat::{HirPattern, HirPatternKind};
     use crate::symbol::Interner;
@@ -990,8 +962,14 @@ mod tests {
         });
         let report = check_exhaustiveness(&module, &interner);
         assert_eq!(report.diagnostics.len(), 1);
-        assert_eq!(report.diagnostics[0].code, ExhaustivenessCode::NonExhaustiveMatch);
-        assert_eq!(report.diagnostics[0].missing_variants, vec!["B".to_string()]);
+        assert_eq!(
+            report.diagnostics[0].code,
+            ExhaustivenessCode::NonExhaustiveMatch
+        );
+        assert_eq!(
+            report.diagnostics[0].missing_variants,
+            vec!["B".to_string()]
+        );
         assert_eq!(report.diagnostics[0].enum_name, "Twin");
     }
 
@@ -1016,7 +994,10 @@ mod tests {
     fn option_shape_missing_none() {
         let interner = Interner::new();
         let module = module_with_match(&interner, "Option", &["Some", "None"], |defs| {
-            vec![match_arm(variant_pat_with_args(defs[0], vec![wildcard_pat()]), None)]
+            vec![match_arm(
+                variant_pat_with_args(defs[0], vec![wildcard_pat()]),
+                None,
+            )]
         });
         let report = check_exhaustiveness(&module, &interner);
         assert_eq!(report.diagnostics.len(), 1);
@@ -1106,8 +1087,14 @@ mod tests {
         let module = module_with_match(&interner, "Quad", &["A", "B", "C", "D"], |defs| {
             // (A | B) , (C | D) — two arms, each covering two variants.
             vec![
-                match_arm(or_pat(vec![variant_pat(defs[0]), variant_pat(defs[1])]), None),
-                match_arm(or_pat(vec![variant_pat(defs[2]), variant_pat(defs[3])]), None),
+                match_arm(
+                    or_pat(vec![variant_pat(defs[0]), variant_pat(defs[1])]),
+                    None,
+                ),
+                match_arm(
+                    or_pat(vec![variant_pat(defs[2]), variant_pat(defs[3])]),
+                    None,
+                ),
             ]
         });
         let report = check_exhaustiveness(&module, &interner);

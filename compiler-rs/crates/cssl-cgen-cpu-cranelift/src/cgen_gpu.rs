@@ -38,7 +38,7 @@
 //!
 //! § SAWYER-EFFICIENCY
 //!   - Pure fns ; zero alloc outside cranelift Signature Vec storage.
-//!   - `GpuImportSet` is a `u8` bitfield (8 symbols ≤ 8 bits) ; 1
+//!   - `GpuImportSet` is a `u32` bitfield (24 symbols ≤ 32 bits) ; 1
 //!     bit-or per op ; fits a register.
 //!   - Match-arm ordering by call-frequency (per-frame first).
 
@@ -58,6 +58,22 @@ pub const GPU_SWAPCHAIN_PRESENT_SYMBOL: &str = "__cssl_gpu_swapchain_present";
 pub const GPU_PIPELINE_COMPILE_SYMBOL: &str = "__cssl_gpu_pipeline_compile";
 pub const GPU_CMD_BUF_RECORD_STUB_SYMBOL: &str = "__cssl_gpu_cmd_buf_record_stub";
 pub const GPU_CMD_BUF_SUBMIT_STUB_SYMBOL: &str = "__cssl_gpu_cmd_buf_submit_stub";
+pub const GPU_BUFFER_CREATE_SYMBOL: &str = "__cssl_gpu_buffer_create";
+pub const GPU_BUFFER_DESTROY_SYMBOL: &str = "__cssl_gpu_buffer_destroy";
+pub const GPU_BUFFER_MAP_SYMBOL: &str = "__cssl_gpu_buffer_map";
+pub const GPU_BUFFER_UNMAP_SYMBOL: &str = "__cssl_gpu_buffer_unmap";
+pub const GPU_BUFFER_UPLOAD_SYMBOL: &str = "__cssl_gpu_buffer_upload";
+pub const GPU_CMD_BUF_BEGIN_SYMBOL: &str = "__cssl_gpu_cmd_buf_begin";
+pub const GPU_CMD_BUF_END_SYMBOL: &str = "__cssl_gpu_cmd_buf_end";
+pub const GPU_CMD_BUF_BIND_PIPELINE_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_pipeline";
+pub const GPU_CMD_BUF_BIND_VBUF_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_vbuf";
+pub const GPU_CMD_BUF_BIND_IBUF_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_ibuf";
+pub const GPU_CMD_BUF_BIND_DESCRIPTOR_SYMBOL: &str = "__cssl_gpu_cmd_buf_bind_descriptor";
+pub const GPU_CMD_BUF_PUSH_CONSTANTS_SYMBOL: &str = "__cssl_gpu_cmd_buf_push_constants";
+pub const GPU_CMD_BUF_DRAW_INDEXED_SYMBOL: &str = "__cssl_gpu_cmd_buf_draw_indexed";
+pub const GPU_CMD_BUF_DRAW_INDIRECT_SYMBOL: &str = "__cssl_gpu_cmd_buf_draw_indirect";
+pub const GPU_CMD_BUF_DISPATCH_SYMBOL: &str = "__cssl_gpu_cmd_buf_dispatch";
+pub const GPU_CMD_BUF_SUBMIT_V2_SYMBOL: &str = "__cssl_gpu_cmd_buf_submit_v2";
 
 // ─── operand counts ─────────────────────────────────────────────────────
 
@@ -69,6 +85,22 @@ pub const GPU_SWAPCHAIN_PRESENT_OPERAND_COUNT: usize = 2;
 pub const GPU_PIPELINE_COMPILE_OPERAND_COUNT: usize = 4;
 pub const GPU_CMD_BUF_RECORD_STUB_OPERAND_COUNT: usize = 0;
 pub const GPU_CMD_BUF_SUBMIT_STUB_OPERAND_COUNT: usize = 1;
+pub const GPU_BUFFER_CREATE_OPERAND_COUNT: usize = 4;
+pub const GPU_BUFFER_DESTROY_OPERAND_COUNT: usize = 1;
+pub const GPU_BUFFER_MAP_OPERAND_COUNT: usize = 3;
+pub const GPU_BUFFER_UNMAP_OPERAND_COUNT: usize = 1;
+pub const GPU_BUFFER_UPLOAD_OPERAND_COUNT: usize = 4;
+pub const GPU_CMD_BUF_BEGIN_OPERAND_COUNT: usize = 1;
+pub const GPU_CMD_BUF_END_OPERAND_COUNT: usize = 1;
+pub const GPU_CMD_BUF_BIND_PIPELINE_OPERAND_COUNT: usize = 2;
+pub const GPU_CMD_BUF_BIND_VBUF_OPERAND_COUNT: usize = 4;
+pub const GPU_CMD_BUF_BIND_IBUF_OPERAND_COUNT: usize = 4;
+pub const GPU_CMD_BUF_BIND_DESCRIPTOR_OPERAND_COUNT: usize = 4;
+pub const GPU_CMD_BUF_PUSH_CONSTANTS_OPERAND_COUNT: usize = 5;
+pub const GPU_CMD_BUF_DRAW_INDEXED_OPERAND_COUNT: usize = 6;
+pub const GPU_CMD_BUF_DRAW_INDIRECT_OPERAND_COUNT: usize = 5;
+pub const GPU_CMD_BUF_DISPATCH_OPERAND_COUNT: usize = 4;
+pub const GPU_CMD_BUF_SUBMIT_V2_OPERAND_COUNT: usize = 2;
 /// All gpu FFI symbols produce 1 result.
 pub const GPU_RESULT_COUNT: usize = 1;
 
@@ -152,6 +184,193 @@ pub fn build_cmd_buf_submit_stub_signature(call_conv: CallConv) -> Signature {
     sig
 }
 
+#[must_use]
+pub fn build_buffer_create_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64)); // device
+    sig.params.push(AbiParam::new(ptr_ty)); // size_bytes
+    sig.params.push(AbiParam::new(cl_types::I32)); // usage
+    sig.params.push(AbiParam::new(cl_types::I32)); // mem_kind
+    sig.returns.push(AbiParam::new(cl_types::I64));
+    sig
+}
+
+#[must_use]
+pub fn build_buffer_destroy_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_buffer_map_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.returns.push(AbiParam::new(ptr_ty));
+    sig
+}
+
+#[must_use]
+pub fn build_buffer_unmap_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_buffer_upload_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_begin_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.returns.push(AbiParam::new(cl_types::I64));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_end_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_bind_pipeline_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_bind_vbuf_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_bind_ibuf_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_bind_descriptor_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_push_constants_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_draw_indexed_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_draw_indirect_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_dispatch_signature(call_conv: CallConv) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.params.push(AbiParam::new(cl_types::I32));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
+#[must_use]
+pub fn build_cmd_buf_submit_v2_signature(
+    call_conv: CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Signature {
+    let mut sig = Signature::new(call_conv);
+    sig.params.push(AbiParam::new(cl_types::I64));
+    sig.params.push(AbiParam::new(ptr_ty));
+    sig.returns.push(AbiParam::new(cl_types::I32));
+    sig
+}
+
 // ─── GpuFfiSymbolKind enum + LUT dispatcher ────────────────────────────
 // Pre-MIR-op variant (keyed by enum-tag) — MIR-op dispatch lands when
 // `CsslOp::Gpu*` variants are added per INTEGRATION_NOTE.
@@ -177,6 +396,22 @@ pub enum GpuFfiSymbolKind {
     CmdBufRecordStub = 6,
     /// `__cssl_gpu_cmd_buf_submit_stub` — stage-1 frontier.
     CmdBufSubmitStub = 7,
+    BufferCreate = 8,
+    BufferDestroy = 9,
+    BufferMap = 10,
+    BufferUnmap = 11,
+    BufferUpload = 12,
+    CmdBufBegin = 13,
+    CmdBufEnd = 14,
+    CmdBufBindPipeline = 15,
+    CmdBufBindVbuf = 16,
+    CmdBufBindIbuf = 17,
+    CmdBufBindDescriptor = 18,
+    CmdBufPushConstants = 19,
+    CmdBufDrawIndexed = 20,
+    CmdBufDrawIndirect = 21,
+    CmdBufDispatch = 22,
+    CmdBufSubmitV2 = 23,
 }
 
 #[must_use]
@@ -212,6 +447,57 @@ pub fn lower_gpu_symbol(kind: GpuFfiSymbolKind) -> (&'static str, usize) {
             GPU_CMD_BUF_SUBMIT_STUB_SYMBOL,
             GPU_CMD_BUF_SUBMIT_STUB_OPERAND_COUNT,
         ),
+        GpuFfiSymbolKind::BufferCreate => {
+            (GPU_BUFFER_CREATE_SYMBOL, GPU_BUFFER_CREATE_OPERAND_COUNT)
+        }
+        GpuFfiSymbolKind::BufferDestroy => {
+            (GPU_BUFFER_DESTROY_SYMBOL, GPU_BUFFER_DESTROY_OPERAND_COUNT)
+        }
+        GpuFfiSymbolKind::BufferMap => (GPU_BUFFER_MAP_SYMBOL, GPU_BUFFER_MAP_OPERAND_COUNT),
+        GpuFfiSymbolKind::BufferUnmap => (GPU_BUFFER_UNMAP_SYMBOL, GPU_BUFFER_UNMAP_OPERAND_COUNT),
+        GpuFfiSymbolKind::BufferUpload => {
+            (GPU_BUFFER_UPLOAD_SYMBOL, GPU_BUFFER_UPLOAD_OPERAND_COUNT)
+        }
+        GpuFfiSymbolKind::CmdBufBegin => {
+            (GPU_CMD_BUF_BEGIN_SYMBOL, GPU_CMD_BUF_BEGIN_OPERAND_COUNT)
+        }
+        GpuFfiSymbolKind::CmdBufEnd => (GPU_CMD_BUF_END_SYMBOL, GPU_CMD_BUF_END_OPERAND_COUNT),
+        GpuFfiSymbolKind::CmdBufBindPipeline => (
+            GPU_CMD_BUF_BIND_PIPELINE_SYMBOL,
+            GPU_CMD_BUF_BIND_PIPELINE_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufBindVbuf => (
+            GPU_CMD_BUF_BIND_VBUF_SYMBOL,
+            GPU_CMD_BUF_BIND_VBUF_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufBindIbuf => (
+            GPU_CMD_BUF_BIND_IBUF_SYMBOL,
+            GPU_CMD_BUF_BIND_IBUF_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufBindDescriptor => (
+            GPU_CMD_BUF_BIND_DESCRIPTOR_SYMBOL,
+            GPU_CMD_BUF_BIND_DESCRIPTOR_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufPushConstants => (
+            GPU_CMD_BUF_PUSH_CONSTANTS_SYMBOL,
+            GPU_CMD_BUF_PUSH_CONSTANTS_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufDrawIndexed => (
+            GPU_CMD_BUF_DRAW_INDEXED_SYMBOL,
+            GPU_CMD_BUF_DRAW_INDEXED_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufDrawIndirect => (
+            GPU_CMD_BUF_DRAW_INDIRECT_SYMBOL,
+            GPU_CMD_BUF_DRAW_INDIRECT_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufDispatch => (
+            GPU_CMD_BUF_DISPATCH_SYMBOL,
+            GPU_CMD_BUF_DISPATCH_OPERAND_COUNT,
+        ),
+        GpuFfiSymbolKind::CmdBufSubmitV2 => (
+            GPU_CMD_BUF_SUBMIT_V2_SYMBOL,
+            GPU_CMD_BUF_SUBMIT_V2_OPERAND_COUNT,
+        ),
     }
 }
 
@@ -230,15 +516,37 @@ pub fn build_signature_for_kind(
         GpuFfiSymbolKind::PipelineCompile => build_pipeline_compile_signature(call_conv, ptr_ty),
         GpuFfiSymbolKind::CmdBufRecordStub => build_cmd_buf_record_stub_signature(call_conv),
         GpuFfiSymbolKind::CmdBufSubmitStub => build_cmd_buf_submit_stub_signature(call_conv),
+        GpuFfiSymbolKind::BufferCreate => build_buffer_create_signature(call_conv, ptr_ty),
+        GpuFfiSymbolKind::BufferDestroy => build_buffer_destroy_signature(call_conv),
+        GpuFfiSymbolKind::BufferMap => build_buffer_map_signature(call_conv, ptr_ty),
+        GpuFfiSymbolKind::BufferUnmap => build_buffer_unmap_signature(call_conv),
+        GpuFfiSymbolKind::BufferUpload => build_buffer_upload_signature(call_conv, ptr_ty),
+        GpuFfiSymbolKind::CmdBufBegin => build_cmd_buf_begin_signature(call_conv),
+        GpuFfiSymbolKind::CmdBufEnd => build_cmd_buf_end_signature(call_conv),
+        GpuFfiSymbolKind::CmdBufBindPipeline => build_cmd_buf_bind_pipeline_signature(call_conv),
+        GpuFfiSymbolKind::CmdBufBindVbuf => build_cmd_buf_bind_vbuf_signature(call_conv, ptr_ty),
+        GpuFfiSymbolKind::CmdBufBindIbuf => build_cmd_buf_bind_ibuf_signature(call_conv, ptr_ty),
+        GpuFfiSymbolKind::CmdBufBindDescriptor => {
+            build_cmd_buf_bind_descriptor_signature(call_conv)
+        }
+        GpuFfiSymbolKind::CmdBufPushConstants => {
+            build_cmd_buf_push_constants_signature(call_conv, ptr_ty)
+        }
+        GpuFfiSymbolKind::CmdBufDrawIndexed => build_cmd_buf_draw_indexed_signature(call_conv),
+        GpuFfiSymbolKind::CmdBufDrawIndirect => {
+            build_cmd_buf_draw_indirect_signature(call_conv, ptr_ty)
+        }
+        GpuFfiSymbolKind::CmdBufDispatch => build_cmd_buf_dispatch_signature(call_conv),
+        GpuFfiSymbolKind::CmdBufSubmitV2 => build_cmd_buf_submit_v2_signature(call_conv, ptr_ty),
     }
 }
 
 // ─── GpuImportSet bitfield (u8) ─────────────────────────────────────────
 
 /// Bitflag set of which `__cssl_gpu_*` imports a given fn requires.
-/// 8-bit width = 1 byte ; 1 bit-or per op.
+/// 32-bit width = 4 bytes ; 1 bit-or per op.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct GpuImportSet(pub u8);
+pub struct GpuImportSet(pub u32);
 
 impl GpuImportSet {
     #[must_use]
@@ -246,17 +554,33 @@ impl GpuImportSet {
         Self(0)
     }
 
-    pub const DEVICE_CREATE: u8 = 1 << 0;
-    pub const DEVICE_DESTROY: u8 = 1 << 1;
-    pub const SWAPCHAIN_CREATE: u8 = 1 << 2;
-    pub const SWAPCHAIN_ACQUIRE: u8 = 1 << 3;
-    pub const SWAPCHAIN_PRESENT: u8 = 1 << 4;
-    pub const PIPELINE_COMPILE: u8 = 1 << 5;
-    pub const CMD_BUF_RECORD_STUB: u8 = 1 << 6;
-    pub const CMD_BUF_SUBMIT_STUB: u8 = 1 << 7;
+    pub const DEVICE_CREATE: u32 = 1 << 0;
+    pub const DEVICE_DESTROY: u32 = 1 << 1;
+    pub const SWAPCHAIN_CREATE: u32 = 1 << 2;
+    pub const SWAPCHAIN_ACQUIRE: u32 = 1 << 3;
+    pub const SWAPCHAIN_PRESENT: u32 = 1 << 4;
+    pub const PIPELINE_COMPILE: u32 = 1 << 5;
+    pub const CMD_BUF_RECORD_STUB: u32 = 1 << 6;
+    pub const CMD_BUF_SUBMIT_STUB: u32 = 1 << 7;
+    pub const BUFFER_CREATE: u32 = 1 << 8;
+    pub const BUFFER_DESTROY: u32 = 1 << 9;
+    pub const BUFFER_MAP: u32 = 1 << 10;
+    pub const BUFFER_UNMAP: u32 = 1 << 11;
+    pub const BUFFER_UPLOAD: u32 = 1 << 12;
+    pub const CMD_BUF_BEGIN: u32 = 1 << 13;
+    pub const CMD_BUF_END: u32 = 1 << 14;
+    pub const CMD_BUF_BIND_PIPELINE: u32 = 1 << 15;
+    pub const CMD_BUF_BIND_VBUF: u32 = 1 << 16;
+    pub const CMD_BUF_BIND_IBUF: u32 = 1 << 17;
+    pub const CMD_BUF_BIND_DESCRIPTOR: u32 = 1 << 18;
+    pub const CMD_BUF_PUSH_CONSTANTS: u32 = 1 << 19;
+    pub const CMD_BUF_DRAW_INDEXED: u32 = 1 << 20;
+    pub const CMD_BUF_DRAW_INDIRECT: u32 = 1 << 21;
+    pub const CMD_BUF_DISPATCH: u32 = 1 << 22;
+    pub const CMD_BUF_SUBMIT_V2: u32 = 1 << 23;
 
     #[must_use]
-    pub const fn contains(self, bits: u8) -> bool {
+    pub const fn contains(self, bits: u32) -> bool {
         (self.0 & bits) == bits
     }
 
@@ -266,7 +590,7 @@ impl GpuImportSet {
     }
 
     #[must_use]
-    const fn mask_for(kind: GpuFfiSymbolKind) -> u8 {
+    const fn mask_for(kind: GpuFfiSymbolKind) -> u32 {
         match kind {
             GpuFfiSymbolKind::DeviceCreate => Self::DEVICE_CREATE,
             GpuFfiSymbolKind::DeviceDestroy => Self::DEVICE_DESTROY,
@@ -276,6 +600,22 @@ impl GpuImportSet {
             GpuFfiSymbolKind::PipelineCompile => Self::PIPELINE_COMPILE,
             GpuFfiSymbolKind::CmdBufRecordStub => Self::CMD_BUF_RECORD_STUB,
             GpuFfiSymbolKind::CmdBufSubmitStub => Self::CMD_BUF_SUBMIT_STUB,
+            GpuFfiSymbolKind::BufferCreate => Self::BUFFER_CREATE,
+            GpuFfiSymbolKind::BufferDestroy => Self::BUFFER_DESTROY,
+            GpuFfiSymbolKind::BufferMap => Self::BUFFER_MAP,
+            GpuFfiSymbolKind::BufferUnmap => Self::BUFFER_UNMAP,
+            GpuFfiSymbolKind::BufferUpload => Self::BUFFER_UPLOAD,
+            GpuFfiSymbolKind::CmdBufBegin => Self::CMD_BUF_BEGIN,
+            GpuFfiSymbolKind::CmdBufEnd => Self::CMD_BUF_END,
+            GpuFfiSymbolKind::CmdBufBindPipeline => Self::CMD_BUF_BIND_PIPELINE,
+            GpuFfiSymbolKind::CmdBufBindVbuf => Self::CMD_BUF_BIND_VBUF,
+            GpuFfiSymbolKind::CmdBufBindIbuf => Self::CMD_BUF_BIND_IBUF,
+            GpuFfiSymbolKind::CmdBufBindDescriptor => Self::CMD_BUF_BIND_DESCRIPTOR,
+            GpuFfiSymbolKind::CmdBufPushConstants => Self::CMD_BUF_PUSH_CONSTANTS,
+            GpuFfiSymbolKind::CmdBufDrawIndexed => Self::CMD_BUF_DRAW_INDEXED,
+            GpuFfiSymbolKind::CmdBufDrawIndirect => Self::CMD_BUF_DRAW_INDIRECT,
+            GpuFfiSymbolKind::CmdBufDispatch => Self::CMD_BUF_DISPATCH,
+            GpuFfiSymbolKind::CmdBufSubmitV2 => Self::CMD_BUF_SUBMIT_V2,
         }
     }
 
@@ -351,35 +691,51 @@ mod tests {
     #[test]
     fn operand_counts_match_signature_shapes() {
         assert_eq!(
-            build_device_create_signature(CallConv::SystemV).params.len(),
+            build_device_create_signature(CallConv::SystemV)
+                .params
+                .len(),
             GPU_DEVICE_CREATE_OPERAND_COUNT
         );
         assert_eq!(
-            build_device_destroy_signature(CallConv::SystemV).params.len(),
+            build_device_destroy_signature(CallConv::SystemV)
+                .params
+                .len(),
             GPU_DEVICE_DESTROY_OPERAND_COUNT
         );
         assert_eq!(
-            build_swapchain_create_signature(CallConv::SystemV).params.len(),
+            build_swapchain_create_signature(CallConv::SystemV)
+                .params
+                .len(),
             GPU_SWAPCHAIN_CREATE_OPERAND_COUNT
         );
         assert_eq!(
-            build_swapchain_acquire_signature(CallConv::SystemV).params.len(),
+            build_swapchain_acquire_signature(CallConv::SystemV)
+                .params
+                .len(),
             GPU_SWAPCHAIN_ACQUIRE_OPERAND_COUNT
         );
         assert_eq!(
-            build_swapchain_present_signature(CallConv::SystemV).params.len(),
+            build_swapchain_present_signature(CallConv::SystemV)
+                .params
+                .len(),
             GPU_SWAPCHAIN_PRESENT_OPERAND_COUNT
         );
         assert_eq!(
-            build_pipeline_compile_signature(CallConv::SystemV, cl_types::I64).params.len(),
+            build_pipeline_compile_signature(CallConv::SystemV, cl_types::I64)
+                .params
+                .len(),
             GPU_PIPELINE_COMPILE_OPERAND_COUNT
         );
         assert_eq!(
-            build_cmd_buf_record_stub_signature(CallConv::SystemV).params.len(),
+            build_cmd_buf_record_stub_signature(CallConv::SystemV)
+                .params
+                .len(),
             GPU_CMD_BUF_RECORD_STUB_OPERAND_COUNT
         );
         assert_eq!(
-            build_cmd_buf_submit_stub_signature(CallConv::SystemV).params.len(),
+            build_cmd_buf_submit_stub_signature(CallConv::SystemV)
+                .params
+                .len(),
             GPU_CMD_BUF_SUBMIT_STUB_OPERAND_COUNT
         );
     }
@@ -563,7 +919,7 @@ mod tests {
     fn import_set_layout_is_unique_per_kind() {
         // Bit-position sanity : each kind sets exactly 1 unique bit ;
         // all 8 bits accounted for.
-        let mut all = 0u8;
+        let mut all = 0u32;
         for k in [
             GpuFfiSymbolKind::DeviceCreate,
             GpuFfiSymbolKind::DeviceDestroy,
@@ -579,7 +935,7 @@ mod tests {
             assert_eq!(all & mask, 0, "no overlap ; kind {k:?}");
             all |= mask;
         }
-        assert_eq!(all, 0xFF, "all 8 bits accounted for");
+        assert_eq!(all, 0xFF, "legacy 8 bits accounted for");
     }
 
     #[test]
@@ -664,3 +1020,142 @@ mod tests {
 // Cap-gate + IFC-label discipline live in the source-side wrapper
 // (per spec §§ 12 + §§ 11) ; this cgen helper wires only the FFI-
 // symbol surface — does NOT bypass any capability check.
+
+#[cfg(test)]
+mod w1_transport_tests {
+    use super::*;
+    use cranelift_codegen::ir::types as cl_types;
+
+    const W1_KINDS: &[(GpuFfiSymbolKind, &str, usize)] = &[
+        (
+            GpuFfiSymbolKind::BufferCreate,
+            GPU_BUFFER_CREATE_SYMBOL,
+            GPU_BUFFER_CREATE_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::BufferDestroy,
+            GPU_BUFFER_DESTROY_SYMBOL,
+            GPU_BUFFER_DESTROY_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::BufferMap,
+            GPU_BUFFER_MAP_SYMBOL,
+            GPU_BUFFER_MAP_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::BufferUnmap,
+            GPU_BUFFER_UNMAP_SYMBOL,
+            GPU_BUFFER_UNMAP_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::BufferUpload,
+            GPU_BUFFER_UPLOAD_SYMBOL,
+            GPU_BUFFER_UPLOAD_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufBegin,
+            GPU_CMD_BUF_BEGIN_SYMBOL,
+            GPU_CMD_BUF_BEGIN_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufEnd,
+            GPU_CMD_BUF_END_SYMBOL,
+            GPU_CMD_BUF_END_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufBindPipeline,
+            GPU_CMD_BUF_BIND_PIPELINE_SYMBOL,
+            GPU_CMD_BUF_BIND_PIPELINE_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufBindVbuf,
+            GPU_CMD_BUF_BIND_VBUF_SYMBOL,
+            GPU_CMD_BUF_BIND_VBUF_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufBindIbuf,
+            GPU_CMD_BUF_BIND_IBUF_SYMBOL,
+            GPU_CMD_BUF_BIND_IBUF_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufBindDescriptor,
+            GPU_CMD_BUF_BIND_DESCRIPTOR_SYMBOL,
+            GPU_CMD_BUF_BIND_DESCRIPTOR_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufPushConstants,
+            GPU_CMD_BUF_PUSH_CONSTANTS_SYMBOL,
+            GPU_CMD_BUF_PUSH_CONSTANTS_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufDrawIndexed,
+            GPU_CMD_BUF_DRAW_INDEXED_SYMBOL,
+            GPU_CMD_BUF_DRAW_INDEXED_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufDrawIndirect,
+            GPU_CMD_BUF_DRAW_INDIRECT_SYMBOL,
+            GPU_CMD_BUF_DRAW_INDIRECT_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufDispatch,
+            GPU_CMD_BUF_DISPATCH_SYMBOL,
+            GPU_CMD_BUF_DISPATCH_OPERAND_COUNT,
+        ),
+        (
+            GpuFfiSymbolKind::CmdBufSubmitV2,
+            GPU_CMD_BUF_SUBMIT_V2_SYMBOL,
+            GPU_CMD_BUF_SUBMIT_V2_OPERAND_COUNT,
+        ),
+    ];
+
+    #[test]
+    fn w1_transport_symbols_and_arities_are_exhaustive() {
+        for (kind, expected_sym, expected_arity) in W1_KINDS {
+            let (sym, arity) = lower_gpu_symbol(*kind);
+            assert_eq!(sym, *expected_sym, "kind {kind:?}");
+            assert_eq!(arity, *expected_arity, "kind {kind:?}");
+            let sig = build_signature_for_kind(*kind, CallConv::SystemV, cl_types::I64);
+            assert_eq!(
+                sig.params.len(),
+                *expected_arity,
+                "signature params for {kind:?}"
+            );
+            assert_eq!(sig.returns.len(), 1, "signature returns for {kind:?}");
+            validate_gpu_arity(*kind, *expected_arity, GPU_RESULT_COUNT)
+                .unwrap_or_else(|e| panic!("arity validation failed for {kind:?}: {e}"));
+        }
+    }
+
+    #[test]
+    fn w1_transport_import_bits_are_unique_and_complete() {
+        let mut all = 0u32;
+        for (kind, _, _) in W1_KINDS {
+            let mask = GpuImportSet::empty().with_kind(*kind).0;
+            assert_eq!(
+                mask.count_ones(),
+                1,
+                "kind {kind:?} must map to exactly one bit"
+            );
+            assert_eq!(all & mask, 0, "kind {kind:?} bit overlaps prior import");
+            all |= mask;
+        }
+        let expected = GpuImportSet::BUFFER_CREATE
+            | GpuImportSet::BUFFER_DESTROY
+            | GpuImportSet::BUFFER_MAP
+            | GpuImportSet::BUFFER_UNMAP
+            | GpuImportSet::BUFFER_UPLOAD
+            | GpuImportSet::CMD_BUF_BEGIN
+            | GpuImportSet::CMD_BUF_END
+            | GpuImportSet::CMD_BUF_BIND_PIPELINE
+            | GpuImportSet::CMD_BUF_BIND_VBUF
+            | GpuImportSet::CMD_BUF_BIND_IBUF
+            | GpuImportSet::CMD_BUF_BIND_DESCRIPTOR
+            | GpuImportSet::CMD_BUF_PUSH_CONSTANTS
+            | GpuImportSet::CMD_BUF_DRAW_INDEXED
+            | GpuImportSet::CMD_BUF_DRAW_INDIRECT
+            | GpuImportSet::CMD_BUF_DISPATCH
+            | GpuImportSet::CMD_BUF_SUBMIT_V2;
+        assert_eq!(all, expected, "all W-1 transport bits accounted for");
+    }
+}

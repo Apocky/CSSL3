@@ -441,10 +441,7 @@ fn build_mesh(
             // from the index triangles. This produces a flat-shaded look
             // but guarantees lighting works even on barebones fixtures.
             if normals_opt.is_none() {
-                compute_face_normals(
-                    &mut all_verts[base_idx as usize..],
-                    &prim_indices,
-                );
+                compute_face_normals(&mut all_verts[base_idx as usize..], &prim_indices);
             }
 
             // Append indices, biased by the primitive's vertex offset.
@@ -903,14 +900,17 @@ mod tests {
         // in a unit-test budget, so we test the cap arithmetic explicitly.
         let n_above = MAX_VERTS_PER_SPAWN + 10;
         let dummy = GltfMesh {
-            vertices: vec![Vertex {
-                position: [0.0, 0.0, 0.0],
-                normal: [0.0, 1.0, 0.0],
-                color: [1.0, 1.0, 1.0],
-                uv: [0.0, 0.0],
-                material_id: MAT_MATTE_GREY,
-                pattern_id: PAT_SOLID,
-            }; n_above],
+            vertices: vec![
+                Vertex {
+                    position: [0.0, 0.0, 0.0],
+                    normal: [0.0, 1.0, 0.0],
+                    color: [1.0, 1.0, 1.0],
+                    uv: [0.0, 0.0],
+                    material_id: MAT_MATTE_GREY,
+                    pattern_id: PAT_SOLID,
+                };
+                n_above
+            ],
             indices: vec![],
             material: GltfMaterialHint::default(),
             bbox: ([0.0; 3], [0.0; 3]),
@@ -972,15 +972,24 @@ mod tests {
 
         // Brushed steel : neutral grey + high metallic + low roughness.
         let steel = pick_material_for_pbr([0.7, 0.7, 0.72], 1.0, 0.2);
-        assert_eq!(steel, MAT_BRUSHED_STEEL, "steel should map to MAT_BRUSHED_STEEL");
+        assert_eq!(
+            steel, MAT_BRUSHED_STEEL,
+            "steel should map to MAT_BRUSHED_STEEL"
+        );
 
         // Vivid red : high R + high saturation.
         let red = pick_material_for_pbr([0.95, 0.05, 0.05], 0.0, 0.6);
-        assert_eq!(red, MAT_VERMILLION_LACQUER, "red should map to MAT_VERMILLION_LACQUER");
+        assert_eq!(
+            red, MAT_VERMILLION_LACQUER,
+            "red should map to MAT_VERMILLION_LACQUER"
+        );
 
         // Off-white paint : near-white + high roughness.
         let white = pick_material_for_pbr([0.95, 0.93, 0.92], 0.0, 0.9);
-        assert_eq!(white, MAT_OFF_WHITE, "white-paint should map to MAT_OFF_WHITE");
+        assert_eq!(
+            white, MAT_OFF_WHITE,
+            "white-paint should map to MAT_OFF_WHITE"
+        );
 
         // Matte grey default.
         let grey = pick_material_for_pbr([0.5, 0.5, 0.5], 0.0, 1.0);

@@ -1,0 +1,294 @@
+⟨spec⟩ UPG_04_HW_MEMORY_AND_HDL · memory tiering · PMU · HDL · neuromorphic · quantum · co-design
+⟨ctx⟩ specs/Upgrade/ · Part I/3 · hardware-level frontiers (3 of 3)
+⟨covers⟩ §5 memory tiering / CXL / PIM · §6 PMU as values · §7 custom ISAs / HDL · §8 neuromorphic / photonic · §9 quantum hybrid · §10 HW/SW co-design
+
+──────────────────────────────────────────────────────────────────────
+## §5. NUMA, cache hierarchy, and memory tiering as language constructs
+
+The "memory is one big undifferentiated thing" abstraction is now
+actively wrong at every scale. The real hierarchy as of 2025:
+
+- **L1/L2/L3 cache** with explicit prefetch instructions
+  (`prefetcht0/1/2/nta` on x86, `PRFM` on ARM).
+- **HBM3 / HBM3e** on accelerators (≤4.9 TB/s on Blackwell, ≤5.3 TB/s
+  on MI300X).
+- **GDDR6 / GDDR7** on consumer GPUs.
+- **DDR5** main memory.
+- **CXL 2.0 pooled memory** at rack scale (200–500 ns latency,
+  behaves like a slightly slow NUMA node).
+- **CXL 3.0 fabric** with up to 4,096 nodes via port-based routing
+  (PBR), GFAM (Global Fabric Attached Memory) devices for shared
+  pools, hardware cache coherence on shared regions, switch-mediated
+  allocation.
+- **Persistent memory** — Intel Optane is dead (discontinued 2022) but
+  the **CXL.persistent** flow and **persistent CXL memory** modules
+  (Samsung, SK Hynix, Micron) are direct successors.
+- **Processing-in-memory (PIM)** — UPMEM PIM-DRAM is shipping (8 GB
+  DIMMs, 2,560 DPUs per server, ~1 TB/s aggregate internal
+  bandwidth). Samsung HBM-PIM (Aquabolt-XL) is the first commercial
+  HBM2-PIM with 16-lane FP16 SIMD units at each bank. SK Hynix has
+  AiM (Accelerator-in-Memory) DRAM. The programming model is
+  uniformly SPMD — host orchestrates, DPUs compute, inter-DPU
+  communication goes through the host. Compiler work: IMTP (UPMEM
+  tensor compiler, 2024); DaPPA (data-parallel framework,
+  arXiv 2310.10168, 2023); SimplePIM.
+
+The language-frontier question: **what if the type system tracks
+"which substrate does this value live on, and what is the cost of
+moving it elsewhere"?**
+
+Precedents:
+- **Sequoia** (Stanford, Fatahalian/Knight/Houston/Erez et al.,
+  SC2006) — explicit memory hierarchy in the language.
+- **Legion / Regent** (Bauer, Treichler, Slaughter, Aiken at Stanford;
+  SC12 and onward) — *logical regions* as first-class types, with
+  explicit privileges (read/write/reduce) and coherence properties.
+  The Regent paper (Slaughter et al., SC15) shows that a region-typed
+  language can express complex partitioning and dependence at the
+  source level.
+- **Chapel** (Cray/HPE) — `locale` as a first-class concept; `dmap`
+  (distribution maps).
+- **X10 / Habanero** — Place-based shared memory.
+
+A sovereign language can adopt **Legion-style logical regions as the
+unifying abstraction across NUMA / GPU memory / CXL pool / PIM-DRAM**,
+with the type system tracking placement, partitioning, and coherence.
+The crucial extension over Legion: include **bandwidth and latency
+tiers** as type-level metadata. Then:
+
+```sigil
+type CXLPool : Region with { bandwidth: 32 GB/s, latency: 300 ns }
+type HBM3e   : Region with { bandwidth: 4 TB/s, latency: 80 ns, capacity: 192 GB }
+type PIM_DPU : Region with { compute_in_place: True, host_orchestrated: True }
+```
+
+…and a function's effect signature includes which regions it reads,
+writes, and migrates between. The compiler can refuse to compile a
+hot loop that ping-pongs between HBM3e and CXLPool when there's a
+placement that keeps the working set in HBM3e.
+
+The CXL 3.0 GFAM model (per the 2023 Synopsys article and CXL
+Consortium webinars) makes *shared mutable memory at rack scale* a
+real thing, with hardware cache coherence on the shared region. The
+PL implications: distributed shared memory programming models
+(Chapel, UPC++) suddenly have a real hardware substrate, and the
+language needs CRDT-style conflict semantics (§35) for shared regions
+that span coherence domains.
+
+## §6. Hardware performance counters as first-class values
+
+Intel VTune, AMD uProf, ARM PMU (Performance Monitor Unit), and Linux
+perf all expose IPC, cache miss rate, branch mispredict rate, stalls,
+etc. via the PMU model (per ISA: Intel Architecture Software
+Developer's Manual Vol 3B Ch. 18–19; ARM ARM PMU specification;
+RISC-V Sscofpmf extension for counter sampling). They are
+conventionally treated as *observation* tools.
+
+The frontier question: what if the language can `read PMU` as a typed
+effect, and a function's body can be conditioned on a counter value?
+
+Concrete precedents:
+- **Adaptive optimization** (HotSpot, V8 TurboFan, GraalVM) — tier-up/
+  tier-down based on call counts and type stability. This is the
+  closest existing analog.
+- **Hardware-aware autotuning** (TVM AutoTVM, Halide autoscheduler,
+  OpenTuner) — search over schedules guided by measured cost.
+- **Cache-oblivious algorithms** (Frigo, Leiserson, Prokop,
+  Ramachandran, FOCS 1999) — algorithmically agnostic to cache size,
+  which is the *opposite* tactic: avoid PMU because you cannot trust
+  it.
+
+The speculative-but-warranted direction: a language where **JIT
+recompilation triggered by counter thresholds is part of the formal
+semantics**, not a runtime trick. A function declared
+`adaptive[ipc_threshold=0.5]` is contractually allowed to be replaced
+by an alternative implementation when the JIT observes IPC dropping
+below 0.5. This is essentially **profile-guided optimization promoted
+from a build phase to a runtime effect.** The capability-system
+implication (§36): the right to read PMU is a capability — sandboxed
+code does not get it by default — which keeps it from becoming a
+side-channel surveillance primitive (a real concern, given that
+Spectre/Meltdown exploited PMU-adjacent timing channels).
+
+## §7. Custom ISAs and reconfigurable hardware: when the language emits silicon
+
+The four reachable substrates:
+- **FPGAs** via vendor tools — Xilinx/AMD Vivado HLS (now Vitis HLS),
+  Intel oneAPI/HLS (formerly Quartus), Lattice Radiant, Achronix ACE.
+  These accept C++-with-pragmas and emit RTL. Sovereignty issue: the
+  bitstream format is proprietary, but there are open-source flows
+  for some parts (Yosys + nextpnr for Lattice iCE40/ECP5, and
+  increasingly for Xilinx 7-series via Project X-Ray / SymbiFlow).
+- **Open-source GPGPU** — Vortex (Mostafa, Tine, Yalamanchili at
+  Georgia Tech; "Vortex: Extending the RISC-V ISA for GPGPU and
+  3D-Graphics," MICRO 2021) is the canonical open GPGPU based on
+  RISC-V with custom vector extensions. The Vortex codebase
+  implements both the hardware (Verilog/SystemVerilog) and a software
+  stack (LLVM-based, modifiable).
+- **Open RISC-V cores with custom extensions** — Chipyard (Berkeley,
+  the umbrella for Rocket, BOOM, Hammerblade, etc.), CVA6 (formerly
+  Ariane). Custom extensions are well-supported by the RISC-V
+  "X-prefix" reserved opcode space (RISC-V Unprivileged ISA Manual
+  §1.5–§1.6).
+- **HDLs that are programming languages** — Chisel (Bachrach et al.,
+  DAC 2012; Scala-embedded), SpinalHDL (also Scala-embedded), Clash
+  (Haskell-embedded, compiles to VHDL/Verilog), Bluespec/BSV
+  (rule-based, by Arvind at MIT). The MLIR project's CIRCT (Circuit
+  IR Compilers and Tools) is the LLVM-world's attempt to unify
+  these — a sovereign language can do the same without MLIR.
+
+The frontier vision: **`hardware {}` blocks in the language**, where
+the block's body describes a synthesizable circuit, and the circuit
+is callable from regular code. Clash demonstrates this works for pure
+functional code; a SIGIL extension can use the same approach with
+**linear types** (§26) to ensure resource non-sharing in the hardware
+view. The compiler emits either a software implementation, an FPGA
+bitstream, or eventually a tapeout (via OpenROAD + open PDKs like
+SkyWater 130nm / GlobalFoundries 180nm).
+
+The asymptote position: **the language defines the ISA**, not the
+other way around. RISC-V's custom extensions are the explicit hook;
+OpenPOWER (Power ISA 3.1, with the open ISA license since 2019) is
+another. The language emits a hardware description that lowers to an
+open ISA, that gets fabricated, and the language's own compiler is
+the ISA's compiler. This is the closest a software language can get
+to silicon sovereignty.
+
+## §8. Optical, neuromorphic, photonic substrates
+
+These are at different maturity levels and require different framings.
+
+**Neuromorphic (spiking) substrates** are most concrete:
+- **Intel Loihi 2** (2021, Kapoho Point platform 2023) — fully
+  asynchronous digital cores, integer-valued "graded" spikes,
+  programmable neuron models via on-chip microcode, on-chip
+  plasticity. The Intel Labs paper "Efficient Video and Audio
+  Processing with Loihi 2" (Shrestha et al., arXiv 2310.03251)
+  details the model. Programming via **Lava** (open-source Python
+  framework).
+- **IBM NorthPole** (2023) — 22B transistors, 256 cores, 2,048
+  ops/cycle per core, full on-die SRAM (no DRAM), targets ANN
+  inference rather than SNN. Software-compatible with standard DNNs.
+- **SpiNNaker / SpiNNaker 2** (Manchester, then TU Dresden via
+  SpiNNcloud) — millions of ARM cores in a packet-switched fabric;
+  SpiNNaker 2 adds DVFS and accelerators. Programmed via PyNN or
+  directly in C with the spike-routing fabric API.
+- **BrainScaleS-2** (Heidelberg) — analog neuron emulation in
+  accelerated time (1000–10000× biological).
+- **BrainChip Akida** — commercial edge SNN inference; sub-mW class.
+
+The language primitive that subsumes these: **spike trains as
+first-class typed streams** (per §32). A `Spike` is an event with a
+timestamp and (in Loihi 2's model) a small integer payload. A neuron
+is a stateful filter with a threshold-and-reset semantics. The
+mathematical structure is exactly that of **synchronous dataflow
+languages** (Lustre, Esterel — §32) extended with stochastic firing.
+
+The cited fact from the IBM paper on neuromorphic landscape
+(humanunsupervised.com survey, 2025) and the Intel papers: **standard
+backpropagation is mathematically incompatible with discrete spikes.**
+The training story is surrogate-gradient methods (Neftci et al.,
+2019) or local plasticity (STDP). For a language that wants to
+compile both standard DNN code and SNN code from a unified source,
+the language needs to express both gradient-style training and
+event-driven inference — and these have different semantics.
+
+**Photonic computing** (Lightmatter, Lightelligence) is in early
+commercial deployment. The Lightmatter Envise and Passage
+architectures use photonic MZI meshes for matrix multiplication, with
+electronic surrounds for nonlinearities and storage. The programming
+surface is essentially the same as a fixed-function matrix
+accelerator at the language level — the difference is energy
+efficiency (claimed orders-of-magnitude) and that **certain
+operations are essentially free** (passive optical interconnect).
+Speculative implication: a language type for "this value is optically
+resident" that constrains operations to those expressible on the
+photonic substrate (linear, real-valued, bounded precision).
+
+**Photonic interconnect** is more imminent than photonic compute.
+NVIDIA, Ayar Labs, and Lightmatter Passage all target chip-to-chip
+optical links. The relevance is that **CXL-over-optics** changes the
+latency/bandwidth profile of distributed shared memory; the
+language's region model (per §5) needs to accommodate this.
+
+## §9. Quantum hybrid execution
+
+Quantum hardware as of 2025 is squarely in the **NISQ-plus-early-
+fault-tolerance** regime:
+- **IBM Heron r2** (156 qubits, 2024) and **Condor** (1,121 qubits,
+  2023, research only); IBM's roadmap to **Kookaburra** and
+  **Cockatoo** with error correction.
+- **Google Willow** (105 qubits, Dec 2024) — demonstrated exponential
+  error suppression below the surface-code threshold (the actual
+  fault-tolerance milestone).
+- **IonQ Forte / Tempo** (32–64 trapped-ion qubits; long coherence,
+  slow gates).
+- **Quantinuum H2** (56 trapped-ion qubits; demonstrated logical-
+  qubit advantage in 2024).
+- **PsiQuantum** (photonic, pre-production targeting MFTQC — million-
+  qubit fault-tolerant; Omega chip 2024 announcement).
+- **Atom Computing / QuEra** (neutral-atom; QuEra demonstrated
+  256-atom analog and 48-logical-qubit digital in 2023).
+
+The language ecosystem:
+- **Q#** (Microsoft) — classical/quantum hybrid; resource estimation;
+  current backend is Quantum Development Kit + Azure Quantum.
+- **Quipper** (Green, Lumsdaine, Ross, Selinger, Valiron, PLDI 2013) —
+  Haskell-embedded, circuit-as-data.
+- **Silq** (Bichsel, Baader, Gehr, Vechev, PLDI 2020) — *the* state
+  of the art for type-safe high-level quantum programming; **automatic
+  safe uncomputation** is the key innovation; programs are ~46%
+  shorter than Q# and ~38% shorter than Quipper; the type system
+  rejects unphysical programs.
+- **OpenQASM 3** (IBM / community, 2021) — the textual assembly-
+  equivalent that all hardware vendors target.
+- **Cirq** (Google), **Qiskit** (IBM) — Python-embedded, with their
+  own compiler stacks.
+- **Catalyst** (Xanadu PennyLane) and the **MLIR Quantum dialect**
+  (catalyst-quantum, qiskit's qir-alliance) — the compiler-IR layer.
+
+The frontier idea: **classical code with quantum kernels as a first-
+class effect.** Silq already shows that the type system can be the
+load-bearing structure that distinguishes physical from unphysical
+operations. A sovereign language can adopt Silq's *type discipline*
+(qfree annotations, mfree for "measurement-free," etc.) without
+adopting Silq's runtime — and lower to OpenQASM 3 for hardware
+execution.
+
+The Quantum Programming Languages literature has a key thread:
+**categorical quantum mechanics** (Abramsky-Coecke, Math Structures
+in CS 2004; the ZX-calculus, Coecke-Duncan 2008; PyZX) provides a
+graphical calculus where quantum circuits are first-class diagrams
+and rewriting them is sound by construction. This connects directly
+to §11 (graph-based source) and §14 (categorical / hypergraph
+source). The convergence is real: a sovereign source representation
+that is a hypergraph can host *both* classical computation
+(interaction-combinator-style) *and* quantum computation
+(ZX-diagrams) on the same canonical AST.
+
+## §10. Hardware/software co-design — the language defines the hardware
+
+The point of view that the sovereign language *is* the hardware
+specification. The cleanest precedents:
+- **Bluespec / BSV** (Arvind, MIT) — rule-based hardware description;
+  the language's semantics define what the silicon does.
+- **Chisel + FIRRTL** (Berkeley) — Scala DSL → FIRRTL IR → Verilog.
+  Used in Chipyard. FIRRTL itself is a hardware IR with formal
+  semantics.
+- **Clash** (Baaij et al.) — Haskell subset → VHDL/Verilog. Pure
+  functional → synchronous circuits.
+
+What "the language defines the hardware" means at the asymptote: the
+same source compiles to (a) software for existing CPUs/GPUs, (b) RTL
+for FPGAs, and (c) a chip layout via OpenROAD + an open PDK. The
+intermediate forms are all in the same sovereign IR family. The
+vision overlaps with the CIRCT project but does not depend on MLIR;
+it's the same idea expressed in a different IR family.
+
+Industry trajectory cited as fact: **Meta MTIA v2** (announced 2024),
+**Google TPU v5p / v6 Trillium** (2024), **AWS Trainium 2 /
+Inferentia 2** (2024) all demonstrate that hyperscalers consider it
+economically rational to design custom silicon for their software.
+The sovereign-language framing is the same logic applied to a single
+language: SIGIL is the spec that custom silicon would target if SIGIL
+workloads justified the tape-out cost.

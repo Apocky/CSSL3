@@ -209,8 +209,7 @@ impl LoaContentPipeline {
         }
 
         // Borrow-stack : `run_council_and_generate` wants &[&dyn Specialist].
-        let specs: Vec<&dyn Specialist> =
-            self.specialists.iter().map(AsRef::as_ref).collect();
+        let specs: Vec<&dyn Specialist> = self.specialists.iter().map(AsRef::as_ref).collect();
 
         let output = run_council_and_generate(&specs, prompt_hash, observer_pos);
         self.last_prompt_hash = prompt_hash;

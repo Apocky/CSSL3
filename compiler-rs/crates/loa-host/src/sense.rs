@@ -118,8 +118,7 @@ pub enum SenseAxis {
 // ──────────────────────────────────────────────────────────────────────────
 
 /// Standard RFC-4648 base64 alphabet.
-const B64_TABLE: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const B64_TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// Encode an arbitrary byte slice as base64 (with `=` padding). Pure stdlib.
 #[must_use]
@@ -161,11 +160,7 @@ pub fn base64_encode(input: &[u8]) -> String {
 /// Encode an RGBA8 byte buffer of (width × height × 4) as a PNG into a Vec<u8>.
 /// Uses the existing `png` crate dep (no new deps added). Returns the raw PNG
 /// bytes ready for base64-encoding by the caller.
-pub fn rgba8_to_png_bytes(
-    rgba: &[u8],
-    width: u32,
-    height: u32,
-) -> std::io::Result<Vec<u8>> {
+pub fn rgba8_to_png_bytes(rgba: &[u8], width: u32, height: u32) -> std::io::Result<Vec<u8>> {
     let expected = (width as usize) * (height as usize) * 4;
     if rgba.len() != expected {
         return Err(std::io::Error::new(
@@ -206,8 +201,7 @@ pub fn rgba8_to_png_bytes(
 pub fn aggregate_framebuffer_thumbnail(state: &mut EngineState) -> Value {
     record_invoke(SenseAxis::Visual);
     state.sense_invocations_total = state.sense_invocations_total.saturating_add(1);
-    state.sense_thumbnails_captured_total =
-        state.sense_thumbnails_captured_total.saturating_add(1);
+    state.sense_thumbnails_captured_total = state.sense_thumbnails_captured_total.saturating_add(1);
     SENSE_THUMBNAILS_CAPTURED_TOTAL.fetch_add(1, Ordering::Relaxed);
 
     // Request a fresh capture for next frame.
@@ -258,12 +252,12 @@ pub fn aggregate_center_pixel(state: &mut EngineState) -> Value {
     record_invoke(SenseAxis::Visual);
     state.sense_invocations_total = state.sense_invocations_total.saturating_add(1);
     let m = &state.fb_thumb;
-    let mat_name = if m.center_material_id >= 0 && (m.center_material_id as usize) < MATERIAL_LUT_LEN
-    {
-        material_name(m.center_material_id as u32)
-    } else {
-        "(none)"
-    };
+    let mat_name =
+        if m.center_material_id >= 0 && (m.center_material_id as usize) < MATERIAL_LUT_LEN {
+            material_name(m.center_material_id as u32)
+        } else {
+            "(none)"
+        };
     json!({
         "frame": m.frame,
         "rgb": m.center_rgb,
@@ -320,11 +314,7 @@ pub fn aggregate_object_at_crosshair(state: &mut EngineState) -> Value {
         pitch.sin(),
         pitch.cos() * yaw.cos(),
     ];
-    let origin = [
-        state.camera.pos.x,
-        state.camera.pos.y,
-        state.camera.pos.z,
-    ];
+    let origin = [state.camera.pos.x, state.camera.pos.y, state.camera.pos.z];
     // Trial each plinth's AABB.
     let mut nearest_t: f32 = f32::INFINITY;
     let mut nearest_idx: i32 = -1;
@@ -619,7 +609,11 @@ pub fn aggregate_frame_pacing(state: &mut EngineState) -> Value {
     let telem = crate::telemetry::global();
     let (p50, p95, p99) = telem.cached_percentiles();
     let buckets = telem.frame_time_histogram();
-    let dropped = if state.engine_load.last_frame_ms > 33.0 { 1 } else { 0 };
+    let dropped = if state.engine_load.last_frame_ms > 33.0 {
+        1
+    } else {
+        0
+    };
     json!({
         "frame": state.frame_count,
         "p50_ms": p50,
@@ -1006,7 +1000,14 @@ pub fn aggregate_omega_field_at_camera(state: &mut EngineState) -> Value {
     }
     fn read_u64(b: &[u8], i: usize) -> u64 {
         u64::from_le_bytes([
-            b[i], b[i + 1], b[i + 2], b[i + 3], b[i + 4], b[i + 5], b[i + 6], b[i + 7],
+            b[i],
+            b[i + 1],
+            b[i + 2],
+            b[i + 3],
+            b[i + 4],
+            b[i + 5],
+            b[i + 6],
+            b[i + 7],
         ])
     }
     fn read_u32(b: &[u8], i: usize) -> u32 {
@@ -1533,7 +1534,11 @@ mod tests {
     fn sense_omega_field_at_camera_returns_7_facets() {
         let mut s = EngineState::default();
         // Force camera into envelope.
-        s.camera.pos = crate::mcp_server::Vec3 { x: 0.0, y: 1.5, z: 0.0 };
+        s.camera.pos = crate::mcp_server::Vec3 {
+            x: 0.0,
+            y: 1.5,
+            z: 0.0,
+        };
         let v = aggregate_omega_field_at_camera(&mut s);
         // available is true (camera is in envelope).
         assert!(v["available"].as_bool().unwrap());

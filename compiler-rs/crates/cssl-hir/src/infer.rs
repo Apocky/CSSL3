@@ -289,8 +289,11 @@ impl<'a> InferCtx<'a> {
                 // Extern fns have no generics + a fixed C ABI. Register a
                 // monomorphic Ty::Fn so callers see the signature exactly as
                 // declared.
-                let params: Vec<Ty> =
-                    f.params.iter().map(|p| self.lower_hir_type(&p.ty)).collect();
+                let params: Vec<Ty> = f
+                    .params
+                    .iter()
+                    .map(|p| self.lower_hir_type(&p.ty))
+                    .collect();
                 let return_ty = f
                     .return_ty
                     .as_ref()

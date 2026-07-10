@@ -48,8 +48,7 @@ use cssl_rt::loa_startup::log_event;
 
 use crate::camera::Camera;
 use crate::cfer_render::{
-    CferRenderer, CFER_WGSL, TEX_TOTAL_BYTES, TEX_X, TEX_Y, TEX_Z,
-    WORLD_MAX, WORLD_MIN,
+    CferRenderer, CFER_WGSL, TEX_TOTAL_BYTES, TEX_X, TEX_Y, TEX_Z, WORLD_MAX, WORLD_MIN,
 };
 use crate::ffi as host_ffi;
 use crate::geometry::{plinth_positions, RoomGeometry, Vertex};
@@ -676,10 +675,7 @@ impl Renderer {
         let ui = UiOverlay::new(&gpu.device, &gpu.queue, gpu.surface_format);
 
         let now = Instant::now();
-        let surface_copy_src = gpu
-            .config
-            .usage
-            .contains(wgpu::TextureUsages::COPY_SRC);
+        let surface_copy_src = gpu.config.usage.contains(wgpu::TextureUsages::COPY_SRC);
 
         // ─── § T11-LOA-FID-CFER : CPU-side CFER state + GPU resources ───
         let plinths_2d = plinth_positions();
@@ -784,11 +780,7 @@ impl Renderer {
     ///
     /// While the external view is bound, `upload_substrate_pixels` (CPU path)
     /// is dormant — short-circuited inside `SubstrateComposePipeline::upload`.
-    pub fn bind_substrate_gpu_view(
-        &mut self,
-        gpu: &GpuContext,
-        external_view: &wgpu::TextureView,
-    ) {
+    pub fn bind_substrate_gpu_view(&mut self, gpu: &GpuContext, external_view: &wgpu::TextureView) {
         self.substrate_compose
             .bind_external_view(&gpu.device, external_view);
     }
@@ -854,8 +846,7 @@ impl Renderer {
     /// hook calls this.
     pub fn despawn_dynamic_mesh(&mut self, instance_id: u32) -> bool {
         let before = self.dynamic_meshes.len();
-        self.dynamic_meshes
-            .retain(|m| m.instance_id != instance_id);
+        self.dynamic_meshes.retain(|m| m.instance_id != instance_id);
         before != self.dynamic_meshes.len()
     }
 
@@ -925,7 +916,7 @@ impl Renderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         surface_format: wgpu::TextureFormat,
-        depth_format: wgpu::TextureFormat,
+        _depth_format: wgpu::TextureFormat,
     ) -> (
         wgpu::RenderPipeline,
         wgpu::BindGroup,
@@ -1303,12 +1294,7 @@ impl Renderer {
             time: [t_secs, self.frame_n as f32, 0.0, 0.0],
             // § T11-LOA-RAYMARCH : real eye position drives the
             // fragment-shader sphere-tracer view-ray reconstruction.
-            camera_pos: [
-                camera.position.x,
-                camera.position.y,
-                camera.position.z,
-                0.0,
-            ],
+            camera_pos: [camera.position.x, camera.position.y, camera.position.z, 0.0],
             sun_stokes: sun_stokes_default().as_array(),
             stokes_control: [pol_mode as f32, 1.0, 0.0, 0.0],
             // § T11-LOA-USERFIX : push the current render-mode each frame.
@@ -1541,22 +1527,14 @@ impl Renderer {
         crate::telemetry::global().record_cfer_intensity(cfer_intensity);
         let cfer_u = CferUniforms {
             inv_view_proj: inv_view_proj.to_cols_array_2d(),
-            camera_pos: [
-                camera.position.x,
-                camera.position.y,
-                camera.position.z,
-                0.0,
-            ],
+            camera_pos: [camera.position.x, camera.position.y, camera.position.z, 0.0],
             world_min: [WORLD_MIN[0], WORLD_MIN[1], WORLD_MIN[2], 0.0],
             world_max: [WORLD_MAX[0], WORLD_MAX[1], WORLD_MAX[2], 0.0],
             time: [t_secs, 0.0, 32.0, 0.0],
             control: [cfer_intensity, 0.0, 0.0, 0.0],
         };
-        gpu.queue.write_buffer(
-            &self.cfer_uniform_buf,
-            0,
-            bytemuck::bytes_of(&cfer_u),
-        );
+        gpu.queue
+            .write_buffer(&self.cfer_uniform_buf, 0, bytemuck::bytes_of(&cfer_u));
 
         // Encode the volumetric pass.
         {
@@ -1652,11 +1630,7 @@ impl Renderer {
                         log_event(
                             "INFO",
                             "loa-host/render",
-                            &format!(
-                                "snapshot · wrote {} bytes to {}",
-                                bytes,
-                                out_path.display()
-                            ),
+                            &format!("snapshot · wrote {} bytes to {}", bytes, out_path.display()),
                         );
                     }
                     Err(e) => {
@@ -2061,10 +2035,7 @@ mod tests {
         for k in 0..1000 {
             let x = k as f32 * 0.01;
             let y = aces(x);
-            assert!(
-                (0.0..=1.0).contains(&y),
-                "aces({x})={y} out of [0,1]"
-            );
+            assert!((0.0..=1.0).contains(&y), "aces({x})={y} out of [0,1]");
         }
         // Specific bright HDR samples that would otherwise blow out :
         // 16.0 (16 nits-equivalent) and 64.0 (64 nits-equivalent).

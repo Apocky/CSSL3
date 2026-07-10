@@ -25,8 +25,8 @@
 #![forbid(unsafe_code)]
 
 pub use cssl_host_gm::{
-    GameMaster, GmCapTable, GmErr, NarrativeTextFrame, PacingMarkEvent, ToneAxis,
-    GM_CAP_TEXT_EMIT, GM_CAP_TONE_TUNE, GM_CAP_VOICE_EMIT,
+    GameMaster, GmCapTable, GmErr, NarrativeTextFrame, PacingMarkEvent, ToneAxis, GM_CAP_TEXT_EMIT,
+    GM_CAP_TONE_TUNE, GM_CAP_VOICE_EMIT,
 };
 
 /// Convenience : count of GM cap-bits per `specs/grand-vision/10_INTELLIGENCE.csl

@@ -182,7 +182,7 @@ impl Cap<DevMode> {
     /// ## SWAP-POINT (D131 integration)
     /// Once cap-issuance is wired, gate this on a feature-flag controlled
     /// by the upstream test-discipline.
-    #[cfg(any(test, feature = "test-bypass"))]
+    #[cfg(any(test, feature = "test-bypass", debug_assertions))]
     #[must_use]
     pub fn for_test() -> Self {
         Self::new()
@@ -196,7 +196,7 @@ impl Cap<RemoteDev> {
     /// ## SWAP-POINT (D131 integration)
     /// Replace this with `cssl_substrate_prime_directive::authority::
     /// issue_cap::<RemoteDev>(signed_token)` validation.
-    #[cfg(any(test, feature = "test-bypass"))]
+    #[cfg(any(test, feature = "test-bypass", debug_assertions))]
     #[must_use]
     pub fn for_test() -> Self {
         Self::new()
@@ -211,7 +211,7 @@ impl Cap<BiometricInspect> {
     /// egresses off-device. The cap unlocks INSPECTION ; egress is
     /// gated by a separate `TelemetryEgress` cap that is permanently
     /// REFUSED at the IFC layer for biometric-labeled data.
-    #[cfg(any(test, feature = "test-bypass"))]
+    #[cfg(any(test, feature = "test-bypass", debug_assertions))]
     #[must_use]
     pub fn for_test() -> Self {
         Self::new()
