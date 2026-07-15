@@ -83,7 +83,7 @@ export interface VoiceFragment {
   readonly id: string;
   readonly text: string;
   readonly sourceId: string;
-  readonly status: 'exact-approved-directive' | 'public-safe-paraphrase';
+  readonly status: 'exact-approved-directive' | 'exact-approved-source' | 'public-safe-paraphrase';
   readonly analysis: string;
   readonly boundary: string;
 }

@@ -134,7 +134,9 @@ function InterpretiveContract(): JSX.Element {
       <div className={styles.voiceBraid} aria-label="Exact authored position braided with analysis">
         {atlasData.voiceFragments.map((fragment) => (
           <article key={fragment.id}>
-            <div className={styles.voiceSource}>SHAWN · EXACT CURRENT DIRECTIVE</div>
+            <div className={styles.voiceSource}>
+              SHAWN · {fragment.status === 'exact-approved-directive' ? 'EXACT CURRENT DIRECTIVE' : fragment.status === 'exact-approved-source' ? 'EXACT SOURCE' : 'PUBLIC-SAFE PARAPHRASE'}
+            </div>
             <blockquote>{fragment.text}</blockquote>
             <div className={styles.voiceAnalysis}>
               <h3>Scholarly reading</h3>

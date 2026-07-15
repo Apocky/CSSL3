@@ -23,6 +23,7 @@ const INTERVIEW_RECOVERY = 'src-conversation-interview-recovery';
 const TAROT_METHOD = 'src-conversation-tarot-method';
 const HALO_PROTOTYPE = 'src-halo-local-prototype';
 const LABYRINTH_SYNTHESIS = 'src-infinite-labyrinth-design-synthesis';
+const CURRENT_SELF_REPORT = 'src-current-self-report-2026-07-14';
 
 export const topicSlugs = [
   'zeta-zeros',
@@ -130,6 +131,23 @@ export const atlasData: AtlasData = {
     'Do not collapse structural analogy into identity, fictional mathematics into published mathematics, or QL2 analogy into QL0 physics.',
   ],
   sourceRefs: [
+    {
+      id: CURRENT_SELF_REPORT,
+      label: 'Current self-report · typed public-safe projection',
+      sourceKind: 'authored-text',
+      authorClass: 'shawn',
+      privacy: 'public',
+      evidenceLane: 'self-reported',
+      locator: 'SHAWN-MODEL-01',
+      recordedAt: '2026-07-14',
+      fullRead: true,
+      publicationApproved: true,
+      limitations: [
+        'The source is a time-indexed self-report, not an independently measured psychometric or clinical assessment.',
+        'Tentative typology and trait labels are excluded from this public projection except where needed to preserve Shawn\'s anti-reduction boundary.',
+        'Strategic detachment, unusual trait language, or self-applied labels do not establish cruelty, harm intent, disorder, or fixed essence.',
+      ],
+    },
     {
       id: LABYRINTH_SYNTHESIS,
       label: 'The Infinite Labyrinth · game-design synthesis and implementation plan',
@@ -497,6 +515,14 @@ export const atlasData: AtlasData = {
   ],
   voiceFragments: [
     {
+      id: 'voice-all-and-none',
+      text: 'All and None.',
+      sourceId: CURRENT_SELF_REPORT,
+      status: 'exact-approved-source',
+      analysis: 'The phrase functions as an anti-reduction operator: Shawn can use labels, roles, alignments, and trait language as coordinates without granting any one coordinate authority to exhaust the person or freeze future becoming.',
+      boundary: 'Anti-reduction does not make every label equally accurate or prevent repeated behavior from being measured; it requires that scope, time, context, and counterexamples remain attached.',
+    },
+    {
       id: 'voice-field-cycle',
       text: 'A question becomes a field. The field is rotated. What survives becomes a model. The model becomes an artifact. The artifact is tested. The result changes the model.',
       sourceId: BLUEPRINT,
@@ -522,6 +548,23 @@ export const atlasData: AtlasData = {
     },
   ],
   claims: [
+    {
+      id: 'claim-self-labels-controlled',
+      title: 'Self-applied labels are controlled variables, not a verdict',
+      wording: 'Shawn’s current self-report uses personality, strategic, spiritual, and alignment labels with explicit uncertainty while ending in “All and None”; the labels function as testable coordinates and provocations rather than diagnosis, moral essence, or exhaustive identity.',
+      kind: 'artifact-observation',
+      lane: 'self-reported',
+      truthState: 'TRUE',
+      confidence: 'high',
+      consequential: false,
+      sourceIds: [CURRENT_SELF_REPORT],
+      supportingCitationIds: [],
+      contradictingCitationIds: [],
+      countercase: '“All and None” may be poetic compression rather than a stable methodological rule, and self-description can strategically shape how later evidence is interpreted.',
+      falsifier: 'The source attribution fails, or broader time-ordered authored material consistently treats one label as fixed, exhaustive, and immune to behavioral counterexample.',
+      supersedes: [],
+      topicSlugs: ['personality-models', 'identity-continuity', 'falsifiability'],
+    },
     {
       id: 'claim-labyrinth-model-embodiment',
       title: 'The Infinite Labyrinth turns epistemic commitments into mechanics',
@@ -582,7 +625,7 @@ export const atlasData: AtlasData = {
       truthState: 'OPEN',
       confidence: 'medium',
       consequential: true,
-      sourceIds: [FORM_MODEL],
+      sourceIds: [FORM_MODEL, CURRENT_SELF_REPORT],
       supportingCitationIds: ['cite-platonic-form'],
       contradictingCitationIds: [],
       countercase: 'The apparent invariants may be selection effects produced by choosing unusually elaborate artifacts and omitting ordinary counterexamples.',
@@ -1023,6 +1066,7 @@ export const atlasData: AtlasData = {
     { id: 'chron-zeroes-paper', period: '2026-07-05', precision: 'day', title: 'ZEROES working paper v1', track: 'intellectual-artifact', summary: 'The synthesis was persisted as a coauthored working paper with explicit theorem, dictionary, and interpretation tiers.', lane: 'observed', truthState: 'TRUE', sourceIds: [ZEROES], claimIds: ['claim-zeroes-discipline', 'claim-zeroes-transfer'], topicSlugs: ['zeta-zeros', 'vector-symbolic-memory'] },
     { id: 'chron-negative-space', period: '2026-07-05', precision: 'day', title: 'Failure boundaries become a companion artifact', track: 'intellectual-artifact', summary: 'Missing rows, theorem boundaries, null expectations, counterexamples, and unexecuted experiments were preserved instead of erased.', lane: 'observed', truthState: 'TRUE', sourceIds: [ZEROES_NEGATIVE], claimIds: ['claim-zeroes-transfer'], topicSlugs: ['falsifiability', 'prime-races', 'arithmetic-topology'] },
     { id: 'chron-form-model', period: '2026-07-14', precision: 'day', title: 'Whole-form model encoded as a correctable candidate', track: 'intellectual-artifact', summary: 'The current model reframed identity as a recurrent generative field with typed uncertainty and an explicit ratification gate.', lane: 'proposed', truthState: 'OPEN', sourceIds: [FORM_MODEL], claimIds: ['claim-attractor', 'claim-method'], topicSlugs: ['platonic-form', 'identity-continuity'] },
+    { id: 'chron-self-report-boundary', period: '2026-07-14', precision: 'day', title: '“All and None” limits the authority of every label', track: 'life-context', summary: 'A current self-report names several tentative personality, strategic, spiritual, and alignment coordinates, then refuses their collapse into diagnosis, cruelty, fixed essence, or exhaustive identity. Ambiguity and future corpus comparison are part of the method.', lane: 'self-reported', truthState: 'TRUE', sourceIds: [CURRENT_SELF_REPORT], claimIds: ['claim-self-labels-controlled', 'claim-attractor'], topicSlugs: ['personality-models', 'identity-continuity', 'falsifiability'] },
     { id: 'chron-atlas', period: '2026-07-15', precision: 'day', title: 'Interactive atlas blueprint approved', track: 'intellectual-artifact', summary: 'The evidence model, chronology, reference system, and proof-language boundaries became the specification for a public scholarly interface.', lane: 'observed', truthState: 'TRUE', sourceIds: [BLUEPRINT], claimIds: ['claim-method'], topicSlugs: ['knowledge-graphs', 'event-spines', 'csl-cssl'] },
   ],
   reasoningChains: [
