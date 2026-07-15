@@ -17,6 +17,15 @@ const TRACKS: ReadonlyArray<{ id: ChronologyEvent['track']; label: string }> = [
   { id: 'intellectual-artifact', label: 'Intellectual / artifact' },
 ];
 
+const MODEL_AXES = [
+  { claimId: 'claim-attractor', label: 'Generative identity' },
+  { claimId: 'claim-method', label: 'Rotation method' },
+  { claimId: 'claim-zeroes-discipline', label: 'Artifact discipline' },
+  { claimId: 'claim-audience-translation', label: 'Translation' },
+  { claimId: 'claim-voice-functional', label: 'Voice fidelity' },
+  { claimId: 'claim-ontology-open', label: 'Open ontology' },
+] as const;
+
 function topicTitle(slug: string): string {
   return referenceBySlug(slug)?.title ?? slug.replace(/-/g, ' ');
 }
@@ -47,6 +56,70 @@ function SectionHeader({
       <h2>{title}</h2>
       <p>{description}</p>
     </header>
+  );
+}
+
+function ModelOverview(): JSX.Element | null {
+  const [activeClaimId, setActiveClaimId] = useState<string>(MODEL_AXES[0].claimId);
+  const activeClaim = atlasData.claims.find((claim) => claim.id === activeClaimId);
+  if (!activeClaim) return null;
+
+  const chronology = atlasData.chronology.filter((event) => event.claimIds.includes(activeClaim.id));
+  const artifacts = atlasData.artifacts.filter((artifact) => artifact.claimIds.includes(activeClaim.id));
+  const sources = activeClaim.sourceIds
+    .map((sourceId) => atlasData.sourceRefs.find((source) => source.id === sourceId))
+    .filter((source) => source !== undefined);
+
+  return (
+    <section className={`${styles.section} ${styles.modelOverview}`} id="model">
+      <SectionHeader
+        index="00 / current model"
+        title="The portrait before the apparatus."
+        description="This is the shortest honest path through the current inference report. Select an axis to see the claim, its epistemic status, the evidence path, the strongest countercase, and what would force revision."
+      />
+      <div className={styles.modelAxisSelector} aria-label="Current model axes">
+        {MODEL_AXES.map((axis) => (
+          <button
+            type="button"
+            key={axis.claimId}
+            aria-pressed={axis.claimId === activeClaim.id}
+            onClick={() => setActiveClaimId(axis.claimId)}
+          >
+            {axis.label}
+          </button>
+        ))}
+      </div>
+      <article className={styles.modelAxisPanel} aria-live="polite">
+        <div className={styles.modelAxisClaim}>
+          <span className={styles.stateBadge}>{activeClaim.truthState} · {activeClaim.lane} · {activeClaim.confidence}</span>
+          <h3>{activeClaim.title}</h3>
+          <p className={styles.modelStatement}>{activeClaim.wording}</p>
+          <TopicLinks slugs={activeClaim.topicSlugs} />
+        </div>
+        <div className={styles.modelAxisAudit}>
+          <div>
+            <h4>Strongest countermodel</h4>
+            <p>{activeClaim.countercase}</p>
+          </div>
+          <div>
+            <h4>Revision condition</h4>
+            <p>{activeClaim.falsifier}</p>
+          </div>
+        </div>
+        <div className={styles.modelEvidencePath}>
+          <h4>Trace this inference</h4>
+          <div>
+            {chronology.map((event) => <a href={`#${event.id}`} key={event.id}>Event · {event.period}</a>)}
+            {artifacts.map((artifact) => <a href={`#${artifact.id}`} key={artifact.id}>Artifact · {artifact.title}</a>)}
+            {sources.map((source) => <span key={source.id}>Source · {source.label}</span>)}
+            {chronology.length + artifacts.length + sources.length === 0 ? <span>No public evidence path is attached.</span> : null}
+          </div>
+        </div>
+      </article>
+      <p className={styles.modelOverviewBoundary}>
+        Six axes are a navigation projection, not six compartments of a person. The chronology, ordinary-life samples, state variables, artifacts, and contradictions below remain necessary to test whether this compression holds.
+      </p>
+    </section>
   );
 }
 
@@ -705,6 +778,7 @@ export default function ShawnAtlas(): JSX.Element {
 
         <nav className={styles.atlasNav} aria-label="Atlas sections">
           <ol>
+            <li><a href="#model">Current model</a></li>
             <li><a href="#contract">Contract</a></li>
             <li><a href="#chronology">Chronology</a></li>
             <li><a href="#method">Method</a></li>
@@ -719,6 +793,7 @@ export default function ShawnAtlas(): JSX.Element {
         </nav>
 
         <main className={styles.content} id="atlas-content">
+          <ModelOverview />
           <InterpretiveContract />
           <Chronology />
           <ReasoningChains />
