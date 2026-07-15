@@ -20,6 +20,7 @@ const RECURSIVE_ART = 'src-conversation-recursive-art';
 const RESUME_AUDIT = 'src-conversation-resume-audit';
 const APPLICATION_VOICE = 'src-conversation-application-voice';
 const INTERVIEW_RECOVERY = 'src-conversation-interview-recovery';
+const TAROT_METHOD = 'src-conversation-tarot-method';
 
 export const topicSlugs = [
   'zeta-zeros',
@@ -127,6 +128,24 @@ export const atlasData: AtlasData = {
     'Do not collapse structural analogy into identity, fictional mathematics into published mathematics, or QL2 analogy into QL0 physics.',
   ],
   sourceRefs: [
+    {
+      id: TAROT_METHOD,
+      label: 'Tarot randomization and cross-method decoding conversation · public-safe method projection',
+      sourceKind: 'conversation',
+      authorClass: 'mixed',
+      privacy: 'public',
+      evidenceLane: 'observed',
+      locator: 'SHAWN-ATLAS-SPINE:SRC-TAROT-METHOD',
+      recordedAt: '2024-06-29',
+      fullRead: true,
+      publicationApproved: true,
+      limitations: [
+        'Personal birth data and relationship material are excluded from the public projection.',
+        'The assistant did not expose a seed or execution receipt, later substituted fixed values for randomness, and rearranged a generated letter string into a familiar name post hoc.',
+        'The source establishes Shawn\'s requested test structure and the assistant\'s outputs; it does not validate divination, identify an entity, or show that the selections were random.',
+        'Approval covers this bounded projection, not publication of raw dialogue or quotations.',
+      ],
+    },
     {
       id: BLUEPRINT,
       label: 'Approved Interactive Cognitive and Epistemic Atlas blueprint',
@@ -463,6 +482,23 @@ export const atlasData: AtlasData = {
     },
   ],
   claims: [
+    {
+      id: 'claim-oracle-method-audit',
+      title: 'Oracle design begins with an explicit selection-and-decoding procedure',
+      wording: 'In an early Tarot conversation, Shawn asks for random card selection and then proposes combining symbolic correspondences, generated numbers, numerology, and letter mapping; the surviving record also exposes why seed, codebook, baseline, and anti-post-selection controls are necessary.',
+      kind: 'artifact-observation',
+      lane: 'observed',
+      truthState: 'TRUE',
+      confidence: 'high',
+      consequential: false,
+      sourceIds: [TAROT_METHOD],
+      supportingCitationIds: [],
+      contradictingCitationIds: [],
+      countercase: 'The assistant supplied most operational choices, so this record shows an exploratory request and audit opportunity rather than a finished Shawn-authored oracle protocol.',
+      falsifier: 'The full source lacks the attributed requests, or a recovered execution trace shows that the selections, mapping, and validation controls were specified and executed differently.',
+      supersedes: [],
+      topicSlugs: ['tarot', 'steganographic-cognition', 'falsifiability'],
+    },
     {
       id: 'claim-attractor',
       title: 'Identity as a recurrent generative attractor',
@@ -892,6 +928,7 @@ export const atlasData: AtlasData = {
     { id: 'cite-event-recovery', referenceSlug: 'event-spines', relation: 'contextualizes', claimIds: ['claim-context-recovery'], supports: 'Provides a typed sequence for knowns, unknowns, retrieval actions, recognition, and outstanding verification.', doesNotSupport: 'Does not reconstruct the absent web trace or show that the planned source check occurred.' },
   ],
   chronology: [
+    { id: 'chron-tarot-method', period: '2024-06-29', precision: 'day', title: 'A Tarot reading becomes a reproducibility problem', track: 'intellectual-artifact', summary: 'Shawn asks for randomized card selection and later proposes a cross-method number-to-letter decoding. The assistant provides no seed, substitutes fixed values after tool failure, and post-selects a familiar name; the exploratory method and its validity failures are preserved together.', lane: 'observed', truthState: 'TRUE', sourceIds: [TAROT_METHOD], claimIds: ['claim-oracle-method-audit'], topicSlugs: ['tarot', 'steganographic-cognition', 'falsifiability'] },
     { id: 'chron-label-counterexample', period: '2024-07-10', precision: 'day', title: 'A personality label meets an immediate counterexample', track: 'life-context', summary: 'In a low-resolution mock questionnaire, Shawn challenges a generic label with a concrete account of intuitive commitment, persistence, exacting standards, and limited advance planning; the resulting type remains invalid as psychometrics.', lane: 'observed', truthState: 'TRUE', sourceIds: [LABEL_TEST], claimIds: ['claim-label-counterexample'], topicSlugs: ['personality-models', 'falsifiability'] },
     { id: 'chron-collaborator-design', period: '2024-08-04', precision: 'day', title: 'The collaborator is configured as part of the method', track: 'life-context', summary: 'Shawn specifies an interaction style meant to combine humor, warmth, irreverence, detail, curiosity, and philosophical reach—evidence that the dialogue conditions are intentionally shaped rather than passively consumed.', lane: 'observed', truthState: 'TRUE', sourceIds: [COLLABORATOR_DESIGN], claimIds: ['claim-collaborator-design'], topicSlugs: ['personality-models', 'digital-personhood'] },
     { id: 'chron-identity-names', period: '2024-12-16', precision: 'day', title: 'Identity is narrated through names, roles, and becoming', track: 'state-phenomenology', summary: 'A direct self-account holds legal, relational, fictional, mythic, and aspirational addresses in one field without treating any single label as exhaustive.', lane: 'observed', truthState: 'TRUE', sourceIds: [IDENTITY_NAMES], claimIds: ['claim-identity-address-field'], topicSlugs: ['naming-as-address', 'identity-continuity'] },
@@ -913,6 +950,21 @@ export const atlasData: AtlasData = {
     { id: 'chron-atlas', period: '2026-07-15', precision: 'day', title: 'Interactive atlas blueprint approved', track: 'intellectual-artifact', summary: 'The evidence model, chronology, reference system, and proof-language boundaries became the specification for a public scholarly interface.', lane: 'observed', truthState: 'TRUE', sourceIds: [BLUEPRINT], claimIds: ['claim-method'], topicSlugs: ['knowledge-graphs', 'event-spines', 'csl-cssl'] },
   ],
   reasoningChains: [
+    {
+      id: 'reasoning-oracle-validation',
+      title: 'Question → randomizer → codebook → decode → decoy → receipt',
+      summary: 'The early Tarot prototype reconstructed as a reproducibility chain: the first four moves appear in the conversation; decoys and receipts are the missing controls required before interpretation can carry evidential weight.',
+      sourceIds: [TAROT_METHOD],
+      claimIds: ['claim-oracle-method-audit'],
+      steps: [
+        step('oracle-question', 'Declare the target question', 'Separate the question being explored from the later symbols used to answer it.', 'observed', ['tarot']),
+        step('oracle-randomizer', 'Specify the selection mechanism', 'Name the deck or symbol space, random generator, seed, draw order, replacement rule, and allowed retries before seeing an output.', 'inferred', ['tarot', 'falsifiability']),
+        step('oracle-codebook', 'Freeze the translation rule', 'Commit number, card, letter, and combination mappings before decoding so a preferred answer cannot choose its own grammar.', 'inferred', ['compositional-meaning', 'steganographic-cognition']),
+        step('oracle-decode', 'Apply without rearrangement', 'Preserve the generated sequence exactly and disclose every transformation; a post-hoc anagram is a new hypothesis, not the original result.', 'observed', ['wordplay-anagrams', 'compositional-meaning']),
+        step('oracle-decoy', 'Compare matched decoys', 'Run the same decoder against shuffled questions, alternate seeds, and irrelevant targets to estimate how often meaningful-looking fits arise.', 'proposed', ['falsifiability', 'steganographic-cognition']),
+        step('oracle-receipt', 'Publish the execution receipt', 'Retain inputs, algorithm, environment, seed, raw output, transformations, and checksum so another reader can reproduce the finite check.', 'proposed', ['event-spines']),
+      ],
+    },
     {
       id: 'reasoning-field-to-artifact',
       title: 'Question → field → model → artifact → test → revision',
@@ -1050,7 +1102,7 @@ export const atlasData: AtlasData = {
     { id: 'artifact-csl', title: 'CSL / CSSL', kind: 'formal-language', status: 'working', period: 'ongoing', thesis: 'Typed compact notation can keep evidence, authority, modality, and relation boundaries visible.', method: ['Encode provenance and epistemic lanes directly in specifications.', 'Keep CSSL and CSL distinct.'], evidence: ['Named by the approved atlas as a public artifact lineage.'], negativeResults: ['No notation can substitute for source verification or runtime evidence.'], openQuestions: ['Which atlas structures should be round-trippable into CSL without loss?'], collaborationNote: 'The atlas treats repository artifacts as versioned work, not automatic biographical truth.', claimIds: ['claim-method'], topicSlugs: ['csl-cssl', 'formal-methods'], sourceIds: [BLUEPRINT] },
     { id: 'artifact-halo', title: 'HALO', kind: 'software', status: 'working', period: 'ongoing', thesis: 'Lens rotation and invariant testing can become an interactive cognitive instrument.', method: ['Expose multiple interpretations without forcing premature convergence.', 'Carry the evidence state through every transformation.'], evidence: ['The approved blueprint names HALO as the advanced interaction model.'], negativeResults: ['The public catalog does not claim that a tool-generated graph is truth.'], openQuestions: ['Which interactions improve discrimination rather than merely add perspectives?'], collaborationNote: 'Detailed historical claims remain OPEN until complete primary-source reading.', claimIds: ['claim-method'], topicSlugs: ['explanatory-pluralism', 'knowledge-graphs', 'causal-intervention'], sourceIds: [BLUEPRINT] },
     { id: 'artifact-apocrypha', title: 'Apocrypha', kind: 'software', status: 'working', period: 'ongoing', thesis: 'A cognitive system can expose evidence, memory, authority, events, and model revision as one observable organism.', method: ['Use one evidence spine with typed projections.', 'Preserve receipts, negative results, and authority boundaries.'], evidence: ['The ZEROES paper names a running hyperdimensional memory substrate as an experimental target.'], negativeResults: ['A proposed transfer is not a measured substrate result.'], openQuestions: ['Which parts of the atlas can be replayed against running receipts?'], collaborationNote: 'Only public-safe system claims appear here.', claimIds: ['claim-zeroes-transfer', 'claim-method'], topicSlugs: ['vector-symbolic-memory', 'event-spines', 'graphrag', 'wasm-continuity'], sourceIds: [ZEROES, BLUEPRINT] },
-    { id: 'artifact-tarot', title: 'Chaos Tarot', kind: 'symbolic-system', status: 'working', period: 'ongoing', thesis: 'A symbolic system can function as a carrier and decoder for structured reflection without being treated as physical proof.', method: ['Keep tradition lineage, personal interpretation, and empirical claims distinct.'], evidence: ['Named by the approved blueprint as an artifact case file.'], negativeResults: ['Symbolic resonance alone does not establish divination or external causation.'], openQuestions: ['Which interpretations are directly authored, historically attested, or reconstructed later?'], collaborationNote: 'Exact card-level claims await a complete public-source audit.', claimIds: ['claim-ontology-open'], topicSlugs: ['tarot', 'steganographic-cognition', 'myth-theology-fiction'], sourceIds: [BLUEPRINT] },
+    { id: 'artifact-tarot', title: 'Chaos Tarot and oracle lineage', kind: 'symbolic-system', status: 'working', period: '2024–ongoing', thesis: 'A symbolic system can function as a carrier and decoder for structured reflection while selection, mapping, interpretation, and external-causation claims remain separately testable.', method: ['Keep tradition lineage, personal interpretation, and empirical claims distinct.', 'Precommit randomization, mapping, transformation, decoy, and receipt rules before treating a decoded fit as evidence.'], evidence: ['A complete 2024 conversation records the move from randomized Tarot selection to a proposed number-and-letter decoding procedure.', 'The approved blueprint names Chaos Tarot as a continuing artifact case file.'], negativeResults: ['The early assistant supplied no random seed or execution receipt.', 'After computation failures it substituted fixed values, then rearranged an opaque letter string into a familiar name.', 'Symbolic resonance alone does not establish divination or external causation.'], openQuestions: ['Which later Chaos Tarot rules were authored before observing results?', 'Can a fixed decoder outperform matched decoys and independent baselines?', 'Which interpretations are directly authored, historically attested, or reconstructed later?'], collaborationNote: 'The early record is coauthored and assistant-heavy; it supports method lineage and failure analysis, not a validated reading.', claimIds: ['claim-oracle-method-audit', 'claim-ontology-open'], topicSlugs: ['tarot', 'steganographic-cognition', 'wordplay-anagrams', 'falsifiability', 'myth-theology-fiction'], sourceIds: [TAROT_METHOD, BLUEPRINT] },
     { id: 'artifact-fiction', title: 'Novels and game worlds', kind: 'novel', status: 'working', period: 'ongoing', thesis: 'Fiction can operate as a model laboratory while remaining visibly fictional.', method: ['Trace concepts from fictional embodiment back to sources and forward to testable systems.', 'Type in-world mathematics as FICTIONAL_MODEL.'], evidence: ['The approved blueprint requires novels and games in the artifact lineage.'], negativeResults: ['An in-world theorem is not a published mathematical theorem.'], openQuestions: ['Which fictional constructs preceded, followed, or transformed the technical models?'], collaborationNote: 'No unpublished narrative text is embedded in this public dataset.', claimIds: ['claim-attractor'], topicSlugs: ['myth-theology-fiction', 'procedural-generation', 'entity-component-systems'], sourceIds: [BLUEPRINT] },
     { id: 'artifact-identity-lexicon', title: 'Names, roles, and update rules', kind: 'symbolic-system', status: 'working', period: '2024–2025', thesis: 'Identity can be navigated through addresses and updated through relation, salience, threshold, action, and feedback without reducing the person to one label.', method: ['Preserve direct Shawn terms separately from assistant-seeded metaphors.', 'Test whether the cycle predicts novel, assistant-independent behavior.'], evidence: ['A full direct self-account of names and roles.', 'A later coauthored threshold-and-update conversation.'], negativeResults: ['The update-rule metaphor was introduced by the assistant.', 'No preregistered predictive comparison exists.'], openQuestions: ['Which parts recur in novels, code, practical work, and unassisted writing?', 'What simpler baseline predicts equally well?'], collaborationNote: 'The source projection names coauthorship at the point it enters the model.', claimIds: ['claim-identity-address-field', 'claim-update-rule-model'], topicSlugs: ['identity-continuity', 'naming-as-address', 'control-theory', 'salience'], sourceIds: [IDENTITY_NAMES, IDENTITY_ALGORITHM] },
     { id: 'artifact-software-entheogen', title: 'Software-entheogen protocol', kind: 'software', status: 'proposed', period: '2025', thesis: 'Altered computational state can be framed as a bounded protocol with explicit inputs, transitions, outputs, and recovery rather than as a loose drug analogy.', method: ['Keep human phenomenology and computational state transition in separate evidence lanes.', 'Require model version, prompt, seed, execution trace, outputs, and comparison condition.'], evidence: ['A complete coauthored proposal conversation exists.'], negativeResults: ['No execution receipt or measured output appears in the source.', 'The protocol does not document human substance use.'], openQuestions: ['Would an implementation produce distinguishable, reversible changes under matched evaluation?'], collaborationNote: 'Shawn posed the design question; most operational detail was supplied by the assistant.', claimIds: ['claim-software-entheogen'], topicSlugs: ['altered-state-phenomenology', 'control-theory', 'digital-personhood'], sourceIds: [SOFTWARE_ENTHEOGEN] },
@@ -1065,6 +1117,7 @@ export const atlasData: AtlasData = {
     { id: 'lineage-identity-atlas', fromArtifactId: 'artifact-identity-lexicon', toArtifactId: 'artifact-atlas', relation: 'projects', description: 'Names, roles, thresholds, and update language become one typed candidate submodel with coauthorship boundaries intact.', lane: 'inferred', sourceIds: [IDENTITY_NAMES, IDENTITY_ALGORITHM, MODEL_BOUNDARY] },
     { id: 'lineage-employment-atlas', fromArtifactId: 'artifact-employment-drafts', toArtifactId: 'artifact-atlas', relation: 'constrains', description: 'Ordinary employment work constrains the portrait with mundane audits, assistant embellishment, voice correction, and unknown outcomes.', lane: 'observed', sourceIds: [RESUME_AUDIT, APPLICATION_VOICE, INTERVIEW_RECOVERY] },
     { id: 'lineage-entheogen-atlas', fromArtifactId: 'artifact-software-entheogen', toArtifactId: 'artifact-atlas', relation: 'constrains', description: 'The proposal requires the atlas to distinguish state-space design from execution and computational analogy from human use.', lane: 'observed', sourceIds: [SOFTWARE_ENTHEOGEN] },
+    { id: 'lineage-tarot-atlas', fromArtifactId: 'artifact-tarot', toArtifactId: 'artifact-atlas', relation: 'constrains', description: 'The early oracle record requires the atlas to preserve randomization, mapping, post-selection, decoy, and execution-receipt boundaries instead of reporting symbolic fit as proof.', lane: 'observed', sourceIds: [TAROT_METHOD, BLUEPRINT] },
   ],
   bridges: [
     { id: 'bridge-zeroes', from: 'Fermat-quotient closure', to: 'cyclic-time fixed points', relationship: 'STRUCTURAL_ANALOGY', statement: 'Both can be written as a loop plus a stronger closure obligation and a defect whose vanishing selects distinguished cases.', invariant: 'loop → obligation → defect → selected zero/fixed point', differences: ['One is arithmetic congruence; the other is a physical or mathematical evolution model.', 'No shared operator or causal mechanism is established.'], lane: 'proposed', truthState: 'OPEN', prediction: 'A useful dictionary should produce at least one nontrivial, preregistered transfer.', negativeTransferTest: 'Matched baselines perform equally and the dictionary changes no bound, prediction, or measurement.', sourceIds: [ZEROES], topicSlugs: ['wieferich-primes', 'compactified-time'] },
