@@ -209,6 +209,24 @@ export interface EvidenceAccount {
   readonly steps: readonly string[];
 }
 
+export interface ReferenceReviewReceipt {
+  readonly id: string;
+  readonly reviewedAt: string;
+  readonly reviewer: string;
+  readonly method:
+    | 'section-complete-web-review'
+    | 'page-complete-pdf-text-review'
+    | 'browser-ocr-line-review';
+  readonly scope: string;
+  readonly sourceVersion: string;
+  readonly coverage: string;
+  readonly sourceSnapshots: readonly {
+    readonly label: string;
+    readonly sha256: string;
+  }[];
+  readonly limitations: readonly string[];
+}
+
 export interface ReferenceRecord {
   readonly slug: string;
   readonly aliases: readonly string[];
@@ -244,6 +262,7 @@ export interface ReferenceRecord {
   readonly license?: string;
   readonly contentHash?: string;
   readonly fullRead: boolean;
+  readonly reviewReceipt?: ReferenceReviewReceipt;
   readonly displayCitation: string;
   readonly evidenceMode: EvidenceMode;
   readonly role: ReferenceRole;

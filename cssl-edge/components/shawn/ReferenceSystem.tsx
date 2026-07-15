@@ -246,6 +246,14 @@ export function CitationList({ reference }: { readonly reference: ReferenceRecor
         Accessed {reference.accessed} · link metadata verified {reference.lastVerified} · {reference.fullRead ? 'full text reviewed' : 'full-text review pending'}
         {reference.license ? ` · ${reference.license}` : ''}
       </p>
+      {reference.reviewReceipt ? (
+        <dl className={styles.identifierList}>
+          <div><dt>Review receipt</dt><dd>{reference.reviewReceipt.id}</dd></div>
+          <div><dt>Method</dt><dd>{reference.reviewReceipt.method}</dd></div>
+          <div><dt>Coverage</dt><dd>{reference.reviewReceipt.coverage}</dd></div>
+          <div><dt>Source version</dt><dd>{reference.reviewReceipt.sourceVersion}</dd></div>
+        </dl>
+      ) : null}
     </section>
   );
 }
@@ -392,7 +400,7 @@ export function ReferencePage({
           <div><dt>Authority</dt><dd>{reference.authorityScope}</dd></div>
           <div><dt>Version</dt><dd>{reference.version}</dd></div>
           <div><dt>Locator</dt><dd>{reference.exactLocator}</dd></div>
-          <div><dt>Review</dt><dd>{reference.fullRead ? 'Full text reviewed' : `Metadata verified ${reference.lastVerified}; full reading pending`}</dd></div>
+          <div><dt>Review</dt><dd>{reference.reviewReceipt ? `Full text reviewed · ${reference.reviewReceipt.id}` : `Metadata verified ${reference.lastVerified}; full reading pending`}</dd></div>
         </dl>
       </header>
 

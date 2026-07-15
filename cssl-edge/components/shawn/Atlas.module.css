@@ -994,14 +994,15 @@
 .referenceFacts dt { color: var(--muted); font-size: 0.58rem; }
 .referenceFacts dd { margin: 0.35rem 0 0; color: var(--ink-soft); }
 
-.referenceTabs { position: sticky; z-index: 1; top: 54px; display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 0 2rem; background: var(--field); }
+.referenceTabs { position: sticky; z-index: 1; top: 54px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 2rem; background: var(--field); }
 .referenceArticle > .referenceTabs { top: 0; }
 .referenceTabs button,
-.referenceTabs a { min-height: 44px; padding: 0.8rem; border-width: 0 0 1px; color: var(--ink-soft); text-align: center; text-decoration: none; text-transform: capitalize; }
+.referenceTabs a { box-sizing: border-box; min-width: 0; min-height: 44px; padding: 0.8rem; border-width: 0 0 1px; color: var(--ink-soft); text-align: center; text-decoration: none; text-transform: capitalize; }
 .referenceTabs a:hover,
 .referenceTabs a:focus-visible { color: var(--cyan); background: rgba(114, 217, 208, 0.06); }
 
-.referenceView { display: grid; gap: 2.4rem; scroll-margin-top: 4rem; }
+.referenceView { display: grid; min-width: 0; gap: 2.4rem; scroll-margin-top: 4rem; }
+.referenceView > * { min-width: 0; }
 .referenceView + .referenceView { margin-top: 4rem; padding-top: 4rem; border-top: 1px solid var(--line); }
 .referenceView section > h3,
 .citationExport h3 { margin: 0 0 0.8rem; font-size: 1.35rem; font-weight: 400; }
@@ -1027,6 +1028,8 @@
 .proofSteps li p { margin: 0; color: var(--ink-soft); }
 
 .prerequisiteGraph {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   margin-bottom: 1rem;
   border: 1px solid var(--line);

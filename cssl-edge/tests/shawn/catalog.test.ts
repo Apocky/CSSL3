@@ -1,7 +1,7 @@
 import { atlasData } from '@/lib/shawn/atlas';
 import katex from 'katex';
 import { publicationBlockers, referenceBySlug, referenceCatalog, validateCatalog } from '@/lib/shawn/catalog';
-import type { AtlasData, BridgeRecord, CitationRecord, ClaimRecord } from '@/lib/shawn/types';
+import type { AtlasData, BridgeRecord, CitationRecord, ClaimRecord, ReferenceRecord } from '@/lib/shawn/types';
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(`assert failed : ${message}`);
@@ -46,6 +46,15 @@ export function testAliasesResolveToCanonicalRecords(): void {
   assert(referenceBySlug('tla-plus')?.slug === 'formal-methods', 'TLA+ alias');
   assert(referenceBySlug('n-of-1-method')?.slug === 'n-of-1-method', 'canonical slug');
   assert(referenceBySlug('not-a-topic') === undefined, 'unknown topic must not resolve');
+}
+
+export function testFullReadRequiresReviewReceipt(): void {
+  const reviewed = referenceCatalog.find((record) => record.fullRead);
+  assert(reviewed !== undefined, 'at least one reviewed reference fixture');
+  assert(reviewed.reviewReceipt !== undefined, 'reviewed reference exposes a receipt');
+  const invalid: ReferenceRecord = { ...reviewed, reviewReceipt: undefined };
+  const errors = validateCatalog(referenceCatalog.map((record) => record.slug === invalid.slug ? invalid : record));
+  assert(errors.some((error) => error.includes('fullRead requires a review receipt')), 'unreceipted fullRead must fail');
 }
 
 export function testProofRelationRejectsNonFormalEvidence(): void {
@@ -192,6 +201,7 @@ export function runCatalogTests(): void {
   testCatalogIsCompleteAndValid();
   testEveryTopicResolvesAndExplainsItsBoundary();
   testAliasesResolveToCanonicalRecords();
+  testFullReadRequiresReviewReceipt();
   testProofRelationRejectsNonFormalEvidence();
   testConsequentialClosedClaimRequiresHighGradeEvidence();
   testAnalogyCannotCloseConsequentialClaim();
@@ -205,4 +215,4 @@ export function runCatalogTests(): void {
 
 runCatalogTests();
 // eslint-disable-next-line no-console
-console.log('shawn/catalog.test : OK · 12 tests passed');
+console.log('shawn/catalog.test : OK · 13 tests passed');

@@ -6,6 +6,7 @@ import type {
   ReferenceBacklink,
   ReferenceIdentifier,
   ReferenceRecord,
+  ReferenceReviewReceipt,
   ReferenceRole,
 } from './types';
 
@@ -25,10 +26,14 @@ interface TopicSeed {
   readonly date: string;
   readonly publisher: string;
   readonly url: string;
+  readonly identifiers?: readonly ReferenceIdentifier[];
   readonly openAccess?: string;
   readonly archive?: string;
   readonly locator?: string;
   readonly fullRead?: boolean;
+  readonly reviewReceipt?: ReferenceReviewReceipt;
+  readonly contentHash?: string;
+  readonly license?: string;
   readonly math?: readonly { readonly tex: string; readonly label: string }[];
   readonly authority: string;
   readonly orientation: string;
@@ -42,6 +47,79 @@ interface TopicSeed {
 }
 
 const reviewed = '2026-07-15';
+
+const curatedReviewReceipts: Readonly<Record<string, ReferenceReviewReceipt>> = {
+  'zeta-zeros': {
+    id: 'ref-audit-20260715-zeta-zeros-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'section-complete-web-review',
+    scope: 'The DLMF sections actually used by this atlas entry, not the DLMF as a whole.', sourceVersion: 'DLMF 1.2.7 (2026-06-15)',
+    coverage: '§25.10 in full; §25.16(i) in full, including equations 25.16.1–25.16.4.',
+    sourceSnapshots: [
+      { label: 'DLMF §25.10 HTML', sha256: '315b4e9010ea9731381288c0f0ff4cc344574829650a2b3e8d1639be8367b065' },
+      { label: 'DLMF §25.16 HTML', sha256: 'bf13c1822856d95c2212df2c5bc0faff9185c041100f4e18ba22757f74dcb9a4' },
+    ],
+    limitations: ['The review covers the cited sections, not every DLMF dependency or the complete literature on RH.'],
+  },
+  'random-matrix-statistics': {
+    id: 'ref-audit-20260715-montgomery-pair-correlation-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'browser-ocr-line-review',
+    scope: 'Montgomery’s complete 1973 paper as reproduced by a full-text OCR mirror, checked against the version-of-record identity.', sourceVersion: 'Proceedings of Symposia in Pure Mathematics 24 (1973), pp. 181–193',
+    coverage: 'Complete paper, lines 1–839 of the audited browser transcript; theorem, corollaries, conjecture, §§1–4, and references.',
+    sourceSnapshots: [],
+    limitations: ['The mirror’s OCR degrades some equations; formula boundaries were therefore checked conservatively and no local content hash is asserted.'],
+  },
+  'wieferich-primes': {
+    id: 'ref-audit-20260715-wieferich-search-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'page-complete-pdf-text-review',
+    scope: 'Crandall, Dilcher, and Pomerance’s complete published search paper.', sourceVersion: 'Mathematics of Computation 66.217 (1997), pp. 433–449',
+    coverage: 'All 17 PDF pages; definition, §1–§5 algorithms, error checks, results, heuristics, and references.',
+    sourceSnapshots: [{ label: 'Author-hosted paper PDF', sha256: 'f1248405d19b4a5279ba54e56e41e9baced0e78a91775e14de7272dedfef34b3' }],
+    limitations: ['The reported search bound is historical to the paper and is not treated as the current known bound.'],
+  },
+  'prime-races': {
+    id: 'ref-audit-20260715-prime-races-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'page-complete-pdf-text-review',
+    scope: 'Rubinstein and Sarnak’s complete 1994 paper on Chebyshev bias.', sourceVersion: 'Experimental Mathematics 3.3 (1994), pp. 173–197',
+    coverage: 'All 25 PDF pages; Theorems 1.1–1.6, §§2–5, numerical methods, generalizations, and references.',
+    sourceSnapshots: [{ label: 'Project Euclid PDF', sha256: '756191a53a8aa141eaabf333ca28993c432a0e83b21b633c954b2467db0ad190' }],
+    limitations: ['OCR damages some symbols; hypotheses, density convention, theorem boundaries, and reported numerical error bounds were checked from surrounding text.'],
+  },
+  'compactified-time': {
+    id: 'ref-audit-20260715-deutsch-ctc-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'page-complete-pdf-text-review',
+    scope: 'Deutsch’s complete 1991 article, reviewed as a finite-dimensional CTC consistency model rather than as evidence for global time compactification.', sourceVersion: 'Physical Review D 44.10 (1991), pp. 3197–3217',
+    coverage: 'All pages 3197–3217; all sections; equations (1)–(59); figure captions; summary; acknowledgments; references [1]–[33].',
+    sourceSnapshots: [
+      { label: 'Publisher-formatted article PDF', sha256: 'be18bf9ec690f051da39ed4f8175187c29196ed4da81a32acd173ef4eb3f7271' },
+      { label: 'Complete extracted text', sha256: '9aef08b9c5ed60891ebde9ddf1144100234877e36f18b41ff806ec9bf3c7e43d' },
+    ],
+    limitations: ['Two-column extraction degrades equation typography and figures; the fixed-point theorem was read semantically, but this is not a line-by-line visual equation-verification receipt.'],
+  },
+  'n-of-1-method': {
+    id: 'ref-audit-20260715-cent-n-of-1-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'browser-ocr-line-review',
+    scope: 'The complete CENT 2015 statement together with its 2016 correction; the uncorrected author upload alone is not the canonical composite.', sourceVersion: 'BMJ 2015;350:h1738, corrected by BMJ 2016;355:i5381',
+    coverage: 'Statement PDF pp. 1–6 / audited browser-text lines 88–1923, including the complete checklist, figures, declarations, and references; correction read in full.',
+    sourceSnapshots: [],
+    limitations: ['Lawful PDF endpoints returned HTTP 403, so no local content hash is asserted; browser text was checked contiguously and the author upload predates the mandatory item 4c correction.'],
+  },
+  salience: {
+    id: 'ref-audit-20260715-salience-network-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'section-complete-web-review',
+    scope: 'The complete pinned PMC main-article HTML for Seeley et al. (2007), excluding supplements and underlying data.', sourceVersion: 'Journal of Neuroscience 27.9 (2007), pp. 2349–2356; PMCID PMC2680293',
+    coverage: 'Metadata, abstract, introduction, methods, results, discussion, Figures 1–3 and captions, footnote, and 64 references.',
+    sourceSnapshots: [{ label: 'PMC2680293 main-article HTML', sha256: 'fe6078b6b14fe571ccb4af0b1b25f8059fa48644c91a1f9cb1907a9ab8dd31ce' }],
+    limitations: ['Supplemental Figures 1–4, Supplemental Tables 1–4, raw imaging data, and independent replications were not present in the pinned artifact and remain unaudited.'],
+  },
+  'thermal-time': {
+    id: 'ref-audit-20260715-thermal-time-v1', reviewedAt: reviewed, reviewer: 'OpenAI Codex', method: 'page-complete-pdf-text-review',
+    scope: 'Connes and Rovelli’s complete arXiv manuscript proposing the thermal-time hypothesis.', sourceVersion: 'arXiv:gr-qc/9406019v1 (1994)',
+    coverage: 'All 25 PDF pages; §§1–5, equations (1)–(57), notes, and references.',
+    sourceSnapshots: [{ label: 'arXiv v1 PDF', sha256: '82c43e2a66c3964cd1a1b286a9006691b6bff49651969c96ccfd5e5a1a292dd6' }],
+    limitations: ['The PDF renders a later local typesetting date; the audited bibliographic version remains the 1994 arXiv v1 submission.'],
+  },
+};
+
+const curatedContentHashes: Readonly<Record<string, string>> = {
+  'wieferich-primes': 'sha256:f1248405d19b4a5279ba54e56e41e9baced0e78a91775e14de7272dedfef34b3',
+  'prime-races': 'sha256:756191a53a8aa141eaabf333ca28993c432a0e83b21b633c954b2467db0ad190',
+  'compactified-time': 'sha256:be18bf9ec690f051da39ed4f8175187c29196ed4da81a32acd173ef4eb3f7271',
+  salience: 'sha256:fe6078b6b14fe571ccb4af0b1b25f8059fa48644c91a1f9cb1907a9ab8dd31ce',
+  'thermal-time': 'sha256:82c43e2a66c3964cd1a1b286a9006691b6bff49651969c96ccfd5e5a1a292dd6',
+};
 
 const curatedMath: Readonly<Record<string, readonly { readonly tex: string; readonly label: string }[]>> = {
   'zeta-zeros': [{
@@ -67,8 +145,14 @@ const curatedMath: Readonly<Record<string, readonly { readonly tex: string; read
 };
 
 const curatedLocators: Readonly<Record<string, string>> = {
-  'zeta-zeros': 'DLMF §25.10',
-  'thermal-time': 'arXiv:gr-qc/9406019, abstract and full manuscript',
+  'zeta-zeros': 'DLMF §§25.10(i)–(ii), 25.16(i), equations 25.16.1–25.16.4',
+  'random-matrix-statistics': 'pp. 181–193; theorem and corollaries, conjecture, §§1–4',
+  'wieferich-primes': 'pp. 433–449; definition and §§1–5',
+  'prime-races': 'pp. 173–197; Theorems 1.1–1.6 and §§2–5; GRH/GSH hypotheses are load-bearing',
+  'compactified-time': 'pp. 3197–3217; especially equations (15)–(18), with downstream consequences and unresolved physical status in Discussion',
+  'n-of-1-method': 'CENT 2015 statement, PDF pp. 1–6 and checklist items 1a–25; apply the 2016 correction to item 4c',
+  salience: 'pp. 2349–2356; complete main article, Figures 1–3; cohorts and analyses in Methods; state/trait and switching limits in Discussion',
+  'thermal-time': 'arXiv:gr-qc/9406019v1, §§1–5; especially equations (8), (20)–(26), (44), and (48)–(57)',
 };
 
 function evidenceLabel(mode: EvidenceMode): EvidenceAccount['label'] {
@@ -113,6 +197,7 @@ function reference(seed: TopicSeed): ReferenceRecord {
     (alias) => !(seed.slug === 'compactified-time' && alias === 'thermal-time'),
   );
   const slugs = [seed.slug, ...aliases];
+  const reviewReceipt = seed.reviewReceipt ?? curatedReviewReceipts[seed.slug];
   return {
     slug: seed.slug,
     aliases,
@@ -126,7 +211,7 @@ function reference(seed: TopicSeed): ReferenceRecord {
     publisher: seed.publisher,
     language: 'en',
     exactLocator: seed.locator ?? curatedLocators[seed.slug] ?? 'Work as a whole; section-level locator pending full-text review.',
-    identifiers: identifiersFor(seed.url),
+    identifiers: [...identifiersFor(seed.url), ...(seed.identifiers ?? [])],
     urls: {
       canonical: seed.url,
       ...(seed.openAccess ? { openAccess: seed.openAccess } : {}),
@@ -134,7 +219,10 @@ function reference(seed: TopicSeed): ReferenceRecord {
     },
     accessed: reviewed,
     lastVerified: reviewed,
-    fullRead: seed.fullRead ?? false,
+    ...(seed.license ? { license: seed.license } : {}),
+    ...((seed.contentHash ?? curatedContentHashes[seed.slug]) ? { contentHash: seed.contentHash ?? curatedContentHashes[seed.slug] } : {}),
+    fullRead: seed.fullRead ?? reviewReceipt !== undefined,
+    ...(reviewReceipt ? { reviewReceipt } : {}),
     displayCitation: `${seed.creators.join(', ')}. ${seed.title}. ${seed.publisher}, ${seed.date}. ${seed.url}`,
     evidenceMode: seed.mode,
     role: seed.slug === 'gnosticism' ? 'R4' : seed.role,
@@ -168,16 +256,16 @@ function reference(seed: TopicSeed): ReferenceRecord {
 
 const seeds: readonly TopicSeed[] = [
   {
-    slug: 'zeta-zeros', aliases: ['explicit-formula', 'riemann-hypothesis', 'hilbert-polya'], title: 'Riemann zeta zeros, the explicit formula, and RH', domain: 'mathematics', mode: 'formal', role: 'R2', creators: ['NIST Digital Library of Mathematical Functions'], date: 'current reference', publisher: 'National Institute of Standards and Technology', url: 'https://dlmf.nist.gov/25.10', authority: 'Definitions and established analytic results concerning zeta zeros; conjectures remain marked as conjectures.', orientation: 'The nontrivial zeros of the zeta function enter explicit formulas that connect analytic behavior to the distribution of primes.', prerequisites: ['complex analysis', 'prime counting functions'], technical: 'The explicit formula expresses prime-counting error terms through a sum over nontrivial zeros. RH asserts that every nontrivial zero has real part one half; Hilbert–Pólya is a conjectural operator program, not an existing proof.', shawnUse: 'ZEROES uses the zeros as a spectral-resolution instance in its loop–obligation–defect grammar.', supports: 'The explicit formula, known zero symmetries, and the precise open status of RH.', boundary: 'It does not prove RH, produce a Hilbert–Pólya operator, or identify zeta zeros with Wieferich primes or cyclic-time states.', counter: 'A shared spectral vocabulary may be mathematically accurate while the proposed cross-domain dictionary remains non-predictive.', revision: 'Revise if a cited theorem is misstated, its hypotheses are omitted, or a claimed operator construction is not peer-verifiable.',
+    slug: 'zeta-zeros', aliases: ['explicit-formula', 'riemann-hypothesis', 'hilbert-polya'], title: 'Riemann zeta zeros, the explicit formula, and RH', domain: 'mathematics', mode: 'formal', role: 'R2', creators: ['NIST Digital Library of Mathematical Functions'], date: 'current reference', publisher: 'National Institute of Standards and Technology', url: 'https://dlmf.nist.gov/25.10', openAccess: 'https://dlmf.nist.gov/25.16', version: 'DLMF 1.2.7 (2026-06-15)', authority: 'Reviewed DLMF §§25.10 and 25.16(i): definitions and established analytic results concerning zeta zeros, the explicit formula, PNT, and RH-equivalent error bounds; conjectures remain conjectures.', orientation: 'The nontrivial zeros of the zeta function enter explicit formulas that connect analytic behavior to the distribution of primes.', prerequisites: ['complex analysis', 'prime counting functions'], technical: 'DLMF §25.16(i), especially equation 25.16.2, expresses ψ(x) using the nontrivial zeros; §25.10 states the critical-strip symmetries and RH. Hilbert–Pólya is a conjectural operator program, not an operator supplied by these sections.', shawnUse: 'ZEROES uses the zeros as a spectral-resolution instance in its loop–obligation–defect grammar.', supports: 'The cited explicit formula, known zero symmetries, and the precise open status of RH.', boundary: 'DLMF §25.10 alone does not supply the explicit formula; the cited sections do not prove RH, produce a Hilbert–Pólya operator, or identify zeta zeros with Wieferich primes or cyclic-time states.', counter: 'A shared spectral vocabulary may be mathematically accurate while the proposed cross-domain dictionary remains non-predictive.', revision: 'Revise if a cited theorem is misstated, its hypotheses are omitted, or a claimed operator construction is not peer-verifiable.',
   },
   {
-    slug: 'random-matrix-statistics', aliases: ['gue-cue-statistics', 'quantum-chaos', 'symmetry-classes'], title: 'Random-matrix statistics and quantum chaos', domain: 'physics', mode: 'empirical', role: 'R0', creators: ['Hugh L. Montgomery'], date: '1973', publisher: 'Proceedings of Symposia in Pure Mathematics', url: 'https://doi.org/10.1090/pspum/024/9944', authority: 'Original pair-correlation result under its stated test-function restrictions.', orientation: 'Random-matrix ensembles describe statistical patterns of spectra; matching statistics can indicate a universality class without identifying two systems.', prerequisites: ['zeta zeros', 'spectral statistics', 'probability'], technical: 'Montgomery proved a restricted-support pair-correlation result and conjectured the broader GUE form. CUE and GUE share local limits in relevant scaling regimes; quantum-chaos interpretations add physical assumptions.', shawnUse: 'ZEROES tests whether unitarity and time-reversal structure provide a disciplined rather than merely verbal bridge.', supports: 'A restricted theorem plus a well-defined conjectural extension and independently studied numerical statistics.', boundary: 'Statistical agreement does not construct an operator, establish causal identity, or make every chaotic system a model of the zeta zeros.', counter: 'Universality can erase mechanism: distinct systems share local statistics precisely because details are forgotten.', revision: 'Revise if the support restriction, unfolding procedure, ensemble, or distinction between theorem and conjecture is omitted.',
+    slug: 'random-matrix-statistics', aliases: ['gue-cue-statistics', 'quantum-chaos', 'symmetry-classes'], title: 'Montgomery pair correlation and the GUE conjecture', domain: 'mathematics', mode: 'formal', role: 'R0', creators: ['Hugh L. Montgomery'], date: '1973', publisher: 'Proceedings of Symposia in Pure Mathematics', url: 'https://doi.org/10.1090/pspum/024/9944', version: 'Volume 24 (1973), pp. 181–193', authority: 'Original RH-conditional pair-correlation theorem under restricted Fourier support, together with Montgomery’s explicitly conjectural extension.', orientation: 'Montgomery found that a restricted correlation statistic for zeta zeros has the form later recognized by Dyson as matching complex Hermitian random matrices; the broader agreement remains conjectural in this paper.', prerequisites: ['zeta zeros', 'spectral statistics', 'probability'], technical: 'The paper assumes RH. It proves the stated asymptotic for the form factor only in the restricted range 0≤α<1 (uniformly away from 1), then conjectures F(α)≈1 for α≥1 and the corresponding full pair-correlation law. Dyson’s GUE observation motivates a spectral analogy; no Hilbert–Pólya operator is constructed.', shawnUse: 'ZEROES tests whether unitarity and time-reversal structure provide a disciplined rather than merely verbal bridge.', supports: 'The restricted RH-conditional theorem, the clearly labeled broader conjecture, and the historical GUE comparison recorded in the paper.', boundary: 'It does not prove the unrestricted GUE law, construct an operator, establish causal identity, or make every chaotic system a model of the zeta zeros.', counter: 'Universality can erase mechanism: distinct systems share local statistics precisely because details are forgotten.', revision: 'Revise if RH, Fourier-support restrictions, scaling, ensemble, or the theorem–conjecture boundary is omitted.',
   },
   {
-    slug: 'wieferich-primes', aliases: ['fermat-quotient'], title: 'Wieferich primes and Fermat-quotient closure', domain: 'mathematics', mode: 'formal', role: 'R0', creators: ['Richard Crandall', 'Karl Dilcher', 'Carl Pomerance'], date: '1997', publisher: 'Mathematics of Computation', url: 'https://doi.org/10.1090/S0025-5718-97-00791-6', authority: 'Primary computational mathematics source for search methods and verified bounds in its published scope.', orientation: 'A base-2 Wieferich prime satisfies a stronger congruence than Fermat\'s little theorem ordinarily guarantees.', prerequisites: ['modular arithmetic', 'prime numbers'], technical: 'For prime p, the Fermat quotient q_p(2)=(2^(p-1)-1)/p is divisible by p exactly when 2^(p-1)≡1 mod p². This is an arithmetic congruence, not a Riemann-zero condition.', shawnUse: 'ZEROES treats vanishing of the Fermat-quotient defect as one exact instance of unusually deep loop closure.', supports: 'The congruence definition, classical FLT connection, and computational search methodology.', boundary: 'Two known examples do not establish a distribution law, and the term “zero” does not identify these primes with zeta zeros.', counter: 'The closure language may restate the congruence elegantly without yielding new arithmetic.', revision: 'Revise when current search bounds are independently checked or when a stated heuristic is accidentally presented as theorem.',
+    slug: 'wieferich-primes', aliases: ['fermat-quotient'], title: 'Wieferich primes and Fermat-quotient closure', domain: 'mathematics', mode: 'computational', role: 'R0', creators: ['Richard Crandall', 'Karl Dilcher', 'Carl Pomerance'], date: '1997', publisher: 'Mathematics of Computation', url: 'https://doi.org/10.1090/S0025-5718-97-00791-6', openAccess: 'https://math.dartmouth.edu/~carlp/PDF/paper111', version: 'Volume 66, number 217 (1997), pp. 433–449', authority: 'Primary computational mathematics source for the definition, algorithms, internal error checks, and search result in its published historical scope.', orientation: 'A base-2 Wieferich prime satisfies a stronger congruence than Fermat\'s little theorem ordinarily guarantees.', prerequisites: ['modular arithmetic', 'prime numbers'], technical: 'For prime p, the Fermat quotient q_p(2)=(2^(p-1)-1)/p is divisible by p exactly when 2^(p-1)≡1 mod p². The paper implements segmented search algorithms with independent machine segments and fatal-error checks. This is an arithmetic congruence, not a Riemann-zero condition.', shawnUse: 'ZEROES treats vanishing of the Fermat-quotient defect as one exact instance of unusually deep loop closure.', supports: 'The congruence definition, classical FLT connection, the paper’s algorithms, and its 1997 search report.', boundary: 'The paper’s bound is historical rather than current; its 1/p frequency model is heuristic, and the word “zero” does not identify these primes with zeta zeros.', counter: 'The closure language may restate the congruence elegantly without yielding new arithmetic.', revision: 'Revise when a current bound is independently audited or when a stated heuristic or independence assumption is presented as theorem.',
   },
   {
-    slug: 'prime-races', aliases: ['chebyshev-bias'], title: 'Prime number races and Chebyshev bias', domain: 'mathematics', mode: 'formal', role: 'R0', creators: ['Michael Rubinstein', 'Peter Sarnak'], date: '1994', publisher: 'Experimental Mathematics', url: 'https://doi.org/10.1080/10586458.1994.10504289', openAccess: 'https://projecteuclid.org/journals/experimental-mathematics/volume-3/issue-3/Chebyshevs-bias/em/1048515870.pdf', authority: 'Primary analysis of prime races under explicitly stated hypotheses.', orientation: 'Residue classes can lead prime-counting races for highly nonuniform proportions of logarithmic time.', prerequisites: ['Dirichlet characters', 'GRH', 'linear independence hypothesis'], technical: 'Limiting logarithmic distributions for normalized prime-race errors are derived under GRH and a linear-independence hypothesis; the hypotheses are load-bearing.', shawnUse: 'The negative-space memo uses the bias as a measured asymmetry that a seam grammar should explain rather than hide.', supports: 'Conditional quantitative statements about specified prime races.', boundary: 'It does not establish an unconditional universal “preferred side” for every arithmetic partition.', counter: 'A vivid finite range can mislead when the theorem concerns logarithmic density and conditional asymptotics.', revision: 'Revise any displayed probability if hypotheses, modulus, residue classes, or density convention differ from the source.',
+    slug: 'prime-races', aliases: ['chebyshev-bias'], title: 'Prime number races and Chebyshev bias', domain: 'mathematics', mode: 'formal', role: 'R0', creators: ['Michael Rubinstein', 'Peter Sarnak'], date: '1994', publisher: 'Experimental Mathematics', url: 'https://doi.org/10.1080/10586458.1994.10504289', openAccess: 'https://projecteuclid.org/journals/experimental-mathematics/volume-3/issue-3/Chebyshevs-bias/em/1048515870.pdf', version: 'Volume 3, number 3 (1994), pp. 173–197', authority: 'Primary analysis of limiting logarithmic distributions under GRH and of density and product-formula consequences under the stronger Grand Simplicity Hypothesis.', orientation: 'Specified residue classes can lead prime-counting races for highly nonuniform proportions of logarithmic time.', prerequisites: ['Dirichlet characters', 'GRH', 'linear independence hypothesis'], technical: 'Under GRH, Theorem 1.1 gives a limiting distribution for normalized prime-race error vectors. GSH—the rational linear independence of relevant zero ordinates—supports the product formula, smooth density, strict race probabilities, and symmetry results. Section 4 computes examples with explicit numerical approximation bounds.', shawnUse: 'The negative-space memo uses the bias as a measured asymmetry that a seam grammar should explain rather than hide.', supports: 'Conditional statements about specified races, explicitly using logarithmic distribution and the paper’s GRH/GSH assumptions.', boundary: 'It does not establish an unconditional universal preferred side, guarantee ordinary natural density, or license extrapolation from a vivid finite range.', counter: 'A finite range can mislead, and the strongest numerical probabilities depend on hypotheses not presently proved.', revision: 'Revise any displayed probability if hypotheses, modulus, residue classes, normalization, or density convention differ from the source.',
   },
   {
     slug: 'arithmetic-topology', aliases: ['knots-and-primes'], title: 'Arithmetic topology: knots and primes', domain: 'mathematics', mode: 'formal', role: 'R2', creators: ['Masanori Morishita'], date: '2012', publisher: 'Springer', url: 'https://doi.org/10.1007/978-1-4471-2158-9', authority: 'Research monograph developing precise analogies between three-manifold topology and number fields.', orientation: 'Arithmetic topology compares primes in number fields with knots in three-manifolds through rigorously defined invariants.', prerequisites: ['algebraic number theory', 'knot theory'], technical: 'The analogy relates linking phenomena, reciprocity symbols, fundamental groups, and ramification through established theorems and conjectural programs.', shawnUse: 'It supplies a theorem-grade precedent for asking when a loop analogy is formal rather than decorative.', supports: 'Specific dictionary entries proved within arithmetic topology.', boundary: 'It does not validate arbitrary prime–knot metaphors or the broader ZEROES transfer program.', counter: 'A successful analogy in one formal setting does not license transport to unrelated settings without a defined functor or test.', revision: 'Revise when a claimed correspondence lacks the theorem, hypotheses, or invariant named in the source.',
@@ -189,7 +277,7 @@ const seeds: readonly TopicSeed[] = [
     slug: 'unitarity', aliases: ['self-adjoint-evolution'], title: 'Unitarity and quantum evolution', domain: 'physics', mode: 'formal', role: 'R2', creators: ['Stanford Encyclopedia of Philosophy'], date: '2023', publisher: 'Stanford University', url: 'https://plato.stanford.edu/entries/qm/', authority: 'Scholarly account of quantum theory\'s mathematical and interpretive foundations.', orientation: 'Unitary evolution preserves inner products and total probability in a closed quantum system.', prerequisites: ['Hilbert spaces', 'linear operators'], technical: 'For self-adjoint H, U(t)=exp(-iHt) is unitary under appropriate domain conditions. Self-adjointness, boundedness questions, and open-system dynamics must not be collapsed.', shawnUse: 'ZEROES tracks where unitarity is theorem, conjectural operator motivation, or merely analogy.', supports: 'The standard formal role of unitary time evolution.', boundary: 'It does not prove that the zeta zeros are eigenvalues of a self-adjoint operator or that cognition uses quantum dynamics.', counter: 'Open systems and effective descriptions need not evolve unitarily on the reduced state space.', revision: 'Revise if an operator\'s domain, self-adjointness, or physical system is unspecified.',
   },
   {
-    slug: 'compactified-time', aliases: ['cyclic-time', 'thermal-time', 'fixed-points'], title: 'Compactified time, closed timelike curves, and fixed points', domain: 'physics', mode: 'formal', role: 'R0', creators: ['David Deutsch'], date: '1991', publisher: 'Physical Review D', url: 'https://doi.org/10.1103/PhysRevD.44.3197', openAccess: 'https://journals.aps.org/prd/abstract/10.1103/PhysRevD.44.3197', archive: 'https://ui.adsabs.harvard.edu/abs/1991PhRvD..44.3197D/abstract', authority: 'Primary source for a specific quantum model of consistency near closed timelike curves.', orientation: 'When time is modeled with a closed loop, ordinary initial-value evolution can be replaced by a global consistency condition.', prerequisites: ['quantum channels', 'spacetime causal structure'], technical: 'Deutsch consistency imposes a fixed point on the chronology-violating subsystem. Other CTC models and Euclidean thermal circles are not interchangeable with this construction.', shawnUse: 'ZEROES uses a once-around defect and half-turn symmetry as a candidate physical row in its closure dictionary.', supports: 'A defined fixed-point consistency model and its mathematical consequences.', boundary: 'It does not establish that physical time is compact, that the Ouroboroid is real, or that K is a fundamental symmetry.', counter: 'The model may describe a hypothetical consistency rule without corresponding to realizable spacetime physics.', revision: 'Revise if separate CTC, periodic-boundary, KMS, and cosmological claims are merged without an explicit map.',
+    slug: 'compactified-time', aliases: ['deutsch-ctc-consistency', 'ctc-density-operator-fixed-point', 'fixed-points'], title: 'Deutsch closed-timelike-curve consistency model', domain: 'physics', mode: 'formal', role: 'R0', creators: ['David Deutsch'], date: '1991', publisher: 'Physical Review D', url: 'https://doi.org/10.1103/PhysRevD.44.3197', openAccess: 'https://journals.aps.org/prd/abstract/10.1103/PhysRevD.44.3197', archive: 'https://ui.adsabs.harvard.edu/abs/1991PhRvD..44.3197D/abstract', version: 'Volume 44, number 10 (1991), pp. 3197–3217', authority: 'Primary source for a conditional finite-dimensional quantum-information model near closed timelike lines; it does not derive CTC existence or global time topology.', orientation: 'Given a chronology-violating interaction structure, Deutsch replaces contradictory pure-state histories with a density operator that is a fixed point of the induced CTC channel.', prerequisites: ['quantum channels', 'spacetime causal structure'], technical: 'For chronology-respecting input ρ₁, CTC state ρ₂, and finite-dimensional unitary U, equation (15) requires Tr₁[U(ρ₁⊗ρ₂)U†]=ρ₂. Equations (16)–(18) define the induced channel and prove at least one fixed point by Cesàro averaging, compactness, and continuity. The local interaction remains unitary while the external input-output map may be nonlinear and nonunitary; fixed points need not be unique, and maximum-entropy selection is conjectural.', shawnUse: 'ZEROES compares this precise density-operator fixed-point structure with arithmetic closure defects at QL1/QL2; it does not treat the paper as evidence for compactified or cyclic physical time.', supports: 'The finite-dimensional fixed-point theorem and conditional consequences within Deutsch’s stipulated CTC model.', boundary: 'It does not establish physical CTC existence, global compactification t∼t+τ, periodic fields, cyclic cosmology, thermal/KMS time, a half-turn operator K, unique fixed points, or a QL0 mechanism.', counter: 'Conditional mathematical consistency is not physical realizability: backreaction, chronology protection, quantum gravity, or a different microscopic state law may forbid the stipulated interaction, and nonuniqueness requires an unproved selection rule.', revision: 'Revise if the finite-dimensional assumptions or equation (15) are misstated, maximum entropy is presented as proved, or compactified, thermal, cosmological, and CTC time are promoted to identity.',
   },
   {
     slug: 'manifolds', aliases: [], title: 'Manifolds', domain: 'geometry-topology', mode: 'formal', role: 'R2', creators: ['Encyclopedia of Mathematics editorial board'], date: 'current reference', publisher: 'European Mathematical Society', url: 'https://encyclopediaofmath.org/wiki/Manifold', authority: 'Standard mathematical definition and overview.', orientation: 'A manifold is a space locally modeled on Euclidean space, with additional structures specified separately.', prerequisites: ['topological spaces', 'coordinate charts'], technical: 'Dimension, topology, differentiability, metric, orientation, boundary, and causal structure are independent data; naming a “14-dimensional manifold” supplies almost none of them.', shawnUse: 'The atlas uses the definition to distinguish a fully specified geometry from evocative dimensional language.', supports: 'The formal prerequisites for calling a space a topological or differentiable manifold.', boundary: 'It does not validate any particular cosmological manifold or its empirical relevance.', counter: 'A narrative model can use manifold language productively before it has enough structure to be a mathematical model.', revision: 'Revise when explicit charts, transition maps, topology, metric, or equations are supplied.',
@@ -306,13 +394,13 @@ const seeds: readonly TopicSeed[] = [
     slug: 'digital-personhood', aliases: ['digital-identity'], title: 'Digital identity, agency, and personhood', domain: 'philosophy-epistemology', mode: 'philosophical', role: 'R2', creators: ['Stanford Encyclopedia of Philosophy'], date: '2024', publisher: 'Stanford University', url: 'https://plato.stanford.edu/entries/identity-personal/', authority: 'Personal-identity scholarship used as a boundary for digital-continuity proposals.', orientation: 'Digital persistence, agency, legal identity, moral status, and personal continuity are distinct questions.', prerequisites: ['personal identity', 'ethics of technology'], technical: 'Copying state can preserve functional similarity while creating branching identity; moral and legal personhood require arguments beyond implementation fidelity.', shawnUse: 'The pattern-soul and WASM models keep portability separate from claims of migration, singular identity, or moral status.', supports: 'Continuity problems that any digital-personhood account must address.', boundary: 'Software persistence, style imitation, or memory copying does not by itself establish personhood or identity.', counter: 'Functionalist accounts may assign moral relevance before metaphysical identity is resolved.', revision: 'Revise when a candidate system demonstrates durable agency, self-model, value continuity, reciprocal recognition, and legally relevant capacities.',
   },
   {
-    slug: 'n-of-1-method', aliases: ['single-case-experiment'], title: 'N-of-1 trials and single-case causal inference', domain: 'psychology-inquiry', mode: 'empirical', role: 'R1', creators: ['CENT 2015 Group'], date: '2015', publisher: 'BMJ', url: 'https://doi.org/10.1136/bmj.h1738', openAccess: 'https://www.bmj.com/content/350/bmj.h1738', archive: 'https://pubmed.ncbi.nlm.nih.gov/25976398/', authority: 'Consensus reporting guidance for prospective, multiple-crossover N-of-1 trials.', orientation: 'A rigorous N-of-1 design repeatedly compares conditions within one person using prospectively defined outcomes and analysis.', prerequisites: ['experimental design', 'time-series measurement'], technical: 'Randomization, counterbalancing, washout, blinding where possible, repeated crossover, stable outcomes, adherence, carryover analysis, and preregistration distinguish trials from informal longitudinal observation.', shawnUse: 'The atlas describes current self-study as partially controlled longitudinal observation unless a specific episode meets stronger design criteria.', supports: 'Design and reporting requirements for interpretable single-person trials.', boundary: 'Rich notes, deliberate variation, or repeated experience alone do not establish an N-of-1 causal effect.', counter: 'Some meaningful phenomena are nonstationary or irreversible and cannot support repeated crossover.', revision: 'Upgrade an episode only when its protocol, measurements, timing, carryover, and analysis are documented.',
+    slug: 'n-of-1-method', aliases: ['single-case-experiment'], title: 'CENT reporting standard for N-of-1 trials', domain: 'psychology-inquiry', mode: 'normative', role: 'R0', creators: ['Sunita Vohra', 'CENT Group'], date: '2015; corrected 2016', publisher: 'BMJ', url: 'https://doi.org/10.1136/bmj.h1738', identifiers: [{ scheme: 'DOI', value: '10.1136/bmj.i5381' }], openAccess: 'https://www.bmj.com/content/350/bmj.h1738', archive: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5058423/', version: 'CENT 2015 statement with BMJ 2016;355:i5381 correction', authority: 'Canonical reporting guideline for prospectively planned repeated-crossover N-of-1 trial reports; it is not itself a risk-of-bias instrument or causal-validity proof.', orientation: 'CENT defines an N-of-1 trial as a prospective experiment in one participant with repeated crossover comparisons between an intervention and a control, placebo, or alternative treatment.', prerequisites: ['experimental design', 'time-series measurement'], technical: 'The 44-subitem extension covers intervention sequence, periods, run-in and washout, randomization and concealment, blinding, prespecified outcomes, carryover, period effects, intra-subject correlation, harms, deviations, registration, ethics, protocol, and interpretation. It is best suited to chronic stable conditions and interventions with sufficiently rapid and reversible effects. The 2016 correction replaces the erroneous item 4c with the required research-study and institutional-ethics-approval disclosure.', shawnUse: 'The atlas classifies self-study as longitudinal within-subject observation with typed variables unless a particular episode has prospective repeated crossover, a comparator, measurements, timing, and analysis sufficient for the stronger trial label.', supports: 'The terminology, scope, reporting fields, and transparency audit for prospective repeated-crossover N-of-1 trials.', boundary: 'Checklist compliance does not establish safety, efficacy, diagnosis, causal identification, instrument validity, or applicability to uncontrolled self-tracking; stable self-control does not remove time-varying confounding, carryover, trends, expectancy, missingness, or measurement reactivity.', counter: 'Some meaningful phenomena are nonstationary or irreversible and cannot support repeated crossover; even eligible trials can remain biased despite complete reporting.', revision: 'Upgrade an episode only when its prospective protocol, comparator, sequence, measurements, timing, carryover, deviations, and analysis are documented; revise if item 4c is quoted in its uncorrected form.',
   },
   {
     slug: 'altered-state-phenomenology', aliases: ['altered-states'], title: 'Altered-state phenomenology', domain: 'psychology-inquiry', mode: 'phenomenological', role: 'R2', creators: ['Stanford Encyclopedia of Philosophy'], date: '2024', publisher: 'Stanford University', url: 'https://plato.stanford.edu/entries/consciousness/', authority: 'Scholarly map of consciousness concepts and first-person/third-person evidence problems.', orientation: 'Altered states can change perception, self-model, salience, time, affect, and meaning while leaving causal interpretation open.', prerequisites: ['consciousness studies', 'phenomenology'], technical: 'A useful report distinguishes induction, setting, timing, phenomenology, behavior, artifact trace, aftereffects, and rival explanations; categories should not erase individual structure.', shawnUse: 'The atlas preserves reports and externally checkable outputs while refusing both automatic pathology and automatic metaphysical proof.', supports: 'The legitimacy and limits of structured first-person evidence in consciousness research.', boundary: 'Phenomenological detail cannot by itself establish neurobiological, metaphysical, or external-agent causes.', counter: 'Retrospective reports are vulnerable to demand, reconstruction, selection, and vocabulary effects.', revision: 'Revise when contemporaneous measures, blinded comparisons, independent witnesses, or physiological data discriminate rival models.',
   },
   {
-    slug: 'salience', aliases: ['salience-network'], title: 'Salience and attention selection', domain: 'psychology-inquiry', mode: 'empirical', role: 'R0', creators: ['William Seeley', 'Vinod Menon and colleagues'], date: '2007', publisher: 'Journal of Neuroscience', url: 'https://doi.org/10.1523/JNEUROSCI.5587-06.2007', openAccess: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC2680293/', authority: 'Primary network-identification study; later work refines interpretation and causality.', orientation: 'Salience describes how some signals gain priority for attention, switching, interpretation, or action.', prerequisites: ['attention', 'functional neuroimaging'], technical: 'Network correlations identify reproducible systems involving anterior insula and cingulate regions, but task, analysis, and causal interpretation remain active research questions.', shawnUse: 'The attractor model asks what becomes salient first across contexts and how that weighting changes interpretation and action.', supports: 'An empirically studied attention/switching network and measurable salience-related behavior.', boundary: 'A salient pattern is not thereby externally meaningful, pathological, or false.', counter: 'Motivation, expertise, cultural training, novelty, threat, and task demands can explain selection without one unitary salience mechanism.', revision: 'Revise when behavioral and physiological measures fail to predict the proposed attention weighting.',
+    slug: 'salience', aliases: ['salience-network'], title: 'Salience-network connectivity and attention selection', domain: 'psychology-inquiry', mode: 'empirical', role: 'R0', creators: ['William W. Seeley', 'Vinod Menon', 'Allison F. Schatzberg', 'Jennifer Keller', 'Gary H. Glover', 'Heather Kenna', 'Allan L. Reiss', 'Michael D. Greicius'], date: '2007', publisher: 'Journal of Neuroscience', url: 'https://doi.org/10.1523/JNEUROSCI.5587-06.2007', openAccess: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC2680293/', version: 'Volume 27, number 9 (2007), pp. 2349–2356', authority: 'Original cross-sectional task-free fMRI network-characterization study in small healthy cohorts; correlational BOLD connectivity and functional labels do not establish causal information flow.', orientation: 'The study identifies a largely separable frontoinsular/dorsal-cingulate connectivity pattern and interprets it as a candidate network for integrating personally salient signals.', prerequisites: ['attention', 'functional neuroimaging'], technical: 'Seed-based analysis (n=14) and template-guided ICA in a separate cohort (n=21) converged on a bilateral frontoinsula/anterior-insula and dACC/paracingulate network. In the ICA cohort, masked analyses associated connectivity with prescan anxiety (n=15) and distinguished it from executive-network association with Trail Making performance. No salience manipulation, intervention, longitudinal design, or causal test was performed.', shawnUse: 'The attractor model asks what becomes salient first across contexts and how that weighting changes interpretation and action; this paper supplies historical construct orientation, not a Shawn-specific mechanism.', supports: 'The reported task-free network pattern, its separation from a DLPFC/frontoparietal executive network, and the scoped behavioral double dissociation under the paper’s pipeline.', boundary: 'It does not establish a unitary salience computation, a Shawn-specific profile, altered-state or self-model causation, state versus trait, diagnosis, or the later “switching network” mechanism, which the paper leaves as future work.', counter: 'The FI/dACC covariance pattern and small-sample anxiety association may reflect arousal, interoception, autonomic regulation, conflict, physiology, preprocessing, or template selection rather than one unitary salience computation.', revision: 'Revise if larger preregistered cohorts with concurrent validated measures and physiological controls fail to recover the network or double dissociation, or support a more specific competing account.',
   },
   {
     slug: 'personality-models', aliases: ['traits', 'masks'], title: 'Personality models, traits, states, and masks', domain: 'psychology-inquiry', mode: 'empirical', role: 'R2', creators: ['International Personality Item Pool'], date: 'current resource', publisher: 'Oregon Research Institute', url: 'https://ipip.ori.org/', authority: 'Public-domain personality-item resource linked to established trait constructs; not a diagnostic authority.', orientation: 'Trait models summarize recurring tendencies; they do not exhaust context, development, strategy, identity, or values.', prerequisites: ['psychometrics', 'measurement reliability'], technical: 'Construct validity, reliability, norming, method variance, state effects, self-presentation, and temporal stability constrain score interpretation.', shawnUse: 'The atlas treats labels as one projection beside chronology, artifacts, contradictions, and generative dynamics.', supports: 'Psychometric measurement of specified trait constructs when a validated instrument is used.', boundary: 'Self-applied typology labels or isolated scores do not establish diagnosis, moral character, or fixed essence.', counter: 'Narrative and person-specific models may explain within-person variation that broad traits average away.', revision: 'Revise when validated repeated measures, informant reports, or behavior contradict the trait interpretation.',
@@ -354,15 +442,16 @@ const supplementalSeeds: readonly TopicSeed[] = [
     url: 'https://arxiv.org/abs/gr-qc/9406019',
     openAccess: 'https://arxiv.org/pdf/gr-qc/9406019',
     version: 'arXiv:gr-qc/9406019v1',
-    authority: 'Original paper proposing the thermal-time hypothesis through modular automorphisms of a von Neumann algebra.',
+    locator: 'arXiv:gr-qc/9406019v1, §§1–5; especially equations (8), (20)–(26), (44), and (48)–(57)',
+    authority: 'Original theoretical paper proposing—not empirically establishing—the thermal-time hypothesis through modular automorphisms of a von Neumann algebra.',
     orientation: 'Thermal time proposes that a physical time flow may be selected by a state rather than supplied as a universal external parameter.',
     prerequisites: ['operator algebras', 'statistical mechanics', 'general covariance'],
-    technical: 'The construction uses Tomita–Takesaki modular flow for an algebra and a faithful state. It is distinct from a compact time coordinate, a closed timelike curve, and a generic cyclic cosmology.',
+    technical: 'For a faithful state represented through GNS and a von Neumann algebra, Tomita–Takesaki theory supplies a modular automorphism flow. The paper tentatively postulates this state-dependent flow as physical time, recovers Gibbs Hamiltonian evolution up to inverse temperature, discusses the classical H=-lnρ limit and the Rindler/Unruh case, and distinguishes the state-independent outer flow from state-dependent inner representatives.',
     shawnUse: 'It gives the atlas a precise contrast case when evaluating state-dependent time language in ZEROES and later models.',
-    supports: 'The existence and mathematical content of a specific thermal-time hypothesis in algebraic quantum theory.',
-    boundary: 'It does not establish that subjective time, cosmological time, or Shawn’s models instantiate this mechanism.',
-    counter: 'A mathematically defined modular flow may not recover the physically relevant clock in a proposed system.',
-    revision: 'Revise when a later theorem, model, or empirical construction supplies a different state-to-time relation or rejects the required assumptions.',
+    supports: 'The existence, mathematical construction, worked limits, and expressly tentative status of a specific thermal-time hypothesis in generally covariant quantum theory.',
+    boundary: 'It does not empirically establish the physical nature of time, select the physically correct state in general, make time compact or cyclic, or show that subjective time or Shawn’s models instantiate this mechanism.',
+    counter: 'A mathematically defined modular flow may fail to select an operational clock, and the paper leaves state selection and the meaning of physical time partly open.',
+    revision: 'Revise when a theorem, operational model, or experiment supplies a discriminating state-to-clock relation or rejects the required algebraic assumptions.',
   },
 ];
 
@@ -380,6 +469,7 @@ export function referenceBySlug(slug: string): ReferenceRecord | undefined {
 
 const nonEmpty = (value: string): boolean => value.trim().length > 0;
 const localPathPattern = /(?:[A-Za-z]:\\|file:\/\/|\\Users\\|\/Users\/)/i;
+const sha256Pattern = /^[a-f0-9]{64}$/;
 
 export function validateCatalog(
   catalog: readonly ReferenceRecord[] = referenceCatalog,
@@ -404,6 +494,31 @@ export function validateCatalog(
     }
     if (record.fullRead && record.exactLocator.includes('pending full-text review')) {
       errors.push(`${record.slug}: fullRead conflicts with pending locator`);
+    }
+    if (record.fullRead && !record.reviewReceipt) {
+      errors.push(`${record.slug}: fullRead requires a review receipt`);
+    }
+    if (!record.fullRead && record.reviewReceipt) {
+      errors.push(`${record.slug}: review receipt conflicts with fullRead=false`);
+    }
+    if (record.reviewReceipt) {
+      const receipt = record.reviewReceipt;
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(receipt.id)) errors.push(`${record.slug}: invalid review receipt id`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(receipt.reviewedAt)) errors.push(`${record.slug}: invalid review date`);
+      if (![receipt.reviewer, receipt.scope, receipt.sourceVersion, receipt.coverage].every(nonEmpty)) {
+        errors.push(`${record.slug}: review receipt is incomplete`);
+      }
+      if (receipt.limitations.length === 0 || receipt.limitations.some((value) => !nonEmpty(value))) {
+        errors.push(`${record.slug}: review receipt limitations are empty`);
+      }
+      for (const snapshot of receipt.sourceSnapshots) {
+        if (!nonEmpty(snapshot.label) || !sha256Pattern.test(snapshot.sha256)) {
+          errors.push(`${record.slug}: invalid review source snapshot`);
+        }
+      }
+    }
+    if (record.contentHash && !/^sha256:[a-f0-9]{64}$/.test(record.contentHash)) {
+      errors.push(`${record.slug}: invalid content hash`);
     }
     if (record.evidence.label === 'Proof' && (record.evidenceMode !== 'formal' || !record.fullRead)) {
       errors.push(`${record.slug}: Proof requires formal mode and completed full-text reading`);
