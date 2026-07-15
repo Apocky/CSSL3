@@ -13,6 +13,7 @@ export interface RequestUserResult {
   user: RequestUser | null;
   reason?: string;
   authConfigured: boolean;
+  failureKind?: 'unauthenticated' | 'invalid-session' | 'upstream-unavailable' | 'unconfigured';
 }
 
 export interface AdminAuthorizationResult extends RequestUserResult {
@@ -68,7 +69,11 @@ export function getAccessTokenFromRequest(req: NextApiRequest): string | null {
     const token = authHeader.slice('Bearer '.length).trim();
     if (token) return token;
   }
-  return readCookie(req.headers.cookie ?? '', 'sb-access-token');
+  const cookies = req.headers.cookie ?? '';
+  return (
+    readCookie(cookies, '__Host-apocky-access-token') ??
+    readCookie(cookies, 'apocky-access-token')
+  );
 }
 
 export async function getRequestUser(req: NextApiRequest, timeoutMs = 5000): Promise<RequestUserResult> {
@@ -80,6 +85,7 @@ export async function getRequestUser(req: NextApiRequest, timeoutMs = 5000): Pro
     return {
       user: null,
       authConfigured: true,
+      failureKind: 'unauthenticated',
       reason: 'Not signed in · sign in at /login with admin email.',
     };
   }
@@ -89,6 +95,7 @@ export async function getRequestUser(req: NextApiRequest, timeoutMs = 5000): Pro
     return {
       user: null,
       authConfigured: false,
+      failureKind: 'unconfigured',
       reason: 'Auth service is not configured for this deployment.',
     };
   }
@@ -100,15 +107,19 @@ export async function getRequestUser(req: NextApiRequest, timeoutMs = 5000): Pro
     return {
       user: null,
       authConfigured: true,
+      failureKind: 'upstream-unavailable',
       reason: 'Auth lookup timed out · sign in again or retry after Supabase responds.',
     };
   }
 
   const { data, error } = result;
   if (error || !data?.user) {
+    const status = typeof error?.status === 'number' ? error.status : null;
+    const failureKind = status === 401 || status === 403 ? 'invalid-session' : 'upstream-unavailable';
     return {
       user: null,
       authConfigured: true,
+      failureKind,
       reason: 'Session invalid or expired · sign in again.',
     };
   }

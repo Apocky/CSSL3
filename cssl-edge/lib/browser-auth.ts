@@ -8,7 +8,7 @@ export async function getBrowserAuthHeaders(): Promise<Headers> {
   try {
     const { data } = await client.auth.getSession();
     if (data.session?.access_token) {
-      persistSessionToCookie(data.session.access_token, data.session.refresh_token ?? undefined);
+      await persistSessionToCookie(data.session.access_token);
       headers.set('Authorization', `Bearer ${data.session.access_token}`);
     }
   } catch {

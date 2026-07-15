@@ -129,8 +129,8 @@ const Privacy: NextPage = () => {
         <h2>§ Cookies · local storage</h2>
         <p>We use the minimum necessary :</p>
         <ul>
-          <li><code>sb-access-token</code> · authentication session · HttpOnly · Secure · SameSite=Lax · expires on sign-out</li>
-          <li><code>sb-refresh-token</code> · session refresh · same flags</li>
+          <li><code>__Host-apocky-access-token</code> · server-validated, short-lived authentication mirror · HttpOnly · Secure · SameSite=Strict · no refresh token</li>
+          <li>Supabase browser session · browser storage · used for sign-in and refresh · cleared by Supabase sign-out from /account</li>
           <li><code>apocky-profile-links</code> · localStorage · your social-channel handles · client-side only · purgeable from /account</li>
         </ul>
         <p>

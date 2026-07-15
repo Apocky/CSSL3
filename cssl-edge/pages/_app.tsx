@@ -9,6 +9,7 @@
 import type { AppProps } from 'next/app';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import 'katex/dist/katex.min.css';
 import {
   akashicInstall,
   AkashicErrorBoundary,
@@ -26,7 +27,8 @@ function isBare(pathname: string): boolean {
     pathname.startsWith('/auth') ||
     pathname.startsWith('/admin') ||
     pathname === '/apocrypha' ||
-    pathname === '/chat'
+    pathname === '/chat' ||
+    pathname.startsWith('/shawn')
   );
 }
 
@@ -65,7 +67,13 @@ function attachGlobalErrorListeners(): void {
 
 export default function App({ Component, pageProps }: AppProps): JSX.Element {
   const router = useRouter();
+  const isShawnRoute = router.pathname.startsWith('/shawn');
+  const isClinical = router.pathname.startsWith('/shawn/clinical');
   useEffect(() => {
+    // The clinical appendix is a telemetry-blackout boundary. A direct load
+    // must not initialize capture, storage, observers, or global listeners.
+    if (isClinical) return;
+
     // Install once · idempotent. Pull build-time env-vars (Next exposes
     // anything prefixed NEXT_PUBLIC_ to client). Vercel auto-injects
     // VERCEL_GIT_COMMIT_SHA + we mirror it to NEXT_PUBLIC_* via next.config.
@@ -107,12 +115,12 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
     } catch {
       // never break user-flow on telemetry-bridge
     }
-  }, []);
+  }, [isClinical]);
 
   const bare = isBare(router.pathname);
   return (
     <AkashicErrorBoundary>
-      <AkashicConsent />
+      {!isShawnRoute && <AkashicConsent />}
       {bare ? (
         <Component {...pageProps} />
       ) : (

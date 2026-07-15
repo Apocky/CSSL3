@@ -60,10 +60,7 @@ const Account: NextPage = () => {
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
           ]) as Awaited<ReturnType<typeof client.auth.getSession>>;
           if (sessionResult.data?.session?.access_token) {
-            persistSessionToCookie(
-              sessionResult.data.session.access_token,
-              sessionResult.data.session.refresh_token ?? undefined,
-            );
+            await persistSessionToCookie(sessionResult.data.session.access_token);
           }
         } catch {
           // ignore — timeout or network issue; server-side /api/auth/me will report null
@@ -128,8 +125,10 @@ const Account: NextPage = () => {
   }
 
   async function handleSignOut() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    location.href = '/';
+    const client = getAuthClient();
+    if (client) await client.auth.signOut().catch(() => undefined);
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    location.replace('/');
   }
 
   if (loading) {

@@ -107,6 +107,16 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+// Hard privacy boundary. Capture can remain installed across a client-side
+// transition, so every effectful entry point must fail closed on this route.
+function isTelemetryBlackoutPath(): boolean {
+  return (
+    typeof location !== 'undefined' &&
+    typeof location.pathname === 'string' &&
+    location.pathname.startsWith('/shawn/clinical')
+  );
+}
+
 // Read-or-create ephemeral session-id. Lives in sessionStorage so refresh
 // keeps it ; tab-close clears it. NO localStorage for session-id (cross-tab
 // linkage = sovereignty-violation).
@@ -171,6 +181,7 @@ export interface InitOpts {
 
 // Idempotent · safe to call repeatedly. Returns false if already initialized.
 export function init(opts: InitOpts = {}): boolean {
+  if (isTelemetryBlackoutPath()) return false;
   if (state.initialized) return false;
   state.initialized = true;
   state.consent_tier = loadStoredTier();
@@ -215,6 +226,7 @@ export function capture(
   kind: AkashicKind,
   payload: Record<string, unknown> = {}
 ): string {
+  if (isTelemetryBlackoutPath()) return '';
   if (!state.initialized) return '';
   const ts = nowIso();
   const cell_id = hash16(`${ts}|${state.session_id}|${kind}|${JSON.stringify(payload)}`);
@@ -271,6 +283,7 @@ function drainRing(): AkashicEvent[] {
 
 // ─── flush · POST batch to /api/akashic/batch ──────────────────────────────
 export async function flush(reason: AkashicBatch['flush_reason'] = 'manual'): Promise<boolean> {
+  if (isTelemetryBlackoutPath()) return false;
   if (!state.initialized) return false;
   const events = drainRing();
   if (events.length === 0) return true;
@@ -349,6 +362,7 @@ export function currentPolicy(): ConsentPolicy {
 // dpl_id ≠ page_load_dpl_id, emit deploy.detected. This is the canary-pattern
 // for stuck-deploys (the Vercel-stuck-deploy issue Apocky just hit).
 export async function attestVersion(): Promise<boolean> {
+  if (isTelemetryBlackoutPath()) return false;
   if (!state.initialized) return false;
   try {
     const r = await fetch(state.endpoint_version, { method: 'GET' });

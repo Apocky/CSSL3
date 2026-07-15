@@ -1,7 +1,7 @@
 // /api/auth/logout · clears Supabase session-cookie · returns success
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { signOut } from '../../../lib/auth';
+import { clearedSessionCookies, hasSameOrigin } from '../../../lib/auth-session';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -9,13 +9,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false });
   }
 
-  await signOut();
-
-  // Clear common Supabase cookies (names vary by helper · clear conservatively)
-  res.setHeader('Set-Cookie', [
-    'sb-access-token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax',
-    'sb-refresh-token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax',
-  ]);
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  if (!hasSameOrigin(req)) return res.status(403).json({ ok: false });
+  res.setHeader('Set-Cookie', clearedSessionCookies());
 
   return res.status(200).json({ ok: true });
 }

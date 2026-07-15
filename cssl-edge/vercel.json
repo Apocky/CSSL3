@@ -19,7 +19,8 @@
     { "path": "/api/cron/mycelium-relay", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/hotfix-manifest-refresh", "schedule": "*/30 * * * *" },
     { "path": "/api/cron/kan-rollup", "schedule": "0 * * * *" },
-    { "path": "/api/cron/sigma-chain-checkpoint", "schedule": "0 */6 * * *" }
+    { "path": "/api/cron/sigma-chain-checkpoint", "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/shawn-reference-audit", "schedule": "0 16 * * 1" }
   ],
   "headers": [
     {

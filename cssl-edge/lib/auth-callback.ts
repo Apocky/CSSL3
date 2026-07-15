@@ -97,10 +97,10 @@ export async function consumeAuthCallbackFromLocation(): Promise<ConsumeAuthCall
       };
     }
 
-    persistSessionToCookie(
-      result.data.session.access_token,
-      result.data.session.refresh_token ?? undefined,
-    );
+    const mirrored = await persistSessionToCookie(result.data.session.access_token);
+    if (!mirrored) {
+      return { handled: true, ok: false, reason: 'server session boundary is unavailable' };
+    }
     clearAuthCallbackFromLocation();
     return { handled: true, ok: true };
   } catch (err: unknown) {

@@ -79,7 +79,7 @@ function installDomShim(): void {
   define('document', { addEventListener: win.addEventListener, visibilityState: 'visible', referrer: '' });
   define('localStorage', ls);
   define('sessionStorage', ss);
-  define('location', { href: 'https://apocky.com/test' });
+  define('location', { href: 'https://apocky.com/test', pathname: '/test' });
   define('navigator', { sendBeacon: undefined, connection: { effectiveType: '4g' } });
   // silence the unused-state warning
   void G;
@@ -121,6 +121,24 @@ export function test_init_idempotent(): void {
   assert(first === true, 'first init returns true');
   assert(second === false, 'second init returns false (idempotent)');
   assert(_isInit() === true, 'state.initialized after init');
+}
+
+export async function test_clinical_path_is_telemetry_blackout(): Promise<void> {
+  _resetForTests();
+  const loc = globalThis.location as unknown as { href: string; pathname: string };
+  const previous = { ...loc };
+  loc.href = 'https://apocky.com/shawn/clinical';
+  loc.pathname = '/shawn/clinical';
+  try {
+    assert(init({ install_observers: false }) === false, 'clinical route refuses init');
+    assert(_isInit() === false, 'clinical route leaves telemetry uninitialized');
+    assert(capture('page.view', { url: loc.href }) === '', 'clinical capture is denied');
+    assert(_ringSize() === 0, 'clinical capture leaves no buffered event');
+    assert((await flush('manual')) === false, 'clinical route refuses network flush');
+  } finally {
+    loc.href = previous.href;
+    loc.pathname = previous.pathname;
+  }
 }
 
 export function test_consent_default_spore(): void {
@@ -284,6 +302,7 @@ const isMain =
 if (isMain) {
   Promise.resolve()
     .then(test_init_idempotent)
+    .then(test_clinical_path_is_telemetry_blackout)
     .then(test_consent_default_spore)
     .then(test_capture_gates_via_consent)
     .then(test_capture_allows_consent_at_none)
@@ -298,7 +317,7 @@ if (isMain) {
     .then(test_flush_drains_ring)
     .then(() => {
       // eslint-disable-next-line no-console
-      console.log('akashic-telemetry.test : OK · 13 inline tests passed');
+      console.log('akashic-telemetry.test : OK · 14 inline tests passed');
     })
     .catch((err) => {
       // eslint-disable-next-line no-console
