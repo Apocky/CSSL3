@@ -41,6 +41,38 @@ function TopicLinks({ slugs }: { readonly slugs: readonly string[] }): JSX.Eleme
   );
 }
 
+function EvidenceTrail({
+  sourceIds,
+  claimIds,
+  label = 'Trace this step',
+}: {
+  readonly sourceIds: readonly string[];
+  readonly claimIds: readonly string[];
+  readonly label?: string;
+}): JSX.Element | null {
+  const sources = sourceIds
+    .map((sourceId) => atlasData.sourceRefs.find((source) => source.id === sourceId))
+    .filter((source) => source !== undefined);
+  const claims = claimIds
+    .map((claimId) => atlasData.claims.find((claim) => claim.id === claimId))
+    .filter((claim) => claim !== undefined);
+  if (sources.length === 0 && claims.length === 0) return null;
+
+  return (
+    <details className={styles.evidenceTrail}>
+      <summary>{label}</summary>
+      <div>
+        {claims.map((claim) => (
+          <a href={`#${claim.id}`} key={claim.id}>Claim · {claim.title} · {claim.truthState}</a>
+        ))}
+        {sources.map((source) => (
+          <a href={`#${source.id}`} key={source.id}>Source · {source.label} · {source.evidenceLane}</a>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function SectionHeader({
   index,
   title,
@@ -229,6 +261,7 @@ function Chronology(): JSX.Element {
               <span className={styles.stateBadge}>{event.truthState}</span>
               <h3>{event.title}</h3>
               <p>{event.summary}</p>
+              <EvidenceTrail sourceIds={event.sourceIds} claimIds={event.claimIds} label="Trace event → claim → source" />
               <TopicLinks slugs={event.topicSlugs} />
             </div>
           </article>
@@ -252,6 +285,7 @@ function ReasoningChains(): JSX.Element {
             <h3 className={styles.chainTitle}>{chain.title}</h3>
           </summary>
           <p className={styles.chainDescription}>{chain.summary}</p>
+          <EvidenceTrail sourceIds={chain.sourceIds} claimIds={chain.claimIds} label="Trace chain → claim → source" />
           <ol className={styles.chainSteps}>
             {chain.steps.map((step, index) => (
               <li key={step.id}>
@@ -714,7 +748,7 @@ function ProvenanceLedger(): JSX.Element {
           </thead>
           <tbody>
             {atlasData.sourceRefs.map((source) => (
-              <tr key={source.id}>
+              <tr id={source.id} key={source.id}>
                 <td>{source.label}</td>
                 <td>{source.authorClass}</td>
                 <td>{source.evidenceLane}</td>
