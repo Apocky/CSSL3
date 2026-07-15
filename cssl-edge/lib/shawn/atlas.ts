@@ -27,6 +27,9 @@ const CURRENT_SELF_REPORT = 'src-current-self-report-2026-07-14';
 const UNRAVELING_REIMAGINED = 'src-unraveling-reimagined-halo';
 const BOOK_OF_NAMES = 'src-book-of-names-halo';
 const UNRAVELING_PROLOGUE = 'src-unraveling-prologue';
+const EARLY_FRAME_2012 = 'src-drive-2012-frame-identity';
+const EARLY_EXCHANGE_2012 = 'src-drive-2012-social-exchange';
+const EARLY_RESEARCH_2012 = 'src-drive-2012-research-process';
 
 export const topicSlugs = [
   'zeta-zeros',
@@ -134,6 +137,57 @@ export const atlasData: AtlasData = {
     'Do not collapse structural analogy into identity, fictional mathematics into published mathematics, or QL2 analogy into QL0 physics.',
   ],
   sourceRefs: [
+    {
+      id: EARLY_FRAME_2012,
+      label: '2012 frame and identity school response · public-safe source projection',
+      sourceKind: 'authored-text',
+      authorClass: 'shawn',
+      privacy: 'public',
+      evidenceLane: 'observed',
+      locator: 'SHAWN-ATLAS-SPINE:SRC-DRIVE-2012-FRAME-IDENTITY',
+      recordedAt: '2012-02-06',
+      fullRead: true,
+      publicationApproved: true,
+      limitations: [
+        'The complete Drive document was read; this record exposes only a public-safe paraphrase and stable private-spine handle.',
+        'The named course, date, and first-person examples support authorship, but quoted course and web material must not be reattributed to Shawn.',
+        'One school response cannot establish a permanent trait, current motive, or exhaustive account of identity.',
+      ],
+    },
+    {
+      id: EARLY_EXCHANGE_2012,
+      label: '2012 social exchange and cooperation school response · public-safe source projection',
+      sourceKind: 'authored-text',
+      authorClass: 'shawn',
+      privacy: 'public',
+      evidenceLane: 'observed',
+      locator: 'SHAWN-ATLAS-SPINE:SRC-DRIVE-2012-SOCIAL-EXCHANGE',
+      recordedAt: '2012-02-13',
+      fullRead: true,
+      publicationApproved: true,
+      limitations: [
+        'The complete Drive document was read; public output paraphrases Shawn-attributable portions and excludes copied course or web passages.',
+        'The stated preference for solitary accomplishment is conditional: the same source names unusual difficulty and better group gains as reasons to cooperate.',
+        'A classroom response about incentives does not establish exploitation, cruelty, incapacity for cooperation, or a fixed social orientation.',
+      ],
+    },
+    {
+      id: EARLY_RESEARCH_2012,
+      label: '2012 research-process school response · public-safe source projection',
+      sourceKind: 'authored-text',
+      authorClass: 'shawn',
+      privacy: 'public',
+      evidenceLane: 'observed',
+      locator: 'SHAWN-ATLAS-SPINE:SRC-DRIVE-2012-RESEARCH-PROCESS',
+      recordedAt: '2012-05-02',
+      fullRead: true,
+      publicationApproved: true,
+      limitations: [
+        'The complete Drive document was read; this record exposes a bounded method paraphrase rather than the raw assignment.',
+        'The five-stage research sequence partly reflects course instruction; the first-person source supports Shawn’s adoption and use of it, not independent invention.',
+        'Acknowledging bias and seeking credible sources does not prove that every later investigation follows the method successfully.',
+      ],
+    },
     {
       id: UNRAVELING_PROLOGUE,
       label: 'The Unraveling · complete prologue',
@@ -708,6 +762,23 @@ export const atlasData: AtlasData = {
       topicSlugs: ['tarot', 'steganographic-cognition', 'falsifiability'],
     },
     {
+      id: 'claim-early-method-components',
+      title: 'The later method has identifiable early components',
+      wording: 'Three complete 2012 school responses already separate audience-sensitive presentation from a resistant authenticity boundary, treat cooperation as conditional rather than compulsory or impossible, and describe research as problem → variables → data → patterns → theory while explicitly acknowledging prior bias.',
+      kind: 'artifact-observation',
+      lane: 'observed',
+      truthState: 'TRUE',
+      confidence: 'high',
+      consequential: false,
+      sourceIds: [EARLY_FRAME_2012, EARLY_EXCHANGE_2012, EARLY_RESEARCH_2012],
+      supportingCitationIds: [],
+      contradictingCitationIds: [],
+      countercase: 'These are graded classroom responses shaped by prompts and assigned concepts; later resemblance may reflect common educational vocabulary rather than one stable personal method.',
+      falsifier: 'The source attribution fails, the complete documents do not contain the described first-person distinctions, or revision history shows that the relevant language came from another author.',
+      supersedes: [],
+      topicSlugs: ['identity-continuity', 'explanatory-pluralism', 'falsifiability'],
+    },
+    {
       id: 'claim-attractor',
       title: 'Identity as a recurrent generative attractor',
       wording: 'A useful whole-person model should predict recurring transformations across contexts rather than reduce identity to one snapshot, label, mask, or diagnosis.',
@@ -716,7 +787,7 @@ export const atlasData: AtlasData = {
       truthState: 'OPEN',
       confidence: 'medium',
       consequential: true,
-      sourceIds: [FORM_MODEL, CURRENT_SELF_REPORT],
+      sourceIds: [FORM_MODEL, CURRENT_SELF_REPORT, EARLY_FRAME_2012, EARLY_RESEARCH_2012],
       supportingCitationIds: ['cite-platonic-form'],
       contradictingCitationIds: [],
       countercase: 'The apparent invariants may be selection effects produced by choosing unusually elaborate artifacts and omitting ordinary counterexamples.',
@@ -733,7 +804,7 @@ export const atlasData: AtlasData = {
       truthState: 'OPEN',
       confidence: 'medium',
       consequential: true,
-      sourceIds: [HMO, ZEROES, ZEROES_NEGATIVE],
+      sourceIds: [HMO, ZEROES, ZEROES_NEGATIVE, EARLY_RESEARCH_2012],
       supportingCitationIds: ['cite-explanatory-pluralism', 'cite-falsifiability'],
       contradictingCitationIds: [],
       countercase: 'The sequence may describe an idealized retrospective narrative rather than the actual order of discovery.',
@@ -1136,6 +1207,9 @@ export const atlasData: AtlasData = {
     { id: 'cite-event-recovery', referenceSlug: 'event-spines', relation: 'contextualizes', claimIds: ['claim-context-recovery'], supports: 'Provides a typed sequence for knowns, unknowns, retrieval actions, recognition, and outstanding verification.', doesNotSupport: 'Does not reconstruct the absent web trace or show that the planned source check occurred.' },
   ],
   chronology: [
+    { id: 'chron-2012-frame-identity', period: '2012-02-06', precision: 'day', title: 'Audience adaptation is separated from counterfeit identity', track: 'life-context', summary: 'In a complete school response, Shawn describes changing register across people to reduce conflict and friction, while criticizing approval-seeking performance and retaining an authenticity boundary. The source supports an early strategy report—not a permanent trait or diagnosis.', lane: 'observed', truthState: 'TRUE', sourceIds: [EARLY_FRAME_2012], claimIds: ['claim-early-method-components', 'claim-attractor'], topicSlugs: ['identity-continuity', 'personality-models', 'compositional-meaning'] },
+    { id: 'chron-2012-exchange', period: '2012-02-13', precision: 'day', title: 'Solitary effort and cooperation are treated as conditional choices', track: 'life-context', summary: 'A second complete response prefers independent accomplishment while explicitly naming unusual difficulty and better group gains as conditions favoring cooperation. It records strategic incentive analysis without implying incapacity for collaboration.', lane: 'observed', truthState: 'TRUE', sourceIds: [EARLY_EXCHANGE_2012], claimIds: ['claim-early-method-components'], topicSlugs: ['personality-models', 'replicator-dynamics'] },
+    { id: 'chron-2012-research-process', period: '2012-05-02', precision: 'day', title: 'Research is written as a staged, bias-aware process', track: 'intellectual-artifact', summary: 'A complete course response sets out problem → variables and definitions → data → patterns → theory, then states a preference for credible sources, multiple views, and explicit recognition that prior beliefs can distort neutrality. Course scaffolding and personal adoption remain distinct.', lane: 'observed', truthState: 'TRUE', sourceIds: [EARLY_RESEARCH_2012], claimIds: ['claim-early-method-components', 'claim-method'], topicSlugs: ['falsifiability', 'explanatory-pluralism', 'causal-intervention'] },
     { id: 'chron-tarot-method', period: '2024-06-29', precision: 'day', title: 'A Tarot reading becomes a reproducibility problem', track: 'intellectual-artifact', summary: 'Shawn asks for randomized card selection and later proposes a cross-method number-to-letter decoding. The assistant provides no seed, substitutes fixed values after tool failure, and post-selects a familiar name; the exploratory method and its validity failures are preserved together.', lane: 'observed', truthState: 'TRUE', sourceIds: [TAROT_METHOD], claimIds: ['claim-oracle-method-audit'], topicSlugs: ['tarot', 'steganographic-cognition', 'falsifiability'] },
     { id: 'chron-label-counterexample', period: '2024-07-10', precision: 'day', title: 'A personality label meets an immediate counterexample', track: 'life-context', summary: 'In a low-resolution mock questionnaire, Shawn challenges a generic label with a concrete account of intuitive commitment, persistence, exacting standards, and limited advance planning; the resulting type remains invalid as psychometrics.', lane: 'observed', truthState: 'TRUE', sourceIds: [LABEL_TEST], claimIds: ['claim-label-counterexample'], topicSlugs: ['personality-models', 'falsifiability'] },
     { id: 'chron-collaborator-design', period: '2024-08-04', precision: 'day', title: 'The collaborator is configured as part of the method', track: 'life-context', summary: 'Shawn specifies an interaction style meant to combine humor, warmth, irreverence, detail, curiosity, and philosophical reach—evidence that the dialogue conditions are intentionally shaped rather than passively consumed.', lane: 'observed', truthState: 'TRUE', sourceIds: [COLLABORATOR_DESIGN], claimIds: ['claim-collaborator-design'], topicSlugs: ['personality-models', 'digital-personhood'] },
