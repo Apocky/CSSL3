@@ -215,6 +215,7 @@ export interface ReferenceReviewReceipt {
   readonly reviewer: string;
   readonly method:
     | 'section-complete-web-review'
+    | 'section-complete-archived-web-review'
     | 'page-complete-pdf-text-review'
     | 'browser-ocr-line-review';
   readonly scope: string;
