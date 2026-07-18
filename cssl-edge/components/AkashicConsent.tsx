@@ -14,6 +14,7 @@ import type { ConsentTier } from '@/lib/akashic-telemetry';
 
 const STORAGE_KEY = 'akashic.consent.shown.v1';
 const AUTH_FLOW_PATHS = new Set(['/login', '/register', '/auth/callback']);
+const NON_BLOCKING_APP_PATHS = ['/admin', '/chat'];
 
 interface TierOpt {
   tier: ConsentTier;
@@ -63,11 +64,14 @@ export function AkashicConsent(): React.ReactElement | null {
   const [open, setOpen] = React.useState(false);
   const [chosen, setChosen] = React.useState<ConsentTier>('spore');
   const hiddenForAuthFlow = AUTH_FLOW_PATHS.has(router.pathname);
+  const hiddenForAppSurface = NON_BLOCKING_APP_PATHS.some((prefix) =>
+    router.pathname === prefix || router.pathname.startsWith(`${prefix}/`),
+  );
 
   React.useEffect(() => {
     try {
       if (typeof localStorage === 'undefined') return;
-      if (hiddenForAuthFlow) {
+      if (hiddenForAuthFlow || hiddenForAppSurface) {
         setOpen(false);
         return;
       }
@@ -79,7 +83,7 @@ export function AkashicConsent(): React.ReactElement | null {
     } catch {
       // storage unavailable · skip overlay (privacy-mode)
     }
-  }, [hiddenForAuthFlow]);
+  }, [hiddenForAuthFlow, hiddenForAppSurface]);
 
   const handleGrant = React.useCallback(
     (tier: ConsentTier): void => {
@@ -96,7 +100,7 @@ export function AkashicConsent(): React.ReactElement | null {
     []
   );
 
-  if (!open || hiddenForAuthFlow) return null;
+  if (!open || hiddenForAuthFlow || hiddenForAppSurface) return null;
 
   return (
     <div

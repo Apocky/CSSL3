@@ -9,6 +9,12 @@
     "pages/api/**/*.ts": {
       "maxDuration": 30
     },
+    "pages/api/admin/apocrypha/chat.ts": {
+      "maxDuration": 60
+    },
+    "pages/api/admin/apocrypha/chat_stream.ts": {
+      "maxDuration": 120
+    },
     "pages/api/cron/**/*.ts": {
       "maxDuration": 60
     }
@@ -24,9 +30,18 @@
   ],
   "headers": [
     {
+      "source": "/api/admin/apocrypha/:rest*",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://www.apocky.com" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PATCH, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-CSRF-Token" },
+        { "key": "X-Served-By", "value": "cssl-edge" }
+      ]
+    },
+    {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" },
         { "key": "X-Served-By", "value": "cssl-edge" }

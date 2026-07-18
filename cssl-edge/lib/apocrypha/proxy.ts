@@ -22,6 +22,14 @@ interface CfAccessCreds {
   clientSecret: string;
 }
 
+function safeUpstreamDetail(upstream: Response, body: string): string {
+  const contentType = upstream.headers.get('content-type')?.toLowerCase() ?? '';
+  if (contentType.includes('text/html') || /^\s*<!doctype\s+html/i.test(body)) {
+    return 'The Apocrypha bridge returned a gateway error. Try again shortly.';
+  }
+  return body.trim().slice(0, 500) || 'The Apocrypha bridge returned an empty error.';
+}
+
 function cfCreds(): CfAccessCreds | null {
   const id = process.env.CF_ACCESS_CLIENT_ID;
   const secret = process.env.CF_ACCESS_CLIENT_SECRET;
@@ -70,6 +78,7 @@ export async function proxyToApocrypha(
   const headers: Record<string, string> = {
     'CF-Access-Client-Id': creds.clientId,
     'CF-Access-Client-Secret': creds.clientSecret,
+    Origin: 'https://apocrypha.apocky.com',
     Accept: 'application/json',
   };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
@@ -92,7 +101,9 @@ export async function proxyToApocrypha(
     const status = opts.forwardStatus === false ? 200 : upstream.status;
     res.status(status).json({
       upstream_status: upstream.status,
-      data: payload,
+      data: upstream.ok || typeof payload !== 'string'
+        ? payload
+        : safeUpstreamDetail(upstream, payload),
       tunnel_host: tunnel,
       ...envelope(),
     });

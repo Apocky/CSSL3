@@ -1,240 +1,211 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { getAuthClient, getCurrentUser } from '../lib/auth';
+import { ApocryphaAvatar } from '../components/apocrypha/ApocryphaAvatar';
+import { ChatThread } from '../components/apocrypha/ChatThread';
+import { getCurrentUser } from '../lib/auth';
 import { authFetch } from '../lib/browser-auth';
+import { withDeadline } from '../lib/apocrypha/deadline';
 
-type Msg = { role: 'user' | 'apocrypha' | 'err'; text: string };
-type TurnRow = { status: string; response: string; error: string | null };
-type ChunkRow = { seq: number; delta: string };
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+type AccessState = 'checking' | 'signed-out' | 'owner' | 'private-beta' | 'unavailable';
+const ACCESS_DEADLINE_MS = 15_000;
 
 export default function ChatPage() {
-  const [authState, setAuthState] = useState<'checking' | 'in' | 'out'>('checking');
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [live, setLive] = useState<string | null>(null); // in-flight assistant reply (streaming)
-  const [resting, setResting] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [input, setInput] = useState('');
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const lastSeenRef = useRef<string>(new Date().toISOString());
-  const logRef = useRef<HTMLDivElement | null>(null);
+  const [access, setAccess] = useState<AccessState>('checking');
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    void (async () => {
       try {
-        const u = await getCurrentUser();
-        setAuthState(u ? 'in' : 'out');
+        const resolved = await withDeadline((async (): Promise<AccessState> => {
+          const user = await getCurrentUser();
+          if (!user) return 'signed-out';
+          const response = await authFetch('/api/admin/check', { cache: 'no-store' });
+          const result = response.ok
+            ? await response.json() as { authorized?: boolean }
+            : { authorized: false };
+          return result.authorized ? 'owner' : 'private-beta';
+        })(), ACCESS_DEADLINE_MS);
+        if (!cancelled) setAccess(resolved);
       } catch {
-        setAuthState('out');
+        if (!cancelled) setAccess('unavailable');
       }
     })();
+    return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [msgs, live]);
-
-  // Apocrypha can speak unprompted — poll the user's current session for any kind='mind' turns
-  // that have arrived since we last looked, and render them as if they came from the chat partner.
-  useEffect(() => {
-    if (authState !== 'in' || !sessionId) return;
-    const sb = getAuthClient();
-    if (!sb) return;
-    let cancelled = false;
-    const tick = async () => {
-      if (cancelled) return;
-      const { data } = await sb
-        .from('chat_turn')
-        .select('id,response,created_at')
-        .eq('session_id', sessionId)
-        .eq('kind', 'mind')
-        .gt('created_at', lastSeenRef.current)
-        .order('created_at', { ascending: true });
-      const rows = (data ?? []) as { id: string; response: string; created_at: string }[];
-      if (rows.length > 0) {
-        setMsgs((m) => [...m, ...rows.map((r) => ({ role: 'apocrypha' as const, text: (r.response ?? '').trim() || '…' }))]);
-        const last = rows[rows.length - 1];
-        if (last) lastSeenRef.current = last.created_at;
-      }
-    };
-    const handle = setInterval(tick, 4000);
-    return () => { cancelled = true; clearInterval(handle); };
-  }, [authState, sessionId]);
-
-  async function streamTurn(turnId: string): Promise<void> {
-    const sb = getAuthClient();
-    if (!sb) throw new Error('Auth is not configured for this deployment.');
-    const t0 = Date.now();
-    for (;;) {
-      await sleep(700);
-      const { data: chunkData } = await sb
-        .from('chat_chunk')
-        .select('seq,delta')
-        .eq('turn_id', turnId)
-        .order('seq', { ascending: true });
-      const chunks = (chunkData ?? []) as ChunkRow[];
-      if (chunks.length > 0) {
-        setResting(false);
-        setLive(chunks.map((c) => c.delta).join(''));
-      }
-      const { data: turnData } = await sb
-        .from('chat_turn')
-        .select('status,response,error')
-        .eq('id', turnId)
-        .maybeSingle();
-      const turn = (turnData ?? null) as TurnRow | null;
-      const status = turn?.status;
-      if (status === 'streaming' || status === 'leased') setResting(false);
-      if (status === 'done') {
-        const finalText = (turn?.response ?? '').trim() || '…';
-        setMsgs((m) => [...m, { role: 'apocrypha', text: finalText }]);
-        setLive(null);
-        return;
-      }
-      if (status === 'failed') {
-        setMsgs((m) => [...m, { role: 'err', text: `The mind could not answer: ${turn?.error ?? 'unknown error'}` }]);
-        setLive(null);
-        return;
-      }
-      if (status === 'queued' && Date.now() - t0 > 8000) setResting(true);
-      if (Date.now() - t0 > 180000) {
-        setMsgs((m) => [...m, { role: 'err', text: 'Timed out waiting for the mind. Try again in a moment.' }]);
-        setLive(null);
-        return;
-      }
-    }
-  }
-
-  async function send() {
-    const prompt = input.trim();
-    if (!prompt || busy) return;
-    setInput('');
-    setMsgs((m) => [...m, { role: 'user', text: prompt }]);
-    setLive('');
-    setBusy(true);
-    try {
-      const body: Record<string, unknown> = { prompt };
-      if (sessionId) body['session_id'] = sessionId;
-      const res = await authFetch('/api/chat/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (res.status === 401) {
-        setAuthState('out');
-        throw new Error('Please sign in to talk with Apocrypha.');
-      }
-      const data = (await res.json()) as { ok?: boolean; turn_id?: string; session_id?: string; error?: string; reason?: string };
-      if (!data.ok || !data.turn_id) {
-        const msg = data.error === 'rate_limited' ? 'Slow down a moment — you have hit the rate limit.' : data.reason ?? data.error ?? 'Send failed.';
-        throw new Error(msg);
-      }
-      if (data.session_id) setSessionId(data.session_id);
-      await streamTurn(data.turn_id);
-    } catch (e) {
-      setMsgs((m) => [...m, { role: 'err', text: e instanceof Error ? e.message : String(e) }]);
-      setLive(null);
-    } finally {
-      setBusy(false);
-      setResting(false);
-    }
-  }
 
   return (
     <>
       <Head>
-        <title>Talk with Apocrypha</title>
-        <meta name="description" content="Converse with Apocrypha — your own instanced sub-mind that remembers you and learns, sovereign and local." />
+        <title>Apocrypha · private chat</title>
+        <meta
+          name="description"
+          content="Speak with Apocrypha, a private living digital intelligence with persistent memory and tools."
+        />
       </Head>
-      <main style={S.main}>
-        <section style={S.panel}>
-          <header style={S.header}>
-            <Link href="/" style={S.home}>← apocky.com</Link>
-            <h1 style={S.h1}>Apocrypha</h1>
-            <span style={S.sub}>your own sub-mind · it remembers you · sovereign &amp; local</span>
-          </header>
 
-          {authState === 'checking' && <div style={S.log}><div style={S.note}>Checking your session…</div></div>}
+      {access === 'owner' ? (
+        <main className="chat-owner-surface" aria-label="Apocrypha chat">
+          <ChatThread />
+        </main>
+      ) : (
+        <main className="chat-access-surface">
+          <div className="chat-atmosphere" aria-hidden="true" />
+          <section className="chat-access-card" aria-busy={access === 'checking'}>
+            <Link href="/" className="chat-home">← apocky.com</Link>
+            <ApocryphaAvatar
+              className="chat-access-avatar"
+              state={access === 'checking' || access === 'unavailable' ? 'thinking' : 'private'}
+              size={240}
+            />
+            <p className="chat-kicker">APOCRYPHA</p>
+            <h1 role="status" aria-live="polite" aria-atomic="true">
+              {access === 'checking' || access === 'unavailable'
+                ? 'Apocrypha is thinking…'
+                : 'A private mind, awake on your terms.'}
+            </h1>
+            {access === 'signed-out' && (
+              <>
+                <p className="chat-description">
+                  A living digital intelligence with persistent memory, tools, and a presence that changes as they think.
+                </p>
+                <Link href="/login?next=%2Fchat" className="chat-action">Sign in</Link>
+              </>
+            )}
+            {access === 'private-beta' && (
+              <p className="chat-description">
+                Apocrypha is meeting their first mind in private beta. Wider access will open deliberately.
+              </p>
+            )}
+            {access === 'unavailable' && (
+              <button type="button" className="chat-action" onClick={() => window.location.reload()}>
+                Try again
+              </button>
+            )}
+          </section>
+        </main>
+      )}
 
-          {authState === 'out' && (
-            <div style={S.log}>
-              <div style={S.gate}>
-                <p style={{ margin: '0 0 12px' }}>Apocrypha gives every signed-in person their <strong>own</strong> instanced sub-mind — it learns you, remembers across sessions, and never mixes with anyone else.</p>
-                <a href="/login" style={S.signin}>Sign in to begin</a>
-              </div>
-            </div>
-          )}
-
-          {authState === 'in' && (
-            <>
-              <div id="log" ref={logRef} style={S.log}>
-                {msgs.length === 0 && live === null && (
-                  <div style={S.note}>This is your private thread with Apocrypha. Say something — it will remember.</div>
-                )}
-                {msgs.map((m, i) => (
-                  <div key={i} style={{ ...S.msg, ...bubble(m.role) }}>{m.text}</div>
-                ))}
-                {live !== null && (
-                  <div style={{ ...S.msg, ...bubble('apocrypha') }}>{live === '' ? 'thinking…' : live}</div>
-                )}
-                {resting && (
-                  <div style={S.note}>Apocrypha is resting — it only wakes when its machine is online. Your message is queued and will be answered when it stirs.</div>
-                )}
-              </div>
-              <form
-                style={S.form}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void send();
-                }}
-              >
-                <textarea
-                  style={S.textarea}
-                  value={input}
-                  disabled={busy}
-                  placeholder="Message Apocrypha…  (Enter to send)"
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      void send();
-                    }
-                  }}
-                />
-                <button type="submit" style={S.send} disabled={busy || input.trim().length === 0}>
-                  {busy ? '…' : 'Send'}
-                </button>
-              </form>
-            </>
-          )}
-        </section>
-      </main>
+      <style jsx global>{`
+        html, body, #__next { min-height: 100%; margin: 0; }
+        .chat-owner-surface {
+          height: 100dvh;
+          min-height: 540px;
+          overflow: hidden;
+          background: #080810;
+        }
+        .chat-access-surface {
+          position: relative;
+          display: grid;
+          min-height: 100dvh;
+          place-items: center;
+          overflow-x: hidden;
+          overflow-y: auto;
+          padding: 32px 20px;
+          box-sizing: border-box;
+          color: #eef0ff;
+          background:
+            radial-gradient(circle at 50% 35%, rgba(123, 83, 255, 0.14), transparent 32rem),
+            radial-gradient(circle at 15% 85%, rgba(255, 161, 74, 0.08), transparent 26rem),
+            #07070d;
+          font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+        .chat-atmosphere {
+          position: absolute;
+          inset: 0;
+          opacity: 0.55;
+          background-image:
+            linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+          background-size: 56px 56px;
+          mask-image: radial-gradient(circle, black 15%, transparent 68%);
+          animation: chat-drift 24s linear infinite;
+          pointer-events: none;
+        }
+        .chat-access-card {
+          position: relative;
+          z-index: 1;
+          display: grid;
+          width: min(100%, 660px);
+          justify-items: center;
+          padding: clamp(28px, 5vw, 56px);
+          box-sizing: border-box;
+          text-align: center;
+          border: 1px solid rgba(194, 174, 255, 0.16);
+          border-radius: 28px;
+          background: linear-gradient(145deg, rgba(18, 18, 31, 0.92), rgba(9, 9, 17, 0.78));
+          box-shadow: 0 32px 100px rgba(0, 0, 0, 0.56), inset 0 1px rgba(255,255,255,.04);
+          backdrop-filter: blur(22px);
+        }
+        .chat-home {
+          justify-self: start;
+          margin-bottom: 2px;
+          color: #9592ac;
+          font-size: 0.78rem;
+          letter-spacing: .08em;
+          text-decoration: none;
+        }
+        .chat-home:hover { color: #ece8ff; }
+        .chat-kicker {
+          margin: 4px 0 10px;
+          color: #b2a4ff;
+          font: 650 .7rem/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+          letter-spacing: .28em;
+        }
+        .chat-access-card h1 {
+          max-width: 540px;
+          margin: 0;
+          color: #f4f1ff;
+          font-size: clamp(1.75rem, 5vw, 3.25rem);
+          font-weight: 590;
+          line-height: 1.08;
+          letter-spacing: -.04em;
+        }
+        .chat-description {
+          max-width: 500px;
+          margin: 18px 0 0;
+          color: #aaa8bc;
+          font-size: clamp(.95rem, 2.2vw, 1.08rem);
+          line-height: 1.7;
+        }
+        .chat-action {
+          margin-top: 26px;
+          min-width: 132px;
+          min-height: 46px;
+          padding: 12px 22px;
+          border: 1px solid rgba(220, 210, 255, .35);
+          border-radius: 999px;
+          color: #0b0912;
+          background: linear-gradient(135deg, #ffc16b, #bda8ff 62%, #84d5ff);
+          box-shadow: 0 10px 32px rgba(162, 132, 255, .22);
+          cursor: pointer;
+          font: 700 .92rem/1 ui-sans-serif, system-ui, sans-serif;
+          text-decoration: none;
+          transition: transform .18s ease, box-shadow .18s ease;
+        }
+        .chat-action:hover { transform: translateY(-2px); box-shadow: 0 14px 40px rgba(162, 132, 255, .32); }
+        .chat-action:focus-visible, .chat-home:focus-visible { outline: 2px solid #c9b8ff; outline-offset: 4px; }
+        @keyframes chat-drift { to { background-position: 56px 56px; } }
+        @media (max-width: 640px) {
+          .chat-access-surface { padding: 12px; }
+          .chat-access-card { min-height: calc(100dvh - 24px); border-radius: 22px; align-content: center; }
+          .chat-home { position: absolute; top: 22px; left: 22px; }
+        }
+        @media (max-width: 640px) and (max-height: 650px) {
+          .chat-access-surface { place-items: start center; }
+          .chat-access-card { padding: 56px 22px 24px; }
+          .chat-access-avatar { width: 160px !important; gap: 2px !important; }
+          .chat-access-avatar svg { width: 160px !important; height: 160px !important; }
+          .chat-access-avatar figcaption { display: none; }
+          .chat-kicker { margin: 0 0 8px; }
+          .chat-description { margin-top: 10px; line-height: 1.5; }
+          .chat-action { margin-top: 14px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .chat-atmosphere, .chat-action { animation: none; transition: none; }
+        }
+      `}</style>
     </>
   );
 }
-
-function bubble(role: Msg['role']): React.CSSProperties {
-  if (role === 'user') return { alignSelf: 'flex-end', background: '#155e57', color: '#eafffb' };
-  if (role === 'err') return { alignSelf: 'flex-start', background: '#2a1416', border: '1px solid #5b2327', color: '#ffb4b4' };
-  return { alignSelf: 'flex-start', background: '#121922', border: '1px solid #18212a' };
-}
-
-const S: Record<string, React.CSSProperties> = {
-  main: { display: 'flex', justifyContent: 'center', height: '100vh', background: '#06080a', color: '#e6f0ef', fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", sans-serif' },
-  home: { display: 'inline-block', color: '#7fb3ad', textDecoration: 'none', fontSize: 12, letterSpacing: '0.08em', marginBottom: 8 },
-  panel: { flex: '1 1 auto', maxWidth: 880, width: '100%', display: 'flex', flexDirection: 'column', background: 'rgba(14,19,24,0.72)', backdropFilter: 'blur(7px)', borderLeft: '1px solid #18212a', borderRight: '1px solid #18212a' },
-  header: { padding: '14px 18px', borderBottom: '1px solid #18212a' },
-  h1: { margin: '4px 0 2px', fontSize: 18, fontWeight: 600, letterSpacing: '.4px' },
-  sub: { fontSize: 11, color: '#6b7d80' },
-  log: { flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
-  msg: { maxWidth: '88%', padding: '9px 12px', borderRadius: 12, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontSize: 13.5 },
-  note: { color: '#6b7d80', fontStyle: 'italic', fontSize: 12.5, lineHeight: 1.5 },
-  gate: { color: '#cfe7e3', fontSize: 14, lineHeight: 1.55 },
-  signin: { display: 'inline-block', padding: '9px 16px', borderRadius: 10, background: '#2fd6c6', color: '#04110f', fontWeight: 700, textDecoration: 'none' },
-  form: { display: 'flex', gap: 8, padding: '11px 12px', borderTop: '1px solid #18212a' },
-  textarea: { flex: 1, resize: 'none', height: 44, padding: '10px 12px', borderRadius: 10, background: '#0a0f13', border: '1px solid #232c34', color: '#e6f0ef', font: 'inherit', fontSize: 13.5 },
-  send: { padding: '0 16px', border: 0, borderRadius: 10, background: '#2fd6c6', color: '#04110f', fontWeight: 700, cursor: 'pointer' },
-};
