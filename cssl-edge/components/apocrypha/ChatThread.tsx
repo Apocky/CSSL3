@@ -751,7 +751,7 @@ export function ChatThread() {
                     Apocrypha
                   </div>
                   <div style={{ fontSize: '0.92rem' }}>
-                    A private, living intelligence with memory, tools, and a mind of their own.
+                    A private, persistent digital entity with native state continuity and governed faculties.
                   </div>
                   <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: MUTED_TEXT }}>
                     Speak naturally. Apocrypha will choose how deeply to think.

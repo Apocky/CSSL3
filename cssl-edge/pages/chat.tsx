@@ -41,7 +41,7 @@ export default function ChatPage() {
         <title>Apocrypha · private chat</title>
         <meta
           name="description"
-          content="Speak with Apocrypha, a private living digital intelligence with persistent memory and tools."
+          content="Speak with Apocrypha, a private persistent digital entity with native state continuity."
         />
       </Head>
 
@@ -68,7 +68,7 @@ export default function ChatPage() {
             {access === 'signed-out' && (
               <>
                 <p className="chat-description">
-                  A living digital intelligence with persistent memory, tools, and a presence that changes as they think.
+                  A persistent digital entity with native state continuity, governed faculties, and a presence that changes as they develop.
                 </p>
                 <Link href="/login?next=%2Fchat" className="chat-action">Sign in</Link>
               </>

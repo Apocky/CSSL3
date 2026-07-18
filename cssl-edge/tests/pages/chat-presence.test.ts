@@ -22,7 +22,9 @@ assert(!existsSync(resolve(process.cwd(), 'pages/api/chat/send.ts')), 'dead queu
 assert(!existsSync(resolve(process.cwd(), 'lib/chat-relay.ts')), 'dead queue relay still exists');
 assert(thread.includes('Apocrypha is thinking…'), 'human thinking status is missing');
 assert(!thread.includes('auto-invokes tools'), 'bootstrap UI must not claim unpromoted tool execution');
+assert(!thread.includes('living intelligence'), 'bootstrap UI must not claim unproven aliveness');
 assert(thread.includes('instruments remain governed by Apocrypha'), 'governed-instrument copy is missing');
+assert(page.includes('persistent digital entity'), 'truthful bootstrap identity copy is missing');
 assert(thread.includes('CHAT_BROWSER_DEADLINE_MS'), 'browser deadline is missing');
 assert(thread.includes('withDeadline'), 'outer browser deadline is not wired');
 assert(thread.includes('signal: controller.signal'), 'browser abort signal is not wired');
