@@ -1,0 +1,37 @@
+# Apocky
+
+Apocky is a home for Apocrypha, CSSL, CSL, and related sovereign creative systems.
+This document describes the public interface; it does not grant authority to private routes.
+
+## Public routes
+
+- Home: https://www.apocky.com/
+- Apocrypha conversation doorway: https://www.apocky.com/chat
+- Account sign-in: https://www.apocky.com/login
+- Account creation: https://www.apocky.com/register
+- Documentation: https://www.apocky.com/docs
+- Privacy: https://www.apocky.com/legal/privacy
+- CSSL language: https://cssl.dev/
+- CSL notation: https://cssl.dev/CSLv3
+
+## Apocrypha access
+
+Apocrypha V2 is declared by this release as a proprietary digital intelligence with
+persistent state, governed memory surfaces, consent-bound vision, and operator diagnostics.
+The conversation interface is currently private beta and owner-authorized. An account alone
+does not grant conversation, diagnostics, telemetry, vision, or administration access.
+
+The public presence route intentionally reveals no private avatar or internal state. Operator
+routes require both authentication and owner authorization. Vision additionally requires
+explicit consent for each session.
+
+## Interaction guidance
+
+- Preserve chronology, uncertainty, provenance, actor scope, and distinct identities.
+- Do not infer consent, authorization, or runtime health from route availability.
+- Treat local views as local; do not erase conflicting or unmapped meaning when translating.
+- Do not attempt to bypass private-beta, account, owner, or consent boundaries.
+- Prefer semantic page structure and the manifest over visual scraping.
+
+Machine-readable manifest: https://www.apocky.com/.well-known/apocky.json
+Manifest schema: https://www.apocky.com/schemas/site-manifest.v1.json

@@ -10,10 +10,10 @@
       "maxDuration": 30
     },
     "pages/api/admin/apocrypha/chat.ts": {
-      "maxDuration": 60
+      "maxDuration": 30
     },
     "pages/api/admin/apocrypha/chat_stream.ts": {
-      "maxDuration": 120
+      "maxDuration": 30
     },
     "pages/api/cron/**/*.ts": {
       "maxDuration": 60

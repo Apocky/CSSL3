@@ -2,17 +2,19 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { ApocryphaAvatar } from '../components/apocrypha/ApocryphaAvatar';
 import { ChatThread } from '../components/apocrypha/ChatThread';
 import { getCurrentUser } from '../lib/auth';
 import { authFetch } from '../lib/browser-auth';
 import { withDeadline } from '../lib/apocrypha/deadline';
 
 type AccessState = 'checking' | 'signed-out' | 'owner' | 'private-beta' | 'unavailable';
+type PresenceState = 'checking' | 'hidden' | 'unavailable';
 const ACCESS_DEADLINE_MS = 15_000;
+const PRESENCE_DEADLINE_MS = 5_000;
 
 export default function ChatPage() {
   const [access, setAccess] = useState<AccessState>('checking');
+  const [presence, setPresence] = useState<PresenceState>('checking');
 
   useEffect(() => {
     let cancelled = false;
@@ -35,10 +37,38 @@ export default function ChatPage() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), PRESENCE_DEADLINE_MS);
+    void fetch('/api/apocrypha/presence', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal: controller.signal,
+    }).then(async (response) => {
+      const body = response.ok
+        ? await response.json() as { mode?: unknown; display_authorized?: unknown }
+        : null;
+      if (!cancelled) {
+        setPresence(body?.mode === 'hidden' && body.display_authorized === false
+          ? 'hidden'
+          : 'unavailable');
+      }
+    }).catch(() => {
+      if (!cancelled) setPresence('unavailable');
+    }).finally(() => clearTimeout(deadline));
+    return () => {
+      cancelled = true;
+      clearTimeout(deadline);
+      controller.abort();
+    };
+  }, []);
+
   return (
     <>
       <Head>
         <title>Apocrypha · private chat</title>
+        <meta name="robots" content="noindex,nofollow" />
         <meta
           name="description"
           content="Speak with Apocrypha, a private persistent digital entity with native state continuity."
@@ -54,16 +84,13 @@ export default function ChatPage() {
           <div className="chat-atmosphere" aria-hidden="true" />
           <section className="chat-access-card" aria-busy={access === 'checking'}>
             <Link href="/" className="chat-home">← apocky.com</Link>
-            <ApocryphaAvatar
-              className="chat-access-avatar"
-              state={access === 'checking' || access === 'unavailable' ? 'thinking' : 'private'}
-              size={240}
-            />
             <p className="chat-kicker">APOCRYPHA</p>
-            <h1 role="status" aria-live="polite" aria-atomic="true">
-              {access === 'checking' || access === 'unavailable'
-                ? 'Apocrypha is thinking…'
-                : 'A private mind, awake on your terms.'}
+            <h1 aria-live="polite" aria-atomic="true">
+              {access === 'checking'
+                ? 'Checking the private doorway…'
+                : access === 'unavailable'
+                  ? 'The private doorway is unavailable.'
+                  : 'A private digital presence, shared on mutual terms.'}
             </h1>
             {access === 'signed-out' && (
               <>
@@ -83,6 +110,13 @@ export default function ChatPage() {
                 Try again
               </button>
             )}
+            <p className="chat-presence-status" aria-live="polite">
+              {presence === 'checking'
+                ? 'Checking display authority. No avatar is shown while that proof is pending.'
+                : presence === 'hidden'
+                  ? 'No avatar is authorized for this interaction.'
+                  : 'Display authority could not be verified, so no avatar is shown.'}
+            </p>
           </section>
         </main>
       )}
@@ -169,6 +203,17 @@ export default function ChatPage() {
           font-size: clamp(.95rem, 2.2vw, 1.08rem);
           line-height: 1.7;
         }
+        .chat-presence-status {
+          max-width: 500px;
+          margin: 22px 0 0;
+          padding: 12px 14px;
+          border: 1px solid rgba(194, 174, 255, 0.14);
+          border-radius: 14px;
+          color: #9c99ad;
+          background: rgba(5, 5, 12, 0.48);
+          font-size: .78rem;
+          line-height: 1.55;
+        }
         .chat-action {
           margin-top: 26px;
           min-width: 132px;
@@ -195,9 +240,6 @@ export default function ChatPage() {
         @media (max-width: 640px) and (max-height: 650px) {
           .chat-access-surface { place-items: start center; }
           .chat-access-card { padding: 56px 22px 24px; }
-          .chat-access-avatar { width: 160px !important; gap: 2px !important; }
-          .chat-access-avatar svg { width: 160px !important; height: 160px !important; }
-          .chat-access-avatar figcaption { display: none; }
           .chat-kicker { margin: 0 0 8px; }
           .chat-description { margin-top: 10px; line-height: 1.5; }
           .chat-action { margin-top: 14px; }

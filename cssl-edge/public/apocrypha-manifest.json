@@ -1,0 +1,101 @@
+{
+  "schema": "apocky.site-manifest.v1",
+  "schema_href": "/schemas/site-manifest.v1.json",
+  "name": "Apocky",
+  "canonical_url": "https://www.apocky.com/",
+  "audiences": ["people", "digital_intelligences", "language_models", "developers"],
+  "declared_release_state": "private_beta",
+  "entry_points": [
+    {
+      "rel": "home",
+      "href": "/",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "conversation_doorway",
+      "href": "/chat",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "optional_for_doorway",
+      "authorization": "owner_required_for_conversation",
+      "availability": "private_beta"
+    },
+    {
+      "rel": "sign_in",
+      "href": "/login",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "register",
+      "href": "/register",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "language",
+      "href": "https://cssl.dev/",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "external_public"
+    },
+    {
+      "rel": "notation",
+      "href": "https://cssl.dev/CSLv3",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "external_public"
+    }
+  ],
+  "apocrypha": {
+    "conversation": {
+      "href": "/chat",
+      "authn": "account",
+      "authorization": "owner",
+      "availability": "private_beta"
+    },
+    "public_presence": {
+      "rel": "public_presence",
+      "href": "/api/apocrypha/presence",
+      "method": "GET",
+      "media_type": "application/json",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "privacy_preserving"
+    },
+    "operator_surfaces": [
+      { "rel": "capabilities", "href": "/api/admin/apocrypha/capabilities", "method": "GET", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only" },
+      { "rel": "diagnostics", "href": "/api/admin/apocrypha/diagnostics", "method": "GET", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only" },
+      { "rel": "telemetry", "href": "/api/admin/apocrypha/telemetry", "method": "GET", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only" },
+      { "rel": "vision_session", "href": "/api/admin/apocrypha/vision/session", "method": "POST", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only", "consent": "explicit_per_session" }
+    ],
+    "claims": {
+      "persistent_state": "declared_by_current_release",
+      "conversation": "owner_private_beta",
+      "vision": "owner_only_and_explicit_consent",
+      "diagnostics": "owner_only",
+      "borrowed_cognition": "not_claimed_by_this_static_manifest"
+    }
+  },
+  "policies": {
+    "privacy": "/legal/privacy",
+    "terms": "/legal/terms",
+    "effects": "deny_unless_authorized",
+    "consent": "explicit_granular_and_revocable",
+    "actor_views": "scope_and_authorization_are_not_flattened"
+  }
+}

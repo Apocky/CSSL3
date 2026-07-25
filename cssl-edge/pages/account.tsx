@@ -1,107 +1,184 @@
-// apocky.com/account · profile · linked OAuth · social-media-linkage · spending · sign-out
-// Per spec/22 · cross-project entitlements + per-event opt-in revocation
-
+import type { User } from '@supabase/supabase-js';
 import type { NextPage } from 'next';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { APOCKY_CHANNELS, AUTH_PROVIDERS, PROFILE_LINKABLE, getAuthClient, persistSessionToCookie } from '../lib/auth';
+import { APOCKY_CHANNELS, PROFILE_LINKABLE, getAuthClient, persistSessionToCookie } from '../lib/auth';
+
+interface ServerAccountUser {
+  email: string;
+  id: string;
+  provider: string;
+  createdAt: string;
+}
+
+interface AccountUser extends ServerAccountUser {
+  providers: string[];
+  emailConfirmedAt: string | null;
+  lastSignInAt: string | null;
+}
 
 interface MeResponse {
-  user: {
-    email: string;
-    id: string;
-    provider: string;
-    createdAt: string;
-  } | null;
+  user: ServerAccountUser | null;
   stub?: boolean;
+  reason?: string;
 }
 
 interface ProfileLinks {
   [key: string]: string;
 }
 
+type SaveNotice = {
+  tone: 'success' | 'error';
+  text: string;
+};
+
 async function fetchJsonWithTimeout<T>(url: string, init: RequestInit, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    return await res.json() as T;
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (!response.ok) throw new Error(`request failed with status ${response.status}`);
+    return await response.json() as T;
   } finally {
     clearTimeout(timer);
   }
 }
 
+function serverAccountUser(user: ServerAccountUser): AccountUser {
+  return {
+    ...user,
+    providers: [user.provider],
+    emailConfirmedAt: null,
+    lastSignInAt: null,
+  };
+}
+
+function browserAccountUser(user: User): AccountUser {
+  const providers = new Set<string>();
+  for (const identity of user.identities ?? []) {
+    if (identity.provider) providers.add(identity.provider);
+  }
+  const metadataProviders = user.app_metadata?.providers;
+  if (Array.isArray(metadataProviders)) {
+    for (const provider of metadataProviders) {
+      if (typeof provider === 'string' && provider) providers.add(provider);
+    }
+  }
+  const currentProvider = typeof user.app_metadata?.provider === 'string'
+    ? user.app_metadata.provider
+    : 'email';
+  providers.add(currentProvider);
+
+  return {
+    id: user.id,
+    email: user.email ?? '(email unavailable)',
+    provider: currentProvider,
+    providers: [...providers],
+    createdAt: user.created_at,
+    emailConfirmedAt: user.email_confirmed_at ?? null,
+    lastSignInAt: user.last_sign_in_at ?? null,
+  };
+}
+
+function readLocalProfileLinks(raw: string | null): ProfileLinks {
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+  const links: ProfileLinks = {};
+  for (const field of PROFILE_LINKABLE) {
+    const value = (parsed as Record<string, unknown>)[field.id];
+    if (typeof value === 'string') links[field.id] = value;
+  }
+  return links;
+}
+
+function displayProvider(provider: string): string {
+  if (provider === 'email') return 'Email one-time code or link';
+  if (provider === 'test') return 'Local test identity';
+  return provider;
+}
+
+function displayDate(value: string | null): string {
+  if (!value) return 'Unavailable';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Unavailable'
+    : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 const Account: NextPage = () => {
-  const [me, setMe] = useState<MeResponse | null>(null);
+  const [me, setMe] = useState<{ user: AccountUser | null; stub?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stubMode, setStubMode] = useState(false);
+  const [sessionReason, setSessionReason] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [profileLinks, setProfileLinks] = useState<ProfileLinks>({});
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [storageAvailable, setStorageAvailable] = useState(true);
+  const [savedNotice, setSavedNotice] = useState<SaveNotice | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    // Load profile links from localStorage immediately (before async work).
     try {
-      const stored = JSON.parse(localStorage.getItem('apocky-profile-links') ?? '{}');
-      setProfileLinks(stored);
+      setProfileLinks(readLocalProfileLinks(localStorage.getItem('apocky-profile-links')));
     } catch {
-      // ignore
+      setStorageAvailable(false);
     }
 
-    (async () => {
-      // Mirror browser session to cookie so server-side /api/auth/me can resolve us.
-      // Cap at 5s — a slow/misconfigured Supabase should not block the whole page load.
+    void (async () => {
       const client = getAuthClient();
+      let browserUser: AccountUser | null = null;
+
       if (client) {
         try {
           const sessionResult = await Promise.race([
             client.auth.getSession(),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
           ]) as Awaited<ReturnType<typeof client.auth.getSession>>;
-          if (sessionResult.data?.session?.access_token) {
+          if (sessionResult.data.session?.access_token) {
             await persistSessionToCookie(sessionResult.data.session.access_token);
           }
+
+          const userResult = await Promise.race([
+            client.auth.getUser(),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+          ]) as Awaited<ReturnType<typeof client.auth.getUser>>;
+          if (userResult.data.user) browserUser = browserAccountUser(userResult.data.user);
         } catch {
-          // ignore — timeout or network issue; server-side /api/auth/me will report null
+          // The server session remains the authority when browser enrichment is unavailable.
         }
       }
 
-      // Ask server who we are.
       try {
-        const j = await fetchJsonWithTimeout<MeResponse>('/api/auth/me', { cache: 'no-store' }, 5000);
+        const response = await fetchJsonWithTimeout<MeResponse>(
+          '/api/auth/me',
+          { cache: 'no-store', credentials: 'same-origin' },
+          5000,
+        );
         if (cancelled) return;
-        setMe(j);
-        setStubMode(!!j.stub);
 
-        // If server says null but client has a session, fall back to client-side identity.
-        if (!j.user && client) {
-          try {
-            const { data } = await Promise.race([
-              client.auth.getUser(),
-              new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-            ]) as Awaited<ReturnType<typeof client.auth.getUser>>;
-            if (cancelled) return;
-            if (data?.user?.email) {
-              setMe({
-                user: {
-                  id: data.user.id,
-                  email: data.user.email,
-                  provider: data.user.app_metadata?.provider ?? 'email',
-                  createdAt: data.user.created_at ?? new Date().toISOString(),
-                },
-              });
-            }
-          } catch {
-            // ignore timeout
+        const serverUser = response.user ? serverAccountUser(response.user) : null;
+        if (serverUser && browserUser && serverUser.id !== browserUser.id) {
+          setMe({ user: serverUser, stub: response.stub });
+          setLoadError('Browser and server identities did not match. The server-confirmed identity is shown; sign out before switching accounts.');
+        } else {
+          setMe({ user: browserUser ?? serverUser, stub: response.stub });
+          if (!serverUser && browserUser) {
+            setLoadError('Your browser identity is present, but the secure server session could not be confirmed. Retry sign-in before using protected features.');
           }
         }
-        setLoading(false);
+        setSessionReason(response.user || browserUser ? null : response.reason ?? 'No active account session was found.');
       } catch {
         if (cancelled) return;
-        setLoading(false);
-        setStubMode(true);
-        setMe({ user: null, stub: true });
+        setMe({ user: browserUser });
+        setLoadError(browserUser
+          ? 'The server account check is unavailable. Browser identity is shown, but protected features may not recognize this session.'
+          : 'Account status could not be loaded. Check your connection and try again.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
 
@@ -110,397 +187,246 @@ const Account: NextPage = () => {
     };
   }, []);
 
-  function setLink(id: string, value: string) {
-    setProfileLinks((prev) => ({ ...prev, [id]: value }));
+  function setLink(id: string, value: string): void {
+    setProfileLinks((previous) => ({ ...previous, [id]: value }));
+    setSavedNotice(null);
   }
 
-  function saveLinks() {
+  function saveLinks(event: React.FormEvent): void {
+    event.preventDefault();
+    if (!storageAvailable) {
+      setSavedNotice({ tone: 'error', text: 'Local browser storage is unavailable, so these drafts cannot be saved.' });
+      return;
+    }
+
     try {
       localStorage.setItem('apocky-profile-links', JSON.stringify(profileLinks));
-      setSavedNotice('✓ Saved locally. Server-side sync activates when Apocky-Hub Supabase is configured.');
-      setTimeout(() => setSavedNotice(null), 4000);
+      setSavedNotice({ tone: 'success', text: 'Saved in this browser only. Nothing was uploaded or published.' });
     } catch {
-      setSavedNotice('✗ Could not save · localStorage blocked');
+      setStorageAvailable(false);
+      setSavedNotice({ tone: 'error', text: 'This browser blocked local storage. No settings were saved.' });
     }
   }
 
-  async function handleSignOut() {
-    const client = getAuthClient();
-    if (client) await client.auth.signOut().catch(() => undefined);
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
-    location.replace('/');
+  async function handleSignOut(): Promise<void> {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError(null);
+
+    try {
+      const client = getAuthClient();
+      let browserCleared = true;
+      if (client) {
+        const { error } = await client.auth.signOut({ scope: 'local' });
+        browserCleared = !error;
+      }
+
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!response.ok || !browserCleared) {
+        setSignOutError('Sign-out did not clear every session surface. Retry, or clear this site\'s browser data before leaving a shared device.');
+        return;
+      }
+      location.replace('/');
+    } catch {
+      setSignOutError('Sign-out could not reach the account service. Please retry.');
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   if (loading) {
     return (
-      <main
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#0a0a0f',
-          color: '#7a7a8c',
-          fontFamily: 'monospace',
-        }}
-      >
-        <p>§ loading…</p>
-      </main>
+      <div className="apx-account-page">
+        <main id="main-content" className="apx-account" aria-busy="true">
+          <p className="apx-kicker" role="status" aria-live="polite">Loading account status…</p>
+        </main>
+      </div>
     );
   }
+
+  const user = me?.user ?? null;
 
   return (
     <>
       <Head>
         <title>Account · Apocky</title>
-        <meta name="description" content="Your apocky.com account · linked providers · social-media · entitlements" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>{`
-          * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; }
-          body {
-            background: radial-gradient(ellipse at top, #15151f 0%, #0a0a0f 50%, #050507 100%);
-            color: #e6e6f0;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            min-height: 100vh;
-          }
-          a { color: inherit; text-decoration: none; }
-          input { font-family: inherit; }
-        `}</style>
+        <meta name="description" content="Review your current Apocky identity and browser-local account settings." />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="robots" content="noindex,nofollow" />
       </Head>
-      <main style={{ maxWidth: 720, margin: '0 auto', padding: '5rem 1.5rem 6rem' }}>
-        <a href="/" style={{ fontSize: '0.85rem', color: '#7a7a8c', display: 'inline-block', marginBottom: '2rem' }}>
-          ← apocky.com
-        </a>
-
-        {stubMode && (
-          <div
-            style={{
-              padding: '1rem 1.25rem',
-              background: 'rgba(251, 191, 36, 0.08)',
-              border: '1px solid rgba(251, 191, 36, 0.3)',
-              borderRadius: 6,
-              marginBottom: '2rem',
-              fontSize: '0.85rem',
-              color: '#fbbf24',
-            }}
-          >
-            <strong>⚠ stub-mode</strong> · Apocky-Hub Supabase project not yet configured. Account features show
-            interface-only · server-side persistence activates once <code>APOCKY_HUB_SUPABASE_URL</code> env var is set.
-            Profile-link customizations save locally for now.
-          </div>
-        )}
-
-        <h1
-          style={{
-            fontSize: '2rem',
-            margin: 0,
-            fontWeight: 700,
-            backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #c084fc 60%, #7dd3fc 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}
-        >
-          Your Account
-        </h1>
-
-        {/* ─── IDENTITY ─── */}
-        <section style={{ marginTop: '2rem' }}>
-          <h2 style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7a7a8c' }}>
-            § Identity
-          </h2>
-          {me?.user ? (
-            <div
-              style={{
-                padding: '1rem 1.25rem',
-                background: 'rgba(20, 20, 30, 0.5)',
-                border: '1px solid #1f1f2a',
-                borderRadius: 6,
-                fontSize: '0.9rem',
-              }}
-            >
-              <div style={{ marginBottom: '0.4rem' }}>
-                <span style={{ color: '#7a7a8c' }}>email :</span>{' '}
-                <code style={{ color: '#7dd3fc' }}>{me.user.email}</code>
-              </div>
-              <div style={{ marginBottom: '0.4rem' }}>
-                <span style={{ color: '#7a7a8c' }}>signed in via :</span>{' '}
-                <code style={{ color: '#a78bfa' }}>{me.user.provider}</code>
-              </div>
-              <div style={{ fontSize: '0.78rem', color: '#7a7a8c' }}>
-                joined {new Date(me.user.createdAt).toLocaleDateString()}
-              </div>
+      <div className="apx-account-page">
+        <main id="main-content" className="apx-account">
+          <header className="apx-account-head">
+            <div>
+              <p className="apx-kicker">Identity and boundaries</p>
+              <h1>Your account</h1>
             </div>
-          ) : (
-            <div
-              style={{
-                padding: '1rem 1.25rem',
-                background: 'rgba(20, 20, 30, 0.5)',
-                border: '1px solid #1f1f2a',
-                borderRadius: 6,
-                fontSize: '0.9rem',
-              }}
-            >
-              <p style={{ margin: 0, color: '#cdd6e4' }}>You are not signed in.</p>
-              <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-                <a
-                  href="/login"
-                  style={{
-                    padding: '0.5rem 1rem',
-                    background: 'linear-gradient(135deg, #c084fc 0%, #7dd3fc 100%)',
-                    color: '#0a0a0f',
-                    fontWeight: 600,
-                    borderRadius: 4,
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  Sign in
-                </a>
-                <a
-                  href="/register"
-                  style={{
-                    padding: '0.5rem 1rem',
-                    border: '1px solid #2a2a3a',
-                    color: '#e6e6f0',
-                    borderRadius: 4,
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  Create account
-                </a>
-              </div>
+            <div className="apx-actions" style={{ marginTop: 0 }}>
+              <Link className="apx-button" href="/">Home</Link>
+              {user && (
+                <button className="apx-button" type="button" onClick={() => void handleSignOut()} disabled={signingOut}>
+                  {signingOut ? 'Signing out…' : 'Sign out of this browser'}
+                </button>
+              )}
+            </div>
+          </header>
+
+          {me?.stub && (
+            <div className="apx-auth-warning" role="status">
+              Authentication is not configured in this environment. No account identity can be loaded here.
             </div>
           )}
-        </section>
+          {loadError && (
+            <div className="apx-auth-warning" role="alert" aria-live="assertive">{loadError}</div>
+          )}
+          {signOutError && (
+            <div className="apx-auth-warning" role="alert" aria-live="assertive">{signOutError}</div>
+          )}
 
-        {/* ─── LINKED OAUTH ─── */}
-        <section style={{ marginTop: '2.5rem' }}>
-          <h2 style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7a7a8c' }}>
-            § Linked sign-in providers
-          </h2>
-          <p style={{ color: '#a8a8b8', fontSize: '0.85rem', margin: '0.4rem 0 0.8rem' }}>
-            Link multiple providers · sign in with any of them · unlinking leaves at-least-one (sovereignty)
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
-            {AUTH_PROVIDERS.filter((p) => p.enabled).map((p) => {
-              const linked = me?.user?.provider === p.id;
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    padding: '0.6rem 0.9rem',
-                    background: 'rgba(20, 20, 30, 0.5)',
-                    border: `1px solid ${linked ? 'rgba(52, 211, 153, 0.4)' : '#1f1f2a'}`,
-                    borderRadius: 4,
-                    fontSize: '0.85rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <span>{p.label}</span>
-                  <span style={{ fontSize: '0.7rem', color: linked ? '#34d399' : '#5a5a6a' }}>
-                    {linked ? '✓ linked' : '+ link'}
-                  </span>
+          <section className="apx-panel" aria-labelledby="identity-heading">
+            <h2 id="identity-heading">Current identity</h2>
+            {user ? (
+              <div className="apx-data-list">
+                <div className="apx-data-row">
+                  <span className="apx-data-label">Email</span>
+                  <span className="apx-data-value">{user.email}</span>
                 </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* ─── PROFILE SOCIAL LINKS ─── */}
-        <section style={{ marginTop: '2.5rem' }}>
-          <h2 style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7a7a8c' }}>
-            § Your social channels
-          </h2>
-          <p style={{ color: '#a8a8b8', fontSize: '0.85rem', margin: '0.4rem 0 0.8rem' }}>
-            Display these on your public profile · enables creator-attribution on Akashic-imprints (per spec/18) ·
-            opt-in always
-          </p>
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
-            {PROFILE_LINKABLE.map((p) => (
-              <div key={p.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <label
-                  style={{
-                    minWidth: 110,
-                    fontSize: '0.82rem',
-                    color: '#cdd6e4',
-                  }}
-                >
-                  {p.label}
-                </label>
-                <input
-                  type="text"
-                  value={profileLinks[p.id] ?? ''}
-                  onChange={(e) => setLink(p.id, e.target.value)}
-                  placeholder={p.placeholder}
-                  style={{
-                    flex: 1,
-                    padding: '0.5rem 0.75rem',
-                    background: 'rgba(20, 20, 30, 0.7)',
-                    border: '1px solid #2a2a3a',
-                    borderRadius: 4,
-                    color: '#e6e6f0',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                  }}
-                />
+                <div className="apx-data-row">
+                  <span className="apx-data-label">Account ID</span>
+                  <span className="apx-data-value">{user.id}</span>
+                </div>
+                <div className="apx-data-row">
+                  <span className="apx-data-label">Current sign-in method</span>
+                  <span className="apx-data-value">{displayProvider(user.provider)}</span>
+                </div>
+                <div className="apx-data-row">
+                  <span className="apx-data-label">Account created</span>
+                  <span className="apx-data-value">{displayDate(user.createdAt)}</span>
+                </div>
+                {user.emailConfirmedAt && (
+                  <div className="apx-data-row">
+                    <span className="apx-data-label">Email confirmed</span>
+                    <span className="apx-data-value">{displayDate(user.emailConfirmedAt)}</span>
+                  </div>
+                )}
+                {user.lastSignInAt && (
+                  <div className="apx-data-row">
+                    <span className="apx-data-label">Last browser sign-in</span>
+                    <span className="apx-data-value">{displayDate(user.lastSignInAt)}</span>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-          <button
-            onClick={saveLinks}
-            style={{
-              marginTop: '0.85rem',
-              padding: '0.55rem 1.1rem',
-              background: 'rgba(124, 211, 252, 0.15)',
-              border: '1px solid rgba(124, 211, 252, 0.4)',
-              color: '#7dd3fc',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              fontFamily: 'inherit',
-            }}
-          >
-            ↗ Save my channels
-          </button>
-          {savedNotice && (
-            <p style={{ marginTop: '0.5rem', color: '#34d399', fontSize: '0.78rem' }}>{savedNotice}</p>
-          )}
-        </section>
-
-        {/* ─── ENTITLEMENTS ─── */}
-        <section style={{ marginTop: '2.5rem' }}>
-          <h2 style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7a7a8c' }}>
-            § Entitlements (cross-project)
-          </h2>
-          <p style={{ color: '#a8a8b8', fontSize: '0.85rem', margin: '0.4rem 0 0.8rem' }}>
-            Purchases follow your account across all Apocky-projects · refundable within 14-day window
-          </p>
-          <div
-            style={{
-              padding: '1rem 1.25rem',
-              background: 'rgba(20, 20, 30, 0.5)',
-              border: '1px solid #1f1f2a',
-              borderRadius: 6,
-              fontSize: '0.85rem',
-              color: '#a8a8b8',
-            }}
-          >
-            <em style={{ color: '#5a5a6a' }}>No purchases yet · Stripe-checkout activates at v1.0 launch</em>
-          </div>
-        </section>
-
-        {/* ─── DATA SOVEREIGNTY ─── */}
-        <section style={{ marginTop: '2.5rem' }}>
-          <h2 style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7a7a8c' }}>
-            § Data sovereignty
-          </h2>
-          <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <a
-              href="/transparency"
-              style={{
-                padding: '0.6rem 1rem',
-                background: 'rgba(20, 20, 30, 0.5)',
-                border: '1px solid #1f1f2a',
-                borderRadius: 4,
-                fontSize: '0.85rem',
-                color: '#cdd6e4',
-              }}
-            >
-              View transparency dashboard · sovereign-cap audit · cocreative-bias · spending
-            </a>
-            <button
-              type="button"
-              style={{
-                padding: '0.6rem 1rem',
-                background: 'rgba(20, 20, 30, 0.5)',
-                border: '1px solid #1f1f2a',
-                borderRadius: 4,
-                fontSize: '0.85rem',
-                color: '#cdd6e4',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontFamily: 'inherit',
-              }}
-              onClick={() => alert('Data export will be ready when Apocky-Hub Supabase is configured.')}
-            >
-              ↓ Download your data (GDPR / CCPA full archive)
-            </button>
-            <button
-              type="button"
-              style={{
-                padding: '0.6rem 1rem',
-                background: 'rgba(20, 20, 30, 0.5)',
-                border: '1px solid rgba(248, 113, 113, 0.3)',
-                borderRadius: 4,
-                fontSize: '0.85rem',
-                color: '#f87171',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontFamily: 'inherit',
-              }}
-              onClick={() =>
-                confirm('Delete account? 30-day grace period before permanent deletion. Public Akashic-imprints will be anonymized.') &&
-                alert('Account deletion will be processed once Apocky-Hub Supabase is configured.')
-              }
-            >
-              ✗ Delete account (30-day grace · public imprints anonymized)
-            </button>
-          </div>
-        </section>
-
-        {/* ─── SIGN OUT ─── */}
-        {me?.user && (
-          <section style={{ marginTop: '2.5rem' }}>
-            <button
-              onClick={handleSignOut}
-              style={{
-                padding: '0.6rem 1.2rem',
-                background: 'transparent',
-                border: '1px solid #2a2a3a',
-                color: '#cdd6e4',
-                borderRadius: 4,
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontFamily: 'inherit',
-              }}
-            >
-              Sign out
-            </button>
+            ) : (
+              <>
+                <p className="apx-section-intro">{sessionReason ?? 'You are not signed in.'}</p>
+                <div className="apx-actions">
+                  <Link className="apx-button apx-button--primary" href="/login?next=%2Faccount">Sign in</Link>
+                  <Link className="apx-button" href="/register?next=%2Faccount">Create account</Link>
+                </div>
+              </>
+            )}
           </section>
-        )}
 
-        {/* ─── APOCKY CHANNELS ─── */}
-        <section style={{ marginTop: '4rem' }}>
-          <h2 style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7a7a8c' }}>
-            § Apocky · creator
-          </h2>
-          <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {APOCKY_CHANNELS.map((c) => (
-              <a
-                key={c.href}
-                href={c.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  padding: '0.4rem 0.85rem',
-                  border: '1px solid #2a2a3a',
-                  borderRadius: 4,
-                  fontSize: '0.78rem',
-                  color: '#cdd6e4',
-                }}
+          <section className="apx-panel" aria-labelledby="methods-heading">
+            <h2 id="methods-heading">Sign-in methods</h2>
+            {user ? (
+              <>
+                <p className="apx-section-intro">Observed on the current browser identity: {user.providers.map(displayProvider).join(', ')}.</p>
+                <button className="apx-button" type="button" disabled aria-describedby="provider-management-note">
+                  Link or unlink providers — unavailable
+                </button>
+                <p className="apx-field-help" id="provider-management-note">
+                  This page can report observed identity methods, but it cannot add or remove providers yet.
+                </p>
+              </>
+            ) : (
+              <p className="apx-section-intro">Sign in before reviewing the method attached to your current identity.</p>
+            )}
+          </section>
+
+          <section className="apx-panel" aria-labelledby="local-settings-heading">
+            <h2 id="local-settings-heading">Local-only profile drafts</h2>
+            <div className="apx-auth-warning" role="note">
+              These optional channel values stay in this browser's local storage. They are not uploaded, synced, published, or connected to your account.
+            </div>
+            <form onSubmit={saveLinks} style={{ marginTop: 24 }}>
+              <div className="apx-data-list">
+                {PROFILE_LINKABLE.map((field) => {
+                  const inputId = `profile-link-${field.id}`;
+                  return (
+                    <div key={field.id}>
+                      <label className="apx-label" htmlFor={inputId}>{field.label}</label>
+                      <input
+                        id={inputId}
+                        className="apx-input"
+                        type="text"
+                        value={profileLinks[field.id] ?? ''}
+                        onChange={(event) => setLink(field.id, event.target.value)}
+                        placeholder={field.placeholder}
+                        autoComplete="off"
+                        disabled={!storageAvailable}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <button className="apx-button apx-button--primary" type="submit" disabled={!storageAvailable} style={{ marginTop: 20 }}>
+                Save in this browser
+              </button>
+              <p
+                role={savedNotice?.tone === 'error' ? 'alert' : 'status'}
+                aria-live={savedNotice?.tone === 'error' ? 'assertive' : 'polite'}
+                aria-atomic="true"
+                className={savedNotice?.tone === 'error' ? 'apx-auth-warning' : 'apx-field-help'}
               >
-                {c.label} ↗
-              </a>
-            ))}
-          </div>
-        </section>
+                {savedNotice?.text ?? (storageAvailable
+                  ? 'No server copy will be created.'
+                  : 'Local storage is unavailable; these fields are disabled.')}
+              </p>
+            </form>
+          </section>
 
-        <footer style={{ marginTop: '4rem', color: '#5a5a6a', fontSize: '0.75rem', textAlign: 'center' }}>
-          § ¬ data-sale · ¬ surveillance · ¬ password-storage · sovereignty preserved · t∞
-        </footer>
-      </main>
+          <section className="apx-panel" aria-labelledby="entitlements-heading">
+            <h2 id="entitlements-heading">Entitlements</h2>
+            <p className="apx-section-intro"><strong>Status: unavailable.</strong> This page does not currently load purchase or subscription records, so it makes no entitlement claim.</p>
+          </section>
+
+          <section className="apx-panel" aria-labelledby="account-data-heading">
+            <h2 id="account-data-heading">Account data and deletion</h2>
+            <p className="apx-section-intro" id="account-operations-note">
+              Export and account-deletion workflows are not implemented on this page. The controls remain disabled so no request is implied or lost.
+            </p>
+            <div className="apx-actions">
+              <button className="apx-button" type="button" disabled aria-describedby="account-operations-note">
+                Export account data — unavailable
+              </button>
+              <button className="apx-button apx-button--danger" type="button" disabled aria-describedby="account-operations-note">
+                Delete account — unavailable
+              </button>
+              <Link className="apx-button" href="/docs/sovereignty">Read data sovereignty documentation</Link>
+            </div>
+          </section>
+
+          <section className="apx-panel" aria-labelledby="creator-links-heading">
+            <h2 id="creator-links-heading">Official Apocky channels</h2>
+            <div className="apx-actions" style={{ marginTop: 0 }}>
+              {APOCKY_CHANNELS.map((channel) => (
+                <a className="apx-button" key={channel.href} href={channel.href} target="_blank" rel="noopener noreferrer">
+                  {channel.label} <span aria-hidden="true">↗</span>
+                </a>
+              ))}
+            </div>
+          </section>
+
+          <p className="apx-auth-fine" style={{ marginTop: 36 }}>
+            Account identity comes from the active authentication session. Profile drafts remain local unless a future, explicit sync is implemented.
+          </p>
+        </main>
+      </div>
     </>
   );
 };
