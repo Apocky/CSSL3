@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import {
   useCallback,
   useEffect,
@@ -11,6 +12,7 @@ import {
 
 import { authFetch } from '@/lib/browser-auth';
 import { useSiteSession } from '@/components/hub/SiteSession';
+import { WorkspacePanel, type WorkspaceMode } from '@/components/apocrypha/WorkspacePanel';
 import styles from '@/styles/PublicApocrypha.module.css';
 
 type MessageRole = 'user' | 'apocrypha';
@@ -240,7 +242,7 @@ class SessionNotFoundError extends Error {
   }
 }
 
-type GenerativeMode = 'general' | 'code' | 'analyze' | 'write' | 'explain';
+type GenerativeMode = WorkspaceMode;
 
 const GENERATIVE_MODES: ReadonlyArray<{
   id: GenerativeMode;
@@ -998,6 +1000,7 @@ function surfaceStyle(surface: Exclude<InteractionSurface, null>): CSSProperties
 }
 
 export function PublicChat(): JSX.Element {
+  const router = useRouter();
   const { access, authenticated, subjectKey, refresh } = useSiteSession();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sessionSummaries, setSessionSummaries] = useState<DurableSessionSummary[]>([]);
@@ -1011,6 +1014,7 @@ export function PublicChat(): JSX.Element {
   const [worldState, setWorldState] = useState<DurableWorldState>(EMPTY_WORLD_STATE);
   const [worldlineJobs, setWorldlineJobs] = useState<Array<Record<string, unknown>>>([]);
   const [worldlineArtifacts, setWorldlineArtifacts] = useState<Array<Record<string, unknown>>>([]);
+  const [workspaceSurfaceTruncation, setWorkspaceSurfaceTruncation] = useState<Record<string, SurfaceTruncation>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [waiting, setWaiting] = useState(false);
@@ -1024,6 +1028,7 @@ export function PublicChat(): JSX.Element {
   const [surface, setSurface] = useState<InteractionSurface>(null);
   const [inspectedMessageId, setInspectedMessageId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const inFlightRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1040,6 +1045,10 @@ export function PublicChat(): JSX.Element {
   const sessionBootstrappedRef = useRef(false);
   const loadedStoredSessionRef = useRef(false);
   const sessionSubjectRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (router.isReady && router.query.workspace === '1') setWorkspaceDrawerOpen(true);
+  }, [router.isReady, router.query.workspace]);
 
   const abortActiveOperations = useCallback(() => {
     for (const controller of activeControllersRef.current) controller.abort();
@@ -1139,6 +1148,7 @@ export function PublicChat(): JSX.Element {
     setWorldState(EMPTY_WORLD_STATE);
     setWorldlineJobs([]);
     setWorldlineArtifacts([]);
+    setWorkspaceSurfaceTruncation({});
     setCurrentSessionRecorded(false);
     setCodeApproval(null);
     setWaiting(false);
@@ -1205,6 +1215,7 @@ export function PublicChat(): JSX.Element {
     setWorldState(snapshot.world);
     setWorldlineJobs(snapshot.jobs);
     setWorldlineArtifacts(snapshot.artifacts);
+    setWorkspaceSurfaceTruncation(snapshot.surface_truncation);
     setCurrentSessionRecorded(true);
     setPendingTurn(null);
   }, []);
@@ -1289,6 +1300,7 @@ export function PublicChat(): JSX.Element {
         setWorldState(EMPTY_WORLD_STATE);
         setWorldlineJobs([]);
         setWorldlineArtifacts([]);
+        setWorkspaceSurfaceTruncation({});
         setCurrentSessionRecorded(false);
         setCodeApproval(null);
         setWaiting(false);
@@ -1354,6 +1366,7 @@ export function PublicChat(): JSX.Element {
           setWorldState(EMPTY_WORLD_STATE);
           setWorldlineJobs([]);
           setWorldlineArtifacts([]);
+          setWorkspaceSurfaceTruncation({});
           setCurrentSessionRecorded(false);
           setHistoryHydrating(false);
         }
@@ -1379,6 +1392,7 @@ export function PublicChat(): JSX.Element {
         setWorldState(EMPTY_WORLD_STATE);
         setWorldlineJobs([]);
         setWorldlineArtifacts([]);
+        setWorkspaceSurfaceTruncation({});
         setCurrentSessionRecorded(false);
         setCodeApproval(null);
         setError(
@@ -1499,13 +1513,17 @@ export function PublicChat(): JSX.Element {
     };
     const onResize = () => {
       if (
-        surface.kind === 'scope'
-        && surfaceRef.current?.contains(document.activeElement)
+        window.matchMedia('(max-width: 720px)').matches
+        || surfaceRef.current?.contains(document.activeElement)
       ) return;
       closeSurface();
     };
     const onScroll = (event: Event) => {
-      if (surfaceRef.current?.contains(event.target as Node)) return;
+      if (
+        window.matchMedia('(max-width: 720px)').matches
+        || surfaceRef.current?.contains(event.target as Node)
+        || surfaceRef.current?.contains(document.activeElement)
+      ) return;
       closeSurface();
     };
     document.addEventListener('pointerdown', dismiss);
@@ -1581,6 +1599,7 @@ export function PublicChat(): JSX.Element {
     setWorldState(EMPTY_WORLD_STATE);
     setWorldlineJobs([]);
     setWorldlineArtifacts([]);
+    setWorkspaceSurfaceTruncation({});
     setCurrentSessionRecorded(false);
     setMessages([]);
     setDraft('');
@@ -1647,6 +1666,7 @@ export function PublicChat(): JSX.Element {
       setWorldState(EMPTY_WORLD_STATE);
       setWorldlineJobs([]);
       setWorldlineArtifacts([]);
+      setWorkspaceSurfaceTruncation({});
       setCurrentSessionRecorded(false);
       setHistoryHydrating(false);
       setPendingTurn(null);
@@ -1690,6 +1710,24 @@ export function PublicChat(): JSX.Element {
       requestAnimationFrame(() => composerRef.current?.focus());
     }
   }, [access, closeSurface]);
+
+  const prepareWorkspaceDraft = useCallback((nextMode: WorkspaceMode, prompt: string) => {
+    setMode(nextMode);
+    setCodeApproval(null);
+    setDraft(prompt);
+    setError(null);
+    setPendingTurn(null);
+    setWorkspaceDrawerOpen(false);
+    closeSurface();
+    requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(prompt.length, prompt.length);
+    });
+  }, [closeSurface]);
+
+  const closeWorkspaceDrawer = useCallback(() => {
+    setWorkspaceDrawerOpen(false);
+  }, []);
 
   const openMessageMenu = useCallback((
     messageId: string,
@@ -2176,7 +2214,7 @@ export function PublicChat(): JSX.Element {
       <a className={styles.skipLink} href="#apocrypha-conversation">Skip to conversation</a>
 
       <main className={styles.workspace} id="apocrypha-conversation">
-        <section className={styles.conversation} aria-label="Open channel with Apocrypha">
+        <section className={styles.conversation} aria-label="Conversation with Apocrypha">
           <div className={styles.conversationHeader}>
             <div className={styles.threadHeading}>
               <span
@@ -2187,15 +2225,30 @@ export function PublicChat(): JSX.Element {
               />
               <span className={styles.srOnly} role="status">{sessionLabel}</span>
               <div>
-                <h1>Apocrypha</h1>
-                <p>{sessionLabel}{turnCount > 0 ? ` · ${turnCount} turn${turnCount === 1 ? '' : 's'}` : ''}</p>
+                <h1>{conversationTitle}</h1>
+                <p>Apocrypha · {sessionLabel}{turnCount > 0 ? ` · ${turnCount} turn${turnCount === 1 ? '' : 's'}` : ''}</p>
               </div>
             </div>
             <div className={styles.headerActions}>
               <button
                 type="button"
+                className={styles.workspaceTrigger}
+                aria-controls="apocrypha-workspace-panel"
+                aria-expanded={workspaceDrawerOpen}
+                onClick={() => setWorkspaceDrawerOpen((current) => !current)}
+              >
+                Workspace
+              </button>
+              <nav className={styles.workspaceNav} aria-label="Apocky workspace">
+                <Link href="/content">Content</Link>
+                <Link href="/clearing">The Clearing</Link>
+                <Link href="/atlas">Atlas</Link>
+                <Link href="/account">Account</Link>
+              </nav>
+              <button
+                type="button"
                 className={styles.contextTrigger}
-                aria-label="Open conversation history"
+                aria-label="Conversation actions"
                 aria-haspopup="dialog"
                 aria-expanded={surface?.kind === 'conversation'}
                 onClick={(event) => {
@@ -2478,6 +2531,7 @@ export function PublicChat(): JSX.Element {
                       className={styles.srOnly}
                       type="file"
                       multiple
+                      aria-label="Attach text files"
                       accept="text/*,.c,.cc,.cpp,.cs,.css,.csv,.csl,.go,.h,.html,.java,.js,.json,.jsx,.md,.nil,.php,.py,.rb,.rs,.scss,.sh,.sql,.swift,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml"
                       onChange={(event) => { void attachTextFiles(event); }}
                     />
@@ -2595,6 +2649,20 @@ export function PublicChat(): JSX.Element {
             </div>
           )}
         </section>
+
+        <WorkspacePanel
+          open={workspaceDrawerOpen}
+          access={access}
+          artifacts={worldlineArtifacts}
+          jobs={worldlineJobs}
+          artifactTotal={workspaceSurfaceTruncation.artifacts?.total ?? worldState.artifact_count}
+          jobTotal={workspaceSurfaceTruncation.jobs?.total ?? worldlineJobs.length}
+          artifactsTruncated={workspaceSurfaceTruncation.artifacts?.truncated ?? false}
+          jobsTruncated={workspaceSurfaceTruncation.jobs?.truncated ?? false}
+          activeJobCount={worldState.active_job_count}
+          onClose={closeWorkspaceDrawer}
+          onPrepare={prepareWorkspaceDraft}
+        />
 
         {surface?.kind === 'intent' && (
           <div

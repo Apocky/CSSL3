@@ -247,10 +247,14 @@ export const contentLandingCSS = `
   }
 `;
 
-// The content service is not connected. Keep the route absent instead of
-// publishing a portal whose controls cannot complete their advertised work.
+// Shared publication remains gated, but content creation and durable private
+// artifacts are operational in the Apocrypha workspace. Route people to the
+// working surface instead of exposing the disconnected legacy portal.
 export const getServerSideProps: GetServerSideProps<ContentLandingProps> = async () => ({
-  notFound: true,
+  redirect: {
+    destination: '/apocrypha?workspace=1',
+    permanent: false,
+  },
 });
 
 export default ContentLanding;

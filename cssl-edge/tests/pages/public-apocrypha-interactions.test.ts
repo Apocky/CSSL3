@@ -5,6 +5,10 @@ const component = readFileSync(
   resolve(process.cwd(), 'components/apocrypha/PublicChat.tsx'),
   'utf8',
 );
+const workspacePanel = readFileSync(
+  resolve(process.cwd(), 'components/apocrypha/WorkspacePanel.tsx'),
+  'utf8',
+);
 const style = readFileSync(
   resolve(process.cwd(), 'styles/PublicApocrypha.module.css'),
   'utf8',
@@ -54,12 +58,28 @@ assert(component.includes("aria-live={historyHydrating ? 'off' : 'polite'}"), 'h
 assert(component.includes('aria-haspopup="dialog"'), 'dialog interaction surfaces are exposed with menu semantics');
 assert(component.includes('Channel open.'), 'the direct communication channel has no clear empty state');
 assert(component.includes('> File'), 'text and code file attachment is not reachable from the composer');
+assert(component.includes('aria-label="Attach text files"'), 'file input is not named for assistive technology');
 assert(component.includes('> Link'), 'link insertion is not reachable from the composer');
 assert(component.includes('id="public-apocrypha-intent-title">Mode'), 'cognitive mode selection is not plainly named');
 assert(component.includes('Code access'), 'governed code access is not plainly named');
 assert(component.includes('Recent conversations'), 'durable conversations are not plainly grouped');
 assert(component.includes('Background work'), 'background work is not plainly grouped');
 assert(component.includes('Files and results'), 'conversation outputs are not plainly grouped');
+assert(component.includes('<WorkspacePanel'), 'the contextual workspace is not connected to durable conversation state');
+assert(workspacePanel.includes('Nothing runs until you send it.'), 'content starters can imply an automatic effect');
+assert(workspacePanel.includes('Runtime-created results appear here'), 'artifact empty state can imply unsaved replies are durable artifacts');
+assert(workspacePanel.includes('Controls that are not genuinely wired are omitted.'), 'activity panel can imply unavailable job controls');
+assert(workspacePanel.includes('selectedArtifact.content_digest'), 'artifact content is not paired with its exact receipt');
+assert(workspacePanel.includes('selectedArtifact.event_digest'), 'artifact content is not paired with its event receipt');
+assert(!workspacePanel.includes('selectedArtifact.content_digest)?.slice'), 'artifact content receipt is visually truncated');
+assert(!workspacePanel.includes('selectedArtifact.event_digest)?.slice'), 'artifact event receipt is visually truncated');
+assert(workspacePanel.includes("role={drawer ? 'dialog' : undefined}"), 'responsive workspace drawer lacks dialog semantics');
+assert(workspacePanel.includes('aria-modal={drawer && open ? true : undefined}'), 'responsive workspace drawer lacks modal semantics');
+assert(workspacePanel.includes("event.key === 'Escape'"), 'responsive workspace drawer cannot be dismissed from the keyboard');
+assert(workspacePanel.includes('returnFocusRef'), 'responsive workspace drawer does not restore trigger focus');
+assert(workspacePanel.includes('jobReceipt(job, state)'), 'terminal job provenance can be mislabeled as pending');
+assert(component.includes('workspaceSurfaceTruncation'), 'workspace hides bounded-projection totals');
+assert(!workspacePanel.includes('Publish'), 'workspace advertises an ungated publication action');
 assert(component.includes('Continue from here'), 'message context does not offer a dimensional continuation gesture');
 assert(component.includes("label: 'Auto'"), 'default cognitive mode is missing');
 assert(component.includes("label: 'Analyze'"), 'analysis cognitive mode is missing');

@@ -95,11 +95,6 @@ export function AkashicConsent(): React.ReactElement | null {
     setTierDetailOpen(chosen !== 'none');
   }, [chosen]);
 
-  // Immersive room surfaces own their bottom dock. The fixed diagnostics opener
-  // would occlude the composer/send affordance; room Consent remains the explicit
-  // route into these choices.
-  if (compactSurface) return null;
-
   const closePanel = React.useCallback((): void => {
     setOpen(false);
     window.setTimeout(() => openerRef.current?.focus(), 0);
@@ -125,6 +120,12 @@ export function AkashicConsent(): React.ReactElement | null {
     },
     [closePanel]
   );
+
+  // Immersive room surfaces own their bottom dock. The fixed diagnostics opener
+  // would occlude the composer/send affordance; room Consent remains the explicit
+  // route into these choices. Keep this return after every hook so client-side
+  // navigation between compact and ordinary routes cannot change hook order.
+  if (compactSurface) return null;
 
   if (!open) {
     const label = blackout

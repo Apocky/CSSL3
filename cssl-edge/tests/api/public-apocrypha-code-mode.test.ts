@@ -27,7 +27,11 @@ assert(component.includes(ownerGate), 'code effects require the verified owner a
 assert(component.includes("authFetch('/api/admin/apocv4/code'"), 'owner Code mode invokes the governed code BFF');
 assert(component.includes('allowed_paths: allowedPaths'), 'exact allowed paths cross the governed boundary');
 assert(component.includes('confirm_apply: true'), 'the browser sends explicit one-run confirmation');
-assert(component.includes('!codeConfirmed'), 'the run is denied until the owner confirms it');
+assert(component.includes('!exactApproval'), 'the run is denied until the exact bound approval is current');
+assert(component.includes('codeApproval.binding === expectedApprovalBinding'), 'approval is not bound to the exact request representation');
+assert(component.includes('codeApproval.authGeneration === authGeneration'), 'approval is not bound to the current auth generation');
+assert(component.includes('codeApproval.subjectKey === subjectKey'), 'approval is not bound to the current owner subject');
+assert(component.includes('codeApproval.conversationId === conversationId'), 'approval is not bound to the current durable worldline');
 assert(component.includes('No automatic retry.'), 'the effect surface discloses its no-retry contract');
 assert(effectBranch >= 0 && responseOnlyBranch > effectBranch, 'non-effect turns retain the response-only chat path');
 

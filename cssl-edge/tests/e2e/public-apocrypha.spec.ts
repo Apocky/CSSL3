@@ -273,21 +273,37 @@ function workingWorldlineSnapshot(sessionId: string): Record<string, unknown> {
     surface_truncation: {
       messages: { total: 1, visible: 1, truncated: false },
       turn_states: { total: 1, visible: 1, truncated: false },
-      jobs: { total: 1, visible: 1, truncated: false },
-      artifacts: { total: 1, visible: 1, truncated: false },
+      jobs: { total: 2, visible: 1, truncated: true },
+      artifacts: { total: 2, visible: 1, truncated: true },
       code_requests: { total: 1, visible: 1, truncated: false },
       proposals: { total: 1, visible: 1, truncated: false },
       effects: { total: 1, visible: 1, truncated: false },
     },
     world: {
       message_count: 1, pending_turn_count: 0, failed_turn_count: 1,
-      active_job_count: 1, artifact_count: 1, code_request_count: 1,
+      active_job_count: 1, artifact_count: 2, code_request_count: 1,
       proposal_count: 1, effect_count: 1, last_event_type: 'CODE_EFFECT',
       last_event_digest: 'c'.repeat(64),
     },
     workspace: { status: 'not_authorized', effect_authority: 'NONE' },
   };
 }
+
+test('content route enters the operational creation workspace', async ({ page }) => {
+  await routeMember(page);
+  await page.route('**/api/apocrypha/sessions**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ sessions: [], count: 0 }),
+  }));
+
+  await page.goto('/content');
+  await expect(page).toHaveURL(/\/apocrypha\?workspace=1$/);
+  const workspace = page.getByLabel('Apocrypha workspace');
+  await expect(workspace).toBeVisible();
+  await expect(workspace.getByRole('heading', { name: 'What are we making?' })).toBeVisible();
+  await expect(workspace.getByText('Nothing runs until you send it.')).toBeVisible();
+});
 
 test('signed-out Apocrypha is truthful, accessible, and does not expose a composer', async ({ page }) => {
   await page.route('**/api/auth/me', (route) => route.fulfill({
@@ -298,7 +314,7 @@ test('signed-out Apocrypha is truthful, accessible, and does not expose a compos
 
   await page.goto('/apocrypha');
 
-  await expect(page).toHaveTitle(/Speak with Apocrypha/);
+  await expect(page).toHaveTitle(/Apocrypha Workspace/);
   await expect(page.getByRole('heading', { level: 1, name: 'New conversation' })).toBeVisible();
   await expect(page.getByText('Sign in to begin a restricted member turn.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Sign in', exact: true }).last()).toHaveAttribute(
@@ -374,7 +390,7 @@ test('owner Forge consumes an approval bound to the exact objective and canonica
 
   await page.goto('/apocrypha');
   await page.getByRole('button', { name: /Auto/ }).click();
-  await page.getByRole('button', { name: /Build/ }).click();
+  await page.getByRole('dialog', { name: 'Mode' }).getByRole('button', { name: /^Build/ }).click();
   const objective = page.getByLabel('Message Apocrypha');
   const paths = page.getByLabel('Files allowed to change');
   const approval = page.getByLabel(/Allow one tested change/);
@@ -422,7 +438,7 @@ test('uncertain Forge delivery retains the original request and never offers an 
 
   await page.goto('/apocrypha');
   await page.getByRole('button', { name: /Auto/ }).click();
-  await page.getByRole('button', { name: /Build/ }).click();
+  await page.getByRole('dialog', { name: 'Mode' }).getByRole('button', { name: /^Build/ }).click();
   await page.getByLabel('Message Apocrypha').fill('Preserve this exact effect request.');
   await page.getByLabel('Files allowed to change').fill('src/exact.ts');
   await page.getByLabel(/Allow one tested change/).check();
@@ -484,7 +500,7 @@ test('stored active worldline is recovered directly even when absent from the re
   await page.getByRole('button', { name: 'Conversation actions' }).click();
   const archive = page.getByRole('button', { name: /Archive conversation/ });
   await expect(archive).toBeVisible();
-  await expect(page.getByText(/audit-ledger rows remain/)).toBeVisible();
+  await expect(page.getByText(/keep its audit record/)).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await archive.click();
   await expect.poll(() => archiveRequest?.session_id).toBe(activeSessionId);
@@ -559,12 +575,44 @@ test('restored worldline keeps failure, governed effect, background work, and ar
   await expect(page.getByRole('log').getByText('Repair the uncertain turn.')).toBeVisible();
   await expect(page.getByRole('button', { name: /failed/i }).first()).toBeVisible();
   await expect(page.getByText(/governed code change was applied/i)).toBeVisible();
+
+  const workspace = page.getByLabel('Apocrypha workspace');
+  const mobileDrawer = (page.viewportSize()?.width ?? 0) <= 1100;
+  if (mobileDrawer) {
+    const workspaceTrigger = page.getByRole('button', { name: 'Workspace', exact: true });
+    await workspaceTrigger.click();
+    await expect(workspace).toHaveAttribute('role', 'dialog');
+    await expect(workspace).toHaveAttribute('aria-modal', 'true');
+    await expect(workspace.getByRole('button', { name: 'Close workspace' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(workspace).toBeHidden();
+    await expect(workspaceTrigger).toBeFocused();
+    await workspaceTrigger.click();
+  }
+  await expect(workspace).toBeVisible();
+  await workspace.getByRole('tab', { name: /Artifacts/ }).click();
+  await expect(workspace.getByText('Showing 1 of 2 saved artifacts')).toBeVisible();
+  await expect(workspace.getByText('A staged proposal-only result.')).toBeVisible();
+  await expect(workspace.getByText('0bb41fa033dca3448a55a9ee89a0176556965434ab3ec5eeac2eb7b1451e24a5')).toBeVisible();
+  await expect(workspace.getByText('9'.repeat(64))).toBeVisible();
+  await workspace.getByRole('tab', { name: /Activity/ }).click();
+  await expect(workspace.getByText('Showing 1 of 2 recorded jobs')).toBeVisible();
+  await expect(workspace.getByText('Proposal council')).toBeVisible();
+  await expect(workspace.getByText('RUNNING')).toBeVisible();
+  await expect(workspace.getByText('Request receipt')).toBeVisible();
+  await expect(workspace.getByText('e'.repeat(64))).toBeVisible();
+  if (mobileDrawer) {
+    await workspace.getByRole('button', { name: 'Close workspace' }).click();
+  }
+
   await page.getByRole('button', { name: 'Conversation actions' }).click();
   await expect.poll(() => snapshotReads).toBeGreaterThanOrEqual(2);
-  await expect(page.getByText('Orbiting work')).toBeVisible();
-  await expect(page.getByText('Proposal council')).toBeVisible();
-  await expect(page.getByText('Made here')).toBeVisible();
-  await expect(page.getByText('Repair proposal')).toBeVisible();
+  const backgroundWork = page.getByLabel('Background work in this conversation');
+  const filesAndResults = page.getByLabel('Files and results in this conversation');
+  await expect(backgroundWork.getByText('Background work')).toBeVisible();
+  await expect(backgroundWork.getByText('Proposal council')).toBeVisible();
+  await expect(filesAndResults.getByText('Files and results')).toBeVisible();
+  await expect(filesAndResults.getByText('Repair proposal')).toBeVisible();
   await page.keyboard.press('Escape');
 
   const failedMessage = page.getByRole('log').locator('article').filter({ hasText: 'Repair the uncertain turn.' });
