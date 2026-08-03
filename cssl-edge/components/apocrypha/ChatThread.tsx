@@ -1,5 +1,5 @@
-// Minimal V2 chat: one authenticated REST turn, one client-owned UUID, and no
-// predecessor history or simulated streaming.
+// Minimal governed chat: one authenticated REST turn, one client-owned UUID,
+// one exact Apocv4 evidence envelope, and no simulated streaming.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -12,6 +12,14 @@ interface ChatMessage {
   id: string;
   role: MessageRole;
   text: string;
+  receipt?: TurnReceipt;
+}
+
+interface TurnReceipt {
+  modelId: string;
+  responseId: string;
+  responseDigest: string;
+  servingProfileDigest: string;
 }
 
 interface RetryTurn {
@@ -28,23 +36,22 @@ interface TurnResponse {
   error?: unknown;
   detail?: unknown;
   conversation_id?: unknown;
-  conversation_ref?: unknown;
   request_id?: unknown;
-  request_ref?: unknown;
-  transition_id?: unknown;
-  state_root?: unknown;
-  expression_mode?: unknown;
-  external_inference?: unknown;
+  model_id?: unknown;
+  response_id?: unknown;
+  response_digest?: unknown;
+  serving_profile_digest?: unknown;
+  effect_authority?: unknown;
+  tool_authority?: unknown;
   outcome?: unknown;
-  duplicate_commit_protection?: unknown;
+  learned_faculty_used?: unknown;
+  memory_scope?: unknown;
+  conversation_history?: unknown;
+  training_consent?: unknown;
+  duplicate_effect_protection?: unknown;
 }
 
 interface Capabilities {
-  chat?: {
-    expression?: unknown;
-    learned_native_whole_field?: unknown;
-    public_release_gate?: unknown;
-  };
   voice?: {
     audio_input?: unknown;
     speech_to_text?: unknown;
@@ -57,10 +64,8 @@ const CONVERSATION_STORAGE_KEY = 'apocrypha.v2.owner-conversation-id';
 const PENDING_TURN_STORAGE_KEY = 'apocrypha.v2.owner-pending-turn';
 const CHAT_BROWSER_DEADLINE_MS = 28_000;
 const MAX_TEXT_BYTES = 16_384;
-const EXPECTED_EXPRESSION_CAPABILITY = 'bootstrap_shallow';
-const LEARNED_FIELD_ABSENT = 'absent';
 const AUDIO_UNAVAILABLE = 'unavailable';
-const DUPLICATE_COMMIT_PROTECTION = 'active';
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 function isUuidV4(value: unknown): value is string {
   return typeof value === 'string'
@@ -130,9 +135,39 @@ function safeError(body: TurnResponse, status: number): string {
     ?? `Apocrypha could not complete this turn (HTTP ${status}).`;
 }
 
+function isExactTurn(
+  body: TurnResponse,
+  conversationId: string,
+  requestId: string,
+): body is TurnResponse & {
+  text: string;
+  model_id: string;
+  response_id: string;
+  response_digest: string;
+  serving_profile_digest: string;
+} {
+  return body.conversation_id === conversationId
+    && body.request_id === requestId
+    && Boolean(stringValue(body.text))
+    && Boolean(stringValue(body.model_id))
+    && Boolean(stringValue(body.response_id))
+    && typeof body.response_digest === 'string'
+    && SHA256_PATTERN.test(body.response_digest)
+    && typeof body.serving_profile_digest === 'string'
+    && SHA256_PATTERN.test(body.serving_profile_digest)
+    && body.effect_authority === 'NONE'
+    && body.tool_authority === 'NONE'
+    && body.outcome === 'completed'
+    && body.learned_faculty_used === true
+    && body.memory_scope === 'ephemeral'
+    && body.conversation_history === 'not_retained_by_public_interface'
+    && body.training_consent === false
+    && body.duplicate_effect_protection === 'not_applicable_no_effect_authority';
+}
+
 export function ChatThread() {
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [conversationRef, setConversationRef] = useState<string | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<TurnReceipt | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [waiting, setWaiting] = useState(false);
@@ -182,7 +217,7 @@ export function ChatThread() {
     const next = mintConversationId();
     sessionStorage.setItem(CONVERSATION_STORAGE_KEY, next);
     setConversationId(next);
-    setConversationRef(null);
+    setLastReceipt(null);
     setMessages([]);
     setError(null);
     setRetryTurn(null);
@@ -232,33 +267,25 @@ export function ChatThread() {
         retryable = response.status === 409 || response.status >= 500;
         throw new Error(safeError(body, response.status));
       }
-      const echoedConversationId = stringValue(body.conversation_id);
-      const echoedRequestId = stringValue(body.request_id);
-      const nextConversationRef = stringValue(body.conversation_ref);
-      const requestRef = stringValue(body.request_ref);
-      const transitionId = stringValue(body.transition_id);
-      const stateRoot = stringValue(body.state_root);
-      const responseText = stringValue(body.text);
-      if (
-        echoedConversationId !== conversationId
-        || echoedRequestId !== requestId
-        || !nextConversationRef
-        || !requestRef
-        || !transitionId
-        || !stateRoot
-        || !responseText
-        || body.outcome !== 'committed'
-        || body.external_inference !== false
-        || body.expression_mode !== EXPECTED_EXPRESSION_CAPABILITY
-        || body.duplicate_commit_protection !== DUPLICATE_COMMIT_PROTECTION
-      ) {
-        throw new Error('The V2 turn returned an invalid conversation-continuity envelope.');
+      if (!isExactTurn(body, conversationId, requestId)) {
+        throw new Error('The Apocv4 turn returned an invalid evidence or authority envelope.');
       }
+      const receipt: TurnReceipt = {
+        modelId: body.model_id,
+        responseId: body.response_id,
+        responseDigest: body.response_digest,
+        servingProfileDigest: body.serving_profile_digest,
+      };
       clearPendingTurn();
-      setConversationRef(nextConversationRef);
+      setLastReceipt(receipt);
       setMessages((current) => [
         ...current,
-        { id: crypto.randomUUID(), role: 'apocrypha', text: responseText },
+        {
+          id: crypto.randomUUID(),
+          role: 'apocrypha',
+          text: body.text,
+          receipt,
+        },
       ]);
     } catch (cause) {
       const timedOut = cause instanceof DOMException && cause.name === 'AbortError';
@@ -280,18 +307,16 @@ export function ChatThread() {
     }
   }, [conversationId, draft, waiting]);
 
-  const expression = stringValue(capabilities?.chat?.expression) ?? 'unverified';
-  const learnedField = stringValue(capabilities?.chat?.learned_native_whole_field) ?? 'unverified';
   const audioLive = capabilities?.voice
     ? Object.values(capabilities.voice).some((value) => value === 'live')
     : false;
   const audioLabel = capabilities ? (audioLive ? 'live' : AUDIO_UNAVAILABLE) : 'unverified';
 
   return (
-    <section className="v2-chat" aria-label="Apocrypha V2 chat">
+    <section className="v2-chat" aria-label="Apocrypha owner chat">
       <header className="v2-chat-header">
         <div>
-          <p className="v2-eyebrow">APOCRYPHA V2</p>
+          <p className="v2-eyebrow">APOCRYPHA · OWNER RELAY</p>
           <h1>Private conversation</h1>
         </div>
         <button type="button" className="v2-new" onClick={startNewConversation} disabled={waiting}>
@@ -300,20 +325,19 @@ export function ChatThread() {
       </header>
 
       <div className="v2-capabilities" aria-label="Current capability boundary">
-        <span data-capability-expression={expression}>
-          Expression · {expression === EXPECTED_EXPRESSION_CAPABILITY ? 'bootstrap_shallow' : expression}
+        <span data-capability-learned-faculty={lastReceipt ? 'verified' : 'awaiting-receipt'}>
+          Learned faculty · {lastReceipt ? 'verified' : 'verified per response'}
         </span>
-        <span data-capability-learned-field={learnedField}>
-          Learned field · {learnedField === LEARNED_FIELD_ABSENT ? 'absent' : learnedField}
-        </span>
+        <span data-capability-effect-authority="NONE">Effects · none</span>
+        <span data-capability-tool-authority="NONE">Tools · none</span>
         <span data-capability-audio={audioLabel}>Audio · {audioLabel}</span>
-        <span data-capability-retry-dedupe="active">Retry dedupe · active</span>
       </div>
 
       <div className="v2-continuity" aria-live="polite">
         <span>Client conversation · {conversationId ? conversationId.slice(0, 8) : 'minting…'}</span>
-        <span>Body reference · {conversationRef ? conversationRef.slice(0, 12) : 'not established'}</span>
-        <span>History · native V2 projection not yet available</span>
+        <span>Model · {lastReceipt?.modelId ?? 'verified per response'}</span>
+        <span>Receipt · {lastReceipt ? `${lastReceipt.responseDigest.slice(0, 12)}…` : 'not established'}</span>
+        <span>History · not retained across sessions</span>
       </div>
 
       <VisionPanel />
@@ -329,6 +353,17 @@ export function ChatThread() {
           <article key={message.id} className={`v2-message v2-message-${message.role}`}>
             <p className="v2-role">{message.role === 'user' ? 'You' : 'Apocrypha'}</p>
             <div>{message.text}</div>
+            {message.receipt && (
+              <details>
+                <summary className="v2-role">Verified response receipt</summary>
+                <dl>
+                  <div><dt>Model</dt><dd>{message.receipt.modelId}</dd></div>
+                  <div><dt>Response</dt><dd>{message.receipt.responseId}</dd></div>
+                  <div><dt>Digest</dt><dd>{message.receipt.responseDigest.slice(0, 16)}…</dd></div>
+                  <div><dt>Serving profile</dt><dd>{message.receipt.servingProfileDigest.slice(0, 16)}…</dd></div>
+                </dl>
+              </details>
+            )}
           </article>
         ))}
         {waiting && <p className="v2-waiting" role="status">Apocrypha is forming one final response…</p>}
