@@ -17,6 +17,7 @@ function assert(condition: boolean, message: string): void {
 for (const token of [
   'className={styles.composerShell}',
   'className={styles.lensButton}',
+  'className={styles.attachmentButton}',
   "surface?.kind === 'intent'",
   "surface?.kind === 'conversation'",
   "surface?.kind === 'message'",
@@ -25,7 +26,7 @@ for (const token of [
   assert(component.includes(token), `missing contextual interaction seam: ${token}`);
 }
 
-assert(component.includes('onContextMenu={(event)'), 'blank-canvas and message right-click entry points are missing');
+assert(component.includes('onContextMenu={(event)'), 'message right-click actions are missing');
 assert(component.includes("event.shiftKey && event.key === 'F10'"), 'message context actions lack a keyboard equivalent');
 assert(component.includes("event.key.toLowerCase() === 'k'"), 'intent lens shortcut is missing');
 assert(component.includes('aria-pressed={candidate.id === mode}'), 'active intent is not exposed accessibly');
@@ -48,17 +49,24 @@ assert(component.includes('record.turn_states'), 'pending and failed turns are f
 assert(component.includes('record.code_requests'), 'governed code requests are not restored into the conversation');
 assert(component.includes('surface_truncation'), 'per-surface history loss is not visible to the conversation');
 assert(component.includes("method: 'DELETE'"), 'durable conversation tombstoning is not reachable from the conversation');
-assert(component.includes('audit-ledger rows remain'), 'archive UI misrepresents tombstoning as physical history deletion');
+assert(component.includes('keep its audit record'), 'archive UI misrepresents tombstoning as physical history deletion');
 assert(component.includes("aria-live={historyHydrating ? 'off' : 'polite'}"), 'history hydration can flood the live-region announcement');
 assert(component.includes('aria-haspopup="dialog"'), 'dialog interaction surfaces are exposed with menu semantics');
-assert(component.includes('Approach constellation'), 'interaction faculties are expressed as a contextual constellation');
-assert(component.includes('Effect airlock'), 'governed effects do not expose an intuitive authority boundary');
-assert(component.includes('Worldlines'), 'durable conversations are not expressed as persistent contextual worlds');
-assert(component.includes('Orbiting work'), 'background work is not expressed inside its worldline');
-assert(component.includes('Made here'), 'conversation artifacts are not grouped with their worldline');
+assert(component.includes('Channel open.'), 'the direct communication channel has no clear empty state');
+assert(component.includes('> File'), 'text and code file attachment is not reachable from the composer');
+assert(component.includes('> Link'), 'link insertion is not reachable from the composer');
+assert(component.includes('id="public-apocrypha-intent-title">Mode'), 'cognitive mode selection is not plainly named');
+assert(component.includes('Code access'), 'governed code access is not plainly named');
+assert(component.includes('Recent conversations'), 'durable conversations are not plainly grouped');
+assert(component.includes('Background work'), 'background work is not plainly grouped');
+assert(component.includes('Files and results'), 'conversation outputs are not plainly grouped');
 assert(component.includes('Continue from here'), 'message context does not offer a dimensional continuation gesture');
-assert(component.includes("dispatch: 'Refract'"), 'mode dispatch remains visually generic rather than behaviorally expressive');
-assert(component.includes('is a prompt frame:'), 'creative approaches overclaim distinct faculty routing');
+assert(component.includes("label: 'Auto'"), 'default cognitive mode is missing');
+assert(component.includes("label: 'Analyze'"), 'analysis cognitive mode is missing');
+assert(component.includes("label: 'Build'"), 'build cognitive mode is missing');
+assert(!component.includes('Approach constellation'), 'obsolete constellation language remains visible');
+assert(!component.includes('Open Field'), 'obsolete poetic mode labels remain visible');
+assert(!component.includes('CyberDreamField'), 'decorative field still obscures the direct channel');
 assert(component.includes('codeApprovalBinding('), 'one-run approval is not bound to an exact request representation');
 assert(component.includes('auth_generation: authGeneration'), 'one-run approval is not bound to the auth subject generation');
 assert(component.includes('objective: objective.trim()'), 'one-run approval is not bound to the trimmed objective');
@@ -75,7 +83,7 @@ assert(component.includes('refreshCurrentSnapshot'), 'opening conversation actio
 assert(component.includes('SNAPSHOT_POLL_LIMIT'), 'active background work lacks a bounded settlement poll');
 assert(component.includes('settledEffectCount: rollbackSessionDigest ? 2 : 1'), 'live compensation undercounts code effect plus rollback events');
 assert(component.includes('clampAboveSurfaceAnchor('), 'Forge airlock placement is not clamped to the viewport');
-assert(!component.includes('styles.toolDock'), 'prompt modes remain permanently docked in the composer');
+assert(!component.includes('styles.toolDock'), 'cognitive modes should remain in one compact selector');
 assert(!component.includes('styles.truthRail'), 'privacy and response facts still occupy a permanent rail');
 
 for (const token of [
@@ -89,7 +97,7 @@ for (const token of [
   '.scopeSheet',
   '@media (pointer: coarse)',
   'max-height: calc(100dvh - 24px)',
-  'height: calc(100dvh - 64px)',
+  'height: 100dvh',
 ]) {
   assert(style.includes(token), `missing responsive interaction styling: ${token}`);
 }

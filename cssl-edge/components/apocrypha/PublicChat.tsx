@@ -4,13 +4,13 @@ import {
   useEffect,
   useRef,
   useState,
+  type ChangeEvent,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
 import { authFetch } from '@/lib/browser-auth';
 import { useSiteSession } from '@/components/hub/SiteSession';
-import CyberDreamField from '@/components/cyber/CyberDreamField';
 import styles from '@/styles/PublicApocrypha.module.css';
 
 type MessageRole = 'user' | 'apocrypha';
@@ -254,16 +254,22 @@ const GENERATIVE_MODES: ReadonlyArray<{
   placeholder: string;
   dispatch: string;
 }> = [
-  { id: 'general', label: 'Open Field', verb: 'Explore', icon: '✦', description: 'Let the problem reveal its shape through conversation', frame: 'leaves your request open without adding a lead instruction', starter: '', placeholder: 'Bring Apocrypha a question, tension, or unfinished thought…', dispatch: 'Enter' },
-  { id: 'analyze', label: 'Prism', verb: 'Interrogate', icon: '◇', description: 'Split claims into evidence, tensions, and falsifiers', frame: 'adds a rigorous-analysis instruction to the request', starter: 'Analyze this rigorously:\n', placeholder: 'Place a claim, system, or decision under the prism…', dispatch: 'Refract' },
-  { id: 'write', label: 'Atelier', verb: 'Shape', icon: '✎', description: 'Compose language, structure, rhythm, and voice', frame: 'adds a drafting instruction to the request', starter: 'Draft this for me:\n', placeholder: 'Describe what the atelier should shape…', dispatch: 'Shape' },
-  { id: 'explain', label: 'Lantern', verb: 'Reveal', icon: '◉', description: 'Make hidden structure visible, one layer at a time', frame: 'adds a clear-and-precise explanation instruction to the request', starter: 'Explain this clearly and precisely:\n', placeholder: 'What should the lantern make visible?…', dispatch: 'Illuminate' },
-  { id: 'code', label: 'Forge', verb: 'Make', icon: '⌘', description: 'Turn intent into a governed, testable change', frame: 'adds an implementation instruction to the request', typedRoute: 'Owner effects cross the typed governed code route after the airlock.', starter: 'Help me implement this:\n', placeholder: 'Describe what the forge should build or repair…', dispatch: 'Temper' },
+  { id: 'general', label: 'Auto', verb: 'Mode', icon: '○', description: 'Use the request as written', frame: 'uses your request as written', starter: '', placeholder: 'Message Apocrypha…', dispatch: 'Send' },
+  { id: 'analyze', label: 'Analyze', verb: 'Mode', icon: '◇', description: 'Check evidence, assumptions, and tradeoffs', frame: 'adds a rigorous analysis instruction', starter: 'Analyze this rigorously:\n', placeholder: 'What should Apocrypha analyze?…', dispatch: 'Send' },
+  { id: 'explain', label: 'Explain', verb: 'Mode', icon: '≡', description: 'Make the subject clear', frame: 'adds a clear explanation instruction', starter: 'Explain this clearly and precisely:\n', placeholder: 'What should Apocrypha explain?…', dispatch: 'Send' },
+  { id: 'write', label: 'Write', verb: 'Mode', icon: '✎', description: 'Draft or revise text', frame: 'adds a drafting instruction', starter: 'Draft this for me:\n', placeholder: 'What should Apocrypha write?…', dispatch: 'Send' },
+  { id: 'code', label: 'Build', verb: 'Mode', icon: '⌘', description: 'Prepare a governed code change', frame: 'adds an implementation instruction', typedRoute: 'Owner changes require exact file scope and one-run approval.', starter: 'Help me implement this:\n', placeholder: 'What should Apocrypha build or repair?…', dispatch: 'Run' },
 ];
 
 const CHAT_BROWSER_DEADLINE_MS = 85_000;
 const CODE_BROWSER_DEADLINE_MS = 250_000;
 const MAX_TEXT_BYTES = 16_384;
+const MAX_ATTACHMENT_BYTES = 12_000;
+const TEXT_FILE_SUFFIXES = new Set([
+  'c', 'cc', 'cpp', 'csl', 'cs', 'css', 'csv', 'go', 'h', 'html', 'java', 'js', 'json',
+  'jsx', 'md', 'nil', 'php', 'py', 'rb', 'rs', 'scss', 'sh', 'sql', 'swift', 'toml',
+  'ts', 'tsx', 'txt', 'xml', 'yaml', 'yml',
+]);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const CLIENT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const DURABLE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[45][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -798,12 +804,12 @@ function codeEffectReceipt(
 }
 
 function codeEffectSummary(receipt: CodeEffectReceipt): string {
-  const pathSummary = `${receipt.allowedPaths.length} admitted file${receipt.allowedPaths.length === 1 ? '' : 's'}`;
+  const pathSummary = `${receipt.allowedPaths.length} file${receipt.allowedPaths.length === 1 ? '' : 's'}`;
   if (receipt.state === 'PENDING') {
-    return `The forge request is durably held at the effect airlock: ${pathSummary}, awaiting a terminal receipt. It has not been represented as complete.`;
+    return `The code request is still running for ${pathSummary}. No change is being claimed complete.`;
   }
   if (receipt.state === 'ROLLED_BACK' || receipt.state === 'EXECUTION_ROLLED_BACK') {
-    return `The forge rewound this governed change to its recorded prestate. ${pathSummary} remain linked to the rollback evidence.`;
+    return `The code change was rolled back. ${pathSummary} were restored to their recorded prior state.`;
   }
   const testSummary = receipt.testPassed === true
     ? 'Isolated tests passed.'
@@ -811,9 +817,9 @@ function codeEffectSummary(receipt: CodeEffectReceipt): string {
       ? 'Isolated tests failed; promotion was not accepted.'
       : 'No isolated-test result was returned for this terminal state.';
   if (receipt.state === 'PROMOTED') {
-    return `The forge crossed the effect airlock and promoted a governed change. ${testSummary} ${pathSummary}.`;
+    return `The governed code change was applied. ${testSummary} ${pathSummary}.`;
   }
-  return `The forge reached ${receipt.state}. ${testSummary} ${pathSummary}.`;
+  return `The code request reached ${receipt.state.toLowerCase().replaceAll('_', ' ')}. ${testSummary} ${pathSummary}.`;
 }
 
 function identityReceipt(value: unknown): IdentityReceipt | null {
@@ -1020,6 +1026,7 @@ export function PublicChat(): JSX.Element {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const inFlightRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const surfaceTriggerRef = useRef<HTMLElement | null>(null);
@@ -1136,7 +1143,7 @@ export function PublicChat(): JSX.Element {
     setCodeApproval(null);
     setWaiting(false);
     setRollingBackId(null);
-    setRestorationNotice('Account changed. A separate worldline is being restored.');
+    setRestorationNotice('Account changed. Restoring its conversation.');
     rememberSession(crypto.randomUUID().toLowerCase());
   }, [abortActiveOperations, authenticated, rememberSession, subjectKey]);
 
@@ -1253,7 +1260,7 @@ export function PublicChat(): JSX.Element {
         if (generation !== sessionGenerationRef.current) return;
         setHistoryHydrating(false);
         setRestorationNotice(
-          `Restored ${snapshot.messages.length} message${snapshot.messages.length === 1 ? '' : 's'} from this worldline.`,
+          `Restored ${snapshot.messages.length} message${snapshot.messages.length === 1 ? '' : 's'} from this conversation.`,
         );
         composerRef.current?.focus();
       });
@@ -1339,7 +1346,7 @@ export function PublicChat(): JSX.Element {
           adoptSnapshot(snapshot);
           setHistoryHydrating(false);
           setRestorationNotice(
-            `Restored ${snapshot.messages.length} message${snapshot.messages.length === 1 ? '' : 's'} from your active worldline.`,
+            `Restored ${snapshot.messages.length} message${snapshot.messages.length === 1 ? '' : 's'} from your active conversation.`,
           );
           rememberSession(selected);
         } else {
@@ -1569,7 +1576,7 @@ export function PublicChat(): JSX.Element {
     setSessionReady(true);
     setSessionLoading(false);
     setHistoryHydrating(false);
-    setRestorationNotice('Opened a fresh worldline.');
+    setRestorationNotice('Opened a new conversation.');
     setHistoryTruncated(false);
     setWorldState(EMPTY_WORLD_STATE);
     setWorldlineJobs([]);
@@ -1597,7 +1604,7 @@ export function PublicChat(): JSX.Element {
       || rollingBackId
       || !currentSessionRecorded
     ) return;
-    if (!window.confirm('Archive this worldline from active conversations? Its prior rows remain in the local audit ledger.')) {
+    if (!window.confirm('Archive this conversation? Its audit record will remain.')) {
       return;
     }
     abortActiveOperations();
@@ -1620,7 +1627,7 @@ export function PublicChat(): JSX.Element {
       const body = recordValue(await response.json());
       if (!response.ok) {
         if (response.status === 401) await refresh();
-        throw new Error(stringValue(body?.error) ?? 'This worldline could not be archived.');
+        throw new Error(stringValue(body?.error) ?? 'This conversation could not be archived.');
       }
       if (
         body?.deleted !== true
@@ -1644,7 +1651,7 @@ export function PublicChat(): JSX.Element {
       setHistoryHydrating(false);
       setPendingTurn(null);
       setLastModel(null);
-      setRestorationNotice(`Worldline archived with tombstone receipt ${body.event_digest.slice(0, 12)}. Prior audit rows remain. A fresh worldline is ready.`);
+      setRestorationNotice(`Conversation archived. Record ${body.event_digest.slice(0, 12)} remains in the audit log. A new conversation is ready.`);
       try {
         const summaries = await fetchSessionSummaries();
         if (generation === sessionGenerationRef.current) setSessionSummaries(summaries);
@@ -1653,7 +1660,7 @@ export function PublicChat(): JSX.Element {
       }
     } catch (cause) {
       if (generation === sessionGenerationRef.current) {
-        setError(cause instanceof Error ? cause.message : 'This worldline could not be archived.');
+        setError(cause instanceof Error ? cause.message : 'This conversation could not be archived.');
       }
     } finally {
       if (generation === sessionGenerationRef.current) {
@@ -1717,6 +1724,55 @@ export function PublicChat(): JSX.Element {
     closeSurface();
     requestAnimationFrame(() => composerRef.current?.focus());
   }, [closeSurface]);
+
+  const attachTextFiles = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = '';
+    if (files.length === 0) return;
+    const blocks: string[] = [];
+    try {
+      for (const file of files) {
+        const suffix = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? '' : '';
+        const textLike = file.type.startsWith('text/')
+          || file.type === 'application/json'
+          || file.type === 'application/xml'
+          || TEXT_FILE_SUFFIXES.has(suffix);
+        if (!textLike) {
+          throw new Error(`${file.name} is not a text or code file.`);
+        }
+        if (file.size < 1 || file.size > MAX_ATTACHMENT_BYTES) {
+          throw new Error(`${file.name} must be between 1 byte and ${MAX_ATTACHMENT_BYTES.toLocaleString()} bytes.`);
+        }
+        const content = await file.text();
+        const safeName = file.name.replace(/[<>\r\n]/g, '_').slice(0, 120) || 'attachment.txt';
+        blocks.push(`--- attached file: ${safeName} ---\n${content}\n--- end file ---`);
+      }
+      const next = [draft.trimEnd(), ...blocks].filter(Boolean).join('\n\n');
+      if (byteLength(next) > MAX_TEXT_BYTES) {
+        throw new Error(`The message and attached files exceed ${MAX_TEXT_BYTES.toLocaleString()} bytes.`);
+      }
+      setDraft(next);
+      setError(null);
+      requestAnimationFrame(() => composerRef.current?.focus());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The selected file could not be attached.');
+    }
+  }, [draft]);
+
+  const insertLink = useCallback(() => {
+    const composer = composerRef.current;
+    const start = composer?.selectionStart ?? draft.length;
+    const end = composer?.selectionEnd ?? start;
+    const link = 'https://';
+    const next = `${draft.slice(0, start)}${link}${draft.slice(end)}`;
+    if (byteLength(next) > MAX_TEXT_BYTES) return;
+    setDraft(next);
+    setError(null);
+    requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(start + link.length, start + link.length);
+    });
+  }, [draft]);
 
   const send = useCallback(async (retry?: PendingTurn): Promise<void> => {
     const text = retry?.text ?? draft.trim();
@@ -1949,11 +2005,11 @@ export function PublicChat(): JSX.Element {
       setError(
         timedOut && runCodeEffect
           ? reconciledCodeRequest
-            ? 'The effect connection timed out, but the original request was recovered from the durable worldline. No second effect was sent.'
+            ? 'The code connection timed out, but the original request was recovered from this conversation. No second change was sent.'
             : 'The effect outcome is uncertain. The original request remains visible and its one-run approval is consumed; no second effect was sent.'
           : runCodeEffect
             ? reconciledCodeRequest
-              ? 'The original effect request was reconciled from the durable worldline. No second effect was sent.'
+              ? 'The original code request was recovered from this conversation. No second change was sent.'
               : 'The effect request could not be reconciled yet. Its original intent remains visible and no second effect was sent.'
           : timedOut
           ? 'Apocrypha did not answer before the bounded turn deadline.'
@@ -2039,7 +2095,7 @@ export function PublicChat(): JSX.Element {
       setMessages((current) => current.map((message) => message.id === messageId && message.codeEffect
         ? {
           ...message,
-          text: `Governed code change rolled back. ${message.codeEffect.allowedPaths.length} admitted file${message.codeEffect.allowedPaths.length === 1 ? '' : 's'} restored from the promotion snapshot.`,
+          text: `Governed code change rolled back. ${message.codeEffect.allowedPaths.length} file${message.codeEffect.allowedPaths.length === 1 ? '' : 's'} restored from the saved prior state.`,
           codeEffect: {
             ...message.codeEffect,
             state: 'ROLLED_BACK',
@@ -2098,56 +2154,29 @@ export function PublicChat(): JSX.Element {
     ? stripIntentStarter(firstUserMessage.text).replace(/\s+/g, ' ').slice(0, 62)
     : 'New conversation';
   const turnCount = messages.filter((message) => message.role === 'user').length;
-  const worldlineActivityLabel = worldState.active_job_count > 0
-    ? `${worldState.active_job_count} background task${worldState.active_job_count === 1 ? '' : 's'} orbiting`
-    : worldState.failed_turn_count > 0
-      ? `${worldState.failed_turn_count} failed turn${worldState.failed_turn_count === 1 ? '' : 's'} visible`
-      : worldState.pending_turn_count > 0
-        ? `${worldState.pending_turn_count} pending turn${worldState.pending_turn_count === 1 ? '' : 's'} visible`
-        : worldState.artifact_count > 0
-          ? `${worldState.artifact_count} artifact${worldState.artifact_count === 1 ? '' : 's'} held here`
-          : null;
   const latestReceipt = [...messages].reverse().find((message) => message.receipt)?.receipt;
   const historyLabel = latestReceipt?.conversationHistory === 'durable_principal_bound'
-    ? historyTruncated ? 'Durable · older turns folded' : 'Durable runtime history'
+    ? historyTruncated ? 'Saved · older messages summarized' : 'Saved conversation'
     : historyTruncated
-      ? 'Durable · older turns folded'
+      ? 'Saved · older messages summarized'
     : latestReceipt
-      ? 'This open conversation'
-      : 'Confirmed with the first response';
+      ? 'Current conversation'
+      : 'Saved after the first response';
   const contextualMessage = surface?.kind === 'message'
     ? messages.find((message) => message.id === surface.messageId) ?? null
     : null;
   const codeScopeState = codeApprovalCurrent
-    ? 'Authorized once'
+    ? 'Approved once'
     : codePaths.length > 0
-      ? `${codePaths.length} path${codePaths.length === 1 ? '' : 's'} · confirm`
-      : 'Set effect scope';
+      ? `${codePaths.length} file${codePaths.length === 1 ? '' : 's'} · approve`
+      : 'Choose files';
 
   return (
     <div className={styles.page} data-public-apocrypha="apocv4-chat-v2">
-      <CyberDreamField variant="relay" activity={waiting ? 'thinking' : draft.trim() ? 'listening' : 'idle'} density={0.78} viewport />
       <a className={styles.skipLink} href="#apocrypha-conversation">Skip to conversation</a>
 
-      <header className={styles.header}>
-        <Link href="/" className={styles.brand} aria-label="Apocky home">
-          <span className={styles.brandMark} aria-hidden="true">A</span>
-          <span>APOCKY</span>
-        </Link>
-        <div className={styles.identity}>
-          <span className={styles.identityName}>Apocrypha</span>
-          <span className={styles.identityMeta}>Persistent governed intelligence</span>
-        </div>
-        <nav className={styles.nav} aria-label="Apocrypha navigation">
-          <Link href="/clearing">The Clearing</Link>
-          <Link href={authenticated ? '/account' : '/login?next=%2Fapocrypha'}>
-            {authenticated ? 'Account' : 'Sign in'}
-          </Link>
-        </nav>
-      </header>
-
       <main className={styles.workspace} id="apocrypha-conversation">
-        <section className={styles.conversation} aria-label="Conversation with Apocrypha">
+        <section className={styles.conversation} aria-label="Open channel with Apocrypha">
           <div className={styles.conversationHeader}>
             <div className={styles.threadHeading}>
               <span
@@ -2158,17 +2187,15 @@ export function PublicChat(): JSX.Element {
               />
               <span className={styles.srOnly} role="status">{sessionLabel}</span>
               <div>
-                <h1 title={conversationTitle}>{conversationTitle}</h1>
-                <p>{turnCount === 0
-                  ? worldlineActivityLabel ?? 'Ready when you are'
-                  : `${turnCount} turn${turnCount === 1 ? '' : 's'}${worldlineActivityLabel ? ` · ${worldlineActivityLabel}` : ''}`}</p>
+                <h1>Apocrypha</h1>
+                <p>{sessionLabel}{turnCount > 0 ? ` · ${turnCount} turn${turnCount === 1 ? '' : 's'}` : ''}</p>
               </div>
             </div>
             <div className={styles.headerActions}>
               <button
                 type="button"
                 className={styles.contextTrigger}
-                aria-label="Conversation actions"
+                aria-label="Open conversation history"
                 aria-haspopup="dialog"
                 aria-expanded={surface?.kind === 'conversation'}
                 onClick={(event) => {
@@ -2184,7 +2211,7 @@ export function PublicChat(): JSX.Element {
                 }}
                 disabled={!authenticated || waiting || Boolean(rollingBackId)}
               >
-                <span aria-hidden="true">•••</span>
+                <span>History</span>
               </button>
             </div>
           </div>
@@ -2196,20 +2223,15 @@ export function PublicChat(): JSX.Element {
             aria-relevant="additions"
             aria-busy={waiting}
             data-message-count={messages.length}
-            onContextMenu={(event) => {
-              if ((event.target as HTMLElement).closest('article')) return;
-              event.preventDefault();
-              openIntentLens(event.currentTarget, { x: event.clientX, y: event.clientY });
-            }}
           >
             {messages.length === 0 && (
               <div className={styles.emptyState}>
-                <div className={styles.emptyKicker} aria-hidden="true">A</div>
-                <h2>Bring the whole problem.</h2>
-                <p>Think, build, inspect, and repair here. This conversation keeps the changing world attached.</p>
+                <h2>Channel open.</h2>
+                <p>Write below, attach context, or choose a mode.</p>
                 <div className={styles.emptyHints} aria-label="Interaction hints">
-                  <span><kbd>Ctrl K</kbd> choose an approach</span>
-                  <span><kbd>Right-click</kbd> act on context</span>
+                  <span><kbd>Enter</kbd> send</span>
+                  <span><kbd>Shift Enter</kbd> new line</span>
+                  <span><kbd>Ctrl K</kbd> choose mode</span>
                 </div>
               </div>
             )}
@@ -2254,7 +2276,7 @@ export function PublicChat(): JSX.Element {
                         ))}
                         aria-expanded={inspectedMessageId === message.id}
                       >
-                        <span aria-hidden="true">✓</span> evidence
+                        <span aria-hidden="true">✓</span> details
                       </button>
                     )}
                     {message.codeEffect && (
@@ -2299,7 +2321,7 @@ export function PublicChat(): JSX.Element {
                         );
                       }}
                     >
-                      <span aria-hidden="true">•••</span>
+                      <span>Actions</span>
                     </button>
                   </div>
                 </div>
@@ -2451,6 +2473,30 @@ export function PublicChat(): JSX.Element {
                 />
                 <div className={styles.composerBar}>
                   <div className={styles.composerTools}>
+                    <input
+                      ref={fileInputRef}
+                      className={styles.srOnly}
+                      type="file"
+                      multiple
+                      accept="text/*,.c,.cc,.cpp,.cs,.css,.csv,.csl,.go,.h,.html,.java,.js,.json,.jsx,.md,.nil,.php,.py,.rb,.rs,.scss,.sh,.sql,.swift,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml"
+                      onChange={(event) => { void attachTextFiles(event); }}
+                    />
+                    <button
+                      type="button"
+                      className={styles.attachmentButton}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={waiting || Boolean(rollingBackId)}
+                    >
+                      <span aria-hidden="true">＋</span> File
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.attachmentButton}
+                      onClick={insertLink}
+                      disabled={waiting || Boolean(rollingBackId)}
+                    >
+                      <span aria-hidden="true">↗</span> Link
+                    </button>
                     <button
                       ref={lensButtonRef}
                       type="button"
@@ -2463,8 +2509,7 @@ export function PublicChat(): JSX.Element {
                       }}
                       disabled={waiting || Boolean(rollingBackId)}
                     >
-                      <span className={styles.intentGlyph} aria-hidden="true">{selectedMode.icon}</span>
-                      <span><small>{selectedMode.verb}</small><strong>{selectedMode.label}</strong></span>
+                      <span><small>Mode</small><strong>{selectedMode.label}</strong></span>
                       <span className={styles.chevron} aria-hidden="true">⌃</span>
                     </button>
                     {ownerCodeMode && (
@@ -2562,7 +2607,7 @@ export function PublicChat(): JSX.Element {
             aria-labelledby="public-apocrypha-intent-title"
           >
             <div className={styles.paletteHeader}>
-              <div><span aria-hidden="true">✦</span><strong id="public-apocrypha-intent-title">Approach constellation</strong></div>
+              <div><strong id="public-apocrypha-intent-title">Mode</strong></div>
               <kbd>Ctrl K</kbd>
             </div>
             <div className={styles.intentGrid}>
@@ -2575,41 +2620,14 @@ export function PublicChat(): JSX.Element {
                   onClick={() => selectMode(candidate)}
                   disabled={waiting || Boolean(rollingBackId)}
                 >
-                  <span className={styles.intentIcon} aria-hidden="true">{candidate.icon}</span>
                   <span>
                     <strong>{candidate.label}</strong>
                     <small>{candidate.description}</small>
                   </span>
-                  <span className={styles.intentAxis}>
-                    <b>{candidate.verb}</b>
-                    {candidate.id === 'code' && access === 'owner' && <em>effect</em>}
-                  </span>
+                  {candidate.id === 'code' && access === 'owner' && <em>approval required</em>}
                 </button>
               ))}
             </div>
-            <div className={styles.paletteUtilities}>
-              <button
-                type="button"
-                onClick={() => {
-                  closeSurface();
-                  requestAnimationFrame(() => composerRef.current?.focus());
-                }}
-              >
-                Focus the composer <span aria-hidden="true">↵</span>
-              </button>
-              <button
-                type="button"
-                onClick={newConversation}
-                disabled={waiting || Boolean(rollingBackId) || !conversationId}
-              >
-                New conversation <span aria-hidden="true">＋</span>
-              </button>
-            </div>
-            <p>
-              <strong>{selectedMode.label}</strong> is a prompt frame: {selectedMode.frame}.
-              {' '}It does not claim a separate faculty route.
-              {selectedMode.typedRoute && access === 'owner' ? ` ${selectedMode.typedRoute}` : ''}
-            </p>
           </div>
         )}
 
@@ -2636,7 +2654,7 @@ export function PublicChat(): JSX.Element {
             {authenticated && sessionSummaries.length > 0 && (
               <div className={styles.recentThreads} aria-label="Recent durable conversations">
                 <div className={styles.recentThreadsLabel}>
-                  <span>Worldlines</span><small>{sessionSummaries.length} durable</small>
+                  <span>Recent conversations</span><small>{sessionSummaries.length} saved</small>
                 </div>
                 {sessionSummaries.map((session) => (
                   <button
@@ -2660,9 +2678,9 @@ export function PublicChat(): JSX.Element {
               </div>
             )}
             {worldlineJobs.length > 0 && (
-              <div className={styles.worldObjects} aria-label="Background work in this worldline">
+              <div className={styles.worldObjects} aria-label="Background work in this conversation">
                 <div className={styles.recentThreadsLabel}>
-                  <span>Orbiting work</span><small>Background tasks</small>
+                  <span>Background work</span><small>Tasks</small>
                 </div>
                 {worldlineJobs.slice(-4).map((job, index) => {
                   const jobId = stringValue(job.job_id) ?? `job-${index}`;
@@ -2681,9 +2699,9 @@ export function PublicChat(): JSX.Element {
               </div>
             )}
             {worldlineArtifacts.length > 0 && (
-              <div className={styles.worldObjects} aria-label="Artifacts in this worldline">
+              <div className={styles.worldObjects} aria-label="Files and results in this conversation">
                 <div className={styles.recentThreadsLabel}>
-                  <span>Made here</span><small>Artifacts</small>
+                  <span>Files and results</span><small>Saved here</small>
                 </div>
                 {worldlineArtifacts.slice(-4).map((artifact, index) => {
                   const artifactId = stringValue(artifact.artifact_id) ?? `artifact-${index}`;
@@ -2698,15 +2716,6 @@ export function PublicChat(): JSX.Element {
                 })}
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                const trigger = lensButtonRef.current;
-                if (trigger) openIntentLens(trigger);
-              }}
-            >
-              <span aria-hidden="true">✦</span><span><strong>Change approach</strong><small>Open the faculty constellation</small></span>
-            </button>
             {currentSessionRecorded && (
               <button
                 type="button"
@@ -2714,15 +2723,15 @@ export function PublicChat(): JSX.Element {
                 onClick={() => { void deleteCurrentSession(); }}
                 disabled={deletingSession || waiting || Boolean(rollingBackId)}
               >
-                <span aria-hidden="true">⌫</span><span><strong>{deletingSession ? 'Archiving worldline…' : 'Archive this worldline…'}</strong><small>Remove from active worldlines; audit-ledger rows remain</small></span>
+                <span aria-hidden="true">⌫</span><span><strong>{deletingSession ? 'Archiving conversation…' : 'Archive conversation…'}</strong><small>Remove from the list; keep its audit record</small></span>
               </button>
             )}
             <div className={styles.menuFacts} aria-label="Privacy and response details">
               <span><small>History</small><strong>{historyLabel}</strong></span>
               <span><small>Work</small><strong>{worldState.active_job_count > 0 ? `${worldState.active_job_count} active` : 'At rest'}</strong></span>
               <span><small>Training</small><strong>Off</strong></span>
-              <span><small>Effects</small><strong>{worldState.effect_count > 0 ? `${worldState.effect_count} evidenced` : ownerCodeMode ? 'One-run airlock' : 'None'}</strong></span>
-              <span><small>Faculty</small><strong>{lastModel ?? 'Verified per response'}</strong></span>
+              <span><small>Changes</small><strong>{worldState.effect_count > 0 ? `${worldState.effect_count} recorded` : ownerCodeMode ? 'Approval required' : 'None'}</strong></span>
+              <span><small>Model</small><strong>{lastModel ?? 'Shown per response'}</strong></span>
             </div>
           </div>
         )}
@@ -2790,11 +2799,11 @@ export function PublicChat(): JSX.Element {
             aria-describedby="public-apocrypha-scope-description"
           >
             <div className={styles.scopeHeader}>
-              <div><span aria-hidden="true">◎</span><span><strong id="public-apocrypha-scope-title">Effect airlock</strong><small>Owner-governed code boundary</small></span></div>
+              <div><span aria-hidden="true">◎</span><span><strong id="public-apocrypha-scope-title">Code access</strong><small>Files and one-run approval</small></span></div>
               <button type="button" onClick={() => closeSurface(true)} aria-label="Close effect scope">×</button>
             </div>
-            <p id="public-apocrypha-scope-description">Only the exact repository paths admitted here may cross into change. Apocrypha isolates and tests the proposal before one apply.</p>
-            <label htmlFor="public-apocrypha-code-paths">Allowed repository paths</label>
+            <p id="public-apocrypha-scope-description">Only these files may change. Apocrypha tests the proposed change in isolation before applying it once.</p>
+            <label htmlFor="public-apocrypha-code-paths">Files allowed to change</label>
             <textarea
               id="public-apocrypha-code-paths"
               value={codePathInput}
@@ -2810,7 +2819,7 @@ export function PublicChat(): JSX.Element {
               }}
             />
             <div id="public-apocrypha-code-path-status" className={styles.codeScopeMeta} aria-live="polite">
-              <span>{codePaths.length}/32 paths admitted</span>
+              <span>{codePaths.length}/32 files selected</span>
               {duplicateCodePath && <strong>Each path must be unique.</strong>}
             </div>
             <label className={styles.codeConfirm}>
@@ -2846,10 +2855,10 @@ export function PublicChat(): JSX.Element {
                   });
                 }}
               />
-              <span>Authorize one isolated, tested apply on this scope. No automatic retry.</span>
+              <span>Allow one tested change to these files. No automatic retry.</span>
             </label>
             <button type="button" className={styles.scopeDone} onClick={() => closeSurface(true)}>
-              {codeApprovalCurrent ? 'Scope ready' : 'Keep scope'}
+              Done
             </button>
           </section>
         )}

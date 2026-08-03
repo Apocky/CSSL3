@@ -373,11 +373,11 @@ test('owner Forge consumes an approval bound to the exact objective and canonica
   });
 
   await page.goto('/apocrypha');
-  await page.getByRole('button', { name: /Open Field/ }).click();
-  await page.getByRole('button', { name: /Forge/ }).click();
+  await page.getByRole('button', { name: /Auto/ }).click();
+  await page.getByRole('button', { name: /Build/ }).click();
   const objective = page.getByLabel('Message Apocrypha');
-  const paths = page.getByLabel('Allowed repository paths');
-  const approval = page.getByLabel(/Authorize one isolated/);
+  const paths = page.getByLabel('Files allowed to change');
+  const approval = page.getByLabel(/Allow one tested change/);
   await objective.fill('  Repair the parser.  ');
   await paths.fill('tests/parser.test.ts\nsrc/parser.ts');
   await approval.check();
@@ -387,15 +387,15 @@ test('owner Forge consumes an approval bound to the exact objective and canonica
   await expect(approval).not.toBeChecked();
   await expect(page.getByRole('button', { name: 'Run the confirmed governed code effect' })).toBeDisabled();
   await approval.check();
-  await page.getByRole('button', { name: 'Scope ready' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Run the confirmed governed code effect' }).click();
 
-  await expect(page.getByText(/forge crossed the effect airlock/i)).toBeVisible();
+  await expect(page.getByText(/governed code change was applied/i)).toBeVisible();
   expect(codeCalls).toBe(1);
   expect(submitted.objective).toBe('Repair the parser safely.');
   expect(submitted.allowed_paths).toEqual(['src/parser.ts', 'tests/parser.test.ts']);
-  await page.getByRole('button', { name: /2 paths .* confirm/ }).click();
-  await expect(page.getByLabel(/Authorize one isolated/)).not.toBeChecked();
+  await page.getByRole('button', { name: /2 files .* approve/ }).click();
+  await expect(page.getByLabel(/Allow one tested change/)).not.toBeChecked();
 });
 
 test('uncertain Forge delivery retains the original request and never offers an effect retry', async ({ page }) => {
@@ -421,12 +421,12 @@ test('uncertain Forge delivery retains the original request and never offers an 
   });
 
   await page.goto('/apocrypha');
-  await page.getByRole('button', { name: /Open Field/ }).click();
-  await page.getByRole('button', { name: /Forge/ }).click();
+  await page.getByRole('button', { name: /Auto/ }).click();
+  await page.getByRole('button', { name: /Build/ }).click();
   await page.getByLabel('Message Apocrypha').fill('Preserve this exact effect request.');
-  await page.getByLabel('Allowed repository paths').fill('src/exact.ts');
-  await page.getByLabel(/Authorize one isolated/).check();
-  await page.getByRole('button', { name: 'Scope ready' }).click();
+  await page.getByLabel('Files allowed to change').fill('src/exact.ts');
+  await page.getByLabel(/Allow one tested change/).check();
+  await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Run the confirmed governed code effect' }).click();
 
   await expect(page.getByRole('log').getByText('Preserve this exact effect request.')).toBeVisible();
@@ -482,7 +482,7 @@ test('stored active worldline is recovered directly even when absent from the re
     .resolves.toBe(activeSessionId);
 
   await page.getByRole('button', { name: 'Conversation actions' }).click();
-  const archive = page.getByRole('button', { name: /Archive this worldline/ });
+  const archive = page.getByRole('button', { name: /Archive conversation/ });
   await expect(archive).toBeVisible();
   await expect(page.getByText(/audit-ledger rows remain/)).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
@@ -518,10 +518,10 @@ test('recovery failure mints an isolated worldline and dialog gestures keep hone
 
   await page.goto('/apocrypha');
   await expect(page.getByText(/hidden history will not be reused/)).toBeVisible();
-  const approach = page.getByRole('button', { name: /Open Field/ });
+  const approach = page.getByRole('button', { name: /Auto/ });
   await expect(approach).toHaveAttribute('aria-haspopup', 'dialog');
   await approach.click();
-  await expect(page.getByRole('dialog', { name: 'Approach constellation' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Mode' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(approach).toBeFocused();
 
@@ -558,7 +558,7 @@ test('restored worldline keeps failure, governed effect, background work, and ar
   await page.goto('/apocrypha');
   await expect(page.getByRole('log').getByText('Repair the uncertain turn.')).toBeVisible();
   await expect(page.getByRole('button', { name: /failed/i }).first()).toBeVisible();
-  await expect(page.getByText(/forge crossed the effect airlock/i)).toBeVisible();
+  await expect(page.getByText(/governed code change was applied/i)).toBeVisible();
   await page.getByRole('button', { name: 'Conversation actions' }).click();
   await expect.poll(() => snapshotReads).toBeGreaterThanOrEqual(2);
   await expect(page.getByText('Orbiting work')).toBeVisible();

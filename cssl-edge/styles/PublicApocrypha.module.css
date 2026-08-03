@@ -812,3 +812,344 @@
   .message:focus-visible,.composerShell:focus-within { outline: 2px solid Highlight; outline-offset: -2px; }
   .intentGrid button.activeIntent { outline: 2px solid Highlight; }
 }
+
+/* Direct communication channel */
+.page {
+  --bg: #070908;
+  --panel: #0b0e0d;
+  --panel-2: #101412;
+  --line: rgba(213, 226, 220, 0.11);
+  --line-strong: rgba(171, 211, 197, 0.24);
+  --text: #e9eeeb;
+  --muted: #828d88;
+  --accent: #8de0c1;
+  --accent-2: #b7a5e7;
+  background: var(--bg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.page::before {
+  opacity: 0.3;
+  background-image:
+    linear-gradient(rgba(169, 196, 185, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(169, 196, 185, 0.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(to bottom, black, transparent 78%);
+}
+
+.page::after { display: none; }
+
+.workspace {
+  width: min(100%, 1440px);
+  height: 100dvh;
+  padding: clamp(12px, 2.4vw, 34px) clamp(12px, 3.6vw, 56px);
+}
+
+.conversation {
+  grid-template-rows: 58px minmax(0, 1fr) auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(8, 11, 10, 0.965);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+}
+
+.conversationHeader {
+  width: 100%;
+  min-height: 58px;
+  margin: 0;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(13, 17, 15, 0.94);
+}
+
+.threadHeading { gap: 10px; }
+.threadHeading h1 {
+  max-width: none;
+  color: var(--text);
+  font: 700 0.82rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.04em;
+}
+.threadHeading p {
+  margin-top: 3px;
+  color: var(--muted);
+  font: 0.58rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.sessionPulse { width: 6px; height: 6px; }
+
+.contextTrigger {
+  width: auto;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #9ba59f;
+  font: 600 0.66rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0;
+}
+.contextTrigger:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.messages {
+  padding: 0 0 18px;
+  background: rgba(5, 7, 6, 0.32);
+}
+
+.emptyState {
+  width: min(100%, 1040px);
+  justify-items: start;
+  padding: clamp(72px, 13vh, 160px) clamp(28px, 5vw, 72px);
+  text-align: left;
+}
+.emptyState h2 {
+  color: #dce5e0;
+  font: 500 clamp(1.45rem, 3vw, 2.15rem)/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: -0.035em;
+}
+.emptyState > p {
+  margin: 14px 0 24px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+.emptyHints { justify-content: flex-start; }
+.emptyHints span {
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.message,
+.userMessage {
+  width: min(100%, 1120px);
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-self: stretch;
+  gap: 26px;
+  padding: 30px clamp(24px, 4vw, 52px);
+  background: transparent;
+}
+.message + .message { border-top-color: rgba(213, 226, 220, 0.07); }
+.messageMeta,
+.userMessage .messageMeta {
+  grid-column: 1;
+  grid-row: 1;
+  justify-items: start;
+}
+.role {
+  margin-top: 2px;
+  color: #86918b;
+  font: 700 0.58rem/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+.apocryphaMessage .role { color: var(--accent); }
+.userMessage .role { color: #b2a3dc; }
+.messageText,
+.userMessage .messageText {
+  grid-column: 2;
+  grid-row: 1;
+  width: auto;
+  max-width: none;
+  justify-self: stretch;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: #dce3df;
+  background: transparent;
+  box-shadow: none;
+  font: 0.93rem/1.82 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+.messageSignals { gap: 3px; }
+.evidenceMark,.effectMark,.turnStateMark,.messageMenuButton {
+  min-height: 24px;
+  border-radius: 5px;
+  font: 0.55rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.messageMenuButton {
+  width: auto;
+  padding: 0 6px;
+  opacity: 0.58;
+  letter-spacing: 0;
+}
+.receipt,.codeReceipt,.turnStateReceipt { grid-column: 2; border-radius: 8px; }
+
+.waiting {
+  width: min(100%, 1120px);
+  padding: 18px clamp(24px, 4vw, 52px) 18px 182px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.composer {
+  padding: 18px clamp(18px, 3vw, 42px) max(20px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: rgba(9, 12, 11, 0.985);
+}
+.composerShell {
+  width: min(100%, 1120px);
+  border-color: var(--line-strong);
+  border-radius: 12px;
+  background: var(--panel-2);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.22);
+}
+.composerShell:focus-within {
+  border-color: rgba(141, 224, 193, 0.52);
+  box-shadow: 0 0 0 3px rgba(141, 224, 193, 0.055);
+  transform: none;
+}
+.composerShell > textarea {
+  min-height: 104px;
+  max-height: 300px;
+  padding: 19px 20px 10px;
+  font: 0.94rem/1.65 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+.composerBar { padding: 7px 9px 9px; }
+.composerTools { gap: 5px; }
+
+.attachmentButton,
+.lensButton,
+.scopeCapsule {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #98a29d;
+  background: transparent;
+  cursor: pointer;
+  font: 600 0.64rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.attachmentButton:hover:not(:disabled),
+.lensButton:hover:not(:disabled),
+.lensButton[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  color: var(--text);
+  background: rgba(255,255,255,0.025);
+}
+.attachmentButton:disabled { opacity: 0.36; cursor: not-allowed; }
+.lensButton { gap: 8px; padding: 0 10px; border-radius: 7px; }
+.lensButton > span:first-child { display: flex; align-items: center; gap: 6px; }
+.lensButton small {
+  color: #6f7974;
+  font-size: 0.55rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.lensButton strong { font-size: 0.64rem; font-weight: 650; }
+.chevron { margin-left: 0; }
+
+.sendButton {
+  min-width: 76px;
+  min-height: 38px;
+  border: 1px solid rgba(141, 224, 193, 0.35);
+  border-radius: 8px;
+  color: #07100c;
+  background: #9be3c7;
+  box-shadow: none;
+  font: 750 0.68rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.floatingSurface {
+  border-color: var(--line-strong);
+  border-radius: 10px;
+  background: #101412;
+  box-shadow: 0 22px 64px rgba(0,0,0,0.52);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.intentPalette {
+  width: min(332px, calc(100vw - 24px));
+  padding: 8px;
+  background: #101412;
+}
+.paletteHeader { padding: 6px 7px 9px; color: #aab4af; }
+.paletteHeader > div > span { display: none; }
+.intentGrid {
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+.intentGrid::before { display: none; }
+.intentGrid button,
+.intentGrid button:first-child,
+.intentGrid button:nth-child(n) {
+  min-height: 58px;
+  grid-column: auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 10px 11px;
+  transform: none;
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+}
+.intentGrid button:hover:not(:disabled) {
+  transform: none;
+  border-color: var(--line);
+  background: rgba(255,255,255,0.025);
+}
+.intentGrid button.activeIntent {
+  border-color: rgba(141, 224, 193, 0.25);
+  color: var(--text);
+  background: rgba(141, 224, 193, 0.055);
+  box-shadow: none;
+}
+.intentGrid button > span:first-child { display: grid; min-width: 0; gap: 4px; }
+.intentGrid strong { font-size: 0.68rem; }
+.intentGrid small { color: #7f8a85; font-size: 0.61rem; }
+.intentGrid em {
+  align-self: center;
+  border-radius: 5px;
+  font-size: 0.46rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .workspace { height: 100dvh; padding: 0; }
+  .conversation { border: 0; border-radius: 0; box-shadow: none; }
+  .conversationHeader { min-height: 54px; padding-inline: 13px; }
+  .message,.userMessage {
+    width: 100%;
+    grid-template-columns: 1fr;
+    gap: 11px;
+    padding: 24px 16px;
+  }
+  .messageMeta,.userMessage .messageMeta {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .messageText,.userMessage .messageText {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .receipt,.codeReceipt,.turnStateReceipt { grid-column: 1; }
+  .waiting { width: 100%; padding: 15px 16px; }
+  .composer { padding: 12px 10px calc(10px + env(safe-area-inset-bottom)); }
+  .composerShell { border-radius: 10px; }
+  .composerShell > textarea { min-height: 86px; padding: 15px 14px 8px; }
+  .composerBar { align-items: flex-end; }
+  .composerTools { max-width: calc(100% - 52px); overflow-x: auto; scrollbar-width: none; }
+  .attachmentButton,.lensButton { flex: none; }
+  .lensButton small { display: inline; }
+  .sendButton { min-width: 44px; }
+}
+
+@media (max-width: 430px) {
+  .emptyState { padding: 64px 20px; }
+  .emptyHints { display: flex; }
+  .emptyHints span:nth-child(2) { display: none; }
+  .attachmentButton { padding-inline: 8px; }
+  .lensButton { padding-inline: 8px; }
+  .lensButton small { display: none; }
+  .chevron { display: inline; }
+}
+
+@media (forced-colors: active) {
+  .attachmentButton { border: 1px solid ButtonText; }
+}
