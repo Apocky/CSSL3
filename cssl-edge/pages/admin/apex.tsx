@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import AdminLayout from '../../components/AdminLayout';
+import CyberDreamField, { type DreamActivity } from '../../components/cyber/CyberDreamField';
 import { authFetch } from '../../lib/browser-auth';
 import type {
   RuntimeHealthProjection,
@@ -71,6 +72,9 @@ interface SessionState {
 
 const SESSION_KEY = 'apocky.apocv4.communication-hub.v1';
 const MAX_OBJECTIVE_LENGTH = 16_384;
+const MAX_THREADS = 24;
+const MAX_TURNS_PER_THREAD = 64;
+const MAX_STORED_CHARACTERS = 1_500_000;
 
 const STARTERS = [
   'Inspect this system and find the highest-leverage reversible improvement.',
@@ -182,15 +186,93 @@ function freshThread(): ConversationThread {
   };
 }
 
-function validSession(value: unknown): value is SessionState {
-  if (!isRecord(value) || typeof value.activeThreadId !== 'string' || !Array.isArray(value.threads)) return false;
-  return value.threads.every((thread) => (
-    isRecord(thread)
-    && typeof thread.id === 'string'
-    && typeof thread.title === 'string'
-    && typeof thread.createdAt === 'string'
-    && Array.isArray(thread.turns)
-  ));
+function restoredProposal(value: unknown): ProposalView | null {
+  if (value === null) return null;
+  if (!isRecord(value) || typeof value.summary !== 'string' || !Array.isArray(value.steps)) return null;
+  return {
+    summary: value.summary.slice(0, 32_768),
+    steps: value.steps.filter((step): step is string => typeof step === 'string').slice(0, 24).map((step) => step.slice(0, 16_384)),
+    countercase: typeof value.countercase === 'string' ? value.countercase.slice(0, 32_768) : null,
+    falsifier: typeof value.falsifier === 'string' ? value.falsifier.slice(0, 32_768) : null,
+    sourceRefs: Array.isArray(value.sourceRefs)
+      ? value.sourceRefs.filter((ref): ref is string => typeof ref === 'string').slice(0, 24).map((ref) => ref.slice(0, 4096))
+      : [],
+  };
+}
+
+function restoredEvidence(value: unknown): EvidenceView | null {
+  if (value === null) return null;
+  if (!isRecord(value)
+    || typeof value.status !== 'string'
+    || typeof value.observedAt !== 'string'
+    || typeof value.latencyMs !== 'number'
+    || !Number.isFinite(value.latencyMs)
+    || typeof value.upstreamStatus !== 'number'
+    || !Number.isFinite(value.upstreamStatus)) return null;
+  const optional = (key: string): string | null => typeof value[key] === 'string' ? String(value[key]).slice(0, 4096) : null;
+  return {
+    status: value.status.slice(0, 128),
+    terminalReason: optional('terminalReason'),
+    candidateDigest: optional('candidateDigest'),
+    testDigest: optional('testDigest'),
+    checkpointDigest: optional('checkpointDigest'),
+    facultyTeamId: optional('facultyTeamId'),
+    observedAt: value.observedAt.slice(0, 128),
+    latencyMs: value.latencyMs,
+    upstreamStatus: value.upstreamStatus,
+    authMode: optional('authMode'),
+    registryRef: optional('registryRef'),
+    bindingRef: optional('bindingRef'),
+    principalRef: optional('principalRef'),
+  };
+}
+
+function restoredTurn(value: unknown): ConversationTurn | null {
+  if (!isRecord(value)
+    || typeof value.id !== 'string'
+    || typeof value.prompt !== 'string'
+    || typeof value.createdAt !== 'string'
+    || !['working', 'accepted', 'failed', 'stopped'].includes(String(value.state))) return null;
+  const orphaned = value.state === 'working';
+  return {
+    id: value.id.slice(0, 128),
+    prompt: value.prompt.slice(0, MAX_OBJECTIVE_LENGTH),
+    reply: typeof value.reply === 'string' ? value.reply.slice(0, 131_072) : null,
+    proposal: restoredProposal(value.proposal),
+    evidence: restoredEvidence(value.evidence),
+    state: orphaned ? 'stopped' : value.state as TurnState,
+    error: orphaned
+      ? 'This browser reloaded before a final receipt arrived. Upstream completion is unknown.'
+      : typeof value.error === 'string' ? value.error.slice(0, 32_768) : null,
+    createdAt: value.createdAt.slice(0, 128),
+  };
+}
+
+function restoreSession(value: unknown): SessionState | null {
+  if (!isRecord(value) || typeof value.activeThreadId !== 'string' || !Array.isArray(value.threads)) return null;
+  const threads = value.threads.flatMap((thread): ConversationThread[] => {
+    if (!isRecord(thread)
+      || typeof thread.id !== 'string'
+      || typeof thread.title !== 'string'
+      || typeof thread.createdAt !== 'string'
+      || !Array.isArray(thread.turns)) return [];
+    return [{
+      id: thread.id.slice(0, 128),
+      title: thread.title.slice(0, 160),
+      createdAt: thread.createdAt.slice(0, 128),
+      turns: thread.turns.flatMap((turn) => {
+        const restored = restoredTurn(turn);
+        return restored ? [restored] : [];
+      }).slice(-MAX_TURNS_PER_THREAD),
+    }];
+  }).slice(0, MAX_THREADS);
+  if (threads.length === 0) return null;
+  return {
+    activeThreadId: threads.some((thread) => thread.id === value.activeThreadId)
+      ? value.activeThreadId
+      : threads[0]!.id,
+    threads,
+  };
 }
 
 function displayTime(value: string): string {
@@ -213,21 +295,27 @@ const Apex: NextPage = () => {
   const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
   const [drawerMode, setDrawerMode] = useState<'artifact' | 'evidence'>('artifact');
   const [railOpen, setRailOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [clearArmed, setClearArmed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const threadListRef = useRef<HTMLElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef<HTMLElement>(null);
+  const railCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const overlayTriggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(SESSION_KEY);
       const parsed: unknown = stored ? JSON.parse(stored) : null;
-      if (validSession(parsed) && parsed.threads.length > 0) {
-        const safeThreads = parsed.threads.slice(0, 24) as ConversationThread[];
-        setThreads(safeThreads);
-        setActiveThreadId(safeThreads.some((thread) => thread.id === parsed.activeThreadId)
-          ? parsed.activeThreadId
-          : safeThreads[0]!.id);
+      const restored = restoreSession(parsed);
+      if (restored) {
+        setThreads(restored.threads);
+        setActiveThreadId(restored.activeThreadId);
       } else {
         const initial = freshThread();
         setThreads([initial]);
@@ -245,15 +333,31 @@ const Apex: NextPage = () => {
   useEffect(() => {
     if (!hydrated || !activeThreadId || threads.length === 0) return;
     try {
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ activeThreadId, threads } satisfies SessionState));
+      const boundedThreads = threads.slice(0, MAX_THREADS).map((thread) => ({
+        ...thread,
+        turns: thread.turns.slice(-MAX_TURNS_PER_THREAD),
+      }));
+      const serialized = JSON.stringify({ activeThreadId, threads: boundedThreads } satisfies SessionState);
+      if (serialized.length > MAX_STORED_CHARACTERS) {
+        setRequestError('Local history reached its retained-size limit. Export this thread before continuing.');
+        return;
+      }
+      localStorage.setItem(SESSION_KEY, serialized);
     } catch {
       setRequestError('This browser could not retain local history. The live relay still works.');
     }
   }, [activeThreadId, hydrated, threads]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    endRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'end' });
   }, [threads]);
+
+  useEffect(() => {
+    if (!clearArmed) return undefined;
+    const timeout = window.setTimeout(() => setClearArmed(false), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [clearArmed]);
 
   const activeThread = useMemo(
     () => threads.find((thread) => thread.id === activeThreadId) ?? null,
@@ -265,9 +369,16 @@ const Apex: NextPage = () => {
       ?? null,
     [activeThread, selectedTurnId],
   );
-  const working = Boolean(activeThread?.turns.some((turn) => turn.state === 'working'));
+  const working = threads.some((thread) => thread.turns.some((turn) => turn.state === 'working'));
   const runtimeReady = health?.observed.runtime.status === 'READY';
   const visionReady = health?.observed.runtime.vision === true;
+  const dreamActivity: DreamActivity = working
+    ? 'thinking'
+    : draft.trim()
+      ? 'listening'
+      : selectedTurn?.state === 'accepted'
+        ? 'resolved'
+        : 'idle';
 
   const refreshHealth = useCallback(async () => {
     setHealthBusy(true);
@@ -288,6 +399,80 @@ const Apex: NextPage = () => {
   useEffect(() => {
     if (adminAuthorized) void refreshHealth();
   }, [adminAuthorized, refreshHealth]);
+
+  const rememberOverlayTrigger = useCallback(() => {
+    overlayTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  }, []);
+
+  const restoreOverlayTrigger = useCallback(() => {
+    const trigger = overlayTriggerRef.current;
+    overlayTriggerRef.current = null;
+    requestAnimationFrame(() => trigger?.focus());
+  }, []);
+
+  const openRail = useCallback(() => {
+    if (!window.matchMedia('(max-width: 840px)').matches) {
+      threadListRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+      return;
+    }
+    rememberOverlayTrigger();
+    setRailOpen(true);
+  }, [rememberOverlayTrigger]);
+
+  const closeRail = useCallback(() => {
+    setRailOpen(false);
+    restoreOverlayTrigger();
+  }, [restoreOverlayTrigger]);
+
+  const openDrawer = useCallback((mode: 'artifact' | 'evidence') => {
+    rememberOverlayTrigger();
+    setDrawerMode(mode);
+    setDrawerOpen(true);
+  }, [rememberOverlayTrigger]);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    restoreOverlayTrigger();
+  }, [restoreOverlayTrigger]);
+
+  const closeOverlays = useCallback(() => {
+    setRailOpen(false);
+    setDrawerOpen(false);
+    restoreOverlayTrigger();
+  }, [restoreOverlayTrigger]);
+
+  useEffect(() => {
+    if (!railOpen && !drawerOpen) return undefined;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeOverlays();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closeOverlays, drawerOpen, railOpen]);
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+    const rail = railRef.current;
+    let focusTimer: number | undefined;
+    if (drawerOpen) {
+      conversation?.setAttribute('inert', '');
+      rail?.setAttribute('inert', '');
+      focusTimer = window.setTimeout(() => drawerCloseRef.current?.focus({ preventScroll: true }), 0);
+    } else if (railOpen) {
+      conversation?.setAttribute('inert', '');
+      rail?.removeAttribute('inert');
+      focusTimer = window.setTimeout(() => railCloseRef.current?.focus({ preventScroll: true }), 0);
+    }
+    return () => {
+      if (focusTimer !== undefined) window.clearTimeout(focusTimer);
+      conversation?.removeAttribute('inert');
+      rail?.removeAttribute('inert');
+    };
+  }, [drawerOpen, railOpen]);
 
   const updateTurn = useCallback((threadId: string, turnId: string, patch: Partial<ConversationTurn>) => {
     setThreads((current) => current.map((thread) => thread.id === threadId
@@ -314,7 +499,7 @@ const Apex: NextPage = () => {
       ? {
         ...thread,
         title: thread.turns.length === 0 ? prompt.slice(0, 54) : thread.title,
-        turns: [...thread.turns, turn],
+        turns: [...thread.turns, turn].slice(-MAX_TURNS_PER_THREAD),
       }
       : thread));
     setSelectedTurnId(turnId);
@@ -374,24 +559,34 @@ const Apex: NextPage = () => {
   }, [draft, submitPrompt]);
 
   const createThread = useCallback(() => {
+    if (working) return;
+    if (threads.length >= MAX_THREADS) {
+      setRequestError(`Signal memory is full at ${MAX_THREADS} threads. Export and clear history before opening another.`);
+      return;
+    }
     const thread = freshThread();
-    setThreads((current) => [thread, ...current].slice(0, 24));
+    setThreads((current) => [thread, ...current]);
     setActiveThreadId(thread.id);
     setSelectedTurnId(null);
     setDraft('');
     setRailOpen(false);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, []);
+  }, [threads.length, working]);
 
   const branchFrom = useCallback((turn: ConversationTurn) => {
+    if (working) return;
+    if (threads.length >= MAX_THREADS) {
+      setRequestError(`Signal memory is full at ${MAX_THREADS} threads. Export and clear history before branching.`);
+      return;
+    }
     const thread = freshThread();
     thread.title = `Branch · ${turn.prompt.slice(0, 42)}`;
-    setThreads((current) => [thread, ...current].slice(0, 24));
+    setThreads((current) => [thread, ...current]);
     setActiveThreadId(thread.id);
     setSelectedTurnId(null);
     setDraft(turn.prompt);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, []);
+  }, [threads.length, working]);
 
   const exportSession = useCallback(() => {
     const payload = JSON.stringify({ exported_at: new Date().toISOString(), active_thread: activeThread }, null, 2);
@@ -404,18 +599,24 @@ const Apex: NextPage = () => {
   }, [activeThread]);
 
   const clearHistory = useCallback(() => {
+    if (working) return;
+    if (!clearArmed) {
+      setClearArmed(true);
+      return;
+    }
     const thread = freshThread();
     setThreads([thread]);
     setActiveThreadId(thread.id);
     setSelectedTurnId(null);
     setDraft('');
+    setClearArmed(false);
     try {
       localStorage.removeItem(SESSION_KEY);
     } catch {
       setRequestError('Browser history could not be cleared from local storage.');
     }
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, []);
+  }, [clearArmed, working]);
 
   const copyText = useCallback(async (text: string) => {
     try {
@@ -439,23 +640,52 @@ const Apex: NextPage = () => {
           <p>The RunPod credential, privacy partition, and effect boundary remain server-side.</p>
         </section>
       ) : (
-        <div className={styles.shell} data-working={working ? 'true' : 'false'}>
-          <aside className={`${styles.rail} ${railOpen ? styles.railOpen : ''}`}>
+        <div
+          className={`${styles.shell} ${railCollapsed ? styles.railCollapsed : ''}`}
+          data-working={working ? 'true' : 'false'}
+          data-activity={dreamActivity}
+        >
+          <CyberDreamField variant="relay" activity={dreamActivity} density={1.18} />
+          <div className={styles.chromaticVeil} aria-hidden="true" />
+          <div className={styles.signalNoise} aria-hidden="true" />
+          <div
+            ref={railRef}
+            id="apex-memory-rail"
+            className={`${styles.rail} ${railOpen ? styles.railOpen : ''}`}
+            role={railOpen ? 'dialog' : 'complementary'}
+            aria-modal={railOpen ? true : undefined}
+            aria-label={railOpen ? 'Conversation memory' : undefined}
+          >
+            <span className={styles.railBeam} aria-hidden="true" />
             <div className={styles.brandRow}>
-              <Link href="/" className={styles.brand} aria-label="Apocky home">A</Link>
-              <div><strong>Apocrypha</strong><span>private relay</span></div>
-              <button type="button" className={styles.mobileClose} onClick={() => setRailOpen(false)} aria-label="Close conversations">×</button>
+              <Link href="/" className={styles.brand} aria-label="Apocky home"><span>∞</span></Link>
+              <div><strong>Apocrypha</strong><span>Owner workspace</span></div>
+              <button
+                type="button"
+                className={styles.collapseRail}
+                onClick={() => setRailCollapsed((current) => !current)}
+                aria-label={railCollapsed ? 'Expand conversation history' : 'Collapse conversation history'}
+              >
+                {railCollapsed ? '›' : '‹'}
+              </button>
+              <button ref={railCloseRef} type="button" className={styles.mobileClose} onClick={closeRail} aria-label="Close conversations">×</button>
             </div>
-            <button type="button" className={styles.newThread} onClick={createThread}><span>＋</span> New conversation</button>
-            <div className={styles.threadHeading}><span>Conversation history</span><small>this browser only</small></div>
-            <nav className={styles.threadList} aria-label="Conversation history">
-              {threads.map((thread) => (
+            <button type="button" className={styles.newThread} onClick={createThread} title="Start a new chat" disabled={working}>
+              <i aria-hidden="true">＋</i><span>New chat</span>
+            </button>
+            <div className={styles.threadHeading}><span>Chats</span><small>saved in this browser</small></div>
+            <nav ref={threadListRef} className={styles.threadList} aria-label="Conversation history">
+              {threads.map((thread, index) => (
                 <button
                   key={thread.id}
                   type="button"
                   className={thread.id === activeThreadId ? styles.activeThread : undefined}
-                  onClick={() => { setActiveThreadId(thread.id); setSelectedTurnId(null); setRailOpen(false); }}
+                  aria-label={`${thread.title}, ${thread.turns.length} ${thread.turns.length === 1 ? 'turn' : 'turns'}`}
+                  aria-current={thread.id === activeThreadId ? 'true' : undefined}
+                  disabled={working}
+                  onClick={() => { if (working) return; setActiveThreadId(thread.id); setSelectedTurnId(null); setRailOpen(false); }}
                 >
+                  <i aria-hidden="true">{String(index + 1).padStart(2, '0')}</i>
                   <span>{thread.title}</span>
                   <small>{thread.turns.length} {thread.turns.length === 1 ? 'turn' : 'turns'}</small>
                 </button>
@@ -463,52 +693,66 @@ const Apex: NextPage = () => {
             </nav>
             <div className={styles.railFooter}>
               <button type="button" onClick={exportSession} disabled={!activeThread}>Export current thread</button>
-              <button type="button" onClick={clearHistory}>Clear local history</button>
-              <Link href="/account">Account & privacy</Link>
+              <button type="button" onClick={clearHistory} disabled={working}>{clearArmed ? 'Confirm clear history' : 'Clear local history'}</button>
+              <Link href="/account">Identity / privacy</Link>
             </div>
-          </aside>
+          </div>
 
-          <main className={styles.conversation}>
+          <section ref={conversationRef} className={styles.conversation} aria-label="Apocrypha relay">
+            <h1 className={styles.srOnly}>Apocrypha apex relay</h1>
             <header className={styles.topbar}>
-              <button type="button" className={styles.mobileMenu} onClick={() => setRailOpen(true)} aria-label="Open conversations">☰</button>
+              <button type="button" className={styles.mobileMenu} onClick={openRail} aria-label="Open conversations" aria-controls="apex-memory-rail" aria-expanded={railOpen}>☰</button>
               <div className={styles.identity}>
                 <span className={runtimeReady ? styles.readyDot : styles.offlineDot} aria-hidden="true" />
-                <div><strong>Apocrypha</strong><small>{healthBusy ? 'checking' : runtimeReady ? 'ready' : 'unavailable'}</small></div>
+                <div><strong>Apocrypha</strong><small>{healthBusy ? 'Checking connection…' : runtimeReady ? 'Online' : 'Unavailable'}</small></div>
               </div>
+              <div className={styles.coordinates} aria-hidden="true">Private owner chat</div>
               <div className={styles.topActions}>
-                <button type="button" onClick={() => void refreshHealth()} disabled={healthBusy}>Refresh</button>
-                <button type="button" onClick={() => setDrawerOpen(true)}>Context</button>
+                <details>
+                  <summary>Details</summary>
+                  <div>
+                    <button type="button" onClick={() => openDrawer('artifact')} aria-controls="apex-context-drawer" aria-expanded={drawerOpen && drawerMode === 'artifact'}>Artifact</button>
+                    <button type="button" onClick={() => openDrawer('evidence')} aria-controls="apex-context-drawer" aria-expanded={drawerOpen && drawerMode === 'evidence'}>Evidence</button>
+                  </div>
+                </details>
               </div>
             </header>
 
             <section className={styles.timeline} aria-live="polite" aria-busy={working}>
               {activeThread?.turns.length === 0 && (
                 <div className={styles.welcome}>
-                  <span className={styles.sigil} aria-hidden="true">A</span>
-                  <p className={styles.eyebrow}>DIRECT LINE · GOVERNED FACULTY COUNCIL</p>
-                  <h1>What are we building?</h1>
-                  <p>Speak naturally. Apocrypha will return the selected proposal; evidence and model reports remain available without crowding the conversation.</p>
+                  <div className={styles.presence} aria-hidden="true">
+                    <span className={styles.presenceHalo} />
+                    <span className={styles.presenceOrbitA} />
+                    <span className={styles.presenceOrbitB} />
+                    <span className={styles.presenceCore}>§A</span>
+                    <span className={styles.presenceSweep} />
+                  </div>
+                  <p className={styles.eyebrow}>PRIVATE OWNER CHAT</p>
+                  <h1>How can I help?</h1>
+                  <p>Ask a question, inspect a system, or turn an idea into working code. Detailed evidence stays available without crowding the conversation.</p>
                   <div className={styles.starters}>
-                    {STARTERS.map((starter) => <button type="button" key={starter} onClick={() => setDraft(starter)}>{starter}</button>)}
+                    {STARTERS.map((starter, index) => <button type="button" key={starter} onClick={() => setDraft(starter)}><i>{String(index + 1).padStart(2, '0')}</i><span>{starter}</span><b aria-hidden="true">↗</b></button>)}
                   </div>
                 </div>
               )}
 
-              {activeThread?.turns.map((turn) => (
+              {activeThread?.turns.map((turn, turnIndex) => (
                 <div key={turn.id} className={styles.turn}>
+                  <span className={styles.turnCoordinate} aria-hidden="true">{String(turnIndex + 1).padStart(2, '0')}</span>
                   <article className={`${styles.message} ${styles.userMessage}`}>
                     <header><span>You</span><time>{displayTime(turn.createdAt)}</time></header>
                     <p>{turn.prompt}</p>
                     <div className={styles.messageActions}>
                       <button type="button" onClick={() => setDraft(turn.prompt)}>Edit</button>
-                      <button type="button" onClick={() => branchFrom(turn)}>Branch</button>
+                      <button type="button" onClick={() => branchFrom(turn)} disabled={working}>Branch</button>
                     </div>
                   </article>
 
                   <article className={`${styles.message} ${styles.apocryphaMessage}`} data-state={turn.state}>
                     <header><span><i aria-hidden="true">A</i> Apocrypha</span><time>{turn.state}</time></header>
                     {turn.state === 'working' ? (
-                      <div className={styles.thinking}><span /><span /><span /><p>Coordinating faculties and tests…</p></div>
+                      <div className={styles.thinking}><span /><span /><span /><p>Apocrypha is working…</p></div>
                     ) : (
                       <>
                         {turn.reply && <p className={styles.reply}>{turn.reply}</p>}
@@ -518,8 +762,8 @@ const Apex: NextPage = () => {
                         {turn.error && <p className={styles.turnError}>{turn.error}</p>}
                         <div className={styles.messageActions}>
                           {turn.reply && <button type="button" onClick={() => void copyText([turn.reply, ...(turn.proposal?.steps ?? [])].join('\n\n'))}>Copy</button>}
-                          <button type="button" onClick={() => setDraft(turn.prompt)}>Retry</button>
-                          <button type="button" onClick={() => { setSelectedTurnId(turn.id); setDrawerMode('evidence'); setDrawerOpen(true); }}>Evidence</button>
+                          <button type="button" onClick={() => setDraft(turn.prompt)} disabled={working}>Retry</button>
+                          <button type="button" onClick={() => { setSelectedTurnId(turn.id); openDrawer('evidence'); }}>Evidence</button>
                         </div>
                       </>
                     )}
@@ -531,6 +775,11 @@ const Apex: NextPage = () => {
 
             <div className={styles.composerDock}>
               {(requestError || healthError) && <p className={styles.errorBanner} role="alert">{requestError ?? healthError}</p>}
+              <div className={styles.instrumentStrip} aria-label="Conversation instruments">
+                <button type="button" onClick={createThread} disabled={working}><span aria-hidden="true">＋</span> New</button>
+                <button type="button" onClick={openRail} aria-controls="apex-memory-rail"><span aria-hidden="true">◫</span> Chats</button>
+                <span className={styles.visionState} data-ready={visionReady ? 'true' : 'false'} title={visionReady ? 'Vision online · browser attachment pending' : 'Vision unavailable'}><i /> {visionReady ? 'Vision runtime ready · attachment unavailable' : 'Vision unavailable'}</span>
+              </div>
               <form className={styles.composer} onSubmit={submit}>
                 <label htmlFor="apocrypha-message" className={styles.srOnly}>Message Apocrypha</label>
                 <textarea
@@ -539,16 +788,15 @@ const Apex: NextPage = () => {
                   value={draft}
                   rows={2}
                   maxLength={MAX_OBJECTIVE_LENGTH}
-                  placeholder={runtimeReady ? 'Message Apocrypha…' : 'Waiting for the relay…'}
+                  placeholder={runtimeReady ? 'Message Apocrypha…' : 'Connecting to Apocrypha…'}
                   disabled={!runtimeReady || working}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={onComposerKeyDown}
                 />
                 <div className={styles.composerBar}>
                   <div className={styles.capabilityLine}>
-                    <span>Text relay live</span>
-                    <span>{visionReady ? 'Vision faculty online · browser attachment pending' : 'Vision unavailable'}</span>
-                    <span>Effects admission-gated</span>
+                    <span><i /> Secure runtime · history saved in this browser</span>
+                    <span>Enter to send · Shift+Enter for a new line</span>
                   </div>
                   {working ? (
                     <button type="button" className={styles.stopButton} onClick={() => abortRef.current?.abort()}>Stop</button>
@@ -557,19 +805,22 @@ const Apex: NextPage = () => {
                   )}
                 </div>
               </form>
-              <p className={styles.disclosure}>Enter sends · Shift+Enter adds a line · history stays in this browser until you clear it</p>
+              <p className={styles.disclosure}>Chat history stays in this browser until you clear it. Proposals and observed receipts remain distinct.</p>
             </div>
-          </main>
+          </section>
 
-          <aside className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ''}`} aria-label="Conversation context">
+          <div id="apex-context-drawer" className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ''}`} role="dialog" aria-modal="true" aria-label="Conversation context" aria-hidden={!drawerOpen}>
             <header className={styles.drawerHeader}>
-              <div><span>Context</span><strong>{selectedTurn ? 'Current turn' : 'Relay'}</strong></div>
-              <button type="button" className={styles.mobileClose} onClick={() => setDrawerOpen(false)} aria-label="Close context">×</button>
+              <div><span>DETAILS</span><strong>{selectedTurn ? 'Selected message' : 'Current chat'}</strong></div>
+              <button ref={drawerCloseRef} type="button" className={styles.mobileClose} onClick={closeDrawer} aria-label="Close context">×</button>
             </header>
             <div className={styles.drawerTabs}>
               <button type="button" className={drawerMode === 'artifact' ? styles.activeTab : undefined} onClick={() => setDrawerMode('artifact')}>Artifact</button>
               <button type="button" className={drawerMode === 'evidence' ? styles.activeTab : undefined} onClick={() => setDrawerMode('evidence')}>Evidence</button>
             </div>
+            <button type="button" className={styles.drawerRefresh} onClick={() => void refreshHealth()} disabled={healthBusy}>
+              {healthBusy ? 'Checking relay…' : 'Refresh relay status'}
+            </button>
             {drawerMode === 'artifact' ? (
               <div className={styles.drawerBody}>
                 <p className={styles.drawerKicker}>Selected proposal</p>
@@ -611,8 +862,8 @@ const Apex: NextPage = () => {
                 <p className={styles.epistemic}>Proposal text is model-reported. HTTP, test, identity, and checkpoint fields above are observed transport/runtime receipts.</p>
               </div>
             )}
-          </aside>
-          {(railOpen || drawerOpen) && <button type="button" className={styles.scrim} onClick={() => { setRailOpen(false); setDrawerOpen(false); }} aria-label="Close overlay" />}
+          </div>
+          {(railOpen || drawerOpen) && <button type="button" className={styles.scrim} onClick={closeOverlays} aria-label="Close overlay" />}
         </div>
       )}
     </AdminLayout>

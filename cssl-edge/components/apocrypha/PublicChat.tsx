@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authFetch } from '@/lib/browser-auth';
 import { useSiteSession } from '@/components/hub/SiteSession';
+import CyberDreamField from '@/components/cyber/CyberDreamField';
 import styles from '@/styles/PublicApocrypha.module.css';
 
 type MessageRole = 'user' | 'apocrypha';
@@ -237,6 +238,7 @@ export function PublicChat(): JSX.Element {
 
   return (
     <div className={styles.page} data-public-apocrypha="native-v2">
+      <CyberDreamField variant="relay" activity={waiting ? 'thinking' : draft.trim() ? 'listening' : 'idle'} density={0.78} viewport />
       <a className={styles.skipLink} href="#apocrypha-conversation">Skip to conversation</a>
 
       <header className={styles.header}>
@@ -246,7 +248,7 @@ export function PublicChat(): JSX.Element {
         </Link>
         <div className={styles.identity}>
           <span className={styles.identityName}>Apocrypha</span>
-          <span className={styles.identityMeta}>native V2 · text</span>
+          <span className={styles.identityMeta}>Secure chat</span>
         </div>
         <nav className={styles.nav} aria-label="Apocrypha navigation">
           <Link href="/clearing">The Clearing</Link>
@@ -260,8 +262,8 @@ export function PublicChat(): JSX.Element {
         <section className={styles.conversation} aria-label="Conversation with Apocrypha">
           <div className={styles.conversationHeader}>
             <div>
-              <p className={styles.eyebrow}>DIRECT CONVERSATION</p>
-              <h1>Speak plainly.</h1>
+              <p className={styles.eyebrow}>APOCRYPHA</p>
+              <h1>New conversation</h1>
             </div>
             <div className={styles.headerActions}>
               <span
@@ -277,7 +279,7 @@ export function PublicChat(): JSX.Element {
                 onClick={newConversation}
                 disabled={waiting || !conversationId}
               >
-                New
+                New chat
               </button>
             </div>
           </div>
@@ -290,25 +292,24 @@ export function PublicChat(): JSX.Element {
           >
             {messages.length === 0 && (
               <div className={styles.emptyState}>
-                <p className={styles.emptyKicker}>ONE TURN · ONE FINAL RESPONSE</p>
-                <h2>A direct line to the current body.</h2>
+                <div className={styles.emptyKicker} aria-hidden="true">A</div>
+                <h2>How can I help?</h2>
                 <p>
-                  This interface admits signed-in text turns only. It verifies
-                  a committed native response and fails closed if the body
-                  returns something else.
+                  Talk with Apocrypha in plain language. Each response is
+                  validated before it appears here.
                 </p>
                 <dl className={styles.contract}>
                   <div>
-                    <dt>Conversation memory</dt>
-                    <dd>Ephemeral</dd>
+                    <dt>Chat history</dt>
+                    <dd>This session</dd>
                   </div>
                   <div>
                     <dt>Training consent</dt>
                     <dd>Off</dd>
                   </div>
                   <div>
-                    <dt>External inference</dt>
-                    <dd>Denied</dd>
+                    <dt>External models</dt>
+                    <dd>Off</dd>
                   </div>
                 </dl>
               </div>
@@ -341,7 +342,7 @@ export function PublicChat(): JSX.Element {
             {waiting && (
               <div className={styles.waiting} role="status">
                 <span className={styles.waitingMark} aria-hidden="true" />
-                Apocrypha is forming one final response…
+                Apocrypha is thinking…
               </div>
             )}
 
@@ -407,8 +408,7 @@ export function PublicChat(): JSX.Element {
               </div>
               <div className={styles.composerMeta}>
                 <p id="public-apocrypha-disclosure">
-                  Sending commits a restricted observation to the V2 body.
-                  This page does not opt it into training or retained conversation memory.
+                  Messages stay out of training and are not retained as cross-session history.
                 </p>
                 <span id="public-apocrypha-count">
                   {currentBytes.toLocaleString()} / {MAX_TEXT_BYTES.toLocaleString()} bytes
@@ -434,41 +434,22 @@ export function PublicChat(): JSX.Element {
           )}
         </section>
 
-        <aside className={styles.truthRail} aria-label="Current interaction contract">
-          <div className={styles.truthIntro}>
-            <p className={styles.eyebrow}>INTERACTION CONTRACT</p>
-            <h2>Nothing hidden.</h2>
-            <p>
-              The page keeps this transcript only in the current view. A refresh
-              starts a new client conversation.
-            </p>
-          </div>
-          <dl className={styles.truthList}>
-            <div>
-              <dt>Route</dt>
-              <dd>Authenticated member → native V2</dd>
+        <aside className={styles.truthRail} aria-label="Privacy and response details">
+          <details>
+            <summary>Privacy &amp; response details</summary>
+            <div className={styles.truthIntro}>
+              <h2>Your current chat</h2>
+              <p>This transcript stays in this view. Refreshing starts a new conversation.</p>
             </div>
-            <div>
-              <dt>Expression</dt>
-              <dd>{lastExpression ?? 'Verified with each response'}</dd>
-            </div>
-            <div>
-              <dt>Retry identity</dt>
-              <dd>Same turn, same commit</dd>
-            </div>
-            <div>
-              <dt>Effects</dt>
-              <dd>Deny-all membrane</dd>
-            </div>
-            <div>
-              <dt>History</dt>
-              <dd>No cross-session transcript</dd>
-            </div>
-          </dl>
-          <p className={styles.truthFoot}>
-            This is not the social room. Visit <Link href="/clearing">The Clearing</Link>{' '}
-            to speak with people.
-          </p>
+            <dl className={styles.truthList}>
+              <div><dt>Connection</dt><dd>Signed-in member → Apocrypha</dd></div>
+              <div><dt>Response mode</dt><dd>{lastExpression ?? 'Verified with each response'}</dd></div>
+              <div><dt>Retry</dt><dd>Same request, no duplicate turn</dd></div>
+              <div><dt>Effects</dt><dd>Disabled for public chat</dd></div>
+              <div><dt>History</dt><dd>Not retained across sessions</dd></div>
+            </dl>
+            <p className={styles.truthFoot}>This is not the social room. Visit <Link href="/clearing">The Clearing</Link> to speak with people.</p>
+          </details>
         </aside>
       </main>
     </div>
