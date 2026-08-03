@@ -1,0 +1,110 @@
+§ APOCV4 OWNER-ROUTE PROMOTION PARITY · 2026-08-02 MST
+
+§M identity
+  baseline.deployment := dpl_EVgBVvQofhXAnNAHgqWMyrGTogGj
+  baseline.url := https://apocky-gd7f6vl6x-shawn-bakers-projects-cb1c9715.vercel.app
+  candidate.deployment := dpl_5u7CjWa8UiERMcKE4Fgz6dYzgj6V
+  candidate.url := https://apocky-h9zlp538o-shawn-bakers-projects-cb1c9715.vercel.app
+  candidate.source := 20adef7177bd4e682a86ac5eacc2f9beaad6819c
+  snapshot.fix.local-only := d1c46a33ecc78a36c7acc111e6f8fa04ca82da8e
+  evidence.time := 2026-08-02T20:42..20:59-07:00
+  authority := audit+detached-candidate-fix ; N! promote|delete
+
+§E evidence.method
+  ✓ Vercel.inspect output-set+config comparison
+  ✓ immutable-deployment HTTP via Vercel-protection-bypass
+  ✓ raw.sha256 := exact response bytes
+  ✓ semantic.sha256 := HTML scripts+styles+links+tags removed, entities decoded,
+      deployment IDs+ISO timestamps normalized, whitespace collapsed
+  W! volatile route status N! efficacy ; existence/boundary evidence only
+
+§R owner.route.only.delta
+  ✓ candidate adds /admin/apex : baseline=404 → candidate=200
+  ✓ candidate adds /api/admin/apocv4/health : baseline=404 → candidate=401 anonymous
+  ✓ candidate adds /api/admin/apocv4/objective : baseline=404 → candidate={405 GET,401 POST anonymous}
+  ✓ deployed limits := health 20s ; objective 300s ; nodejs24.x ; 2048MiB
+  ✓ isolated 20adef7 tests+tsc+Next build pass without original 2_031-row dirty source
+  ∴ owner-route implementation has no additional dirty application dependency
+
+§R output-set
+  baseline.outputs := 164 ; stable.paths := 137
+  candidate.outputs := 102 ; stable.paths := 99
+  manifest.delta := 42 baseline-only + 4 candidate-only
+  baseline-only.current-API := {
+    api/admin/apocrypha/{capabilities,diagnostics,health,organarium},
+    api/admin/apocrypha/vision/session,
+    api/admin/apocrypha/vision/session/[session_ref],
+    api/admin/apocrypha/vision/session/[session_ref]/{control,frame},
+    api/apocrypha/{chat,presence}}
+  baseline.rewrites := {/atlas→/commons/atlas.html,
+                        /membership→/commons/membership.html,
+                        /principles→/commons/principles.html}
+  candidate.rewrites := ∅
+  baseline.docs.generated := 25 ; candidate.docs.generated := 0
+
+§R live.load-bearing
+  # format: route | baseline(status,semantic.sha256) | candidate(status,semantic.sha256)
+  / | 200,68d665d39ed290bb9ca6209b6af811ca2501fbab6e685dc297eceb106ee39ec3
+    | 200,5834f9618e7a8f1d0891498d27dd8c86771bfa1f8a1ceb0944fabea796e74d36
+  /chat | 308→/apocrypha,ca9ed2f93e5134e5f8cef7122b4ba3cd8b56cd23b17a45f1a193f1b24b0f3752
+        | 200,c4fe252a37f95f327297996757ee4f9fa28ed44d754a7cb484e44d8258daa60f
+  /apocrypha | 200,9957b9e9c8ab7388a7941ba0b6d78998b447972b0cf367e16721ba768db27fd4
+             | 307→/chat,6ea4b827d2eeb8f5e5f2e0a48da704324a44fbd13c123d5abf91694a356ddeec
+  /atlas | 200,ee51ddac2577460ff9ff78c85a58cf3ddc5669ef61f928628afdf8fb4b769e33
+         | 404,5c2a6b7938ac07d8538c086dde50e222a1dd38cfda6006b42d0a61ecf1f65207
+  /membership | 200,7d44e07d4b13a4e5fd1408cf643a3760e1c63b1163434e1bf12420065d865708
+              | 404,5c2a6b7938ac07d8538c086dde50e222a1dd38cfda6006b42d0a61ecf1f65207
+  /principles | 200,2e39b5923687a5a6d78c634f93deda59febf82e0517815648bdd7e73ee48f5fc
+              | 404,5c2a6b7938ac07d8538c086dde50e222a1dd38cfda6006b42d0a61ecf1f65207
+  /docs | 200,6883f8fb645bf899ac56146f430d5babcb3e441a7ab780456c8c165072fadd2f
+        | 200,c42d18a5ac465a2d0efd66be65681beb716bfd6bca5f28350d68a7a7619f6693
+  /docs/00_THESIS | 200,121c5dd646da60df11d050305e8e3ce29f81d0b4f34f8ab1d8ef1ef25ce17d1f
+                    | 404,5c2a6b7938ac07d8538c086dde50e222a1dd38cfda6006b42d0a61ecf1f65207
+  /api/apocrypha/presence | baseline=non404 JSON ; candidate=404 HTML
+  /api/admin/apocrypha/health | baseline=401 JSON ; candidate=404 HTML
+  /api/health | 200,00ed75f9fdf50c41e5d0e94beb9726aada98ee7f0686f0dc8a6e59ce58ccb226
+              | 200,00ed75f9fdf50c41e5d0e94beb9726aada98ee7f0686f0dc8a6e59ce58ccb226
+  /admin/apocrypha | 308→/admin/chat,4b43c837b3e72c4f32a754c0f6a642584c6b827d973777b110d458277e518384
+                   | 308→/admin/chat,4b43c837b3e72c4f32a754c0f6a642584c6b827d973777b110d458277e518384
+
+§R additional.live-delta
+  ✓ candidate turns baseline 404 routes /content/{feed,search,subscribed,trending} into 200 pages
+  ✓ common-200 content differs @ {/buy,/admin/chat,/legal/privacy,/download,/infinity-engine}
+  ∴ candidate contains uncontrolled additions+older page variants ; N! owner-only promotion
+
+§F snapshot.exact-fix
+  cause := prebuild read missing sibling `/vercel/specs/grand-vision`
+           → overwrote committed lib/specs-snapshot.ts with SPECS=[]
+  fix := missing sibling → validate+preserve committed nonempty generated module
+       ; sibling present → regenerate normally
+       ; sibling+snapshot missing|snapshot invalid|empty → fail build
+  exact.committed.snapshot.git-sha1 := f35703bf327253d2e8c535eb9ca724587c4e8e34
+  ✓ source-present regeneration := 25 specs + identical hash
+  ✓ source-missing fixture := 25 specs + identical bytes
+  ✓ source+snapshot missing fixture := nonzero fail + exact error match
+  ✓ docs test 3/3 + owner tests + tsc + local 68-page build
+  N! fix deployed ; immutable candidate remains empty-snapshot evidence
+
+§A alias+promotion.state
+  ✓ apocky.com → dpl_EVgBVvQofhXAnNAHgqWMyrGTogGj
+  ✓ project aliases restored+readback → dpl_EVgBVvQofhXAnNAHgqWMyrGTogGj
+  ✓ candidate reachable only by immutable deployment URL after alias restoration
+  N! promotion
+
+§D decision
+  ✗ PROMOTION_PARITY
+  N! promote dpl_5u7CjWa8UiERMcKE4Fgz6dYzgj6V
+  reason := public-route removals + redirect inversion + API removal + rewrite removal
+            + empty docs + widespread content-hash drift + unexpected exposure
+  smallest.complete.path := baseline-source-seal
+    + exact owner seven-file commit 20adef7
+    + snapshot fix d1c46a3
+    → clean candidate build
+    → full route/status/semantic-hash parity
+    ; allowed delta := {/admin/apex,/api/admin/apocv4/{health,objective}}
+  strongest.countercase := owner routes themselves are green and isolated
+  response := Vercel promotes one whole deployment, not three isolated routes
+  falsifier := new candidate matches baseline live routes+rewrites+API boundaries+content hashes
+               except explicit owner delta, with 25/25 docs and no unexpected route exposure
+
+∎
