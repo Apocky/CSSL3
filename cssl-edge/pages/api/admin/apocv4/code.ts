@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+import { getAdminAuthorization } from '@/lib/admin-auth';
 import {
   APOCV4_PROXY_SCHEMA,
   RuntimeProxyError,
@@ -9,8 +10,14 @@ import {
   submitRuntimeCode,
   validateRuntimeCodePaths,
 } from '@/lib/apocv4/runtime-proxy';
+import { publicMemberPrincipalRef } from '@/lib/apocv4/session-principal';
 import { hasSameOrigin } from '@/lib/auth-session';
-import { requireApocryphaOwner, setPrivateNoStore } from '@/lib/apocrypha/proxy';
+import {
+  isOpaqueClientRequestId,
+  isOpaqueConversationId,
+  scopeRequestId,
+  setPrivateNoStore,
+} from '@/lib/apocrypha/proxy';
 import { envelope } from '@/lib/response';
 import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
@@ -30,16 +37,20 @@ let codeEffectInFlight = false;
 interface CodeBody {
   objective: string;
   allowedPaths: string[];
+  sessionId: string;
+  requestId: string;
 }
 
 function exactCodeBody(value: unknown): CodeBody | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
   if (
-    Object.keys(body).length !== 3
+    Object.keys(body).length !== 5
     || !Object.hasOwn(body, 'objective')
     || !Object.hasOwn(body, 'allowed_paths')
     || !Object.hasOwn(body, 'confirm_apply')
+    || !Object.hasOwn(body, 'session_id')
+    || !Object.hasOwn(body, 'request_id')
     || body.confirm_apply !== true
   ) return null;
   const objective = body.objective;
@@ -49,8 +60,16 @@ function exactCodeBody(value: unknown): CodeBody | null {
     || objective.length < 1
     || Buffer.byteLength(objective, 'utf8') > 32_768
   ) return null;
+  if (!isOpaqueConversationId(body.session_id) || !isOpaqueClientRequestId(body.request_id)) {
+    return null;
+  }
   try {
-    return { objective, allowedPaths: validateRuntimeCodePaths(body.allowed_paths) };
+    return {
+      objective,
+      allowedPaths: validateRuntimeCodePaths(body.allowed_paths),
+      sessionId: body.session_id.toLowerCase(),
+      requestId: body.request_id.toLowerCase(),
+    };
   } catch {
     return null;
   }
@@ -94,8 +113,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     return;
   }
-  const owner = await requireApocryphaOwner(req, res);
-  if (!owner) return;
+  const authorization = await getAdminAuthorization(req);
+  if (!authorization.authorized || !authorization.user) {
+    res.status(authorization.user ? 403 : 401).json({
+      error: authorization.reason ?? 'Owner authorization required.',
+      authorized: false,
+      ...envelope(),
+    });
+    return;
+  }
+  const sessionPrincipal = publicMemberPrincipalRef(authorization.user.id);
   const body = exactCodeBody(req.body);
   if (!body) {
     res.status(400).json({
@@ -114,6 +141,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     objective: body.objective,
     privacy_partition: OWNER_PRIVACY_PARTITION,
     allowed_paths: body.allowedPaths,
+    session_id: body.sessionId,
+    session_principal: sessionPrincipal,
+    request_id: scopeRequestId(sessionPrincipal, body.requestId),
+    session_binding_mac: '0'.repeat(64),
   }), 'utf8');
   if (runtimeBodyBytes > MAX_RUNTIME_BODY_BYTES) {
     res.status(413).json({
@@ -162,7 +193,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       objective_digest: objectiveDigest,
       path_set_digest: pathSetDigest,
       path_count: body.allowedPaths.length,
-      principal_ref: owner.principalRef,
+      principal_ref: sessionPrincipal,
     },
   });
   try {
@@ -170,8 +201,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       objective: body.objective,
       allowedPaths: body.allowedPaths,
       privacyPartition: OWNER_PRIVACY_PARTITION,
+      sessionId: body.sessionId,
+      sessionPrincipal,
+      requestId: scopeRequestId(sessionPrincipal, body.requestId),
     }, traceparentFor(trace));
-    res.status(200).json({ ...result, ...envelope() });
+    res.status(200).json({
+      ...result,
+      observed: {
+        ...result.observed,
+        runtime: {
+          ...result.observed.runtime,
+          session_id: body.sessionId,
+          request_id: body.requestId,
+        },
+      },
+      ...envelope(),
+    });
     const state = typeof result.observed.runtime.state === 'string'
       ? result.observed.runtime.state
       : 'UNKNOWN';

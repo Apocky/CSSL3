@@ -8,9 +8,8 @@ import {
   scopeConversationId,
   scopeRequestId,
 } from '@/lib/apocrypha/proxy';
-import chatHandler, {
-  publicMemberPrincipalRef,
-} from '@/pages/api/apocrypha/chat';
+import { publicMemberPrincipalRef } from '@/lib/apocv4/runtime-proxy';
+import chatHandler from '@/pages/api/apocrypha/chat';
 
 interface Output {
   statusCode: number;
@@ -128,7 +127,7 @@ function runtimeChatEnvelope(
         effect_authority: 'NONE',
         tool_authority: 'READ_ONLY_CONTEXT',
         memory_scope: ownerProfile ? 'owner_partitioned_retrieval' : 'public_safe_retrieval',
-        conversation_history: 'session_bounded',
+        conversation_history: 'durable_principal_bound',
         training_consent: false,
       },
       identity: {
@@ -178,13 +177,14 @@ async function main(): Promise<void> {
   process.env.APOCV4_RUNTIME_DIRECT_PORT = '9443';
   process.env.APOCV4_RUNTIME_TRANSPORT = 'test-fetch';
   process.env.APOCV4_API_TOKEN = RUNTIME_TOKEN;
-  process.env.APOCV4_PUBLIC_API_TOKEN = PUBLIC_RUNTIME_TOKEN;
+    process.env.APOCV4_PUBLIC_API_TOKEN = PUBLIC_RUNTIME_TOKEN;
+    process.env.APOCV4_SESSION_BINDING_SECRET = 's'.repeat(64);
 
-  const conversationId = randomUUID();
+  const sessionId = randomUUID();
   const requestId = randomUUID();
   const baseBody = {
     text: 'Hello, Apocrypha.',
-    conversation_id: conversationId,
+    session_id: sessionId,
     request_id: requestId,
   };
 
@@ -195,8 +195,8 @@ async function main(): Promise<void> {
   assert(principalA !== principalB, 'different members receive different principals');
   assert(!principalA.includes('member-a'), 'raw member identity is not embedded');
   assert(
-    scopeConversationId(principalA, conversationId)
-      !== scopeConversationId(principalB, conversationId),
+    scopeConversationId(principalA, sessionId)
+      !== scopeConversationId(principalB, sessionId),
     'one browser conversation UUID is isolated across members',
   );
   assert(
@@ -220,7 +220,10 @@ async function main(): Promise<void> {
     });
     return new Response(JSON.stringify(runtimeChatEnvelope(body)), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Apocv4-Session-Binding': 'VERIFIED',
+      },
     });
   };
 
@@ -252,11 +255,11 @@ async function main(): Promise<void> {
   await chatHandler(malformedBody.req, malformedBody.res);
   equal(malformedBody.out.statusCode, 400, 'array body is rejected');
 
-  const invalidConversation = reqRes('POST', {
-    body: { ...baseBody, conversation_id: 'not-a-uuid' },
+  const invalidSession = reqRes('POST', {
+    body: { ...baseBody, session_id: 'not-a-uuid' },
   });
-  await chatHandler(invalidConversation.req, invalidConversation.res);
-  equal(invalidConversation.out.statusCode, 400, 'invalid conversation UUID is rejected');
+  await chatHandler(invalidSession.req, invalidSession.res);
+  equal(invalidSession.out.statusCode, 400, 'invalid session UUID is rejected');
 
   const invalidRequest = reqRes('POST', {
     body: { ...baseBody, request_id: 'not-a-uuid' },
@@ -269,6 +272,16 @@ async function main(): Promise<void> {
   });
   await chatHandler(oversized.req, oversized.res);
   equal(oversized.out.statusCode, 400, 'UTF-8 payload above 16 KiB is rejected');
+  const forgedPrincipal = reqRes('POST', {
+    body: { ...baseBody, session_principal: `principal:apocky-member:${'f'.repeat(64)}` },
+  });
+  await chatHandler(forgedPrincipal.req, forgedPrincipal.res);
+  equal(forgedPrincipal.out.statusCode, 400, 'client-asserted session principal is rejected');
+  const conflictingIdentity = reqRes('POST', {
+    body: { ...baseBody, conversation_id: randomUUID() },
+  });
+  await chatHandler(conflictingIdentity.req, conflictingIdentity.res);
+  equal(conflictingIdentity.out.statusCode, 400, 'dual session and conversation identities are rejected');
   equal(upstreamCalls, 0, 'denied inputs never reach the private body');
 
   const success = reqRes('POST', { body: baseBody });
@@ -277,7 +290,8 @@ async function main(): Promise<void> {
   assertPrivate(success.out);
   const successBody = success.out.body as Record<string, unknown>;
   equal(successBody.text, 'A bounded Apocv4 response.', 'validated runtime text is returned');
-  equal(successBody.conversation_id, conversationId, 'client conversation UUID is echoed');
+  equal(successBody.session_id, sessionId, 'canonical client session UUID is echoed');
+  equal(successBody.conversation_id, sessionId, 'legacy UI continuity alias remains compatible');
   equal(successBody.request_id, requestId, 'client request UUID is echoed');
   equal(successBody.model_id, MODEL_ID, 'model identity is exposed as model-reported evidence');
   equal(successBody.response_id, 'fixture-response-id', 'runtime response identity is exposed');
@@ -295,8 +309,8 @@ async function main(): Promise<void> {
   equal(successBody.training_consent, false, 'public training consent is off');
   equal(
     successBody.conversation_history,
-    'session_bounded',
-    'public UI exposes the bounded in-session history contract',
+    'durable_principal_bound',
+    'public API exposes the durable principal-bound history contract',
   );
   equal(
     successBody.duplicate_effect_protection,
@@ -325,9 +339,20 @@ async function main(): Promise<void> {
   equal(firstCall.body.message, baseBody.text, 'bounded message crosses the runtime boundary');
   equal(firstCall.body.privacy_partition, 'public:apocrypha', 'member request stays in the public-safe privacy partition');
   assert(firstCall.body.request_id !== requestId, 'raw client request ID is not sent upstream');
-  assert(firstCall.body.conversation_id !== conversationId, 'raw client conversation ID is not sent upstream');
+  assert(firstCall.body.conversation_id !== sessionId, 'raw client session ID is not used as transport conversation ID');
   assert(isUuidV5(firstCall.body.request_id), 'member-scoped request identity is UUIDv5');
   assert(isUuidV5(firstCall.body.conversation_id), 'member-scoped conversation identity is UUIDv5');
+  equal(firstCall.body.session_id, sessionId, 'durable session keeps the original client session UUID');
+  equal(
+    firstCall.body.session_principal,
+    publicMemberPrincipalRef('test-admin'),
+    'durable session is bound to the server-derived member principal',
+  );
+  assert(
+    typeof firstCall.body.session_binding_mac === 'string'
+      && /^[0-9a-f]{64}$/.test(firstCall.body.session_binding_mac),
+    'runtime receives a detached exact-request member binding',
+  );
   assert(!('training_consent' in firstCall.body), 'no training opt-in crosses the boundary');
   assert(!('tool_call' in firstCall.body), 'public route grants no tool request');
 
@@ -347,6 +372,21 @@ async function main(): Promise<void> {
     'owner receives only owner-partitioned retrieval',
   );
 
+  const legacyTurn = reqRes('POST', {
+    body: {
+      text: baseBody.text,
+      conversation_id: sessionId,
+      request_id: randomUUID(),
+    },
+  });
+  await chatHandler(legacyTurn.req, legacyTurn.res);
+  equal(legacyTurn.out.statusCode, 200, 'just-committed UI conversation_id remains a typed compatibility input');
+  equal(
+    (legacyTurn.out.body as Record<string, unknown>).session_id,
+    sessionId,
+    'legacy input receives the canonical session_id response',
+  );
+
   globalThis.fetch = async (input, init) => {
     upstreamCalls += 1;
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
@@ -355,7 +395,13 @@ async function main(): Promise<void> {
       body,
       'Must not escape.',
       { conversation_id: randomUUID() },
-    )), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    )), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Apocv4-Session-Binding': 'VERIFIED',
+      },
+    });
   };
   const invalidEnvelope = reqRes('POST', {
     body: { ...baseBody, request_id: randomUUID() },
@@ -379,11 +425,17 @@ async function main(): Promise<void> {
           effect_authority: 'NONE',
           tool_authority: 'READ_ONLY_CONTEXT',
           memory_scope: 'public_safe_retrieval',
-          conversation_history: 'session_bounded',
+          conversation_history: 'durable_principal_bound',
           training_consent: true,
         },
       },
-    )), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    )), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Apocv4-Session-Binding': 'VERIFIED',
+      },
+    });
   };
   const invalidPrivacy = reqRes('POST', {
     body: { ...baseBody, request_id: randomUUID() },
@@ -401,7 +453,10 @@ async function main(): Promise<void> {
     observed.push({ body, headers: new Headers(init?.headers), url: String(input) });
     return new Response(JSON.stringify(runtimeChatEnvelope(body, 'Rate-limited fixture.')), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Apocv4-Session-Binding': 'VERIFIED',
+      },
     });
   };
   let rateLimited: Output | null = null;

@@ -1,7 +1,17 @@
-// Server-only, admin-route transport for the authenticated Apocv4 runtime.
+// Server-only transport for the authenticated Apocv4 runtime.
 
+import { createHmac } from 'node:crypto';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
+
+import {
+  isRuntimeSessionPrincipal,
+  publicMemberPrincipalRef,
+  type RuntimeSessionPrincipal,
+} from './session-principal';
+
+export { publicMemberPrincipalRef } from './session-principal';
+export type { RuntimeSessionPrincipal } from './session-principal';
 
 export const APOCV4_PROXY_SCHEMA = 'apocky.apocv4-runtime-proxy.v1';
 
@@ -13,15 +23,35 @@ const PORT_RE = /^(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const HEALTH_RESPONSE_LIMIT = 256 * 1024;
 const CHAT_RESPONSE_LIMIT = 512 * 1024;
+const SESSION_RESPONSE_LIMIT = 2 * 1024 * 1024;
+const SESSION_PROJECTION_LIMIT = 512 * 1024;
+const SESSION_MESSAGE_LIMIT = 64;
+const SESSION_MESSAGE_BYTES = 256 * 1024;
+const SESSION_TURN_STATE_LIMIT = 64;
+const SESSION_TURN_STATE_BYTES = 32 * 1024;
+const SESSION_JOB_LIMIT = 64;
+const SESSION_JOB_BYTES = 32 * 1024;
+const SESSION_ARTIFACT_LIMIT = 32;
+const SESSION_ARTIFACT_BYTES = 96 * 1024;
+const SESSION_PROPOSAL_LIMIT = 64;
+const SESSION_PROPOSAL_BYTES = 48 * 1024;
+const SESSION_CODE_REQUEST_LIMIT = 64;
+const SESSION_CODE_REQUEST_BYTES = 96 * 1024;
+const SESSION_EFFECT_LIMIT = 32;
+const SESSION_EFFECT_BYTES = 48 * 1024;
+const SESSION_UPSTREAM_ARRAY_LIMIT = 4096;
 const OBJECTIVE_RESPONSE_LIMIT = 2 * 1024 * 1024;
 const CODE_RESPONSE_LIMIT = 3 * 1024 * 1024;
 const ROLLBACK_RESPONSE_LIMIT = 512 * 1024;
 const HEALTH_DEADLINE_MS = 12_000;
 const CHAT_DEADLINE_MS = 80_000;
+const SESSION_DEADLINE_MS = 30_000;
 export const RUNPOD_SYNC_DEADLINE_MS = 95_000;
 export const RUNPOD_CODE_DEADLINE_MS = 240_000;
 const ROLLBACK_DEADLINE_MS = 45_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[45][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CLIENT_SESSION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SESSION_BINDING_SCHEMA = 'apocv4.session-binding.v1';
 const CODE_PATH_RE = /^[A-Za-z0-9_.@+ -]+(?:\/[A-Za-z0-9_.@+ -]+)*$/;
 const WINDOWS_RESERVED_PATH_STEMS = new Set([
   'CON', 'PRN', 'AUX', 'NUL',
@@ -48,13 +78,15 @@ const PROTECTED_CODE_PREFIXES = [
 ];
 
 type JsonObject = Record<string, unknown>;
+type RuntimePath = '/health' | '/v1/chat' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
+  | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete';
 export type RuntimeCredentialProfile = 'owner' | 'public';
 
 export interface RuntimeChatAuthority {
   effect_authority: 'NONE';
   tool_authority: 'NONE' | 'READ_ONLY_CONTEXT';
   memory_scope: 'ephemeral' | 'owner_partitioned_retrieval' | 'public_safe_retrieval';
-  conversation_history: 'not_retained' | 'session_bounded';
+  conversation_history: 'not_retained' | 'session_bounded' | 'durable_principal_bound';
   training_consent: false;
 }
 
@@ -154,14 +186,107 @@ export interface RuntimeChatInput {
   message: string;
   conversationId: string;
   requestId: string;
+  sessionId?: string;
+  sessionPrincipal?: RuntimeSessionPrincipal;
   privacyPartition: string;
   credentialProfile?: RuntimeCredentialProfile;
+}
+
+export interface RuntimeSessionBindingInput {
+  sessionPrincipal: RuntimeSessionPrincipal;
+  privacyPartition: string;
+  credentialProfile?: RuntimeCredentialProfile;
+}
+
+export interface RuntimeSessionListInput extends RuntimeSessionBindingInput {
+  limit?: number;
+}
+
+export interface RuntimeSessionGetInput extends RuntimeSessionBindingInput {
+  sessionId: string;
+}
+
+export interface RuntimeSessionDeleteInput extends RuntimeSessionGetInput {
+  requestId: string;
+}
+
+export interface RuntimeSessionSummary extends JsonObject {
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  active_job_count: number;
+  artifact_count: number;
+  tip_digest: string;
+}
+
+export interface RuntimeSessionSnapshot extends JsonObject {
+  schema_version: 'apocv4.workspace-session-snapshot.v1';
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  event_count: number;
+  events_truncated: boolean;
+  tip_digest: string;
+  messages: JsonObject[];
+  turn_states: JsonObject[];
+  jobs: JsonObject[];
+  artifacts: JsonObject[];
+  code_requests: JsonObject[];
+  proposals: JsonObject[];
+  effects: JsonObject[];
+  surface_truncation: JsonObject;
+  world: JsonObject;
+  workspace: JsonObject;
+}
+
+interface RuntimeSessionObservation {
+  evidence_lane: 'observed_runtime_http_and_principal_bound_session';
+  receipt: RuntimeReceipt;
+  request_contract: 'not_applicable' | 'session_id';
+}
+
+export interface RuntimeSessionListProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'session_list';
+  observed: RuntimeSessionObservation;
+  sessions: RuntimeSessionSummary[];
+  count: number;
+}
+
+export interface RuntimeSessionGetProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'session_get';
+  observed: RuntimeSessionObservation;
+  session: RuntimeSessionSnapshot;
+}
+
+export interface RuntimeSessionDeleteProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'session_delete';
+  observed: RuntimeSessionObservation;
+  session_id: string;
+  deleted: true;
+  event_digest: string;
 }
 
 export interface RuntimeCodeInput {
   objective: string;
   allowedPaths: string[];
   privacyPartition: string;
+  sessionId?: string;
+  sessionPrincipal?: RuntimeSessionPrincipal;
+  requestId?: string;
+}
+
+export interface RuntimeRollbackInput {
+  promotionEventDigest: string;
+  sessionId?: string;
+  sessionPrincipal?: RuntimeSessionPrincipal;
+  requestId?: string;
+  privacyPartition?: string;
 }
 
 export interface RuntimeCodeProjection {
@@ -241,6 +366,13 @@ function boundedCanonicalString(value: unknown, maximumLength = 512): value is s
     && value.length <= maximumLength;
 }
 
+function boundedCanonicalUtf8(value: unknown, maximumBytes: number): value is string {
+  return typeof value === 'string'
+    && value === value.trim()
+    && value.length > 0
+    && Buffer.byteLength(value, 'utf8') <= maximumBytes;
+}
+
 function boundedJsonValue(value: unknown, maximumBytes: number): boolean {
   try {
     const encoded = JSON.stringify(value);
@@ -248,6 +380,793 @@ function boundedJsonValue(value: unknown, maximumBytes: number): boolean {
   } catch {
     return false;
   }
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new RuntimeProxyError('session_binding_invalid', 500);
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (isObject(value)) {
+    return `{${Object.keys(value).sort().map((key) => (
+      `${JSON.stringify(key)}:${canonicalJson(value[key])}`
+    )).join(',')}}`;
+  }
+  throw new RuntimeProxyError('session_binding_invalid', 500);
+}
+
+function sessionBindingSecret(): Buffer {
+  const raw = process.env.APOCV4_SESSION_BINDING_SECRET;
+  if (!raw || raw !== raw.trim()) {
+    throw new RuntimeProxyError('runtime_session_binding_unavailable', 503);
+  }
+  const encoded = Buffer.from(raw, 'utf8');
+  if (
+    encoded.length < 32
+    || encoded.length > 8_192
+    || [...encoded].some((byte) => byte < 0x21 || byte > 0x7e)
+  ) {
+    throw new RuntimeProxyError('runtime_session_binding_unavailable', 503);
+  }
+  return encoded;
+}
+
+function withSessionBinding(path: RuntimePath, body: JsonObject): JsonObject {
+  if (!Object.hasOwn(body, 'session_principal')) return body;
+  if (
+    Object.hasOwn(body, 'session_binding_mac')
+    || typeof body.session_principal !== 'string'
+    || !isRuntimeSessionPrincipal(body.session_principal)
+  ) {
+    throw new RuntimeProxyError('session_binding_invalid', 500);
+  }
+  const mac = createHmac('sha256', sessionBindingSecret())
+    .update(canonicalJson({ schema_version: SESSION_BINDING_SCHEMA, path, body }), 'utf8')
+    .digest('hex');
+  return { ...body, session_binding_mac: mac };
+}
+
+function canonicalTimestamp(value: unknown): value is string {
+  return boundedCanonicalString(value, 64)
+    && /(?:Z|[+-][0-9]{2}:[0-9]{2})$/.test(value)
+    && Number.isFinite(Date.parse(value));
+}
+
+function boundedNonnegativeInteger(value: unknown, maximum = 1_000_000): value is number {
+  return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= maximum;
+}
+
+function validateSessionBinding(input: RuntimeSessionBindingInput): void {
+  const { sessionPrincipal, privacyPartition, credentialProfile = 'owner' } = input;
+  if (
+    !isRuntimeSessionPrincipal(sessionPrincipal)
+    || !boundedCanonicalString(privacyPartition, 256)
+    || (credentialProfile !== 'owner' && credentialProfile !== 'public')
+    || (credentialProfile === 'owner' && privacyPartition !== 'owner:apocky')
+    || (credentialProfile === 'public' && privacyPartition !== 'public:apocrypha')
+  ) {
+    throw new RuntimeProxyError('session_request_invalid', 400);
+  }
+}
+
+function normalizeSessionIdentity(
+  value: JsonObject,
+  otherKeys: readonly string[],
+  expectedSessionId?: string,
+): { sessionId: string; legacy: boolean } | null {
+  const canonical = exactKeys(value, ['session_id', ...otherKeys]);
+  const legacy = exactKeys(value, ['conversation_id', ...otherKeys]);
+  if (canonical === legacy) return null;
+  const candidate = canonical ? value.session_id : value.conversation_id;
+  if (
+    typeof candidate !== 'string'
+    || !CLIENT_SESSION_UUID_RE.test(candidate)
+    || (expectedSessionId !== undefined && candidate !== expectedSessionId)
+  ) return null;
+  return { sessionId: candidate, legacy };
+}
+
+function normalizeSessionSummary(value: unknown): RuntimeSessionSummary | null {
+  if (!isObject(value)) return null;
+  const otherKeys = [
+    'title', 'created_at', 'updated_at', 'message_count',
+    'active_job_count', 'artifact_count', 'tip_digest',
+  ];
+  const identity = normalizeSessionIdentity(value, otherKeys);
+  if (
+    !identity
+    || !boundedCanonicalString(value.title, 256)
+    || !canonicalTimestamp(value.created_at)
+    || !canonicalTimestamp(value.updated_at)
+    || !boundedNonnegativeInteger(value.message_count)
+    || !boundedNonnegativeInteger(value.active_job_count)
+    || !boundedNonnegativeInteger(value.artifact_count)
+    || typeof value.tip_digest !== 'string'
+    || !SHA256_RE.test(value.tip_digest)
+  ) return null;
+  return {
+    session_id: identity.sessionId,
+    title: value.title,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+    message_count: value.message_count,
+    active_job_count: value.active_job_count,
+    artifact_count: value.artifact_count,
+    tip_digest: value.tip_digest,
+  };
+}
+
+function projectSessionTurnReceipt(
+  result: JsonObject,
+  credentialProfile: RuntimeCredentialProfile,
+): JsonObject | null {
+  const model = result.model_reported;
+  const authority = result.authority;
+  const expectedMemoryScope = credentialProfile === 'owner'
+    ? 'owner_partitioned_retrieval'
+    : 'public_safe_retrieval';
+  if (
+    result.schema_version !== 'apocv4.chat-response.v2'
+    || !isObject(model)
+    || !isObject(authority)
+    || !boundedCanonicalString(model.model_id, 256)
+    || !boundedCanonicalString(model.response_id, 256)
+    || typeof model.response_digest !== 'string'
+    || !SHA256_RE.test(model.response_digest)
+    || typeof model.serving_profile_digest !== 'string'
+    || !SHA256_RE.test(model.serving_profile_digest)
+    || authority.memory_scope !== expectedMemoryScope
+    || authority.conversation_history !== 'durable_principal_bound'
+    || !validateV2ChatIdentity(result.identity)
+    || !validateV2ChatContext(result.context)
+  ) return null;
+  return {
+    model_id: model.model_id,
+    response_id: model.response_id,
+    response_digest: model.response_digest,
+    serving_profile_digest: model.serving_profile_digest,
+    memory_scope: authority.memory_scope,
+    conversation_history: authority.conversation_history,
+    identity: result.identity,
+    context: result.context,
+  };
+}
+
+function normalizeSessionMessage(
+  value: unknown,
+  credentialProfile: RuntimeCredentialProfile,
+): JsonObject | null {
+  if (!isObject(value) || (value.role !== 'user' && value.role !== 'assistant')) return null;
+  const baseKeys = ['role', 'content', 'request_id', 'recorded_at', 'event_digest'];
+  const exactBase = exactKeys(value, baseKeys);
+  const exactLegacyAssistant = value.role === 'assistant' && exactKeys(value, [...baseKeys, 'result']);
+  if (
+    (!exactBase && !exactLegacyAssistant)
+    || !boundedCanonicalUtf8(value.content, 128 * 1024)
+    || typeof value.request_id !== 'string'
+    || !UUID_RE.test(value.request_id)
+    || !canonicalTimestamp(value.recorded_at)
+    || typeof value.event_digest !== 'string'
+    || !SHA256_RE.test(value.event_digest)
+    || (exactLegacyAssistant && (!isObject(value.result) || !boundedJsonValue(value.result, CHAT_RESPONSE_LIMIT)))
+  ) return null;
+  const receipt = exactLegacyAssistant
+    ? projectSessionTurnReceipt(value.result as JsonObject, credentialProfile)
+    : null;
+  return {
+    role: value.role,
+    content: value.content,
+    request_id: value.request_id,
+    recorded_at: value.recorded_at,
+    event_digest: value.event_digest,
+    ...(receipt ? { receipt } : {}),
+  };
+}
+
+function onlyKnownKeys(
+  value: JsonObject,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
+  const allowed = new Set([...required, ...optional]);
+  return required.every((key) => Object.hasOwn(value, key))
+    && Object.keys(value).every((key) => allowed.has(key));
+}
+
+function nullableDigest(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && SHA256_RE.test(value));
+}
+
+function canonicalStringList(
+  value: unknown,
+  maximumItems: number,
+  maximumItemLength: number,
+  pattern?: RegExp,
+): value is string[] {
+  return Array.isArray(value)
+    && value.length <= maximumItems
+    && value.every((entry) => boundedCanonicalString(entry, maximumItemLength)
+      && (pattern === undefined || pattern.test(entry)));
+}
+
+function canonicalCodePathList(value: unknown, allowEmpty = false): value is string[] {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0)) return false;
+  try {
+    canonicalCodePaths(value);
+    return true;
+  } catch {
+    return allowEmpty && value.length === 0;
+  }
+}
+
+function normalizeSessionTurnState(value: unknown): JsonObject | null {
+  if (!isObject(value)) return null;
+  const base = [
+    'request_id', 'state', 'recorded_at', 'user_event_digest', 'terminal_event_digest',
+  ];
+  if (
+    typeof value.request_id !== 'string'
+    || !UUID_RE.test(value.request_id)
+    || !canonicalTimestamp(value.recorded_at)
+    || typeof value.user_event_digest !== 'string'
+    || !SHA256_RE.test(value.user_event_digest)
+  ) return null;
+  if (value.state === 'PENDING') {
+    if (!exactKeys(value, base) || value.terminal_event_digest !== null) return null;
+    return {
+      request_id: value.request_id,
+      state: 'PENDING',
+      recorded_at: value.recorded_at,
+      user_event_digest: value.user_event_digest,
+      terminal_event_digest: null,
+    };
+  }
+  if (
+    value.state !== 'FAILED'
+    || !onlyKnownKeys(
+      value,
+      [...base, 'error_class', 'error_digest'],
+      ['failure_code', 'rejected_result_digest'],
+    )
+    || typeof value.terminal_event_digest !== 'string'
+    || !SHA256_RE.test(value.terminal_event_digest)
+    || !boundedCanonicalString(value.error_class, 128)
+    || typeof value.error_digest !== 'string'
+    || !SHA256_RE.test(value.error_digest)
+    || (Object.hasOwn(value, 'failure_code') && !boundedCanonicalString(value.failure_code, 128))
+    || (Object.hasOwn(value, 'rejected_result_digest')
+      && (typeof value.rejected_result_digest !== 'string'
+        || !SHA256_RE.test(value.rejected_result_digest)))
+  ) return null;
+  return selected(value, [
+    ...base, 'error_class', 'error_digest', 'failure_code', 'rejected_result_digest',
+  ]);
+}
+
+function normalizeSessionJob(value: unknown): JsonObject | null {
+  if (!isObject(value) || !onlyKnownKeys(value, ['job_id', 'state'], [
+    'request_id', 'request_digest', 'action_id', 'arguments', 'attempt', 'output',
+    'output_digest', 'artifact_ids', 'error_class', 'error_digest', 'reason_code',
+    'cancel_request_id', 'recovered_from',
+  ])) return null;
+  const state = value.state;
+  if (
+    typeof value.job_id !== 'string'
+    || !/^job:[0-9a-f]{64}$/.test(value.job_id)
+    || !['QUEUED', 'RUNNING', 'CANCEL_REQUESTED', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED']
+      .includes(String(state))
+    || (Object.hasOwn(value, 'request_id')
+      && (typeof value.request_id !== 'string' || !UUID_RE.test(value.request_id)))
+    || (Object.hasOwn(value, 'request_digest')
+      && (typeof value.request_digest !== 'string' || !SHA256_RE.test(value.request_digest)))
+    || (Object.hasOwn(value, 'action_id')
+      && (typeof value.action_id !== 'string' || !/^[a-z][a-z0-9_.:-]{0,127}$/.test(value.action_id)))
+    || (Object.hasOwn(value, 'arguments') && !boundedJsonValue(value.arguments, 64 * 1024))
+    || (Object.hasOwn(value, 'attempt') && !boundedNonnegativeInteger(value.attempt, 1_000))
+    || (Object.hasOwn(value, 'output') && !boundedJsonValue(value.output, 64 * 1024))
+    || (Object.hasOwn(value, 'output_digest')
+      && (typeof value.output_digest !== 'string' || !SHA256_RE.test(value.output_digest)))
+    || (Object.hasOwn(value, 'artifact_ids')
+      && !canonicalStringList(value.artifact_ids, 16, 73, /^artifact:[0-9a-f]{64}$/))
+    || (Object.hasOwn(value, 'error_class') && !boundedCanonicalString(value.error_class, 128))
+    || (Object.hasOwn(value, 'error_digest')
+      && (typeof value.error_digest !== 'string' || !SHA256_RE.test(value.error_digest)))
+    || (Object.hasOwn(value, 'reason_code') && !boundedCanonicalString(value.reason_code, 128))
+    || (Object.hasOwn(value, 'cancel_request_id')
+      && (typeof value.cancel_request_id !== 'string' || !UUID_RE.test(value.cancel_request_id)))
+    || (Object.hasOwn(value, 'recovered_from') && value.recovered_from !== 'RUNNING')
+  ) return null;
+  // Arguments and raw output can contain private tool material. Their digests,
+  // state, and artifact references are sufficient for the browser world model.
+  return selected(value, [
+    'job_id', 'state', 'request_id', 'request_digest', 'action_id', 'attempt',
+    'output_digest', 'artifact_ids', 'error_class', 'error_digest', 'reason_code',
+    'cancel_request_id', 'recovered_from',
+  ]);
+}
+
+function normalizeSessionArtifact(value: unknown): JsonObject | null {
+  if (!isObject(value) || !exactKeys(value, [
+    'artifact_id', 'kind', 'title', 'content', 'content_digest', 'content_bytes',
+    'refs', 'event_digest',
+  ])) return null;
+  if (
+    typeof value.artifact_id !== 'string'
+    || !/^artifact:[0-9a-f]{64}$/.test(value.artifact_id)
+    || !boundedCanonicalString(value.kind, 128)
+    || !boundedCanonicalString(value.title, 256)
+    || !boundedJsonValue(value.content, 128 * 1024)
+    || typeof value.content_digest !== 'string'
+    || !SHA256_RE.test(value.content_digest)
+    || !boundedNonnegativeInteger(value.content_bytes, 128 * 1024)
+    || !canonicalStringList(value.refs, 32, 512)
+    || typeof value.event_digest !== 'string'
+    || !SHA256_RE.test(value.event_digest)
+  ) return null;
+  return selected(value, [
+    'artifact_id', 'kind', 'title', 'content', 'content_digest', 'content_bytes',
+    'refs', 'event_digest',
+  ]);
+}
+
+function normalizeSessionCodeRequest(value: unknown): JsonObject | null {
+  if (!isObject(value) || !exactKeys(value, [
+    'objective', 'objective_digest', 'allowed_paths', 'allowed_paths_digest',
+    'request_contract_digest', 'request_id', 'recorded_at', 'event_digest',
+  ])) return null;
+  if (
+    !boundedCanonicalUtf8(value.objective, 32 * 1024)
+    || typeof value.objective_digest !== 'string'
+    || !SHA256_RE.test(value.objective_digest)
+    || !canonicalCodePathList(value.allowed_paths)
+    || typeof value.allowed_paths_digest !== 'string'
+    || !SHA256_RE.test(value.allowed_paths_digest)
+    || typeof value.request_contract_digest !== 'string'
+    || !SHA256_RE.test(value.request_contract_digest)
+    || typeof value.request_id !== 'string'
+    || !UUID_RE.test(value.request_id)
+    || !canonicalTimestamp(value.recorded_at)
+    || typeof value.event_digest !== 'string'
+    || !SHA256_RE.test(value.event_digest)
+  ) return null;
+  return selected(value, [
+    'objective', 'objective_digest', 'allowed_paths', 'allowed_paths_digest',
+    'request_contract_digest', 'request_id', 'recorded_at', 'event_digest',
+  ]);
+}
+
+function normalizeSessionProposal(value: unknown): JsonObject | null {
+  if (!isObject(value) || !exactKeys(value, [
+    'proposal_digest', 'objective_digest', 'allowed_paths', 'state', 'runtime_state',
+    'frame_digest', 'authority_digest', 'request_digest', 'approval_digest', 'test_state',
+    'artifact_ids', 'request_id', 'recorded_at', 'event_digest',
+  ])) return null;
+  if (
+    typeof value.proposal_digest !== 'string'
+    || !SHA256_RE.test(value.proposal_digest)
+    || typeof value.objective_digest !== 'string'
+    || !SHA256_RE.test(value.objective_digest)
+    || !canonicalCodePathList(value.allowed_paths)
+    || !boundedCanonicalString(value.state, 128)
+    || !boundedCanonicalString(value.runtime_state, 128)
+    || !nullableDigest(value.frame_digest)
+    || !nullableDigest(value.authority_digest)
+    || !nullableDigest(value.request_digest)
+    || !nullableDigest(value.approval_digest)
+    || !boundedCanonicalString(value.test_state, 128)
+    || !canonicalStringList(value.artifact_ids, 32, 73, /^artifact:[0-9a-f]{64}$/)
+    || typeof value.request_id !== 'string'
+    || !UUID_RE.test(value.request_id)
+    || !canonicalTimestamp(value.recorded_at)
+    || typeof value.event_digest !== 'string'
+    || !SHA256_RE.test(value.event_digest)
+  ) return null;
+  return selected(value, [
+    'proposal_digest', 'objective_digest', 'allowed_paths', 'state', 'runtime_state',
+    'frame_digest', 'authority_digest', 'request_digest', 'approval_digest', 'test_state',
+    'artifact_ids', 'request_id', 'recorded_at', 'event_digest',
+  ]);
+}
+
+function normalizeSessionEffect(value: unknown): JsonObject | null {
+  if (!isObject(value)) return null;
+  const common = ['state', 'request_id', 'recorded_at', 'event_digest'];
+  if (
+    !boundedCanonicalString(value.state, 128)
+    || typeof value.request_id !== 'string'
+    || !UUID_RE.test(value.request_id)
+    || !canonicalTimestamp(value.recorded_at)
+    || typeof value.event_digest !== 'string'
+    || !SHA256_RE.test(value.event_digest)
+  ) return null;
+  if (!Object.hasOwn(value, 'scope')) {
+    if (!exactKeys(value, [
+      ...common, 'proposal_digest', 'objective_digest', 'promotion_event_digest',
+      'terminal_event_digest', 'rollback_event_digest', 'changed_paths', 'test_state',
+      'artifact_ids', 'result_digest', 'result_metadata', 'result_metadata_bytes',
+    ])) return null;
+    if (
+      typeof value.proposal_digest !== 'string'
+      || !SHA256_RE.test(value.proposal_digest)
+      || typeof value.objective_digest !== 'string'
+      || !SHA256_RE.test(value.objective_digest)
+      || !nullableDigest(value.promotion_event_digest)
+      || typeof value.terminal_event_digest !== 'string'
+      || !SHA256_RE.test(value.terminal_event_digest)
+      || !nullableDigest(value.rollback_event_digest)
+      || !canonicalCodePathList(value.changed_paths, true)
+      || !boundedCanonicalString(value.test_state, 128)
+      || !canonicalStringList(value.artifact_ids, 32, 73, /^artifact:[0-9a-f]{64}$/)
+      || typeof value.result_digest !== 'string'
+      || !SHA256_RE.test(value.result_digest)
+      || !isObject(value.result_metadata)
+      || !boundedJsonValue(value.result_metadata, 512 * 1024)
+      || !boundedNonnegativeInteger(value.result_metadata_bytes, 512 * 1024)
+    ) return null;
+    return {
+      kind: 'CODE_EFFECT',
+      ...selected(value, [
+        'request_id', 'proposal_digest', 'objective_digest', 'state',
+        'promotion_event_digest', 'terminal_event_digest', 'rollback_event_digest',
+        'changed_paths', 'test_state', 'artifact_ids', 'result_digest',
+        'recorded_at', 'event_digest',
+      ]),
+    };
+  }
+
+  const scope = value.scope;
+  if (scope === 'code_execution_failure' || scope === 'unknown_effect_state') {
+    const required = [
+      ...common, 'proposal_digest', 'scope', 'promotion_event_digest',
+      'terminal_event_digest', 'rollback_event_digest', 'changed_paths', 'test_state',
+      'failure_code', 'error_class', 'error_digest',
+    ];
+    if (
+      !exactKeys(value, required)
+      || value.proposal_digest !== null
+      || value.promotion_event_digest !== null
+      || typeof value.terminal_event_digest !== 'string'
+      || !SHA256_RE.test(value.terminal_event_digest)
+      || value.rollback_event_digest !== null
+      || !Array.isArray(value.changed_paths)
+      || value.changed_paths.length !== 0
+      || value.test_state !== 'NOT_RUN'
+      || !boundedCanonicalString(value.failure_code, 128)
+      || !boundedCanonicalString(value.error_class, 128)
+      || typeof value.error_digest !== 'string'
+      || !SHA256_RE.test(value.error_digest)
+      || (scope === 'code_execution_failure' && value.state !== 'FAILED')
+      || (scope === 'unknown_effect_state' && value.state !== 'UNKNOWN_EFFECT_STATE')
+    ) return null;
+    return {
+      kind: 'CODE_FAILURE',
+      request_id: value.request_id,
+      proposal_digest: null,
+      state: value.state,
+      promotion_event_digest: null,
+      terminal_event_digest: value.terminal_event_digest,
+      rollback_event_digest: null,
+      changed_paths: [],
+      test_state: 'NOT_RUN',
+      scope,
+      failure_code: value.failure_code,
+      error_class: value.error_class,
+      error_digest: value.error_digest,
+      recorded_at: value.recorded_at,
+      event_digest: value.event_digest,
+    };
+  }
+  let required: string[];
+  if (scope === 'isolated_execution') {
+    required = [
+      ...common, 'proposal_digest', 'scope', 'promotion_event_digest',
+      'rollback_event_digest', 'test_state',
+    ];
+  } else if (scope === 'promoted_effect_compensation') {
+    required = [
+      ...common, 'proposal_digest', 'scope', 'promotion_event_digest',
+      'rollback_event_digest', 'test_state', 'reason_code', 'settlement_error_class',
+      'settlement_error_digest',
+    ];
+  } else if (scope === 'manual_promotion_rollback') {
+    required = [
+      ...common, 'scope', 'promotion_event_digest', 'rollback_event_digest', 'test_state',
+      'result_digest', 'result_metadata', 'result_metadata_bytes',
+    ];
+  } else {
+    return null;
+  }
+  if (!exactKeys(value, required)) return null;
+  if (
+    !nullableDigest(value.promotion_event_digest)
+    || typeof value.rollback_event_digest !== 'string'
+    || !SHA256_RE.test(value.rollback_event_digest)
+    || !boundedCanonicalString(value.test_state, 128)
+    || (Object.hasOwn(value, 'proposal_digest') && !nullableDigest(value.proposal_digest))
+    || (Object.hasOwn(value, 'reason_code') && !boundedCanonicalString(value.reason_code, 128))
+    || (Object.hasOwn(value, 'settlement_error_class')
+      && !boundedCanonicalString(value.settlement_error_class, 128))
+    || (Object.hasOwn(value, 'settlement_error_digest')
+      && (typeof value.settlement_error_digest !== 'string'
+        || !SHA256_RE.test(value.settlement_error_digest)))
+    || (Object.hasOwn(value, 'result_digest')
+      && (typeof value.result_digest !== 'string' || !SHA256_RE.test(value.result_digest)))
+    || (Object.hasOwn(value, 'result_metadata')
+      && (!isObject(value.result_metadata) || !boundedJsonValue(value.result_metadata, 512 * 1024)))
+    || (Object.hasOwn(value, 'result_metadata_bytes')
+      && !boundedNonnegativeInteger(value.result_metadata_bytes, 512 * 1024))
+  ) return null;
+  return {
+    kind: 'ROLLBACK',
+    request_id: value.request_id,
+    proposal_digest: Object.hasOwn(value, 'proposal_digest') ? value.proposal_digest : null,
+    state: value.state,
+    promotion_event_digest: value.promotion_event_digest,
+    terminal_event_digest: null,
+    rollback_event_digest: value.rollback_event_digest,
+    changed_paths: [],
+    test_state: value.test_state,
+    scope,
+    ...(Object.hasOwn(value, 'reason_code') ? { reason_code: value.reason_code } : {}),
+    ...(Object.hasOwn(value, 'settlement_error_class')
+      ? { settlement_error_class: value.settlement_error_class } : {}),
+    ...(Object.hasOwn(value, 'settlement_error_digest')
+      ? { settlement_error_digest: value.settlement_error_digest } : {}),
+    ...(Object.hasOwn(value, 'result_digest') ? { result_digest: value.result_digest } : {}),
+    recorded_at: value.recorded_at,
+    event_digest: value.event_digest,
+  };
+}
+
+function normalizeSessionArray(
+  value: unknown,
+  normalizer: (entry: unknown) => JsonObject | null,
+): JsonObject[] | null {
+  if (!Array.isArray(value) || value.length > SESSION_UPSTREAM_ARRAY_LIMIT) return null;
+  const projected = value.map(normalizer);
+  return projected.some((entry) => entry === null) ? null : projected as JsonObject[];
+}
+
+function normalizeSurfaceTruncation(value: unknown): Record<string, JsonObject> | null {
+  const surfaces = [
+    'messages', 'turn_states', 'jobs', 'artifacts', 'code_requests', 'proposals', 'effects',
+  ] as const;
+  if (!isObject(value) || !exactKeys(value, surfaces)) return null;
+  const result: Record<string, JsonObject> = {};
+  for (const surface of surfaces) {
+    const entry = value[surface];
+    if (
+      !isObject(entry)
+      || !exactKeys(entry, ['total', 'visible', 'truncated'])
+      || !boundedNonnegativeInteger(entry.total)
+      || !boundedNonnegativeInteger(entry.visible)
+      || Number(entry.visible) > Number(entry.total)
+      || typeof entry.truncated !== 'boolean'
+      || entry.truncated !== (entry.visible < entry.total)
+    ) return null;
+    result[surface] = {
+      total: entry.total,
+      visible: entry.visible,
+      truncated: entry.truncated,
+    };
+  }
+  return result;
+}
+
+function validateSessionWorkspace(
+  value: unknown,
+  credentialProfile: RuntimeCredentialProfile,
+): value is JsonObject {
+  if (!isObject(value)) return false;
+  if (exactKeys(value, ['status', 'effect_authority'])) {
+    return value.status === 'not_authorized' && value.effect_authority === 'NONE';
+  }
+  if (credentialProfile !== 'owner') return false;
+  if (
+    value.status === 'degraded_observation_failed'
+    && exactKeys(value, ['status', 'error_class', 'error_digest'])
+  ) {
+    return boundedCanonicalString(value.error_class, 128)
+      && typeof value.error_digest === 'string'
+      && SHA256_RE.test(value.error_digest);
+  }
+  if (
+    value.status === 'source_prestate_unavailable'
+    && exactKeys(value, ['workspace_ref', 'effect_mode', 'status'])
+  ) {
+    return typeof value.workspace_ref === 'string'
+      && SHA256_RE.test(value.workspace_ref)
+      && (value.effect_mode === 'journaled_tested_atomic_promotion' || value.effect_mode === 'proposal_only');
+  }
+  if (!exactKeys(value, [
+    'workspace_ref', 'effect_mode', 'status', 'head_commit', 'base_commit', 'base_tree',
+    'status_digest', 'unstaged_diff_digest', 'staged_diff_digest', 'untracked_digest',
+    'prestate_digest',
+  ])) return false;
+  return value.status === 'observed'
+    && typeof value.workspace_ref === 'string'
+    && SHA256_RE.test(value.workspace_ref)
+    && (value.effect_mode === 'journaled_tested_atomic_promotion' || value.effect_mode === 'proposal_only')
+    && boundedCanonicalString(value.head_commit, 128)
+    && boundedCanonicalString(value.base_commit, 128)
+    && boundedCanonicalString(value.base_tree, 128)
+    && ['status_digest', 'unstaged_diff_digest', 'staged_diff_digest', 'untracked_digest', 'prestate_digest']
+      .every((key) => typeof value[key] === 'string' && SHA256_RE.test(value[key] as string));
+}
+
+function boundedTail(
+  value: JsonObject[],
+  maximumItems: number,
+  maximumBytes: number,
+): { items: JsonObject[]; truncated: boolean } {
+  const items: JsonObject[] = [];
+  let usedBytes = 2;
+  let truncated = false;
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    const entry = value[index];
+    if (!entry) continue;
+    const encoded = JSON.stringify(entry);
+    const bytes = Buffer.byteLength(encoded, 'utf8') + (items.length > 0 ? 1 : 0);
+    if (items.length >= maximumItems || usedBytes + bytes > maximumBytes) {
+      truncated = true;
+      break;
+    }
+    items.unshift(entry);
+    usedBytes += bytes;
+  }
+  return { items, truncated };
+}
+
+function normalizeSessionSnapshot(
+  value: unknown,
+  expectedSessionId: string,
+  credentialProfile: RuntimeCredentialProfile,
+): RuntimeSessionSnapshot | null {
+  if (!isObject(value)) return null;
+  const otherKeys = [
+    'schema_version', 'title', 'created_at', 'updated_at',
+    'event_count', 'events_truncated', 'tip_digest', 'messages', 'jobs', 'artifacts',
+    'turn_states', 'code_requests', 'proposals', 'effects', 'surface_truncation',
+    'world', 'workspace',
+  ];
+  if (!exactKeys(value, ['session_id', ...otherKeys]) || value.session_id !== expectedSessionId) {
+    return null;
+  }
+  const world = value.world;
+  const turnStates = normalizeSessionArray(value.turn_states, normalizeSessionTurnState);
+  const jobs = normalizeSessionArray(value.jobs, normalizeSessionJob);
+  const artifacts = normalizeSessionArray(value.artifacts, normalizeSessionArtifact);
+  const codeRequests = normalizeSessionArray(value.code_requests, normalizeSessionCodeRequest);
+  const proposals = normalizeSessionArray(value.proposals, normalizeSessionProposal);
+  const effects = normalizeSessionArray(value.effects, normalizeSessionEffect);
+  const upstreamTruncation = normalizeSurfaceTruncation(value.surface_truncation);
+  if (
+    value.schema_version !== 'apocv4.workspace-session-snapshot.v1'
+    || !boundedCanonicalString(value.title, 256)
+    || !canonicalTimestamp(value.created_at)
+    || !canonicalTimestamp(value.updated_at)
+    || !boundedNonnegativeInteger(value.event_count)
+    || typeof value.events_truncated !== 'boolean'
+    || typeof value.tip_digest !== 'string'
+    || !SHA256_RE.test(value.tip_digest)
+    || !Array.isArray(value.messages)
+    || value.messages.length > SESSION_UPSTREAM_ARRAY_LIMIT
+    || turnStates === null
+    || jobs === null
+    || artifacts === null
+    || codeRequests === null
+    || proposals === null
+    || effects === null
+    || upstreamTruncation === null
+    || upstreamTruncation.messages?.visible !== value.messages.length
+    || upstreamTruncation.turn_states?.visible !== turnStates.length
+    || upstreamTruncation.jobs?.visible !== jobs.length
+    || upstreamTruncation.artifacts?.visible !== artifacts.length
+    || upstreamTruncation.code_requests?.visible !== codeRequests.length
+    || upstreamTruncation.proposals?.visible !== proposals.length
+    || upstreamTruncation.effects?.visible !== effects.length
+    || !isObject(world)
+    || !exactKeys(world, [
+      'message_count', 'pending_turn_count', 'failed_turn_count', 'active_job_count',
+      'artifact_count', 'code_request_count', 'proposal_count', 'effect_count',
+      'last_event_type', 'last_event_digest',
+    ])
+    || !boundedNonnegativeInteger(world.message_count)
+    || world.message_count < value.messages.length
+    || !boundedNonnegativeInteger(world.pending_turn_count)
+    || !boundedNonnegativeInteger(world.failed_turn_count)
+    || !boundedNonnegativeInteger(world.active_job_count)
+    || !boundedNonnegativeInteger(world.artifact_count)
+    || !boundedNonnegativeInteger(world.code_request_count)
+    || !boundedNonnegativeInteger(world.proposal_count)
+    || !boundedNonnegativeInteger(world.effect_count)
+    || world.message_count !== upstreamTruncation.messages?.total
+    || Number(world.pending_turn_count) + Number(world.failed_turn_count)
+      !== upstreamTruncation.turn_states?.total
+    || world.artifact_count !== upstreamTruncation.artifacts?.total
+    || world.code_request_count !== upstreamTruncation.code_requests?.total
+    || world.proposal_count !== upstreamTruncation.proposals?.total
+    || world.effect_count !== upstreamTruncation.effects?.total
+    || Number(world.active_job_count) > Number(upstreamTruncation.jobs?.total)
+    || !boundedCanonicalString(world.last_event_type, 64)
+    || typeof world.last_event_digest !== 'string'
+    || !SHA256_RE.test(world.last_event_digest)
+    || !validateSessionWorkspace(value.workspace, credentialProfile)
+    || !boundedJsonValue(value, SESSION_RESPONSE_LIMIT)
+  ) return null;
+  const messages = value.messages.map((message) => (
+    normalizeSessionMessage(message, credentialProfile)
+  ));
+  if (messages.some((entry) => entry === null)) return null;
+  const messageProjection = boundedTail(
+    messages as JsonObject[], SESSION_MESSAGE_LIMIT, SESSION_MESSAGE_BYTES,
+  );
+  const turnStateProjection = boundedTail(
+    turnStates, SESSION_TURN_STATE_LIMIT, SESSION_TURN_STATE_BYTES,
+  );
+  const jobProjection = boundedTail(jobs, SESSION_JOB_LIMIT, SESSION_JOB_BYTES);
+  const artifactProjection = boundedTail(
+    artifacts, SESSION_ARTIFACT_LIMIT, SESSION_ARTIFACT_BYTES,
+  );
+  const codeRequestProjection = boundedTail(
+    codeRequests, SESSION_CODE_REQUEST_LIMIT, SESSION_CODE_REQUEST_BYTES,
+  );
+  const proposalProjection = boundedTail(
+    proposals, SESSION_PROPOSAL_LIMIT, SESSION_PROPOSAL_BYTES,
+  );
+  const effectProjection = boundedTail(effects, SESSION_EFFECT_LIMIT, SESSION_EFFECT_BYTES);
+  const localProjections = {
+    messages: messageProjection,
+    turn_states: turnStateProjection,
+    jobs: jobProjection,
+    artifacts: artifactProjection,
+    code_requests: codeRequestProjection,
+    proposals: proposalProjection,
+    effects: effectProjection,
+  };
+  const surfaceTruncation: JsonObject = {};
+  for (const [surface, projection] of Object.entries(localProjections)) {
+    const upstream = upstreamTruncation[surface];
+    if (!upstream) return null;
+    surfaceTruncation[surface] = {
+      total: upstream.total,
+      visible: projection.items.length,
+      truncated: upstream.truncated === true || projection.truncated,
+    };
+  }
+  const projected: RuntimeSessionSnapshot = {
+    schema_version: 'apocv4.workspace-session-snapshot.v1',
+    session_id: expectedSessionId,
+    title: value.title,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+    event_count: value.event_count,
+    events_truncated: value.events_truncated
+      || Object.values(upstreamTruncation).some((entry) => entry.truncated === true)
+      || messageProjection.truncated
+      || turnStateProjection.truncated
+      || jobProjection.truncated
+      || artifactProjection.truncated
+      || codeRequestProjection.truncated
+      || proposalProjection.truncated
+      || effectProjection.truncated,
+    tip_digest: value.tip_digest,
+    messages: messageProjection.items,
+    turn_states: turnStateProjection.items,
+    jobs: jobProjection.items,
+    artifacts: artifactProjection.items,
+    code_requests: codeRequestProjection.items,
+    proposals: proposalProjection.items,
+    effects: effectProjection.items,
+    surface_truncation: surfaceTruncation,
+    world,
+    workspace: value.workspace,
+  };
+  return boundedJsonValue(projected, SESSION_PROJECTION_LIMIT) ? projected : null;
 }
 
 function validateV2ChatIdentity(value: unknown): value is RuntimeChatIdentity {
@@ -492,7 +1411,7 @@ function boundedMode(headers: Headers): string | null {
 async function readBoundedJson(
   response: Response,
   maximumBytes: number,
-  protectedValue: string,
+  protectedValues: readonly string[],
 ): Promise<JsonObject> {
   const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
   if (contentType !== 'application/json') {
@@ -543,7 +1462,7 @@ async function readBoundedJson(
   } catch {
     throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
   }
-  if (text.includes(protectedValue)) {
+  if (protectedValues.some((value) => value.length > 0 && text.includes(value))) {
     throw new RuntimeProxyError('runtime_reflected_credential', 502, response.status);
   }
   let parsed: unknown;
@@ -559,7 +1478,7 @@ async function readBoundedJson(
 }
 
 async function callRuntime(
-  path: '/health' | '/v1/chat' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives',
+  path: RuntimePath,
   body: JsonObject | null,
   traceparent?: string,
   credentialProfile: RuntimeCredentialProfile = 'owner',
@@ -570,6 +1489,7 @@ async function callRuntime(
   const chat = path === '/v1/chat';
   const code = path === '/v1/code';
   const rollback = path === '/v1/code/rollback';
+  const session = path.startsWith('/v1/sessions/');
   const deadlineMs = code
     ? RUNPOD_CODE_DEADLINE_MS
     : rollback
@@ -578,7 +1498,9 @@ async function callRuntime(
         ? RUNPOD_SYNC_DEADLINE_MS
         : chat
           ? CHAT_DEADLINE_MS
-          : HEALTH_DEADLINE_MS;
+          : session
+            ? SESSION_DEADLINE_MS
+            : HEALTH_DEADLINE_MS;
   const responseLimit = code
     ? CODE_RESPONSE_LIMIT
     : rollback
@@ -587,14 +1509,21 @@ async function callRuntime(
         ? OBJECTIVE_RESPONSE_LIMIT
         : chat
           ? CHAT_RESPONSE_LIMIT
-          : HEALTH_RESPONSE_LIMIT;
+          : session
+            ? SESSION_RESPONSE_LIMIT
+            : HEALTH_RESPONSE_LIMIT;
   const controller = new AbortController();
   const deadline = setTimeout(() => controller.abort(), deadlineMs);
   const started = Date.now();
   const traceMatch = traceparent ? TRACEPARENT_RE.exec(traceparent) : null;
+  const transmittedBody = body === null ? null : withSessionBinding(path, body);
+  const bindingMac = transmittedBody === null || typeof transmittedBody.session_binding_mac !== 'string'
+    ? null
+    : transmittedBody.session_binding_mac;
+  const bindingSecret = bindingMac === null ? null : process.env.APOCV4_SESSION_BINDING_SECRET ?? null;
   try {
     const response = await runtimeRequest(`${origin}${path}`, {
-      method: body === null ? 'GET' : 'POST',
+      method: transmittedBody === null ? 'GET' : 'POST',
       headers: {
         Accept: 'application/json',
         'Accept-Encoding': 'identity',
@@ -603,26 +1532,36 @@ async function callRuntime(
           Traceparent: traceparent,
           'X-Apocky-Trace-Id': traceMatch[1],
         } : {}),
-        ...(body === null ? {} : { 'Content-Type': 'application/json' }),
+        ...(transmittedBody === null ? {} : { 'Content-Type': 'application/json' }),
       },
-      body: body === null ? undefined : JSON.stringify(body),
+      body: transmittedBody === null ? undefined : JSON.stringify(transmittedBody),
       cache: 'no-store',
       redirect: 'error',
       signal: controller.signal,
     }, responseLimit, deadlineMs);
-    const data = await readBoundedJson(response, responseLimit, token);
+    const data = await readBoundedJson(
+      response,
+      responseLimit,
+      bindingMac === null ? [token] : [token, bindingMac, bindingSecret ?? ''],
+    );
     if (!response.ok) {
       throw new RuntimeProxyError('runtime_http_error', 502, response.status);
     }
-    const expectedKeys = objective || chat || code || rollback
+    if (
+      bindingMac !== null
+      && response.headers.get('x-apocv4-session-binding') !== 'VERIFIED'
+    ) {
+      throw new RuntimeProxyError('runtime_session_binding_invalid', 502, response.status);
+    }
+    const expectedKeys = objective || chat || code || rollback || session
       ? ['schema_version', 'result']
       : ['schema_version', 'status', 'engine', 'vision'];
     if (!exactKeys(data, expectedKeys)) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
     }
     if (
-      ((objective || chat || code || rollback) && !isObject(data.result))
-      || (!objective && !chat && !code && !rollback
+      ((objective || chat || code || rollback || session) && !isObject(data.result))
+      || (!objective && !chat && !code && !rollback && !session
         && (data.status !== 'READY' || !isObject(data.engine) || typeof data.vision !== 'boolean'))
     ) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
@@ -767,7 +1706,7 @@ export async function submitRuntimeChat(
   traceparent?: string,
 ): Promise<RuntimeChatProjection> {
   const {
-    message, conversationId, requestId, privacyPartition,
+    message, conversationId, requestId, sessionId, sessionPrincipal, privacyPartition,
     credentialProfile = 'owner',
   } = input;
   if (
@@ -777,6 +1716,9 @@ export async function submitRuntimeChat(
     || Buffer.byteLength(message, 'utf8') > 16_384
     || !UUID_RE.test(conversationId)
     || !UUID_RE.test(requestId)
+    || ((sessionId === undefined) !== (sessionPrincipal === undefined))
+    || (sessionId !== undefined && !UUID_RE.test(sessionId))
+    || (sessionPrincipal !== undefined && !isRuntimeSessionPrincipal(sessionPrincipal))
     || typeof privacyPartition !== 'string'
     || privacyPartition !== privacyPartition.trim()
     || privacyPartition.length < 1
@@ -795,6 +1737,10 @@ export async function submitRuntimeChat(
     message,
     conversation_id: conversationId,
     request_id: requestId,
+    ...(sessionId === undefined ? {} : {
+      session_id: sessionId,
+      session_principal: sessionPrincipal,
+    }),
     privacy_partition: privacyPartition,
   }, traceparent, credentialProfile);
   const result = call.data.result;
@@ -853,7 +1799,9 @@ export async function submitRuntimeChat(
     if (
       authority.tool_authority !== 'READ_ONLY_CONTEXT'
       || authority.memory_scope !== expectedMemoryScope
-      || authority.conversation_history !== 'session_bounded'
+      || authority.conversation_history !== (
+        sessionId === undefined ? 'session_bounded' : 'durable_principal_bound'
+      )
       || !validateV2ChatIdentity(result.identity)
       || !validateV2ChatContext(result.context)
     ) {
@@ -903,6 +1851,123 @@ export async function submitRuntimeChat(
     authority: authority as unknown as RuntimeChatAuthority,
     identity: responseV2 ? result.identity as RuntimeChatIdentity : null,
     context: responseV2 ? result.context as RuntimeChatContext : null,
+  };
+}
+
+function sessionObservation(
+  receipt: RuntimeReceipt,
+  requestContract: RuntimeSessionObservation['request_contract'] = 'not_applicable',
+): RuntimeSessionObservation {
+  return {
+    evidence_lane: 'observed_runtime_http_and_principal_bound_session',
+    receipt,
+    request_contract: requestContract,
+  };
+}
+
+export async function listRuntimeSessions(
+  input: RuntimeSessionListInput,
+  traceparent?: string,
+): Promise<RuntimeSessionListProjection> {
+  validateSessionBinding(input);
+  const limit = input.limit ?? 24;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 128) {
+    throw new RuntimeProxyError('session_request_invalid', 400);
+  }
+  const call = await callRuntime('/v1/sessions/list', {
+    privacy_partition: input.privacyPartition,
+    session_principal: input.sessionPrincipal,
+    limit,
+  }, traceparent, input.credentialProfile ?? 'owner');
+  const result = call.data.result;
+  const listKeys = ['schema_version', 'sessions', 'count'];
+  if (
+    !isObject(result)
+    || !exactKeys(result, listKeys)
+    || result.schema_version !== 'apocv4.workspace-sessions.v1'
+    || !Array.isArray(result.sessions)
+    || result.sessions.length > limit
+    || !boundedNonnegativeInteger(result.count, 128)
+    || result.count !== result.sessions.length
+    || !boundedJsonValue(result, SESSION_RESPONSE_LIMIT)
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  const sessions = result.sessions.map(normalizeSessionSummary);
+  if (
+    sessions.some((entry) => entry === null)
+    || new Set(sessions.map((entry) => entry?.session_id)).size !== sessions.length
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'session_list',
+    observed: sessionObservation(call.receipt),
+    sessions: sessions as RuntimeSessionSummary[],
+    count: result.count as number,
+  };
+}
+
+export async function getRuntimeSession(
+  input: RuntimeSessionGetInput,
+  traceparent?: string,
+): Promise<RuntimeSessionGetProjection> {
+  validateSessionBinding(input);
+  if (!CLIENT_SESSION_UUID_RE.test(input.sessionId)) {
+    throw new RuntimeProxyError('session_request_invalid', 400);
+  }
+  const credentialProfile = input.credentialProfile ?? 'owner';
+  const call = await callRuntime('/v1/sessions/get', {
+    privacy_partition: input.privacyPartition,
+    session_principal: input.sessionPrincipal,
+    session_id: input.sessionId,
+  }, traceparent, credentialProfile);
+  const session = normalizeSessionSnapshot(call.data.result, input.sessionId, credentialProfile);
+  if (!session) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'session_get',
+    observed: sessionObservation(call.receipt, 'session_id'),
+    session,
+  };
+}
+
+export async function deleteRuntimeSession(
+  input: RuntimeSessionDeleteInput,
+  traceparent?: string,
+): Promise<RuntimeSessionDeleteProjection> {
+  validateSessionBinding(input);
+  if (!CLIENT_SESSION_UUID_RE.test(input.sessionId) || !UUID_RE.test(input.requestId)) {
+    throw new RuntimeProxyError('session_request_invalid', 400);
+  }
+  const call = await callRuntime('/v1/sessions/delete', {
+    privacy_partition: input.privacyPartition,
+    session_principal: input.sessionPrincipal,
+    request_id: input.requestId,
+    session_id: input.sessionId,
+  }, traceparent, input.credentialProfile ?? 'owner');
+  const result = call.data.result;
+  if (
+    !isObject(result)
+    || !exactKeys(result, ['schema_version', 'session_id', 'deleted', 'event_digest'])
+    || result.schema_version !== 'apocv4.workspace-session-deletion.v1'
+    || result.session_id !== input.sessionId
+    || result.deleted !== true
+    || typeof result.event_digest !== 'string'
+    || !SHA256_RE.test(result.event_digest)
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'session_delete',
+    observed: sessionObservation(call.receipt, 'session_id'),
+    session_id: input.sessionId,
+    deleted: true,
+    event_digest: result.event_digest,
   };
 }
 
@@ -960,6 +2025,117 @@ function canonicalCodePaths(value: unknown): string[] {
 
 export function validateRuntimeCodePaths(value: unknown): string[] {
   return canonicalCodePaths(value);
+}
+
+interface DurableEffectBinding {
+  sessionId: string;
+  sessionPrincipal: RuntimeSessionPrincipal;
+  requestId: string;
+}
+
+function durableEffectBinding(
+  input: {
+    sessionId?: string;
+    sessionPrincipal?: RuntimeSessionPrincipal;
+    requestId?: string;
+    privacyPartition: string;
+  },
+  errorCode: 'code_request_invalid' | 'rollback_request_invalid',
+): DurableEffectBinding | null {
+  const values = [input.sessionId, input.sessionPrincipal, input.requestId];
+  const present = values.filter((value) => value !== undefined).length;
+  if (present === 0) return null;
+  if (
+    present !== values.length
+    || typeof input.sessionId !== 'string'
+    || !CLIENT_SESSION_UUID_RE.test(input.sessionId)
+    || !isRuntimeSessionPrincipal(input.sessionPrincipal)
+    || typeof input.requestId !== 'string'
+    || !UUID_RE.test(input.requestId)
+    || input.privacyPartition !== 'owner:apocky'
+  ) {
+    throw new RuntimeProxyError(errorCode, 400);
+  }
+  return {
+    sessionId: input.sessionId,
+    sessionPrincipal: input.sessionPrincipal,
+    requestId: input.requestId,
+  };
+}
+
+function projectDurableCodeReceipt(
+  result: JsonObject,
+  binding: DurableEffectBinding | null,
+): JsonObject | null {
+  const fields = [
+    'session_id', 'request_id', 'session_event_digests', 'session_tip_digest',
+    'durable_replay',
+  ];
+  if (binding === null) {
+    return fields.some((key) => Object.hasOwn(result, key)) ? null : {};
+  }
+  const events = result.session_event_digests;
+  if (
+    result.session_id !== binding.sessionId
+    || result.request_id !== binding.requestId
+    || !isObject(events)
+    || !exactKeys(events, ['code_request', 'code_proposal', 'code_effect', 'rollback'])
+    || typeof events.code_request !== 'string'
+    || !SHA256_RE.test(events.code_request)
+    || typeof events.code_proposal !== 'string'
+    || !SHA256_RE.test(events.code_proposal)
+    || typeof events.code_effect !== 'string'
+    || !SHA256_RE.test(events.code_effect)
+    || !nullableDigest(events.rollback)
+    || typeof result.session_tip_digest !== 'string'
+    || !SHA256_RE.test(result.session_tip_digest)
+    || typeof result.durable_replay !== 'boolean'
+    || (result.state === 'EXECUTION_ROLLED_BACK') !== (events.rollback !== null)
+  ) return null;
+  return {
+    session_id: binding.sessionId,
+    request_id: binding.requestId,
+    session_event_digests: {
+      code_request: events.code_request,
+      code_proposal: events.code_proposal,
+      code_effect: events.code_effect,
+      rollback: events.rollback,
+    },
+    session_tip_digest: result.session_tip_digest,
+    durable_replay: result.durable_replay,
+  };
+}
+
+function projectDurableRollbackReceipt(
+  result: JsonObject,
+  binding: DurableEffectBinding | null,
+): JsonObject | null {
+  const fields = [
+    'session_id', 'request_id', 'session_event_digests', 'session_tip_digest',
+    'durable_replay',
+  ];
+  if (binding === null) {
+    return fields.some((key) => Object.hasOwn(result, key)) ? null : {};
+  }
+  const events = result.session_event_digests;
+  if (
+    result.session_id !== binding.sessionId
+    || result.request_id !== binding.requestId
+    || !isObject(events)
+    || !exactKeys(events, ['rollback'])
+    || typeof events.rollback !== 'string'
+    || !SHA256_RE.test(events.rollback)
+    || typeof result.session_tip_digest !== 'string'
+    || !SHA256_RE.test(result.session_tip_digest)
+    || typeof result.durable_replay !== 'boolean'
+  ) return null;
+  return {
+    session_id: binding.sessionId,
+    request_id: binding.requestId,
+    session_event_digests: { rollback: events.rollback },
+    session_tip_digest: result.session_tip_digest,
+    durable_replay: result.durable_replay,
+  };
 }
 
 function digestValue(value: unknown): string | null {
@@ -1083,13 +2259,26 @@ export async function submitRuntimeCode(
     throw new RuntimeProxyError('code_request_invalid', 400);
   }
   const allowedPaths = canonicalCodePaths(input.allowedPaths);
+  const durableBinding = durableEffectBinding(input, 'code_request_invalid');
   const call = await callRuntime('/v1/code', {
     objective,
     privacy_partition: privacyPartition,
     allowed_paths: allowedPaths,
+    ...(durableBinding === null ? {} : {
+      session_id: durableBinding.sessionId,
+      session_principal: durableBinding.sessionPrincipal,
+      request_id: durableBinding.requestId,
+    }),
   }, traceparent);
   const result = call.data.result;
   if (!isObject(result)) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  if (Object.hasOwn(result, 'ledger_tip_digest')) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  const durableReceipt = projectDurableCodeReceipt(result, durableBinding);
+  if (durableReceipt === null) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
   }
   const state = result.state;
@@ -1209,6 +2398,7 @@ export async function submitRuntimeCode(
         isolated_outcome: projectedOutcome,
         perception_frame_digest: digestValue(result.perception_frame_digest),
         faculty_team_id: boundedOptionalString(result.faculty_team_id),
+        ...durableReceipt,
       },
       test,
     },
@@ -1222,27 +2412,54 @@ export async function submitRuntimeCode(
 }
 
 export async function submitRuntimeRollback(
-  promotionEventDigest: string,
+  input: string | RuntimeRollbackInput,
   traceparent?: string,
 ): Promise<RuntimeRollbackProjection> {
+  const promotionEventDigest = typeof input === 'string'
+    ? input
+    : input.promotionEventDigest;
   if (!SHA256_RE.test(promotionEventDigest)) {
     throw new RuntimeProxyError('rollback_request_invalid', 400);
   }
+  const durableBinding = typeof input === 'string'
+    ? null
+    : durableEffectBinding({
+      sessionId: input.sessionId,
+      sessionPrincipal: input.sessionPrincipal,
+      requestId: input.requestId,
+      privacyPartition: input.privacyPartition ?? '',
+    }, 'rollback_request_invalid');
   const call = await callRuntime('/v1/code/rollback', {
     promotion_event_digest: promotionEventDigest,
+    ...(durableBinding === null ? {} : {
+      session_id: durableBinding.sessionId,
+      session_principal: durableBinding.sessionPrincipal,
+      request_id: durableBinding.requestId,
+    }),
   }, traceparent);
   requireStrictEffectReceipt(call.receipt, true);
   const result = call.data.result;
+  const durableReceipt = isObject(result)
+    ? projectDurableRollbackReceipt(result, durableBinding)
+    : null;
+  const expectedKeys = [
+    'schema_version', 'state', 'promotion_event_digest', 'rollback_event_digest',
+    'journal_tip_digest',
+    ...(durableBinding === null ? [] : [
+      'session_id', 'request_id', 'session_event_digests', 'session_tip_digest',
+      'durable_replay',
+    ]),
+  ];
   if (
     !isObject(result)
-    || !exactKeys(result, [
-      'schema_version', 'state', 'promotion_event_digest', 'rollback_event_digest', 'journal_tip_digest',
-    ])
+    || Object.hasOwn(result, 'ledger_tip_digest')
+    || !exactKeys(result, expectedKeys)
     || result.schema_version !== 'apocv4.journaled-patch-runtime.v1'
     || result.state !== 'ROLLED_BACK'
     || result.promotion_event_digest !== promotionEventDigest
     || !digestValue(result.rollback_event_digest)
     || !digestValue(result.journal_tip_digest)
+    || durableReceipt === null
   ) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
   }
@@ -1258,6 +2475,7 @@ export async function submitRuntimeRollback(
         promotion_event_digest: result.promotion_event_digest,
         rollback_event_digest: result.rollback_event_digest,
         journal_tip_digest: result.journal_tip_digest,
+        ...durableReceipt,
       },
     },
     model_reported: {

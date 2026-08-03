@@ -8,12 +8,18 @@ export type SiteAccessState = 'checking' | 'signed-out' | 'member' | 'owner' | '
 interface SiteSessionValue {
   access: SiteAccessState;
   authenticated: boolean;
+  subjectKey: string | null;
   refresh: () => Promise<void>;
 }
 
 const SiteSessionContext = createContext<SiteSessionValue | null>(null);
 
-async function resolveSiteAccess(): Promise<SiteAccessState> {
+interface ResolvedSiteSession {
+  access: SiteAccessState;
+  subjectKey: string | null;
+}
+
+async function resolveSiteAccess(): Promise<ResolvedSiteSession> {
   let browserAuthenticated = false;
   const client = getAuthClient();
 
@@ -27,47 +33,60 @@ async function resolveSiteAccess(): Promise<SiteAccessState> {
   }
 
   let serverAuthenticated = false;
+  let subjectKey: string | null = null;
   try {
     const response = await authFetch('/api/auth/me', { cache: 'no-store' });
-    if (!response.ok) return browserAuthenticated ? 'unavailable' : 'signed-out';
+    if (!response.ok) return { access: browserAuthenticated ? 'unavailable' : 'signed-out', subjectKey: null };
     const payload = await response.json() as { user?: unknown };
     serverAuthenticated = Boolean(payload.user);
+    if (payload.user && typeof payload.user === 'object' && !Array.isArray(payload.user)) {
+      const candidate = (payload.user as Record<string, unknown>).id;
+      subjectKey = typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+    }
   } catch {
-    if (!browserAuthenticated) return 'unavailable';
+    if (!browserAuthenticated) return { access: 'unavailable', subjectKey: null };
   }
 
-  if (!serverAuthenticated && !browserAuthenticated) return 'signed-out';
+  if (!serverAuthenticated && !browserAuthenticated) return { access: 'signed-out', subjectKey: null };
 
   try {
     const response = await authFetch('/api/admin/check', { cache: 'no-store' });
-    if (!response.ok) return 'member';
+    if (!response.ok) return { access: 'member', subjectKey };
     const payload = await response.json() as { authorized?: unknown };
-    return payload.authorized === true ? 'owner' : 'member';
+    return { access: payload.authorized === true ? 'owner' : 'member', subjectKey };
   } catch {
-    return 'member';
+    return { access: 'member', subjectKey };
   }
 }
 
 export function SiteSessionProvider({ children }: { children: React.ReactNode }): JSX.Element {
-  const [access, setAccess] = useState<SiteAccessState>('checking');
+  const [session, setSession] = useState<ResolvedSiteSession>({ access: 'checking', subjectKey: null });
 
   const refresh = useCallback(async () => {
-    setAccess(await resolveSiteAccess());
+    setSession(await resolveSiteAccess());
   }, []);
 
   useEffect(() => {
     let current = true;
     void resolveSiteAccess().then((next) => {
-      if (current) setAccess(next);
+      if (current) setSession(next);
     });
     return () => { current = false; };
   }, []);
 
+  useEffect(() => {
+    const client = getAuthClient();
+    if (!client) return undefined;
+    const { data } = client.auth.onAuthStateChange(() => { void refresh(); });
+    return () => data.subscription.unsubscribe();
+  }, [refresh]);
+
   const value = useMemo<SiteSessionValue>(() => ({
-    access,
-    authenticated: access === 'member' || access === 'owner',
+    access: session.access,
+    authenticated: session.access === 'member' || session.access === 'owner',
+    subjectKey: session.subjectKey,
     refresh,
-  }), [access, refresh]);
+  }), [refresh, session]);
 
   return <SiteSessionContext.Provider value={value}>{children}</SiteSessionContext.Provider>;
 }

@@ -5,8 +5,6 @@
 // every client conversation/request UUID is deterministically scoped to that
 // principal before it reaches the direct private runtime transport.
 
-import { createHash } from 'node:crypto';
-
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { getAdminAllowlist, getRequestUser } from '@/lib/admin-auth';
@@ -18,6 +16,7 @@ import {
   setPrivateNoStore,
 } from '@/lib/apocrypha/proxy';
 import {
+  publicMemberPrincipalRef,
   publicRuntimeError,
   RuntimeProxyError,
   submitRuntimeChat,
@@ -35,6 +34,7 @@ const MAX_RATE_BUCKETS = 10_000;
 
 interface TurnBody {
   text?: unknown;
+  session_id?: unknown;
   conversation_id?: unknown;
   request_id?: unknown;
 }
@@ -76,12 +76,19 @@ function bodyRecord(value: unknown): TurnBody | null {
     : null;
 }
 
-export function publicMemberPrincipalRef(userId: string): string {
-  const digest = createHash('sha256')
-    .update('APOCRYPHA-V2-PUBLIC-MEMBER-PRINCIPAL-v1\0', 'utf8')
-    .update(userId, 'utf8')
-    .digest('hex');
-  return `principal:apocky-member:${digest}`;
+function exactObject(value: unknown, expectedKeys: readonly string[]): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  return keys.length === expected.length && keys.every((key, index) => key === expected[index]);
+}
+
+function readClientSessionId(body: TurnBody | null): unknown {
+  if (body === null) return undefined;
+  const canonical = exactObject(body, ['text', 'session_id', 'request_id']);
+  const legacy = exactObject(body, ['text', 'conversation_id', 'request_id']);
+  if (canonical === legacy) return undefined;
+  return canonical ? body.session_id : body.conversation_id;
 }
 
 function rateDecision(
@@ -173,6 +180,14 @@ export default async function handler(
   }
 
   const body = bodyRecord(req.body);
+  const rawSessionId = readClientSessionId(body);
+  if (rawSessionId === undefined) {
+    res.status(400).json({
+      error: 'body must contain exactly text, session_id, and request_id',
+      ...envelope(),
+    });
+    return;
+  }
   const text = boundedText(body?.text);
   if (!text) {
     res.status(400).json({
@@ -186,9 +201,9 @@ export default async function handler(
     });
     return;
   }
-  if (!isOpaqueConversationId(body?.conversation_id)) {
+  if (!isOpaqueConversationId(rawSessionId)) {
     res.status(400).json({
-      error: 'conversation_id must be an opaque UUIDv4 minted by this client',
+      error: 'session_id must be an opaque UUIDv4 minted by this client',
       ...envelope(),
     });
     await emitOperationalTelemetry({
@@ -234,9 +249,9 @@ export default async function handler(
     return;
   }
 
-  const clientConversationId = body.conversation_id.toLowerCase();
+  const clientSessionId = rawSessionId.toLowerCase();
   const clientRequestId = body.request_id.toLowerCase();
-  const scopedConversationId = scopeConversationId(principalRef, clientConversationId);
+  const scopedConversationId = scopeConversationId(principalRef, clientSessionId);
   const scopedRequestId = scopeRequestId(principalRef, clientRequestId);
   await emitOperationalTelemetry({
     trace, kind: 'inference.apocrypha.turn.started', source: 'apocv4-runtime-proxy', plane: 'runtime',
@@ -256,6 +271,8 @@ export default async function handler(
       message: text,
       conversationId: scopedConversationId,
       requestId: scopedRequestId,
+      sessionId: clientSessionId,
+      sessionPrincipal: principalRef,
       privacyPartition: runtimePrivacyPartition,
       credentialProfile,
     }, traceparentFor(trace));
@@ -263,7 +280,8 @@ export default async function handler(
     const status = error instanceof RuntimeProxyError ? error.publicStatus : 502;
     res.status(status).json({
       ...publicRuntimeError(error),
-      conversation_id: clientConversationId,
+      session_id: clientSessionId,
+      conversation_id: clientSessionId,
       request_id: clientRequestId,
       duplicate_effect_protection: 'not_applicable_no_effect_authority',
       ...envelope(),
@@ -286,7 +304,8 @@ export default async function handler(
   if (!modelId || !responseId || !responseDigest || !servingProfileDigest) {
     res.status(502).json({
       error: 'The Apocv4 runtime did not return the exact public-turn evidence envelope.',
-      conversation_id: clientConversationId,
+      session_id: clientSessionId,
+      conversation_id: clientSessionId,
       request_id: clientRequestId,
       duplicate_effect_protection: 'not_applicable_no_effect_authority',
       ...envelope(),
@@ -303,7 +322,8 @@ export default async function handler(
 
   res.status(200).json({
     text: projection.model_reported.text,
-    conversation_id: clientConversationId,
+    session_id: clientSessionId,
+    conversation_id: clientSessionId,
     request_id: clientRequestId,
     model_id: modelId,
     response_id: responseId,
@@ -314,8 +334,8 @@ export default async function handler(
     outcome: 'completed',
     learned_faculty_used: true,
     memory_scope: projection.authority.memory_scope,
-    conversation_history: projection.authority.conversation_history === 'session_bounded'
-      ? 'session_bounded'
+    conversation_history: projection.authority.conversation_history === 'durable_principal_bound'
+      ? 'durable_principal_bound'
       : 'not_retained_by_public_interface',
     training_consent: false,
     identity: projection.identity,

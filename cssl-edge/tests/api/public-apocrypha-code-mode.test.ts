@@ -36,12 +36,12 @@ assert(component.includes('confirm_rollback: true'), 'rollback requires an expli
 assert(component.includes("message.codeEffect.state === 'PROMOTED'"), 'rollback is offered only for a promoted receipt');
 assert(component.includes("runtime?.state !== 'ROLLED_BACK'"), 'rollback response is fail-closed on terminal state');
 
-assert(codeRoute.includes('requireApocryphaOwner(req, res)'), 'code BFF independently re-verifies owner authorization');
+assert(codeRoute.includes('getAdminAuthorization(req)'), 'code BFF independently re-verifies owner authorization');
 assert(codeRoute.includes('body.confirm_apply !== true'), 'code BFF rejects absent confirmation');
-assert(codeRoute.indexOf('requireApocryphaOwner(req, res)') < codeRoute.indexOf('submitRuntimeCode({'), 'authorization precedes the code effect');
-assert(rollbackRoute.includes('requireApocryphaOwner(req, res)'), 'rollback BFF independently re-verifies owner authorization');
+assert(codeRoute.indexOf('getAdminAuthorization(req)') < codeRoute.indexOf('submitRuntimeCode({'), 'authorization precedes the code effect');
+assert(rollbackRoute.includes('getAdminAuthorization(req)'), 'rollback BFF independently re-verifies owner authorization');
 assert(rollbackRoute.includes('body.confirm_rollback !== true'), 'rollback BFF rejects absent confirmation');
-assert(rollbackRoute.indexOf('requireApocryphaOwner(req, res)') < rollbackRoute.indexOf('submitRuntimeRollback('), 'authorization precedes rollback');
+assert(rollbackRoute.indexOf('getAdminAuthorization(req)') < rollbackRoute.indexOf('submitRuntimeRollback('), 'authorization precedes rollback');
 
 assert(style.includes('.codeScope'), 'owner code scope is visibly composed');
 assert(style.includes('.codeReceipt'), 'code effect receipts are visibly composed');

@@ -223,7 +223,7 @@
 .role { margin: 3px 0 0; color: #858293; font: 750 0.62rem/1.4 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
 .messageText { color: #dfdce7; font-size: 0.92rem; line-height: 1.72; white-space: pre-wrap; overflow-wrap: anywhere; }
 .messageSignals { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.evidenceMark,.effectMark,.messageMenuButton {
+.evidenceMark,.effectMark,.turnStateMark,.messageMenuButton {
   min-height: 26px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -232,12 +232,15 @@
   cursor: pointer;
   font-size: 0.59rem;
 }
-.evidenceMark,.effectMark { padding: 0 7px; }
+.evidenceMark,.effectMark,.turnStateMark { padding: 0 7px; }
 .evidenceMark span { color: #71d9bb; }
 .effectMark span { color: #aa91f1; }
+.turnStateMark span { color: #e4bd7a; }
+.turnStateMark[data-state='failed'] { color: #dca0aa; }
+.turnStateMark[data-state='failed'] span { color: #f19bac; }
 .messageMenuButton { width: 28px; padding: 0; opacity: 0; letter-spacing: 0.06em; transition: opacity 140ms ease, border-color 140ms ease, background 140ms ease; }
 .message:hover .messageMenuButton,.message:focus-within .messageMenuButton,.messageMenuButton[aria-expanded="true"] { opacity: 1; }
-.evidenceMark:hover,.effectMark:hover,.messageMenuButton:hover { border-color: var(--line); color: #d6d2df; background: rgba(255,255,255,0.035); }
+.evidenceMark:hover,.effectMark:hover,.turnStateMark:hover,.messageMenuButton:hover { border-color: var(--line); color: #d6d2df; background: rgba(255,255,255,0.035); }
 .copiedMark { color: #75d9bd; font: 650 0.57rem/1 ui-monospace,monospace; }
 
 .userMessage {
@@ -285,6 +288,22 @@
   font-weight: 700;
 }
 .rollbackButton:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.turnStateReceipt {
+  grid-column: 2;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(228,189,122,0.26);
+  border-radius: 10px;
+  background: rgba(228,189,122,0.04);
+}
+.turnStateReceipt .inspectorHeader { color: #d9c49f; }
+.turnStateReceipt dl { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin: 12px 0; }
+.turnStateReceipt dl div { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(8,9,15,0.5); }
+.turnStateReceipt dt { color: #777284; font-size: 0.55rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.turnStateReceipt dd { margin: 4px 0 0; overflow: hidden; color: #c9c0b3; font: 0.63rem/1.35 ui-monospace,monospace; text-overflow: ellipsis; }
+.remediationButton { min-height: 38px; padding: 0 12px; border: 1px solid rgba(228,189,122,0.32); border-radius: 8px; color: #dfc898; background: rgba(92,66,27,0.16); cursor: pointer; font-weight: 700; }
+.remediationButton:hover { color: #ffe6ad; background: rgba(113,80,31,0.25); }
 
 .waiting { display: flex; align-items: center; gap: 10px; padding: 16px clamp(20px,5vw,72px); color: #aaa6b5; font-size: 0.76rem; }
 .waitingMark { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 16px rgba(141,227,239,0.7); animation: breathe 1.35s ease-in-out infinite; }
@@ -540,11 +559,14 @@
 .intentGrid button > span:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
 .intentGrid strong { font-size: 0.7rem; }
 .intentGrid small { color: #858192; font-size: 0.62rem; line-height: 1.35; }
+.intentAxis { display: grid; justify-items: end; align-self: stretch; align-content: space-between; gap: 5px; }
+.intentAxis b { color: #6f6b7d; font: 650 0.47rem/1 ui-monospace,monospace; letter-spacing: 0.08em; text-transform: uppercase; }
 .intentGrid em { align-self: start; padding: 3px 5px; border: 1px solid rgba(170,145,241,0.24); border-radius: 999px; color: #a99dce; font: 650 0.48rem/1 ui-monospace,monospace; font-style: normal; text-transform: uppercase; }
 .paletteUtilities { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
 .paletteUtilities button { display: flex; min-height: 36px; align-items: center; justify-content: space-between; padding: 0 9px; border: 0; border-radius: 9px; color: #918d9d; background: transparent; cursor: pointer; font-size: 0.61rem; }
 .paletteUtilities button:hover { color: #ded9e6; background: rgba(255,255,255,0.035); }
 .intentPalette > p { margin: 7px 7px 2px; color: #817d8e; font-size: 0.6rem; line-height: 1.45; }
+.intentPalette > p strong { color: #aaa4bc; font-weight: 690; }
 
 .conversationMenu { width: min(310px,calc(100vw - 24px)); padding: 10px; }
 .menuTitle { padding: 7px 8px 12px; border-bottom: 1px solid var(--line); justify-content: flex-start; }
@@ -557,6 +579,28 @@
 .conversationMenu > button > span:last-child { display: grid; gap: 3px; }
 .conversationMenu > button strong { font-size: 0.68rem; }
 .conversationMenu > button small { color: #817d8e; font-size: 0.62rem; }
+.conversationMenu > button.deleteWorldline { color: #d89ca7; }
+.conversationMenu > button.deleteWorldline > span:first-child { color: #d58694; }
+.conversationMenu > button.deleteWorldline:hover { color: #ffd6dc; background: rgba(224,116,135,0.07); }
+.recentThreads { display: grid; max-height: 246px; gap: 2px; margin: 4px 0 7px; padding: 8px 0; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.recentThreadsLabel { display: flex; align-items: center; justify-content: space-between; padding: 2px 9px 6px; color: #777384; font-size: 0.55rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.recentThreadsLabel small { color: #5f5c69; font-size: 0.52rem; letter-spacing: 0.04em; text-transform: none; }
+.threadChoice { display: grid; width: 100%; min-height: 47px; grid-template-columns: 18px minmax(0,1fr); align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: 9px; color: #aaa6b6; background: transparent; cursor: pointer; text-align: left; }
+.threadChoice:hover,.threadChoice[data-active='true'] { color: #ece8f1; background: rgba(157,140,219,0.075); }
+.threadChoice:disabled { cursor: wait; opacity: 0.56; }
+.threadChoice > span:last-child { display: grid; min-width: 0; gap: 3px; }
+.threadChoice strong,.threadChoice small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.threadChoice strong { font-size: 0.64rem; font-weight: 640; }
+.threadChoice small { color: #777384; font-size: 0.56rem; }
+.threadOrbit { width: 7px; height: 7px; margin: auto; border: 1px solid #746a96; border-radius: 50%; box-shadow: 0 0 0 3px rgba(116,106,150,0.08); }
+.threadChoice[data-active='true'] .threadOrbit { border-color: #b4a8dc; background: #a89bd0; box-shadow: 0 0 0 4px rgba(168,155,208,0.1),0 0 13px rgba(168,155,208,0.28); }
+.worldObjects { display: grid; gap: 3px; margin: 4px 0 7px; padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.worldObject { display: grid; min-height: 42px; grid-template-columns: 18px minmax(0,1fr); align-items: center; gap: 8px; padding: 5px 8px; color: #aaa6b6; }
+.worldObject > span:first-child { margin: auto; color: #9f94c4; font-size: 0.72rem; }
+.worldObject > span:last-child { display: grid; min-width: 0; gap: 3px; }
+.worldObject strong,.worldObject small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.worldObject strong { font-size: 0.64rem; font-weight: 640; }
+.worldObject small { color: #777384; font-size: 0.56rem; }
 .menuFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
 .menuFacts > span { display: grid; min-width: 0; gap: 4px; padding: 8px; border: 1px solid rgba(174,164,218,0.11); border-radius: 9px; background: rgba(255,255,255,0.015); }
 .menuFacts small { color: #817d8e; font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -619,9 +663,11 @@
 .brand:focus-visible,
 .evidenceMark:focus-visible,
 .effectMark:focus-visible,
+.turnStateMark:focus-visible,
 .messageMenuButton:focus-visible,
 .inspectorHeader button:focus-visible,
 .rollbackButton:focus-visible,
+.remediationButton:focus-visible,
 .lensButton:focus-visible,
 .scopeCapsule:focus-visible,
 .sendButton:focus-visible,
@@ -649,8 +695,8 @@
   .message { grid-template-columns: 1fr; gap: 8px; padding: 22px 15px; }
   .messageMeta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .messageMenuButton { opacity: 1; }
-  .receipt, .codeReceipt { grid-column: 1; }
-  .receipt dl, .codeReceipt dl { grid-template-columns: 1fr; }
+  .receipt, .codeReceipt, .turnStateReceipt { grid-column: 1; }
+  .receipt dl, .codeReceipt dl, .turnStateReceipt dl { grid-template-columns: 1fr; }
   .waiting { padding: 14px 15px; }
   .error { margin: 10px 12px; }
   .composer { position: sticky; bottom: 0; padding: 9px 10px calc(9px + env(safe-area-inset-bottom)); }
@@ -708,8 +754,8 @@
 }
 
 @media (forced-colors: active) {
-  .conversation,.composerShell,.floatingSurface,.scopeSheet textarea,.codeReceipt,.receipt { border: 1px solid CanvasText; }
-  .contextTrigger,.sendButton,.accessGate a,.rollbackButton,.floatingSurface button { border: 1px solid ButtonText; }
+  .conversation,.composerShell,.floatingSurface,.scopeSheet textarea,.codeReceipt,.receipt,.turnStateReceipt { border: 1px solid CanvasText; }
+  .contextTrigger,.sendButton,.accessGate a,.rollbackButton,.remediationButton,.floatingSurface button { border: 1px solid ButtonText; }
   .message:focus-visible,.composerShell:focus-within { outline: 2px solid Highlight; outline-offset: -2px; }
   .intentGrid button.activeIntent { outline: 2px solid Highlight; }
 }
