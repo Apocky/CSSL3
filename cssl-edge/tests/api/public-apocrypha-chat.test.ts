@@ -428,6 +428,13 @@ async function main(): Promise<void> {
     resolve(process.cwd(), 'styles/PublicApocrypha.module.css'),
     'utf8',
   );
+  const runtimeProxy = readFileSync(
+    resolve(process.cwd(), 'lib/apocv4/runtime-proxy.ts'),
+    'utf8',
+  );
+  const vercel = JSON.parse(
+    readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
+  ) as { functions?: Record<string, { maxDuration?: number }> };
   assert(page.includes('<PublicChat />'), '/apocrypha renders the native public chat');
   assert(!page.includes('ClearingRoom'), '/apocrypha is no longer the social room');
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
@@ -440,6 +447,9 @@ async function main(): Promise<void> {
   assert(component.includes('response_digest'), 'browser retains response evidence');
   assert(component.includes('serving_profile_digest'), 'browser retains serving-profile evidence');
   assert(component.includes('Retry same turn'), 'bounded retry reuses one turn identity');
+  assert(component.includes('CHAT_BROWSER_DEADLINE_MS = 85_000'), 'browser allows a full governed model turn');
+  assert(runtimeProxy.includes('CHAT_DEADLINE_MS = 80_000'), 'BFF allows a full governed model turn');
+  equal(vercel.functions?.['pages/api/apocrypha/chat.ts']?.maxDuration, 90, 'production chat function exceeds the BFF deadline');
   assert(component.includes('No message is sent until the session is verified.'), 'signed-out boundary is explicit');
   assert(component.includes('<Link href="/clearing">The Clearing</Link>'), 'Apocrypha and Clearing remain distinct routes');
   assert(css.includes('@media (max-width: 680px)'), 'narrow mobile layout exists');

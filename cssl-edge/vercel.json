@@ -9,6 +9,9 @@
     "pages/api/**/*.ts": {
       "maxDuration": 30
     },
+    "pages/api/apocrypha/chat.ts": {
+      "maxDuration": 90
+    },
     "pages/api/admin/apocrypha/chat.ts": {
       "maxDuration": 30
     },

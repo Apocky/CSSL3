@@ -121,7 +121,7 @@ const GENERATIVE_MODES: ReadonlyArray<{
   { id: 'explain', label: 'Explain', starter: 'Explain this clearly and precisely:\n', placeholder: 'What should Apocrypha explain?…' },
 ];
 
-const CHAT_BROWSER_DEADLINE_MS = 28_000;
+const CHAT_BROWSER_DEADLINE_MS = 85_000;
 const CODE_BROWSER_DEADLINE_MS = 250_000;
 const MAX_TEXT_BYTES = 16_384;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
