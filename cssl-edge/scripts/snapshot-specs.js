@@ -17,8 +17,8 @@ const OUT_FILE = path.resolve(__dirname, '..', 'lib', 'specs-snapshot.ts');
 
 function readSpecs() {
   if (!fs.existsSync(SPECS_DIR)) {
-    console.warn(`[snapshot-specs] missing ${SPECS_DIR} · emitting empty snapshot`);
-    return [];
+    console.warn(`[snapshot-specs] missing ${SPECS_DIR} · preserving committed snapshot`);
+    return null;
   }
   const entries = fs
     .readdirSync(SPECS_DIR)
@@ -71,6 +71,20 @@ function buildOutput(specs) {
 
 function main() {
   const specs = readSpecs();
+  if (specs === null) {
+    if (!fs.existsSync(OUT_FILE)) {
+      throw new Error(`[snapshot-specs] missing source and committed snapshot: ${OUT_FILE}`);
+    }
+    const existing = fs.readFileSync(OUT_FILE, 'utf8');
+    const entries = existing.match(/\bslug:\s*"/g)?.length ?? 0;
+    if (!existing.includes('// AUTO-GENERATED') || !existing.includes('export const SPECS') || entries === 0) {
+      throw new Error(`[snapshot-specs] committed snapshot is invalid or empty: ${OUT_FILE}`);
+    }
+    console.log(
+      `[snapshot-specs] preserved ${entries} committed specs → ${path.relative(REPO_ROOT, OUT_FILE)}`,
+    );
+    return;
+  }
   const out = buildOutput(specs);
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
   fs.writeFileSync(OUT_FILE, out, 'utf8');
