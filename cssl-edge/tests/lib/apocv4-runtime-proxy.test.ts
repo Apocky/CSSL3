@@ -353,7 +353,6 @@ async function main(): Promise<void> {
       'rollback forwards exactly one receipt key',
     );
     assert(rollback.observed.runtime.state === 'ROLLED_BACK', 'rollback state is observed');
-    assert(rollback.observed.receipt.rollback_lease_ref === digest('4'), 'rollback lease receipt is preserved');
     assert(
       rollback.observed.runtime.journal_tip_digest === digest('e'),
       'five-key rollback receipt preserves journal tip',

@@ -132,7 +132,6 @@ export interface RuntimeReceipt {
   principal_ref: string | null;
   privacy_partition_ref: string | null;
   effect_scope_ref: string | null;
-  rollback_lease_ref: string | null;
 }
 
 export interface RuntimeHealthProjection {
@@ -347,6 +346,7 @@ export class RuntimeProxyError extends Error {
 
 interface RuntimeCall {
   data: JsonObject;
+  rollback_lease_ref: string | null;
   receipt: RuntimeReceipt;
 }
 
@@ -1593,6 +1593,7 @@ async function callRuntime(
     }
     return {
       data,
+      rollback_lease_ref: boundedHeaderRef(response.headers, 'x-apocv4-rollback-lease-ref'),
       receipt: {
         observed_at: new Date().toISOString(),
         latency_ms: Math.max(0, Date.now() - started),
@@ -1603,7 +1604,6 @@ async function callRuntime(
         principal_ref: boundedHeaderRef(response.headers, 'x-apocv4-principal-ref'),
         privacy_partition_ref: boundedHeaderRef(response.headers, 'x-apocv4-privacy-partition-ref'),
         effect_scope_ref: boundedHeaderRef(response.headers, 'x-apocv4-effect-scope-ref'),
-        rollback_lease_ref: boundedHeaderRef(response.headers, 'x-apocv4-rollback-lease-ref'),
       },
     };
   } catch (error) {
@@ -2464,7 +2464,7 @@ export async function submitRuntimeRollback(
     }),
   }, traceparent);
   requireStrictEffectReceipt(call.receipt, false);
-  if (!call.receipt.rollback_lease_ref) {
+  if (!call.rollback_lease_ref) {
     throw new RuntimeProxyError('runtime_effect_attestation_invalid', 502, call.receipt.upstream_status);
   }
   const result = call.data.result;
