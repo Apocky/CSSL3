@@ -77,8 +77,8 @@
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
-        { "key": "X-Served-By", "value": "apocky-com-hub" }
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0, no-transform" },
+        { "key": "X-Served-By", "value": "apocky-apocrypha-direct" }
       ]
     },
     {

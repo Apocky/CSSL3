@@ -30,6 +30,7 @@ const nextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        { source: '/', destination: '/apocrypha' },
         { source: '/atlas', destination: '/commons/atlas.html' },
         { source: '/membership', destination: '/commons/membership.html' },
         { source: '/principles', destination: '/commons/principles.html' },
