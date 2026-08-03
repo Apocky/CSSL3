@@ -13,6 +13,36 @@ interface TurnReceipt {
   responseId: string;
   responseDigest: string;
   servingProfileDigest: string;
+  memoryScope: string;
+  conversationHistory: string;
+  identity: IdentityReceipt | null;
+  context: ContextReceipt | null;
+}
+
+interface IdentityReceipt {
+  schema_version: string;
+  system_id: string;
+  architecture: string;
+  compiler_version: string;
+  identity_digest: string;
+  learned_model_role: string;
+  lineage: string;
+}
+
+interface CapabilityReceipt {
+  id: string;
+  status: string;
+  authority: string;
+  evidence: string;
+}
+
+interface ContextReceipt {
+  frame_id: string;
+  frame_digest: string;
+  provenance_spine_digest: string;
+  retrieval: { status: string; count: number; refs: unknown[] };
+  memory: { provider: string; status: string; records_used: number; receipt_digest: string | null; refs: unknown[] };
+  capabilities: CapabilityReceipt[];
 }
 
 interface ChatMessage {
@@ -46,6 +76,8 @@ interface TurnResponse {
   training_consent?: unknown;
   duplicate_effect_protection?: unknown;
   retry_after_seconds?: unknown;
+  identity?: unknown;
+  context?: unknown;
 }
 
 type GenerativeMode = 'general' | 'code' | 'analyze' | 'write' | 'explain';
@@ -80,6 +112,91 @@ function safeError(body: TurnResponse, status: number): string {
     ?? `Apocrypha could not complete this turn (HTTP ${status}).`;
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function identityReceipt(value: unknown): IdentityReceipt | null {
+  const record = recordValue(value);
+  if (!record) return null;
+  const receipt = {
+    schema_version: stringValue(record.schema_version),
+    system_id: stringValue(record.system_id),
+    architecture: stringValue(record.architecture),
+    compiler_version: stringValue(record.compiler_version),
+    identity_digest: stringValue(record.identity_digest),
+    learned_model_role: stringValue(record.learned_model_role),
+    lineage: stringValue(record.lineage),
+  };
+  return receipt.schema_version === 'apocv4.identity.v1'
+    && receipt.system_id === 'apocrypha'
+    && receipt.architecture === 'governed_hybrid_digital_intelligence'
+    && receipt.identity_digest !== null
+    && SHA256_PATTERN.test(receipt.identity_digest)
+    && receipt.compiler_version !== null
+    && receipt.learned_model_role === 'replaceable_faculty_not_system_identity'
+    && receipt.lineage !== null
+    ? receipt as IdentityReceipt
+    : null;
+}
+
+function contextReceipt(value: unknown): ContextReceipt | null {
+  const record = recordValue(value);
+  const retrieval = recordValue(record?.retrieval);
+  const memory = recordValue(record?.memory);
+  if (
+    !record || !retrieval || !memory
+    || !stringValue(record.frame_id)
+    || typeof record.frame_digest !== 'string'
+    || !SHA256_PATTERN.test(record.frame_digest)
+    || typeof record.provenance_spine_digest !== 'string'
+    || !SHA256_PATTERN.test(record.provenance_spine_digest)
+    || !stringValue(retrieval.status)
+    || !Number.isInteger(retrieval.count)
+    || !Array.isArray(retrieval.refs)
+    || !stringValue(memory.provider)
+    || !stringValue(memory.status)
+    || !Number.isInteger(memory.records_used)
+    || !Array.isArray(memory.refs)
+    || !Array.isArray(record.capabilities)
+  ) return null;
+  const capabilities: CapabilityReceipt[] = [];
+  for (const candidate of record.capabilities) {
+    const capability = recordValue(candidate);
+    if (!capability) return null;
+    const id = stringValue(capability.id);
+    const status = stringValue(capability.status);
+    const authority = stringValue(capability.authority);
+    const evidence = stringValue(capability.evidence);
+    if (!id || !status || !authority || !evidence) return null;
+    capabilities.push({ id, status, authority, evidence });
+  }
+  const memoryReceipt = memory.receipt_digest;
+  if (memoryReceipt !== null && (
+    typeof memoryReceipt !== 'string' || !SHA256_PATTERN.test(memoryReceipt)
+  )) return null;
+  return {
+    frame_id: String(record.frame_id),
+    frame_digest: record.frame_digest,
+    provenance_spine_digest: record.provenance_spine_digest,
+    retrieval: {
+      status: String(retrieval.status),
+      count: Number(retrieval.count),
+      refs: retrieval.refs,
+    },
+    memory: {
+      provider: String(memory.provider),
+      status: String(memory.status),
+      records_used: Number(memory.records_used),
+      receipt_digest: memoryReceipt as string | null,
+      refs: memory.refs,
+    },
+    capabilities,
+  };
+}
+
 function isExactTurn(
   body: TurnResponse,
   conversationId: string,
@@ -91,6 +208,17 @@ function isExactTurn(
   response_digest: string;
   serving_profile_digest: string;
 } {
+  const legacyBoundary = body.tool_authority === 'NONE'
+    && body.memory_scope === 'ephemeral'
+    && body.conversation_history === 'not_retained_by_public_interface'
+    && body.identity === null
+    && body.context === null;
+  const governedBoundary = body.tool_authority === 'READ_ONLY_CONTEXT'
+    && (body.memory_scope === 'owner_partitioned_retrieval'
+      || body.memory_scope === 'public_safe_retrieval')
+    && body.conversation_history === 'session_bounded'
+    && identityReceipt(body.identity) !== null
+    && contextReceipt(body.context) !== null;
   return body.conversation_id === conversationId
     && body.request_id === requestId
     && Boolean(stringValue(body.text))
@@ -101,11 +229,9 @@ function isExactTurn(
     && typeof body.serving_profile_digest === 'string'
     && SHA256_PATTERN.test(body.serving_profile_digest)
     && body.effect_authority === 'NONE'
-    && body.tool_authority === 'NONE'
     && body.outcome === 'completed'
     && body.learned_faculty_used === true
-    && body.memory_scope === 'ephemeral'
-    && body.conversation_history === 'not_retained_by_public_interface'
+    && (legacyBoundary || governedBoundary)
     && body.training_consent === false
     && body.duplicate_effect_protection === 'not_applicable_no_effect_authority';
 }
@@ -213,6 +339,8 @@ export function PublicChat(): JSX.Element {
         throw new Error('The native body returned an invalid public-turn envelope.');
       }
       const responseText = body.text;
+      const identity = identityReceipt(body.identity);
+      const context = contextReceipt(body.context);
       setLastModel(body.model_id);
       setMessages((current) => [
         ...current,
@@ -225,6 +353,10 @@ export function PublicChat(): JSX.Element {
             responseId: body.response_id,
             responseDigest: body.response_digest,
             servingProfileDigest: body.serving_profile_digest,
+            memoryScope: String(body.memory_scope),
+            conversationHistory: String(body.conversation_history),
+            identity,
+            context,
           },
         },
       ]);
@@ -357,6 +489,24 @@ export function PublicChat(): JSX.Element {
                       <div><dt>Response</dt><dd>{message.receipt.responseId}</dd></div>
                       <div><dt>Digest</dt><dd>{message.receipt.responseDigest.slice(0, 16)}…</dd></div>
                       <div><dt>Serving profile</dt><dd>{message.receipt.servingProfileDigest.slice(0, 16)}…</dd></div>
+                      <div><dt>Memory</dt><dd>{message.receipt.memoryScope}</dd></div>
+                      <div><dt>History</dt><dd>{message.receipt.conversationHistory}</dd></div>
+                      {message.receipt.identity && (
+                        <>
+                          <div><dt>Identity</dt><dd>Apocrypha · governed hybrid</dd></div>
+                          <div><dt>Compiler</dt><dd>{message.receipt.identity.compiler_version}</dd></div>
+                          <div><dt>Identity digest</dt><dd>{message.receipt.identity.identity_digest.slice(0, 16)}…</dd></div>
+                        </>
+                      )}
+                      {message.receipt.context && (
+                        <>
+                          <div><dt>Context frame</dt><dd>{message.receipt.context.frame_id}</dd></div>
+                          <div><dt>Provenance</dt><dd>{message.receipt.context.provenance_spine_digest.slice(0, 16)}…</dd></div>
+                          <div><dt>Retrieval</dt><dd>{message.receipt.context.retrieval.status} · {message.receipt.context.retrieval.count}</dd></div>
+                          <div><dt>Memory bank</dt><dd>{message.receipt.context.memory.provider} · {message.receipt.context.memory.status} · {message.receipt.context.memory.records_used} used</dd></div>
+                          <div><dt>Capabilities</dt><dd>{message.receipt.context.capabilities.map((capability) => `${capability.id}:${capability.status}`).join(' · ') || 'none'}</dd></div>
+                        </>
+                      )}
                     </dl>
                   </details>
                 )}
@@ -454,7 +604,7 @@ export function PublicChat(): JSX.Element {
               </div>
               <div className={styles.composerMeta}>
                 <p id="public-apocrypha-disclosure">
-                  Response generation only · no workspace or external-effect authority on this member surface.
+                  Governed retrieval and read-only context may be used · workspace and external effects require separate owner confirmation.
                 </p>
                 <span id="public-apocrypha-count">
                   {currentBytes.toLocaleString()} / {MAX_TEXT_BYTES.toLocaleString()} bytes
@@ -491,8 +641,8 @@ export function PublicChat(): JSX.Element {
               <div><dt>Connection</dt><dd>Signed-in member → Apocrypha</dd></div>
               <div><dt>Response model</dt><dd>{lastModel ?? 'Verified with each response'}</dd></div>
               <div><dt>Retry</dt><dd>Same request ID; effects remain disabled</dd></div>
-              <div><dt>Effects</dt><dd>No effect or tool authority</dd></div>
-              <div><dt>History</dt><dd>Not retained across sessions</dd></div>
+              <div><dt>Effects</dt><dd>No external effects; read-only context may be used</dd></div>
+              <div><dt>History</dt><dd>Bounded to this session; not retained across sessions</dd></div>
             </dl>
           </details>
         </aside>

@@ -48,6 +48,47 @@ const PROTECTED_CODE_PREFIXES = [
 ];
 
 type JsonObject = Record<string, unknown>;
+export type RuntimeCredentialProfile = 'owner' | 'public';
+
+export interface RuntimeChatAuthority {
+  effect_authority: 'NONE';
+  tool_authority: 'NONE' | 'READ_ONLY_CONTEXT';
+  memory_scope: 'ephemeral' | 'owner_partitioned_retrieval' | 'public_safe_retrieval';
+  conversation_history: 'not_retained' | 'session_bounded';
+  training_consent: false;
+}
+
+export interface RuntimeChatIdentity {
+  schema_version: 'apocv4.identity.v1';
+  system_id: 'apocrypha';
+  architecture: 'governed_hybrid_digital_intelligence';
+  compiler_version: string;
+  identity_digest: string;
+  learned_model_role: 'replaceable_faculty_not_system_identity';
+  lineage: string;
+}
+
+export interface RuntimeChatCapability {
+  id: string;
+  status: string;
+  authority: string;
+  evidence: string;
+}
+
+export interface RuntimeChatContext extends JsonObject {
+  frame_id: string;
+  frame_digest: string;
+  provenance_spine_digest: string;
+  retrieval: JsonObject & { status: string; count: number; refs: unknown[] };
+  memory: JsonObject & {
+    provider: string;
+    status: string;
+    records_used: number;
+    receipt_digest: string | null;
+    refs: unknown[];
+  };
+  capabilities: RuntimeChatCapability[];
+}
 
 export interface RuntimeReceipt {
   observed_at: string;
@@ -104,6 +145,9 @@ export interface RuntimeChatProjection {
     evidence_lane: 'model_reported_not_observed_fact';
     text: string;
   };
+  authority: RuntimeChatAuthority;
+  identity: RuntimeChatIdentity | null;
+  context: RuntimeChatContext | null;
 }
 
 export interface RuntimeChatInput {
@@ -111,6 +155,7 @@ export interface RuntimeChatInput {
   conversationId: string;
   requestId: string;
   privacyPartition: string;
+  credentialProfile?: RuntimeCredentialProfile;
 }
 
 export interface RuntimeCodeInput {
@@ -187,6 +232,85 @@ function exactKeys(value: JsonObject, expected: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
   const wanted = [...expected].sort();
   return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
+}
+
+function boundedCanonicalString(value: unknown, maximumLength = 512): value is string {
+  return typeof value === 'string'
+    && value === value.trim()
+    && value.length > 0
+    && value.length <= maximumLength;
+}
+
+function boundedJsonValue(value: unknown, maximumBytes: number): boolean {
+  try {
+    const encoded = JSON.stringify(value);
+    return typeof encoded === 'string' && Buffer.byteLength(encoded, 'utf8') <= maximumBytes;
+  } catch {
+    return false;
+  }
+}
+
+function validateV2ChatIdentity(value: unknown): value is RuntimeChatIdentity {
+  return isObject(value)
+    && exactKeys(value, [
+      'schema_version', 'system_id', 'architecture', 'compiler_version',
+      'identity_digest', 'learned_model_role', 'lineage',
+    ])
+    && value.schema_version === 'apocv4.identity.v1'
+    && value.system_id === 'apocrypha'
+    && value.architecture === 'governed_hybrid_digital_intelligence'
+    && boundedCanonicalString(value.compiler_version, 128)
+    && typeof value.identity_digest === 'string'
+    && SHA256_RE.test(value.identity_digest)
+    && value.learned_model_role === 'replaceable_faculty_not_system_identity'
+    && boundedCanonicalString(value.lineage, 128);
+}
+
+function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
+  if (!isObject(value) || !exactKeys(value, [
+    'frame_id', 'frame_digest', 'provenance_spine_digest',
+    'retrieval', 'memory', 'capabilities',
+  ])) return false;
+  const retrieval = value.retrieval;
+  const memory = value.memory;
+  const capabilities = value.capabilities;
+  return boundedCanonicalString(value.frame_id, 256)
+    && value.frame_id.startsWith('acf-')
+    && typeof value.frame_digest === 'string'
+    && SHA256_RE.test(value.frame_digest)
+    && typeof value.provenance_spine_digest === 'string'
+    && SHA256_RE.test(value.provenance_spine_digest)
+    && isObject(retrieval)
+    && exactKeys(retrieval, ['status', 'count', 'refs'])
+    && boundedCanonicalString(retrieval.status, 128)
+    && Number.isInteger(retrieval.count)
+    && Number(retrieval.count) >= 0
+    && Number(retrieval.count) <= 128
+    && Array.isArray(retrieval.refs)
+    && retrieval.refs.length <= 128
+    && boundedJsonValue(retrieval.refs, 64 * 1024)
+    && isObject(memory)
+    && exactKeys(memory, ['provider', 'status', 'records_used', 'receipt_digest', 'refs'])
+    && boundedCanonicalString(memory.provider, 128)
+    && boundedCanonicalString(memory.status, 128)
+    && Number.isInteger(memory.records_used)
+    && Number(memory.records_used) >= 0
+    && Number(memory.records_used) <= 128
+    && (
+      memory.receipt_digest === null
+      || (typeof memory.receipt_digest === 'string' && SHA256_RE.test(memory.receipt_digest))
+    )
+    && Array.isArray(memory.refs)
+    && memory.refs.length <= 128
+    && boundedJsonValue(memory.refs, 64 * 1024)
+    && Array.isArray(capabilities)
+    && capabilities.length <= 64
+    && capabilities.every((entry) => isObject(entry)
+      && exactKeys(entry, ['id', 'status', 'authority', 'evidence'])
+      && boundedCanonicalString(entry.id, 128)
+      && boundedCanonicalString(entry.status, 128)
+      && boundedCanonicalString(entry.authority, 128)
+      && boundedCanonicalString(entry.evidence, 512));
 }
 
 function canonicalRuntimeOrigin(raw: string | undefined): string {
@@ -345,8 +469,10 @@ export function validateRuntimeUrl(raw: string): string {
   return canonicalRuntimeOrigin(raw);
 }
 
-function runtimeToken(): string {
-  const token = process.env.APOCV4_API_TOKEN;
+function runtimeToken(profile: RuntimeCredentialProfile = 'owner'): string {
+  const token = profile === 'public'
+    ? process.env.APOCV4_PUBLIC_API_TOKEN
+    : process.env.APOCV4_API_TOKEN;
   if (!token || !TOKEN_RE.test(token)) {
     throw new RuntimeProxyError('runtime_credential_unavailable', 503);
   }
@@ -436,9 +562,10 @@ async function callRuntime(
   path: '/health' | '/v1/chat' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives',
   body: JsonObject | null,
   traceparent?: string,
+  credentialProfile: RuntimeCredentialProfile = 'owner',
 ): Promise<RuntimeCall> {
   const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
-  const token = runtimeToken();
+  const token = runtimeToken(credentialProfile);
   const objective = path === '/v1/objectives';
   const chat = path === '/v1/chat';
   const code = path === '/v1/code';
@@ -639,7 +766,10 @@ export async function submitRuntimeChat(
   input: RuntimeChatInput,
   traceparent?: string,
 ): Promise<RuntimeChatProjection> {
-  const { message, conversationId, requestId, privacyPartition } = input;
+  const {
+    message, conversationId, requestId, privacyPartition,
+    credentialProfile = 'owner',
+  } = input;
   if (
     typeof message !== 'string'
     || message !== message.trim()
@@ -651,6 +781,13 @@ export async function submitRuntimeChat(
     || privacyPartition !== privacyPartition.trim()
     || privacyPartition.length < 1
     || privacyPartition.length > 256
+    || (credentialProfile !== 'owner' && credentialProfile !== 'public')
+  ) {
+    throw new RuntimeProxyError('chat_request_invalid', 400);
+  }
+  if (
+    (credentialProfile === 'owner' && privacyPartition !== 'owner:apocky')
+    || (credentialProfile === 'public' && privacyPartition !== 'public:apocrypha')
   ) {
     throw new RuntimeProxyError('chat_request_invalid', 400);
   }
@@ -659,20 +796,31 @@ export async function submitRuntimeChat(
     conversation_id: conversationId,
     request_id: requestId,
     privacy_partition: privacyPartition,
-  }, traceparent);
+  }, traceparent, credentialProfile);
   const result = call.data.result;
-  if (!isObject(result) || !exactKeys(result, [
-    'schema_version', 'text', 'model_reported', 'observed', 'authority',
-    'conversation_id', 'request_id', 'privacy_partition_ref', 'outcome',
-    'learned_faculty_used', 'duplicate_effect_protection',
-  ])) {
+  if (!isObject(result)) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  const responseV2 = result.schema_version === 'apocv4.chat-response.v2';
+  const expectedKeys = responseV2
+    ? [
+      'schema_version', 'text', 'model_reported', 'observed', 'authority',
+      'identity', 'context', 'conversation_id', 'request_id', 'privacy_partition_ref',
+      'outcome', 'learned_faculty_used', 'duplicate_effect_protection',
+    ]
+    : [
+      'schema_version', 'text', 'model_reported', 'observed', 'authority',
+      'conversation_id', 'request_id', 'privacy_partition_ref', 'outcome',
+      'learned_faculty_used', 'duplicate_effect_protection',
+    ];
+  if (!exactKeys(result, expectedKeys)) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
   }
   const model = result.model_reported;
   const observed = result.observed;
   const authority = result.authority;
   if (
-    result.schema_version !== 'apocv4.chat-response.v1'
+    (result.schema_version !== 'apocv4.chat-response.v1' && !responseV2)
     || result.conversation_id !== conversationId
     || result.request_id !== requestId
     || typeof result.privacy_partition_ref !== 'string'
@@ -694,10 +842,27 @@ export async function submitRuntimeChat(
       'conversation_history', 'training_consent',
     ])
     || authority.effect_authority !== 'NONE'
-    || authority.tool_authority !== 'NONE'
+    || authority.training_consent !== false
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  if (responseV2) {
+    const expectedMemoryScope = credentialProfile === 'owner'
+      ? 'owner_partitioned_retrieval'
+      : 'public_safe_retrieval';
+    if (
+      authority.tool_authority !== 'READ_ONLY_CONTEXT'
+      || authority.memory_scope !== expectedMemoryScope
+      || authority.conversation_history !== 'session_bounded'
+      || !validateV2ChatIdentity(result.identity)
+      || !validateV2ChatContext(result.context)
+    ) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+    }
+  } else if (
+    authority.tool_authority !== 'NONE'
     || authority.memory_scope !== 'ephemeral'
     || authority.conversation_history !== 'not_retained'
-    || authority.training_consent !== false
   ) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
   }
@@ -726,6 +891,7 @@ export async function submitRuntimeChat(
         learned_faculty_used: result.learned_faculty_used,
         duplicate_effect_protection: result.duplicate_effect_protection,
         authority,
+        ...(responseV2 ? { identity: result.identity, context: result.context } : {}),
         observed,
       },
     },
@@ -734,6 +900,9 @@ export async function submitRuntimeChat(
       evidence_lane: 'model_reported_not_observed_fact',
       text: result.text,
     },
+    authority: authority as unknown as RuntimeChatAuthority,
+    identity: responseV2 ? result.identity as RuntimeChatIdentity : null,
+    context: responseV2 ? result.context as RuntimeChatContext : null,
   };
 }
 

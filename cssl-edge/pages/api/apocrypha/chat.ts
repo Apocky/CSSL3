@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { getRequestUser } from '@/lib/admin-auth';
+import { getAdminAllowlist, getRequestUser } from '@/lib/admin-auth';
 import {
   isOpaqueClientRequestId,
   isOpaqueConversationId,
@@ -27,7 +27,8 @@ import { envelope } from '@/lib/response';
 import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
 const MAX_TEXT_BYTES = 16_384;
-const RUNTIME_PRIVACY_PARTITION = 'owner:apocky';
+const OWNER_RUNTIME_PRIVACY_PARTITION = 'owner:apocky';
+const PUBLIC_RUNTIME_PRIVACY_PARTITION = 'public:apocrypha';
 const RATE_WINDOW_MS = 60_000;
 const RATE_WINDOW_TURNS = 8;
 const MAX_RATE_BUCKETS = 10_000;
@@ -211,6 +212,11 @@ export default async function handler(
   }
 
   const principalRef = publicMemberPrincipalRef(session.user.id);
+  const ownerProfile = getAdminAllowlist().includes(session.user.email.toLowerCase());
+  const runtimePrivacyPartition = ownerProfile
+    ? OWNER_RUNTIME_PRIVACY_PARTITION
+    : PUBLIC_RUNTIME_PRIVACY_PARTITION;
+  const credentialProfile = ownerProfile ? 'owner' : 'public';
   const budget = rateDecision(principalRef);
   if (!budget.allowed) {
     res.setHeader('Retry-After', String(budget.retryAfterSeconds));
@@ -240,7 +246,7 @@ export default async function handler(
     attributes: {
       text_bytes: Buffer.byteLength(text, 'utf8'),
       privacy_class: 'restricted',
-      memory_scope: 'ephemeral',
+      memory_scope: ownerProfile ? 'owner_partitioned_retrieval' : 'public_safe_retrieval',
       training_consent: false,
     },
   });
@@ -250,7 +256,8 @@ export default async function handler(
       message: text,
       conversationId: scopedConversationId,
       requestId: scopedRequestId,
-      privacyPartition: RUNTIME_PRIVACY_PARTITION,
+      privacyPartition: runtimePrivacyPartition,
+      credentialProfile,
     }, traceparentFor(trace));
   } catch (error) {
     const status = error instanceof RuntimeProxyError ? error.publicStatus : 502;
@@ -302,13 +309,17 @@ export default async function handler(
     response_id: responseId,
     response_digest: responseDigest,
     serving_profile_digest: servingProfileDigest,
-    effect_authority: 'NONE',
-    tool_authority: 'NONE',
+    effect_authority: projection.authority.effect_authority,
+    tool_authority: projection.authority.tool_authority,
     outcome: 'completed',
     learned_faculty_used: true,
-    memory_scope: 'ephemeral',
-    conversation_history: 'not_retained_by_public_interface',
+    memory_scope: projection.authority.memory_scope,
+    conversation_history: projection.authority.conversation_history === 'session_bounded'
+      ? 'session_bounded'
+      : 'not_retained_by_public_interface',
     training_consent: false,
+    identity: projection.identity,
+    context: projection.context,
     duplicate_effect_protection: 'not_applicable_no_effect_authority',
     upstream_status: projection.observed.receipt.upstream_status,
     ...envelope(),
@@ -323,9 +334,9 @@ export default async function handler(
     attributes: {
       upstream_status: projection.observed.receipt.upstream_status,
       model_id: modelId,
-      effect_authority: 'NONE',
-      tool_authority: 'NONE',
-      memory_scope: 'ephemeral',
+      effect_authority: projection.authority.effect_authority,
+      tool_authority: projection.authority.tool_authority,
+      memory_scope: projection.authority.memory_scope,
       training_consent: false,
     },
   });

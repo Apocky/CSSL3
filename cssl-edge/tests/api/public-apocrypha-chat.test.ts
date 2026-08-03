@@ -23,6 +23,7 @@ interface RequestOptions {
   contentType?: string;
   member?: boolean;
   origin?: string;
+  email?: string;
 }
 
 function assert(condition: boolean, message: string): asserts condition {
@@ -54,7 +55,7 @@ function reqRes(
     'content-type': options.contentType ?? 'application/json',
   };
   if (options.member !== false) {
-    headers['x-apocky-test-admin-email'] = 'member@example.test';
+    headers['x-apocky-test-admin-email'] = options.email ?? 'member@example.test';
   }
   const req = {
     method,
@@ -92,6 +93,7 @@ const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
 const RUNTIME_ORIGIN = 'https://203.0.113.10:9443';
 const RUNTIME_TOKEN = 'test-runtime-token';
+const PUBLIC_RUNTIME_TOKEN = 'test-public-runtime-token';
 const MODEL_ID = 'fixture/frontier-coder';
 const SERVING_PROFILE_DIGEST = 'a'.repeat(64);
 const PROMPT_DIGEST = 'b'.repeat(64);
@@ -103,10 +105,11 @@ function runtimeChatEnvelope(
   text = 'A bounded Apocv4 response.',
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
+  const ownerProfile = request.privacy_partition === 'owner:apocky';
   return {
     schema_version: 'apocv4.runtime-service.v1',
     result: {
-      schema_version: 'apocv4.chat-response.v1',
+      schema_version: 'apocv4.chat-response.v2',
       text,
       model_reported: {
         evidence_lane: 'model_reported_not_observed_fact',
@@ -123,10 +126,38 @@ function runtimeChatEnvelope(
       },
       authority: {
         effect_authority: 'NONE',
-        tool_authority: 'NONE',
-        memory_scope: 'ephemeral',
-        conversation_history: 'not_retained',
+        tool_authority: 'READ_ONLY_CONTEXT',
+        memory_scope: ownerProfile ? 'owner_partitioned_retrieval' : 'public_safe_retrieval',
+        conversation_history: 'session_bounded',
         training_consent: false,
+      },
+      identity: {
+        schema_version: 'apocv4.identity.v1',
+        system_id: 'apocrypha',
+        architecture: 'governed_hybrid_digital_intelligence',
+        compiler_version: 'fixture-compiler-v1',
+        identity_digest: 'e'.repeat(64),
+        learned_model_role: 'replaceable_faculty_not_system_identity',
+        lineage: 'shawn-apocky-directed',
+      },
+      context: {
+        frame_id: 'acf-fixture-frame',
+        frame_digest: 'f'.repeat(64),
+        provenance_spine_digest: '0'.repeat(64),
+        retrieval: { status: 'ready', count: 2, refs: ['source:a', 'source:b'] },
+        memory: {
+          provider: '3mneme',
+          status: 'ready',
+          records_used: 1,
+          receipt_digest: '1'.repeat(64),
+          refs: ['3mneme:fixture'],
+        },
+        capabilities: [{
+          id: '3mneme.recall',
+          status: 'ready',
+          authority: 'read_only',
+          evidence: 'fixture',
+        }],
       },
       conversation_id: request.conversation_id,
       request_id: request.request_id,
@@ -147,6 +178,7 @@ async function main(): Promise<void> {
   process.env.APOCV4_RUNTIME_DIRECT_PORT = '9443';
   process.env.APOCV4_RUNTIME_TRANSPORT = 'test-fetch';
   process.env.APOCV4_API_TOKEN = RUNTIME_TOKEN;
+  process.env.APOCV4_PUBLIC_API_TOKEN = PUBLIC_RUNTIME_TOKEN;
 
   const conversationId = randomUUID();
   const requestId = randomUUID();
@@ -256,15 +288,15 @@ async function main(): Promise<void> {
     'serving-profile digest is exposed',
   );
   equal(successBody.effect_authority, 'NONE', 'public turn receives no effect authority');
-  equal(successBody.tool_authority, 'NONE', 'public turn receives no tool authority');
+  equal(successBody.tool_authority, 'READ_ONLY_CONTEXT', 'public turn receives read-only context authority');
   equal(successBody.outcome, 'completed', 'runtime completion is reported');
   equal(successBody.learned_faculty_used, true, 'runtime confirms a learned faculty answered');
-  equal(successBody.memory_scope, 'ephemeral', 'public conversation memory is off');
+  equal(successBody.memory_scope, 'public_safe_retrieval', 'public conversation uses only public-safe retrieval');
   equal(successBody.training_consent, false, 'public training consent is off');
   equal(
     successBody.conversation_history,
-    'not_retained_by_public_interface',
-    'public UI does not claim cross-session history',
+    'session_bounded',
+    'public UI exposes the bounded in-session history contract',
   );
   equal(
     successBody.duplicate_effect_protection,
@@ -272,22 +304,48 @@ async function main(): Promise<void> {
     'effect replay is inapplicable because the route has no effect authority',
   );
   equal(successBody.upstream_status, 200, 'runtime transport status is exposed');
+  equal(
+    (successBody.identity as Record<string, unknown>).system_id,
+    'apocrypha',
+    'governed Apocrypha identity is surfaced',
+  );
+  equal(
+    ((successBody.context as Record<string, unknown>).memory as Record<string, unknown>).provider,
+    '3mneme',
+    'memory provider receipt is surfaced',
+  );
   assert(!JSON.stringify(successBody).includes('principal:apocky-member:'), 'principal stays server-side');
   assert(!JSON.stringify(successBody).includes('member@example.test'), 'member email stays server-side');
 
   const firstCall = observed[0];
   assert(firstCall !== undefined, 'upstream call observed');
   equal(firstCall.url, `${RUNTIME_ORIGIN}/v1/chat`, 'direct private Apocv4 chat route used');
-  equal(firstCall.headers.get('authorization'), `Bearer ${RUNTIME_TOKEN}`, 'runtime credential stays server-side');
+  equal(firstCall.headers.get('authorization'), `Bearer ${PUBLIC_RUNTIME_TOKEN}`, 'public runtime credential stays server-side');
   equal(firstCall.headers.get('accept-encoding'), 'identity', 'compressed ambiguity is disabled');
   equal(firstCall.body.message, baseBody.text, 'bounded message crosses the runtime boundary');
-  equal(firstCall.body.privacy_partition, 'owner:apocky', 'runtime request stays in its privacy partition');
+  equal(firstCall.body.privacy_partition, 'public:apocrypha', 'member request stays in the public-safe privacy partition');
   assert(firstCall.body.request_id !== requestId, 'raw client request ID is not sent upstream');
   assert(firstCall.body.conversation_id !== conversationId, 'raw client conversation ID is not sent upstream');
   assert(isUuidV5(firstCall.body.request_id), 'member-scoped request identity is UUIDv5');
   assert(isUuidV5(firstCall.body.conversation_id), 'member-scoped conversation identity is UUIDv5');
   assert(!('training_consent' in firstCall.body), 'no training opt-in crosses the boundary');
   assert(!('tool_call' in firstCall.body), 'public route grants no tool request');
+
+  const ownerTurn = reqRes('POST', {
+    body: { ...baseBody, request_id: randomUUID() },
+    email: 'apocky13@gmail.com',
+  });
+  await chatHandler(ownerTurn.req, ownerTurn.res);
+  equal(ownerTurn.out.statusCode, 200, 'allowlisted owner uses the governed owner profile');
+  const ownerCall = observed[1];
+  assert(ownerCall !== undefined, 'owner upstream call observed');
+  equal(ownerCall.headers.get('authorization'), `Bearer ${RUNTIME_TOKEN}`, 'owner runtime credential stays server-side');
+  equal(ownerCall.body.privacy_partition, 'owner:apocky', 'owner request uses the owner memory partition');
+  equal(
+    (ownerTurn.out.body as Record<string, unknown>).memory_scope,
+    'owner_partitioned_retrieval',
+    'owner receives only owner-partitioned retrieval',
+  );
 
   globalThis.fetch = async (input, init) => {
     upstreamCalls += 1;
@@ -319,9 +377,9 @@ async function main(): Promise<void> {
       {
         authority: {
           effect_authority: 'NONE',
-          tool_authority: 'NONE',
-          memory_scope: 'ephemeral',
-          conversation_history: 'not_retained',
+          tool_authority: 'READ_ONLY_CONTEXT',
+          memory_scope: 'public_safe_retrieval',
+          conversation_history: 'session_bounded',
           training_consent: true,
         },
       },
@@ -374,9 +432,11 @@ async function main(): Promise<void> {
   assert(!page.includes('ClearingRoom'), '/apocrypha is no longer the social room');
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
   assert(component.includes('training_consent === false'), 'browser verifies no training consent');
-  assert(component.includes("memory_scope === 'ephemeral'"), 'browser verifies ephemeral memory');
+  assert(component.includes("body.memory_scope === 'public_safe_retrieval'"), 'browser verifies public-safe memory');
   assert(component.includes("effect_authority === 'NONE'"), 'browser verifies no effect authority');
-  assert(component.includes("tool_authority === 'NONE'"), 'browser verifies no tool authority');
+  assert(component.includes("body.tool_authority === 'READ_ONLY_CONTEXT'"), 'browser verifies read-only context authority');
+  assert(component.includes('identityReceipt(body.identity)'), 'browser verifies governed identity receipts');
+  assert(component.includes('contextReceipt(body.context)'), 'browser verifies context and memory receipts');
   assert(component.includes('response_digest'), 'browser retains response evidence');
   assert(component.includes('serving_profile_digest'), 'browser retains serving-profile evidence');
   assert(component.includes('Retry same turn'), 'bounded retry reuses one turn identity');
