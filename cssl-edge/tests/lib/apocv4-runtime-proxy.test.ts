@@ -341,7 +341,7 @@ async function main(): Promise<void> {
           'X-Apocv4-Binding-Ref': digest('1'),
           'X-Apocv4-Principal-Ref': digest('2'),
           'X-Apocv4-Privacy-Partition-Ref': digest('3'),
-          'X-Apocv4-Effect-Scope-Ref': digest('4'),
+          'X-Apocv4-Rollback-Lease-Ref': digest('4'),
         },
       });
     };
@@ -353,6 +353,7 @@ async function main(): Promise<void> {
       'rollback forwards exactly one receipt key',
     );
     assert(rollback.observed.runtime.state === 'ROLLED_BACK', 'rollback state is observed');
+    assert(rollback.observed.receipt.rollback_lease_ref === digest('4'), 'rollback lease receipt is preserved');
     assert(
       rollback.observed.runtime.journal_tip_digest === digest('e'),
       'five-key rollback receipt preserves journal tip',
@@ -371,7 +372,7 @@ async function main(): Promise<void> {
           'X-Apocv4-Binding-Ref': digest('1'),
           'X-Apocv4-Principal-Ref': digest('2'),
           'X-Apocv4-Privacy-Partition-Ref': digest('3'),
-          'X-Apocv4-Effect-Scope-Ref': digest('4'),
+          'X-Apocv4-Rollback-Lease-Ref': digest('4'),
         },
       });
     };

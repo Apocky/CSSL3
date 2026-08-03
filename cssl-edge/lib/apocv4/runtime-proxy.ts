@@ -132,6 +132,7 @@ export interface RuntimeReceipt {
   principal_ref: string | null;
   privacy_partition_ref: string | null;
   effect_scope_ref: string | null;
+  rollback_lease_ref: string | null;
 }
 
 export interface RuntimeHealthProjection {
@@ -1602,6 +1603,7 @@ async function callRuntime(
         principal_ref: boundedHeaderRef(response.headers, 'x-apocv4-principal-ref'),
         privacy_partition_ref: boundedHeaderRef(response.headers, 'x-apocv4-privacy-partition-ref'),
         effect_scope_ref: boundedHeaderRef(response.headers, 'x-apocv4-effect-scope-ref'),
+        rollback_lease_ref: boundedHeaderRef(response.headers, 'x-apocv4-rollback-lease-ref'),
       },
     };
   } catch (error) {
@@ -2461,7 +2463,10 @@ export async function submitRuntimeRollback(
       request_id: durableBinding.requestId,
     }),
   }, traceparent);
-  requireStrictEffectReceipt(call.receipt, true);
+  requireStrictEffectReceipt(call.receipt, false);
+  if (!call.receipt.rollback_lease_ref) {
+    throw new RuntimeProxyError('runtime_effect_attestation_invalid', 502, call.receipt.upstream_status);
+  }
   const result = call.data.result;
   const durableReceipt = isObject(result)
     ? projectDurableRollbackReceipt(result, durableBinding)
