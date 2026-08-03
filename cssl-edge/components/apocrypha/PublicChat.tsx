@@ -1,5 +1,12 @@
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 
 import { authFetch } from '@/lib/browser-auth';
 import { useSiteSession } from '@/components/hub/SiteSession';
@@ -71,6 +78,13 @@ interface PendingTurn {
   text: string;
 }
 
+type InteractionSurface =
+  | { kind: 'intent'; x: number; y: number; placement: 'above' | 'point' }
+  | { kind: 'conversation'; x: number; y: number }
+  | { kind: 'message'; messageId: string; x: number; y: number }
+  | { kind: 'scope'; x: number; y: number }
+  | null;
+
 interface TurnResponse {
   text?: unknown;
   error?: unknown;
@@ -111,14 +125,16 @@ type GenerativeMode = 'general' | 'code' | 'analyze' | 'write' | 'explain';
 const GENERATIVE_MODES: ReadonlyArray<{
   id: GenerativeMode;
   label: string;
+  icon: string;
+  description: string;
   starter: string;
   placeholder: string;
 }> = [
-  { id: 'general', label: 'Ask', starter: '', placeholder: 'Ask Apocrypha anything…' },
-  { id: 'code', label: 'Code', starter: 'Help me implement this:\n', placeholder: 'Describe what you want to build or repair…' },
-  { id: 'analyze', label: 'Analyze', starter: 'Analyze this rigorously:\n', placeholder: 'Paste or describe what should be analyzed…' },
-  { id: 'write', label: 'Write', starter: 'Draft this for me:\n', placeholder: 'Describe the document or content to generate…' },
-  { id: 'explain', label: 'Explain', starter: 'Explain this clearly and precisely:\n', placeholder: 'What should Apocrypha explain?…' },
+  { id: 'general', label: 'Ask', icon: '✦', description: 'Open exploration and direct answers', starter: '', placeholder: 'Ask Apocrypha anything…' },
+  { id: 'analyze', label: 'Analyze', icon: '◇', description: 'Interrogate evidence, systems, and tradeoffs', starter: 'Analyze this rigorously:\n', placeholder: 'Paste or describe what should be analyzed…' },
+  { id: 'write', label: 'Compose', icon: '✎', description: 'Shape language, structure, and voice', starter: 'Draft this for me:\n', placeholder: 'Describe the document or content to generate…' },
+  { id: 'explain', label: 'Illuminate', icon: '?', description: 'Build a clear mental model step by step', starter: 'Explain this clearly and precisely:\n', placeholder: 'What should Apocrypha explain?…' },
+  { id: 'code', label: 'Build', icon: '⌘', description: 'Code guidance or a governed owner effect', starter: 'Help me implement this:\n', placeholder: 'Describe what you want to build or repair…' },
 ];
 
 const CHAT_BROWSER_DEADLINE_MS = 85_000;
@@ -293,7 +309,8 @@ function isExactTurn(
   const governedBoundary = body.tool_authority === 'READ_ONLY_CONTEXT'
     && (body.memory_scope === 'owner_partitioned_retrieval'
       || body.memory_scope === 'public_safe_retrieval')
-    && body.conversation_history === 'session_bounded'
+    && (body.conversation_history === 'session_bounded'
+      || body.conversation_history === 'durable_principal_bound')
     && identityReceipt(body.identity) !== null
     && contextReceipt(body.context) !== null;
   return body.conversation_id === conversationId
@@ -323,6 +340,38 @@ function scrollBehavior(): ScrollBehavior {
   return 'smooth';
 }
 
+function replaceIntentStarter(value: string, nextStarter: string): string {
+  const previous = GENERATIVE_MODES.find(
+    (candidate) => candidate.starter && value.startsWith(candidate.starter),
+  );
+  const body = previous ? value.slice(previous.starter.length) : value;
+  return nextStarter ? `${nextStarter}${body}` : body;
+}
+
+function stripIntentStarter(value: string): string {
+  const previous = GENERATIVE_MODES.find(
+    (candidate) => candidate.starter && value.startsWith(candidate.starter),
+  );
+  return (previous ? value.slice(previous.starter.length) : value).trim();
+}
+
+function clampSurfacePoint(
+  x: number,
+  y: number,
+  width = 360,
+  height = 430,
+): { x: number; y: number } {
+  if (typeof window === 'undefined') return { x, y };
+  return {
+    x: Math.max(12, Math.min(x, window.innerWidth - width - 12)),
+    y: Math.max(12, Math.min(y, window.innerHeight - height - 12)),
+  };
+}
+
+function surfaceStyle(surface: Exclude<InteractionSurface, null>): CSSProperties {
+  return { left: surface.x, top: surface.y };
+}
+
 export function PublicChat(): JSX.Element {
   const { access, authenticated, refresh } = useSiteSession();
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -336,9 +385,41 @@ export function PublicChat(): JSX.Element {
   const [codePathInput, setCodePathInput] = useState('');
   const [codeConfirmed, setCodeConfirmed] = useState(false);
   const [rollingBackId, setRollingBackId] = useState<string | null>(null);
+  const [surface, setSurface] = useState<InteractionSurface>(null);
+  const [inspectedMessageId, setInspectedMessageId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const inFlightRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const surfaceTriggerRef = useRef<HTMLElement | null>(null);
+  const lensButtonRef = useRef<HTMLButtonElement>(null);
+
+  const closeSurface = useCallback((restoreFocus = false) => {
+    setSurface(null);
+    if (restoreFocus) {
+      requestAnimationFrame(() => {
+        if (surfaceTriggerRef.current?.isConnected) surfaceTriggerRef.current.focus();
+      });
+    }
+  }, []);
+
+  const openIntentLens = useCallback((
+    trigger: HTMLElement,
+    point?: { x: number; y: number },
+  ) => {
+    surfaceTriggerRef.current = trigger;
+    if (point) {
+      const clamped = clampSurfacePoint(point.x, point.y);
+      setSurface({ kind: 'intent', ...clamped, placement: 'point' });
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    const x = typeof window === 'undefined'
+      ? rect.left
+      : Math.max(12, Math.min(rect.left, window.innerWidth - 372));
+    setSurface({ kind: 'intent', x, y: rect.top - 10, placement: 'above' });
+  }, []);
 
   useEffect(() => {
     setConversationId(crypto.randomUUID().toLowerCase());
@@ -347,6 +428,89 @@ export function PublicChat(): JSX.Element {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'end' });
   }, [messages, waiting, error]);
+
+  useEffect(() => {
+    if (!surface) return undefined;
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        surfaceRef.current?.contains(target)
+        || surfaceTriggerRef.current?.contains(target)
+      ) return;
+      closeSurface();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeSurface(true);
+    };
+    const onResize = () => {
+      if (
+        surface.kind === 'scope'
+        && surfaceRef.current?.contains(document.activeElement)
+      ) return;
+      closeSurface();
+    };
+    const onScroll = (event: Event) => {
+      if (surfaceRef.current?.contains(event.target as Node)) return;
+      closeSurface();
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onScroll, true);
+    requestAnimationFrame(() => {
+      const focusTarget = surface.kind === 'scope'
+        ? surfaceRef.current?.querySelector<HTMLElement>('textarea')
+        : surfaceRef.current?.querySelector<HTMLElement>(
+          surface.kind === 'message' ? '[role="menuitem"]' : 'button',
+        );
+      focusTarget?.focus();
+    });
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [closeSurface, surface]);
+
+  const navigateMessageMenu = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Tab') {
+      closeSurface();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'),
+    );
+    if (items.length === 0) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const next = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : event.key === 'ArrowUp'
+          ? (current <= 0 ? items.length - 1 : current - 1)
+          : (current + 1) % items.length;
+    items[next]?.focus();
+  }, [closeSurface]);
+
+  useEffect(() => {
+    const openFromKeyboard = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const editing = target?.matches('input, textarea, select, [contenteditable="true"]');
+      if (
+        !authenticated
+        || editing
+        || !lensButtonRef.current
+        || !((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k')
+      ) return;
+      event.preventDefault();
+      openIntentLens(lensButtonRef.current);
+    };
+    document.addEventListener('keydown', openFromKeyboard);
+    return () => document.removeEventListener('keydown', openFromKeyboard);
+  }, [authenticated, openIntentLens]);
 
   const newConversation = useCallback(() => {
     if (waiting || rollingBackId) return;
@@ -358,8 +522,52 @@ export function PublicChat(): JSX.Element {
     setPendingTurn(null);
     setError(null);
     setLastModel(null);
+    setInspectedMessageId(null);
+    setCopiedMessageId(null);
+    closeSurface();
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, [rollingBackId, waiting]);
+  }, [closeSurface, rollingBackId, waiting]);
+
+  const selectMode = useCallback((candidate: (typeof GENERATIVE_MODES)[number]) => {
+    setMode(candidate.id);
+    setCodeConfirmed(false);
+    setDraft((current) => replaceIntentStarter(current, candidate.starter));
+    if (candidate.id === 'code' && access === 'owner') {
+      const trigger = surfaceTriggerRef.current ?? lensButtonRef.current;
+      const rect = trigger?.getBoundingClientRect();
+      const x = rect && typeof window !== 'undefined'
+        ? Math.max(12, Math.min(rect.left, window.innerWidth - 552))
+        : 12;
+      setSurface({ kind: 'scope', x, y: (rect?.top ?? 520) - 10 });
+    } else {
+      closeSurface();
+      requestAnimationFrame(() => composerRef.current?.focus());
+    }
+  }, [access, closeSurface]);
+
+  const openMessageMenu = useCallback((
+    messageId: string,
+    trigger: HTMLElement,
+    point: { x: number; y: number },
+  ) => {
+    surfaceTriggerRef.current = trigger;
+    const clamped = clampSurfacePoint(point.x, point.y, 230, 250);
+    setSurface({ kind: 'message', messageId, ...clamped });
+  }, []);
+
+  const copyMessage = useCallback(async (message: ChatMessage) => {
+    try {
+      await navigator.clipboard.writeText(message.text);
+      setCopiedMessageId(message.id);
+      window.setTimeout(() => setCopiedMessageId((current) => (
+        current === message.id ? null : current
+      )), 1_600);
+    } catch {
+      setError('The browser did not allow this message to be copied.');
+    } finally {
+      closeSurface(true);
+    }
+  }, [closeSurface]);
 
   const send = useCallback(async (retry?: PendingTurn): Promise<void> => {
     const text = retry?.text ?? draft.trim();
@@ -383,6 +591,14 @@ export function PublicChat(): JSX.Element {
       || duplicatePath
     )) {
       setError('Owner Code mode requires 1–32 unique repository-relative paths and explicit effect confirmation.');
+      const trigger = lensButtonRef.current;
+      const rect = trigger?.getBoundingClientRect();
+      surfaceTriggerRef.current = trigger;
+      setSurface({
+        kind: 'scope',
+        x: rect ? Math.max(12, rect.left) : 12,
+        y: (rect?.top ?? 520) - 10,
+      });
       return;
     }
     if (byteLength(text) > MAX_TEXT_BYTES) {
@@ -576,6 +792,25 @@ export function PublicChat(): JSX.Element {
       : access === 'unavailable'
         ? 'Verification unavailable'
         : 'Sign in required';
+  const firstUserMessage = messages.find((message) => message.role === 'user');
+  const conversationTitle = firstUserMessage
+    ? stripIntentStarter(firstUserMessage.text).replace(/\s+/g, ' ').slice(0, 62)
+    : 'New conversation';
+  const turnCount = messages.filter((message) => message.role === 'user').length;
+  const latestReceipt = [...messages].reverse().find((message) => message.receipt)?.receipt;
+  const historyLabel = latestReceipt?.conversationHistory === 'durable_principal_bound'
+    ? 'Durable runtime history'
+    : latestReceipt
+      ? 'This open conversation'
+      : 'Confirmed with the first response';
+  const contextualMessage = surface?.kind === 'message'
+    ? messages.find((message) => message.id === surface.messageId) ?? null
+    : null;
+  const codeScopeState = codeConfirmed
+    ? 'Authorized once'
+    : codePaths.length > 0
+      ? `${codePaths.length} path${codePaths.length === 1 ? '' : 's'} · confirm`
+      : 'Set effect scope';
 
   return (
     <div className={styles.page} data-public-apocrypha="apocv4-chat-v1">
@@ -602,57 +837,64 @@ export function PublicChat(): JSX.Element {
       <main className={styles.workspace} id="apocrypha-conversation">
         <section className={styles.conversation} aria-label="Conversation with Apocrypha">
           <div className={styles.conversationHeader}>
-            <div>
-              <p className={styles.eyebrow}>APOCRYPHA</p>
-              <h1>Intelligence workspace</h1>
+            <div className={styles.threadHeading}>
+              <span
+                className={styles.sessionPulse}
+                data-state={authenticated ? 'ready' : 'closed'}
+                aria-hidden="true"
+                title={sessionLabel}
+              />
+              <span className={styles.srOnly} role="status">{sessionLabel}</span>
+              <div>
+                <h1 title={conversationTitle}>{conversationTitle}</h1>
+                <p>{turnCount === 0 ? 'Ready when you are' : `${turnCount} turn${turnCount === 1 ? '' : 's'}`}</p>
+              </div>
             </div>
             <div className={styles.headerActions}>
-              <span
-                className={styles.sessionStatus}
-                data-state={authenticated ? 'ready' : 'closed'}
-              >
-                <span aria-hidden="true" />
-                {sessionLabel}
-              </span>
               <button
                 type="button"
-                className={styles.newButton}
-                onClick={newConversation}
-                disabled={waiting || Boolean(rollingBackId) || !conversationId}
+                className={styles.contextTrigger}
+                aria-label="Conversation actions"
+                aria-haspopup="menu"
+                aria-expanded={surface?.kind === 'conversation'}
+                onClick={(event) => {
+                  if (surface?.kind === 'conversation') {
+                    closeSurface(true);
+                    return;
+                  }
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  surfaceTriggerRef.current = event.currentTarget;
+                  setSurface({ kind: 'conversation', x: rect.right, y: rect.bottom + 8 });
+                }}
+                disabled={waiting || Boolean(rollingBackId)}
               >
-                New chat
+                <span aria-hidden="true">•••</span>
               </button>
             </div>
           </div>
 
           <div
             className={styles.messages}
+            role="log"
             aria-live="polite"
+            aria-relevant="additions"
             aria-busy={waiting}
             data-message-count={messages.length}
+            onContextMenu={(event) => {
+              if ((event.target as HTMLElement).closest('article')) return;
+              event.preventDefault();
+              openIntentLens(event.currentTarget, { x: event.clientX, y: event.clientY });
+            }}
           >
             {messages.length === 0 && (
               <div className={styles.emptyState}>
                 <div className={styles.emptyKicker} aria-hidden="true">A</div>
-                <h2>What are we working on?</h2>
-                <p>
-                  Ask, analyze, write, explain, or generate code. Each response
-                  is validated and carries an inspectable receipt.
-                </p>
-                <dl className={styles.contract}>
-                  <div>
-                    <dt>Chat history</dt>
-                    <dd>This session</dd>
-                  </div>
-                  <div>
-                    <dt>Training consent</dt>
-                    <dd>Off</dd>
-                  </div>
-                  <div>
-                    <dt>Effect authority</dt>
-                    <dd>{ownerCodeMode ? 'Owner-confirmed code only' : 'None'}</dd>
-                  </div>
-                </dl>
+                <h2>Bring me something difficult.</h2>
+                <p>Write naturally—or right-click the space around us to change how we approach it.</p>
+                <div className={styles.emptyHints} aria-label="Interaction hints">
+                  <span><kbd>Ctrl K</kbd> intent lens</span>
+                  <span><kbd>Right-click</kbd> contextual actions</span>
+                </div>
               </div>
             )}
 
@@ -662,14 +904,82 @@ export function PublicChat(): JSX.Element {
                 className={`${styles.message} ${
                   message.role === 'user' ? styles.userMessage : styles.apocryphaMessage
                 }`}
+                tabIndex={0}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  openMessageMenu(
+                    message.id,
+                    event.currentTarget,
+                    { x: event.clientX, y: event.clientY },
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  openMessageMenu(
+                    message.id,
+                    event.currentTarget,
+                    { x: rect.left + 24, y: rect.top + 34 },
+                  );
+                }}
               >
-                <p className={styles.role}>
-                  {message.role === 'user' ? 'You' : 'Apocrypha'}
-                </p>
+                <div className={styles.messageMeta}>
+                  <p className={styles.role}>
+                    {message.role === 'user' ? 'You' : 'Apocrypha'}
+                  </p>
+                  <div className={styles.messageSignals}>
+                    {message.receipt && (
+                      <button
+                        type="button"
+                        className={styles.evidenceMark}
+                        onClick={() => setInspectedMessageId((current) => (
+                          current === message.id ? null : message.id
+                        ))}
+                        aria-expanded={inspectedMessageId === message.id}
+                      >
+                        <span aria-hidden="true">✓</span> evidence
+                      </button>
+                    )}
+                    {message.codeEffect && (
+                      <button
+                        type="button"
+                        className={styles.effectMark}
+                        onClick={() => setInspectedMessageId((current) => (
+                          current === message.id ? null : message.id
+                        ))}
+                        aria-expanded={inspectedMessageId === message.id}
+                      >
+                        <span aria-hidden="true">◇</span> {message.codeEffect.state.toLowerCase()}
+                      </button>
+                    )}
+                    {copiedMessageId === message.id && <span className={styles.copiedMark}>Copied</span>}
+                    <button
+                      type="button"
+                      className={styles.messageMenuButton}
+                      aria-label={`${message.role === 'user' ? 'Your' : 'Apocrypha'} message actions`}
+                      aria-haspopup="menu"
+                      aria-expanded={surface?.kind === 'message' && surface.messageId === message.id}
+                      onClick={(event) => {
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        openMessageMenu(
+                          message.id,
+                          event.currentTarget,
+                          { x: rect.right - 16, y: rect.bottom + 6 },
+                        );
+                      }}
+                    >
+                      <span aria-hidden="true">•••</span>
+                    </button>
+                  </div>
+                </div>
                 <div className={styles.messageText}>{message.text}</div>
-                {message.receipt && (
-                  <details className={styles.receipt}>
-                    <summary>Verified response receipt</summary>
+                {message.receipt && inspectedMessageId === message.id && (
+                  <section className={styles.receipt} aria-label="Verified response receipt">
+                    <div className={styles.inspectorHeader}>
+                      <strong>Verified response receipt</strong>
+                      <button type="button" onClick={() => setInspectedMessageId(null)} aria-label="Close response details">×</button>
+                    </div>
                     <dl>
                       <div><dt>Model</dt><dd>{message.receipt.modelId}</dd></div>
                       <div><dt>Response</dt><dd>{message.receipt.responseId}</dd></div>
@@ -694,11 +1004,14 @@ export function PublicChat(): JSX.Element {
                         </>
                       )}
                     </dl>
-                  </details>
+                  </section>
                 )}
-                {message.codeEffect && (
-                  <details className={styles.codeReceipt} open>
-                    <summary>Governed code-effect receipt</summary>
+                {message.codeEffect && inspectedMessageId === message.id && (
+                  <section className={styles.codeReceipt} aria-label="Governed code-effect receipt">
+                    <div className={styles.inspectorHeader}>
+                      <strong>Governed code-effect receipt</strong>
+                      {!message.receipt && <button type="button" onClick={() => setInspectedMessageId(null)} aria-label="Close effect details">×</button>}
+                    </div>
                     <dl>
                       <div><dt>State</dt><dd>{message.codeEffect.state}</dd></div>
                       <div><dt>Isolated test</dt><dd>{message.codeEffect.testPassed === true ? 'Passed' : message.codeEffect.testPassed === false ? 'Failed' : 'Not returned'}</dd></div>
@@ -722,7 +1035,7 @@ export function PublicChat(): JSX.Element {
                           {rollingBackId === message.id ? 'Rolling back…' : 'Rollback this change'}
                         </button>
                     )}
-                  </details>
+                  </section>
                 )}
               </article>
             ))}
@@ -759,64 +1072,8 @@ export function PublicChat(): JSX.Element {
                 void send();
               }}
             >
-              <label htmlFor="public-apocrypha-message">Message Apocrypha</label>
-              <div className={styles.toolDock} aria-label="Prompt starters">
-                <span>Prompt starters</span>
-                {GENERATIVE_MODES.map((candidate) => (
-                  <button
-                    key={candidate.id}
-                    type="button"
-                    aria-pressed={candidate.id === mode}
-                    onClick={() => {
-                      setMode(candidate.id);
-                      setCodeConfirmed(false);
-                      if (candidate.starter) {
-                        setDraft((current) => current.startsWith(candidate.starter)
-                          ? current
-                          : `${candidate.starter}${current}`);
-                      }
-                      requestAnimationFrame(() => composerRef.current?.focus());
-                    }}
-                    disabled={waiting || Boolean(rollingBackId)}
-                  >
-                    {candidate.label}
-                  </button>
-                ))}
-              </div>
-              {ownerCodeMode && (
-                <fieldset className={styles.codeScope}>
-                  <legend>Owner-governed code effect</legend>
-                  <label htmlFor="public-apocrypha-code-paths">
-                    Allowed files · one exact repository-relative path per line
-                  </label>
-                  <textarea
-                    id="public-apocrypha-code-paths"
-                    value={codePathInput}
-                    rows={3}
-                    spellCheck={false}
-                    placeholder={'src/apocv4/example.py\ntests/test_example.py'}
-                    disabled={waiting || Boolean(rollingBackId)}
-                    onChange={(event) => {
-                      setCodePathInput(event.target.value);
-                      setCodeConfirmed(false);
-                    }}
-                  />
-                  <div className={styles.codeScopeMeta}>
-                    <span>{codePaths.length}/32 files</span>
-                    {duplicateCodePath && <strong>Each path must be unique.</strong>}
-                  </div>
-                  <label className={styles.codeConfirm}>
-                    <input
-                      type="checkbox"
-                      checked={codeConfirmed}
-                      disabled={waiting || Boolean(rollingBackId) || codePaths.length < 1 || codePaths.length > 32 || duplicateCodePath}
-                      onChange={(event) => setCodeConfirmed(event.target.checked)}
-                    />
-                    <span>I authorize one bounded generate → isolate → test → apply effect on exactly these files. No automatic retry.</span>
-                  </label>
-                </fieldset>
-              )}
-              <div className={styles.composerField}>
+              <label className={styles.srOnly} htmlFor="public-apocrypha-message">Message Apocrypha</label>
+              <div className={styles.composerShell}>
                 <textarea
                   id="public-apocrypha-message"
                   ref={composerRef}
@@ -832,42 +1089,91 @@ export function PublicChat(): JSX.Element {
                     if (error && !pendingTurn) setError(null);
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                       event.preventDefault();
                       void send();
                     }
                   }}
                 />
-                <button
-                  type="submit"
-                  disabled={
-                    waiting
-                    || Boolean(rollingBackId)
-                    || !conversationId
-                    || !draft.trim()
-                    || currentBytes > MAX_TEXT_BYTES
-                    || (ownerCodeMode && (
-                      !codeConfirmed
-                      || codePaths.length < 1
-                      || codePaths.length > 32
-                      || duplicateCodePath
-                    ))
-                  }
-                >
-                  {waiting ? 'Waiting' : ownerCodeMode ? 'Generate, test & apply' : 'Send'}
-                  <span aria-hidden="true">↗</span>
-                </button>
+                <div className={styles.composerBar}>
+                  <div className={styles.composerTools}>
+                    <button
+                      ref={lensButtonRef}
+                      type="button"
+                      className={styles.lensButton}
+                      aria-haspopup="menu"
+                      aria-expanded={surface?.kind === 'intent'}
+                      onClick={(event) => {
+                        if (surface?.kind === 'intent') closeSurface(true);
+                        else openIntentLens(event.currentTarget);
+                      }}
+                      disabled={waiting || Boolean(rollingBackId)}
+                    >
+                      <span className={styles.intentGlyph} aria-hidden="true">{selectedMode.icon}</span>
+                      <span><small>Intent lens</small><strong>{selectedMode.label}</strong></span>
+                      <span className={styles.chevron} aria-hidden="true">⌃</span>
+                    </button>
+                    {ownerCodeMode && (
+                      <button
+                        type="button"
+                        className={styles.scopeCapsule}
+                        data-ready={codeConfirmed}
+                        aria-haspopup="dialog"
+                        aria-expanded={surface?.kind === 'scope'}
+                        onClick={(event) => {
+                          if (surface?.kind === 'scope') {
+                            closeSurface(true);
+                            return;
+                          }
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          const x = typeof window === 'undefined'
+                            ? rect.left
+                            : Math.max(12, Math.min(rect.left, window.innerWidth - 552));
+                          surfaceTriggerRef.current = event.currentTarget;
+                          setSurface({ kind: 'scope', x, y: rect.top - 10 });
+                        }}
+                      >
+                        <span aria-hidden="true">◎</span> {codeScopeState}
+                      </button>
+                    )}
+                  </div>
+                  <div className={styles.sendCluster}>
+                    <span
+                      id="public-apocrypha-count"
+                      className={styles.byteCount}
+                      data-visible={currentBytes > MAX_TEXT_BYTES * 0.7}
+                    >
+                      {currentBytes.toLocaleString()} / {MAX_TEXT_BYTES.toLocaleString()} bytes
+                    </span>
+                    <button
+                      type="submit"
+                      className={styles.sendButton}
+                      aria-label={waiting ? 'Waiting for Apocrypha' : ownerCodeMode ? 'Run the confirmed governed code effect' : 'Send message'}
+                      disabled={
+                        waiting
+                        || Boolean(rollingBackId)
+                        || !conversationId
+                        || !draft.trim()
+                        || currentBytes > MAX_TEXT_BYTES
+                        || (ownerCodeMode && (
+                          !codeConfirmed
+                          || codePaths.length < 1
+                          || codePaths.length > 32
+                          || duplicateCodePath
+                        ))
+                      }
+                    >
+                      <span>{waiting ? 'Waiting' : ownerCodeMode ? 'Run' : 'Send'}</span>
+                      <strong aria-hidden="true">↑</strong>
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className={styles.composerMeta}>
-                <p id="public-apocrypha-disclosure">
-                  {ownerCodeMode
-                    ? 'Owner Code mode uses the governed runtime only after exact path scope and one-run confirmation.'
-                    : 'Governed retrieval and read-only context may be used · workspace and external effects require separate owner confirmation.'}
-                </p>
-                <span id="public-apocrypha-count">
-                  {currentBytes.toLocaleString()} / {MAX_TEXT_BYTES.toLocaleString()} bytes
-                </span>
-              </div>
+              <p id="public-apocrypha-disclosure" className={styles.srOnly}>
+                {ownerCodeMode
+                  ? 'Owner Code mode uses the governed runtime only after exact path scope and one-run confirmation.'
+                  : 'Governed retrieval and read-only context may be used. Workspace and external effects require separate owner confirmation.'}
+              </p>
             </form>
           ) : (
             <div className={styles.accessGate} role="status">
@@ -888,22 +1194,195 @@ export function PublicChat(): JSX.Element {
           )}
         </section>
 
-        <aside className={styles.truthRail} aria-label="Privacy and response details">
-          <details>
-            <summary>Privacy &amp; response details</summary>
-            <div className={styles.truthIntro}>
-              <h2>Your current chat</h2>
-              <p>This transcript stays in this view. Refreshing starts a new conversation.</p>
+        {surface?.kind === 'intent' && (
+          <div
+            ref={surfaceRef}
+            className={`${styles.floatingSurface} ${styles.intentPalette}`}
+            data-placement={surface.placement}
+            style={surfaceStyle(surface)}
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="public-apocrypha-intent-title"
+          >
+            <div className={styles.paletteHeader}>
+              <div><span aria-hidden="true">✦</span><strong id="public-apocrypha-intent-title">Intent lens</strong></div>
+              <kbd>Ctrl K</kbd>
             </div>
-            <dl className={styles.truthList}>
-              <div><dt>Connection</dt><dd>Signed-in member → Apocrypha</dd></div>
-              <div><dt>Response model</dt><dd>{lastModel ?? 'Verified with each response'}</dd></div>
-              <div><dt>Retry</dt><dd>{ownerCodeMode ? 'No automatic retry for code effects' : 'Same request ID; effects remain disabled'}</dd></div>
-              <div><dt>Effects</dt><dd>{ownerCodeMode ? 'One confirmed bounded code effect; rollback receipt retained' : 'No external effects; read-only context may be used'}</dd></div>
-              <div><dt>History</dt><dd>Bounded to this session; not retained across sessions</dd></div>
-            </dl>
-          </details>
-        </aside>
+            <div className={styles.intentGrid}>
+              {GENERATIVE_MODES.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  className={candidate.id === mode ? styles.activeIntent : undefined}
+                  aria-pressed={candidate.id === mode}
+                  onClick={() => selectMode(candidate)}
+                  disabled={waiting || Boolean(rollingBackId)}
+                >
+                  <span className={styles.intentIcon} aria-hidden="true">{candidate.icon}</span>
+                  <span>
+                    <strong>{candidate.label}</strong>
+                    <small>{candidate.description}</small>
+                  </span>
+                  {candidate.id === 'code' && access === 'owner' && <em>effect</em>}
+                </button>
+              ))}
+            </div>
+            <div className={styles.paletteUtilities}>
+              <button
+                type="button"
+                onClick={() => {
+                  closeSurface();
+                  requestAnimationFrame(() => composerRef.current?.focus());
+                }}
+              >
+                Focus the composer <span aria-hidden="true">↵</span>
+              </button>
+              <button
+                type="button"
+                onClick={newConversation}
+                disabled={waiting || Boolean(rollingBackId) || !conversationId}
+              >
+                New conversation <span aria-hidden="true">＋</span>
+              </button>
+            </div>
+            <p>Prompt lenses shape the next turn. Effects remain separately scoped and confirmed.</p>
+          </div>
+        )}
+
+        {surface?.kind === 'conversation' && (
+          <div
+            ref={surfaceRef}
+            className={`${styles.floatingSurface} ${styles.conversationMenu}`}
+            style={surfaceStyle(surface)}
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="public-apocrypha-conversation-menu-title"
+          >
+            <div className={styles.menuTitle}>
+              <span className={styles.sessionPulse} data-state={authenticated ? 'ready' : 'closed'} aria-hidden="true" />
+              <div><strong id="public-apocrypha-conversation-menu-title">{conversationTitle}</strong><small>{sessionLabel}</small></div>
+            </div>
+            <button
+              type="button"
+              onClick={newConversation}
+              disabled={waiting || Boolean(rollingBackId) || !conversationId}
+            >
+              <span aria-hidden="true">＋</span><span><strong>New conversation</strong><small>Open a clean canvas</small></span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const trigger = lensButtonRef.current;
+                if (trigger) openIntentLens(trigger);
+              }}
+            >
+              <span aria-hidden="true">✦</span><span><strong>Change intent</strong><small>Open the interaction lens</small></span>
+            </button>
+            <div className={styles.menuFacts} aria-label="Privacy and response details">
+              <span><small>History</small><strong>{historyLabel}</strong></span>
+              <span><small>Training</small><strong>Off</strong></span>
+              <span><small>Effects</small><strong>{ownerCodeMode ? 'One confirmed code run' : 'None in chat'}</strong></span>
+              <span><small>Faculty</small><strong>{lastModel ?? 'Verified per response'}</strong></span>
+            </div>
+          </div>
+        )}
+
+        {surface?.kind === 'message' && contextualMessage && (
+          <div
+            ref={surfaceRef}
+            className={`${styles.floatingSurface} ${styles.messageContextMenu}`}
+            style={surfaceStyle(surface)}
+            role="menu"
+            aria-label="Message actions"
+            onKeyDown={navigateMessageMenu}
+          >
+            <button type="button" role="menuitem" onClick={() => { void copyMessage(contextualMessage); }}>
+              <span aria-hidden="true">⧉</span> Copy message
+            </button>
+            {(contextualMessage.receipt || contextualMessage.codeEffect) && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setInspectedMessageId(contextualMessage.id);
+                  closeSurface(true);
+                }}
+              >
+                <span aria-hidden="true">◎</span> Inspect evidence
+              </button>
+            )}
+            {access === 'owner'
+              && contextualMessage.codeEffect?.state === 'PROMOTED'
+              && contextualMessage.codeEffect.promotionEventDigest && (
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.dangerAction}
+                onClick={() => {
+                  const confirmed = window.confirm('Roll back this promoted change to its recorded prestate?');
+                  closeSurface(true);
+                  if (confirmed) {
+                    void rollbackCodeEffect(
+                      contextualMessage.id,
+                      contextualMessage.codeEffect!.promotionEventDigest!,
+                    );
+                  }
+                }}
+              >
+                <span aria-hidden="true">↶</span> Roll back change…
+              </button>
+            )}
+          </div>
+        )}
+
+        {surface?.kind === 'scope' && ownerCodeMode && (
+          <section
+            ref={surfaceRef}
+            className={`${styles.floatingSurface} ${styles.scopeSheet}`}
+            style={surfaceStyle(surface)}
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="public-apocrypha-scope-title"
+            aria-describedby="public-apocrypha-scope-description"
+          >
+            <div className={styles.scopeHeader}>
+              <div><span aria-hidden="true">◎</span><span><strong id="public-apocrypha-scope-title">Effect scope</strong><small>Owner-governed code effect</small></span></div>
+              <button type="button" onClick={() => closeSurface(true)} aria-label="Close effect scope">×</button>
+            </div>
+            <p id="public-apocrypha-scope-description">Only the exact repository paths below may change. Apocrypha isolates and tests the proposal before one apply.</p>
+            <label htmlFor="public-apocrypha-code-paths">Allowed repository paths</label>
+            <textarea
+              id="public-apocrypha-code-paths"
+              value={codePathInput}
+              rows={4}
+              spellCheck={false}
+              placeholder={'src/apocv4/example.py\ntests/test_example.py'}
+              disabled={waiting || Boolean(rollingBackId)}
+              aria-describedby="public-apocrypha-code-path-status"
+              aria-invalid={duplicateCodePath || codePaths.length > 32}
+              onChange={(event) => {
+                setCodePathInput(event.target.value);
+                setCodeConfirmed(false);
+              }}
+            />
+            <div id="public-apocrypha-code-path-status" className={styles.codeScopeMeta} aria-live="polite">
+              <span>{codePaths.length}/32 paths admitted</span>
+              {duplicateCodePath && <strong>Each path must be unique.</strong>}
+            </div>
+            <label className={styles.codeConfirm}>
+              <input
+                type="checkbox"
+                checked={codeConfirmed}
+                disabled={waiting || Boolean(rollingBackId) || codePaths.length < 1 || codePaths.length > 32 || duplicateCodePath}
+                onChange={(event) => setCodeConfirmed(event.target.checked)}
+              />
+              <span>Authorize one isolated, tested apply on this scope. No automatic retry.</span>
+            </label>
+            <button type="button" className={styles.scopeDone} onClick={() => closeSurface(true)}>
+              {codeConfirmed ? 'Scope ready' : 'Keep scope'}
+            </button>
+          </section>
+        )}
       </main>
     </div>
   );
