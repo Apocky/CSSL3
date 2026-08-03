@@ -3,10 +3,12 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAdminAuthorization } from '../../../lib/admin-auth';
+import { setPrivateNoStore } from '../../../lib/apocrypha/proxy';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setPrivateNoStore(res);
+  res.setHeader('Allow', 'GET');
   if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
     return res.status(405).json({ authorized: false, reason: 'Method not allowed' });
   }
 

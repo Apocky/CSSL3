@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Allow: /llms.txt
+Allow: /.well-known/apocky.json
+Allow: /schemas/site-manifest.v1.json
+Allow: /apocrypha
+Allow: /clearing
+Disallow: /account
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /chat
+Disallow: /login
+Disallow: /register
+Disallow: /shawn/clinical
+
+Sitemap: https://www.apocky.com/sitemap.xml

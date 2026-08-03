@@ -1,88 +1,124 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-
-// Global site chrome for apocky.com — the hub. Real things only: Apocrypha (the DI), CSSL, CSL,
-// Chaos Tarot, and Apocky's channels. Wired in _app.tsx for content pages; auth, admin, and the
-// immersive chat page render bare.
+import { useSiteSession } from './hub/SiteSession';
 
 type NavItem = { href: string; label: string; ext?: boolean };
 
-const NAV: NavItem[] = [
-  { href: '/chat', label: 'Apocrypha' },
-  { href: 'https://cssl.dev', label: 'CSSL', ext: true },
-  { href: 'https://cssl.dev/CSLv3', label: 'CSL', ext: true },
-  { href: 'https://chaos-tarot.com', label: 'Chaos Tarot', ext: true },
+const NAV: ReadonlyArray<NavItem> = [
+  { href: '/apocrypha', label: 'Apocrypha' },
+  { href: '/atlas', label: 'Atlas' },
+  { href: '/clearing', label: 'The Clearing' },
 ];
 
-const SOCIAL: NavItem[] = [
-  { href: 'https://medium.com/@noneisone.oneisall', label: 'Medium', ext: true },
-  { href: 'https://ko-fi.com/oneinfinity', label: 'Ko-fi', ext: true },
-  { href: 'https://www.patreon.com/0ne1nfinity', label: 'Patreon', ext: true },
-  { href: 'https://github.com/Apocky', label: 'GitHub', ext: true },
+const WORK: ReadonlyArray<NavItem> = [
+  { href: '/apocrypha', label: 'Meet Apocrypha' },
+  { href: '/atlas', label: 'Explore the Atlas' },
+  { href: '/clearing', label: 'Enter the Clearing' },
+  { href: 'https://cssl.dev', label: 'Visit CSSL', ext: true },
+  { href: 'https://cssl.dev/CSLv3', label: 'Read about CSLv3', ext: true },
+  { href: 'https://chaos-tarot.com', label: 'Visit Chaos Tarot', ext: true },
+  { href: '/download', label: 'Download Labyrinth of Apocalypse' },
 ];
 
-const LEGAL: NavItem[] = [
+const ABOUT: ReadonlyArray<NavItem> = [
+  { href: 'https://medium.com/@noneisone.oneisall', label: 'Writing on Medium', ext: true },
+  { href: 'https://github.com/Apocky', label: 'Code on GitHub', ext: true },
+  { href: 'https://ko-fi.com/oneinfinity', label: 'Support on Ko-fi', ext: true },
+  { href: 'https://www.patreon.com/0ne1nfinity', label: 'Support on Patreon', ext: true },
+  { href: '/words', label: 'Words & symbols' },
   { href: '/legal/privacy', label: 'Privacy' },
   { href: '/legal/terms', label: 'Terms' },
-  { href: '/legal/eula', label: 'EULA' },
+  { href: '/legal/eula', label: 'Game license' },
+  { href: 'mailto:apocky13@gmail.com', label: 'Contact', ext: true },
 ];
 
 function extProps(item: NavItem) {
-  return item.ext ? { target: '_blank' as const, rel: 'noopener noreferrer' } : {};
+  return item.ext && !item.href.startsWith('mailto:')
+    ? { target: '_blank' as const, rel: 'noopener noreferrer' }
+    : {};
 }
 
 export default function SiteShell({ children }: { children: React.ReactNode }): JSX.Element {
   const { pathname } = useRouter();
-  const active = (h: string) => pathname === h;
+  const { authenticated } = useSiteSession();
+
+  const navLinks = (className = 'apx-nav-link') => NAV.map((item) => (
+    <Link
+      key={item.label}
+      href={item.href}
+      {...extProps(item)}
+      className={className}
+      data-active={pathname === item.href ? 'true' : undefined}
+      aria-current={pathname === item.href ? 'page' : undefined}
+    >
+      {item.label}{item.ext ? <span aria-hidden="true"> ↗</span> : null}
+    </Link>
+  ));
 
   return (
-    <div style={S.shell}>
-      <nav style={S.nav}>
-        <Link href="/" style={S.brand}>APOCKY</Link>
-        <div style={S.links}>
-          {NAV.map((n) => (
-            <Link key={n.label} href={n.href} {...extProps(n)} style={{ ...S.link, ...(active(n.href) ? S.linkActive : {}) }}>
-              {n.label}{n.ext ? <span style={S.arr}> ↗</span> : null}
+    <div className="apx-shell">
+      <a className="apx-skip-link" href="#main-content">Skip to main content</a>
+      <header>
+        <nav className="apx-nav" aria-label="Primary navigation">
+          <Link href="/" className="apx-brand" aria-label="Apocky home">
+            <span className="apx-brand-mark" aria-hidden="true" />
+            <span>APOCKY</span>
+          </Link>
+
+          <div className="apx-nav-links" aria-label="Explore Apocky">
+            {navLinks()}
+          </div>
+
+          <div className="apx-nav-actions">
+            <Link
+              href={authenticated ? '/account' : '/login?next=%2Faccount'}
+              className="apx-nav-action"
+            >
+              {authenticated ? 'Account' : 'Sign in'}
             </Link>
-          ))}
-        </div>
-        <Link href="/login" style={S.signin}>Sign in</Link>
-      </nav>
+          </div>
 
-      <div style={S.body}>{children}</div>
+          <details className="apx-mobile-menu">
+            <summary>Explore</summary>
+            <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
+              {navLinks('apx-mobile-menu-link')}
+            </div>
+          </details>
+        </nav>
+      </header>
 
-      <footer style={S.footer}>
-        <div style={S.footRow}>
-          <span style={S.footBrand}>APOCKY</span>
-          {SOCIAL.map((s) => (
-            <Link key={s.label} href={s.href} {...extProps(s)} style={S.footLink}>{s.label}</Link>
-          ))}
-          <span style={S.sep}>·</span>
-          {LEGAL.map((l) => (
-            <Link key={l.label} href={l.href} style={S.footLink}>{l.label}</Link>
-          ))}
-          <a href="mailto:apocky13@gmail.com" style={S.footLink}>Contact</a>
+      <div id="main-content" className="apx-main" tabIndex={-1}>{children}</div>
+
+      <footer className="apx-footer">
+        <div className="apx-footer-inner">
+          <div>
+            <Link href="/" className="apx-brand">
+              <span className="apx-brand-mark" aria-hidden="true" />
+              <span>APOCKY</span>
+            </Link>
+            <p className="apx-footer-copy">
+              A digital commons for Apocrypha, language, art, and the systems
+              that connect them.
+            </p>
+          </div>
+          <div>
+            <h2 className="apx-footer-title">Places & projects</h2>
+            <div className="apx-footer-links">
+              {WORK.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
+            </div>
+          </div>
+          <div>
+            <h2 className="apx-footer-title">Elsewhere & support</h2>
+            <div className="apx-footer-links">
+              {ABOUT.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
+            </div>
+          </div>
         </div>
-        <div style={S.footNote}>© {new Date().getFullYear()} Apocky</div>
+        <div className="apx-footer-bottom">
+          <span>© {new Date().getFullYear()} Apocky</span>
+          <span>Plain language first. Technical detail when it helps.</span>
+        </div>
       </footer>
     </div>
   );
 }
-
-const S: Record<string, React.CSSProperties> = {
-  shell: { minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#06080a', color: '#e6f0ef', fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", sans-serif' },
-  nav: { position: 'sticky', top: 0, zIndex: 50, display: 'flex', alignItems: 'center', gap: 8, padding: '0 20px', height: 54, borderBottom: '1px solid #18212a', background: 'rgba(6,8,10,0.72)', backdropFilter: 'blur(8px)' },
-  brand: { fontSize: 15, fontWeight: 700, letterSpacing: '0.24em', color: '#e6f0ef', textDecoration: 'none' },
-  links: { display: 'flex', gap: 20, marginLeft: 28, flexWrap: 'wrap', flex: 1 },
-  link: { color: '#8fb3b0', textDecoration: 'none', fontSize: 13.5 },
-  linkActive: { color: '#5fe6d6' },
-  arr: { color: '#4a5658', fontSize: 11 },
-  signin: { color: '#8fb3b0', textDecoration: 'none', fontSize: 13, whiteSpace: 'nowrap' },
-  body: { flex: 1, minWidth: 0 },
-  footer: { borderTop: '1px solid #18212a', padding: '22px 20px 30px', display: 'flex', flexDirection: 'column', gap: 10 },
-  footRow: { display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', fontSize: 12.5 },
-  footBrand: { color: '#9fb3b0', fontWeight: 700, letterSpacing: '0.22em' },
-  footLink: { color: '#6b7d80', textDecoration: 'none' },
-  sep: { color: '#2a3338' },
-  footNote: { color: '#4a5658', fontSize: 11 },
-};

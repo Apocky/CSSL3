@@ -10,52 +10,53 @@ const Page: NextPage = () => {
   return (
     <DocsLayout
       activeSlug="getting-started"
-      title="Getting Started · Apocky Docs"
-      description="Install Labyrinth of Apocalypse, launch the engine, and have your first chat with the GM. Single-binary install · no external dependencies."
+      title="Getting started with LoA · Apocky Documentation"
+      description="Download and open the current Labyrinth of Apocalypse Windows test build."
     >
       <h1 className="docs-h1">Getting Started</h1>
-      <p className="docs-blurb">§ Install · launch · first chat with the GM. ≤ 5 minutes from download to playing.</p>
+      <p className="docs-blurb">Download, open, move around, and try the current test-room.</p>
 
-      <h2 className="docs-h2">§ What you are installing</h2>
+      <h2 className="docs-h2">What you are installing</h2>
       <p className="docs-p">
-        <strong>Labyrinth of Apocalypse</strong> (LoA) is a single-binary Windows executable, around 8.9 MB, that
-        ships the entire substrate-native engine, the CSSL runtime, and the test-room you can navigate today.
-        There is no installer, no service, no auto-updater, no telemetry phone-home.
-        You download <code className="docs-ic">LoA.exe</code>, you double-click it, you play.
+        <strong>Labyrinth of Apocalypse</strong> (LoA) is an early Windows game and engine test. The current
+        download contains the program and a small room you can explore. It is not the complete game.
       </p>
 
-      <Callout kind="note" title="Sovereign-first install">
-        Nothing leaves your machine without an explicit sovereign-cap. The executable does not write outside its
-        own working directory, does not register itself in the registry, and does not require admin elevation.
+      <Callout kind="note" title="What installation means here">
+        There is no traditional installer. Put the downloaded files in a folder you control and open
+        <code className="docs-ic"> LoA.exe</code>. The release is intended to run without administrator access.
+        See <a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>Permissions and data sharing</a> for the
+        difference between current behavior and future plans.
       </Callout>
 
-      <h2 className="docs-h2">§ Step 1 · Download</h2>
+      <h2 className="docs-h2">Step 1 · Download</h2>
       <p className="docs-p">
         Visit <a href="/download" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>apocky.com/download</a> and
-        grab the latest alpha build. The download is a single <code className="docs-ic">LoA.exe</code> file.
-        You may verify the SHA-256 hash listed alongside the download.
+        get the latest test build. If the download is a ZIP archive, extract it before opening
+        <code className="docs-ic"> LoA.exe</code>. The download page explains how to compare its SHA-256
+        fingerprint, a number used to check that the file arrived unchanged.
       </p>
 
-      <h2 className="docs-h2">§ Step 2 · Launch</h2>
+      <h2 className="docs-h2">Step 2 · Launch</h2>
       <p className="docs-p">
         Drop <code className="docs-ic">LoA.exe</code> anywhere on your filesystem (a fresh folder is recommended,
-        because the engine will create a <code className="docs-ic">logs/</code> sibling directory next to the binary
-        on first run). Double-click to launch. The window opens in borderless-fullscreen mode at your primary
-        monitor's native resolution.
+        because the engine creates local files while it runs). It creates a <code className="docs-ic">logs/</code>{' '}
+        directory next to the program and may create screenshots, cached files, or experimental state elsewhere
+        on your computer. Double-click to launch. The window opens in borderless-fullscreen mode at your primary
+        monitor&apos;s native resolution.
       </p>
 
       <CodeBlock lang="bash" caption="Optional · launch from a terminal to see startup output">{`# PowerShell or cmd
 .\\LoA.exe
 
-# Or from anywhere — the .exe is fully self-contained
+# Or open the program from another folder
 "C:\\Games\\LoA\\LoA.exe"`}</CodeBlock>
 
-      <h2 className="docs-h2">§ Step 3 · The test-room</h2>
+      <h2 className="docs-h2">Step 3 · The test-room</h2>
       <p className="docs-p">
-        On boot you spawn into the <strong>test-room</strong> — a 6×6×6 m container with four colored quadrants on
-        the floor, four walls patterned with calibration targets, and a ceiling that responds to the active
-        illuminant. This is the engine's empty stage; it intentionally has no game content. The runtime
-        procgen pipelines fill it in once you ask them to.
+        On boot you enter a <strong>test room</strong>: a small space used to check movement, materials, lighting,
+        and display modes. It intentionally does not contain the full game. Some recognized text requests can
+        alter the room; many planned game systems are not connected to this build.
       </p>
 
       <ul className="docs-ul">
@@ -65,11 +66,12 @@ const Page: NextPage = () => {
         <li>Press <span className="docs-kbd">Tab</span> or <span className="docs-kbd">Esc</span> to pause</li>
       </ul>
 
-      <h2 className="docs-h2">§ Step 4 · Open the chat panel</h2>
+      <h2 className="docs-h2">Step 4 · Open the chat panel</h2>
       <p className="docs-p">
         Press <span className="docs-kbd">/</span> to focus the chat panel. Type a request and press{' '}
-        <span className="docs-kbd">Enter</span>. The router classifies your text into a typed intent, dispatches it
-        against the live engine, and you see the result immediately.
+        <span className="docs-kbd">Enter</span>. The game compares your words with the requests it currently
+        recognizes and then performs the matching action. The technical name for a recognized request is an
+        <strong> intent</strong>.
       </p>
 
       <CodeBlock lang="plain" caption="Sample first messages">{`/   ← focuses the chat panel
@@ -80,25 +82,28 @@ teleport to color room
 snapshot`}</CodeBlock>
 
       <p className="docs-p">
-        Each line is a single intent. The engine confirms the dispatch in the chat scroll-back, and the world
-        updates in front of you. The full intent vocabulary is documented at{' '}
-        <a href="/docs/intents" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>/docs/intents</a>.
+        Each line is one request. The panel shows what it understood, and the room updates when the action
+        succeeds. See <a href="/docs/intents" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+          How the game reads requests
+        </a> for the full list.
       </p>
 
-      <h2 className="docs-h2">§ Step 5 · Quit cleanly</h2>
+      <h2 className="docs-h2">Step 5 · Quit cleanly</h2>
       <p className="docs-p">
         Press <span className="docs-kbd">Esc</span> to bring up the menu, then close the window. The engine
-        flushes its log to <code className="docs-ic">logs/loa_runtime.log</code> next to the binary. That's the
-        only file the engine writes by default; you can delete it with no ill effect.
+        writes several local diagnostic files in the <code className="docs-ic">logs/</code> folder next to the
+        binary. “Diagnostic” means information used to understand performance and failures. You may delete the
+        logs after closing the program. Other local experimental state can affect later runs, so back it up
+        before removing it if you want to preserve that state.
       </p>
 
       <Callout kind="warn" title="Alpha caveats">
         This is alpha software. The test-room is the empty container — combat, NPCs, full procgen worlds, and
-        crafting are wired at the code level but not yet exposed to first-time users without flags.
-        See <a href="/docs/changelog" style={{ color: '#7dd3fc' }}>/docs/changelog</a> for what is shippable.
+        crafting appear in source or plans but are not available as a complete first-time experience.
+        See <a href="/docs/changelog" style={{ color: '#7dd3fc' }}>the release notes</a> for current status.
       </Callout>
 
-      <h2 className="docs-h2">§ Where to next</h2>
+      <h2 className="docs-h2">Where to next</h2>
       <ul className="docs-ul">
         <li><a href="/docs/keyboard-shortcuts" style={{ color: '#7dd3fc' }}>Full keyboard reference</a></li>
         <li><a href="/docs/chat-panel" style={{ color: '#7dd3fc' }}>How the chat panel works</a></li>

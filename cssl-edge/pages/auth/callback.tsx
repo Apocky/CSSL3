@@ -1,124 +1,138 @@
-// /auth/callback · landing page after Supabase magic-link / OAuth redirect
-// Exchanges Supabase OAuth / magic-link callback params into a browser session,
-// writes server-readable cookies, then redirects to /account.
-
 import type { NextPage } from 'next';
 import Head from 'next/head';
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AuthFrame } from '../../components/hub/AuthFrame';
+import { getAuthClient, persistSessionToCookie } from '../../lib/auth';
 import { normalizeAuthReturnPath } from '../../lib/auth-return';
-import { consumeAuthCallbackFromLocation } from '../../lib/auth-callback';
+import { clearAuthCallbackFromLocation, consumeAuthCallbackFromLocation } from '../../lib/auth-callback';
+
+type CallbackStatus = {
+  phase: 'working' | 'success' | 'error';
+  title: string;
+  message: string;
+};
 
 const AuthCallback: NextPage = () => {
-  const [message, setMessage] = useState<string>('§ verifying your sign-in…');
-  const [stub, setStub] = useState<boolean>(false);
+  const [status, setStatus] = useState<CallbackStatus>({
+    phase: 'working',
+    title: 'Verifying your sign-in',
+    message: 'Keep this page open while the secure handoff completes.',
+  });
+  const [returnTo, setReturnTo] = useState('/account');
+  const runningRef = useRef(false);
+  const redirectTimerRef = useRef<number | null>(null);
 
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof location !== 'undefined' && location.hostname === 'localhost') {
-      const q = new URLSearchParams(location.search);
-      const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-      const parts: string[] = [`origin: ${location.origin}`];
-      const code = q.get('code');
-      const err = q.get('error') ?? h.get('error');
-      const accessToken = h.get('access_token');
-      if (code) parts.push(`code: ${code.slice(0, 12)}…`);
-      if (accessToken) parts.push('hash: access_token present');
-      if (err) parts.push(`error: ${err}`);
-      if (!code && !accessToken && !err) parts.push('⚠ no code / token / error in URL — likely Supabase redirect URL not whitelisted');
-      setDebugInfo(parts.join(' · '));
-    }
+  const complete = useCallback((safeReturnTo: string): void => {
+    clearAuthCallbackFromLocation();
+    setStatus({
+      phase: 'success',
+      title: 'Sign-in complete',
+      message: 'Your session is ready. Returning you to the page you chose.',
+    });
+    redirectTimerRef.current = window.setTimeout(() => location.replace(safeReturnTo), 700);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const returnTo = normalizeAuthReturnPath(new URLSearchParams(location.search).get('next'));
+  const processCallback = useCallback(async (retry: boolean): Promise<void> => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    const safeReturnTo = normalizeAuthReturnPath(new URLSearchParams(location.search).get('next'));
+    setReturnTo(safeReturnTo);
+    setStatus({
+      phase: 'working',
+      title: retry ? 'Retrying secure sign-in' : 'Verifying your sign-in',
+      message: 'Keep this page open while the secure handoff completes.',
+    });
+
+    try {
+      // A prior callback attempt may have created the browser session before the
+      // server cookie mirror briefly failed. Retry that boundary without asking
+      // Supabase to consume the same single-use code again.
+      if (retry) {
+        const client = getAuthClient();
+        if (client) {
+          const { data, error } = await client.auth.getSession();
+          if (!error && data.session) {
+            const mirrored = await persistSessionToCookie(data.session.access_token);
+            if (mirrored) {
+              complete(safeReturnTo);
+              return;
+            }
+          }
+        }
+      }
+
       const result = await consumeAuthCallbackFromLocation();
-      if (cancelled) return;
       if (result.ok) {
-        if (!cancelled) setMessage('✓ signed in · redirecting…');
-        setTimeout(() => { location.replace(returnTo); }, 600);
+        complete(safeReturnTo);
         return;
       }
-      setStub(Boolean(result.stub));
-      setMessage(`✗ sign-in failed · ${result.reason ?? 'no session found'} · check Supabase Auth redirect URLs and Google provider credentials.`);
-    })();
-    return () => { cancelled = true; };
-  }, []);
+      setStatus({
+        phase: 'error',
+        title: result.stub ? 'Sign-in is not connected here' : 'Sign-in could not be completed',
+        message: result.reason ?? (result.handled
+          ? 'The sign-in response did not contain a usable session.'
+          : 'No sign-in response was found. Start again from the sign-in page.'),
+      });
+    } catch {
+      setStatus({
+        phase: 'error',
+        title: 'Sign-in could not be completed',
+        message: 'The authentication service could not be reached. Retry when your connection is available.',
+      });
+    } finally {
+      runningRef.current = false;
+    }
+  }, [complete]);
+
+  useEffect(() => {
+    void processCallback(false);
+    return () => {
+      if (redirectTimerRef.current !== null) window.clearTimeout(redirectTimerRef.current);
+    };
+  }, [processCallback]);
 
   return (
     <>
       <Head>
         <title>Signing you in… · Apocky</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="robots" content="noindex,nofollow" />
       </Head>
-      <main
-        style={{
-          minHeight: '100dvh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '2rem',
-          textAlign: 'center',
-          background: 'radial-gradient(ellipse at top, #15151f 0%, #0a0a0f 50%, #050507 100%)',
-          color: '#e6e6f0',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-        }}
-      >
-        <div style={{ maxWidth: 400 }}>
-          <h1
-            style={{
-              fontSize: '1.4rem',
-              margin: '0 0 1rem',
-              fontWeight: 700,
-              backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #c084fc 60%, #7dd3fc 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
+      <a className="apx-skip-link" href="#callback-status">Skip to sign-in status</a>
+      <AuthFrame mode="callback">
+        <div className="apx-auth-card">
+          <p className="apx-auth-context">Secure account handoff</p>
+          <h2>{status.title}</h2>
+          <p className="apx-auth-subtitle">Authentication details stay inside the secure exchange and are never displayed on this page.</p>
+
+          <div
+            id="callback-status"
+            className={status.phase === 'error' ? 'apx-auth-warning' : 'apx-auth-message'}
+            role={status.phase === 'error' ? 'alert' : 'status'}
+            aria-live={status.phase === 'error' ? 'assertive' : 'polite'}
+            aria-atomic="true"
+            aria-busy={status.phase === 'working'}
           >
-            § signing you in
-          </h1>
-          <p
-            style={{
-              fontSize: '0.92rem',
-              color: stub ? '#fbbf24' : '#cdd6e4',
-              margin: 0,
-            }}
-          >
-            {message}
-          </p>
-          {debugInfo && (
-            <p
-              style={{
-                marginTop: '1rem',
-                padding: '0.5rem 0.75rem',
-                background: 'rgba(251, 191, 36, 0.07)',
-                border: '1px solid rgba(251, 191, 36, 0.3)',
-                borderRadius: 4,
-                fontSize: '0.72rem',
-                color: '#fbbf24',
-                textAlign: 'left',
-                wordBreak: 'break-all',
-              }}
-            >
-              {debugInfo}
+            {status.message}
+          </div>
+
+          {status.phase === 'error' && (
+            <div className="apx-actions">
+              <button className="apx-button apx-button--primary" type="button" onClick={() => void processCallback(true)}>
+                Retry secure sign-in
+              </button>
+              <Link className="apx-button" href={`/login?next=${encodeURIComponent(returnTo)}`}>Start again</Link>
+            </div>
+          )}
+
+          {status.phase !== 'error' && (
+            <p className="apx-auth-switch">
+              Taking too long? <Link href={`/login?next=${encodeURIComponent(returnTo)}`}>Return to sign in</Link>
             </p>
           )}
-          <a
-            href="/login"
-            style={{
-              display: 'inline-block',
-              marginTop: '1.5rem',
-              fontSize: '0.85rem',
-              color: '#7dd3fc',
-              textDecoration: 'underline',
-            }}
-          >
-            ← back to /login
-          </a>
         </div>
-      </main>
+      </AuthFrame>
     </>
   );
 };

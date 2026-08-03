@@ -27,7 +27,7 @@ const ReferenceRoute: NextPage<InferGetServerSidePropsType<typeof getServerSideP
     <main className={styles.referencePageShell}>
       <nav className={styles.referencePageNav} aria-label="Atlas return">
         <Link href="/shawn#references">← Return to the atlas</Link>
-        <span>Canonical explanatory reference</span>
+        <span>Detailed reference</span>
       </nav>
       <ReferencePage reference={reference} referenceBySlug={referenceBySlug} />
     </main>

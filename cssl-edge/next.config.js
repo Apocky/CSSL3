@@ -20,7 +20,21 @@ const nextConfig = {
       { source: '/admin/apocrypha/cockpit', destination: '/admin/diagnostics', permanent: true },
       // /admin/tasks was LoA scheduling content ; Apocrypha-equivalent = /admin/sub-minds
       { source: '/admin/tasks', destination: '/admin/sub-minds', permanent: true },
+      // The old Commons hub is superseded by the native React homepage.
+      { source: '/commons', destination: '/', permanent: true },
     ];
+  },
+  // These three reference pages remain intentional static documents. The
+  // homepage and live Clearing are native React routes and must never be
+  // shadowed by a static prototype.
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: '/atlas', destination: '/commons/atlas.html' },
+        { source: '/membership', destination: '/commons/membership.html' },
+        { source: '/principles', destination: '/commons/principles.html' },
+      ],
+    };
   },
 };
 

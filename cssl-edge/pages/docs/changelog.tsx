@@ -23,10 +23,10 @@ const RELEASES: Release[] = [
       'Intent router stage-0 · ~30 phrase rules · 12 typed Intent variants',
       'Chat panel · / focus · Enter dispatch · Esc cancel · 16-entry history ring',
       'F-row render modes (F1–F8) · F9 burst · F12 single capture · F11 fullscreen',
-      'Cap-based sovereignty model · default-deny · ~/.loa-secrets/caps.toml',
-      'Substrate Wave-7 host crates landed · cssl-substrate-omega-field keystone',
-      'Mycelial-network spec + cssl-host-mycelium primitive · Mode-A airgap verified',
-      'apocky.com portfolio hub · /download · /docs · /devblog · /press · /transparency',
+      'Internal permission-related source work; complete player controls are not yet verified',
+      'Experimental foundation libraries, including coordinate-based state work',
+      'Mycelium design documents and source modules; not a finished public multiplayer feature',
+      'apocky.com project hub, download page, documentation, and development writing',
     ],
   },
   {
@@ -34,12 +34,12 @@ const RELEASES: Release[] = [
     date: '2025-Q4 → 2026-Q1',
     status: 'shipped',
     highlights: [
-      'Substrate primitives bootstrap · ω-field, Σ-mask, KAN, HDC',
-      'csslc stage-0 · lex/parse/HIR/MIR/cranelift-object pipeline',
-      'auto-default-link for cssl-rt + loa-host staticlibs',
-      '11+ host-side substrate crates · 27+ wave-15 host crates',
-      'MCP tool surface · ~110+ tools across substrate + host',
-      'spec/grand-vision/* · 25+ CSL3 architecture documents',
+      'Early source work for coordinate state, permission masks, compact learning, and high-dimensional computing',
+      'Early csslc compiler pipeline',
+      'Automatic linking for the core runtime and game host libraries',
+      'Multiple experimental host libraries',
+      'Internal Model Context Protocol (MCP) development interfaces',
+      'CSLv3 architecture documents',
     ],
   },
   {
@@ -47,56 +47,56 @@ const RELEASES: Release[] = [
     date: 'next major slice',
     status: 'in-progress',
     highlights: [
-      'csslc multi-module compile · POD-4-D3 (◐)',
-      '10 sibling modules ingested at compile time · POD-4-D4 (◐)',
-      'Per-system staticlib auto-link · POD-4-D5..D8 (◐)',
+      'csslc multi-module compile · POD-4-D3 — in progress',
+      '10 sibling modules ingested at compile time · POD-4-D4 — in progress',
+      'Per-system staticlib auto-link · POD-4-D5..D8 — in progress',
       'main.cssl hot-loop scaffold activated · all 10 systems tick',
-      'Stage-1 KAN intent classifier wired · stage-0 fallback retained',
+      'Experimental compact request classifier with fixed-rule fallback',
     ],
   },
   {
-    version: 'v0.3.0 · mycelium-online',
+    version: 'v0.3.0 · planned network research',
     date: 'planned',
     status: 'planned',
     highlights: [
       'Home pocket-dimension UI · 7 archetypes selectable',
-      'Mycelium privacy modes A–E · cap-gated',
-      'Drop-in invites · friend-list bootstrap rendezvous',
-      'Federated KAN bias-learning · attested-anonymous',
-      'cap.akashic writer mode · long-term federated memory',
+      'Clearly explained connection and privacy choices',
+      'Invitations and friend connections',
+      'Optional shared-learning research, subject to privacy and security review',
+      'Optional retained-history research, subject to explicit consent and withdrawal design',
     ],
   },
   {
-    version: 'v0.4.0+ · full game',
+    version: 'v0.4.0+ · proposed game work',
     date: 'planned · grand-vision spec/13',
     status: 'planned',
     highlights: [
       'Combat / inventory / crafting / alchemy / magic systems live in-game',
       'Procgen city + procgen dungeon scenes navigable',
-      '4096+ NPC sustained 60fps with 4-tier LOD',
-      'Coherence-Engine 13 axes (DEPRECATED-Infinite-Labyrinth design carried forward)',
-      'Nexus-Bazaar 5-tier marketplace · cosmetic-only · gift-economy',
-      'Σ-Chain Coherence-Proof consensus · NO PoW · NO PoS · NO gas',
+      'Large non-player-character scenes, subject to measured performance testing',
+      'Additional game-system research described in the technical plans',
+      'Optional sharing and exchange features, subject to a separate product decision',
+      'Experimental coordination research described in the technical plans',
     ],
   },
 ];
 
 const Page: NextPage = () => {
   const colorFor = (s: Release['status']) => s === 'shipped' ? '#34d399' : s === 'in-progress' ? '#fbbf24' : '#9aa0a6';
-  const labelFor = (s: Release['status']) => s === 'shipped' ? '✓ shipped' : s === 'in-progress' ? '◐ in progress' : '○ planned';
+  const labelFor = (s: Release['status']) => s === 'shipped' ? 'Available or recorded' : s === 'in-progress' ? 'In progress' : 'Planned';
   return (
     <DocsLayout
       activeSlug="changelog"
       title="Changelog · Apocky Docs"
-      description="What landed when, what is shipping next, and what is on the long-term roadmap. The truth-in-doc rule applies — every line is real or clearly marked as planned."
+      description="Release notes that separate available work, work in progress, and plans."
     >
       <h1 className="docs-h1">Changelog</h1>
-      <p className="docs-blurb">§ What landed · what is in flight · what is planned.</p>
+      <p className="docs-blurb">What is available, what is being developed, and what remains a plan.</p>
 
-      <Callout kind="note" title="Truth-in-doc">
-        Every line below is either shipped (✓), in active development (◐), or honestly labeled as planned (○).
-        We do not list speculative features or marketing-driven roadmap items. If something is on this page,
-        it has either landed or is being worked on with a defined slice.
+      <Callout kind="warn" title="How to read these notes">
+        A source file or internal module is not the same as a finished public feature. “Available or recorded”
+        means the item appears in the named build or its release record; it does not certify every performance,
+        privacy, or security claim. Planned items may change or never ship.
       </Callout>
 
       {RELEASES.map((r) => (
@@ -111,7 +111,7 @@ const Page: NextPage = () => {
         </section>
       ))}
 
-      <h2 className="docs-h2">§ Where to follow along</h2>
+      <h2 className="docs-h2">Where to follow along</h2>
       <ul className="docs-ul">
         <li><a href="https://github.com/Apocky" style={{ color: '#7dd3fc' }}>github.com/Apocky</a> — release tags, source, issues</li>
         <li><a href="/devblog" style={{ color: '#7dd3fc' }}>/devblog</a> — long-form context for major slices</li>

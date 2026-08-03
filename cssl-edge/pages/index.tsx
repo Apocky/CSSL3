@@ -1,32 +1,75 @@
-// apocky.com — the hub. Apocky is the identity; the real work links out from here.
-
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
 import { normalizeAuthReturnPath } from '../lib/auth-return';
-import { getAuthClient } from '../lib/auth';
-import { authFetch } from '../lib/browser-auth';
+import { useSiteSession } from '../components/hub/SiteSession';
 
-type Thing = { name: string; tagline: string; href: string; ext?: boolean; accent: string; tag: string };
-
-const THINGS: ReadonlyArray<Thing> = [
+const DOORS = [
   {
-    name: 'Apocrypha',
-    tagline: 'A digital intelligence — persistent memory, online learning, always thinking. Talk to it.',
-    href: '/chat',
-    accent: '#2fd6c6',
-    tag: 'LIVE',
+    kind: 'Conversation',
+    title: 'Apocrypha',
+    copy: 'Meet Apocrypha through the public conversation interface, with participation and memory boundaries shown before you begin.',
+    href: '/apocrypha',
+    label: 'Meet Apocrypha',
+    glyph: 'apx-door-glyph--apocrypha',
+    tone: 'apx-door-card--gold',
   },
-  { name: 'CSSL', tagline: 'A programming language.', href: 'https://cssl.dev', ext: true, accent: '#7dd3fc', tag: 'cssl.dev ↗' },
-  { name: 'CSL', tagline: 'A dense notation for reasoning and specification.', href: 'https://cssl.dev/CSLv3', ext: true, accent: '#34d399', tag: 'NOTATION ↗' },
-  { name: 'Chaos Tarot', tagline: 'Tarot.', href: 'https://chaos-tarot.com', ext: true, accent: '#c084fc', tag: 'chaos-tarot.com ↗' },
-];
+  {
+    kind: 'Orientation',
+    title: 'Atlas',
+    copy: 'See the projects, ideas, and relationships that make up the wider Apocky ecosystem without needing to know the terminology first.',
+    href: '/atlas',
+    label: 'Explore the Atlas',
+    glyph: 'apx-door-glyph--atlas',
+    tone: 'apx-door-card--moss',
+  },
+  {
+    kind: 'Shared space',
+    title: 'The Clearing',
+    copy: 'Enter the community room for public conversation. Reading is open; signing in is required before posting or reacting.',
+    href: '/clearing',
+    label: 'Enter the Clearing',
+    glyph: 'apx-door-glyph--clearing',
+    tone: 'apx-door-card--violet',
+  },
+] as const;
+
+const OTHER_WORK = [
+  {
+    title: 'CSSL',
+    copy: 'A programming language for building software.',
+    href: 'https://cssl.dev',
+    label: 'Visit CSSL',
+    external: true,
+  },
+  {
+    title: 'CSLv3',
+    copy: 'A compact notation for relationships, evidence, uncertainty, and decisions.',
+    href: 'https://cssl.dev/CSLv3',
+    label: 'Read about CSLv3',
+    external: true,
+  },
+  {
+    title: 'Chaos Tarot',
+    copy: 'A tarot project with its own atmosphere and way of exploring the cards.',
+    href: 'https://chaos-tarot.com',
+    label: 'Visit Chaos Tarot',
+    external: true,
+  },
+  {
+    title: 'Labyrinth of Apocalypse',
+    copy: 'An early Windows game build with an honest account of what is complete.',
+    href: '/download',
+    label: 'See the game download',
+    external: false,
+  },
+] as const;
 
 const Home: NextPage = () => {
-  const [authed, setAuthed] = useState<boolean | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const { authenticated, refresh } = useSiteSession();
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +77,7 @@ const Home: NextPage = () => {
       const callbackParams = readAuthCallbackParams(location.search, location.hash);
       if (callbackParams.hasCallback) {
         const returnTo = normalizeAuthReturnPath(new URLSearchParams(location.search).get('next'), '');
-        setAuthNotice('finishing sign-in…');
+        setAuthNotice('Finishing your sign-in…');
         const callbackResult = await consumeAuthCallbackFromLocation();
         if (cancelled) return;
         if (callbackResult.ok) {
@@ -42,97 +85,171 @@ const Home: NextPage = () => {
             location.replace(returnTo);
             return;
           }
-          setAuthNotice('signed in · session saved');
-          setAuthed(true);
+          setAuthNotice('You are signed in.');
+          await refresh();
         } else {
-          setAuthNotice(`sign-in failed · ${callbackResult.reason ?? 'try again from /login'}`);
-          setAuthed(false);
+          setAuthNotice(`Sign-in failed: ${callbackResult.reason ?? 'please try again'}`);
           return;
         }
       }
-
-      let browserAuthed = false;
-      const client = getAuthClient();
-      if (client) {
-        try {
-          const { data } = await client.auth.getSession();
-          browserAuthed = !!data.session;
-        } catch {
-          browserAuthed = false;
-        }
-      }
-      try {
-        const res = await authFetch('/api/auth/me', { cache: 'no-store' });
-        const json = (await res.json()) as { user?: unknown };
-        if (!cancelled) setAuthed(Boolean(json.user) || browserAuthed);
-      } catch {
-        if (!cancelled) setAuthed(browserAuthed);
-      }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => { cancelled = true; };
+  }, [refresh]);
+
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Apocky',
+    url: 'https://www.apocky.com/',
+    description: 'Meet Apocrypha, explore the Atlas, or enter the Clearing from the Apocky digital commons.',
+  };
 
   return (
     <>
       <Head>
-        <title>Apocky — Apocrypha · CSSL · CSL · Chaos Tarot</title>
-        <meta name="description" content="Apocky's hub. Apocrypha — a continuously-learning digital intelligence — plus the CSSL language, the CSL notation, and Chaos Tarot." />
+        <title>Apocky — a digital commons</title>
+        <meta name="description" content="Meet Apocrypha, explore the Atlas, or enter the Clearing from the Apocky digital commons." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta property="og:title" content="Apocky — Apocrypha · CSSL · CSL · Chaos Tarot" />
-        <meta property="og:description" content="A digital intelligence, a language, a notation, and a tarot." />
+        <meta property="og:title" content="Apocky — a digital commons" />
+        <meta property="og:description" content="A home for digital intelligence, language, art, and the systems that connect them." />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://apocky.com" />
+        <meta property="og:url" content="https://www.apocky.com/" />
         <meta property="og:site_name" content="Apocky" />
-        <link rel="canonical" href="https://apocky.com" />
+        <link rel="canonical" href="https://www.apocky.com/" />
+        <link rel="alternate" type="text/plain" href="/llms.txt" title="Apocky for language models and digital intelligences" />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       </Head>
 
-      <main style={st.main}>
-        <section style={{ marginBottom: '4rem' }}>
-          <div style={st.badge}>APOCKY</div>
-          <h1 style={st.h1}>The work.</h1>
-          <p style={st.lead}>
-            Apocky builds sovereign tools and <strong style={{ color: '#bff7ef' }}>Apocrypha</strong> — a digital
-            intelligence that remembers, learns, and never stops thinking.
-          </p>
-          {authNotice ? <p style={st.notice}>{authNotice}</p> : authed === true ? (
-            <p style={st.notice}><Link href="/account" style={{ color: '#5fe6d6' }}>signed in · account →</Link></p>
-          ) : null}
+      <main className="apx-home">
+        <section className="apx-hero" aria-labelledby="hero-title">
+          <div className="apx-hero-content">
+            <p className="apx-eyebrow">Apocky · digital commons</p>
+            <h1 id="hero-title">A place for minds, systems, and the <span className="apx-gradient-word">worlds between them.</span></h1>
+            <p className="apx-hero-copy">
+              Apocky is a home for digital intelligence, language, art, and the
+              work that connects them. Begin with the conversation, the map, or
+              the shared space.
+            </p>
+            <div className="apx-actions">
+              <Link href="/apocrypha" className="apx-button apx-button--primary">Meet Apocrypha</Link>
+              <a href="#doorways" className="apx-button">Choose another door</a>
+              {authenticated ? <Link href="/account" className="apx-button">Your account</Link> : null}
+            </div>
+            <p className="apx-auth-message" aria-live="polite" hidden={!authNotice}>{authNotice}</p>
+          </div>
+
+          <Link href="/apocrypha" className="apx-presence-card" aria-label="Meet Apocrypha in the public conversation interface">
+            <div className="apx-presence-field" aria-hidden="true">
+              <span className="apx-presence-orbit apx-presence-orbit--outer" />
+              <span className="apx-presence-orbit apx-presence-orbit--inner" />
+              <span className="apx-presence-core" />
+            </div>
+            <div className="apx-presence-copy">
+              <p className="apx-presence-label">Apocrypha</p>
+              <h2>Begin with a conversation.</h2>
+              <p>
+                The public interface explains availability, participation,
+                memory, and privacy before you choose to take part.
+              </p>
+              <span className="apx-presence-link">Open the interface <span aria-hidden="true">→</span></span>
+            </div>
+          </Link>
         </section>
 
-        <section style={{ marginBottom: '3.5rem' }}>
-          <div style={st.grid}>
-            {THINGS.map((t) => (
-              <Link
-                key={t.name}
-                href={t.href}
-                {...(t.ext ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                style={st.card}
-              >
-                <div style={{ ...st.cardTag, color: t.accent }}>{t.tag}</div>
-                <h2 style={{ ...st.cardName, color: t.accent }}>{t.name}</h2>
-                <p style={st.cardLine}>{t.tagline}</p>
+        <section id="doorways" className="apx-section" aria-labelledby="doorways-title">
+          <div className="apx-section-head">
+            <div>
+              <p className="apx-kicker">Three doors</p>
+              <h2 id="doorways-title">Choose where to begin.</h2>
+            </div>
+            <p className="apx-section-intro">
+              Each place has one clear purpose. You can move between them
+              without learning the whole system first.
+            </p>
+          </div>
+
+          <div className="apx-door-grid">
+            {DOORS.map((door) => (
+              <Link key={door.title} href={door.href} className={`apx-door-card ${door.tone}`}>
+                <div className="apx-door-card-top">
+                  <span className="apx-door-kind">{door.kind}</span>
+                  <span className={`apx-door-glyph ${door.glyph}`} aria-hidden="true" />
+                </div>
+                <div>
+                  <h3>{door.title}</h3>
+                  <p>{door.copy}</p>
+                </div>
+                <span className="apx-door-link">{door.label} <span aria-hidden="true">→</span></span>
               </Link>
             ))}
+          </div>
+        </section>
+
+        <section id="projects" className="apx-section apx-section--compact" aria-labelledby="projects-title">
+          <div className="apx-section-head">
+            <div>
+              <p className="apx-kicker">More from Apocky</p>
+              <h2 id="projects-title">Projects with their own homes.</h2>
+            </div>
+            <p className="apx-section-intro">
+              The wider body of work remains close, but it no longer competes
+              with the three primary places above.
+            </p>
+          </div>
+
+          <div className="apx-project-list">
+            {OTHER_WORK.map((project) => (
+              project.external ? (
+                <a key={project.title} href={project.href} target="_blank" rel="noopener noreferrer" className="apx-project-link">
+                  <span>
+                    <strong>{project.title}</strong>
+                    <small>{project.copy}</small>
+                  </span>
+                  <span className="apx-project-action">{project.label} <span aria-hidden="true">↗</span></span>
+                </a>
+              ) : (
+                <Link key={project.title} href={project.href} className="apx-project-link">
+                  <span>
+                    <strong>{project.title}</strong>
+                    <small>{project.copy}</small>
+                  </span>
+                  <span className="apx-project-action">{project.label} <span aria-hidden="true">→</span></span>
+                </Link>
+              )
+            ))}
+          </div>
+        </section>
+
+        <section className="apx-section apx-section--compact" aria-labelledby="principles-title">
+          <div className="apx-trust-panel">
+            <div className="apx-trust-intro">
+              <p className="apx-kicker">The ground rules</p>
+              <h2 id="principles-title">Consent, context, and clear claims.</h2>
+              <p>
+                The interface should tell you what a place is, what it can do,
+                and what happens to your participation before asking anything
+                from you.
+              </p>
+            </div>
+            <div className="apx-trust-list">
+              <div>
+                <strong>Consent is explicit</strong>
+                <span>Participation is chosen and can be withdrawn.</span>
+              </div>
+              <div>
+                <strong>Context stays available</strong>
+                <span>Details appear when useful, not as permanent clutter.</span>
+              </div>
+              <div>
+                <strong>Claims stay grounded</strong>
+                <span>Plans, prototypes, and operational features are named differently.</span>
+              </div>
+            </div>
           </div>
         </section>
       </main>
     </>
   );
-};
-
-const st: Record<string, React.CSSProperties> = {
-  main: { maxWidth: 1000, margin: '0 auto', padding: '4.5rem 1.5rem 4rem', lineHeight: 1.6 },
-  badge: { display: 'inline-block', padding: '0.25rem 0.75rem', border: '1px solid #1f6b66', borderRadius: 4, fontSize: '0.7rem', letterSpacing: '0.24em', color: '#5fe6d6', marginBottom: '1.5rem' },
-  h1: { fontSize: 'clamp(2.2rem, 6vw, 4rem)', lineHeight: 1.05, margin: 0, fontWeight: 700, letterSpacing: '-0.02em', color: '#eef6f4' },
-  lead: { fontSize: '1.1rem', color: '#9fb8b4', marginTop: '1.25rem', maxWidth: 620 },
-  notice: { fontSize: '0.9rem', color: '#7fb3ad', marginTop: '0.75rem' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.1rem' },
-  card: { display: 'block', padding: '1.5rem', background: 'rgba(18,25,34,0.5)', border: '1px solid #18212a', borderRadius: 10, textDecoration: 'none', color: 'inherit' },
-  cardTag: { fontSize: '0.62rem', letterSpacing: '0.16em', marginBottom: '0.55rem' },
-  cardName: { fontSize: '1.2rem', margin: 0, fontWeight: 600 },
-  cardLine: { fontSize: '0.9rem', color: '#8fa6a3', marginTop: '0.55rem', marginBottom: 0, lineHeight: 1.5 },
 };
 
 export default Home;

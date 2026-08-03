@@ -41,19 +41,19 @@ const NAV: ReadonlyArray<NavItem> = [
   { href: '/admin', label: 'Home', glyph: '§',
     tip: 'Apocrypha health summary · today\'s activity · quick links' },
   { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true,
-    tip: 'Talk with Apocrypha · sidebar + bubbles + SSE streaming · Enter to send' },
+    tip: 'One authenticated V2 REST turn · one committed final response' },
   { href: '/admin/cognition', label: 'Cognition', glyph: '∞', mobile: true,
-    tip: 'LIVE substrate visualization · swarm ticks · dream cycles · interactive triggers' },
+    tip: 'Predecessor visualization · legacy live feed retired' },
   { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬',
-    tip: 'Live tool-call timeline · recent conversations · what Apocrypha is doing right now' },
+    tip: 'Owner-only V2 health · capabilities · telemetry · Organarium projections' },
   { href: '/admin/sub-minds', label: 'Sub-Minds', glyph: 'Ω',
-    tip: 'Lazarus (Ω9 operator) + Tessera (Ω10 reasoner) — health, queue, recent runs' },
+    tip: 'Predecessor surface retired · no V2 replacement' },
   { href: '/admin/controls', label: 'Controls', glyph: '☢',
-    tip: 'Kill switch · API keys · consent grants · operator-tier dangerous controls' },
+    tip: 'V2 effect controls unavailable · authority boundary only' },
   { href: '/admin/tools', label: 'Tools', glyph: '⊑',
-    tip: 'Apocrypha\'s 19+ registered tools across 7 organs (memory/swarm/lang/forage/evolve/dream/state)' },
+    tip: 'Predecessor tools surface retired · no V2 replacement' },
   { href: '/admin/analytics', label: 'Analytics', glyph: '∂',
-    tip: 'Cost tracker · spend-by-model · memory size · swarm consensus · longer-term trends' },
+    tip: 'Predecessor cost surface retired · no V2 replacement' },
   { href: '/admin/logs', label: 'Logs', glyph: 'G',
     tip: 'Apocrypha dispatch + cloudflared process logs · audit events' },
 ];
@@ -153,7 +153,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
             marginBottom: '1.4rem',
           }}
         >
-          continuously-thinking digital intelligence
+          V2 owner console
         </div>
         {NAV.map((n) => {
           const active = router.pathname === n.href

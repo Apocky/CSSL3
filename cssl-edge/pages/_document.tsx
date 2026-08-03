@@ -35,11 +35,12 @@ export default class ApockyDocument extends Document<DocumentProps> {
             html, body { background-color: #0a0a0f; color: #e6e6f0; }
             html { color-scheme: dark; }
           `}</style>
-          {/* Clinical loads intentionally skip even the in-memory early error buffer. */}
+          {/* Install the in-memory early buffer only after a prior positive
+              choice, and never on authentication/clinical blackout routes. */}
           <script
             nonce={nonce}
             dangerouslySetInnerHTML={{
-              __html: `(function(){if(location.pathname.indexOf('/shawn/clinical')===0)return;window.__akashic_pre_init=[];function p(e){try{window.__akashic_pre_init.push({message:(e&&e.message)||'pre-hydrate',source:(e&&e.filename)||'',line:(e&&e.lineno)||0,col:(e&&e.colno)||0,stack:(e&&e.error&&e.error.stack)||'',ts:Date.now()})}catch(_){}}window.addEventListener('error',p);window.addEventListener('unhandledrejection',function(e){p({message:(e&&e.reason&&e.reason.message)||String(e&&e.reason),filename:'',lineno:0,colno:0,error:(e&&e.reason)||null})});})();`,
+              __html: `(function(){var pth=location.pathname||'/';if(pth==='/login'||pth==='/register'||pth==='/auth'||pth.indexOf('/auth/')===0||pth==='/shawn/clinical'||pth.indexOf('/shawn/clinical/')===0)return;var tier=null;try{tier=window.localStorage.getItem('akashic.consent.tier.v1')}catch(_){return}if(tier!=='spore'&&tier!=='mycelium'&&tier!=='akashic')return;var q=[];window.__akashic_pre_init=q;function onError(e){try{q.push({message:(e&&e.message)||'pre-hydrate',source:(e&&e.filename)||'',line:(e&&e.lineno)||0,col:(e&&e.colno)||0,stack:(e&&e.error&&e.error.stack)||'',ts:Date.now()})}catch(_){}}function onRejection(e){onError({message:(e&&e.reason&&e.reason.message)||String(e&&e.reason),filename:'',lineno:0,colno:0,error:(e&&e.reason)||null})}window.addEventListener('error',onError);window.addEventListener('unhandledrejection',onRejection);window.__akashic_pre_init_cleanup=function(){window.removeEventListener('error',onError);window.removeEventListener('unhandledrejection',onRejection);window.__akashic_pre_init_cleanup=undefined;};})();`,
             }}
           />
         </Head>

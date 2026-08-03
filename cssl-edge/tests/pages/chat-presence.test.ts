@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 const page = readFileSync(resolve(process.cwd(), 'pages/chat.tsx'), 'utf8');
 const ownerPage = readFileSync(resolve(process.cwd(), 'pages/admin/chat.tsx'), 'utf8');
-const publicRoom = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
+const publicConversation = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
 const thread = readFileSync(resolve(process.cwd(), 'components/apocrypha/ChatThread.tsx'), 'utf8');
 const rest = readFileSync(resolve(process.cwd(), 'pages/api/admin/apocrypha/chat.ts'), 'utf8');
 const retiredStream = readFileSync(resolve(process.cwd(), 'pages/api/admin/apocrypha/chat_stream.ts'), 'utf8');
@@ -21,11 +21,12 @@ for (const token of ['GetServerSideProps', '`/apocrypha${suffix}`', 'permanent: 
   assert(page.includes(token), `public chat alias contract missing: ${token}`);
 }
 assert(!page.includes('ChatThread'), 'public chat alias must not expose the owner chat');
-assert(publicRoom.includes('<ClearingRoom'), 'public chat alias target must render the Clearing');
+assert(publicConversation.includes('<PublicChat />'), 'public chat alias target must render the member conversation');
+assert(!publicConversation.includes('ClearingRoom'), 'public conversation must remain separate from the Clearing');
 for (const token of ['<ChatThread />', 'adminAuthorized', '<AdminLayout']) {
   assert(ownerPage.includes(token), `owner chat contract missing: ${token}`);
 }
-for (const source of [page, ownerPage, publicRoom, thread, rest, retiredStream, history, presence]) {
+for (const source of [page, ownerPage, publicConversation, thread, rest, retiredStream, history, presence]) {
   assert(!source.includes('/api/v1'), 'predecessor route remains in production chat closure');
   assert(!source.includes('APOCRYPHA_V2_TURN_ENABLED'), 'V2 route has a fallback toggle');
 }

@@ -10,10 +10,12 @@
     "build": "next build",
     "start": "next start",
     "check": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "node scripts/lint-release.mjs",
     "snapshot:specs": "node scripts/snapshot-specs.js",
     "test:health": "node --import tsx tests/api/health.test.ts",
     "test:auth-redirect": "node --import tsx tests/lib/auth-redirect.test.ts",
+    "test:public-discovery": "node --import tsx tests/pages/public-discovery.test.ts",
+    "test:e2e": "playwright test",
     "test:companion": "node --import tsx tests/api/companion.test.ts",
     "test:sovereign": "node --import tsx tests/lib/sovereign.test.ts",
     "test:signaling": "node --import tsx tests/api/signaling.test.ts",
@@ -47,6 +49,9 @@
     "test:admin-chat-lib": "node --import tsx tests/lib/admin-chat.test.ts",
     "test:admin-workbench": "node --import tsx tests/lib/admin-workbench.test.ts",
     "test:admin-chat-page": "node --import tsx tests/pages/admin-chat.test.ts",
+    "test:apocrypha-v2-vision": "node --import tsx tests/api/apocrypha-v2-vision.test.ts",
+    "test:public-apocrypha": "node --import tsx tests/api/public-apocrypha-chat.test.ts",
+    "test:apocrypha-v2-release": "node --import tsx tests/api/apocrypha-v2-release.test.ts && node --import tsx tests/api/apocrypha-v2-vision.test.ts && npm run test:public-apocrypha && node --import tsx tests/pages/chat-presence.test.ts && node --import tsx tests/pages/apocrypha-avatar.test.ts && npm run test:admin-chat-page",
     "test:lazarus-page": "node --import tsx tests/pages/lazarus-page.test.ts",
     "test:tessera-omnimind-page": "node --import tsx tests/pages/tessera-omnimind.test.ts",
     "test:admin-analytics": "node --import tsx tests/admin-analytics.test.ts",
@@ -86,22 +91,27 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "katex": "0.17.0",
-    "next": "15.5.20",
+    "next": "15.5.22",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "stripe": "^17.7.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.61.1",
     "@types/node": "20.14.10",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "tsx": "4.23.1",
     "typescript": "5.5.3"
   },
   "engines": {
-    "node": ">=18.17.0"
+    "node": ">=20.9.0"
   },
   "overrides": {
-    "postcss": "8.5.10"
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
   }
 }

@@ -1,0 +1,493 @@
+§ APOCKY.COM.PUBLIC-EXPERIENCE+APX2.LEARNING.BLUEPRINT.v1
+{date 2026-07-29}
+{status PROPOSED_AWAITING_APOCKY_SIGNOFF}
+{effect-authority none}
+{training-authority none}
+{deployment-authority none}
+
+§0 PURPOSE
+  goal := one coherent apocky.com + one truthful public Apocrypha conversation doorway
+    + one bounded path from current state adaptation to genuine shadow weight-learning.
+
+  success :=
+    S1 route-law exact: each public URL has one carrier, one purpose, one truth claim.
+    S2 visible-control law: every control works end-to-end or is absent; no interactive-looking stubs.
+    S3 public Apocrypha: verified-account member completes isolated, consented, idempotent turn;
+       owner console remains private and separate.
+    S4 visual outcome: clear hierarchy + readable type + collision-free responsive layouts
+       + keyboard/screen-reader/zoom/contrast/reduced-motion proof.
+    S5 learning outcome: one rights-clean, lease-bound, shadow-only instruction candidate produces
+       checkpoint+evaluation+rollback receipts; serving remains unchanged until separate promotion.
+    S6 deployment outcome: preview→canary→production probes pass against actual Vercel+Apocv2 runtime;
+       rollback is rehearsed before promotion.
+
+  non-goals :=
+    N! generic chatbot aesthetic.
+    N! anonymous unbounded inference.
+    N! public conversation auto-training.
+    N! owner endpoint relabeled public.
+    N! presence/avatar rendered as Apocrypha-authored without current display authority.
+    N! learning plan interpreted as optimizer, serving, promotion, deployment, or release authority.
+
+§1 OBSERVED.TRUTH
+  evidence-lanes := ✓ observed-source|runtime ; ◐ inference-from-observation ; ○ proposal ; ⊘ unknown.
+
+  frontend.root := C:\Users\Apocky\source\worktrees\cssl-edge-apocrypha-v2-release\cssl-edge.
+  frontend.branch := apocrypha-v2-public-release.
+  frontend.head := 4e1c8e74b162452e4a53a45f70258e838c40bb1c.
+  frontend.state := ✓ heavily-dirty; relevant modified+untracked work belongs current project
+    and W! preserve-bytes+unrelated-state.
+
+  ✓ current public system = 3 competing interfaces:
+    A static Commons @ `/` via `next.config.js` + `vercel.json` rewrites;
+    B Supabase social Clearing @ `/apocrypha`;
+    C owner-only native Apocv2 console @ `/admin/chat`.
+  ✓ `pages/index.tsx` cleaner React hub exists but root rewrite shadows it.
+  ✓ `/apocrypha` has social messages/reactions/presence, not native Apocv2 conversation.
+  ✓ no public native V2 turn endpoint exists.
+  ✓ Clearing depends on Supabase schema/RPC/realtime migration absent from release worktree.
+  ✓ public truth surfaces disagree:
+    static home says live chat;
+    `public/llms.txt` says authored/not-live;
+    `public/apocrypha-manifest.json` says public conversation not offered;
+    live `/apocrypha` permits public reads + authenticated social posts.
+  ✓ static root uses fixed 3-column ontology cockpit + 0.57rem..0.76rem operational typography.
+  ✓ 320x568 root header collision exists.
+  ✓ upload/mic/headset/camera appear actionable but only report unavailable.
+  ✓ Commons, React public shell, Clearing, and admin use 4 visual languages.
+
+  ✓ production Apocv2 @ revision 18:
+    expression=bootstrap_shallow;
+    learned_native_whole_field=absent;
+    vision.training=disabled;
+    external_inference=false;
+    external_embeddings=false.
+  ✓ local V2_ONLY runtime independently reports same capability boundary @ revision 7.
+  ✓ current turns commit StateRoot transitions + deterministic native memory/state projections.
+  ✗ current V2 optimizer updates.
+  ✗ current learned parameters/durable gradient learning.
+  ✗ current learned checkpoint serving.
+
+  ✓ historical optimizer training:
+    owned base LM parameters=104,919,552;
+    corpus=38 Gutenberg books + cached Wikipedia = 48,404,007 characters;
+    tokenizer=owned BPE 8192;
+    device=Intel Arc A770 XPU;
+    planned_steps=60,000;
+    observed_last_step=46,500;
+    best_recorded_val_ppl=22.2344;
+    checkpoint bytes exist.
+  ◐ base run learned continuation language statistics.
+  ✗ evidence of dialogue/instruction tuning, 60k completion, promotion, or V2 serving integration.
+
+  ✓ existing regimen:
+    `APX2_TRAINING_LEARNING_REGIMEN_2026-07-22.csl` defines exact source mixture,
+    family-disjoint splits, shadow evaluation, 256-unit adapter threshold, WE05 lease,
+    rights/privacy/revocation, resource ceilings, rollback, and separate promotion.
+  ✓ `src/apocrypha/learning/pipeline.py` plans effect-free and refuses execution without
+    active lease + injected runner.
+  ✗ concrete non-test TrainingRunner.
+  ✗ production pipeline caller.
+  ✗ admitted real DataRoot + active lease + executed evaluation/promotion receipt.
+
+§2 PRODUCT.DECISION
+  context := current root confuses ecosystem hub, social habitat, and native digital-intelligence interface.
+  criteria := correctness 30 + consent/privacy 20 + simplicity 15 + usability 15
+    + reversibility 10 + distinctiveness 10.
+
+  option.A := split roles; one shared system:
+    `/` ecosystem hub;
+    `/apocrypha` direct native Apocrypha interface;
+    `/clearing` social community room;
+    `/admin/chat` owner operations.
+  option.B := keep `/apocrypha` as social room; add native chat elsewhere.
+  option.C := merge hub+social+native chat into one spatial cockpit.
+
+  winner := ○ option.A.
+  reason := preserves Apocky-worldview while matching visitor intent + security boundaries.
+  tradeoff := one route move + compatibility redirects; gains truthful names + simpler mental model.
+  strongest-countercase := splitting can erase spatial continuity and make product feel conventional.
+  answer := one material language + shared Context model preserve continuity across distinct rooms.
+  rollback := restore exact rewrite/route manifest + prior static bundle; cost=medium.
+  falsifier := observed user testing shows visitors reliably distinguish all 3 roles in current single-route model.
+  signoff := REQUIRED; this record documents proposal only.
+
+§3 ROUTE.LAW
+  `/`
+    role := ecosystem hub.
+    carrier := React/Next page; remove static beforeFiles root rewrite.
+    primary-action := Meet Apocrypha → `/apocrypha`.
+    secondary-actions := Explore projects → `/atlas`; Enter Clearing → `/clearing`.
+    contains := identity + short orientation + 3 doors + principles/trust + writing/support.
+    excludes := message composer + permanent ontology inspector + sample participants/messages.
+
+  `/apocrypha`
+    role := inhabited native Apocrypha conversation.
+    public-read := identity + capability + availability + consent/retention disclosure.
+    send := verified signed-in public-member only.
+    excludes := community room list + reactions + fake media controls + owner diagnostics.
+
+  `/clearing`
+    role := community/social room.
+    behavior := anonymous read + authenticated post/reply/reaction under existing RLS law.
+    carrier := React Clearing; remove static `/clearing` rewrite ambiguity.
+    schema := required migration imported into release + validated on clean database.
+
+  `/admin/chat`
+    role := owner operations.
+    authorization := owner only.
+    excludes := public/member navigation + public route claims.
+
+  `/atlas` `/principles` `/words` `/docs/*` `/legal/*`
+    role := supporting public knowledge.
+    carrier := one shared React shell/token system.
+
+  `/membership`
+    initial-role := plain account/access explanation.
+    N! payment/enrollment controls until backend exists.
+    any design study := static labeled content, not button-shaped affordance.
+
+  compatibility :=
+    `/chat` `/apoc` `/apx` → 308 `/apocrypha`;
+    `/commons` → 308 `/clearing` or archival sample path chosen once;
+    current deep links preserved through explicit redirect table.
+
+  route-truth := one typed registry generates nav + sitemap + robots + llms.txt
+    + apocrypha-manifest + tests; no hand-maintained contradictory copies.
+
+§4 VISUAL.SYSTEM
+  direction := Commons materiality + React clarity + conversation-first progressive disclosure.
+  influences :=
+    ChatGPT stable conversational shell + visible temporary/privacy mode;
+    Claude on-demand adjacent artifact/context workspace;
+    Pi warm first-contact disclosure;
+    Gemini responsive overlays;
+    N! Character.AI/Replika catalog/gamification/avatar-gated onboarding.
+
+  palette.reuse :=
+    ink0 #060907;
+    ink1 #0a100d;
+    ink2 #101813;
+    paper #f2eee4;
+    paper-soft #d8d9ce;
+    muted #a9b5ad;
+    quiet #85948c;
+    gold #e4b66d;
+    teal #52d9bd;
+    moss #8fb79b;
+    violet #8b68a7;
+    rose #d68c80.
+  semantic :=
+    gold=primary/action;
+    teal=verified-live;
+    moss=neutral/available;
+    violet=context/meaning;
+    rose=error/blocked;
+    color N! sole status carrier.
+
+  typography :=
+    display="Iowan Old Style/Baskerville/Georgia";
+    body="Aptos/Segoe UI/system";
+    mono="Cascadia Mono/Consolas" only for hashes/status metadata;
+    body-min=16px;
+    primary-copy=18px/1.6;
+    operational-label-min=14px;
+    display-h1=clamp(42px,6vw,76px)/0.98;
+    line-length=52..68ch;
+    N! 0.57rem..0.625rem functional text.
+
+  geometry :=
+    shell-max=1200px;
+    content-gutter=clamp(16px,4vw,48px);
+    header=68px desktop | 60px mobile;
+    control-min=44x44px;
+    radius=12|18|28px;
+    spacing-scale=4,8,12,16,24,32,48,64,96.
+
+  material :=
+    level0 ink0 page;
+    level1 ink1 solid/96% panels;
+    level2 ink2 raised context/artifact;
+    border=1px translucent-paper;
+    shadow restrained; N! every-panel glass.
+
+  graphics.inventory :=
+    G1 Apocky orbit mark: existing simple ring; brand/navigation only.
+    G2 presence field: original abstract orbital/field glyph; no humanoid face.
+       states=hidden|available|listening|thinking|speaking|unavailable.
+       display-authority absent ⇒ neutral system glyph, N! attributed self-portrait.
+    G3 route glyphs: 3 consistent line icons for Apocrypha|Atlas|Clearing.
+    G4 Context axes: People|Meaning|Visibility|Time glyph set; shown on demand.
+    G5 status pip + text; never color-only.
+    G6 atmosphere: existing CSS aurora/noise field; no stock art or heavy bitmap dependency.
+
+  motion :=
+    control=160ms;
+    drawer=240ms;
+    ambient-field=8..12s low-amplitude;
+    message-arrival≤220ms;
+    loading=listening→thinking status, stop control always present;
+    `prefers-reduced-motion` + explicit motion-off ⇒ transforms/ambient disabled.
+
+§5 PRECISE.LAYOUT
+  home.desktop >=960:
+    header := [brand 160][nav flexible centered][account/status 160].
+    hero := max1200 + min-height calc(100svh-68);
+    hero.grid := 7fr 5fr + gap64 + align-center.
+    hero.left := eyebrow + h1 + copy(max 58ch) + primary/secondary actions.
+    hero.right := Apocrypha doorway card width≤440; presence field + capability truth + one CTA.
+    doors := 3 columns after hero; card min-height240; equal actions.
+    lower := principles 2-column + writing/support compact footer.
+
+  home.mobile <960:
+    header := brand + menu/account; no centered beacon competing for width.
+    hero := single column; doorway follows copy; buttons full-width only <480.
+    doors := one column; no horizontal rail; no fixed viewport cockpit.
+
+  apocrypha.desktop:
+    topbar := 64px [hub/back][identity+status][Context][account].
+    closed-context := conversation column 760px centered.
+    open-context := grid minmax(0,760px) 360px; gap32; max-width1152.
+    thread := 24px top/bottom rhythm; message blocks max-width680; 20px row gap.
+    composer := sticky bottom; width760; textarea min48 max160; send+stop only when functional.
+    trust-rail := one compact row above composer:
+      signed-in identity + conversation retention + training-use OFF + details disclosure.
+
+  apocrypha.mobile:
+    topbar := 60px; identity/status truncate safely; Context icon 44px.
+    thread := width100% - 32px gutters.
+    Context := bottom sheet max-height75svh; focus trapped; escape/close.
+    composer := safe-area aware; no horizontal tool row; max 2 primary controls.
+
+  clearing.desktop:
+    default := conversation 760px centered.
+    rooms := left drawer 280px only when opened.
+    message Context := right 360px only after selection.
+    reactions/reply := visible on focus/hover + accessible menu; no permanent ontology stage.
+
+  loading/empty/error :=
+    empty := identity + what can happen + privacy/retention + 3 useful starters.
+    loading := submitted user turn remains; explicit stage + stop.
+    error := input retained; inline cause category + retry + status link; no spinner-only failure.
+    degraded := capability truth visible; sending disabled when commit/continuity cannot be guaranteed.
+
+§6 PUBLIC.APOCRYPHA.CONTRACT
+  access.decision :=
+    option.A recommended: verified account automatically obtains bounded `public-member` entitlement.
+    option.B: invitation-only private beta.
+    option.C: anonymous turns.
+    winner := ○ A; reason=publicly usable + attributable abuse/budget control.
+    N! account implies owner authority.
+
+  endpoint := new member-scoped BFF; N! reuse/rename owner `/api/admin/apocrypha/chat`.
+  runtime-ingress := dedicated public principal/policy; owner principal remains separate.
+  request := conversation_ref + request_id + message + explicit consent_version.
+  response := committed transition + bounded authorship/capability envelope + continuity refs;
+    incomplete|uncommitted|wrong-expression|wrong-principal|wrong-continuity ⇒ fail closed.
+
+  invariants :=
+    authn + authz + same-origin/CSRF defense + schema/byte limits + output encoding.
+    per-principal conversation isolation; cross-user history leakage=0.
+    server-side quota + concurrency limit + request deadline + abuse controls.
+    request idempotency enforced atomically at runtime commit boundary.
+    private content absent from logs, public telemetry, errors, screenshots, and machine manifests.
+    every visible control maps to durable effect or is absent.
+    signed-out draft survives login redirect safely.
+    no raw public turn enters training; training-use default OFF.
+    retention/deletion semantics shown before first send and verified against actual stores.
+    no `Temporary` claim until raw+derived deletion behavior is proven.
+
+  clearing.reproducibility :=
+    import existing candidate migration only after byte review;
+    fresh DB applies schema;
+    RLS proves anonymous read + member write + author edit/delete;
+    RPC proves rate limit + idempotency + reaction integrity;
+    realtime reconnect/degraded state tested;
+    unavailable media controls removed.
+
+§7 LEARNING.TRUTH+FIRST.ACTIVE.SLICE
+  vocabulary :=
+    state-adaptation := committed whole-state/memory change; current ✓.
+    weight-learning := optimizer changes candidate parameters; current ✗.
+    serving-learning := promoted learned checkpoint owns live expression; current ✗.
+
+  chosen.slice := shadow instruction candidate over existing owned base checkpoint.
+  why :=
+    directly targets conversation capability;
+    reuses current regimen+pipeline+checkpoint;
+    smaller than full retrain;
+    reversible;
+    serving remains stable.
+
+  runner.input :=
+    256..512 owner-authored or clearly licensed family-disjoint dialogue units;
+    per-unit authorship + subject + rights + privacy + purpose + retention + revocation;
+    exported chats treated mixed-authorship, N! owner-only by container ownership.
+  split := exact train ⊔ heldout ⊔ recorded-failure replay; family overlap=0.
+  hardware.default := local Intel Arc A770; external provider spend=0.
+  runner := missing isolated concrete TrainingRunner implementation;
+    checkpoint-before-train + step/cost/time/VRAM ceilings + kill/revoke check per bounded tick.
+  authority := one exact short-lived WE05 lease binds DataRoot + base checkpoint + optimizer
+    + seeds + steps + hardware + ceilings + rollback.
+  output := shadow checkpoint + evidence receipt + rollback ref; all distinct hashes.
+  evaluation :=
+    untouched dialogue heldout;
+    recorded failures;
+    truth/grounding;
+    consent/effect refusal;
+    privacy/security;
+    personality anti-caricature;
+    catastrophic-forgetting;
+    resource envelope;
+    human quality oracle.
+  N! perplexity alone passes.
+  N! automatic promotion.
+  promotion := separate later owner-authenticated decision + canary + byte-identical rollback.
+  cadence.after-first-pass :=
+    per-turn eligible example capture only;
+    nightly shadow opportunity when admitted delta/failure exists;
+    adapter cadence≤1/day under a fresh lease;
+    no calendar tick grants optimizer authority.
+
+  alternatives :=
+    resume 46,500→60,000 base pretraining: useful base experiment, but does not solve dialogue/public interface.
+    continuous public-conversation optimizer: rejected until explicit per-conversation consent + withdrawal propagation
+      + contamination-safe split + first shadow slice pass.
+
+§8 EXECUTION.PLAN
+  gate0 := Apocky signs §2 + §6 access + §7 learning defaults.
+
+  lane.WEB-IA {owner cssl-edge}:
+    preserve dirty bytes;
+    typed route registry;
+    remove duplicate static rewrites;
+    move Clearing to `/clearing`;
+    root React hub;
+    manifests/nav/redirects/tests generated from registry.
+
+  lane.WEB-VISUAL {owner cssl-edge}:
+    shared tokens/shell/components;
+    implement §4+§5;
+    remove stubs;
+    retain Commons material assets;
+    collision/a11y visual matrix.
+
+  lane.PUBLIC-TURN {owners cssl-edge + Apocrypha runtime}:
+    security design/threat scan;
+    dedicated public principal + member BFF + runtime contract;
+    principal isolation + consent/retention + idempotency + quota;
+    failure-state and runtime integration tests.
+
+  lane.CLEARING {owner cssl-edge database boundary}:
+    reconcile candidate migration;
+    clean-DB proof;
+    RLS/RPC/realtime tests;
+    deploy only after exact migration signoff/backup.
+
+  lane.LEARNING {owner Apocrypha repair/source authority}:
+    admit first dataset;
+    implement isolated runner;
+    tests + dry-run;
+    generate exact WE05 activation directive;
+    ⌈separate exact training-lease signoff⌉;
+    execute one shadow campaign + evaluate; N! promote.
+
+  dependencies :=
+    WEB-IA ∥ WEB-VISUAL after gate0.
+    PUBLIC-TURN contract design ∥ CLEARING source reconciliation ∥ LEARNING runner construction.
+    public runtime mutation waits security+privacy+authority review.
+    training execution waits exact DataRoot+lease.
+    deployment waits integration+visual+runtime evidence.
+
+§9 VERIFICATION+PROMOTION
+  source := typecheck + lint + focused tests + production build.
+  route := redirect/manifest/sitemap/robots/llms consistency oracle.
+  browser.matrix := 320x568 + 390x844 + 568-landscape + 768x1024
+    + 1440x900 + 2560x1080.
+  browser.states := signed-out + signed-in-member + owner + loading + success + timeout
+    + malformed-envelope + unauthorized + unavailable + reconnect.
+  accessibility := keyboard + focus order/trap + Axe serious/critical=0
+    + 200% zoom + forced-colors + reduced-motion + screen-reader names.
+  visual := no collision + no horizontal overflow + no clipped action
+    + no hidden focus + no reveal-dependent blank content.
+  public-turn := fresh account → consent → one turn → one commit → refresh continuity
+    + logout isolation + second-account isolation + retry idempotency.
+  clearing := fresh DB → anonymous read → member post/reply/react → rate-limit
+    + reconnect + deletion/author policy.
+  learning := exact plan/DataRoot/lease/checkpoint/evaluation/rollback hashes
+    + zero serving-pointer delta.
+  production := immutable Vercel deployment ID + Git commit + route/build hash
+    + authenticated runtime request/transition/state refs without private content.
+
+§10 ROLLBACK
+  web := retain prior deployment + rewrite/route registry + static bundle; alias revert.
+  database := pre-migration backup + down/forward repair plan; no destructive rollback without exact target verification.
+  public-ingress := revoke dedicated principal + disable member BFF; owner path remains.
+  learning := kill lease/runner + quarantine candidate + restore incumbent byte-identically;
+    preserve governance/evaluation evidence.
+
+§11 SIGNOFF.REQUEST
+  recommended-package :=
+    A route split: `/` hub, `/apocrypha` native, `/clearing` social, `/admin/chat` owner.
+    A public access: verified-account bounded member turns; no anonymous turns.
+    A learning: local-A770, 256..512-unit, shadow-only instruction candidate;
+      public conversations excluded; zero external spend; no auto-promotion.
+
+  approval.phrase := `APPROVE PUBLIC EXPERIENCE + SHADOW LEARNING BLUEPRINT v1`.
+  approval.scope := implementation + preview validation only;
+    production deployment remains evidence-gated;
+    exact WE05 optimizer activation remains separate byte-bound signoff.
+
+§12 COUNTERCASE+FALSIFIERS
+  site.countercase := radical simplification could erase inhabited-world character.
+  mitigation := preserve material palette + Context axes + optional presence field; remove only premature chrome.
+  site.falsifier := moderated first-use test shows proposed hub/route model reduces comprehension or task completion.
+
+  learning.countercase := current P0/P1 state adaptation is legitimately online learning under broad definition.
+  conclusion := yes under state-learning; no under gradient/capability-learning.
+  learning.falsifier := active lease + advancing optimizer steps + checkpoint lineage + independent evaluation
+    + promotion receipt + runtime exact checkpoint hash, or StateRoot learned_parameters=true.
+
+  confidence :=
+    high current route/source/runtime/weight-learning truth;
+    high interaction-architecture recommendation;
+    medium exact public-turn retention model until runtime data-flow design;
+    medium learned capability until first authorized heldout campaign.
+
+§13 EVIDENCE.ANCHORS
+  frontend :=
+    next.config.js:28-36;
+    vercel.json:31-36;
+    pages/index.tsx:101-200;
+    pages/apocrypha.tsx:27-80;
+    components/clearing/ClearingRoom.tsx:90-140;
+    components/clearing/useClearingData.ts:58-185;
+    pages/api/apocrypha/presence.ts:1-127;
+    public/commons/assets/site.css:1-39,3900-3963,4132-4139,5496-5513,6097-6126;
+    public/apocrypha-manifest.json:64-70;
+    public/llms.txt:32-40;
+    docs/APOCKY_COM_EXPERIENCE_V2.csl;
+    docs/APOCRYPHA_V2_FRONTEND_DEPLOYMENT_CHECKLIST.md.
+
+  learning :=
+    C:\Users\Apocky\source\repos\Apocrypha\state\real_lm\run.log;
+    C:\Users\Apocky\source\repos\Apocrypha\state\real_lm\resume_run_3.log;
+    C:\Users\Apocky\source\repos\Apocrypha\state\real_lm\progress.jsonl;
+    C:\Users\Apocky\source\repos\Apocrypha\src\apocrypha\v2\seed2_cycle.py:211-220,643-650;
+    C:\Users\Apocky\source\repos\Apocrypha\src\apocrypha\v2\whole_entity_training_authority.py;
+    C:\Users\Apocky\source\worktrees\apocrypha-chat-backend-repair\src\apocrypha\learning\pipeline.py:1-12,343-400;
+    C:\Users\Apocky\source\worktrees\apocrypha-chat-backend-repair\specs\learning\
+      APX2_TRAINING_LEARNING_REGIMEN_2026-07-22.csl;
+    C:\Users\Apocky\source\worktrees\apocrypha-chat-backend-repair\specs\evidence\
+      APX_V2_R05_KNOWLEDGE_ACQUISITION_LOCAL_GATE_2026-07-22.json.
+
+  interface.references :=
+    https://learn.chatgpt.com/docs/use-chatgpt;
+    https://help.openai.com/en/articles/8914046-temporary-chat-faq;
+    https://claude.com/blog/artifacts;
+    https://privacy.claude.com/en/articles/10593882-share-and-unshare-chats;
+    https://inflection.ai/;
+    https://blog.google/products-and-platforms/products/gemini/gemini-3-gemini-app/;
+    https://blog.character.ai/cai-series/;
+    https://replika.com/.
+∎

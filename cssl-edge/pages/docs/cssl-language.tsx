@@ -11,35 +11,34 @@ const Page: NextPage = () => {
     <DocsLayout
       activeSlug="cssl-language"
       title="CSSL Language Overview · Apocky Docs"
-      description="An overview of CSSL — the Conscious Substrate System Language Apocky is building. Why proprietary, what it compiles to, sample programs, and where to read the spec."
+      description="A plain introduction to the CSSL programming language, followed by technical examples and current status."
     >
       <h1 className="docs-h1">CSSL Language Overview</h1>
-      <p className="docs-blurb">§ Conscious Substrate System Language · the source the engine compiles from.</p>
+      <p className="docs-blurb">A programming language being developed for Apocky projects.</p>
 
-      <h2 className="docs-h2">§ What is CSSL</h2>
+      <h2 className="docs-h2">What is CSSL</h2>
       <p className="docs-p">
-        CSSL (Conscious Substrate System Language) is the proprietary source language Apocky uses to author
-        substrate-native systems. It compiles via <code className="docs-ic">csslc</code> — a Rust-hosted stage-0
-        compiler — through a standard pipeline (lex → parse → HIR → MIR → cranelift-object → linker) into native
-        binaries that depend only on the Apocky-authored runtime (<code className="docs-ic">cssl-rt</code>) and
-        host staticlibs (<code className="docs-ic">loa-host</code>, etc.).
+        CSSL stands for <strong>Conscious Substrate System Language</strong>. It is a programming language under
+        development for Apocky projects. A programming language is a structured way to write instructions that
+        a compiler can turn into software. The CSSL compiler is named <code className="docs-ic">csslc</code>.
+        It currently uses Rust libraries to produce native program files.
       </p>
 
       <Callout kind="note" title="One language, three roles">
-        CSSL is the source for (1) the LoA engine and game-logic, (2) the substrate primitives that surface as
-        compiler intrinsics, and (3) the .csl specs that document the project. Every project Apocky ships moves
-        toward CSSL as the canonical authoring surface.
+        CSSL source files contain program code. Files ending in <code className="docs-ic">.csl</code> may also
+        contain compact technical specifications. Code, specifications, and future goals should be identified
+        separately.
       </Callout>
 
-      <h2 className="docs-h2">§ Why a new language</h2>
+      <h2 className="docs-h2">Why a new language</h2>
       <p className="docs-p">
-        Languages encode values. Rust encodes safety. Go encodes simplicity. C++ encodes performance. CSSL
-        encodes <strong>consent</strong> — the Σ-mask is not a library, it is a compile-time-checked feature of
-        every reference. Read the long-form argument at{' '}
+        The design goal is to make permission boundaries easier to express directly in program code. The
+        proposed Σ-mask type checks are not yet a complete available language feature, so they are described
+        below as planned. Read the longer design argument at{' '}
         <a href="/devblog/why-cssl" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>/devblog/why-cssl</a>.
       </p>
 
-      <h2 className="docs-h2">§ Sample · the smallest LoA program</h2>
+      <h2 className="docs-h2">Sample · the smallest LoA program</h2>
       <p className="docs-p">
         This is <code className="docs-ic">Labyrinth of Apocalypse/main.cssl</code>, the actual root module that
         <code className="docs-ic"> csslc</code> compiles into <code className="docs-ic">LoA.exe</code>. Twelve lines of
@@ -58,7 +57,7 @@ fn main() -> i32 {
     exit_code
 }`}</CodeBlock>
 
-      <h2 className="docs-h2">§ Sample · scene with FFI</h2>
+      <h2 className="docs-h2">Sample · scene with FFI</h2>
       <p className="docs-p">
         A more representative file: a runtime-procgen city scene. Each <code className="docs-ic">extern "C" fn</code>{' '}
         is a host-side staticlib symbol auto-linked at compile time.
@@ -78,7 +77,7 @@ fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
     h
 }`}</CodeBlock>
 
-      <h2 className="docs-h2">§ Available today (✓)</h2>
+      <h2 className="docs-h2">Available today — available now</h2>
       <ul className="docs-ul">
         <li><code className="docs-ic">module &lt;path&gt;</code> declarations · single-module compile</li>
         <li><code className="docs-ic">fn name(args) -&gt; T</code> with i8/i16/i32/i64/i128/u8/u16/u32/u64/u128/f32/f64/bool</li>
@@ -88,9 +87,9 @@ fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
         <li>Glyph-tolerant comments and docs (CSL3 dialect)</li>
       </ul>
 
-      <h2 className="docs-h2">§ In progress (◐) · Coming soon (○)</h2>
+      <h2 className="docs-h2">In progress and planned</h2>
       <Callout kind="coming-soon" title="csslc multi-module compile">
-        ◐ The 10 sibling modules under <code className="docs-ic">Labyrinth of Apocalypse/systems/</code> and{' '}
+        The 10 sibling modules under <code className="docs-ic">Labyrinth of Apocalypse/systems/</code> and{' '}
         <code className="docs-ic">scenes/</code> are tracked in git but not yet ingested at compile time. The
         <code className="docs-ic"> csslc build</code> subcommand currently accepts one positional input. POD-4-D3
         unlocks multi-module compile via <code className="docs-ic">--module-path</code> or auto-discovery from
@@ -98,17 +97,17 @@ fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
       </Callout>
 
       <Callout kind="coming-soon" title="Σ-mask in the type system">
-        ○ First-class Σ-masks at every reference site — the consent invariant compiler-checked at every call —
-        is the next major language slice after multi-module. Until then, sovereignty is enforced by the cap
-        runtime (see <a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>/docs/sovereignty</a>).
+        First-class Σ-masks at reference sites are a proposed way to check permissions during compilation.
+        They are not described here as an available guarantee. See{' '}
+        <a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>Permissions and data sharing</a>.
       </Callout>
 
       <Callout kind="coming-soon" title="Iterate-everywhere syntax">
-        ○ Loops · recursion · fold/scan/map across ω-field axes unified into one syntactic form, with the compiler
+        A planned syntax would combine several kinds of repetition into one form, with the compiler
         choosing GPU-shader vs CPU-SIMD vs streaming-KAN-edge as the lowering target.
       </Callout>
 
-      <h2 className="docs-h2">§ Where to read more</h2>
+      <h2 className="docs-h2">Where to read more</h2>
       <ul className="docs-ul">
         <li><a href="/docs/cssl-modules" style={{ color: '#7dd3fc' }}>Module system</a></li>
         <li><a href="/docs/cssl-ffi" style={{ color: '#7dd3fc' }}>FFI conventions</a></li>

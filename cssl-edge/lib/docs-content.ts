@@ -11,7 +11,7 @@ export interface DocPage {
   title: string;
   /** Short blurb shown on the index page. */
   blurb: string;
-  /** Status emoji-glyph mapping ✓ / ◐ / ○ / ‼ */
+  /** Publication status shown as ordinary words. */
   status: DocStatus;
   /** Optional grouping label for sidebar sections. */
   section: string;
@@ -26,14 +26,14 @@ export const DOC_PAGES: ReadonlyArray<DocPage> = [
   {
     slug: 'getting-started',
     title: 'Getting Started',
-    blurb: 'Install Labyrinth of Apocalypse · launch · first chat with the GM.',
+    blurb: 'Install Labyrinth of Apocalypse, launch it, and begin a game.',
     status: 'available',
     section: 'Overview',
   },
   {
     slug: 'keyboard-shortcuts',
     title: 'Keyboard Shortcuts',
-    blurb: 'Complete keymap · movement · render-modes · screenshots · burst · pause.',
+    blurb: 'Keyboard controls for movement, display modes, screenshots, and pausing.',
     status: 'available',
     section: 'Overview',
   },
@@ -41,14 +41,14 @@ export const DOC_PAGES: ReadonlyArray<DocPage> = [
   {
     slug: 'chat-panel',
     title: 'Chat Panel',
-    blurb: 'How to talk to the GM/DM · focus · history · sample intents.',
+    blurb: 'How to use the game’s conversation panel, history, and example requests.',
     status: 'available',
     section: 'In-game UI',
   },
   {
     slug: 'intents',
-    title: 'Intent Vocabulary',
-    blurb: 'All 12 typed intents · stage-0 keyword classifier · examples per kind.',
+    title: 'How the game reads requests',
+    blurb: 'The twelve kinds of request the current game can recognize, with examples.',
     status: 'available',
     section: 'In-game UI',
   },
@@ -56,43 +56,43 @@ export const DOC_PAGES: ReadonlyArray<DocPage> = [
   {
     slug: 'cssl-language',
     title: 'CSSL Language Overview',
-    blurb: 'Why a proprietary language · sample programs · spec pointer.',
+    blurb: 'What the CSSL programming language is, why it exists, and short examples.',
     status: 'available',
     section: 'Language',
   },
   {
     slug: 'cssl-modules',
     title: 'CSSL Modules',
-    blurb: 'Module declarations · cross-module imports · multi-module compile roadmap.',
+    blurb: 'How CSSL programs are divided into reusable files and what remains unfinished.',
     status: 'in-progress',
     section: 'Language',
   },
   {
     slug: 'cssl-ffi',
-    title: 'CSSL FFI',
-    blurb: 'extern "C" surface · pointer + length pairs · u32 status-code pattern.',
+    title: 'How CSSL calls other code',
+    blurb: 'How CSSL exchanges data with code written in other programming languages.',
     status: 'available',
     section: 'Language',
   },
   // § Substrate
   {
     slug: 'substrate',
-    title: 'Substrate Primitives',
-    blurb: 'ω-field · Σ-mask · KAN · HDC explained for end users.',
+    title: 'Technical foundations',
+    blurb: 'Plain introductions to the experimental computing ideas used in the project.',
     status: 'available',
     section: 'Substrate',
   },
   {
     slug: 'sovereignty',
-    title: 'Sovereignty Model',
-    blurb: 'Caps · revocation · what data leaves the machine (answer: nothing).',
+    title: 'Permissions and data sharing',
+    blurb: 'What the current software does with permissions and data, separated from future plans.',
     status: 'available',
     section: 'Substrate',
   },
   {
     slug: 'mycelium',
-    title: 'Mycelium + Home',
-    blurb: 'Pocket-dimensions · 7 archetypes · 5 modes · cross-instance learning.',
+    title: 'Mycelium and Home',
+    blurb: 'A plain-language introduction to a planned network and personal-space design.',
     status: 'in-progress',
     section: 'Substrate',
   },
@@ -100,14 +100,14 @@ export const DOC_PAGES: ReadonlyArray<DocPage> = [
   {
     slug: 'troubleshooting',
     title: 'Troubleshooting',
-    blurb: 'Common issues · log locations · how to file a bug.',
+    blurb: 'Common problems, where to find logs, and how to report a bug.',
     status: 'available',
     section: 'Reference',
   },
   {
     slug: 'changelog',
     title: 'Changelog',
-    blurb: 'Released versions · what landed · what is next.',
+    blurb: 'Released versions, work in progress, and future plans.',
     status: 'available',
     section: 'Reference',
   },
@@ -141,16 +141,16 @@ export function getDocSections(): ReadonlyArray<{ name: string; pages: ReadonlyA
   return order.map((name) => ({ name, pages: map.get(name) ?? [] }));
 }
 
-/** Glyph + label for status badge rendering. */
-export function statusBadge(s: DocStatus): { glyph: string; label: string; color: string } {
+/** Plain-language label for status badge rendering. */
+export function statusBadge(s: DocStatus): { label: string; color: string } {
   switch (s) {
     case 'available':
-      return { glyph: '✓', label: 'Available now', color: '#34d399' };
+      return { label: 'Available now', color: '#34d399' };
     case 'in-progress':
-      return { glyph: '◐', label: 'In progress', color: '#fbbf24' };
+      return { label: 'In progress', color: '#fbbf24' };
     case 'coming-soon':
-      return { glyph: '○', label: 'Coming soon', color: '#9aa0a6' };
+      return { label: 'Coming soon', color: '#9aa0a6' };
     case 'subject-to-change':
-      return { glyph: '‼', label: 'Subject to change', color: '#f472b6' };
+      return { label: 'Subject to change', color: '#f472b6' };
   }
 }

@@ -13,7 +13,7 @@ import styles from './Atlas.module.css';
 
 const TRACKS: ReadonlyArray<{ id: ChronologyEvent['track']; label: string }> = [
   { id: 'life-context', label: 'Life / context' },
-  { id: 'state-phenomenology', label: 'State / phenomenology' },
+  { id: 'state-phenomenology', label: 'Reported experience' },
   { id: 'intellectual-artifact', label: 'Intellectual / artifact' },
 ];
 
@@ -23,7 +23,7 @@ const MODEL_AXES = [
   { claimId: 'claim-zeroes-discipline', label: 'Artifact discipline' },
   { claimId: 'claim-audience-translation', label: 'Translation' },
   { claimId: 'claim-voice-functional', label: 'Voice fidelity' },
-  { claimId: 'claim-ontology-open', label: 'Open ontology' },
+  { claimId: 'claim-ontology-open', label: 'Open questions about what exists' },
 ] as const;
 
 function topicTitle(slug: string): string {
@@ -107,7 +107,7 @@ function ModelOverview(): JSX.Element | null {
       <SectionHeader
         index="00 / current model"
         title="The portrait before the apparatus."
-        description="This is the shortest honest path through the current inference report. Select an axis to see the claim, its epistemic status, the evidence path, the strongest countercase, and what would force revision."
+        description="Start here. Choose a topic to see the current claim, whether it was observed, reported, inferred, or proposed, the supporting sources, the strongest alternative explanation, and what evidence would change it."
       />
       <div className={styles.modelAxisSelector} aria-label="Current model axes">
         {MODEL_AXES.map((axis) => (
@@ -130,7 +130,7 @@ function ModelOverview(): JSX.Element | null {
         </div>
         <div className={styles.modelAxisAudit}>
           <div>
-            <h4>Strongest countermodel</h4>
+            <h4>Strongest alternative explanation</h4>
             <p>{activeClaim.countercase}</p>
           </div>
           <div>
@@ -139,7 +139,7 @@ function ModelOverview(): JSX.Element | null {
           </div>
         </div>
         <div className={styles.modelEvidencePath}>
-          <h4>Trace this inference</h4>
+          <h4>Trace how this conclusion was reached</h4>
           <div>
             {chronology.map((event) => <a href={`#${event.id}`} key={event.id}>Event · {event.period}</a>)}
             {artifacts.map((artifact) => <a href={`#${artifact.id}`} key={artifact.id}>Artifact · {artifact.title}</a>)}
@@ -796,9 +796,14 @@ export default function ShawnAtlas(): JSX.Element {
         <a className={styles.skipLink} href="#atlas-content">Skip to atlas content</a>
         <header className={styles.masthead}>
           <div className={styles.mastheadInner}>
-            <p className={styles.kicker}>SHAWN / APOCKY · LONGITUDINAL COGNITIVE &amp; EPISTEMIC ATLAS</p>
+            <p className={styles.kicker}>SHAWN / APOCKY · INTERACTIVE EVIDENCE ATLAS</p>
             <h1>Pattern into <span>instrument.</span></h1>
             <blockquote className={styles.thesis}>{atlasData.thesis}</blockquote>
+            <p>
+              This is a structured and correctable overview, not a diagnosis or a complete biography.
+              “Evidence status” means each important claim is labeled as observed, self-reported, inferred, or
+              proposed. Specialized references open with their own explanations.
+            </p>
             <div className={styles.mastheadMeta}>
               <span>STATUS / {atlasData.status}</span>
               <span>EVIDENCE / TYPED</span>
@@ -807,7 +812,6 @@ export default function ShawnAtlas(): JSX.Element {
             </div>
             <div className={styles.atlasActions}>
               <button type="button" onClick={() => window.print()}>Print public atlas</button>
-              <a href="/shawn/clinical">Open authenticated clinician view</a>
             </div>
           </div>
         </header>
