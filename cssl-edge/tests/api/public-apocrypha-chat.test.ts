@@ -147,10 +147,20 @@ function runtimeChatEnvelope(
         retrieval: { status: 'ready', count: 2, refs: ['source:a', 'source:b'] },
         memory: {
           provider: '3mneme',
-          status: 'ready',
-          records_used: 1,
+          status: ownerProfile ? 'active' : 'ready',
+          records_used: ownerProfile ? 2 : 1,
           receipt_digest: '1'.repeat(64),
           refs: ['3mneme:fixture'],
+          ...(ownerProfile ? {
+            project_id: 'apocv4-owner',
+            queries: {
+              stable_model: { status: 'active', records: ['2'.repeat(64)] },
+              stable_procedure: { status: 'active', records: ['3'.repeat(64)] },
+              task: { status: 'active', records: [] },
+            },
+            owner_profile_status: 'active_candidate',
+            owner_profile_record_digests: ['2'.repeat(64), '3'.repeat(64)],
+          } : {}),
         },
         capabilities: [{
           id: '3mneme.recall',
@@ -346,6 +356,10 @@ async function main(): Promise<void> {
     'owner_partitioned_retrieval',
     'owner receives only owner-partitioned retrieval',
   );
+  const ownerContext = (ownerTurn.out.body as Record<string, unknown>).context as Record<string, unknown>;
+  const ownerMemory = ownerContext.memory as Record<string, unknown>;
+  equal(ownerMemory.project_id, 'apocv4-owner', 'owner response preserves the dedicated memory project receipt');
+  equal(ownerMemory.owner_profile_status, 'active_candidate', 'owner response preserves active Shawn-profile status');
 
   globalThis.fetch = async (input, init) => {
     upstreamCalls += 1;

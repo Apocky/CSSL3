@@ -86,6 +86,10 @@ export interface RuntimeChatContext extends JsonObject {
     records_used: number;
     receipt_digest: string | null;
     refs: unknown[];
+    project_id?: string;
+    queries?: JsonObject;
+    owner_profile_status?: string;
+    owner_profile_record_digests?: string[];
   };
   capabilities: RuntimeChatCapability[];
 }
@@ -274,6 +278,12 @@ function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
   const retrieval = value.retrieval;
   const memory = value.memory;
   const capabilities = value.capabilities;
+  const baseMemoryKeys = ['provider', 'status', 'records_used', 'receipt_digest', 'refs'];
+  const ownerMemoryKeys = [
+    ...baseMemoryKeys,
+    'project_id', 'queries', 'owner_profile_status', 'owner_profile_record_digests',
+  ];
+  const ownerMemory = isObject(memory) && exactKeys(memory, ownerMemoryKeys);
   return boundedCanonicalString(value.frame_id, 256)
     && value.frame_id.startsWith('acf-')
     && typeof value.frame_digest === 'string'
@@ -290,7 +300,7 @@ function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
     && retrieval.refs.length <= 128
     && boundedJsonValue(retrieval.refs, 64 * 1024)
     && isObject(memory)
-    && exactKeys(memory, ['provider', 'status', 'records_used', 'receipt_digest', 'refs'])
+    && (exactKeys(memory, baseMemoryKeys) || ownerMemory)
     && boundedCanonicalString(memory.provider, 128)
     && boundedCanonicalString(memory.status, 128)
     && Number.isInteger(memory.records_used)
@@ -303,6 +313,17 @@ function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
     && Array.isArray(memory.refs)
     && memory.refs.length <= 128
     && boundedJsonValue(memory.refs, 64 * 1024)
+    && (!ownerMemory || (
+      memory.project_id === 'apocv4-owner'
+      && isObject(memory.queries)
+      && boundedJsonValue(memory.queries, 64 * 1024)
+      && boundedCanonicalString(memory.owner_profile_status, 128)
+      && Array.isArray(memory.owner_profile_record_digests)
+      && memory.owner_profile_record_digests.length <= 16
+      && memory.owner_profile_record_digests.every(
+        (digest) => typeof digest === 'string' && SHA256_RE.test(digest),
+      )
+    ))
     && Array.isArray(capabilities)
     && capabilities.length <= 64
     && capabilities.every((entry) => isObject(entry)
