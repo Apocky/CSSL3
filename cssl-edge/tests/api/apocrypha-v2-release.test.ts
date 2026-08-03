@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   process.env.CF_ACCESS_CLIENT_ID = 'test-client-id';
   process.env.CF_ACCESS_CLIENT_SECRET = 'test-client-secret';
   process.env.APOCV4_RUNTIME_URL = 'https://198.51.100.42:31234';
-  process.env.APOCV4_API_TOKEN = 'runtime-presence-test-token';
+  process.env.APOCV4_API_TOKEN = 'runtime-owner-test-token';
   process.env.APOCV4_RUNTIME_TRANSPORT = 'test-fetch';
   process.env.APOCV4_RUNTIME_DIRECT_IP = '198.51.100.42';
   process.env.APOCV4_RUNTIME_DIRECT_PORT = '31234';
@@ -142,23 +142,62 @@ async function main(): Promise<void> {
     'request identity is principal-separated',
   );
 
+  const ownerPrivacyPartitionRef = 'dfb16f8e2df1ea56f219471694d3bddf2da9146640317761ed7e08d7d2e0bc47';
   const turnCalls: Array<{ url: string; body: Record<string, unknown>; headers: Headers }> = [];
+  const chatResult = (body: Record<string, unknown>): Record<string, unknown> => ({
+    schema_version: 'apocv4.chat-response.v1',
+    text: 'A bounded Apocv4 response.',
+    model_reported: {
+      evidence_lane: 'model_reported_not_observed_fact',
+      model_id: 'fixture/frontier-coder',
+      model_revision: 'fixture-revision-1',
+      model_family: 'fixture-family',
+      serving_profile_digest: '1'.repeat(64),
+      response_id: 'fixture-response-1',
+      prompt_digest: '2'.repeat(64),
+      response_digest: '3'.repeat(64),
+      rationale_present: false,
+      rationale_digest: null,
+      usage: { prompt_tokens: 23, completion_tokens: 17 },
+    },
+    observed: {
+      evidence_lane: 'observed_runtime_transport',
+      latency_ms: 12,
+      transport_kind: 'openai_compatible_http',
+      transport_receipt_digest: '4'.repeat(64),
+    },
+    authority: {
+      effect_authority: 'NONE',
+      tool_authority: 'NONE',
+      memory_scope: 'ephemeral',
+      conversation_history: 'not_retained',
+      training_consent: false,
+    },
+    conversation_id: body.conversation_id,
+    request_id: body.request_id,
+    privacy_partition_ref: ownerPrivacyPartitionRef,
+    outcome: 'completed',
+    learned_faculty_used: true,
+    duplicate_effect_protection: 'not_applicable_no_effect_authority',
+  });
+  const runtimeResponse = (result: Record<string, unknown>): Response => new Response(JSON.stringify({
+    schema_version: 'apocv4.runtime-service.v1',
+    result,
+  }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Apocv4-Auth-Mode': 'STRICT_REGISTRY',
+      'X-Apocv4-Auth-Registry-Ref': '5'.repeat(64),
+      'X-Apocv4-Binding-Ref': '6'.repeat(64),
+      'X-Apocv4-Principal-Ref': '7'.repeat(64),
+      'X-Apocv4-Privacy-Partition-Ref': '8'.repeat(64),
+    },
+  });
   globalThis.fetch = async (input, init) => {
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     turnCalls.push({ url: String(input), body, headers: new Headers(init?.headers) });
-    return new Response(JSON.stringify({
-      text: 'A bounded V2 response.',
-      request_id: body.request_id,
-      conversation_ref: expectedConversationRef(
-        String(body.conversation_id),
-        String(body.source_ref),
-      ),
-      transition_id: 'transition-001',
-      state_root: 'state-root-001',
-      expression_mode: 'bootstrap_shallow',
-      external_inference: false,
-      outcome: 'committed',
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return runtimeResponse(chatResult(body));
   };
 
   for (let index = 0; index < attemptedClientRequestIds.length; index += 1) {
@@ -170,9 +209,10 @@ async function main(): Promise<void> {
       },
     });
     await chatHandler(turn.req, turn.res);
-    equal(turn.out.statusCode, 200, 'V2 REST turn succeeds');
+    equal(turn.out.statusCode, 200, 'direct Apocv4 runtime turn succeeds');
     assertPrivateHeaders(turn.out);
     const response = turn.out.body as Record<string, unknown>;
+    equal(response.schema_version, 'apocky.apocv4-owner-chat.v1', 'edge emits the exact owner chat projection');
     equal(response.conversation_id, clientConversationId, 'client UUID echoed exactly');
     equal(response.request_id, attemptedClientRequestIds[index], 'client request UUID echoed exactly');
     equal(response.request_ref, turnCalls[index]?.body.request_id, 'scoped request identity is returned');
@@ -181,22 +221,44 @@ async function main(): Promise<void> {
       expectedConversationRef(String(turnCalls[index]?.body.conversation_id), 'public:apocky.com/chat'),
       'body continuity reference must match the expected scoped digest',
     );
-    equal(response.text, 'A bounded V2 response.', 'one final response returned as JSON');
-    equal(response.outcome, 'committed', 'only a committed outcome is emitted');
-    equal(response.external_inference, false, 'only a proprietary response is emitted');
-    equal(response.expression_mode, 'bootstrap_shallow', 'only the promoted expression mode is emitted');
-    equal(response.duplicate_commit_protection, 'active', 'retry deduplication is active');
+    equal(response.text, 'A bounded Apocv4 response.', 'one final model-reported response returned as JSON');
+    equal(response.text_evidence_lane, 'model_reported_not_observed_fact', 'response text is not mislabeled as observed fact');
+    equal(response.outcome, 'completed', 'only a completed response-only turn is emitted');
+    equal(
+      response.duplicate_effect_protection,
+      'not_applicable_no_effect_authority',
+      'response-only retry truthfully claims no effect authority rather than fictitious commit dedupe',
+    );
+    equal(response.effect_authority, 'NONE', 'browser projection grants no effect authority');
+    equal(response.tool_authority, 'NONE', 'browser projection grants no tool authority');
+    equal(response.memory_scope, 'ephemeral', 'browser projection exposes only ephemeral memory');
+    equal(
+      response.conversation_history,
+      'not_retained_by_public_interface',
+      'browser projection states the public-interface retention boundary',
+    );
+    equal(response.training_consent, false, 'browser projection cannot infer training consent');
+    equal(response.model_id, 'fixture/frontier-coder', 'browser receives the validated model identity');
+    equal(response.response_id, 'fixture-response-1', 'browser receives the validated response identity');
+    equal(response.response_digest, '3'.repeat(64), 'browser receives the validated response digest');
+    equal(response.serving_profile_digest, '1'.repeat(64), 'browser receives the validated serving profile digest');
+    const responseAuthority = response.authority as Record<string, unknown>;
+    equal(responseAuthority.effect_authority, 'NONE', 'owner chat grants no effect authority');
+    equal(responseAuthority.tool_authority, 'NONE', 'owner chat grants no tool authority');
+    assert(!Object.hasOwn(response, 'transition_id'), 'edge does not synthesize a nonexistent V2 transition');
+    assert(!Object.hasOwn(response, 'state_root'), 'edge does not synthesize a nonexistent state root');
   }
   equal(turnCalls.length, 3, 'two distinct turns plus one replay reached the body');
-  equal(turnCalls[0]?.url, 'https://apocrypha.apocky.com/v2/turn', 'only canonical V2 turn route used');
+  equal(turnCalls[0]?.url, 'https://198.51.100.42:31234/v1/chat', 'only direct allowlisted runtime chat route used');
+  equal(turnCalls[0]?.body.message, 'Hello, Apocrypha.', 'runtime receives the bounded message');
   equal(turnCalls[0]?.body.conversation_id, turnCalls[1]?.body.conversation_id, 'retained UUID maps to stable scoped UUID');
   assert(
     typeof turnCalls[0]?.body.conversation_id === 'string'
       && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(turnCalls[0].body.conversation_id),
     'body receives a deterministic principal-scoped UUIDv5',
   );
-  equal(turnCalls[0]?.body.privacy_class, 'restricted', 'authenticated text remains restricted');
-  equal(turnCalls[0]?.body.request_id, turnCalls[0]?.body.idempotency_key, 'one scoped turn key binds request and replay identity');
+  equal(turnCalls[0]?.body.privacy_partition, 'owner:apocky', 'server fixes the owner privacy partition');
+  equal(Object.keys(turnCalls[0]?.body ?? {}).sort().join(','), 'conversation_id,message,privacy_partition,request_id', 'runtime request has exact fields');
   assert(
     typeof turnCalls[0]?.body.request_id === 'string'
       && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(turnCalls[0].body.request_id),
@@ -204,48 +266,34 @@ async function main(): Promise<void> {
   );
   assert(turnCalls[0]?.body.request_id !== turnCalls[1]?.body.request_id, 'distinct client turns remain distinct upstream');
   equal(turnCalls[0]?.body.request_id, turnCalls[2]?.body.request_id, 'replayed client turn retains one scoped request identity');
-  equal(turnCalls[0]?.body.idempotency_key, turnCalls[2]?.body.idempotency_key, 'replayed client turn retains one scoped replay identity');
-  assert(String(turnCalls[0]?.body.authority_ref).includes('principal:apocky-owner:'), 'authority is principal-scoped');
-  equal(turnCalls[0]?.headers.get('cf-access-client-id'), 'test-client-id', 'Access client ID stays server-side');
+  equal(turnCalls[0]?.headers.get('authorization'), 'Bearer runtime-owner-test-token', 'runtime token stays on the server hop');
+  assert(/^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-01$/.test(turnCalls[0]?.headers.get('traceparent') ?? ''), 'trace context reaches the runtime');
+  equal(turnCalls[0]?.headers.get('cf-access-client-id'), null, 'Cloudflare Access credential is absent');
 
-  const committedFixture = {
-    text: 'A bounded V2 response.',
-    transition_id: 'transition-negative-fixture',
-    state_root: 'state-negative-fixture',
-    expression_mode: 'bootstrap_shallow',
-    external_inference: false,
-    outcome: 'committed',
-  } as Record<string, unknown>;
   const invalidEnvelopeCases: Array<[string, (payload: Record<string, unknown>) => void]> = [
     ['outcome missing', (payload) => { delete payload.outcome; }],
-    ['outcome not committed', (payload) => { payload.outcome = 'zero_commit'; }],
-    ['external inference missing', (payload) => { delete payload.external_inference; }],
-    ['external inference true', (payload) => { payload.external_inference = true; }],
-    ['expression mode missing', (payload) => { delete payload.expression_mode; }],
-    ['expression mode wrong', (payload) => { payload.expression_mode = 'other'; }],
-    ['transition missing', (payload) => { delete payload.transition_id; }],
-    ['transition empty', (payload) => { payload.transition_id = ''; }],
-    ['state root missing', (payload) => { delete payload.state_root; }],
+    ['outcome not completed', (payload) => { payload.outcome = 'committed'; }],
+    ['effect authority granted', (payload) => { (payload.authority as Record<string, unknown>).effect_authority = 'WRITE'; }],
+    ['tool authority granted', (payload) => { (payload.authority as Record<string, unknown>).tool_authority = 'AUTO'; }],
+    ['model evidence lane wrong', (payload) => { (payload.model_reported as Record<string, unknown>).evidence_lane = 'observed'; }],
+    ['transport evidence lane wrong', (payload) => { (payload.observed as Record<string, unknown>).evidence_lane = 'model_reported'; }],
+    ['partition ref wrong', (payload) => { payload.privacy_partition_ref = '9'.repeat(64); }],
+    ['learned faculty false', (payload) => { payload.learned_faculty_used = false; }],
     ['text empty', (payload) => { payload.text = ''; }],
     ['request id missing', (payload) => { delete payload.request_id; }],
     ['request id wrong', (payload) => { payload.request_id = 'wrong-request'; }],
-    ['conversation ref missing', (payload) => { delete payload.conversation_ref; }],
-    ['conversation ref wrong', (payload) => { payload.conversation_ref = 'wrong-continuity'; }],
+    ['conversation id missing', (payload) => { delete payload.conversation_id; }],
+    ['conversation id wrong', (payload) => { payload.conversation_id = 'wrong-continuity'; }],
+    ['negative usage', (payload) => { ((payload.model_reported as Record<string, unknown>).usage as Record<string, unknown>).completion_tokens = -1; }],
+    ['rationale mismatch', (payload) => { (payload.model_reported as Record<string, unknown>).rationale_present = true; }],
   ];
   for (const [label, mutate] of invalidEnvelopeCases) {
     globalThis.fetch = async (input, init) => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
       turnCalls.push({ url: String(input), body, headers: new Headers(init?.headers) });
-      const payload = {
-        ...committedFixture,
-        request_id: body.request_id,
-        conversation_ref: expectedConversationRef(String(body.conversation_id), String(body.source_ref)),
-      };
+      const payload = chatResult(body);
       mutate(payload);
-      return new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return runtimeResponse(payload);
     };
     const denied = reqRes('POST', {
       body: {
@@ -256,9 +304,27 @@ async function main(): Promise<void> {
     });
     await chatHandler(denied.req, denied.res);
     equal(denied.out.statusCode, 502, `${label} fails closed`);
-    assert(!JSON.stringify(denied.out.body).includes('A bounded V2 response.'), `${label} text is not emitted`);
+    assert(!JSON.stringify(denied.out.body).includes('A bounded Apocv4 response.'), `${label} text is not emitted`);
   }
   const callsAfterEnvelopeNegatives = turnCalls.length;
+
+  const wrongChatMethod = reqRes('GET');
+  await chatHandler(wrongChatMethod.req, wrongChatMethod.res);
+  equal(wrongChatMethod.out.statusCode, 405, 'owner chat remains POST-only');
+  assertPrivateHeaders(wrongChatMethod.out);
+
+  globalThis.fetch = async () => { throw new TypeError('private direct transport detail'); };
+  const runtimeFailure = reqRes('POST', {
+    body: {
+      text: 'Exercise the direct transport failure path.',
+      conversation_id: clientConversationId,
+      request_id: 'f905a08e-e320-477b-bcab-6698b60981dd',
+    },
+  });
+  await chatHandler(runtimeFailure.req, runtimeFailure.res);
+  equal(runtimeFailure.out.statusCode, 502, 'direct runtime failure remains a bounded gateway failure');
+  equal((runtimeFailure.out.body as Record<string, unknown>).error, 'runtime_unreachable', 'runtime failure is classified');
+  assert(!JSON.stringify(runtimeFailure.out.body).includes('private direct transport detail'), 'private transport detail is suppressed');
 
   const invalid = reqRes('POST', {
     body: {
@@ -526,8 +592,8 @@ async function main(): Promise<void> {
     'utf8',
   );
   assert(threadSource.includes('sessionStorage.setItem(CONVERSATION_STORAGE_KEY'), 'client retains conversation UUID');
-  assert(threadSource.includes('echoedConversationId !== conversationId'), 'client verifies echoed continuity ID');
-  assert(threadSource.includes('echoedRequestId !== requestId'), 'client verifies stable turn request identity');
+  assert(threadSource.includes('body.conversation_id === conversationId'), 'client verifies echoed continuity ID');
+  assert(threadSource.includes('body.request_id === requestId'), 'client verifies stable turn request identity');
   assert(threadSource.includes('setRetryTurn({ text, requestId })'), 'failed turn retains its stable request identity');
   assert(threadSource.includes('send(retryTurn)'), 'explicit retry reuses the same turn identity');
   assert(threadSource.includes('PENDING_TURN_STORAGE_KEY'), 'pending retry identity is tab-persistent');
@@ -535,10 +601,11 @@ async function main(): Promise<void> {
   assert(threadSource.includes('readPendingTurn(resolved)'), 'pending turn is recovered after remount');
   assert(threadSource.includes('response.status === 409'), 'state conflicts preserve the same retry identity');
   assert(threadSource.includes('message.id !== localMessageId'), 'non-retryable optimistic bubbles are removed');
-  assert(threadSource.includes('data-capability-retry-dedupe="active"'), 'active duplicate protection is disclosed');
+  assert(threadSource.includes("body.duplicate_effect_protection === 'not_applicable_no_effect_authority'"), 'no-effect retry boundary is validated');
+  assert(threadSource.includes('data-capability-effect-authority="NONE"'), 'effect denial is disclosed');
+  assert(threadSource.includes('data-capability-tool-authority="NONE"'), 'tool denial is disclosed');
   assert(!threadSource.includes('backend_turn_contract_has_no_idempotency_field'), 'stale duplicate-commit blocker is absent');
-  assert(threadSource.includes('bootstrap_shallow'), 'current shallow expression capability is displayed');
-  assert(threadSource.includes('Learned field ·'), 'learned-field absence has a dedicated label');
+  assert(threadSource.includes('Learned faculty ·'), 'learned-faculty receipt state has a dedicated label');
   assert(threadSource.includes('Audio ·'), 'audio unavailability has a dedicated label');
   assert(!threadSource.includes('<ApocryphaAvatar'), 'chat does not render an unauthorized avatar');
   assert(avatarSource.includes('if (!displayAuthorized || !authorizationRef) return null'), 'avatar is deny-by-default');
@@ -570,11 +637,13 @@ async function main(): Promise<void> {
   );
   equal(vercel.functions?.['pages/api/admin/apocrypha/chat_stream.ts']?.maxDuration, 30, 'retired stream inherits no fictitious 120-second budget');
   const chatApiSource = readFileSync(resolve(process.cwd(), 'pages/api/admin/apocrypha/chat.ts'), 'utf8');
-  assert(chatApiSource.includes('UPSTREAM_DEADLINE_MS = 25_000'), 'upstream request has a 25-second code bound');
   assert(chatApiSource.includes('MAX_TEXT_BYTES = 16_384'), 'BFF mirrors the body UTF-8 percept bound');
-  assert(chatApiSource.includes('request_id: scopedRequestId'), 'BFF forwards the principal-scoped request identity');
-  assert(chatApiSource.includes('idempotency_key: scopedRequestId'), 'BFF forwards the same replay identity');
-  assert(chatApiSource.includes('upstreamRequestId === scopedRequestId'), 'BFF verifies the body echoed the scoped request identity');
+  assert(chatApiSource.includes('submitRuntimeChat'), 'BFF uses the direct Apocv4 runtime chat transport');
+  assert(chatApiSource.includes('requestId: scopedRequestId'), 'BFF forwards the principal-scoped request identity');
+  assert(chatApiSource.includes('privacyPartition: OWNER_PRIVACY_PARTITION'), 'BFF fixes the server-owned privacy partition');
+  assert(chatApiSource.includes('runtime.request_id === scopedRequestId'), 'BFF verifies the runtime echoed the scoped request identity');
+  assert(chatApiSource.includes("kind: 'runtime.chat.completed'"), 'BFF emits a completed runtime chat receipt');
+  assert(!chatApiSource.includes('fetchApocryphaV2'), 'BFF no longer uses the Cloudflare-era V2 transport');
   assert(threadSource.includes('CHAT_BROWSER_DEADLINE_MS = 28_000'), 'browser request has a 28-second code bound');
 
   console.log('apocrypha-v2-release.test : OK');

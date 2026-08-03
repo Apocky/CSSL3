@@ -36,8 +36,8 @@ assert(!page.includes('<ApocryphaAvatar'), 'access page must not render an unaut
 assert(!thread.includes('<ApocryphaAvatar'), 'owner chat must not render an unauthorized avatar');
 assert(thread.includes('crypto.randomUUID()'), 'client UUID minting missing');
 assert(thread.includes('sessionStorage.setItem(CONVERSATION_STORAGE_KEY'), 'client UUID retention missing');
-assert(thread.includes('echoedConversationId !== conversationId'), 'echoed continuity verification missing');
-assert(thread.includes('echoedRequestId !== requestId'), 'client request identity verification missing');
+assert(thread.includes('body.conversation_id === conversationId'), 'echoed continuity verification missing');
+assert(thread.includes('body.request_id === requestId'), 'client request identity verification missing');
 assert(thread.includes('setRetryTurn({ text, requestId })'), 'failed turn identity retention missing');
 assert(thread.includes('send(retryTurn)'), 'same-turn retry path missing');
 assert(thread.includes('PENDING_TURN_STORAGE_KEY'), 'pending turn storage missing');
@@ -45,26 +45,26 @@ assert(thread.includes('writePendingTurn(conversationId, { text, requestId })'),
 assert(thread.includes('readPendingTurn(resolved)'), 'reload recovery missing');
 assert(thread.includes('response.status === 409'), '409 retry retention missing');
 assert(thread.includes('message.id !== localMessageId'), 'failed optimistic bubble cleanup missing');
-assert(thread.includes('data-capability-retry-dedupe="active"'), 'active retry-dedupe label missing');
+assert(thread.includes("body.duplicate_effect_protection === 'not_applicable_no_effect_authority'"), 'no-effect retry boundary validation missing');
+assert(thread.includes('data-capability-effect-authority="NONE"'), 'effect denial label missing');
+assert(thread.includes('data-capability-tool-authority="NONE"'), 'tool denial label missing');
 assert(!thread.includes('backend_turn_contract_has_no_idempotency_field'), 'stale duplicate-commit blocker remains');
 assert(thread.includes('/api/admin/apocrypha/chat'), 'one-final REST route missing');
 assert(!thread.includes('chat_stream'), 'UI still calls retired synthetic stream');
-assert(thread.includes('bootstrap_shallow'), 'shallow expression label missing');
-assert(thread.includes('Learned field ·'), 'learned-field capability label missing');
+assert(thread.includes('Learned faculty ·'), 'learned-faculty capability label missing');
 assert(thread.includes('Audio ·'), 'audio capability label missing');
 assert(history.includes('native_v2_history_projection_absent'), 'legacy history is not explicitly hidden');
 assert(retiredStream.includes('Synthetic streaming is retired'), 'former stream is not an explicit tombstone');
 assert(!retiredStream.includes('text/event-stream'), 'former stream still simulates SSE');
-assert(rest.includes("upstreamPath: '/v2/turn'"), 'REST route does not call canonical V2 turn');
-assert(rest.includes("privacy_class: 'restricted'"), 'authenticated content is not restricted');
+assert(rest.includes('submitRuntimeChat'), 'REST route does not call the direct Apocv4 runtime');
+assert(rest.includes('privacyPartition: OWNER_PRIVACY_PARTITION'), 'authenticated content lacks its server-owned partition');
 assert(rest.includes('scopeConversationId'), 'server-side principal scoping missing');
-assert(rest.includes('request_id: scopedRequestId'), 'scoped request identity is not forwarded');
-assert(rest.includes('idempotency_key: scopedRequestId'), 'scoped replay identity is not forwarded');
-assert(rest.includes('upstreamRequestId === scopedRequestId'), 'upstream request identity is not verified');
+assert(rest.includes('requestId: scopedRequestId'), 'scoped request identity is not forwarded');
+assert(rest.includes('runtime.request_id === scopedRequestId'), 'runtime request identity is not verified');
 assert(rest.includes('expectedConversationRef'), 'backend continuity digest validation missing');
-assert(rest.includes("outcome === 'committed'"), 'committed-outcome gate missing');
-assert(rest.includes('payload.external_inference === false'), 'proprietary-inference gate missing');
-assert(rest.includes("expressionMode === EXPECTED_EXPRESSION_MODE"), 'expression-mode gate missing');
+assert(rest.includes("runtime.outcome === 'completed'"), 'completed-outcome gate missing');
+assert(rest.includes("authority.effect_authority === 'NONE'"), 'effect denial gate missing');
+assert(rest.includes("model.evidence_lane === MODEL_EVIDENCE_LANE"), 'model-reported evidence gate missing');
 assert(rest.includes('hasSameOrigin(req)'), 'state-changing turn lacks same-origin enforcement');
 assert(presence.includes('fetchRuntimeHealth'), 'public presence does not use the direct runtime health boundary');
 assert(presence.includes("display_authorized: false"), 'presence does not fail hidden');
@@ -73,7 +73,6 @@ assert(presence.includes('emitOperationalTelemetry'), 'presence operational tele
 assert(!presence.includes('CF-Access-Client'), 'presence still sends Cloudflare Access credentials');
 assert(!presence.includes('APOCRYPHA_TUNNEL_HOST'), 'presence still depends on the retired tunnel host');
 assert(thread.includes('CHAT_BROWSER_DEADLINE_MS = 28_000'), 'browser request bound missing');
-assert(rest.includes('UPSTREAM_DEADLINE_MS = 25_000'), 'upstream request bound missing');
 assert(rest.includes('MAX_TEXT_BYTES = 16_384'), 'body UTF-8 percept bound mismatch remains');
 assert(
   vercel.functions?.['pages/api/admin/apocrypha/chat.ts']?.maxDuration === 30,
