@@ -21,6 +21,11 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+.page,
+.page *,
+.page *::before,
+.page *::after { box-sizing: border-box; }
+
 .page::before {
   content: "";
   position: fixed;
@@ -107,7 +112,7 @@
 
 .workspace {
   display: grid;
-  width: min(100%, 940px);
+  width: min(100%, 1180px);
   margin: 0 auto;
   padding: 24px 20px 32px;
   gap: 12px;
@@ -119,7 +124,7 @@
   min-height: calc(100dvh - 132px);
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 12px;
   background: linear-gradient(180deg, rgba(17,18,29,0.96), rgba(11,12,19,0.97));
   box-shadow: 0 24px 80px rgba(0,0,0,0.34), inset 0 1px rgba(255,255,255,0.035);
 }
@@ -179,10 +184,10 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 22px;
+  gap: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 28px clamp(18px, 5vw, 56px);
+  padding: 0;
   scrollbar-color: rgba(170,145,241,0.38) transparent;
 }
 
@@ -228,36 +233,26 @@
 .contract dt, .truthList dt { color: #706d7f; font-size: 0.57rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .contract dd { margin: 5px 0 0; color: #c9c6d2; font-size: 0.71rem; }
 
-.message { width: min(100%, 760px); }
-.role { margin: 0 0 7px; color: #858293; font-size: 0.67rem; font-weight: 700; }
+.message {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 24px;
+  padding: 28px clamp(20px, 5vw, 72px);
+  border-bottom: 1px solid var(--line);
+}
+.role { margin: 3px 0 0; color: #858293; font: 750 0.62rem/1.4 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
 .messageText { color: #dfdce7; font-size: 0.92rem; line-height: 1.72; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .userMessage {
-  align-self: flex-end;
-  width: min(76%, 650px);
-  padding: 13px 16px;
-  border: 1px solid rgba(170,145,241,0.25);
-  border-radius: 16px 16px 4px 16px;
-  background: rgba(116,92,190,0.15);
+  align-self: stretch;
+  background: rgba(116,92,190,0.055);
 }
 
 .userMessage .role { color: #b6a9df; }
-.apocryphaMessage { align-self: flex-start; padding-left: 42px; position: relative; }
-.apocryphaMessage::before {
-  content: "A";
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border: 1px solid rgba(141,227,239,0.28);
-  border-radius: 9px;
-  color: var(--accent);
-  background: rgba(141,227,239,0.06);
-  font: 700 0.66rem/1 ui-monospace, monospace;
-}
+.apocryphaMessage { align-self: stretch; background: rgba(141,227,239,0.018); }
+.apocryphaMessage .role { color: var(--accent); }
+.receipt { grid-column: 2; }
 
 .receipt { margin-top: 12px; }
 .receipt summary { width: max-content; color: #88839c; cursor: pointer; font-size: 0.66rem; }
@@ -285,21 +280,40 @@
 .composer {
   position: relative;
   z-index: 2;
-  padding: 15px 18px 13px;
+  padding: 12px 18px 13px;
   border-top: 1px solid var(--line);
   background: rgba(12,13,21,0.94);
 }
 
 .composer > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.toolDock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 10px;
+  overflow-x: auto;
+}
+.toolDock > span { margin-right: 4px; color: #6f7180; font: 700 0.58rem/1 ui-monospace, monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+.toolDock button {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #9996a8;
+  background: rgba(255,255,255,0.018);
+  cursor: pointer;
+  font: 650 0.68rem/1 inherit;
+}
+.toolDock button[aria-pressed="true"] { border-color: rgba(141,227,239,0.42); color: #dffbff; background: rgba(141,227,239,0.07); }
 .composerField { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 10px; }
 .composer textarea {
   width: 100%;
-  min-height: 54px;
-  max-height: 180px;
+  min-height: 82px;
+  max-height: 260px;
   resize: vertical;
   padding: 15px 16px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: 9px;
   outline: none;
   color: var(--text);
   background: #0c0d15;
@@ -311,12 +325,12 @@
 .composerField > button {
   display: inline-flex;
   min-width: 88px;
-  min-height: 54px;
+  min-height: 48px;
   align-items: center;
   justify-content: center;
   gap: 8px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 9px;
   color: #080a10;
   background: linear-gradient(135deg, #a7e7ed, #a895e5);
   cursor: pointer;
@@ -366,6 +380,7 @@
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+.toolDock button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 @keyframes breathe { 50% { opacity: 0.4; transform: scale(0.72); } }
 
@@ -377,20 +392,20 @@
   .conversation { min-height: calc(100dvh - 58px); border-width: 0 0 1px; border-radius: 0; }
   .conversationHeader { min-height: 64px; padding: 11px 14px; }
   .sessionStatus { min-height: 34px; padding: 0 8px; }
-  .sessionStatus { font-size: 0; }
-  .sessionStatus::after { content: "Online"; font-size: 0.65rem; }
-  .sessionStatus[data-state="closed"]::after { content: "Unavailable"; }
+  .sessionStatus { font-size: 0.65rem; }
   .newButton { min-height: 36px; padding: 0 10px; }
   .messages { padding: 24px 15px; }
   .emptyState { padding: 28px 8px; }
   .contract { grid-template-columns: 1fr; width: min(100%,330px); }
   .contract div { display: flex; justify-content: space-between; border-right: 0; border-bottom: 1px solid var(--line); }
   .contract dt,.contract dd { margin: 0; }
-  .userMessage { width: min(88%,650px); }
+  .messages { padding: 0; }
+  .message { grid-template-columns: 1fr; gap: 8px; padding: 22px 15px; }
+  .receipt { grid-column: 1; }
   .receipt dl { grid-template-columns: 1fr; }
   .composer { position: sticky; bottom: 0; padding: 11px 12px calc(10px + env(safe-area-inset-bottom)); }
   .composerField { gap: 7px; }
-  .composer textarea { min-height: 50px; padding: 13px; }
+  .composer textarea { min-height: 72px; padding: 13px; }
   .composerField > button { min-width: 52px; min-height: 50px; padding: 0 14px; font-size: 0; }
   .composerField > button span { font-size: 1rem; }
   .composerMeta p { max-width: 74%; }
@@ -410,7 +425,6 @@
   .conversationHeader h1 { font-size: 0.9rem; }
   .sessionStatus { display: none; }
   .messages { padding-inline: 12px; }
-  .apocryphaMessage { padding-left: 38px; }
   .composerMeta p { display: none; }
   .composerMeta { justify-content: flex-end; }
 }

@@ -48,6 +48,21 @@ interface TurnResponse {
   retry_after_seconds?: unknown;
 }
 
+type GenerativeMode = 'general' | 'code' | 'analyze' | 'write' | 'explain';
+
+const GENERATIVE_MODES: ReadonlyArray<{
+  id: GenerativeMode;
+  label: string;
+  starter: string;
+  placeholder: string;
+}> = [
+  { id: 'general', label: 'Ask', starter: '', placeholder: 'Ask Apocrypha anything…' },
+  { id: 'code', label: 'Code', starter: 'Help me implement this:\n', placeholder: 'Describe what you want to build or repair…' },
+  { id: 'analyze', label: 'Analyze', starter: 'Analyze this rigorously:\n', placeholder: 'Paste or describe what should be analyzed…' },
+  { id: 'write', label: 'Write', starter: 'Draft this for me:\n', placeholder: 'Describe the document or content to generate…' },
+  { id: 'explain', label: 'Explain', starter: 'Explain this clearly and precisely:\n', placeholder: 'What should Apocrypha explain?…' },
+];
+
 const CHAT_BROWSER_DEADLINE_MS = 28_000;
 const MAX_TEXT_BYTES = 16_384;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
@@ -114,6 +129,7 @@ export function PublicChat(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [pendingTurn, setPendingTurn] = useState<PendingTurn | null>(null);
   const [lastModel, setLastModel] = useState<string | null>(null);
+  const [mode, setMode] = useState<GenerativeMode>('general');
   const inFlightRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -234,6 +250,7 @@ export function PublicChat(): JSX.Element {
   }, [authenticated, conversationId, draft, refresh, waiting]);
 
   const currentBytes = byteLength(draft);
+  const selectedMode = GENERATIVE_MODES.find((candidate) => candidate.id === mode) ?? GENERATIVE_MODES[0]!;
   const sessionLabel = access === 'checking'
     ? 'Checking sign-in'
     : authenticated
@@ -254,7 +271,7 @@ export function PublicChat(): JSX.Element {
         </Link>
         <div className={styles.identity}>
           <span className={styles.identityName}>Apocrypha</span>
-          <span className={styles.identityMeta}>Secure chat</span>
+          <span className={styles.identityMeta}>Digital intelligence workspace</span>
         </div>
         <nav className={styles.nav} aria-label="Apocrypha navigation">
           <Link href="/clearing">The Clearing</Link>
@@ -269,7 +286,7 @@ export function PublicChat(): JSX.Element {
           <div className={styles.conversationHeader}>
             <div>
               <p className={styles.eyebrow}>APOCRYPHA</p>
-              <h1>New conversation</h1>
+              <h1>Intelligence workspace</h1>
             </div>
             <div className={styles.headerActions}>
               <span
@@ -299,10 +316,10 @@ export function PublicChat(): JSX.Element {
             {messages.length === 0 && (
               <div className={styles.emptyState}>
                 <div className={styles.emptyKicker} aria-hidden="true">A</div>
-                <h2>How can I help?</h2>
+                <h2>What are we working on?</h2>
                 <p>
-                  Talk with Apocrypha in plain language. Each response is
-                  validated before it appears here.
+                  Ask, analyze, write, explain, or generate code. Each response
+                  is validated and carries an inspectable receipt.
                 </p>
                 <dl className={styles.contract}>
                   <div>
@@ -379,6 +396,28 @@ export function PublicChat(): JSX.Element {
               }}
             >
               <label htmlFor="public-apocrypha-message">Message Apocrypha</label>
+              <div className={styles.toolDock} aria-label="Prompt starters">
+                <span>Prompt starters</span>
+                {GENERATIVE_MODES.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    aria-pressed={candidate.id === mode}
+                    onClick={() => {
+                      setMode(candidate.id);
+                      if (candidate.starter) {
+                        setDraft((current) => current.startsWith(candidate.starter)
+                          ? current
+                          : `${candidate.starter}${current}`);
+                      }
+                      requestAnimationFrame(() => composerRef.current?.focus());
+                    }}
+                    disabled={waiting}
+                  >
+                    {candidate.label}
+                  </button>
+                ))}
+              </div>
               <div className={styles.composerField}>
                 <textarea
                   id="public-apocrypha-message"
@@ -386,7 +425,7 @@ export function PublicChat(): JSX.Element {
                   value={draft}
                   rows={2}
                   maxLength={MAX_TEXT_BYTES}
-                  placeholder="What would you like to say?"
+                  placeholder={selectedMode.placeholder}
                   disabled={waiting || !conversationId}
                   aria-describedby="public-apocrypha-disclosure public-apocrypha-count"
                   onChange={(event) => {
@@ -415,7 +454,7 @@ export function PublicChat(): JSX.Element {
               </div>
               <div className={styles.composerMeta}>
                 <p id="public-apocrypha-disclosure">
-                  Messages stay out of training and are not retained as cross-session history.
+                  Response generation only · no workspace or external-effect authority on this member surface.
                 </p>
                 <span id="public-apocrypha-count">
                   {currentBytes.toLocaleString()} / {MAX_TEXT_BYTES.toLocaleString()} bytes
@@ -455,7 +494,6 @@ export function PublicChat(): JSX.Element {
               <div><dt>Effects</dt><dd>No effect or tool authority</dd></div>
               <div><dt>History</dt><dd>Not retained across sessions</dd></div>
             </dl>
-            <p className={styles.truthFoot}>This is not the social room. Visit <Link href="/clearing">The Clearing</Link> to speak with people.</p>
           </details>
         </aside>
       </main>

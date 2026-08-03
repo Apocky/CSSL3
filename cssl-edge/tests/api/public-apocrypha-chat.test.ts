@@ -381,7 +381,7 @@ async function main(): Promise<void> {
   assert(component.includes('serving_profile_digest'), 'browser retains serving-profile evidence');
   assert(component.includes('Retry same turn'), 'bounded retry reuses one turn identity');
   assert(component.includes('No message is sent until the session is verified.'), 'signed-out boundary is explicit');
-  assert(component.includes('This is not the social room.'), 'Apocrypha and Clearing roles are distinct');
+  assert(component.includes('<Link href="/clearing">The Clearing</Link>'), 'Apocrypha and Clearing remain distinct routes');
   assert(css.includes('@media (max-width: 680px)'), 'narrow mobile layout exists');
   assert(css.includes('prefers-reduced-motion'), 'reduced-motion path exists');
   assert(css.includes('forced-colors'), 'forced-colors path exists');
