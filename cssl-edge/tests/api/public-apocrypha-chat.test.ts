@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import {
-  expectedConversationRef,
   scopeConversationId,
   scopeRequestId,
 } from '@/lib/apocrypha/proxy';
@@ -36,6 +35,11 @@ function equal(actual: unknown, expected: unknown, message: string): void {
       `assert failed: ${message}; expected=${String(expected)} actual=${String(actual)}`,
     );
   }
+}
+
+function isUuidV5(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function reqRes(
@@ -86,12 +90,63 @@ function assertPrivate(out: Output): void {
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
+const RUNTIME_ORIGIN = 'https://203.0.113.10:9443';
+const RUNTIME_TOKEN = 'test-runtime-token';
+const MODEL_ID = 'fixture/frontier-coder';
+const SERVING_PROFILE_DIGEST = 'a'.repeat(64);
+const PROMPT_DIGEST = 'b'.repeat(64);
+const RESPONSE_DIGEST = 'c'.repeat(64);
+const PRIVACY_PARTITION_REF = 'd'.repeat(64);
+
+function runtimeChatEnvelope(
+  request: Record<string, unknown>,
+  text = 'A bounded Apocv4 response.',
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    schema_version: 'apocv4.runtime-service.v1',
+    result: {
+      schema_version: 'apocv4.chat-response.v1',
+      text,
+      model_reported: {
+        evidence_lane: 'model_reported_not_observed_fact',
+        model_id: MODEL_ID,
+        model_revision: 'fixture-revision',
+        model_family: 'fixture-family',
+        serving_profile_digest: SERVING_PROFILE_DIGEST,
+        response_id: 'fixture-response-id',
+        prompt_digest: PROMPT_DIGEST,
+        response_digest: RESPONSE_DIGEST,
+      },
+      observed: {
+        evidence_lane: 'observed_runtime_transport',
+      },
+      authority: {
+        effect_authority: 'NONE',
+        tool_authority: 'NONE',
+        memory_scope: 'ephemeral',
+        conversation_history: 'not_retained',
+        training_consent: false,
+      },
+      conversation_id: request.conversation_id,
+      request_id: request.request_id,
+      privacy_partition_ref: PRIVACY_PARTITION_REF,
+      outcome: 'completed',
+      learned_faculty_used: true,
+      duplicate_effect_protection: 'not_applicable_no_effect_authority',
+      ...overrides,
+    },
+  };
+}
 
 async function main(): Promise<void> {
   process.env.LAZARUS_TEST_AUTH_BYPASS = '1';
-  process.env.APOCRYPHA_TUNNEL_HOST = 'apocrypha.apocky.com';
-  process.env.CF_ACCESS_CLIENT_ID = 'test-client-id';
-  process.env.CF_ACCESS_CLIENT_SECRET = 'test-client-secret';
+  Object.assign(process.env, { NODE_ENV: 'test' });
+  process.env.APOCV4_RUNTIME_URL = RUNTIME_ORIGIN;
+  process.env.APOCV4_RUNTIME_DIRECT_IP = '203.0.113.10';
+  process.env.APOCV4_RUNTIME_DIRECT_PORT = '9443';
+  process.env.APOCV4_RUNTIME_TRANSPORT = 'test-fetch';
+  process.env.APOCV4_API_TOKEN = RUNTIME_TOKEN;
 
   const conversationId = randomUUID();
   const requestId = randomUUID();
@@ -131,21 +186,10 @@ async function main(): Promise<void> {
       headers: new Headers(init?.headers),
       url: String(input),
     });
-    return new Response(JSON.stringify({
-      schema: 'apocrypha.v2.turn-response.v1',
-      text: 'A bounded native response.',
-      request_id: body.request_id,
-      conversation_ref: expectedConversationRef(
-        String(body.conversation_id),
-        String(body.source_ref),
-      ),
-      transition_id: `transition-${upstreamCalls}`,
-      state_root: `state-${upstreamCalls}`,
-      expression_mode: 'bootstrap_shallow',
-      effect_authority: 'deny_all_O10_membrane',
-      external_inference: false,
-      outcome: 'committed',
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify(runtimeChatEnvelope(body)), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   };
 
   const wrongMethod = reqRes('GET');
@@ -200,9 +244,21 @@ async function main(): Promise<void> {
   equal(success.out.statusCode, 200, 'verified member turn succeeds');
   assertPrivate(success.out);
   const successBody = success.out.body as Record<string, unknown>;
-  equal(successBody.text, 'A bounded native response.', 'sanitized native text is returned');
+  equal(successBody.text, 'A bounded Apocv4 response.', 'validated runtime text is returned');
   equal(successBody.conversation_id, conversationId, 'client conversation UUID is echoed');
   equal(successBody.request_id, requestId, 'client request UUID is echoed');
+  equal(successBody.model_id, MODEL_ID, 'model identity is exposed as model-reported evidence');
+  equal(successBody.response_id, 'fixture-response-id', 'runtime response identity is exposed');
+  equal(successBody.response_digest, RESPONSE_DIGEST, 'response digest is exposed');
+  equal(
+    successBody.serving_profile_digest,
+    SERVING_PROFILE_DIGEST,
+    'serving-profile digest is exposed',
+  );
+  equal(successBody.effect_authority, 'NONE', 'public turn receives no effect authority');
+  equal(successBody.tool_authority, 'NONE', 'public turn receives no tool authority');
+  equal(successBody.outcome, 'completed', 'runtime completion is reported');
+  equal(successBody.learned_faculty_used, true, 'runtime confirms a learned faculty answered');
   equal(successBody.memory_scope, 'ephemeral', 'public conversation memory is off');
   equal(successBody.training_consent, false, 'public training consent is off');
   equal(
@@ -210,27 +266,26 @@ async function main(): Promise<void> {
     'not_retained_by_public_interface',
     'public UI does not claim cross-session history',
   );
-  equal(successBody.effect_authority, 'deny_all_O10_membrane', 'turn effects remain denied');
+  equal(
+    successBody.duplicate_effect_protection,
+    'not_applicable_no_effect_authority',
+    'effect replay is inapplicable because the route has no effect authority',
+  );
+  equal(successBody.upstream_status, 200, 'runtime transport status is exposed');
   assert(!JSON.stringify(successBody).includes('principal:apocky-member:'), 'principal stays server-side');
   assert(!JSON.stringify(successBody).includes('member@example.test'), 'member email stays server-side');
 
   const firstCall = observed[0];
   assert(firstCall !== undefined, 'upstream call observed');
-  equal(firstCall.url, 'https://apocrypha.apocky.com/v2/turn', 'canonical private V2 route used');
-  equal(firstCall.headers.get('cf-access-client-id'), 'test-client-id', 'service credential stays on server hop');
-  equal(firstCall.body.privacy_class, 'restricted', 'member message is restricted');
-  equal(firstCall.body.memory_scope, 'ephemeral', 'backend archive memory is disabled');
-  equal(firstCall.body.request_id, firstCall.body.idempotency_key, 'request identity binds replay');
+  equal(firstCall.url, `${RUNTIME_ORIGIN}/v1/chat`, 'direct private Apocv4 chat route used');
+  equal(firstCall.headers.get('authorization'), `Bearer ${RUNTIME_TOKEN}`, 'runtime credential stays server-side');
+  equal(firstCall.headers.get('accept-encoding'), 'identity', 'compressed ambiguity is disabled');
+  equal(firstCall.body.message, baseBody.text, 'bounded message crosses the runtime boundary');
+  equal(firstCall.body.privacy_partition, 'owner:apocky', 'runtime request stays in its privacy partition');
   assert(firstCall.body.request_id !== requestId, 'raw client request ID is not sent upstream');
   assert(firstCall.body.conversation_id !== conversationId, 'raw client conversation ID is not sent upstream');
-  assert(
-    String(firstCall.body.authority_ref).includes('principal:apocky-member:'),
-    'authority is member-principal scoped',
-  );
-  assert(
-    String(firstCall.body.consent_ref).startsWith('consent:single-public-turn:'),
-    'send action grants one-turn consent only',
-  );
+  assert(isUuidV5(firstCall.body.request_id), 'member-scoped request identity is UUIDv5');
+  assert(isUuidV5(firstCall.body.conversation_id), 'member-scoped conversation identity is UUIDv5');
   assert(!('training_consent' in firstCall.body), 'no training opt-in crosses the boundary');
   assert(!('tool_call' in firstCall.body), 'public route grants no tool request');
 
@@ -238,18 +293,11 @@ async function main(): Promise<void> {
     upstreamCalls += 1;
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     observed.push({ body, headers: new Headers(init?.headers), url: String(input) });
-    return new Response(JSON.stringify({
-      schema: 'apocrypha.v2.turn-response.v1',
-      text: 'Must not escape.',
-      request_id: body.request_id,
-      conversation_ref: 'wrong-conversation',
-      transition_id: 'transition-invalid',
-      state_root: 'state-invalid',
-      expression_mode: 'bootstrap_shallow',
-      effect_authority: 'deny_all_O10_membrane',
-      external_inference: false,
-      outcome: 'committed',
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify(runtimeChatEnvelope(
+      body,
+      'Must not escape.',
+      { conversation_id: randomUUID() },
+    )), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
   const invalidEnvelope = reqRes('POST', {
     body: { ...baseBody, request_id: randomUUID() },
@@ -265,18 +313,38 @@ async function main(): Promise<void> {
     upstreamCalls += 1;
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     observed.push({ body, headers: new Headers(init?.headers), url: String(input) });
-    return new Response(JSON.stringify({
-      schema: 'apocrypha.v2.turn-response.v1',
-      text: 'Rate-limited fixture.',
-      request_id: body.request_id,
-      conversation_ref: expectedConversationRef(String(body.conversation_id), String(body.source_ref)),
-      transition_id: `transition-rate-${upstreamCalls}`,
-      state_root: `state-rate-${upstreamCalls}`,
-      expression_mode: 'bootstrap_shallow',
-      effect_authority: 'deny_all_O10_membrane',
-      external_inference: false,
-      outcome: 'committed',
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify(runtimeChatEnvelope(
+      body,
+      'Privacy-invalid text must not escape.',
+      {
+        authority: {
+          effect_authority: 'NONE',
+          tool_authority: 'NONE',
+          memory_scope: 'ephemeral',
+          conversation_history: 'not_retained',
+          training_consent: true,
+        },
+      },
+    )), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const invalidPrivacy = reqRes('POST', {
+    body: { ...baseBody, request_id: randomUUID() },
+  });
+  await chatHandler(invalidPrivacy.req, invalidPrivacy.res);
+  equal(invalidPrivacy.out.statusCode, 502, 'runtime training opt-in fails closed');
+  assert(
+    !JSON.stringify(invalidPrivacy.out.body).includes('Privacy-invalid text must not escape.'),
+    'privacy-invalid runtime text is not emitted',
+  );
+
+  globalThis.fetch = async (input, init) => {
+    upstreamCalls += 1;
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    observed.push({ body, headers: new Headers(init?.headers), url: String(input) });
+    return new Response(JSON.stringify(runtimeChatEnvelope(body, 'Rate-limited fixture.')), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   };
   let rateLimited: Output | null = null;
   for (let index = 0; index < 10; index += 1) {
@@ -307,6 +375,10 @@ async function main(): Promise<void> {
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
   assert(component.includes('training_consent === false'), 'browser verifies no training consent');
   assert(component.includes("memory_scope === 'ephemeral'"), 'browser verifies ephemeral memory');
+  assert(component.includes("effect_authority === 'NONE'"), 'browser verifies no effect authority');
+  assert(component.includes("tool_authority === 'NONE'"), 'browser verifies no tool authority');
+  assert(component.includes('response_digest'), 'browser retains response evidence');
+  assert(component.includes('serving_profile_digest'), 'browser retains serving-profile evidence');
   assert(component.includes('Retry same turn'), 'bounded retry reuses one turn identity');
   assert(component.includes('No message is sent until the session is verified.'), 'signed-out boundary is explicit');
   assert(component.includes('This is not the social room.'), 'Apocrypha and Clearing roles are distinct');
