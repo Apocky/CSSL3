@@ -117,6 +117,7 @@ function rollbackEnvelope(promotionEventDigest: string): Record<string, unknown>
       promotion_event_digest: promotionEventDigest,
       rollback_event_digest: digest('d'),
       journal_tip_digest: digest('e'),
+      operation_ref: digest('f'),
     },
   };
 }
@@ -355,8 +356,9 @@ async function main(): Promise<void> {
     assert(rollback.observed.runtime.state === 'ROLLED_BACK', 'rollback state is observed');
     assert(
       rollback.observed.runtime.journal_tip_digest === digest('e'),
-      'five-key rollback receipt preserves journal tip',
+      'rollback receipt preserves journal tip',
     );
+    assert(rollback.observed.runtime.operation_ref === digest('f'), 'rollback operation identity is preserved');
 
     globalThis.fetch = async () => {
       const invalid = rollbackEnvelope(promotionEventDigest);

@@ -140,6 +140,7 @@ function rollbackEnvelope(promotionEventDigest: string): Body {
       promotion_event_digest: promotionEventDigest,
       rollback_event_digest: digest('d'),
       journal_tip_digest: digest('e'),
+      operation_ref: digest('f'),
     },
   };
 }
@@ -427,7 +428,8 @@ async function main(): Promise<void> {
       const runtime = observed?.runtime as Body | undefined;
       assert(runtime?.schema_version === 'apocv4.journaled-patch-runtime.v1', 'rollback schema is preserved');
       assert(runtime?.state === 'ROLLED_BACK', 'rollback effect state is preserved');
-      assert(runtime?.journal_tip_digest === digest('e'), 'five-key rollback journal receipt is preserved');
+      assert(runtime?.journal_tip_digest === digest('e'), 'rollback journal receipt is preserved');
+      assert(runtime?.operation_ref === digest('f'), 'rollback operation identity is preserved');
       assert(!JSON.stringify(result.body).includes('server-runtime-token-123'), 'runtime token never crosses rollback API');
       assert(
         result.headers['cache-control'] === 'private, no-store, no-cache, must-revalidate, max-age=0',

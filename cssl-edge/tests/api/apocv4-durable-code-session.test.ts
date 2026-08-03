@@ -149,6 +149,7 @@ function rollbackResult(body: Record<string, unknown>): Record<string, unknown> 
     promotion_event_digest: body.promotion_event_digest,
     rollback_event_digest: digest('d'),
     journal_tip_digest: digest('e'),
+    operation_ref: digest('f'),
     session_id: body.session_id,
     request_id: body.request_id,
     session_event_digests: { rollback: digest('4') },
@@ -165,6 +166,7 @@ const STRICT_HEADERS = {
   'X-Apocv4-Principal-Ref': digest('2'),
   'X-Apocv4-Privacy-Partition-Ref': digest('3'),
   'X-Apocv4-Effect-Scope-Ref': digest('4'),
+  'X-Apocv4-Rollback-Lease-Ref': digest('5'),
   'X-Apocv4-Session-Binding': 'VERIFIED',
 };
 
@@ -298,6 +300,7 @@ async function main(): Promise<void> {
     const rollbackObserved = rollback.out.body.observed as Record<string, unknown>;
     const rollbackRuntime = rollbackObserved.runtime as Record<string, unknown>;
     equal(rollbackRuntime.request_id, rollbackRequestId, 'rollback response reprojects the client request ID');
+    equal(rollbackRuntime.operation_ref, digest('f'), 'rollback response preserves its operation identity');
     equal(
       (rollbackRuntime.session_event_digests as Record<string, unknown>).rollback,
       digest('4'),

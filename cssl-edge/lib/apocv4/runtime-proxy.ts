@@ -2473,7 +2473,7 @@ export async function submitRuntimeRollback(
     : null;
   const expectedKeys = [
     'schema_version', 'state', 'promotion_event_digest', 'rollback_event_digest',
-    'journal_tip_digest',
+    'journal_tip_digest', 'operation_ref',
     ...(durableBinding === null ? [] : [
       'session_id', 'request_id', 'session_event_digests', 'session_tip_digest',
       'durable_replay',
@@ -2488,6 +2488,7 @@ export async function submitRuntimeRollback(
     || result.promotion_event_digest !== promotionEventDigest
     || !digestValue(result.rollback_event_digest)
     || !digestValue(result.journal_tip_digest)
+    || !digestValue(result.operation_ref)
     || durableReceipt === null
   ) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
@@ -2504,6 +2505,7 @@ export async function submitRuntimeRollback(
         promotion_event_digest: result.promotion_event_digest,
         rollback_event_digest: result.rollback_event_digest,
         journal_tip_digest: result.journal_tip_digest,
+        operation_ref: result.operation_ref,
         ...durableReceipt,
       },
     },
