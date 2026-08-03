@@ -102,6 +102,11 @@ async function main(): Promise<void> {
   process.env.APOCRYPHA_TUNNEL_HOST = 'apocrypha.apocky.com';
   process.env.CF_ACCESS_CLIENT_ID = 'test-client-id';
   process.env.CF_ACCESS_CLIENT_SECRET = 'test-client-secret';
+  process.env.APOCV4_RUNTIME_URL = 'https://198.51.100.42:31234';
+  process.env.APOCV4_API_TOKEN = 'runtime-presence-test-token';
+  process.env.APOCV4_RUNTIME_TRANSPORT = 'test-fetch';
+  process.env.APOCV4_RUNTIME_DIRECT_IP = '198.51.100.42';
+  process.env.APOCV4_RUNTIME_DIRECT_PORT = '31234';
 
   const clientConversationId = '3f0b7c7e-f615-4f13-9392-78f36e53837e';
   const clientRequestIds = [
@@ -421,33 +426,64 @@ async function main(): Promise<void> {
   assertPrivateHeaders(wrongAdminCheckMethod.out);
 
   const rawPrivateMarker = 'must-never-cross-public-projection';
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    schema: 'apocrypha.v2.public-presence.v1',
-    mode: 'hidden',
-    display_authorized: false,
-    entity_authorship: 'unverified',
-    mutual_consent: 'not_established',
-    committed_intent: 'absent',
-    rendering: null,
-    reason_code: 'presence_intent_or_mutual_consent_unavailable',
-    private_state: rawPrivateMarker,
-  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  const presence = reqRes('GET', { owner: false });
-  await presenceHandler(presence.req, presence.res);
-  equal(presence.out.statusCode, 200, 'canonical hidden presence projects publicly');
-  equal((presence.out.body as Record<string, unknown>).display_authorized, false, 'avatar remains unauthorized');
-  assert(!JSON.stringify(presence.out.body).includes(rawPrivateMarker), 'raw/private upstream presence is omitted');
-  assert(presence.out.headers['cache-control']?.includes('no-store') === true, 'presence projection is no-store');
+  const wrongPresenceMethod = reqRes('POST', { owner: false });
+  await presenceHandler(wrongPresenceMethod.req, wrongPresenceMethod.res);
+  equal(wrongPresenceMethod.out.statusCode, 405, 'public presence remains read-only');
+  assert(wrongPresenceMethod.out.headers['cache-control']?.includes('no-store') === true, 'denied presence request is no-store');
 
   globalThis.fetch = async () => new Response(JSON.stringify({
-    schema: 'apocrypha.v2.public-presence.v1',
-    mode: 'authorized',
-    display_authorized: true,
+    schema_version: 'apocv4.runtime-service.v1',
+    status: 'READY',
+    engine: { active_runs: 0, private_state: rawPrivateMarker },
+    vision: true,
+  }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Apocv4-Binding-Ref': 'a'.repeat(64),
+    },
+  });
+  const presence = reqRes('GET', { owner: false });
+  await presenceHandler(presence.req, presence.res);
+  equal(presence.out.statusCode, 200, 'healthy direct runtime projects hidden presence publicly');
+  equal((presence.out.body as Record<string, unknown>).display_authorized, false, 'avatar remains unauthorized');
+  assert(!JSON.stringify(presence.out.body).includes(rawPrivateMarker), 'raw/private runtime health is omitted');
+  assert(presence.out.headers['cache-control']?.includes('no-store') === true, 'presence projection is no-store');
+  assert(/^[0-9a-f]{32}$/.test(presence.out.headers['x-apocky-trace-id'] ?? ''), 'presence emits an opaque trace ID');
+
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    schema_version: 'apocv4.runtime-service.v1',
+    status: 'NOT_READY',
+    engine: {},
+    vision: true,
   }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   const invalidPresence = reqRes('GET', { owner: false });
   await presenceHandler(invalidPresence.req, invalidPresence.res);
-  equal(invalidPresence.out.statusCode, 502, 'unknown display grant fails hidden');
-  equal((invalidPresence.out.body as Record<string, unknown>).display_authorized, false, 'invalid grant cannot reveal avatar');
+  equal(invalidPresence.out.statusCode, 502, 'invalid runtime evidence fails hidden');
+  equal((invalidPresence.out.body as Record<string, unknown>).display_authorized, false, 'invalid runtime evidence cannot reveal avatar');
+
+  globalThis.fetch = async () => { throw new TypeError('private network detail'); };
+  const unreachablePresence = reqRes('GET', { owner: false });
+  await presenceHandler(unreachablePresence.req, unreachablePresence.res);
+  equal(unreachablePresence.out.statusCode, 503, 'unreachable direct runtime fails unavailable');
+  equal((unreachablePresence.out.body as Record<string, unknown>).display_authorized, false, 'unreachable runtime cannot reveal avatar');
+  equal(
+    (unreachablePresence.out.body as Record<string, unknown>).reason_code,
+    'presence_authority_unreachable',
+    'network detail collapses to the stable public reason code',
+  );
+  assert(!JSON.stringify(unreachablePresence.out.body).includes('private network detail'), 'network exception detail stays private');
+
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    schema_version: 'apocv4.runtime-service.v1',
+    status: 'READY',
+    engine: { padding: 'x'.repeat(4_097) },
+    vision: true,
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const oversizedPresence = reqRes('GET', { owner: false });
+  await presenceHandler(oversizedPresence.req, oversizedPresence.res);
+  equal(oversizedPresence.out.statusCode, 502, 'oversized runtime evidence fails hidden');
+  equal((oversizedPresence.out.body as Record<string, unknown>).display_authorized, false, 'oversized runtime evidence cannot reveal avatar');
 
   const closure = [
     'components/apocrypha/ChatThread.tsx',

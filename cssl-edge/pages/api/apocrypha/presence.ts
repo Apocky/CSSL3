@@ -4,9 +4,10 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+import { RuntimeProxyError, fetchRuntimeHealth } from '@/lib/apocv4/runtime-proxy';
+import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
+
 const PRESENCE_SCHEMA = 'apocrypha.v2.public-presence.v1';
-const CANONICAL_TUNNEL_HOST = 'apocrypha.apocky.com';
-const UPSTREAM_DEADLINE_MS = 5_000;
 const MAX_PRESENCE_BYTES = 4_096;
 
 type PublicPresenceMode = 'hidden' | 'unavailable';
@@ -43,85 +44,110 @@ function hidden(
   };
 }
 
-function isCanonicalHiddenPresence(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const body = value as Record<string, unknown>;
-  return body.schema === PRESENCE_SCHEMA
-    && body.mode === 'hidden'
-    && body.display_authorized === false
-    && body.entity_authorship === 'unverified'
-    && body.mutual_consent === 'not_established'
-    && body.committed_intent === 'absent'
-    && body.rendering === null
-    && body.reason_code === 'presence_intent_or_mutual_consent_unavailable';
-}
-
-function configuredTunnelHost(): string | null {
-  const value = process.env.APOCRYPHA_TUNNEL_HOST?.trim().toLowerCase();
-  if (!value || !/^[a-z0-9.-]+$/.test(value)) return null;
-  return value === CANONICAL_TUNNEL_HOST ? value : null;
+function isInvalidRuntimeEvidence(error: unknown): boolean {
+  return error instanceof RuntimeProxyError && [
+    'runtime_reflected_credential',
+    'runtime_response_invalid',
+    'runtime_response_too_large',
+  ].includes(error.code);
 }
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<PublicPresenceStatus | { error: string }>,
 ): Promise<void> {
+  const trace = createServerTrace(req);
+  const started = performance.now();
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Apocky-Trace-Id', trace.traceId);
+  res.setHeader('Traceparent', traceparentFor(trace));
   res.setHeader('Allow', 'GET');
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
-
-  const tunnelHost = configuredTunnelHost();
-  const clientId = process.env.CF_ACCESS_CLIENT_ID?.trim();
-  const clientSecret = process.env.CF_ACCESS_CLIENT_SECRET?.trim();
-  if (!tunnelHost || !clientId || !clientSecret) {
-    res.status(503).json(hidden('unavailable', 'presence_authority_unreachable'));
-    return;
-  }
-
-  const controller = new AbortController();
-  const deadline = setTimeout(() => controller.abort(), UPSTREAM_DEADLINE_MS);
-  try {
-    const upstream = await fetch(`https://${tunnelHost}/v2/presence`, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'CF-Access-Client-Id': clientId,
-        'CF-Access-Client-Secret': clientSecret,
-      },
-      cache: 'no-store',
-      redirect: 'error',
-      signal: controller.signal,
+    await emitOperationalTelemetry({
+      trace,
+      kind: 'api.apocrypha.presence.denied',
+      source: 'pages.api.apocrypha.presence',
+      plane: 'security',
+      severity: 'warn',
+      outcome: 'denied',
+      status: 405,
+      durationMs: Math.round(performance.now() - started),
+      message: 'Public presence method denied.',
+      authority: 'public-read-only',
     });
-    if (!upstream.ok) {
-      res.status(503).json(hidden('unavailable', 'presence_authority_unreachable'));
-      return;
-    }
-    const contentType = upstream.headers.get('content-type')?.toLowerCase() ?? '';
-    const raw = await upstream.text();
-    if (!contentType.includes('application/json') || Buffer.byteLength(raw, 'utf8') > MAX_PRESENCE_BYTES) {
+    return;
+  }
+
+  try {
+    const health = await fetchRuntimeHealth(traceparentFor(trace));
+    const runtimePayloadBytes = Buffer.byteLength(JSON.stringify(health.observed.runtime), 'utf8');
+    if (runtimePayloadBytes > MAX_PRESENCE_BYTES) {
       res.status(502).json(hidden('unavailable', 'presence_authority_invalid'));
+      await emitOperationalTelemetry({
+        trace,
+        kind: 'runtime.apocrypha.presence.rejected',
+        source: 'apocv4-runtime-proxy',
+        plane: 'runtime',
+        severity: 'error',
+        outcome: 'failed',
+        status: 502,
+        durationMs: Math.round(performance.now() - started),
+        message: 'Runtime health exceeded the public presence evidence bound.',
+        authority: 'public-read-only',
+        receiptRef: health.observed.receipt.binding_ref ?? health.observed.receipt.auth_registry_ref,
+        attributes: {
+          upstream_status: health.observed.receipt.upstream_status,
+          runtime_payload_bytes: runtimePayloadBytes,
+          maximum_presence_bytes: MAX_PRESENCE_BYTES,
+        },
+      });
       return;
     }
-    let payload: unknown;
-    try {
-      payload = JSON.parse(raw) as unknown;
-    } catch {
-      res.status(502).json(hidden('unavailable', 'presence_authority_invalid'));
-      return;
-    }
-    if (!isCanonicalHiddenPresence(payload)) {
-      res.status(502).json(hidden('unavailable', 'presence_authority_invalid'));
-      return;
-    }
+
     res.status(200).json(hidden('hidden', 'presence_intent_or_mutual_consent_unavailable'));
-  } catch {
-    res.status(503).json(hidden('unavailable', 'presence_authority_unreachable'));
-  } finally {
-    clearTimeout(deadline);
+    await emitOperationalTelemetry({
+      trace,
+      kind: 'runtime.apocrypha.presence.checked',
+      source: 'apocv4-runtime-proxy',
+      plane: 'runtime',
+      severity: 'info',
+      outcome: 'succeeded',
+      status: 200,
+      durationMs: Math.round(performance.now() - started),
+      message: 'Runtime reachability observed; public presence remains hidden.',
+      authority: 'public-read-only',
+      receiptRef: health.observed.receipt.binding_ref ?? health.observed.receipt.auth_registry_ref,
+      attributes: {
+        upstream_status: health.observed.receipt.upstream_status,
+        runtime_payload_bytes: runtimePayloadBytes,
+        runtime_status: 'READY',
+      },
+    });
+  } catch (error) {
+    const invalid = isInvalidRuntimeEvidence(error);
+    const status = invalid ? 502 : 503;
+    res.status(status).json(hidden(
+      'unavailable',
+      invalid ? 'presence_authority_invalid' : 'presence_authority_unreachable',
+    ));
+    await emitOperationalTelemetry({
+      trace,
+      kind: invalid ? 'runtime.apocrypha.presence.rejected' : 'runtime.apocrypha.presence.failed',
+      source: 'apocv4-runtime-proxy',
+      plane: 'runtime',
+      severity: 'error',
+      outcome: invalid ? 'failed' : 'degraded',
+      status,
+      durationMs: Math.round(performance.now() - started),
+      message: error instanceof RuntimeProxyError ? error.code : 'runtime_proxy_failure',
+      authority: 'public-read-only',
+      attributes: {
+        upstream_status: error instanceof RuntimeProxyError ? error.upstreamStatus : null,
+        runtime_public_status: error instanceof RuntimeProxyError ? error.publicStatus : null,
+      },
+    });
   }
 }

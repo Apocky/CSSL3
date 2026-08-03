@@ -66,8 +66,12 @@ assert(rest.includes("outcome === 'committed'"), 'committed-outcome gate missing
 assert(rest.includes('payload.external_inference === false'), 'proprietary-inference gate missing');
 assert(rest.includes("expressionMode === EXPECTED_EXPRESSION_MODE"), 'expression-mode gate missing');
 assert(rest.includes('hasSameOrigin(req)'), 'state-changing turn lacks same-origin enforcement');
-assert(presence.includes('isCanonicalHiddenPresence'), 'public presence is not schema-gated');
+assert(presence.includes('fetchRuntimeHealth'), 'public presence does not use the direct runtime health boundary');
 assert(presence.includes("display_authorized: false"), 'presence does not fail hidden');
+assert(presence.includes('MAX_PRESENCE_BYTES = 4_096'), 'presence evidence bound is missing');
+assert(presence.includes('emitOperationalTelemetry'), 'presence operational telemetry is missing');
+assert(!presence.includes('CF-Access-Client'), 'presence still sends Cloudflare Access credentials');
+assert(!presence.includes('APOCRYPHA_TUNNEL_HOST'), 'presence still depends on the retired tunnel host');
 assert(thread.includes('CHAT_BROWSER_DEADLINE_MS = 28_000'), 'browser request bound missing');
 assert(rest.includes('UPSTREAM_DEADLINE_MS = 25_000'), 'upstream request bound missing');
 assert(rest.includes('MAX_TEXT_BYTES = 16_384'), 'body UTF-8 percept bound mismatch remains');
