@@ -809,7 +809,7 @@ function codeEffectSummary(receipt: CodeEffectReceipt): string {
     return `The code request is still running for ${pathSummary}. No change is being claimed complete.`;
   }
   if (receipt.state === 'ROLLED_BACK' || receipt.state === 'EXECUTION_ROLLED_BACK') {
-    return `The code change was rolled back. ${pathSummary} were restored to their recorded prior state.`;
+    return `The code change was rolled back. ${pathSummary} ${receipt.allowedPaths.length === 1 ? 'was' : 'were'} restored to the recorded prior state.`;
   }
   const testSummary = receipt.testPassed === true
     ? 'Isolated tests passed.'
