@@ -181,7 +181,7 @@ export async function runOwnerAcceptance(options = {}) {
     'owner_page',
     'OWNER_PAGE_CONTENT_TYPE_INVALID',
   );
-  requireCondition(page.text.includes('Apex · Apocv4'), 'owner_page', 'OWNER_PAGE_MARKER_MISSING');
+  requireCondition(page.text.includes('Relay · Apocrypha · Apocky'), 'owner_page', 'OWNER_PAGE_MARKER_MISSING');
   results.push(receipt('owner_page', page));
 
   const anonymousHealth = await request(fetchImpl, baseUrl, '/api/admin/apocv4/health', {

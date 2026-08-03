@@ -35,7 +35,7 @@ async function withFixture(run) {
     const authorized = request.headers.authorization === `Bearer ${authToken}`;
     if (request.url === '/admin/apex' && request.method === 'GET') {
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end('<!doctype html><title>Apex · Apocv4 · Apocrypha · Apocky</title><main>Verifying administrator session…</main>');
+      response.end('<!doctype html><title>Relay · Apocrypha · Apocky</title><main>Verifying administrator session…</main>');
       return;
     }
     if (request.url === '/api/admin/apocv4/health' && request.method === 'GET') {
