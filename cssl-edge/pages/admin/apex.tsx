@@ -427,7 +427,7 @@ const Apex: NextPage = () => {
 
   return (
     <AdminLayout
-      title="Apocrypha"
+      title="Relay"
       hideHeading
       immersive
       onAdminCheck={(check) => setAdminAuthorized(check.authorized)}
