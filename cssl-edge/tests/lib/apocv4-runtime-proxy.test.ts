@@ -25,28 +25,35 @@ async function rejectsCode(run: () => Promise<unknown>, code: string): Promise<v
 const originalFetch = globalThis.fetch;
 const originalRuntimeUrl = process.env.APOCV4_RUNTIME_URL;
 const originalRuntimeToken = process.env.APOCV4_API_TOKEN;
+const originalRuntimeTransport = process.env.APOCV4_RUNTIME_TRANSPORT;
+const originalRuntimeIp = process.env.APOCV4_RUNTIME_DIRECT_IP;
+const originalRuntimePort = process.env.APOCV4_RUNTIME_DIRECT_PORT;
 
 async function main(): Promise<void> {
   try {
-    const validOrigin = 'https://podabc123-8080.proxy.runpod.net';
+    const validOrigin = 'https://198.51.100.42:31234';
     const token = 'runtime-test-token-123';
     process.env.APOCV4_RUNTIME_URL = validOrigin;
     process.env.APOCV4_API_TOKEN = token;
-    assert(RUNPOD_SYNC_DEADLINE_MS === 95_000, 'deadline stays below RunPod proxy hard limit');
+    process.env.APOCV4_RUNTIME_TRANSPORT = 'test-fetch';
+    process.env.APOCV4_RUNTIME_DIRECT_IP = '198.51.100.42';
+    process.env.APOCV4_RUNTIME_DIRECT_PORT = '31234';
+    assert(RUNPOD_SYNC_DEADLINE_MS === 95_000, 'bounded synchronous runtime deadline remains stable');
     const timeout = publicRuntimeError(
       new RuntimeProxyError('runtime_deadline_exceeded', 504, null, RUNPOD_SYNC_DEADLINE_MS),
     );
     assert(timeout.observed?.receipt.deadline_ms === 95_000, 'timeout carries observed deadline receipt');
 
-    assert(validateRuntimeUrl(validOrigin) === validOrigin, 'canonical RunPod proxy origin accepted');
+    assert(validateRuntimeUrl(validOrigin) === validOrigin, 'canonical pinned direct origin accepted');
     for (const invalid of [
-      'http://podabc123-8080.proxy.runpod.net',
-      'https://podabc123-8080.proxy.runpod.net/',
-      'https://podabc123-8080.proxy.runpod.net/runtime',
-      'https://podabc123-8080.proxy.runpod.net.evil.invalid',
-      'https://user:pass@podabc123-8080.proxy.runpod.net',
-      'https://api.runpod.ai',
-      'https://podabc123-8080.proxy.runpod.net?target=internal',
+      'http://198.51.100.42:31234',
+      'https://198.51.100.42:31234/',
+      'https://198.51.100.42:31234/runtime',
+      'https://198.51.100.42.evil.invalid:31234',
+      'https://user:pass@198.51.100.42:31234',
+      'https://198.51.100.43:31234',
+      'https://198.51.100.42:31235',
+      'https://198.51.100.42:31234?target=internal',
     ]) {
       let rejected = false;
       try {
@@ -82,6 +89,7 @@ async function main(): Promise<void> {
     assert(capturedInit?.method === 'GET', 'health uses GET');
     assert(capturedInit?.redirect === 'error', 'redirects are forbidden');
     assert(capturedInit?.cache === 'no-store', 'runtime response is not cached');
+    assert(new Headers(capturedInit?.headers).get('Accept-Encoding') === 'identity', 'runtime compression is disabled');
     assert(new Headers(capturedInit?.headers).get('Authorization') === `Bearer ${token}`, 'token is server transport only');
     assert(health.observed.runtime.status === 'READY', 'health is projected as observed runtime state');
     assert(health.model_reported.present === false, 'health does not invent model evidence');
@@ -150,6 +158,12 @@ async function main(): Promise<void> {
     else process.env.APOCV4_RUNTIME_URL = originalRuntimeUrl;
     if (originalRuntimeToken === undefined) delete process.env.APOCV4_API_TOKEN;
     else process.env.APOCV4_API_TOKEN = originalRuntimeToken;
+    if (originalRuntimeTransport === undefined) delete process.env.APOCV4_RUNTIME_TRANSPORT;
+    else process.env.APOCV4_RUNTIME_TRANSPORT = originalRuntimeTransport;
+    if (originalRuntimeIp === undefined) delete process.env.APOCV4_RUNTIME_DIRECT_IP;
+    else process.env.APOCV4_RUNTIME_DIRECT_IP = originalRuntimeIp;
+    if (originalRuntimePort === undefined) delete process.env.APOCV4_RUNTIME_DIRECT_PORT;
+    else process.env.APOCV4_RUNTIME_DIRECT_PORT = originalRuntimePort;
   }
   console.log('apocv4-runtime-proxy.test : OK · strict RunPod transport and evidence split');
 }

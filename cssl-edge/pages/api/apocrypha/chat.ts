@@ -1,9 +1,9 @@
-// Signed-in public conversation boundary for the native Apocrypha V2 body.
+// Signed-in public conversation boundary for the Apocv4 runtime.
 //
 // This route deliberately does not reuse the owner authorization surface.
 // A verified site member receives a server-owned pseudonymous principal, and
 // every client conversation/request UUID is deterministically scoped to that
-// principal before it reaches the private tunnel.
+// principal before it reaches the direct private runtime transport.
 
 import { createHash } from 'node:crypto';
 
@@ -11,23 +11,23 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { getRequestUser } from '@/lib/admin-auth';
 import {
-  expectedConversationRef,
-  fetchApocryphaV2,
   isOpaqueClientRequestId,
   isOpaqueConversationId,
   scopeConversationId,
   scopeRequestId,
   setPrivateNoStore,
 } from '@/lib/apocrypha/proxy';
+import {
+  publicRuntimeError,
+  RuntimeProxyError,
+  submitRuntimeChat,
+} from '@/lib/apocv4/runtime-proxy';
 import { hasSameOrigin } from '@/lib/auth-session';
 import { envelope } from '@/lib/response';
+import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
-const UPSTREAM_DEADLINE_MS = 25_000;
 const MAX_TEXT_BYTES = 16_384;
-const TURN_SOURCE_REF = 'public:apocky.com/apocrypha';
-const EXPECTED_EXPRESSION_MODE = 'bootstrap_shallow';
-const EXPECTED_RESPONSE_SCHEMA = 'apocrypha.v2.turn-response.v1';
-const EXPECTED_EFFECT_AUTHORITY = 'deny_all_O10_membrane';
+const RUNTIME_PRIVACY_PARTITION = 'owner:apocky';
 const RATE_WINDOW_MS = 60_000;
 const RATE_WINDOW_TURNS = 8;
 const MAX_RATE_BUCKETS = 10_000;
@@ -115,18 +115,37 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ): Promise<void> {
+  const trace = createServerTrace(req);
+  const started = performance.now();
   setPrivateNoStore(res);
+  res.setHeader('X-Apocky-Trace-Id', trace.traceId);
+  res.setHeader('Traceparent', traceparentFor(trace));
   res.setHeader('Allow', 'POST');
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed', ...envelope() });
+    await emitOperationalTelemetry({
+      trace, kind: 'api.apocrypha.turn.denied', source: 'pages.api.apocrypha.chat', plane: 'security',
+      severity: 'warn', outcome: 'denied', status: 405, durationMs: Math.round(performance.now() - started),
+      message: 'Public turn method denied.', authority: 'authenticated-member-required',
+    });
     return;
   }
   if (!hasSameOrigin(req)) {
     res.status(403).json({ error: 'Same-origin request required', ...envelope() });
+    await emitOperationalTelemetry({
+      trace, kind: 'security.apocrypha.turn.origin_denied', source: 'pages.api.apocrypha.chat', plane: 'security',
+      severity: 'warn', outcome: 'denied', status: 403, durationMs: Math.round(performance.now() - started),
+      message: 'Public turn origin denied.', authority: 'same-origin',
+    });
     return;
   }
   if (firstHeader(req.headers['content-type']) !== 'application/json') {
     res.status(415).json({ error: 'Content-Type must be application/json', ...envelope() });
+    await emitOperationalTelemetry({
+      trace, kind: 'api.apocrypha.turn.rejected', source: 'pages.api.apocrypha.chat', plane: 'edge',
+      severity: 'warn', outcome: 'denied', status: 415, durationMs: Math.round(performance.now() - started),
+      message: 'Public turn content type rejected.', authority: 'same-origin',
+    });
     return;
   }
 
@@ -141,6 +160,14 @@ export default async function handler(
       authenticated: false,
       ...envelope(),
     });
+    await emitOperationalTelemetry({
+      trace, kind: 'security.apocrypha.turn.session_denied', source: 'pages.api.apocrypha.chat', plane: 'security',
+      severity: unavailable ? 'error' : 'warn', outcome: unavailable ? 'degraded' : 'denied',
+      status: unavailable ? 503 : 401, durationMs: Math.round(performance.now() - started),
+      message: unavailable ? 'Member session verification unavailable.' : 'Member session required.',
+      authority: 'authenticated-member-required',
+      attributes: { failure_kind: session.failureKind ?? 'unauthenticated' },
+    });
     return;
   }
 
@@ -151,6 +178,11 @@ export default async function handler(
       error: `text must contain 1-${MAX_TEXT_BYTES} UTF-8 bytes after trimming`,
       ...envelope(),
     });
+    await emitOperationalTelemetry({
+      trace, kind: 'api.apocrypha.turn.rejected', source: 'pages.api.apocrypha.chat', plane: 'edge',
+      severity: 'warn', outcome: 'denied', status: 400, durationMs: Math.round(performance.now() - started),
+      message: 'Public turn text envelope rejected.', authority: 'authenticated-member',
+    });
     return;
   }
   if (!isOpaqueConversationId(body?.conversation_id)) {
@@ -158,12 +190,22 @@ export default async function handler(
       error: 'conversation_id must be an opaque UUIDv4 minted by this client',
       ...envelope(),
     });
+    await emitOperationalTelemetry({
+      trace, kind: 'api.apocrypha.turn.rejected', source: 'pages.api.apocrypha.chat', plane: 'edge',
+      severity: 'warn', outcome: 'denied', status: 400, durationMs: Math.round(performance.now() - started),
+      message: 'Conversation identifier rejected.', authority: 'authenticated-member',
+    });
     return;
   }
   if (!isOpaqueClientRequestId(body?.request_id)) {
     res.status(400).json({
       error: 'request_id must be an opaque UUIDv4 minted once for this client turn',
       ...envelope(),
+    });
+    await emitOperationalTelemetry({
+      trace, kind: 'api.apocrypha.turn.rejected', source: 'pages.api.apocrypha.chat', plane: 'edge',
+      severity: 'warn', outcome: 'denied', status: 400, durationMs: Math.round(performance.now() - started),
+      message: 'Request identifier rejected.', authority: 'authenticated-member',
     });
     return;
   }
@@ -177,6 +219,12 @@ export default async function handler(
       retry_after_seconds: budget.retryAfterSeconds,
       ...envelope(),
     });
+    await emitOperationalTelemetry({
+      trace, kind: 'security.apocrypha.turn.rate_denied', source: 'pages.api.apocrypha.chat', plane: 'security',
+      severity: 'warn', outcome: 'denied', status: 429, durationMs: Math.round(performance.now() - started),
+      message: 'Public turn rate budget exhausted.', authority: 'authenticated-member',
+      attributes: { retry_after_seconds: budget.retryAfterSeconds },
+    });
     return;
   }
 
@@ -184,93 +232,101 @@ export default async function handler(
   const clientRequestId = body.request_id.toLowerCase();
   const scopedConversationId = scopeConversationId(principalRef, clientConversationId);
   const scopedRequestId = scopeRequestId(principalRef, clientRequestId);
-  const requiredConversationRef = expectedConversationRef(
-    scopedConversationId,
-    TURN_SOURCE_REF,
-  );
-  const upstream = await fetchApocryphaV2({
-    method: 'POST',
-    upstreamPath: '/v2/turn',
-    deadlineMs: UPSTREAM_DEADLINE_MS,
-    body: {
-      text,
-      request_id: scopedRequestId,
-      idempotency_key: scopedRequestId,
-      conversation_id: scopedConversationId,
-      source_ref: TURN_SOURCE_REF,
-      authority_ref: `authority:authenticated-member:${principalRef}`,
-      consent_ref: `consent:single-public-turn:${principalRef}`,
+  await emitOperationalTelemetry({
+    trace, kind: 'inference.apocrypha.turn.started', source: 'apocv4-runtime-proxy', plane: 'runtime',
+    severity: 'info', outcome: 'started', status: null, durationMs: Math.round(performance.now() - started),
+    message: 'Restricted public turn admitted for response-only runtime dispatch.',
+    effectClass: 'apocrypha.public.turn.no-effects', authority: 'authenticated-member',
+    attributes: {
+      text_bytes: Buffer.byteLength(text, 'utf8'),
       privacy_class: 'restricted',
-      modality: 'text',
       memory_scope: 'ephemeral',
+      training_consent: false,
     },
   });
-
-  if (
-    !upstream.ok
-    || !upstream.payload
-    || typeof upstream.payload !== 'object'
-    || Array.isArray(upstream.payload)
-  ) {
-    res.status(upstream.status).json({
-      error: 'Apocrypha could not complete this native V2 turn.',
-      upstream_status: upstream.status,
+  let projection;
+  try {
+    projection = await submitRuntimeChat({
+      message: text,
+      conversationId: scopedConversationId,
+      requestId: scopedRequestId,
+      privacyPartition: RUNTIME_PRIVACY_PARTITION,
+    }, traceparentFor(trace));
+  } catch (error) {
+    const status = error instanceof RuntimeProxyError ? error.publicStatus : 502;
+    res.status(status).json({
+      ...publicRuntimeError(error),
       conversation_id: clientConversationId,
       request_id: clientRequestId,
-      duplicate_commit_protection: 'active',
+      duplicate_effect_protection: 'not_applicable_no_effect_authority',
       ...envelope(),
+    });
+    await emitOperationalTelemetry({
+      trace, kind: 'inference.apocrypha.turn.failed', source: 'apocv4-runtime-proxy', plane: 'runtime',
+      severity: 'error', outcome: 'failed', status,
+      durationMs: Math.round(performance.now() - started),
+      message: 'Apocv4 public turn did not return a valid response.',
+      effectClass: 'apocrypha.public.turn.no-effects', authority: 'authenticated-member',
+      attributes: { failure_kind: publicRuntimeError(error).error },
     });
     return;
   }
 
-  const payload = upstream.payload as Record<string, unknown>;
-  const responseText = stringField(payload, 'text');
-  const upstreamRequestId = stringField(payload, 'request_id');
-  const conversationRef = stringField(payload, 'conversation_ref');
-  const transitionId = stringField(payload, 'transition_id');
-  const stateRoot = stringField(payload, 'state_root');
-  const expressionMode = stringField(payload, 'expression_mode');
-  const effectAuthority = stringField(payload, 'effect_authority');
-  const outcome = stringField(payload, 'outcome');
-  const responseSchema = stringField(payload, 'schema');
-  const committedEnvelope = Boolean(
-    responseText
-      && transitionId
-      && stateRoot
-      && upstreamRequestId === scopedRequestId
-      && conversationRef === requiredConversationRef
-      && expressionMode === EXPECTED_EXPRESSION_MODE
-      && effectAuthority === EXPECTED_EFFECT_AUTHORITY
-      && responseSchema === EXPECTED_RESPONSE_SCHEMA
-      && outcome === 'committed'
-      && payload.external_inference === false,
-  );
-  if (!committedEnvelope) {
+  const modelId = stringField(projection.model_reported, 'model_id');
+  const responseId = stringField(projection.model_reported, 'response_id');
+  const responseDigest = stringField(projection.model_reported, 'response_digest');
+  const servingProfileDigest = stringField(projection.model_reported, 'serving_profile_digest');
+  if (!modelId || !responseId || !responseDigest || !servingProfileDigest) {
     res.status(502).json({
-      error: 'The V2 body did not return the exact committed public-turn envelope.',
+      error: 'The Apocv4 runtime did not return the exact public-turn evidence envelope.',
       conversation_id: clientConversationId,
       request_id: clientRequestId,
-      duplicate_commit_protection: 'active',
+      duplicate_effect_protection: 'not_applicable_no_effect_authority',
       ...envelope(),
+    });
+    await emitOperationalTelemetry({
+      trace, kind: 'inference.apocrypha.turn.envelope_rejected', source: 'apocv4-runtime-proxy', plane: 'runtime',
+      severity: 'error', outcome: 'failed', status: 502,
+      durationMs: Math.round(performance.now() - started),
+      message: 'Apocv4 public-turn evidence envelope failed exact validation.',
+      effectClass: 'apocrypha.public.turn.no-effects', authority: 'authenticated-member',
     });
     return;
   }
 
   res.status(200).json({
-    text: responseText,
+    text: projection.model_reported.text,
     conversation_id: clientConversationId,
     request_id: clientRequestId,
-    transition_id: transitionId,
-    state_root: stateRoot,
-    expression_mode: expressionMode,
-    external_inference: false,
-    effect_authority: effectAuthority,
-    outcome,
+    model_id: modelId,
+    response_id: responseId,
+    response_digest: responseDigest,
+    serving_profile_digest: servingProfileDigest,
+    effect_authority: 'NONE',
+    tool_authority: 'NONE',
+    outcome: 'completed',
+    learned_faculty_used: true,
     memory_scope: 'ephemeral',
     conversation_history: 'not_retained_by_public_interface',
     training_consent: false,
-    duplicate_commit_protection: 'active',
-    upstream_status: upstream.status,
+    duplicate_effect_protection: 'not_applicable_no_effect_authority',
+    upstream_status: projection.observed.receipt.upstream_status,
     ...envelope(),
+  });
+  await emitOperationalTelemetry({
+    trace, kind: 'inference.apocrypha.turn.completed', source: 'apocv4-runtime-proxy', plane: 'runtime',
+    severity: 'info', outcome: 'succeeded', status: 200,
+    durationMs: Math.round(performance.now() - started),
+    message: 'Apocv4 public turn completed with exact evidence envelope.',
+    effectClass: 'apocrypha.public.turn.no-effects', authority: 'authenticated-member',
+    receiptRef: responseDigest,
+    attributes: {
+      upstream_status: projection.observed.receipt.upstream_status,
+      model_id: modelId,
+      effect_authority: 'NONE',
+      tool_authority: 'NONE',
+      memory_scope: 'ephemeral',
+      training_consent: false,
+    },
   });
 }
