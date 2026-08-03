@@ -50,6 +50,19 @@ interface ChatMessage {
   role: MessageRole;
   text: string;
   receipt?: TurnReceipt;
+  codeEffect?: CodeEffectReceipt;
+}
+
+interface CodeEffectReceipt {
+  state: string;
+  allowedPaths: string[];
+  proposalDigest: string;
+  promotionEventDigest: string | null;
+  terminalEventDigest: string | null;
+  testPassed: boolean | null;
+  testExitCode: string | null;
+  latencyMs: string;
+  rollbackEventDigest?: string | null;
 }
 
 interface PendingTurn {
@@ -80,6 +93,19 @@ interface TurnResponse {
   context?: unknown;
 }
 
+interface CodeResponse {
+  kind?: unknown;
+  error?: unknown;
+  observed?: unknown;
+  generated?: unknown;
+}
+
+interface RollbackResponse {
+  kind?: unknown;
+  error?: unknown;
+  observed?: unknown;
+}
+
 type GenerativeMode = 'general' | 'code' | 'analyze' | 'write' | 'explain';
 
 const GENERATIVE_MODES: ReadonlyArray<{
@@ -96,6 +122,7 @@ const GENERATIVE_MODES: ReadonlyArray<{
 ];
 
 const CHAT_BROWSER_DEADLINE_MS = 28_000;
+const CODE_BROWSER_DEADLINE_MS = 250_000;
 const MAX_TEXT_BYTES = 16_384;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -116,6 +143,56 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function digestValue(value: unknown): string | null {
+  return typeof value === 'string' && SHA256_PATTERN.test(value) ? value : null;
+}
+
+function parseCodePaths(value: string): string[] {
+  return value
+    .split(/[\r\n,]+/)
+    .map((path) => path.trim())
+    .filter(Boolean)
+    .sort();
+}
+
+function codeEffectReceipt(value: CodeResponse): CodeEffectReceipt | null {
+  if (value.kind !== 'code') return null;
+  const observed = recordValue(value.observed);
+  const generated = recordValue(value.generated);
+  const receipt = recordValue(observed?.receipt);
+  const runtime = recordValue(observed?.runtime);
+  const test = observed?.test === null ? null : recordValue(observed?.test);
+  const state = stringValue(runtime?.state);
+  const proposalDigest = digestValue(generated?.proposal_digest);
+  const paths = Array.isArray(generated?.requested_allowed_paths)
+    ? generated.requested_allowed_paths.filter((path): path is string => typeof path === 'string')
+    : [];
+  if (!receipt || !runtime || !state || !proposalDigest || paths.length < 1) return null;
+  const promotionEventDigest = digestValue(runtime.promotion_event_digest);
+  if (state === 'PROMOTED' && !promotionEventDigest) return null;
+  return {
+    state,
+    allowedPaths: paths,
+    proposalDigest,
+    promotionEventDigest,
+    terminalEventDigest: digestValue(runtime.terminal_event_digest),
+    testPassed: test ? test.passed === true : null,
+    testExitCode: test && (typeof test.exit_code === 'string' || typeof test.exit_code === 'number')
+      ? String(test.exit_code)
+      : null,
+    latencyMs: typeof receipt.latency_ms === 'number' ? String(receipt.latency_ms) : '—',
+  };
+}
+
+function codeEffectSummary(receipt: CodeEffectReceipt): string {
+  const testSummary = receipt.testPassed === true
+    ? 'Isolated tests passed.'
+    : receipt.testPassed === false
+      ? 'Isolated tests failed; promotion was not accepted.'
+      : 'No isolated-test result was returned for this terminal state.';
+  return `Governed code run finished: ${receipt.state}. ${testSummary} ${receipt.allowedPaths.length} allowed file${receipt.allowedPaths.length === 1 ? '' : 's'} were admitted.`;
 }
 
 function identityReceipt(value: unknown): IdentityReceipt | null {
@@ -256,6 +333,9 @@ export function PublicChat(): JSX.Element {
   const [pendingTurn, setPendingTurn] = useState<PendingTurn | null>(null);
   const [lastModel, setLastModel] = useState<string | null>(null);
   const [mode, setMode] = useState<GenerativeMode>('general');
+  const [codePathInput, setCodePathInput] = useState('');
+  const [codeConfirmed, setCodeConfirmed] = useState(false);
+  const [rollingBackId, setRollingBackId] = useState<string | null>(null);
   const inFlightRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -269,25 +349,40 @@ export function PublicChat(): JSX.Element {
   }, [messages, waiting, error]);
 
   const newConversation = useCallback(() => {
-    if (waiting) return;
+    if (waiting || rollingBackId) return;
     setConversationId(crypto.randomUUID().toLowerCase());
     setMessages([]);
     setDraft('');
+    setCodePathInput('');
+    setCodeConfirmed(false);
     setPendingTurn(null);
     setError(null);
     setLastModel(null);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, [waiting]);
+  }, [rollingBackId, waiting]);
 
   const send = useCallback(async (retry?: PendingTurn): Promise<void> => {
     const text = retry?.text ?? draft.trim();
+    const runCodeEffect = !retry && access === 'owner' && mode === 'code';
+    const allowedPaths = runCodeEffect ? parseCodePaths(codePathInput) : [];
+    const duplicatePath = new Set(allowedPaths).size !== allowedPaths.length;
     if (
       !authenticated
       || !conversationId
       || !text
       || waiting
+      || rollingBackId
       || inFlightRef.current
     ) {
+      return;
+    }
+    if (runCodeEffect && (
+      !codeConfirmed
+      || allowedPaths.length < 1
+      || allowedPaths.length > 32
+      || duplicatePath
+    )) {
+      setError('Owner Code mode requires 1–32 unique repository-relative paths and explicit effect confirmation.');
       return;
     }
     if (byteLength(text) > MAX_TEXT_BYTES) {
@@ -312,9 +407,46 @@ export function PublicChat(): JSX.Element {
     setError(null);
 
     const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(), CHAT_BROWSER_DEADLINE_MS);
-    let retryable = true;
+    const deadline = setTimeout(
+      () => controller.abort(),
+      runCodeEffect ? CODE_BROWSER_DEADLINE_MS : CHAT_BROWSER_DEADLINE_MS,
+    );
+    let retryable = !runCodeEffect;
     try {
+      if (runCodeEffect) {
+        const response = await authFetch('/api/admin/apocv4/code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal: controller.signal,
+          body: JSON.stringify({
+            objective: text,
+            allowed_paths: allowedPaths,
+            confirm_apply: true,
+          }),
+        });
+        const body = await response.json() as CodeResponse;
+        if (!response.ok) {
+          if (response.status === 401) await refresh();
+          throw new Error(safeError(body, response.status));
+        }
+        const codeReceipt = codeEffectReceipt(body);
+        if (!codeReceipt) {
+          throw new Error('The runtime returned an invalid governed code-effect receipt.');
+        }
+        setMessages((current) => [
+          ...current,
+          {
+            id: `code-reply-${requestId}`,
+            role: 'apocrypha',
+            text: codeEffectSummary(codeReceipt),
+            codeEffect: codeReceipt,
+          },
+        ]);
+        setCodeConfirmed(false);
+        return;
+      }
       const response = await authFetch('/api/apocrypha/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -362,14 +494,16 @@ export function PublicChat(): JSX.Element {
       ]);
     } catch (cause) {
       const timedOut = cause instanceof DOMException && cause.name === 'AbortError';
-      if (timedOut || retryable) {
+      if (!runCodeEffect && (timedOut || retryable)) {
         setPendingTurn(pending);
       } else {
         setMessages((current) => current.filter((message) => message.id !== messageId));
         setDraft(text);
       }
       setError(
-        timedOut
+        timedOut && runCodeEffect
+          ? 'The code-effect connection timed out. It was not retried; inspect runtime receipts before confirming another run.'
+          : timedOut
           ? 'Apocrypha did not answer before the bounded turn deadline.'
           : cause instanceof Error ? cause.message : 'The turn could not be completed.',
       );
@@ -379,10 +513,62 @@ export function PublicChat(): JSX.Element {
       setWaiting(false);
       requestAnimationFrame(() => composerRef.current?.focus());
     }
-  }, [authenticated, conversationId, draft, refresh, waiting]);
+  }, [access, authenticated, codeConfirmed, codePathInput, conversationId, draft, mode, refresh, rollingBackId, waiting]);
+
+  const rollbackCodeEffect = useCallback(async (
+    messageId: string,
+    promotionEventDigest: string,
+  ): Promise<void> => {
+    if (access !== 'owner' || waiting || rollingBackId) return;
+    setRollingBackId(messageId);
+    setError(null);
+    try {
+      const response = await authFetch('/api/admin/apocv4/code/rollback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          promotion_event_digest: promotionEventDigest,
+          confirm_rollback: true,
+        }),
+      });
+      const body = await response.json() as RollbackResponse;
+      if (!response.ok) throw new Error(safeError(body, response.status));
+      const observed = recordValue(body.observed);
+      const runtime = recordValue(observed?.runtime);
+      const rollbackDigest = digestValue(runtime?.rollback_event_digest);
+      if (
+        body.kind !== 'rollback'
+        || runtime?.state !== 'ROLLED_BACK'
+        || runtime.promotion_event_digest !== promotionEventDigest
+        || !rollbackDigest
+      ) {
+        throw new Error('The runtime returned an invalid governed rollback receipt.');
+      }
+      setMessages((current) => current.map((message) => message.id === messageId && message.codeEffect
+        ? {
+          ...message,
+          text: `Governed code change rolled back. ${message.codeEffect.allowedPaths.length} admitted file${message.codeEffect.allowedPaths.length === 1 ? '' : 's'} restored from the promotion snapshot.`,
+          codeEffect: {
+            ...message.codeEffect,
+            state: 'ROLLED_BACK',
+            rollbackEventDigest: rollbackDigest,
+          },
+        }
+        : message));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The rollback could not be completed.');
+    } finally {
+      setRollingBackId(null);
+    }
+  }, [access, rollingBackId, waiting]);
 
   const currentBytes = byteLength(draft);
   const selectedMode = GENERATIVE_MODES.find((candidate) => candidate.id === mode) ?? GENERATIVE_MODES[0]!;
+  const codePaths = parseCodePaths(codePathInput);
+  const duplicateCodePath = new Set(codePaths).size !== codePaths.length;
+  const ownerCodeMode = access === 'owner' && mode === 'code';
   const sessionLabel = access === 'checking'
     ? 'Checking sign-in'
     : authenticated
@@ -432,7 +618,7 @@ export function PublicChat(): JSX.Element {
                 type="button"
                 className={styles.newButton}
                 onClick={newConversation}
-                disabled={waiting || !conversationId}
+                disabled={waiting || Boolean(rollingBackId) || !conversationId}
               >
                 New chat
               </button>
@@ -464,7 +650,7 @@ export function PublicChat(): JSX.Element {
                   </div>
                   <div>
                     <dt>Effect authority</dt>
-                    <dd>None</dd>
+                    <dd>{ownerCodeMode ? 'Owner-confirmed code only' : 'None'}</dd>
                   </div>
                 </dl>
               </div>
@@ -510,13 +696,41 @@ export function PublicChat(): JSX.Element {
                     </dl>
                   </details>
                 )}
+                {message.codeEffect && (
+                  <details className={styles.codeReceipt} open>
+                    <summary>Governed code-effect receipt</summary>
+                    <dl>
+                      <div><dt>State</dt><dd>{message.codeEffect.state}</dd></div>
+                      <div><dt>Isolated test</dt><dd>{message.codeEffect.testPassed === true ? 'Passed' : message.codeEffect.testPassed === false ? 'Failed' : 'Not returned'}</dd></div>
+                      <div><dt>Exit</dt><dd>{message.codeEffect.testExitCode ?? '—'}</dd></div>
+                      <div><dt>Latency</dt><dd>{message.codeEffect.latencyMs} ms</dd></div>
+                      <div><dt>Proposal</dt><dd>{message.codeEffect.proposalDigest.slice(0, 16)}…</dd></div>
+                      <div><dt>Event</dt><dd>{(message.codeEffect.rollbackEventDigest ?? message.codeEffect.terminalEventDigest ?? message.codeEffect.promotionEventDigest ?? '—').slice(0, 16)}{message.codeEffect.rollbackEventDigest || message.codeEffect.terminalEventDigest || message.codeEffect.promotionEventDigest ? '…' : ''}</dd></div>
+                    </dl>
+                    <ul aria-label="Admitted code paths">
+                      {message.codeEffect.allowedPaths.map((path) => <li key={path}><code>{path}</code></li>)}
+                    </ul>
+                    {access === 'owner'
+                      && message.codeEffect.state === 'PROMOTED'
+                      && message.codeEffect.promotionEventDigest && (
+                        <button
+                          type="button"
+                          className={styles.rollbackButton}
+                          onClick={() => { void rollbackCodeEffect(message.id, message.codeEffect!.promotionEventDigest!); }}
+                          disabled={waiting || Boolean(rollingBackId)}
+                        >
+                          {rollingBackId === message.id ? 'Rolling back…' : 'Rollback this change'}
+                        </button>
+                    )}
+                  </details>
+                )}
               </article>
             ))}
 
             {waiting && (
               <div className={styles.waiting} role="status">
                 <span className={styles.waitingMark} aria-hidden="true" />
-                Apocrypha is thinking…
+                {ownerCodeMode ? 'Apocrypha is generating, testing and applying within the confirmed scope…' : 'Apocrypha is thinking…'}
               </div>
             )}
 
@@ -527,7 +741,7 @@ export function PublicChat(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => { void send(pendingTurn); }}
-                    disabled={waiting}
+                    disabled={waiting || Boolean(rollingBackId)}
                   >
                     Retry same turn
                   </button>
@@ -555,6 +769,7 @@ export function PublicChat(): JSX.Element {
                     aria-pressed={candidate.id === mode}
                     onClick={() => {
                       setMode(candidate.id);
+                      setCodeConfirmed(false);
                       if (candidate.starter) {
                         setDraft((current) => current.startsWith(candidate.starter)
                           ? current
@@ -562,12 +777,45 @@ export function PublicChat(): JSX.Element {
                       }
                       requestAnimationFrame(() => composerRef.current?.focus());
                     }}
-                    disabled={waiting}
+                    disabled={waiting || Boolean(rollingBackId)}
                   >
                     {candidate.label}
                   </button>
                 ))}
               </div>
+              {ownerCodeMode && (
+                <fieldset className={styles.codeScope}>
+                  <legend>Owner-governed code effect</legend>
+                  <label htmlFor="public-apocrypha-code-paths">
+                    Allowed files · one exact repository-relative path per line
+                  </label>
+                  <textarea
+                    id="public-apocrypha-code-paths"
+                    value={codePathInput}
+                    rows={3}
+                    spellCheck={false}
+                    placeholder={'src/apocv4/example.py\ntests/test_example.py'}
+                    disabled={waiting || Boolean(rollingBackId)}
+                    onChange={(event) => {
+                      setCodePathInput(event.target.value);
+                      setCodeConfirmed(false);
+                    }}
+                  />
+                  <div className={styles.codeScopeMeta}>
+                    <span>{codePaths.length}/32 files</span>
+                    {duplicateCodePath && <strong>Each path must be unique.</strong>}
+                  </div>
+                  <label className={styles.codeConfirm}>
+                    <input
+                      type="checkbox"
+                      checked={codeConfirmed}
+                      disabled={waiting || Boolean(rollingBackId) || codePaths.length < 1 || codePaths.length > 32 || duplicateCodePath}
+                      onChange={(event) => setCodeConfirmed(event.target.checked)}
+                    />
+                    <span>I authorize one bounded generate → isolate → test → apply effect on exactly these files. No automatic retry.</span>
+                  </label>
+                </fieldset>
+              )}
               <div className={styles.composerField}>
                 <textarea
                   id="public-apocrypha-message"
@@ -576,10 +824,11 @@ export function PublicChat(): JSX.Element {
                   rows={2}
                   maxLength={MAX_TEXT_BYTES}
                   placeholder={selectedMode.placeholder}
-                  disabled={waiting || !conversationId}
+                  disabled={waiting || Boolean(rollingBackId) || !conversationId}
                   aria-describedby="public-apocrypha-disclosure public-apocrypha-count"
                   onChange={(event) => {
                     setDraft(event.target.value);
+                    setCodeConfirmed(false);
                     if (error && !pendingTurn) setError(null);
                   }}
                   onKeyDown={(event) => {
@@ -593,18 +842,27 @@ export function PublicChat(): JSX.Element {
                   type="submit"
                   disabled={
                     waiting
+                    || Boolean(rollingBackId)
                     || !conversationId
                     || !draft.trim()
                     || currentBytes > MAX_TEXT_BYTES
+                    || (ownerCodeMode && (
+                      !codeConfirmed
+                      || codePaths.length < 1
+                      || codePaths.length > 32
+                      || duplicateCodePath
+                    ))
                   }
                 >
-                  {waiting ? 'Waiting' : 'Send'}
+                  {waiting ? 'Waiting' : ownerCodeMode ? 'Generate, test & apply' : 'Send'}
                   <span aria-hidden="true">↗</span>
                 </button>
               </div>
               <div className={styles.composerMeta}>
                 <p id="public-apocrypha-disclosure">
-                  Governed retrieval and read-only context may be used · workspace and external effects require separate owner confirmation.
+                  {ownerCodeMode
+                    ? 'Owner Code mode uses the governed runtime only after exact path scope and one-run confirmation.'
+                    : 'Governed retrieval and read-only context may be used · workspace and external effects require separate owner confirmation.'}
                 </p>
                 <span id="public-apocrypha-count">
                   {currentBytes.toLocaleString()} / {MAX_TEXT_BYTES.toLocaleString()} bytes
@@ -640,8 +898,8 @@ export function PublicChat(): JSX.Element {
             <dl className={styles.truthList}>
               <div><dt>Connection</dt><dd>Signed-in member → Apocrypha</dd></div>
               <div><dt>Response model</dt><dd>{lastModel ?? 'Verified with each response'}</dd></div>
-              <div><dt>Retry</dt><dd>Same request ID; effects remain disabled</dd></div>
-              <div><dt>Effects</dt><dd>No external effects; read-only context may be used</dd></div>
+              <div><dt>Retry</dt><dd>{ownerCodeMode ? 'No automatic retry for code effects' : 'Same request ID; effects remain disabled'}</dd></div>
+              <div><dt>Effects</dt><dd>{ownerCodeMode ? 'One confirmed bounded code effect; rollback receipt retained' : 'No external effects; read-only context may be used'}</dd></div>
               <div><dt>History</dt><dd>Bounded to this session; not retained across sessions</dd></div>
             </dl>
           </details>

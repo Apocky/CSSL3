@@ -261,6 +261,35 @@
 .receipt dt { color: #6f6c7b; font-size: 0.56rem; text-transform: uppercase; }
 .receipt dd { margin: 4px 0 0; overflow: hidden; color: #aaa6b5; font: 0.63rem/1.4 ui-monospace, monospace; text-overflow: ellipsis; }
 
+.codeReceipt {
+  grid-column: 2;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(170,145,241,0.3);
+  border-radius: 10px;
+  background: rgba(170,145,241,0.045);
+}
+.codeReceipt summary { color: #c2b7e7; cursor: pointer; font-size: 0.7rem; font-weight: 700; }
+.codeReceipt dl { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin: 12px 0; }
+.codeReceipt dl div { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(8,9,15,0.5); }
+.codeReceipt dt { color: #777284; font-size: 0.55rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.codeReceipt dd { margin: 4px 0 0; overflow: hidden; color: #c6c0d3; font: 0.63rem/1.35 ui-monospace,monospace; text-overflow: ellipsis; }
+.codeReceipt ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.codeReceipt li { overflow: hidden; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; color: #b8d9e4; background: rgba(8,9,15,0.42); text-overflow: ellipsis; }
+.codeReceipt code { font-size: 0.66rem; }
+.rollbackButton {
+  min-height: 40px;
+  margin-top: 12px;
+  padding: 0 13px;
+  border: 1px solid rgba(244,131,147,0.4);
+  border-radius: 8px;
+  color: #ffc2ca;
+  background: rgba(101,31,46,0.2);
+  cursor: pointer;
+  font-weight: 700;
+}
+.rollbackButton:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .waiting { display: flex; align-items: center; gap: 10px; color: #aaa6b5; font-size: 0.76rem; }
 .waitingMark { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 16px rgba(141,227,239,0.7); animation: breathe 1.35s ease-in-out infinite; }
 
@@ -305,6 +334,23 @@
   font: 650 0.68rem/1 inherit;
 }
 .toolDock button[aria-pressed="true"] { border-color: rgba(141,227,239,0.42); color: #dffbff; background: rgba(141,227,239,0.07); }
+.codeScope {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 11px;
+  padding: 12px;
+  border: 1px solid rgba(170,145,241,0.3);
+  border-radius: 9px;
+  background: rgba(170,145,241,0.04);
+}
+.codeScope legend { padding: 0 6px; color: #c1b6e5; font: 700 0.62rem/1 ui-monospace,monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+.codeScope > label { color: #aaa5b6; font-size: 0.67rem; font-weight: 650; }
+.codeScope textarea { min-height: 72px; max-height: 150px; padding: 10px 12px; border-radius: 8px; font: 0.72rem/1.45 ui-monospace,monospace; }
+.codeScopeMeta { display: flex; justify-content: space-between; gap: 12px; color: #797586; font-size: 0.61rem; }
+.codeScopeMeta strong { color: #f0a4ae; font-weight: 650; }
+.codeConfirm { display: flex; align-items: flex-start; gap: 9px; margin-top: 2px; color: #b4afbe !important; line-height: 1.45; cursor: pointer; }
+.codeConfirm input { flex: none; margin: 2px 0 0; accent-color: var(--accent-2); }
+.codeConfirm input:disabled + span { opacity: 0.5; }
 .composerField { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 10px; }
 .composer textarea {
   width: 100%;
@@ -381,6 +427,9 @@
   outline-offset: 3px;
 }
 .toolDock button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.rollbackButton:focus-visible,
+.codeScope textarea:focus-visible,
+.codeConfirm input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 @keyframes breathe { 50% { opacity: 0.4; transform: scale(0.72); } }
 
@@ -401,8 +450,8 @@
   .contract dt,.contract dd { margin: 0; }
   .messages { padding: 0; }
   .message { grid-template-columns: 1fr; gap: 8px; padding: 22px 15px; }
-  .receipt { grid-column: 1; }
-  .receipt dl { grid-template-columns: 1fr; }
+  .receipt, .codeReceipt { grid-column: 1; }
+  .receipt dl, .codeReceipt dl { grid-template-columns: 1fr; }
   .composer { position: sticky; bottom: 0; padding: 11px 12px calc(10px + env(safe-area-inset-bottom)); }
   .composerField { gap: 7px; }
   .composer textarea { min-height: 72px; padding: 13px; }
@@ -435,6 +484,6 @@
 }
 
 @media (forced-colors: active) {
-  .conversation,.truthRail > details,.composer textarea,.contract { border: 1px solid CanvasText; }
-  .composerField > button,.newButton,.accessGate a { border: 1px solid ButtonText; }
+  .conversation,.truthRail > details,.composer textarea,.contract,.codeScope,.codeReceipt { border: 1px solid CanvasText; }
+  .composerField > button,.newButton,.accessGate a,.rollbackButton { border: 1px solid ButtonText; }
 }
