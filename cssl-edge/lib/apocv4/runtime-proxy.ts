@@ -1545,6 +1545,13 @@ async function callRuntime(
       bindingMac === null ? [token] : [token, bindingMac, bindingSecret ?? ''],
     );
     if (!response.ok) {
+      if (
+        response.status === 404
+        && exactKeys(data, ['schema_version', 'error'])
+        && data.error === 'session_not_found'
+      ) {
+        throw new RuntimeProxyError('session_not_found', 404, response.status);
+      }
       throw new RuntimeProxyError('runtime_http_error', 502, response.status);
     }
     if (

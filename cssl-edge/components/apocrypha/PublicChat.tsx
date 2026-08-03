@@ -233,6 +233,13 @@ interface DurableSessionSnapshot {
   world: DurableWorldState;
 }
 
+class SessionNotFoundError extends Error {
+  constructor() {
+    super('session_not_found');
+    this.name = 'SessionNotFoundError';
+  }
+}
+
 type GenerativeMode = 'general' | 'code' | 'analyze' | 'write' | 'explain';
 
 const GENERATIVE_MODES: ReadonlyArray<{
@@ -1170,6 +1177,9 @@ export function PublicChat(): JSX.Element {
     const body = recordValue(await response.json());
     if (!response.ok) {
       if (response.status === 401) await refresh();
+      if (response.status === 404 && body?.error === 'session_not_found') {
+        throw new SessionNotFoundError();
+      }
       throw new Error(stringValue(body?.error) ?? 'This conversation could not be restored.');
     }
     const snapshot = durableSessionSnapshot(body?.session, sessionId);
@@ -1308,9 +1318,14 @@ export function PublicChat(): JSX.Element {
             recentListAttempted = true;
             summaries = await fetchSessionSummaries(controller.signal);
             const newest = summaries[0]?.session_id;
-            if (!newest || newest === storedSessionId) throw directCause;
-            selected = newest;
-            snapshot = await fetchSessionSnapshot(newest, controller.signal);
+            if (!newest) {
+              if (!(directCause instanceof SessionNotFoundError)) throw directCause;
+              selected = undefined;
+            } else {
+              if (newest === storedSessionId) throw directCause;
+              selected = newest;
+              snapshot = await fetchSessionSnapshot(newest, controller.signal);
+            }
           }
         } else {
           recentListAttempted = true;
