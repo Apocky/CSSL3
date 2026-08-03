@@ -2125,7 +2125,7 @@ export function PublicChat(): JSX.Element {
       : 'Set effect scope';
 
   return (
-    <div className={styles.page} data-public-apocrypha="apocv4-chat-v1">
+    <div className={styles.page} data-public-apocrypha="apocv4-chat-v2">
       <CyberDreamField variant="relay" activity={waiting ? 'thinking' : draft.trim() ? 'listening' : 'idle'} density={0.78} viewport />
       <a className={styles.skipLink} href="#apocrypha-conversation">Skip to conversation</a>
 
@@ -2136,7 +2136,7 @@ export function PublicChat(): JSX.Element {
         </Link>
         <div className={styles.identity}>
           <span className={styles.identityName}>Apocrypha</span>
-          <span className={styles.identityMeta}>Digital intelligence workspace</span>
+          <span className={styles.identityMeta}>Persistent governed intelligence</span>
         </div>
         <nav className={styles.nav} aria-label="Apocrypha navigation">
           <Link href="/clearing">The Clearing</Link>
@@ -2205,11 +2205,11 @@ export function PublicChat(): JSX.Element {
             {messages.length === 0 && (
               <div className={styles.emptyState}>
                 <div className={styles.emptyKicker} aria-hidden="true">A</div>
-                <h2>Bring me something difficult.</h2>
-                <p>Write naturally—or right-click the space around us to choose a different shape of thought.</p>
+                <h2>Bring the whole problem.</h2>
+                <p>Think, build, inspect, and repair here. This conversation keeps the changing world attached.</p>
                 <div className={styles.emptyHints} aria-label="Interaction hints">
-                  <span><kbd>Ctrl K</kbd> approach constellation</span>
-                  <span><kbd>Right-click</kbd> contextual actions</span>
+                  <span><kbd>Ctrl K</kbd> choose an approach</span>
+                  <span><kbd>Right-click</kbd> act on context</span>
                 </div>
               </div>
             )}
