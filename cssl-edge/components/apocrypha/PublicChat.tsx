@@ -9,9 +9,10 @@ import styles from '@/styles/PublicApocrypha.module.css';
 type MessageRole = 'user' | 'apocrypha';
 
 interface TurnReceipt {
-  transitionId: string;
-  stateRoot: string;
-  expressionMode: string;
+  modelId: string;
+  responseId: string;
+  responseDigest: string;
+  servingProfileDigest: string;
 }
 
 interface ChatMessage {
@@ -32,23 +33,24 @@ interface TurnResponse {
   error?: unknown;
   conversation_id?: unknown;
   request_id?: unknown;
-  transition_id?: unknown;
-  state_root?: unknown;
-  expression_mode?: unknown;
-  external_inference?: unknown;
+  model_id?: unknown;
+  response_id?: unknown;
+  response_digest?: unknown;
+  serving_profile_digest?: unknown;
   effect_authority?: unknown;
+  tool_authority?: unknown;
   outcome?: unknown;
+  learned_faculty_used?: unknown;
   memory_scope?: unknown;
   conversation_history?: unknown;
   training_consent?: unknown;
-  duplicate_commit_protection?: unknown;
+  duplicate_effect_protection?: unknown;
   retry_after_seconds?: unknown;
 }
 
 const CHAT_BROWSER_DEADLINE_MS = 28_000;
 const MAX_TEXT_BYTES = 16_384;
-const EXPECTED_EXPRESSION_MODE = 'bootstrap_shallow';
-const EXPECTED_EFFECT_AUTHORITY = 'deny_all_O10_membrane';
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
@@ -69,23 +71,28 @@ function isExactTurn(
   requestId: string,
 ): body is TurnResponse & {
   text: string;
-  transition_id: string;
-  state_root: string;
-  expression_mode: string;
+  model_id: string;
+  response_id: string;
+  response_digest: string;
+  serving_profile_digest: string;
 } {
   return body.conversation_id === conversationId
     && body.request_id === requestId
     && Boolean(stringValue(body.text))
-    && Boolean(stringValue(body.transition_id))
-    && Boolean(stringValue(body.state_root))
-    && body.expression_mode === EXPECTED_EXPRESSION_MODE
-    && body.external_inference === false
-    && body.effect_authority === EXPECTED_EFFECT_AUTHORITY
-    && body.outcome === 'committed'
+    && Boolean(stringValue(body.model_id))
+    && Boolean(stringValue(body.response_id))
+    && typeof body.response_digest === 'string'
+    && SHA256_PATTERN.test(body.response_digest)
+    && typeof body.serving_profile_digest === 'string'
+    && SHA256_PATTERN.test(body.serving_profile_digest)
+    && body.effect_authority === 'NONE'
+    && body.tool_authority === 'NONE'
+    && body.outcome === 'completed'
+    && body.learned_faculty_used === true
     && body.memory_scope === 'ephemeral'
     && body.conversation_history === 'not_retained_by_public_interface'
     && body.training_consent === false
-    && body.duplicate_commit_protection === 'active';
+    && body.duplicate_effect_protection === 'not_applicable_no_effect_authority';
 }
 
 function scrollBehavior(): ScrollBehavior {
@@ -106,7 +113,7 @@ export function PublicChat(): JSX.Element {
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingTurn, setPendingTurn] = useState<PendingTurn | null>(null);
-  const [lastExpression, setLastExpression] = useState<string | null>(null);
+  const [lastModel, setLastModel] = useState<string | null>(null);
   const inFlightRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -126,7 +133,7 @@ export function PublicChat(): JSX.Element {
     setDraft('');
     setPendingTurn(null);
     setError(null);
-    setLastExpression(null);
+    setLastModel(null);
     requestAnimationFrame(() => composerRef.current?.focus());
   }, [waiting]);
 
@@ -190,9 +197,7 @@ export function PublicChat(): JSX.Element {
         throw new Error('The native body returned an invalid public-turn envelope.');
       }
       const responseText = body.text;
-      const transitionId = body.transition_id;
-      const stateRoot = body.state_root;
-      setLastExpression(body.expression_mode);
+      setLastModel(body.model_id);
       setMessages((current) => [
         ...current,
         {
@@ -200,9 +205,10 @@ export function PublicChat(): JSX.Element {
           role: 'apocrypha',
           text: responseText,
           receipt: {
-            transitionId,
-            stateRoot,
-            expressionMode: body.expression_mode,
+            modelId: body.model_id,
+            responseId: body.response_id,
+            responseDigest: body.response_digest,
+            servingProfileDigest: body.serving_profile_digest,
           },
         },
       ]);
@@ -237,7 +243,7 @@ export function PublicChat(): JSX.Element {
         : 'Sign in required';
 
   return (
-    <div className={styles.page} data-public-apocrypha="native-v2">
+    <div className={styles.page} data-public-apocrypha="apocv4-chat-v1">
       <CyberDreamField variant="relay" activity={waiting ? 'thinking' : draft.trim() ? 'listening' : 'idle'} density={0.78} viewport />
       <a className={styles.skipLink} href="#apocrypha-conversation">Skip to conversation</a>
 
@@ -308,8 +314,8 @@ export function PublicChat(): JSX.Element {
                     <dd>Off</dd>
                   </div>
                   <div>
-                    <dt>External models</dt>
-                    <dd>Off</dd>
+                    <dt>Effect authority</dt>
+                    <dd>None</dd>
                   </div>
                 </dl>
               </div>
@@ -328,11 +334,12 @@ export function PublicChat(): JSX.Element {
                 <div className={styles.messageText}>{message.text}</div>
                 {message.receipt && (
                   <details className={styles.receipt}>
-                    <summary>Committed turn receipt</summary>
+                    <summary>Verified response receipt</summary>
                     <dl>
-                      <div><dt>Expression</dt><dd>{message.receipt.expressionMode}</dd></div>
-                      <div><dt>Transition</dt><dd>{message.receipt.transitionId.slice(0, 16)}…</dd></div>
-                      <div><dt>State root</dt><dd>{message.receipt.stateRoot.slice(0, 16)}…</dd></div>
+                      <div><dt>Model</dt><dd>{message.receipt.modelId}</dd></div>
+                      <div><dt>Response</dt><dd>{message.receipt.responseId}</dd></div>
+                      <div><dt>Digest</dt><dd>{message.receipt.responseDigest.slice(0, 16)}…</dd></div>
+                      <div><dt>Serving profile</dt><dd>{message.receipt.servingProfileDigest.slice(0, 16)}…</dd></div>
                     </dl>
                   </details>
                 )}
@@ -443,9 +450,9 @@ export function PublicChat(): JSX.Element {
             </div>
             <dl className={styles.truthList}>
               <div><dt>Connection</dt><dd>Signed-in member → Apocrypha</dd></div>
-              <div><dt>Response mode</dt><dd>{lastExpression ?? 'Verified with each response'}</dd></div>
-              <div><dt>Retry</dt><dd>Same request, no duplicate turn</dd></div>
-              <div><dt>Effects</dt><dd>Disabled for public chat</dd></div>
+              <div><dt>Response model</dt><dd>{lastModel ?? 'Verified with each response'}</dd></div>
+              <div><dt>Retry</dt><dd>Same request ID; effects remain disabled</dd></div>
+              <div><dt>Effects</dt><dd>No effect or tool authority</dd></div>
               <div><dt>History</dt><dd>Not retained across sessions</dd></div>
             </dl>
             <p className={styles.truthFoot}>This is not the social room. Visit <Link href="/clearing">The Clearing</Link> to speak with people.</p>
