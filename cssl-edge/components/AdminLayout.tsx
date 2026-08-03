@@ -17,6 +17,8 @@ interface AdminLayoutProps {
   title: string;
   children: ReactNode;
   onAdminCheck?: (check: AdminCheck) => void;
+  hideHeading?: boolean;
+  immersive?: boolean;
 }
 
 interface AdminCheck {
@@ -34,12 +36,14 @@ interface NavItem {
   mobile?: boolean;
 }
 
-// 8 items · all Apocrypha-internal · LoA stuff lives elsewhere now (D043).
+// All destinations stay Apocrypha-internal · LoA stuff lives elsewhere now (D043).
 // Mobile bottom-nav = 3 icons (Chat / Diagnostics / Logs) — the trio you actually
 // pull out your phone for. Everything else lives in the desktop side-nav.
 const NAV: ReadonlyArray<NavItem> = [
   { href: '/admin', label: 'Home', glyph: '§',
     tip: 'Apocrypha health summary · today\'s activity · quick links' },
+  { href: '/admin/apex', label: 'Apex', glyph: '◉',
+    tip: 'Live Apocv4 presence · bounded objectives · observed evidence receipts' },
   { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true,
     tip: 'One authenticated V2 REST turn · one committed final response' },
   { href: '/admin/cognition', label: 'Cognition', glyph: '∞', mobile: true,
@@ -60,7 +64,13 @@ const NAV: ReadonlyArray<NavItem> = [
 
 const MOBILE_NAV = NAV.filter((item) => item.mobile);
 
-export default function AdminLayout({ title, children, onAdminCheck }: AdminLayoutProps) {
+export default function AdminLayout({
+  title,
+  children,
+  onAdminCheck,
+  hideHeading = false,
+  immersive = false,
+}: AdminLayoutProps) {
   const router = useRouter();
   const [check, setCheck] = useState<AdminCheck | null>(null);
   const loginHref = loginHrefForReturnPath(router.asPath || router.pathname || '/admin/chat');
@@ -107,20 +117,24 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
           input, button, select, textarea { font-family: inherit; font-size: 1rem; }
           @media (max-width: 767px) {
             .admin-main { padding-bottom: 80px !important; }
+            .admin-main--immersive { padding: 0 !important; }
             .admin-side { display: none !important; }
             .admin-bottom-nav { display: flex !important; }
+            .admin-bottom-nav--immersive { display: none !important; }
           }
           @media (min-width: 768px) {
             .admin-bottom-nav { display: none !important; }
             .admin-side { display: flex !important; }
             .admin-main { margin-left: 220px; }
+            .admin-side--immersive { display: none !important; }
+            .admin-main--immersive { margin-left: 0 !important; padding: 0 !important; }
           }
         `}</style>
       </Head>
 
       {/* ─── DESKTOP / TABLET SIDE-NAV ─── */}
       <aside
-        className="admin-side"
+        className={`admin-side${immersive ? ' admin-side--immersive' : ''}`}
         style={{
           display: 'none',
           flexDirection: 'column',
@@ -200,7 +214,10 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
       </aside>
 
       {/* ─── MAIN CONTENT ─── */}
-      <main className="admin-main" style={{ padding: '1.25rem 1rem 2rem', minHeight: '100dvh' }}>
+      <main
+        className={`admin-main${immersive ? ' admin-main--immersive' : ''}`}
+        style={{ padding: immersive ? 0 : '1.25rem 1rem 2rem', minHeight: '100dvh' }}
+      >
         {/* AUTH STATUS BANNER */}
         {check && !check.authorized && (
           <div
@@ -229,7 +246,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
         )}
 
         {/* PAGE HEADING */}
-        <header style={{ marginBottom: '1.5rem' }}>
+        {!hideHeading && <header style={{ marginBottom: '1.5rem' }}>
           <h1
             style={{
               fontSize: 'clamp(1.5rem, 5vw, 1.75rem)',
@@ -242,14 +259,14 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
           >
             {title}
           </h1>
-        </header>
+        </header>}
 
         {check?.authorized ? children : check ? null : <p style={{ color: '#7a7a8c' }}>§ checking admin session…</p>}
       </main>
 
       {/* ─── MOBILE BOTTOM-NAV (3 icons : Chat · Diagnostics · Logs) ─── */}
       <nav
-        className="admin-bottom-nav"
+        className={`admin-bottom-nav${immersive ? ' admin-bottom-nav--immersive' : ''}`}
         style={{
           display: 'none',
           position: 'fixed',

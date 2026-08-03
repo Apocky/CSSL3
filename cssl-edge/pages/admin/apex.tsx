@@ -1,5 +1,14 @@
 import type { NextPage } from 'next';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import Link from 'next/link';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 
 import AdminLayout from '../../components/AdminLayout';
 import { authFetch } from '../../lib/browser-auth';
@@ -7,33 +16,154 @@ import type {
   RuntimeHealthProjection,
   RuntimeObjectiveProjection,
 } from '../../lib/apocv4/runtime-proxy';
+import styles from '../../styles/AdminApex.module.css';
 
 type ApiFailure = { error?: string; upstream_status?: number };
+type JsonRecord = Record<string, unknown>;
+type TurnState = 'working' | 'accepted' | 'failed' | 'stopped';
 
-const panel: React.CSSProperties = {
-  background: 'rgba(10, 10, 16, 0.62)',
-  border: '1px solid #29293a',
-  borderRadius: 8,
-  padding: '1rem',
-};
+interface ProposalView {
+  summary: string;
+  steps: string[];
+  countercase: string | null;
+  falsifier: string | null;
+  sourceRefs: string[];
+}
 
-const pre: React.CSSProperties = {
-  background: '#08080d',
-  border: '1px solid #20202d',
-  borderRadius: 6,
-  color: '#cdd6e4',
-  fontSize: '0.74rem',
-  lineHeight: 1.5,
-  margin: '0.75rem 0 0',
-  maxHeight: 420,
-  overflow: 'auto',
-  padding: '0.75rem',
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-word',
-};
+interface EvidenceView {
+  status: string;
+  terminalReason: string | null;
+  candidateDigest: string | null;
+  testDigest: string | null;
+  checkpointDigest: string | null;
+  facultyTeamId: string | null;
+  observedAt: string;
+  latencyMs: number;
+  upstreamStatus: number;
+  authMode: string | null;
+  registryRef: string | null;
+  bindingRef: string | null;
+  principalRef: string | null;
+}
 
-function pretty(value: unknown): string {
-  return JSON.stringify(value, null, 2);
+interface ConversationTurn {
+  id: string;
+  prompt: string;
+  reply: string | null;
+  proposal: ProposalView | null;
+  evidence: EvidenceView | null;
+  state: TurnState;
+  error: string | null;
+  createdAt: string;
+}
+
+interface ConversationThread {
+  id: string;
+  title: string;
+  createdAt: string;
+  turns: ConversationTurn[];
+}
+
+interface SessionState {
+  activeThreadId: string;
+  threads: ConversationThread[];
+}
+
+const SESSION_KEY = 'apocky.apocv4.communication-hub.v1';
+const MAX_OBJECTIVE_LENGTH = 16_384;
+
+const STARTERS = [
+  'Inspect this system and find the highest-leverage reversible improvement.',
+  'Review a load-bearing code path and propose the smallest verified repair.',
+  'Turn this idea into an exact implementation with a test and rollback.',
+] as const;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const direct = stringValue(item);
+    if (direct) return [direct];
+    if (!isRecord(item)) return [];
+    const candidate = stringValue(item.ref)
+      ?? stringValue(item.source_ref)
+      ?? stringValue(item.path)
+      ?? stringValue(item.title);
+    return candidate ? [candidate] : [];
+  }).slice(0, 24);
+}
+
+function proposalAt(value: unknown): ProposalView | null {
+  if (!isRecord(value)) return null;
+  const summary = stringValue(value.summary);
+  const steps = stringList(value.steps);
+  if (!summary && steps.length === 0) return null;
+  return {
+    summary: summary ?? 'Apocrypha returned an implementation sequence.',
+    steps,
+    countercase: stringValue(value.countercase),
+    falsifier: stringValue(value.falsifier),
+    sourceRefs: stringList(value.source_refs ?? value.sources),
+  };
+}
+
+function proposalFrom(result: RuntimeObjectiveProjection): ProposalView | null {
+  for (const attempt of [...result.model_reported.attempts].reverse()) {
+    const council = isRecord(attempt.council_decision) ? attempt.council_decision : null;
+    if (!council) continue;
+    const candidates = [
+      council.candidate,
+      council.selected_candidate,
+      isRecord(council.selection) ? council.selection.candidate : null,
+    ];
+    for (const candidate of candidates) {
+      if (!isRecord(candidate)) continue;
+      const proposal = proposalAt(candidate.proposal) ?? proposalAt(candidate);
+      if (!proposal) continue;
+      const sourceRefs = proposal.sourceRefs.length > 0
+        ? proposal.sourceRefs
+        : stringList(candidate.source_refs ?? council.source_refs);
+      return {
+        ...proposal,
+        countercase: proposal.countercase ?? stringValue(candidate.countercase),
+        falsifier: proposal.falsifier ?? stringValue(candidate.falsifier),
+        sourceRefs,
+      };
+    }
+  }
+  return null;
+}
+
+function evidenceFrom(result: RuntimeObjectiveProjection): EvidenceView {
+  const runtime = result.observed.runtime;
+  const receipt = result.observed.receipt;
+  return {
+    status: stringValue(runtime.status) ?? 'UNKNOWN',
+    terminalReason: stringValue(runtime.terminal_reason),
+    candidateDigest: stringValue(runtime.accepted_candidate_digest),
+    testDigest: stringValue(runtime.last_test_run_digest),
+    checkpointDigest: stringValue(runtime.checkpoint_digest),
+    facultyTeamId: stringValue(runtime.faculty_team_id),
+    observedAt: receipt.observed_at,
+    latencyMs: receipt.latency_ms,
+    upstreamStatus: receipt.upstream_status,
+    authMode: receipt.auth_mode,
+    registryRef: receipt.auth_registry_ref,
+    bindingRef: receipt.binding_ref,
+    principalRef: receipt.principal_ref,
+  };
+}
+
+function shortDigest(value: string | null): string {
+  if (!value || value.length < 18) return value ?? 'not observed';
+  return `${value.slice(0, 10)}…${value.slice(-8)}`;
 }
 
 function errorMessage(payload: ApiFailure, status: number): string {
@@ -43,15 +173,101 @@ function errorMessage(payload: ApiFailure, status: number): string {
   return `${payload.error ?? `request_failed_${status}`}${upstream}`;
 }
 
+function freshThread(): ConversationThread {
+  return {
+    id: crypto.randomUUID().toLowerCase(),
+    title: 'New conversation',
+    createdAt: new Date().toISOString(),
+    turns: [],
+  };
+}
+
+function validSession(value: unknown): value is SessionState {
+  if (!isRecord(value) || typeof value.activeThreadId !== 'string' || !Array.isArray(value.threads)) return false;
+  return value.threads.every((thread) => (
+    isRecord(thread)
+    && typeof thread.id === 'string'
+    && typeof thread.title === 'string'
+    && typeof thread.createdAt === 'string'
+    && Array.isArray(thread.turns)
+  ));
+}
+
+function displayTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'now'
+    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 const Apex: NextPage = () => {
   const [adminAuthorized, setAdminAuthorized] = useState(false);
   const [health, setHealth] = useState<RuntimeHealthProjection | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [healthBusy, setHealthBusy] = useState(false);
-  const [objective, setObjective] = useState('');
-  const [objectiveBusy, setObjectiveBusy] = useState(false);
-  const [objectiveError, setObjectiveError] = useState<string | null>(null);
-  const [objectiveResult, setObjectiveResult] = useState<RuntimeObjectiveProjection | null>(null);
+  const [threads, setThreads] = useState<ConversationThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState('');
+  const [hydrated, setHydrated] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
+  const [drawerMode, setDrawerMode] = useState<'artifact' | 'evidence'>('artifact');
+  const [railOpen, setRailOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SESSION_KEY);
+      const parsed: unknown = stored ? JSON.parse(stored) : null;
+      if (validSession(parsed) && parsed.threads.length > 0) {
+        const safeThreads = parsed.threads.slice(0, 24) as ConversationThread[];
+        setThreads(safeThreads);
+        setActiveThreadId(safeThreads.some((thread) => thread.id === parsed.activeThreadId)
+          ? parsed.activeThreadId
+          : safeThreads[0]!.id);
+      } else {
+        const initial = freshThread();
+        setThreads([initial]);
+        setActiveThreadId(initial.id);
+      }
+    } catch {
+      const initial = freshThread();
+      setThreads([initial]);
+      setActiveThreadId(initial.id);
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || !activeThreadId || threads.length === 0) return;
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ activeThreadId, threads } satisfies SessionState));
+    } catch {
+      setRequestError('This browser could not retain local history. The live relay still works.');
+    }
+  }, [activeThreadId, hydrated, threads]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [threads]);
+
+  const activeThread = useMemo(
+    () => threads.find((thread) => thread.id === activeThreadId) ?? null,
+    [activeThreadId, threads],
+  );
+  const selectedTurn = useMemo(
+    () => activeThread?.turns.find((turn) => turn.id === selectedTurnId)
+      ?? activeThread?.turns.at(-1)
+      ?? null,
+    [activeThread, selectedTurnId],
+  );
+  const working = Boolean(activeThread?.turns.some((turn) => turn.state === 'working'));
+  const runtimeReady = health?.observed.runtime.status === 'READY';
+  const visionReady = health?.observed.runtime.vision === true;
 
   const refreshHealth = useCallback(async () => {
     setHealthBusy(true);
@@ -73,148 +289,334 @@ const Apex: NextPage = () => {
     if (adminAuthorized) void refreshHealth();
   }, [adminAuthorized, refreshHealth]);
 
-  const submitObjective = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const canonical = objective.trim();
-    if (!canonical || canonical !== objective || canonical.length > 16_384) {
-      setObjectiveError('Objective must be 1–16,384 characters with no outer whitespace.');
-      return;
-    }
-    setObjectiveBusy(true);
-    setObjectiveError(null);
-    setObjectiveResult(null);
+  const updateTurn = useCallback((threadId: string, turnId: string, patch: Partial<ConversationTurn>) => {
+    setThreads((current) => current.map((thread) => thread.id === threadId
+      ? { ...thread, turns: thread.turns.map((turn) => turn.id === turnId ? { ...turn, ...patch } : turn) }
+      : thread));
+  }, []);
+
+  const submitPrompt = useCallback(async (raw: string) => {
+    const prompt = raw.trim();
+    if (!activeThreadId || !prompt || prompt.length > MAX_OBJECTIVE_LENGTH || working || !runtimeReady) return;
+    const threadId = activeThreadId;
+    const turnId = crypto.randomUUID().toLowerCase();
+    const turn: ConversationTurn = {
+      id: turnId,
+      prompt,
+      reply: null,
+      proposal: null,
+      evidence: null,
+      state: 'working',
+      error: null,
+      createdAt: new Date().toISOString(),
+    };
+    setThreads((current) => current.map((thread) => thread.id === threadId
+      ? {
+        ...thread,
+        title: thread.turns.length === 0 ? prompt.slice(0, 54) : thread.title,
+        turns: [...thread.turns, turn],
+      }
+      : thread));
+    setSelectedTurnId(turnId);
+    setDraft('');
+    setRequestError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const response = await authFetch('/api/admin/apocv4/objective', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ objective: canonical }),
+        cache: 'no-store',
+        signal: controller.signal,
+        body: JSON.stringify({ objective: prompt }),
       });
       const payload = await response.json() as RuntimeObjectiveProjection & ApiFailure;
       if (!response.ok) throw new Error(errorMessage(payload, response.status));
-      setObjectiveResult(payload);
+      const proposal = proposalFrom(payload);
+      const evidence = evidenceFrom(payload);
+      const reply = proposal
+        ? proposal.summary
+        : `The governed cycle finished with status ${evidence.status}. No displayable proposal was returned.`;
+      updateTurn(threadId, turnId, {
+        reply,
+        proposal,
+        evidence,
+        state: evidence.status === 'ACCEPTED' ? 'accepted' : 'failed',
+        error: evidence.status === 'ACCEPTED' ? null : `Cycle ended ${evidence.status}.`,
+      });
       await refreshHealth();
     } catch (error) {
-      setObjectiveError(error instanceof Error ? error.message : 'objective_request_failed');
+      if (controller.signal.aborted) {
+        updateTurn(threadId, turnId, {
+          state: 'stopped',
+          error: 'Stopped locally. Upstream completion is unknown because no final receipt was received.',
+        });
+      } else {
+        const message = error instanceof Error ? error.message : 'objective_request_failed';
+        updateTurn(threadId, turnId, { state: 'failed', error: message });
+        setRequestError(message);
+      }
     } finally {
-      setObjectiveBusy(false);
+      if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [objective, refreshHealth]);
+  }, [activeThreadId, refreshHealth, runtimeReady, updateTurn, working]);
 
-  const runtimeReady = health?.observed.runtime.status === 'READY';
+  const submit = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void submitPrompt(draft);
+  }, [draft, submitPrompt]);
+
+  const onComposerKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      void submitPrompt(draft);
+    }
+  }, [draft, submitPrompt]);
+
+  const createThread = useCallback(() => {
+    const thread = freshThread();
+    setThreads((current) => [thread, ...current].slice(0, 24));
+    setActiveThreadId(thread.id);
+    setSelectedTurnId(null);
+    setDraft('');
+    setRailOpen(false);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, []);
+
+  const branchFrom = useCallback((turn: ConversationTurn) => {
+    const thread = freshThread();
+    thread.title = `Branch · ${turn.prompt.slice(0, 42)}`;
+    setThreads((current) => [thread, ...current].slice(0, 24));
+    setActiveThreadId(thread.id);
+    setSelectedTurnId(null);
+    setDraft(turn.prompt);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, []);
+
+  const exportSession = useCallback(() => {
+    const payload = JSON.stringify({ exported_at: new Date().toISOString(), active_thread: activeThread }, null, 2);
+    const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `apocrypha-session-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [activeThread]);
+
+  const clearHistory = useCallback(() => {
+    const thread = freshThread();
+    setThreads([thread]);
+    setActiveThreadId(thread.id);
+    setSelectedTurnId(null);
+    setDraft('');
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      setRequestError('Browser history could not be cleared from local storage.');
+    }
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, []);
+
+  const copyText = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      setRequestError('Clipboard permission was denied.');
+    }
+  }, []);
 
   return (
     <AdminLayout
-      title="Apex · Apocv4"
+      title="Apocrypha"
+      hideHeading
+      immersive
       onAdminCheck={(check) => setAdminAuthorized(check.authorized)}
     >
       {!adminAuthorized ? (
-        <div style={{ ...panel, color: '#a0a0b0' }}>
-          Apex runtime access requires owner/admin authentication.
-        </div>
+        <section className={styles.authGate}>
+          <span>private relay</span>
+          <h1>Sign in to speak with Apocrypha.</h1>
+          <p>The RunPod credential, privacy partition, and effect boundary remain server-side.</p>
+        </section>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 1100 }}>
-          <header>
-            <div style={{ color: '#a78bfa', fontSize: '0.72rem', letterSpacing: '0.14em' }}>
-              § APOCV4 · OWNER SURFACE
+        <div className={styles.shell} data-working={working ? 'true' : 'false'}>
+          <aside className={`${styles.rail} ${railOpen ? styles.railOpen : ''}`}>
+            <div className={styles.brandRow}>
+              <Link href="/" className={styles.brand} aria-label="Apocky home">A</Link>
+              <div><strong>Apocrypha</strong><span>private relay</span></div>
+              <button type="button" className={styles.mobileClose} onClick={() => setRailOpen(false)} aria-label="Close conversations">×</button>
             </div>
-            <h1 style={{ fontSize: '1.35rem', margin: '0.35rem 0' }}>Apex runtime</h1>
-            <p style={{ color: '#8b8b9e', fontSize: '0.82rem', margin: 0 }}>
-              Server-mediated RunPod access. Browser requests never receive the runtime credential or choose a privacy partition.
-            </p>
-            <p style={{ color: '#6f6f82', fontSize: '0.74rem', margin: '0.35rem 0 0' }}>
-              Synchronous RunPod proxy bound: 95 seconds. The API function ceiling is 300 seconds, but RunPod&apos;s Cloudflare proxy closes at approximately 100 seconds.
-            </p>
-          </header>
-
-          <section style={panel} aria-live="polite">
-            <div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <div>
-                <div style={{ color: '#7dd3fc', fontSize: '0.72rem', letterSpacing: '0.12em' }}>
-                  ✓ OBSERVED · RUNTIME HTTP
-                </div>
-                <strong style={{ color: runtimeReady ? '#6ee7b7' : '#fca5a5' }}>
-                  {healthBusy ? '◐ checking' : runtimeReady ? '✓ READY' : '✗ unavailable'}
-                </strong>
-              </div>
-              <button type="button" onClick={() => void refreshHealth()} disabled={healthBusy} style={buttonStyle}>
-                {healthBusy ? 'checking…' : 'refresh'}
-              </button>
-            </div>
-            {healthError && <p style={{ color: '#fca5a5' }}>{healthError}</p>}
-            {health && <pre style={pre}>{pretty(health.observed)}</pre>}
-          </section>
-
-          <section style={panel}>
-            <div style={{ color: '#7dd3fc', fontSize: '0.72rem', letterSpacing: '0.12em' }}>
-              → OBJECTIVE · CREDENTIAL-BOUND PARTITION
-            </div>
-            <form onSubmit={(event) => void submitObjective(event)}>
-              <label htmlFor="apex-objective" style={{ display: 'block', margin: '0.75rem 0 0.35rem' }}>
-                One bounded objective
-              </label>
-              <textarea
-                id="apex-objective"
-                value={objective}
-                onChange={(event) => setObjective(event.target.value)}
-                maxLength={16_384}
-                rows={6}
-                disabled={objectiveBusy}
-                placeholder="Describe the exact outcome Apocv4 should pursue and verify."
-                style={{
-                  background: '#08080d',
-                  border: '1px solid #303044',
-                  borderRadius: 6,
-                  color: '#e6e6f0',
-                  padding: '0.75rem',
-                  resize: 'vertical',
-                  width: '100%',
-                }}
-              />
-              <div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-                <span style={{ color: '#686879', fontSize: '0.72rem' }}>{objective.length} / 16,384</span>
-                <button type="submit" disabled={objectiveBusy || !runtimeReady} style={buttonStyle}>
-                  {objectiveBusy ? 'Apocv4 is working…' : 'submit objective'}
+            <button type="button" className={styles.newThread} onClick={createThread}><span>＋</span> New conversation</button>
+            <div className={styles.threadHeading}><span>Conversation history</span><small>this browser only</small></div>
+            <nav className={styles.threadList} aria-label="Conversation history">
+              {threads.map((thread) => (
+                <button
+                  key={thread.id}
+                  type="button"
+                  className={thread.id === activeThreadId ? styles.activeThread : undefined}
+                  onClick={() => { setActiveThreadId(thread.id); setSelectedTurnId(null); setRailOpen(false); }}
+                >
+                  <span>{thread.title}</span>
+                  <small>{thread.turns.length} {thread.turns.length === 1 ? 'turn' : 'turns'}</small>
                 </button>
-              </div>
-            </form>
-            {objectiveError && <p style={{ color: '#fca5a5' }}>{objectiveError}</p>}
-          </section>
-
-          {objectiveResult && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-              <section style={{ ...panel, borderColor: '#24566b' }}>
-                <div style={{ color: '#7dd3fc', fontSize: '0.72rem', letterSpacing: '0.12em' }}>
-                  ✓ OBSERVED · TRANSPORT + TEST RECEIPTS
-                </div>
-                <p style={{ color: '#8b8b9e', fontSize: '0.78rem' }}>
-                  HTTP receipt, checkpoint state, test outcomes, evidence digests, and terminal status observed by the governed runtime.
-                </p>
-                <pre style={pre}>{pretty(objectiveResult.observed)}</pre>
-              </section>
-              <section style={{ ...panel, borderColor: '#634c82' }}>
-                <div style={{ color: '#c4b5fd', fontSize: '0.72rem', letterSpacing: '0.12em' }}>
-                  ◐ MODEL-REPORTED · NOT OBSERVED FACT
-                </div>
-                <p style={{ color: '#a89aba', fontSize: '0.78rem' }}>
-                  Faculty routes, candidate digests, and council reports. This is visible model output—not hidden chain-of-thought and not independent proof.
-                </p>
-                <pre style={pre}>{pretty(objectiveResult.model_reported)}</pre>
-              </section>
+              ))}
+            </nav>
+            <div className={styles.railFooter}>
+              <button type="button" onClick={exportSession} disabled={!activeThread}>Export current thread</button>
+              <button type="button" onClick={clearHistory}>Clear local history</button>
+              <Link href="/account">Account & privacy</Link>
             </div>
-          )}
+          </aside>
+
+          <main className={styles.conversation}>
+            <header className={styles.topbar}>
+              <button type="button" className={styles.mobileMenu} onClick={() => setRailOpen(true)} aria-label="Open conversations">☰</button>
+              <div className={styles.identity}>
+                <span className={runtimeReady ? styles.readyDot : styles.offlineDot} aria-hidden="true" />
+                <div><strong>Apocrypha</strong><small>{healthBusy ? 'checking' : runtimeReady ? 'ready' : 'unavailable'}</small></div>
+              </div>
+              <div className={styles.topActions}>
+                <button type="button" onClick={() => void refreshHealth()} disabled={healthBusy}>Refresh</button>
+                <button type="button" onClick={() => setDrawerOpen(true)}>Context</button>
+              </div>
+            </header>
+
+            <section className={styles.timeline} aria-live="polite" aria-busy={working}>
+              {activeThread?.turns.length === 0 && (
+                <div className={styles.welcome}>
+                  <span className={styles.sigil} aria-hidden="true">A</span>
+                  <p className={styles.eyebrow}>DIRECT LINE · GOVERNED FACULTY COUNCIL</p>
+                  <h1>What are we building?</h1>
+                  <p>Speak naturally. Apocrypha will return the selected proposal; evidence and model reports remain available without crowding the conversation.</p>
+                  <div className={styles.starters}>
+                    {STARTERS.map((starter) => <button type="button" key={starter} onClick={() => setDraft(starter)}>{starter}</button>)}
+                  </div>
+                </div>
+              )}
+
+              {activeThread?.turns.map((turn) => (
+                <div key={turn.id} className={styles.turn}>
+                  <article className={`${styles.message} ${styles.userMessage}`}>
+                    <header><span>You</span><time>{displayTime(turn.createdAt)}</time></header>
+                    <p>{turn.prompt}</p>
+                    <div className={styles.messageActions}>
+                      <button type="button" onClick={() => setDraft(turn.prompt)}>Edit</button>
+                      <button type="button" onClick={() => branchFrom(turn)}>Branch</button>
+                    </div>
+                  </article>
+
+                  <article className={`${styles.message} ${styles.apocryphaMessage}`} data-state={turn.state}>
+                    <header><span><i aria-hidden="true">A</i> Apocrypha</span><time>{turn.state}</time></header>
+                    {turn.state === 'working' ? (
+                      <div className={styles.thinking}><span /><span /><span /><p>Coordinating faculties and tests…</p></div>
+                    ) : (
+                      <>
+                        {turn.reply && <p className={styles.reply}>{turn.reply}</p>}
+                        {turn.proposal?.steps.length ? (
+                          <ol className={styles.steps}>{turn.proposal.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+                        ) : null}
+                        {turn.error && <p className={styles.turnError}>{turn.error}</p>}
+                        <div className={styles.messageActions}>
+                          {turn.reply && <button type="button" onClick={() => void copyText([turn.reply, ...(turn.proposal?.steps ?? [])].join('\n\n'))}>Copy</button>}
+                          <button type="button" onClick={() => setDraft(turn.prompt)}>Retry</button>
+                          <button type="button" onClick={() => { setSelectedTurnId(turn.id); setDrawerMode('evidence'); setDrawerOpen(true); }}>Evidence</button>
+                        </div>
+                      </>
+                    )}
+                  </article>
+                </div>
+              ))}
+              <div ref={endRef} />
+            </section>
+
+            <div className={styles.composerDock}>
+              {(requestError || healthError) && <p className={styles.errorBanner} role="alert">{requestError ?? healthError}</p>}
+              <form className={styles.composer} onSubmit={submit}>
+                <label htmlFor="apocrypha-message" className={styles.srOnly}>Message Apocrypha</label>
+                <textarea
+                  id="apocrypha-message"
+                  ref={composerRef}
+                  value={draft}
+                  rows={2}
+                  maxLength={MAX_OBJECTIVE_LENGTH}
+                  placeholder={runtimeReady ? 'Message Apocrypha…' : 'Waiting for the relay…'}
+                  disabled={!runtimeReady || working}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={onComposerKeyDown}
+                />
+                <div className={styles.composerBar}>
+                  <div className={styles.capabilityLine}>
+                    <span>Text relay live</span>
+                    <span>{visionReady ? 'Vision faculty online · browser attachment pending' : 'Vision unavailable'}</span>
+                    <span>Effects admission-gated</span>
+                  </div>
+                  {working ? (
+                    <button type="button" className={styles.stopButton} onClick={() => abortRef.current?.abort()}>Stop</button>
+                  ) : (
+                    <button type="submit" className={styles.sendButton} disabled={!runtimeReady || !draft.trim()}>Send <span aria-hidden="true">↑</span></button>
+                  )}
+                </div>
+              </form>
+              <p className={styles.disclosure}>Enter sends · Shift+Enter adds a line · history stays in this browser until you clear it</p>
+            </div>
+          </main>
+
+          <aside className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ''}`} aria-label="Conversation context">
+            <header className={styles.drawerHeader}>
+              <div><span>Context</span><strong>{selectedTurn ? 'Current turn' : 'Relay'}</strong></div>
+              <button type="button" className={styles.mobileClose} onClick={() => setDrawerOpen(false)} aria-label="Close context">×</button>
+            </header>
+            <div className={styles.drawerTabs}>
+              <button type="button" className={drawerMode === 'artifact' ? styles.activeTab : undefined} onClick={() => setDrawerMode('artifact')}>Artifact</button>
+              <button type="button" className={drawerMode === 'evidence' ? styles.activeTab : undefined} onClick={() => setDrawerMode('evidence')}>Evidence</button>
+            </div>
+            {drawerMode === 'artifact' ? (
+              <div className={styles.drawerBody}>
+                <p className={styles.drawerKicker}>Selected proposal</p>
+                {selectedTurn?.proposal ? (
+                  <>
+                    <h2>{selectedTurn.proposal.summary}</h2>
+                    {selectedTurn.proposal.steps.length > 0 && <ol>{selectedTurn.proposal.steps.map((step) => <li key={step}>{step}</li>)}</ol>}
+                    {selectedTurn.proposal.sourceRefs.length > 0 && (
+                      <details><summary>Source references</summary><ul>{selectedTurn.proposal.sourceRefs.map((ref) => <li key={ref}>{ref}</li>)}</ul></details>
+                    )}
+                    {selectedTurn.proposal.countercase && <details><summary>Strongest countercase</summary><p>{selectedTurn.proposal.countercase}</p></details>}
+                    {selectedTurn.proposal.falsifier && <details><summary>Falsifier</summary><p>{selectedTurn.proposal.falsifier}</p></details>}
+                  </>
+                ) : (
+                  <div className={styles.emptyDrawer}><strong>No artifact yet</strong><p>A selected proposal will resolve here after a completed turn.</p></div>
+                )}
+              </div>
+            ) : (
+              <div className={styles.drawerBody}>
+                <p className={styles.drawerKicker}>Observed receipt</p>
+                {selectedTurn?.evidence ? (
+                  <dl className={styles.receiptGrid}>
+                    <div><dt>Cycle</dt><dd>{selectedTurn.evidence.status}</dd></div>
+                    <div><dt>Observed</dt><dd>{selectedTurn.evidence.observedAt}</dd></div>
+                    <div><dt>Latency</dt><dd>{selectedTurn.evidence.latencyMs.toLocaleString()} ms</dd></div>
+                    <div><dt>HTTP</dt><dd>{selectedTurn.evidence.upstreamStatus}</dd></div>
+                    <div><dt>Candidate</dt><dd>{shortDigest(selectedTurn.evidence.candidateDigest)}</dd></div>
+                    <div><dt>Test</dt><dd>{shortDigest(selectedTurn.evidence.testDigest)}</dd></div>
+                    <div><dt>Checkpoint</dt><dd>{shortDigest(selectedTurn.evidence.checkpointDigest)}</dd></div>
+                    <div><dt>Faculty team</dt><dd>{shortDigest(selectedTurn.evidence.facultyTeamId)}</dd></div>
+                    <div><dt>Auth</dt><dd>{selectedTurn.evidence.authMode ?? 'not observed'}</dd></div>
+                    <div><dt>Registry</dt><dd>{shortDigest(selectedTurn.evidence.registryRef)}</dd></div>
+                    <div><dt>Binding</dt><dd>{shortDigest(selectedTurn.evidence.bindingRef)}</dd></div>
+                    <div><dt>Principal</dt><dd>{shortDigest(selectedTurn.evidence.principalRef)}</dd></div>
+                  </dl>
+                ) : (
+                  <div className={styles.emptyDrawer}><strong>No final receipt</strong><p>Runtime observation and model report remain separate. A stopped or incomplete turn is never presented as accepted.</p></div>
+                )}
+                <p className={styles.epistemic}>Proposal text is model-reported. HTTP, test, identity, and checkpoint fields above are observed transport/runtime receipts.</p>
+              </div>
+            )}
+          </aside>
+          {(railOpen || drawerOpen) && <button type="button" className={styles.scrim} onClick={() => { setRailOpen(false); setDrawerOpen(false); }} aria-label="Close overlay" />}
         </div>
       )}
     </AdminLayout>
   );
-};
-
-const buttonStyle: React.CSSProperties = {
-  background: '#24243a',
-  border: '1px solid #464663',
-  borderRadius: 5,
-  color: '#d9d9e8',
-  cursor: 'pointer',
-  padding: '0.48rem 0.8rem',
 };
 
 export default Apex;
