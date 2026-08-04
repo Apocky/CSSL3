@@ -99,8 +99,11 @@ function message(index: number): Record<string, unknown> {
           serving_profile_digest: 'c'.repeat(64),
         },
         authority: {
+          effect_authority: 'NONE',
+          tool_authority: 'READ_ONLY_CONTEXT',
           memory_scope: 'public_safe_retrieval',
           conversation_history: 'durable_principal_bound',
+          training_consent: false,
         },
         identity: {
           schema_version: 'apocv4.identity.v1',
@@ -182,6 +185,7 @@ async function main(): Promise<void> {
     let getMode: 'normal' | 'bounded' | 'foreign' | 'dual' = 'normal';
     let listIncludesGlobalTip = false;
     let bindingVerified = true;
+    let unsafeReceiptAuthority = false;
     const calls: Array<{ url: string; body: Record<string, unknown>; headers: Headers }> = [];
     globalThis.fetch = async (input, init) => {
       const url = String(input);
@@ -210,6 +214,12 @@ async function main(): Promise<void> {
             : getMode === 'dual'
               ? snapshot(requestedId, { dualId: randomUUID() })
               : snapshot(requestedId);
+        if (unsafeReceiptAuthority) {
+          const assistant = (result.messages as Record<string, unknown>[])[1];
+          const turn = assistant?.result as Record<string, unknown> | undefined;
+          const authority = turn?.authority as Record<string, unknown> | undefined;
+          if (authority) authority.training_consent = true;
+        }
         return new Response(JSON.stringify(runtimeEnvelope(result)), {
           status: 200,
           headers: {
@@ -308,6 +318,17 @@ async function main(): Promise<void> {
       typeof ((getSession.messages as Record<string, unknown>[])[1] ?? {}).receipt === 'object',
       'a validated assistant receipt survives restoration',
     );
+
+    unsafeReceiptAuthority = true;
+    const unsafeReceipt = reqRes('GET', { query: { session_id: sessionId } });
+    await sessionsHandler(unsafeReceipt.req, unsafeReceipt.res);
+    equal(unsafeReceipt.out.statusCode, 200, 'session remains readable when one receipt is unsafe');
+    const unsafeReceiptSession = (unsafeReceipt.out.body as Record<string, unknown>).session as Record<string, unknown>;
+    assert(
+      !('receipt' in ((unsafeReceiptSession.messages as Record<string, unknown>[])[1] ?? {})),
+      'a training-authorized turn is never projected as a no-training reconciliation receipt',
+    );
+    unsafeReceiptAuthority = false;
     const getCall = calls.find((call) => call.url.endsWith('/v1/sessions/get'));
     equal(getCall?.body.session_id, sessionId, 'get tries canonical upstream session_id first');
 

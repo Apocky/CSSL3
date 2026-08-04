@@ -14,6 +14,7 @@
     "snapshot:specs": "node scripts/snapshot-specs.js",
     "test:health": "node --import tsx tests/api/health.test.ts",
     "test:auth-redirect": "node --import tsx tests/lib/auth-redirect.test.ts",
+    "test:apocrypha-sms": "node --import tsx tests/lib/apocrypha-sms.test.ts && node --import tsx tests/api/apocrypha-sms-migration.test.ts && node --import tsx tests/api/apocrypha-sms-ingress.test.ts && node --import tsx tests/api/apocrypha-sms-worker.test.ts",
     "test:public-discovery": "node --import tsx tests/pages/public-discovery.test.ts",
     "test:e2e": "playwright test",
     "test:companion": "node --import tsx tests/api/companion.test.ts",
@@ -51,7 +52,7 @@
     "test:admin-chat-page": "node --import tsx tests/pages/admin-chat.test.ts",
     "test:apocrypha-v2-vision": "node --import tsx tests/api/apocrypha-v2-vision.test.ts",
     "test:public-apocrypha": "node --import tsx tests/api/public-apocrypha-chat.test.ts && node --import tsx tests/pages/public-apocrypha-interactions.test.ts",
-    "test:apocrypha-v2-release": "node --import tsx tests/api/apocrypha-v2-release.test.ts && node --import tsx tests/api/apocrypha-v2-vision.test.ts && npm run test:public-apocrypha && node --import tsx tests/pages/chat-presence.test.ts && node --import tsx tests/pages/apocrypha-avatar.test.ts && npm run test:admin-chat-page",
+    "test:apocrypha-v2-release": "node --import tsx tests/api/apocrypha-v2-release.test.ts && node --import tsx tests/api/apocrypha-v2-vision.test.ts && npm run test:public-apocrypha && node --import tsx tests/api/public-apocrypha-sessions.test.ts && node --import tsx tests/pages/chat-presence.test.ts && node --import tsx tests/pages/apocrypha-avatar.test.ts && npm run test:admin-chat-page && npm run test:apocrypha-sms",
     "test:lazarus-page": "node --import tsx tests/pages/lazarus-page.test.ts",
     "test:tessera-omnimind-page": "node --import tsx tests/pages/tessera-omnimind.test.ts",
     "test:admin-analytics": "node --import tsx tests/admin-analytics.test.ts",
@@ -86,7 +87,7 @@
     "lazarus:service:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lazarus-service.ps1 stop",
     "lazarus:service:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lazarus-service.ps1 restart",
     "lazarus:service:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lazarus-service.ps1 smoke",
-    "test": "npm run snapshot:specs && npm run test:health && npm run test:auth-redirect && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:run-share-feed-page && npm run test:stripe-checkout && npm run test:stripe-webhook && npm run test:stripe-refund && npm run test:health-w9 && npm run test:docs-page && npm run test:infinity-engine-page && npm run test:buy-page && npm run test:admin-chat-lib && npm run test:admin-workbench && npm run test:admin-chat-page && npm run test:lazarus-page && npm run test:tessera-omnimind-page && npm run test:admin-analytics && npm run test:akashic-telemetry && npm run test:content-page && npm run test:content-publish-lib && npm run test:content-publish && npm run test:engine-status-lib && npm run test:engine-status && npm run test:cron-auth-lib && npm run test:cron-auth && npm run test:cron-endpoints && npm run test:cron-pgcron-migration && npm run test:mneme-sigma && npm run test:mneme && npm run test:tessera-bridge && npm run test:tessera-runner && npm run test:lazarus"
+    "test": "npm run snapshot:specs && npm run test:health && npm run test:auth-redirect && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:run-share-feed-page && npm run test:stripe-checkout && npm run test:stripe-webhook && npm run test:stripe-refund && npm run test:health-w9 && npm run test:docs-page && npm run test:infinity-engine-page && npm run test:buy-page && npm run test:admin-chat-lib && npm run test:admin-workbench && npm run test:admin-chat-page && npm run test:public-apocrypha && node --import tsx tests/api/public-apocrypha-sessions.test.ts && npm run test:apocrypha-sms && npm run test:lazarus-page && npm run test:tessera-omnimind-page && npm run test:admin-analytics && npm run test:akashic-telemetry && npm run test:content-page && npm run test:content-publish-lib && npm run test:content-publish && npm run test:engine-status-lib && npm run test:engine-status && npm run test:cron-auth-lib && npm run test:cron-auth && npm run test:cron-endpoints && npm run test:cron-pgcron-migration && npm run test:mneme-sigma && npm run test:mneme && npm run test:tessera-bridge && npm run test:tessera-runner && npm run test:lazarus"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -111,6 +112,7 @@
     "node": ">=20.9.0"
   },
   "overrides": {
+    "fast-uri": "3.1.5",
     "postcss": "8.5.23",
     "sharp": "0.35.3"
   }

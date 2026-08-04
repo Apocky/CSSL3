@@ -520,8 +520,11 @@ function projectSessionTurnReceipt(
     || !SHA256_RE.test(model.response_digest)
     || typeof model.serving_profile_digest !== 'string'
     || !SHA256_RE.test(model.serving_profile_digest)
+    || authority.effect_authority !== 'NONE'
+    || authority.tool_authority !== 'READ_ONLY_CONTEXT'
     || authority.memory_scope !== expectedMemoryScope
     || authority.conversation_history !== 'durable_principal_bound'
+    || authority.training_consent !== false
     || !validateV2ChatIdentity(result.identity)
     || !validateV2ChatContext(result.context)
   ) return null;

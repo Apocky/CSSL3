@@ -1,0 +1,134 @@
+§ APOCRYPHA_DIRECT_SMS · v1 · 2026-08-04
+
+§ status
+  implementation := CANDIDATE
+  provider := TWILIO_ADAPTER_PROVISIONAL
+  telecom.account|number|billing|registration|secret-install|webhook-config|live-send := CLOSED_EXTERNAL_GATE
+  production.claim := DISABLED_UNTIL_COMPLETE_CONFIG+MIGRATION+PROVIDER_GATES
+
+§ objective
+  I> one consent-bound owner E.164 ↔ one dedicated Apocrypha session.
+  W! inbound signed SMS → durable encrypted admission → asynchronous no-effects Apocrypha turn
+     → segment+spend bounded reply → durable delivery evidence.
+  N! browser-history disclosure | cross-session merge | training | mutating-tools | effects | proactive campaign.
+
+§ authority
+  local.code+tests+spec+commit := OPEN
+  provider.account+spend+number+carrier.registration+live.message := EXPLICIT_EXTERNAL_AUTHORITY_REQUIRED
+  inbound.direct-message := authority for one direct conversational response only
+    ; N! recurring outreach | marketing | future-message blanket consent.
+
+§ identities
+  canonical.inbound := ⟨provider,account_sid,provider_message_id⟩ unique.
+  owner.binding := HMAC-SHA256(provider+E.164,binding_key) ; N! raw phone durable column.
+  conversation := public-member principal + configured SMS-only UUIDv4 session.
+  request := stored UUIDv4 → principal-scoped request ID.
+  W! transport signature authenticates provider delivery ¬ human identity.
+
+§ ingress
+  route := POST /api/apocrypha/sms/inbound.
+  content := application/x-www-form-urlencoded ; bytes≤32KiB ; duplicate-param⇒400.
+  signature := Twilio HMAC-SHA1 over exact configured public URL + all untouched form params.
+  checks := signature→account→To→configured From→command→media→durable ingest→TwiML.
+  unknown.sender := signed+empty 200 ; zero persistence | zero model.
+  invalid.signature|binding := 403 ; zero persistence | zero model.
+  storage.unavailable := non-2xx ; N! stub-success.
+  OptOutType present := persist STOP|START|HELP + empty TwiML ; provider confirmation already sent.
+
+§ consent
+  state := pending | carrier_started | active | revoked.
+  STOP|unequivocal-natural-language-revocation := immediate local suppression + cancel unsent outbox.
+  START|UNSTOP := carrier_started ; N! application consent.
+  `CONSENT APOCRYPHA` := active + disclosure.version+digest+timestamp+method receipt.
+  message.when¬active := consent_required ; zero model.
+  dispatch := recheck active+¬suppressed inside transaction.
+
+§ privacy
+  queue.payload := AES-256-GCM + identity AAD + keyed ciphertext version.
+  rotation := active key ID + bounded previous decrypt key.
+  durable.rows := hashes+ciphertext+typed metadata ; N! raw E.164 | plaintext body | plaintext reply.
+  logs := N! phone | body | reply | auth-token | signature.
+  retention := pending owner decision before provider activation.
+
+§ worker
+  trigger := authorized cron ; one leased job|send per invocation.
+  call := submitRuntimeChat(
+    privacy_partition=public:apocrypha,
+    credential_profile=public,
+    session=dedicated_sms,
+    effects=NONE,
+    training_consent=false).
+  runtime.ambiguous := retain processing ; later stale lease reconciles durable session by scoped request ID
+    before any new submission ; N! second network deadline in fresh invocation.
+  runtime.atomicity := no cross-system transaction ; stale processing⇒reconcile-only.
+  degraded := crash-after-DB-claim-before-runtime-admission may remain UNCERTAIN
+    ; manual reconciliation required ; N! duplicate model submission.
+  reply := normalized+max_chars+max_segments ; complete web reply remains conversation-authoritative.
+  outbox.boundary := fresh runtime reply → durable ready_to_send → invocation ends
+    ; next invocation performs provider path only.
+  dispatch := transactional consent+daily-segment-budget claim + fenced dispatch token
+    → decrypt+validate → final consent-generation authorization → one provider POST.
+  STOP.before-final-authorization := invalidates token + zero provider call.
+  STOP.after-final-authorization := carrier call in-flight ; best-effort nonrecallable residual.
+  provider.timeout|5xx|malformed-201 := UNCERTAIN ; N! blind retry.
+
+§ delivery
+  route := POST /api/apocrypha/sms/status.
+  signed.status := append-only semantic event.
+  projection := monotone terminal-aware state ; out-of-order callback N! state regression.
+  duplicate.event := idempotent.
+  system.ack := consent|help|local-command TwiML direct reply ; bound sender only ; ≤3 segments.
+  △ system.ack N! durable outbox|status callback|application daily-budget
+    ; provider spend guard remains activation prerequisite.
+
+§ provider.boundary
+  domain := provider-neutral consent+queue+runtime-binding+budget+delivery-state.
+  twilio.only := signature+form+TwiML+REST+status vocabulary.
+  outbound.auth := restricted API key/secret.
+  webhook.auth := primary Auth Token signature validation only.
+
+§ activation.runbook
+  1 := choose+approve provider/account/billing.
+  2 := acquire SMS-capable number + complete applicable 10DLC|toll-free|regional registration.
+  3 := set provider spend guard + Advanced-Opt-Out STOP|START|HELP.
+  4 := apply `cssl-supabase/migrations/0046_apocrypha_sms.sql` + verify RPC grants/readback.
+  5 := install complete server-only env set ; independent binding+envelope keys.
+  6 := deploy dormant routes + enable 1-minute worker schedule.
+  7 := configure provider POST URLs exactly to inbound+status routes.
+  8 := controlled owner probes := first-disclosure→second-consent→message→reply→delivery→STOP→suppression.
+  9 := privacy+retention+legal review → explicit public/live activation decision.
+
+§ acceptance
+  W! tests := {
+    official-signature-vector,invalid+duplicate+exact-url,
+    unknown-sender-zero-effect,STOP-before-media+model,START¬consent,
+    dedupe,encrypted-body,key-rotation,rate-limit,natural-language-revocation+counterexamples,
+    runtime-no-effects+training-false,ambiguous-runtime-deferred-reconcile,lease-fencing,
+    durable-runtime-send-boundary,dispatch-consent-generation+segment+daily-budget,ambiguous-send¬retry,
+    signed-duplicate+out-of-order-status,migration-static,
+    tsc,lint,build,release-suite}.
+  W! production.enable only-after := migration.applied + complete.secret-set + worker.schedule.enabled + provider.account+number
+    + carrier.registration + webhook.config + owner consent + legal/privacy review
+    + controlled inbound/outbound/STOP/status probes.
+
+§ OWASP.review
+  A01 := signed-provider + exact account|number binding + cron secret + RPC-only service seam.
+  A02 := TLS + HMAC validation + AES-256-GCM/AAD + separate binding/envelope keys + key IDs.
+  A03 := strict bounded form + duplicate reject + typed RPC args + N! dynamic SQL.
+  A04 := explicit consent + response-only + no-effects + durable outbox + uncertainty states.
+  A05 := complete-config fail-closed + unscheduled worker + disabled 503.
+  A06 := zero new production dependencies ; fast-uri=3.1.5 override ; npm full audit=0 known vulnerabilities @2026-08-04.
+  A07 := provider signature ¬ human identity ; dedicated worldline + no history/effects limits consequence.
+  A08 := tuple idempotency + signed callbacks + append-only semantic delivery evidence.
+  A09 := N! PII/body/secret logging ; sanitized error classes + cron receipt.
+  A10 := fixed provider API endpoint + validated Supabase origin + redirect rejection.
+
+§ rollback
+  disable := remove APOCRYPHA_SMS_* provider configuration + remove provider webhook + unschedule worker.
+  preserve := consent+suppression+delivery receipts until retention decision.
+  N! rollback deletes opt-out evidence by default.
+
+§ attestation
+  "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎

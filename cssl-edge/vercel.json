@@ -18,6 +18,9 @@
     "pages/api/admin/apocrypha/chat_stream.ts": {
       "maxDuration": 30
     },
+    "pages/api/cron/apocrypha-sms.ts": {
+      "maxDuration": 120
+    },
     "pages/api/cron/**/*.ts": {
       "maxDuration": 60
     }
