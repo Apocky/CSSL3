@@ -15,8 +15,10 @@ interface WorkspacePanelProps {
   artifactsTruncated: boolean;
   jobsTruncated: boolean;
   activeJobCount: number;
+  cancellingJobId: string | null;
   onClose: () => void;
   onPrepare: (mode: WorkspaceMode, prompt: string) => void;
+  onCancelJob: (jobId: string) => void;
 }
 
 type WorkspaceTab = 'create' | 'artifacts' | 'activity';
@@ -148,8 +150,10 @@ export function WorkspacePanel({
   artifactsTruncated,
   jobsTruncated,
   activeJobCount,
+  cancellingJobId,
   onClose,
   onPrepare,
+  onCancelJob,
 }: WorkspacePanelProps): JSX.Element {
   const [tab, setTab] = useState<WorkspaceTab>(artifacts.length > 0 ? 'artifacts' : 'create');
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -159,6 +163,10 @@ export function WorkspacePanel({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const authenticated = access === 'member' || access === 'owner';
+
+  useEffect(() => {
+    if (activeJobCount > 0) setTab('activity');
+  }, [activeJobCount]);
 
   useEffect(() => {
     const media = window.matchMedia(DRAWER_MEDIA_QUERY);
@@ -429,18 +437,35 @@ export function WorkspacePanel({
                 <div className={styles.activityList}>
                   {[...jobs].reverse().map((job, index) => {
                     const state = stringValue(job.state) ?? 'RECORDED';
+                    const jobId = stringValue(job.job_id);
                     const actionId = stringValue(job.action_id) ?? 'Background task';
                     const action = actionId === 'objective.proposal_council.v1' ? 'Proposal council' : actionId;
                     const receipt = jobReceipt(job, state);
+                    const argumentsValue = job.arguments !== null && typeof job.arguments === 'object' && !Array.isArray(job.arguments)
+                      ? job.arguments as Record<string, unknown>
+                      : null;
+                    const objective = stringValue(argumentsValue?.objective);
+                    const active = ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(state);
                     return (
-                      <article key={stringValue(job.job_id) ?? `job-${index}`}>
+                      <article key={jobId ?? `job-${index}`}>
                         <header><strong>{action}</strong><span data-state={state.toLowerCase()}>{state}</span></header>
+                        {objective && <p className={styles.jobObjective}>{objective}</p>}
                         <dl>
                           <div><dt>Attempt</dt><dd>{numericValue(job.attempt) ?? 0}</dd></div>
                           <div><dt>Artifacts</dt><dd>{Array.isArray(job.artifact_ids) ? job.artifact_ids.length : 0}</dd></div>
                           <div><dt>{receipt.label}</dt><dd>{receipt.value}</dd></div>
                         </dl>
                         {stringValue(job.reason_code) && <p>{stringValue(job.reason_code)}</p>}
+                        {active && jobId && (
+                          <button
+                            type="button"
+                            className={styles.jobCancelButton}
+                            onClick={() => onCancelJob(jobId)}
+                            disabled={cancellingJobId !== null}
+                          >
+                            {cancellingJobId === jobId ? 'Cancelling…' : 'Cancel background work'}
+                          </button>
+                        )}
                       </article>
                     );
                   })}

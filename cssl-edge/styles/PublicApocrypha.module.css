@@ -517,7 +517,21 @@
   font-weight: 780;
 }
 .sendButton strong { font-size: 1rem; line-height: 1; }
-.sendButton:disabled,.lensButton:disabled { opacity: 0.36; cursor: not-allowed; }
+.backgroundButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--text-soft);
+  background: rgba(255,255,255,0.025);
+  cursor: pointer;
+  font: 720 0.66rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.backgroundButton:hover:not(:disabled) { color: var(--text); border-color: var(--accent); background: rgba(141,224,193,0.055); }
+.backgroundButton:disabled,.sendButton:disabled,.lensButton:disabled { opacity: 0.36; cursor: not-allowed; }
 .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 
 .floatingSurface {
@@ -720,6 +734,7 @@
 .remediationButton:focus-visible,
 .lensButton:focus-visible,
 .scopeCapsule:focus-visible,
+.backgroundButton:focus-visible,
 .sendButton:focus-visible,
 .floatingSurface button:focus-visible,
 .scopeSheet textarea:focus-visible,
@@ -1164,6 +1179,8 @@
   .attachmentButton,.lensButton { flex: none; }
   .lensButton small { display: inline; }
   .sendButton { min-width: 44px; }
+  .backgroundButton { min-width: 44px; padding-inline: 10px; }
+  .backgroundButton span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 }
 
 @media (max-width: 430px) {
@@ -1533,6 +1550,19 @@
 .activityList dt { color: #7f8a84; font-size: 0.5rem; text-transform: uppercase; }
 .activityList dd { margin: 4px 0 0; color: #acb6b0; font: 0.55rem/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
 .activityList article > p { margin: 9px 0 0; color: #9aa49f; font-size: 0.61rem; line-height: 1.45; }
+.activityList .jobObjective { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; color: #c4cec8; }
+.jobCancelButton {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 10px;
+  border: 1px solid rgba(240,168,179,0.28);
+  border-radius: 7px;
+  color: #e6b2ba;
+  background: rgba(240,168,179,0.045);
+  cursor: pointer;
+  font: 650 0.58rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.jobCancelButton:disabled { opacity: 0.45; cursor: wait; }
 
 .workspacePanelFooter {
   display: flex;
@@ -1555,7 +1585,8 @@
 .starterGrid button:focus-visible,
 .workspaceEmpty button:focus-visible,
 .artifactList button:focus-visible,
-.artifactPreview button:focus-visible {
+.artifactPreview button:focus-visible,
+.jobCancelButton:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

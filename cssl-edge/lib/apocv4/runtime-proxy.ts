@@ -46,11 +46,15 @@ const ROLLBACK_RESPONSE_LIMIT = 512 * 1024;
 const HEALTH_DEADLINE_MS = 12_000;
 const CHAT_DEADLINE_MS = 80_000;
 const SESSION_DEADLINE_MS = 30_000;
+const JOB_DEADLINE_MS = 30_000;
+const JOB_RESPONSE_LIMIT = 512 * 1024;
+const VISION_RESPONSE_LIMIT = 512 * 1024;
 export const RUNPOD_SYNC_DEADLINE_MS = 95_000;
 export const RUNPOD_CODE_DEADLINE_MS = 240_000;
 const ROLLBACK_DEADLINE_MS = 45_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[45][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CLIENT_SESSION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const JOB_ID_RE = /^job:[0-9a-f]{64}$/;
 const SESSION_BINDING_SCHEMA = 'apocv4.session-binding.v1';
 const CODE_PATH_RE = /^[A-Za-z0-9_.@+ -]+(?:\/[A-Za-z0-9_.@+ -]+)*$/;
 const WINDOWS_RESERVED_PATH_STEMS = new Set([
@@ -79,7 +83,9 @@ const PROTECTED_CODE_PREFIXES = [
 
 type JsonObject = Record<string, unknown>;
 type RuntimePath = '/health' | '/v1/chat' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
-  | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete';
+  | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete'
+  | '/v1/jobs/submit' | '/v1/jobs/list' | '/v1/jobs/status' | '/v1/jobs/cancel'
+  | '/v1/vision';
 export type RuntimeCredentialProfile = 'owner' | 'public';
 
 export interface RuntimeChatAuthority {
@@ -208,6 +214,58 @@ export interface RuntimeSessionGetInput extends RuntimeSessionBindingInput {
 
 export interface RuntimeSessionDeleteInput extends RuntimeSessionGetInput {
   requestId: string;
+}
+
+export interface RuntimeJobSubmitInput extends RuntimeSessionGetInput {
+  requestId: string;
+  objective: string;
+  maxIterations?: number;
+}
+
+export interface RuntimeJobStatusInput extends RuntimeSessionGetInput {
+  jobId: string;
+}
+
+export interface RuntimeJobCancelInput extends RuntimeJobStatusInput {
+  requestId: string;
+}
+
+export interface RuntimeJobProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'job';
+  observed: RuntimeSessionObservation;
+  job: JsonObject;
+}
+
+export interface RuntimeJobListProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'job_list';
+  observed: RuntimeSessionObservation;
+  jobs: JsonObject[];
+  count: number;
+}
+
+export interface RuntimeVisionInput {
+  imageB64: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  observedAt: string;
+  perceptId: string;
+  provenanceRef: string;
+  question: string;
+  privacyPartition: string;
+  credentialProfile?: RuntimeCredentialProfile;
+}
+
+export interface RuntimeVisionProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'vision';
+  observed: {
+    evidence_lane: 'model_reported_visual_observation_over_observed_runtime_transport';
+    receipt: RuntimeReceipt;
+    perception_digest: string;
+    observation: JsonObject;
+    runtime_state: JsonObject;
+  };
 }
 
 export interface RuntimeSessionSummary extends JsonObject {
@@ -1508,6 +1566,8 @@ async function callRuntime(
   const code = path === '/v1/code';
   const rollback = path === '/v1/code/rollback';
   const session = path.startsWith('/v1/sessions/');
+  const job = path.startsWith('/v1/jobs/');
+  const vision = path === '/v1/vision';
   const deadlineMs = code
     ? RUNPOD_CODE_DEADLINE_MS
     : rollback
@@ -1518,6 +1578,10 @@ async function callRuntime(
           ? CHAT_DEADLINE_MS
           : session
             ? SESSION_DEADLINE_MS
+            : job
+              ? JOB_DEADLINE_MS
+              : vision
+                ? RUNPOD_SYNC_DEADLINE_MS
             : HEALTH_DEADLINE_MS;
   const responseLimit = code
     ? CODE_RESPONSE_LIMIT
@@ -1529,6 +1593,10 @@ async function callRuntime(
           ? CHAT_RESPONSE_LIMIT
           : session
             ? SESSION_RESPONSE_LIMIT
+            : job
+              ? JOB_RESPONSE_LIMIT
+              : vision
+                ? VISION_RESPONSE_LIMIT
             : HEALTH_RESPONSE_LIMIT;
   const controller = new AbortController();
   const deadline = setTimeout(() => controller.abort(), deadlineMs);
@@ -1578,15 +1646,15 @@ async function callRuntime(
     ) {
       throw new RuntimeProxyError('runtime_session_binding_invalid', 502, response.status);
     }
-    const expectedKeys = objective || chat || code || rollback || session
+    const expectedKeys = objective || chat || code || rollback || session || job || vision
       ? ['schema_version', 'result']
       : ['schema_version', 'status', 'engine', 'vision'];
     if (!exactKeys(data, expectedKeys)) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
     }
     if (
-      ((objective || chat || code || rollback || session) && !isObject(data.result))
-      || (!objective && !chat && !code && !rollback && !session
+      ((objective || chat || code || rollback || session || job || vision) && !isObject(data.result))
+      || (!objective && !chat && !code && !rollback && !session && !job && !vision
         && (data.status !== 'READY' || !isObject(data.engine) || typeof data.vision !== 'boolean'))
     ) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
@@ -2263,6 +2331,242 @@ function projectTestReceipt(value: unknown): JsonObject | null {
     elapsed_ms: Number(value.elapsed_ms),
     passed: value.passed,
     receipt_digest: receiptDigest,
+  };
+}
+
+function normalizeRuntimeJob(value: unknown): JsonObject {
+  if (
+    !isObject(value)
+    || !JOB_ID_RE.test(String(value.job_id ?? ''))
+    || typeof value.action_id !== 'string'
+    || !/^[a-z][a-z0-9_.:-]{0,127}$/.test(value.action_id)
+    || !['QUEUED', 'RUNNING', 'CANCEL_REQUESTED', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED_REVIEW_REQUIRED'].includes(String(value.state))
+    || !SHA256_RE.test(String(value.request_digest ?? ''))
+    || !SHA256_RE.test(String(value.action_manifest_digest ?? ''))
+    || !boundedNonnegativeInteger(value.attempt, 1_000)
+    || !boundedJsonValue(value, 128 * 1024)
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502);
+  }
+  return { ...value };
+}
+
+function validateRuntimeJobBinding(input: RuntimeSessionGetInput): void {
+  validateSessionBinding(input);
+  if (!CLIENT_SESSION_UUID_RE.test(input.sessionId)) {
+    throw new RuntimeProxyError('job_request_invalid', 400);
+  }
+}
+
+export async function submitRuntimeBackgroundJob(
+  input: RuntimeJobSubmitInput,
+  traceparent?: string,
+): Promise<RuntimeJobProjection> {
+  validateRuntimeJobBinding(input);
+  const objective = input.objective;
+  const maxIterations = input.maxIterations ?? 1;
+  if (
+    typeof objective !== 'string'
+    || objective !== objective.trim()
+    || Buffer.byteLength(objective, 'utf8') < 1
+    || Buffer.byteLength(objective, 'utf8') > 16_384
+    || !UUID_RE.test(input.requestId)
+    || !Number.isInteger(maxIterations)
+    || maxIterations < 1
+    || maxIterations > 8
+  ) {
+    throw new RuntimeProxyError('job_request_invalid', 400);
+  }
+  const call = await callRuntime('/v1/jobs/submit', {
+    privacy_partition: input.privacyPartition,
+    session_principal: input.sessionPrincipal,
+    session_id: input.sessionId,
+    request_id: input.requestId,
+    action_id: 'objective.proposal_council.v1',
+    arguments: { objective, max_iterations: maxIterations },
+  }, traceparent, input.credentialProfile ?? 'owner');
+  const result = call.data.result;
+  if (
+    !isObject(result)
+    || !exactKeys(result, ['schema_version', 'job'])
+    || result.schema_version !== 'apocv4.background-job.v1'
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'job',
+    observed: sessionObservation(call.receipt, 'session_id'),
+    job: normalizeRuntimeJob(result.job),
+  };
+}
+
+export async function listRuntimeBackgroundJobs(
+  input: RuntimeSessionGetInput,
+  traceparent?: string,
+): Promise<RuntimeJobListProjection> {
+  validateRuntimeJobBinding(input);
+  const call = await callRuntime('/v1/jobs/list', {
+    privacy_partition: input.privacyPartition,
+    session_principal: input.sessionPrincipal,
+    session_id: input.sessionId,
+  }, traceparent, input.credentialProfile ?? 'owner');
+  const result = call.data.result;
+  if (
+    !isObject(result)
+    || !exactKeys(result, ['schema_version', 'jobs', 'count'])
+    || result.schema_version !== 'apocv4.background-jobs.v1'
+    || !Array.isArray(result.jobs)
+    || !boundedNonnegativeInteger(result.count, 4_096)
+    || result.count !== result.jobs.length
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'job_list',
+    observed: sessionObservation(call.receipt, 'session_id'),
+    jobs: result.jobs.map(normalizeRuntimeJob),
+    count: result.count as number,
+  };
+}
+
+export async function getRuntimeBackgroundJob(
+  input: RuntimeJobStatusInput,
+  traceparent?: string,
+): Promise<RuntimeJobProjection> {
+  validateRuntimeJobBinding(input);
+  if (!JOB_ID_RE.test(input.jobId)) {
+    throw new RuntimeProxyError('job_request_invalid', 400);
+  }
+  const call = await callRuntime('/v1/jobs/status', {
+    privacy_partition: input.privacyPartition,
+    session_principal: input.sessionPrincipal,
+    session_id: input.sessionId,
+    job_id: input.jobId,
+  }, traceparent, input.credentialProfile ?? 'owner');
+  const result = call.data.result;
+  if (
+    !isObject(result)
+    || !exactKeys(result, ['schema_version', 'job'])
+    || result.schema_version !== 'apocv4.background-job.v1'
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'job',
+    observed: sessionObservation(call.receipt, 'session_id'),
+    job: normalizeRuntimeJob(result.job),
+  };
+}
+
+export async function cancelRuntimeBackgroundJob(
+  input: RuntimeJobCancelInput,
+  traceparent?: string,
+): Promise<RuntimeJobProjection> {
+  validateRuntimeJobBinding(input);
+  if (!JOB_ID_RE.test(input.jobId) || !UUID_RE.test(input.requestId)) {
+    throw new RuntimeProxyError('job_request_invalid', 400);
+  }
+  const call = await callRuntime('/v1/jobs/cancel', {
+    privacy_partition: input.privacyPartition,
+    session_principal: input.sessionPrincipal,
+    session_id: input.sessionId,
+    request_id: input.requestId,
+    job_id: input.jobId,
+  }, traceparent, input.credentialProfile ?? 'owner');
+  const result = call.data.result;
+  if (
+    !isObject(result)
+    || !exactKeys(result, ['schema_version', 'job'])
+    || result.schema_version !== 'apocv4.background-job.v1'
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'job',
+    observed: sessionObservation(call.receipt, 'session_id'),
+    job: normalizeRuntimeJob(result.job),
+  };
+}
+
+export async function submitRuntimeVision(
+  input: RuntimeVisionInput,
+  traceparent?: string,
+): Promise<RuntimeVisionProjection> {
+  const observedAt = Date.parse(input.observedAt);
+  if (
+    typeof input.imageB64 !== 'string'
+    || input.imageB64.length < 1
+    || input.imageB64.length > 5_600_000
+    || !BASE64_RE.test(input.imageB64)
+    || !['image/jpeg', 'image/png', 'image/webp'].includes(input.mimeType)
+    || !Number.isFinite(observedAt)
+    || new Date(observedAt).toISOString() !== input.observedAt
+    || !UUID_RE.test(input.perceptId)
+    || !boundedCanonicalString(input.provenanceRef, 512)
+    || !boundedCanonicalString(input.question, 32_768)
+    || !boundedCanonicalString(input.privacyPartition, 256)
+    || (input.credentialProfile !== undefined && input.credentialProfile !== 'owner')
+  ) {
+    throw new RuntimeProxyError('vision_request_invalid', 400);
+  }
+  const call = await callRuntime('/v1/vision', {
+    image_b64: input.imageB64,
+    mime_type: input.mimeType,
+    observed_at: input.observedAt,
+    percept_id: input.perceptId,
+    privacy_partition: input.privacyPartition,
+    provenance_ref: input.provenanceRef,
+    question: input.question,
+  }, traceparent, 'owner');
+  const result = call.data.result;
+  const observation = isObject(result) ? result.observation : null;
+  const runtimeState = isObject(result) ? result.runtime_state : null;
+  const observationKeys = [
+    'schema_version', 'summary', 'entities', 'visible_text', 'spatial_relations',
+    'affordances', 'uncertainties', 'safety_notes', 'confidence', 'percept_id',
+    'percept_digest', 'model_id', 'model_revision', 'model_family',
+    'serving_profile_digest', 'prompt_digest', 'response_digest', 'latency_ms',
+    'evidence_lane', 'effect_authority', 'observation_digest',
+  ];
+  if (
+    !isObject(result)
+    || !exactKeys(result, ['observation', 'perception_digest', 'runtime_state'])
+    || !isObject(observation)
+    || !exactKeys(observation, observationKeys)
+    || observation.schema_version !== 'apocv4.vision-observation.v1'
+    || observation.evidence_lane !== 'reported'
+    || observation.effect_authority !== 'NONE'
+    || observation.percept_id !== input.perceptId
+    || !boundedCanonicalString(observation.summary, 16_384)
+    || !SHA256_RE.test(String(observation.percept_digest ?? ''))
+    || !SHA256_RE.test(String(observation.observation_digest ?? ''))
+    || !SHA256_RE.test(String(result.perception_digest ?? ''))
+    || !isObject(runtimeState)
+    || !boundedJsonValue(observation, VISION_RESPONSE_LIMIT)
+    || !boundedJsonValue(runtimeState, VISION_RESPONSE_LIMIT)
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  for (const key of ['entities', 'visible_text', 'spatial_relations', 'affordances', 'uncertainties', 'safety_notes']) {
+    const value = observation[key];
+    if (!Array.isArray(value) || value.length > 128 || value.some((item) => typeof item !== 'string')) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+    }
+  }
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'vision',
+    observed: {
+      evidence_lane: 'model_reported_visual_observation_over_observed_runtime_transport',
+      receipt: call.receipt,
+      perception_digest: String(result.perception_digest),
+      observation,
+      runtime_state: runtimeState,
+    },
   };
 }
 
