@@ -710,13 +710,16 @@ function normalizeSessionJob(value: unknown): JsonObject | null {
   if (!isObject(value) || !onlyKnownKeys(value, ['job_id', 'state'], [
     'request_id', 'request_digest', 'action_id', 'arguments', 'attempt', 'output',
     'output_digest', 'artifact_ids', 'error_class', 'error_digest', 'reason_code',
-    'cancel_request_id', 'recovered_from',
+    'cancel_request_id', 'action_manifest_digest', 'action_contract_digest',
+    'owner_generation_ref', 'recovered_from_owner_generation_ref', 'progress_count',
+    'progress_phase_index', 'progress_seq', 'phase', 'progress', 'evidence_refs',
+    'stage', 'staged_result', 'staged_result_digest',
   ])) return null;
   const state = value.state;
   if (
     typeof value.job_id !== 'string'
     || !/^job:[0-9a-f]{64}$/.test(value.job_id)
-    || !['QUEUED', 'RUNNING', 'CANCEL_REQUESTED', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED']
+    || !['QUEUED', 'RUNNING', 'CANCEL_REQUESTED', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED_REVIEW_REQUIRED']
       .includes(String(state))
     || (Object.hasOwn(value, 'request_id')
       && (typeof value.request_id !== 'string' || !UUID_RE.test(value.request_id)))
@@ -737,14 +740,46 @@ function normalizeSessionJob(value: unknown): JsonObject | null {
     || (Object.hasOwn(value, 'reason_code') && !boundedCanonicalString(value.reason_code, 128))
     || (Object.hasOwn(value, 'cancel_request_id')
       && (typeof value.cancel_request_id !== 'string' || !UUID_RE.test(value.cancel_request_id)))
-    || (Object.hasOwn(value, 'recovered_from') && value.recovered_from !== 'RUNNING')
+    || (Object.hasOwn(value, 'action_manifest_digest')
+      && (typeof value.action_manifest_digest !== 'string'
+        || !SHA256_RE.test(value.action_manifest_digest)))
+    || (Object.hasOwn(value, 'action_contract_digest')
+      && (typeof value.action_contract_digest !== 'string'
+        || !SHA256_RE.test(value.action_contract_digest)))
+    || (Object.hasOwn(value, 'owner_generation_ref')
+      && (typeof value.owner_generation_ref !== 'string'
+        || !SHA256_RE.test(value.owner_generation_ref)))
+    || (Object.hasOwn(value, 'recovered_from_owner_generation_ref')
+      && value.recovered_from_owner_generation_ref !== null
+      && (typeof value.recovered_from_owner_generation_ref !== 'string'
+        || !SHA256_RE.test(value.recovered_from_owner_generation_ref)))
+    || (Object.hasOwn(value, 'progress_count')
+      && !boundedNonnegativeInteger(value.progress_count, 16))
+    || (Object.hasOwn(value, 'progress_phase_index')
+      && !boundedNonnegativeInteger(value.progress_phase_index, 16))
+    || (Object.hasOwn(value, 'progress_seq')
+      && !boundedNonnegativeInteger(value.progress_seq, 16))
+    || (Object.hasOwn(value, 'phase') && !boundedCanonicalString(value.phase, 64))
+    || (Object.hasOwn(value, 'progress') && !boundedJsonValue(value.progress, 4 * 1024))
+    || (Object.hasOwn(value, 'evidence_refs')
+      && !canonicalStringList(value.evidence_refs, 16, 512))
+    || (Object.hasOwn(value, 'stage')
+      && value.stage !== null
+      && value.stage !== 'RESULT_STAGED')
+    || (Object.hasOwn(value, 'staged_result')
+      && value.staged_result !== null
+      && !boundedJsonValue(value.staged_result, 384 * 1024))
+    || (Object.hasOwn(value, 'staged_result_digest')
+      && value.staged_result_digest !== null
+      && (typeof value.staged_result_digest !== 'string'
+        || !SHA256_RE.test(value.staged_result_digest)))
   ) return null;
   // Arguments and raw output can contain private tool material. Their digests,
   // state, and artifact references are sufficient for the browser world model.
   return selected(value, [
     'job_id', 'state', 'request_id', 'request_digest', 'action_id', 'attempt',
-    'output_digest', 'artifact_ids', 'error_class', 'error_digest', 'reason_code',
-    'cancel_request_id', 'recovered_from',
+    'action_manifest_digest', 'output_digest', 'artifact_ids', 'error_class',
+    'error_digest', 'reason_code', 'cancel_request_id', 'phase', 'progress_count',
   ]);
 }
 
