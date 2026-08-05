@@ -1045,6 +1045,34 @@
 .composerBar { padding: 7px 9px 9px; }
 .composerTools { gap: 5px; }
 
+.voiceConsent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 9px 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(141, 224, 193, 0.24);
+  border-radius: 8px;
+  color: #aeb9b3;
+  background: rgba(141, 224, 193, 0.045);
+  font: 0.66rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.voiceConsent p { margin: 0; }
+.voiceConsent div { display: flex; flex: none; gap: 7px; }
+.voiceConsent button {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--text);
+  background: rgba(255,255,255,0.035);
+  cursor: pointer;
+  font: 650 0.62rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.voiceConsent button:first-child { border-color: rgba(141, 224, 193, 0.38); color: #bdebd9; }
+.voiceConsent button:hover { background: rgba(255,255,255,0.07); }
+
 .attachmentButton,
 .lensButton,
 .scopeCapsule {
@@ -1175,6 +1203,7 @@
   .composerShell { border-radius: 10px; }
   .composerShell > textarea { min-height: 86px; padding: 15px 14px 8px; }
   .composerBar { align-items: flex-end; }
+  .voiceConsent { align-items: flex-start; flex-direction: column; }
   .composerTools { max-width: calc(100% - 52px); overflow-x: auto; scrollbar-width: none; }
   .attachmentButton,.lensButton { flex: none; }
   .lensButton small { display: inline; }

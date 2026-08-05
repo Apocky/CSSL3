@@ -1069,6 +1069,7 @@ export function PublicChat(): JSX.Element {
   const [visionBusy, setVisionBusy] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceConsentPending, setVoiceConsentPending] = useState(false);
   const [shareSupported, setShareSupported] = useState(false);
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2025,11 +2026,11 @@ export function PublicChat(): JSX.Element {
       setVoiceSupported(false);
       return;
     }
-    if (
-      !voiceConsentRef.current
-      && !window.confirm('Start browser voice input? Your browser may use its configured speech service. Apocky receives the resulting text, not a stored audio recording.')
-    ) return;
-    voiceConsentRef.current = true;
+    if (!voiceConsentRef.current) {
+      setVoiceConsentPending(true);
+      return;
+    }
+    setVoiceConsentPending(false);
     const recognition = new Recognition();
     const startingDraft = draft.trimEnd();
     let finalTranscript = '';
@@ -3127,6 +3128,27 @@ export function PublicChat(): JSX.Element {
                     </button>
                   </div>
                 </div>
+                {voiceConsentPending && (
+                  <div className={styles.voiceConsent} role="group" aria-label="Voice input disclosure">
+                    <p>
+                      Your browser may use its configured speech service. Apocky receives the resulting text,
+                      not a stored audio recording.
+                    </p>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          voiceConsentRef.current = true;
+                          setVoiceConsentPending(false);
+                          toggleVoiceInput();
+                        }}
+                      >
+                        Enable voice
+                      </button>
+                      <button type="button" onClick={() => setVoiceConsentPending(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
               <p id="public-apocrypha-disclosure" className={styles.srOnly}>
                 {ownerCodeMode
