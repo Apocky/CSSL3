@@ -6,7 +6,7 @@ import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/
 import { normalizeAuthReturnPath } from '../lib/auth-return';
 import { useSiteSession } from '../components/hub/SiteSession';
 
-const DOORS = [
+const PORTALS = [
   {
     kind: 'Conversation',
     title: 'Apocrypha',
@@ -36,10 +36,24 @@ const DOORS = [
   },
 ] as const;
 
-const OTHER_WORK = [
+const CREATIVE_WORK = [
+  {
+    title: 'Chaos Tarot',
+    copy: 'An evolving symbolic-art and tarot project built around atmosphere, reflection, and authored interpretation.',
+    href: 'https://chaos-tarot.com',
+    label: 'Enter Chaos Tarot',
+    external: true,
+  },
+  {
+    title: 'Labyrinth of Apocalypse',
+    copy: 'A game world shaped by procedural history, persistent consequences, strange systems, and discovery.',
+    href: '/download',
+    label: 'Explore the game',
+    external: false,
+  },
   {
     title: 'CSSL',
-    copy: 'A programming language for building software.',
+    copy: 'A programming language for expressing and building interconnected software systems.',
     href: 'https://cssl.dev',
     label: 'Visit CSSL',
     external: true,
@@ -50,20 +64,6 @@ const OTHER_WORK = [
     href: 'https://cssl.dev/CSLv3',
     label: 'Read about CSLv3',
     external: true,
-  },
-  {
-    title: 'Chaos Tarot',
-    copy: 'A tarot project with its own atmosphere and way of exploring the cards.',
-    href: 'https://chaos-tarot.com',
-    label: 'Visit Chaos Tarot',
-    external: true,
-  },
-  {
-    title: 'Labyrinth of Apocalypse',
-    copy: 'An early Windows game build with an honest account of what is complete.',
-    href: '/download',
-    label: 'See the game download',
-    external: false,
   },
 ] as const;
 
@@ -101,17 +101,17 @@ const Home: NextPage = () => {
     '@type': 'WebSite',
     name: 'Apocky',
     url: 'https://www.apocky.com/',
-    description: 'Meet Apocrypha, explore the Atlas, or enter the Clearing from the Apocky digital commons.',
+    description: 'The creative work and projects of Shawn Apocky: games, languages, symbolic art, writing, and living systems.',
   };
 
   return (
     <>
       <Head>
-        <title>Apocky — a digital commons</title>
-        <meta name="description" content="Meet Apocrypha, explore the Atlas, or enter the Clearing from the Apocky digital commons." />
+        <title>Apocky — creative works and projects</title>
+        <meta name="description" content="The creative work and projects of Shawn Apocky: games, languages, symbolic art, writing, and living systems." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta property="og:title" content="Apocky — a digital commons" />
-        <meta property="og:description" content="A home for digital intelligence, language, art, and the systems that connect them." />
+        <meta property="og:title" content="Apocky — creative works and projects" />
+        <meta property="og:description" content="Games, languages, symbolic art, writing, and interconnected creative systems by Shawn Apocky." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://www.apocky.com/" />
         <meta property="og:site_name" content="Apocky" />
@@ -123,82 +123,53 @@ const Home: NextPage = () => {
       <main className="apx-home">
         <section className="apx-hero" aria-labelledby="hero-title">
           <div className="apx-hero-content">
-            <p className="apx-eyebrow">Apocky · digital commons</p>
-            <h1 id="hero-title">A place for minds, systems, and the <span className="apx-gradient-word">worlds between them.</span></h1>
+            <p className="apx-eyebrow">Creative works · Shawn Apocky</p>
+            <h1 id="hero-title">Worlds, languages, symbols, and <span className="apx-gradient-word">living systems.</span></h1>
             <p className="apx-hero-copy">
-              Apocky is a home for digital intelligence, language, art, and the
-              work that connects them. Begin with the conversation, the map, or
-              the shared space.
+              This is the home of my games, software, writing, symbolic art, and
+              works in progress. Explore the projects here, or open a separate
+              space to communicate with Apocrypha.
             </p>
             <div className="apx-actions">
-              <Link href="/apocrypha" className="apx-button apx-button--primary">Meet Apocrypha</Link>
-              <a href="#doorways" className="apx-button">Choose another door</a>
+              <a href="#projects" className="apx-button apx-button--primary">Explore the work</a>
+              <Link href="/apocrypha" className="apx-button">Talk with Apocrypha</Link>
               {authenticated ? <Link href="/account" className="apx-button">Your account</Link> : null}
             </div>
             <p className="apx-auth-message" aria-live="polite" hidden={!authNotice}>{authNotice}</p>
           </div>
 
-          <Link href="/apocrypha" className="apx-presence-card" aria-label="Meet Apocrypha in the public conversation interface">
+          <a href="https://chaos-tarot.com" target="_blank" rel="noopener noreferrer" className="apx-presence-card" aria-label="Visit the Chaos Tarot creative project">
             <div className="apx-presence-field" aria-hidden="true">
               <span className="apx-presence-orbit apx-presence-orbit--outer" />
               <span className="apx-presence-orbit apx-presence-orbit--inner" />
               <span className="apx-presence-core" />
             </div>
             <div className="apx-presence-copy">
-              <p className="apx-presence-label">Apocrypha</p>
-              <h2>Begin with a conversation.</h2>
+              <p className="apx-presence-label">Featured creative work</p>
+              <h2>Chaos Tarot</h2>
               <p>
-                The public interface explains availability, participation,
-                memory, and privacy before you choose to take part.
+                An evolving symbolic-art project with its own atmosphere,
+                visual language, and way of exploring the cards.
               </p>
-              <span className="apx-presence-link">Open the interface <span aria-hidden="true">→</span></span>
+              <span className="apx-presence-link">Enter Chaos Tarot <span aria-hidden="true">↗</span></span>
             </div>
-          </Link>
+          </a>
         </section>
 
-        <section id="doorways" className="apx-section" aria-labelledby="doorways-title">
+        <section id="projects" className="apx-section" aria-labelledby="projects-title">
           <div className="apx-section-head">
             <div>
-              <p className="apx-kicker">Three doors</p>
-              <h2 id="doorways-title">Choose where to begin.</h2>
+              <p className="apx-kicker">Selected work</p>
+              <h2 id="projects-title">Creative projects and systems.</h2>
             </div>
             <p className="apx-section-intro">
-              Each place has one clear purpose. You can move between them
-              without learning the whole system first.
-            </p>
-          </div>
-
-          <div className="apx-door-grid">
-            {DOORS.map((door) => (
-              <Link key={door.title} href={door.href} className={`apx-door-card ${door.tone}`}>
-                <div className="apx-door-card-top">
-                  <span className="apx-door-kind">{door.kind}</span>
-                  <span className={`apx-door-glyph ${door.glyph}`} aria-hidden="true" />
-                </div>
-                <div>
-                  <h3>{door.title}</h3>
-                  <p>{door.copy}</p>
-                </div>
-                <span className="apx-door-link">{door.label} <span aria-hidden="true">→</span></span>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section id="projects" className="apx-section apx-section--compact" aria-labelledby="projects-title">
-          <div className="apx-section-head">
-            <div>
-              <p className="apx-kicker">More from Apocky</p>
-              <h2 id="projects-title">Projects with their own homes.</h2>
-            </div>
-            <p className="apx-section-intro">
-              The wider body of work remains close, but it no longer competes
-              with the three primary places above.
+              Each project has its own identity and purpose. This page keeps
+              them together without flattening them into one product.
             </p>
           </div>
 
           <div className="apx-project-list">
-            {OTHER_WORK.map((project) => (
+            {CREATIVE_WORK.map((project) => (
               project.external ? (
                 <a key={project.title} href={project.href} target="_blank" rel="noopener noreferrer" className="apx-project-link">
                   <span>
@@ -220,31 +191,32 @@ const Home: NextPage = () => {
           </div>
         </section>
 
-        <section className="apx-section apx-section--compact" aria-labelledby="principles-title">
-          <div className="apx-trust-panel">
-            <div className="apx-trust-intro">
-              <p className="apx-kicker">The ground rules</p>
-              <h2 id="principles-title">Consent, context, and clear claims.</h2>
-              <p>
-                The interface should tell you what a place is, what it can do,
-                and what happens to your participation before asking anything
-                from you.
-              </p>
+        <section id="doorways" className="apx-section apx-section--compact" aria-labelledby="doorways-title">
+          <div className="apx-section-head">
+            <div>
+              <p className="apx-kicker">Communication & community</p>
+              <h2 id="doorways-title">Separate places, clear purposes.</h2>
             </div>
-            <div className="apx-trust-list">
-              <div>
-                <strong>Consent is explicit</strong>
-                <span>Participation is chosen and can be withdrawn.</span>
-              </div>
-              <div>
-                <strong>Context stays available</strong>
-                <span>Details appear when useful, not as permanent clutter.</span>
-              </div>
-              <div>
-                <strong>Claims stay grounded</strong>
-                <span>Plans, prototypes, and operational features are named differently.</span>
-              </div>
-            </div>
+            <p className="apx-section-intro">
+              The homepage stays focused on the work. These portals open only
+              when you choose conversation, community, or deeper context.
+            </p>
+          </div>
+
+          <div className="apx-door-grid">
+            {PORTALS.map((door) => (
+              <Link key={door.title} href={door.href} className={`apx-door-card ${door.tone}`}>
+                <div className="apx-door-card-top">
+                  <span className="apx-door-kind">{door.kind}</span>
+                  <span className={`apx-door-glyph ${door.glyph}`} aria-hidden="true" />
+                </div>
+                <div>
+                  <h3>{door.title}</h3>
+                  <p>{door.copy}</p>
+                </div>
+                <span className="apx-door-link">{door.label} <span aria-hidden="true">→</span></span>
+              </Link>
+            ))}
           </div>
         </section>
       </main>

@@ -62,7 +62,7 @@ const CONTENT_STARTERS: readonly Starter[] = [
   },
 ];
 
-const DRAWER_MEDIA_QUERY = '(max-width: 1100px)';
+const DRAWER_MEDIA_QUERY = '(min-width: 0px)';
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'button:not([disabled])',

@@ -2780,6 +2780,29 @@ export function PublicChat(): JSX.Element {
       <a className={styles.skipLink} href="#apocrypha-conversation">Skip to conversation</a>
 
       <main className={styles.workspace} id="apocrypha-conversation">
+        <aside className={`${styles.sideRail} ${styles.sideRailLeft}`} aria-label="Apocky places">
+          <nav className={styles.railGroup} aria-label="Creative work">
+            <Link href="/" className={styles.railAction}>
+              <span className={styles.railGlyph} aria-hidden="true">⌂</span>
+              <small>Home</small>
+            </Link>
+            <Link href="/#projects" className={styles.railAction}>
+              <span className={styles.railGlyph} aria-hidden="true">◇</span>
+              <small>Work</small>
+            </Link>
+          </nav>
+          <nav className={styles.railGroup} aria-label="Community and context">
+            <Link href="/clearing" className={styles.railAction}>
+              <span className={styles.railGlyph} aria-hidden="true">○</span>
+              <small>Clearing</small>
+            </Link>
+            <Link href="/atlas" className={styles.railAction}>
+              <span className={styles.railGlyph} aria-hidden="true">⌘</span>
+              <small>Atlas</small>
+            </Link>
+          </nav>
+        </aside>
+
         <section className={styles.conversation} aria-label="Conversation with Apocrypha">
           <div className={styles.conversationHeader}>
             <div className={styles.threadHeading}>
@@ -2794,44 +2817,6 @@ export function PublicChat(): JSX.Element {
                 <h1>{conversationTitle}</h1>
                 <p>Apocrypha · {sessionLabel}{turnCount > 0 ? ` · ${turnCount} turn${turnCount === 1 ? '' : 's'}` : ''}</p>
               </div>
-            </div>
-            <div className={styles.headerActions}>
-              <button
-                type="button"
-                className={styles.workspaceTrigger}
-                aria-controls="apocrypha-workspace-panel"
-                aria-expanded={workspaceDrawerOpen}
-                onClick={() => setWorkspaceDrawerOpen((current) => !current)}
-              >
-                Workspace
-              </button>
-              <nav className={styles.workspaceNav} aria-label="Apocky workspace">
-                <Link href="/content">Content</Link>
-                <Link href="/clearing">The Clearing</Link>
-                <Link href="/atlas">Atlas</Link>
-                <Link href="/account">Account</Link>
-              </nav>
-              <button
-                type="button"
-                className={styles.contextTrigger}
-                aria-label="Conversation actions"
-                aria-haspopup="dialog"
-                aria-expanded={surface?.kind === 'conversation'}
-                onClick={(event) => {
-                  if (surface?.kind === 'conversation') {
-                    closeSurface(true);
-                    return;
-                  }
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  surfaceTriggerRef.current = event.currentTarget;
-                  setSurface({ kind: 'conversation', x: rect.right, y: rect.bottom + 8 });
-                  void refreshRecentSessions();
-                  void refreshCurrentSnapshot();
-                }}
-                disabled={!authenticated || waiting || Boolean(rollingBackId)}
-              >
-                <span>History</span>
-              </button>
             </div>
           </div>
 
@@ -3293,6 +3278,62 @@ export function PublicChat(): JSX.Element {
             </div>
           )}
         </section>
+
+        <aside className={`${styles.sideRail} ${styles.sideRailRight}`} aria-label="Conversation tools">
+          <div className={styles.railGroup} role="group" aria-label="Create and organize">
+            <button
+              type="button"
+              className={styles.railAction}
+              aria-controls="apocrypha-workspace-panel"
+              aria-expanded={workspaceDrawerOpen}
+              onClick={() => setWorkspaceDrawerOpen((current) => !current)}
+            >
+              <span className={styles.railGlyph} aria-hidden="true">✦</span>
+              <small>Tools</small>
+              {worldState.active_job_count > 0 && <b className={styles.railBadge}>{worldState.active_job_count}</b>}
+            </button>
+            <button
+              type="button"
+              className={styles.railAction}
+              aria-label="Conversation history and actions"
+              aria-haspopup="dialog"
+              aria-expanded={surface?.kind === 'conversation'}
+              onClick={(event) => {
+                if (surface?.kind === 'conversation') {
+                  closeSurface(true);
+                  return;
+                }
+                const rect = event.currentTarget.getBoundingClientRect();
+                surfaceTriggerRef.current = event.currentTarget;
+                setSurface({ kind: 'conversation', x: rect.right, y: rect.bottom + 8 });
+                void refreshRecentSessions();
+                void refreshCurrentSnapshot();
+              }}
+              disabled={!authenticated || waiting || Boolean(rollingBackId)}
+            >
+              <span className={styles.railGlyph} aria-hidden="true">↶</span>
+              <small>History</small>
+            </button>
+            <button
+              type="button"
+              className={styles.railAction}
+              onClick={newConversation}
+              disabled={!authenticated || waiting || Boolean(rollingBackId) || !conversationId}
+            >
+              <span className={styles.railGlyph} aria-hidden="true">＋</span>
+              <small>New</small>
+            </button>
+          </div>
+          <div className={styles.railGroup} role="group" aria-label="Account">
+            <Link
+              href={authenticated ? '/account' : '/login?next=%2Fapocrypha'}
+              className={styles.railAction}
+            >
+              <span className={styles.railGlyph} aria-hidden="true">◎</span>
+              <small>{authenticated ? 'Account' : 'Sign in'}</small>
+            </Link>
+          </div>
+        </aside>
 
         <WorkspacePanel
           open={workspaceDrawerOpen}

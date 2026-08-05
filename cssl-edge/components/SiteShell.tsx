@@ -5,19 +5,20 @@ import { useSiteSession } from './hub/SiteSession';
 type NavItem = { href: string; label: string; ext?: boolean };
 
 const NAV: ReadonlyArray<NavItem> = [
-  { href: '/apocrypha', label: 'Apocrypha' },
-  { href: '/atlas', label: 'Atlas' },
+  { href: '/#projects', label: 'Creative work' },
+  { href: '/apocrypha', label: 'Talk with Apocrypha' },
   { href: '/clearing', label: 'The Clearing' },
+  { href: '/atlas', label: 'Atlas' },
 ];
 
 const WORK: ReadonlyArray<NavItem> = [
-  { href: '/apocrypha', label: 'Meet Apocrypha' },
-  { href: '/atlas', label: 'Explore the Atlas' },
-  { href: '/clearing', label: 'Enter the Clearing' },
+  { href: 'https://chaos-tarot.com', label: 'Enter Chaos Tarot', ext: true },
+  { href: '/download', label: 'Explore Labyrinth of Apocalypse' },
   { href: 'https://cssl.dev', label: 'Visit CSSL', ext: true },
   { href: 'https://cssl.dev/CSLv3', label: 'Read about CSLv3', ext: true },
-  { href: 'https://chaos-tarot.com', label: 'Visit Chaos Tarot', ext: true },
-  { href: '/download', label: 'Download Labyrinth of Apocalypse' },
+  { href: '/apocrypha', label: 'Talk with Apocrypha' },
+  { href: '/clearing', label: 'Enter the Clearing' },
+  { href: '/atlas', label: 'Explore the Atlas' },
 ];
 
 const ABOUT: ReadonlyArray<NavItem> = [
@@ -97,12 +98,12 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
               <span>APOCKY</span>
             </Link>
             <p className="apx-footer-copy">
-              A digital commons for Apocrypha, language, art, and the systems
-              that connect them.
+              Shawn Apocky’s creative home for games, software, language,
+              symbolic art, writing, and interconnected works in progress.
             </p>
           </div>
           <div>
-            <h2 className="apx-footer-title">Places & projects</h2>
+            <h2 className="apx-footer-title">Creative work & portals</h2>
             <div className="apx-footer-links">
               {WORK.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
             </div>

@@ -6,15 +6,15 @@ export default function ApocryphaPage(): JSX.Element {
   return (
     <>
       <Head>
-        <title>Apocrypha Workspace · Apocky</title>
+        <title>Talk with Apocrypha · Apocky</title>
         <meta
           name="description"
-          content="Create in conversation, inspect durable artifacts and background work, and govern every consequential change."
+          content="A clear, conversation-centered portal for communicating with Apocrypha."
         />
-        <meta property="og:title" content="Apocrypha Workspace · Apocky" />
+        <meta property="og:title" content="Talk with Apocrypha · Apocky" />
         <meta
           property="og:description"
-          content="A conversation-first workspace for content, evidence-bearing artifacts, and governed agentic work."
+          content="A clear, conversation-centered portal for communicating with Apocrypha."
         />
         <link rel="canonical" href="https://www.apocky.com/apocrypha" />
       </Head>
