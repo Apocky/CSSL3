@@ -6,6 +6,16 @@ const migration = readFileSync(
   resolve(process.cwd(), '..', 'cssl-supabase', 'migrations', '0046_apocrypha_sms.sql'),
   'utf8',
 );
+const leastAuthorityMigration = readFileSync(
+  resolve(
+    process.cwd(),
+    '..',
+    'cssl-supabase',
+    'migrations',
+    '0047_apocrypha_sms_least_authority.sql',
+  ),
+  'utf8',
+);
 
 function sqlSection(start: string, end: string): string {
   const startIndex = migration.indexOf(start);
@@ -47,6 +57,21 @@ assert.doesNotMatch(
 assert.doesNotMatch(
   migration,
   /^GRANT[^\r\n]*\sTO\s+(?:anon|authenticated|PUBLIC)(?:\s*[,;]|$)/im,
+);
+for (const table of ['channels', 'messages', 'delivery_events']) {
+  assert.match(
+    leastAuthorityMigration,
+    new RegExp(`REVOKE ALL ON TABLE public\\.apocrypha_sms_${table} FROM service_role`),
+  );
+}
+assert.match(
+  leastAuthorityMigration,
+  /REVOKE ALL ON SEQUENCE public\.apocrypha_sms_delivery_events_id_seq FROM service_role/,
+);
+assert.doesNotMatch(
+  leastAuthorityMigration,
+  /^GRANT\b/im,
+  'the final SMS hardening migration must not restore direct service-role storage access',
 );
 
 // No direct identifiers or plaintext message columns cross the persistence boundary.

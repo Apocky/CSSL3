@@ -26,6 +26,7 @@
     }
   },
   "crons": [
+    { "path": "/api/cron/apocrypha-sms", "schedule": "* * * * *" },
     { "path": "/api/cron/heartbeat", "schedule": "* * * * *" },
     { "path": "/api/cron/playtest-cycle", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/mycelium-relay", "schedule": "*/5 * * * *" },
