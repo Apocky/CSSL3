@@ -19,6 +19,7 @@ import {
   publicMemberPrincipalRef,
   publicRuntimeError,
   RuntimeProxyError,
+  streamRuntimeChat,
   submitRuntimeChat,
 } from '@/lib/apocv4/runtime-proxy';
 import { hasSameOrigin } from '@/lib/auth-session';
@@ -31,6 +32,7 @@ const PUBLIC_RUNTIME_PRIVACY_PARTITION = 'public:apocrypha';
 const RATE_WINDOW_MS = 60_000;
 const RATE_WINDOW_TURNS = 8;
 const MAX_RATE_BUCKETS = 10_000;
+const PUBLIC_CHAT_STREAM_SCHEMA = 'apocky.apocrypha-chat-stream.v1';
 
 interface TurnBody {
   text?: unknown;
@@ -253,6 +255,7 @@ export default async function handler(
   const clientRequestId = body.request_id.toLowerCase();
   const scopedConversationId = scopeConversationId(principalRef, clientSessionId);
   const scopedRequestId = scopeRequestId(principalRef, clientRequestId);
+  const streaming = firstHeader(req.headers.accept) === 'application/x-ndjson';
   await emitOperationalTelemetry({
     trace, kind: 'inference.apocrypha.turn.started', source: 'apocv4-runtime-proxy', plane: 'runtime',
     severity: 'info', outcome: 'started', status: null, durationMs: Math.round(performance.now() - started),
@@ -267,7 +270,7 @@ export default async function handler(
   });
   let projection;
   try {
-    projection = await submitRuntimeChat({
+    const runtimeInput = {
       message: text,
       conversationId: scopedConversationId,
       requestId: scopedRequestId,
@@ -275,17 +278,45 @@ export default async function handler(
       sessionPrincipal: principalRef,
       privacyPartition: runtimePrivacyPartition,
       credentialProfile,
-    }, traceparentFor(trace));
+    } as const;
+    if (streaming) {
+      res.status(200);
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+      projection = await streamRuntimeChat(
+        runtimeInput,
+        (delta) => {
+          res.write(`${JSON.stringify({
+            schema_version: PUBLIC_CHAT_STREAM_SCHEMA,
+            type: 'delta',
+            text: delta,
+          })}\n`);
+        },
+        traceparentFor(trace),
+      );
+    } else {
+      projection = await submitRuntimeChat(runtimeInput, traceparentFor(trace));
+    }
   } catch (error) {
     const status = error instanceof RuntimeProxyError ? error.publicStatus : 502;
-    res.status(status).json({
-      ...publicRuntimeError(error),
-      session_id: clientSessionId,
-      conversation_id: clientSessionId,
-      request_id: clientRequestId,
-      duplicate_effect_protection: 'not_applicable_no_effect_authority',
-      ...envelope(),
-    });
+    if (streaming) {
+      res.write(`${JSON.stringify({
+        schema_version: PUBLIC_CHAT_STREAM_SCHEMA,
+        type: 'error',
+        ...publicRuntimeError(error),
+      })}\n`);
+      res.end();
+    } else {
+      res.status(status).json({
+        ...publicRuntimeError(error),
+        session_id: clientSessionId,
+        conversation_id: clientSessionId,
+        request_id: clientRequestId,
+        duplicate_effect_protection: 'not_applicable_no_effect_authority',
+        ...envelope(),
+      });
+    }
     await emitOperationalTelemetry({
       trace, kind: 'inference.apocrypha.turn.failed', source: 'apocv4-runtime-proxy', plane: 'runtime',
       severity: 'error', outcome: 'failed', status,
@@ -302,14 +333,23 @@ export default async function handler(
   const responseDigest = stringField(projection.model_reported, 'response_digest');
   const servingProfileDigest = stringField(projection.model_reported, 'serving_profile_digest');
   if (!modelId || !responseId || !responseDigest || !servingProfileDigest) {
-    res.status(502).json({
-      error: 'The Apocv4 runtime did not return the exact public-turn evidence envelope.',
-      session_id: clientSessionId,
-      conversation_id: clientSessionId,
-      request_id: clientRequestId,
-      duplicate_effect_protection: 'not_applicable_no_effect_authority',
-      ...envelope(),
-    });
+    if (streaming) {
+      res.write(`${JSON.stringify({
+        schema_version: PUBLIC_CHAT_STREAM_SCHEMA,
+        type: 'error',
+        error: 'runtime_response_invalid',
+      })}\n`);
+      res.end();
+    } else {
+      res.status(502).json({
+        error: 'The Apocv4 runtime did not return the exact public-turn evidence envelope.',
+        session_id: clientSessionId,
+        conversation_id: clientSessionId,
+        request_id: clientRequestId,
+        duplicate_effect_protection: 'not_applicable_no_effect_authority',
+        ...envelope(),
+      });
+    }
     await emitOperationalTelemetry({
       trace, kind: 'inference.apocrypha.turn.envelope_rejected', source: 'apocv4-runtime-proxy', plane: 'runtime',
       severity: 'error', outcome: 'failed', status: 502,
@@ -320,7 +360,7 @@ export default async function handler(
     return;
   }
 
-  res.status(200).json({
+  const publicResult = {
     text: projection.model_reported.text,
     session_id: clientSessionId,
     conversation_id: clientSessionId,
@@ -343,7 +383,17 @@ export default async function handler(
     duplicate_effect_protection: 'not_applicable_no_effect_authority',
     upstream_status: projection.observed.receipt.upstream_status,
     ...envelope(),
-  });
+  };
+  if (streaming) {
+    res.write(`${JSON.stringify({
+      schema_version: PUBLIC_CHAT_STREAM_SCHEMA,
+      type: 'completed',
+      result: publicResult,
+    })}\n`);
+    res.end();
+  } else {
+    res.status(200).json(publicResult);
+  }
   await emitOperationalTelemetry({
     trace, kind: 'inference.apocrypha.turn.completed', source: 'apocv4-runtime-proxy', plane: 'runtime',
     severity: 'info', outcome: 'succeeded', status: 200,

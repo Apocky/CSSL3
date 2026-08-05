@@ -296,6 +296,7 @@ const GENERATIVE_MODES: ReadonlyArray<{
 ];
 
 const CHAT_BROWSER_DEADLINE_MS = 85_000;
+const PUBLIC_CHAT_STREAM_SCHEMA = 'apocky.apocrypha-chat-stream.v1';
 const CODE_BROWSER_DEADLINE_MS = 250_000;
 const JOB_BROWSER_DEADLINE_MS = 35_000;
 const MAX_TEXT_BYTES = 16_384;
@@ -349,6 +350,93 @@ async function fileBase64(file: File): Promise<string> {
 function safeError(body: TurnResponse, status: number): string {
   return stringValue(body.error)
     ?? `Apocrypha could not complete this turn (HTTP ${status}).`;
+}
+
+async function readTurnStream(
+  response: Response,
+  onDelta: (text: string) => void,
+): Promise<TurnResponse> {
+  const contentType = response.headers.get('content-type')
+    ?.split(';', 1)[0]?.trim().toLowerCase();
+  if (contentType !== 'application/x-ndjson' || !response.body) {
+    throw new Error('The native body did not return a valid response stream.');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let buffer = '';
+  let streamedText = '';
+  let terminal: TurnResponse | null = null;
+  let totalBytes = 0;
+
+  const acceptLine = (rawLine: string): void => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    if (!line) return;
+    if (terminal !== null) {
+      throw new Error('The native body continued after its terminal response.');
+    }
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      throw new Error('The native body returned an invalid response stream.');
+    }
+    const event = recordValue(value);
+    if (!event || event.schema_version !== PUBLIC_CHAT_STREAM_SCHEMA) {
+      throw new Error('The native body returned an unsupported response stream.');
+    }
+    if (event.type === 'delta') {
+      if (typeof event.text !== 'string' || !event.text || byteLength(event.text) > 32 * 1024) {
+        throw new Error('The native body returned an invalid response delta.');
+      }
+      streamedText += event.text;
+      if (byteLength(streamedText) > 128 * 1024) {
+        throw new Error('The native body response exceeded its bound.');
+      }
+      onDelta(event.text);
+      return;
+    }
+    if (event.type === 'completed') {
+      const result = recordValue(event.result);
+      if (!result) throw new Error('The native body omitted its terminal response.');
+      terminal = result as TurnResponse;
+      if (
+        streamedText
+        && (typeof terminal.text !== 'string' || streamedText.trim() !== terminal.text)
+      ) {
+        throw new Error('The streamed text did not match its verified terminal response.');
+      }
+      return;
+    }
+    if (event.type === 'error') {
+      throw new Error(stringValue(event.error) ?? 'The streamed turn could not be completed.');
+    }
+    throw new Error('The native body returned an unknown response event.');
+  };
+
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > 1024 * 1024) {
+        await reader.cancel();
+        throw new Error('The native body response stream exceeded its bound.');
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      let newline = buffer.indexOf('\n');
+      while (newline >= 0) {
+        acceptLine(buffer.slice(0, newline));
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf('\n');
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer) acceptLine(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  if (!terminal) throw new Error('The native body stream ended without a verified response.');
+  return terminal;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -2387,7 +2475,10 @@ export function PublicChat(): JSX.Element {
       }
       const response = await authFetch('/api/apocrypha/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Accept: 'application/x-ndjson',
+          'Content-Type': 'application/json',
+        },
         cache: 'no-store',
         credentials: 'same-origin',
         signal: controller.signal,
@@ -2397,14 +2488,33 @@ export function PublicChat(): JSX.Element {
           request_id: requestId,
         }),
       });
-      const body = await response.json() as TurnResponse;
       if (!response.ok) {
+        const body = await response.json() as TurnResponse;
         retryable = response.status === 409
           || response.status === 429
           || response.status >= 500;
         if (response.status === 401) await refresh();
         throw new Error(safeError(body, response.status));
       }
+      let streamedText = '';
+      const body = await readTurnStream(response, (delta) => {
+        streamedText += delta;
+        if (!isCurrentOperation(dispatchGeneration, dispatchConversationId)) return;
+        setMessages((current) => {
+          const streamedMessage: ChatMessage = {
+            id: `reply-${requestId}`,
+            role: 'apocrypha',
+            text: streamedText,
+            requestId,
+            recordedAt: new Date().toISOString(),
+          };
+          const existing = current.findIndex((message) => message.id === streamedMessage.id);
+          if (existing < 0) return [...current, streamedMessage];
+          return current.map((message, index) => (
+            index === existing ? streamedMessage : message
+          ));
+        });
+      });
       if (!isCurrentOperation(dispatchGeneration, dispatchConversationId)) return;
       if (!isExactTurn(body, dispatchConversationId, requestId)) {
         throw new Error('The native body returned an invalid public-turn envelope.');
@@ -2413,9 +2523,8 @@ export function PublicChat(): JSX.Element {
       const identity = identityReceipt(body.identity);
       const context = contextReceipt(body.context);
       setLastModel(body.model_id);
-      setMessages((current) => [
-        ...current,
-        {
+      setMessages((current) => {
+        const completedMessage: ChatMessage = {
           id: `reply-${requestId}`,
           role: 'apocrypha',
           text: responseText,
@@ -2431,8 +2540,13 @@ export function PublicChat(): JSX.Element {
             identity,
             context,
           },
-        },
-      ]);
+        };
+        const existing = current.findIndex((message) => message.id === completedMessage.id);
+        if (existing < 0) return [...current, completedMessage];
+        return current.map((message, index) => (
+          index === existing ? completedMessage : message
+        ));
+      });
       setWorldState((current) => ({
         ...current,
         message_count: current.message_count + 2,
@@ -2441,6 +2555,11 @@ export function PublicChat(): JSX.Element {
       setCurrentSessionRecorded(true);
     } catch (cause) {
       if (!isCurrentOperation(dispatchGeneration, dispatchConversationId)) return;
+      if (!runCodeEffect) {
+        setMessages((current) => current.filter(
+          (message) => message.id !== `reply-${requestId}`,
+        ));
+      }
       const timedOut = cause instanceof DOMException && cause.name === 'AbortError';
       const stoppedByUser = timedOut && turnStopRequestedRef.current;
       let reconciledCodeRequest = false;
@@ -2916,7 +3035,7 @@ export function PublicChat(): JSX.Element {
             {waiting && (
               <div className={styles.waiting} role="status">
                 <span className={styles.waitingMark} aria-hidden="true" />
-                {ownerCodeMode ? 'Apocrypha is generating, testing and applying within the confirmed scope…' : 'Apocrypha is thinking…'}
+                {ownerCodeMode ? 'Apocrypha is generating, testing and applying within the confirmed scope…' : 'Apocrypha is responding…'}
               </div>
             )}
 

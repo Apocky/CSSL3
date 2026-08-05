@@ -16,6 +16,7 @@ export type { RuntimeSessionPrincipal } from './session-principal';
 export const APOCV4_PROXY_SCHEMA = 'apocky.apocv4-runtime-proxy.v1';
 
 const RUNTIME_SCHEMA = 'apocv4.runtime-service.v1';
+const CHAT_STREAM_EVENT_SCHEMA = 'apocv4.chat-stream-event.v1';
 const TOKEN_RE = /^[A-Za-z0-9._~+/-]{1,8192}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const TRACEPARENT_RE = /^00-([0-9a-f]{32})-([0-9a-f]{16})-01$/;
@@ -23,6 +24,7 @@ const PORT_RE = /^(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const HEALTH_RESPONSE_LIMIT = 256 * 1024;
 const CHAT_RESPONSE_LIMIT = 512 * 1024;
+const CHAT_STREAM_RESPONSE_LIMIT = 1024 * 1024;
 const SESSION_RESPONSE_LIMIT = 2 * 1024 * 1024;
 const SESSION_PROJECTION_LIMIT = 512 * 1024;
 const SESSION_MESSAGE_LIMIT = 64;
@@ -82,7 +84,7 @@ const PROTECTED_CODE_PREFIXES = [
 ];
 
 type JsonObject = Record<string, unknown>;
-type RuntimePath = '/health' | '/v1/chat' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
+type RuntimePath = '/health' | '/v1/chat' | '/v1/chat/stream' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
   | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete'
   | '/v1/jobs/submit' | '/v1/jobs/list' | '/v1/jobs/status' | '/v1/jobs/cancel'
   | '/v1/vision';
@@ -1483,6 +1485,151 @@ async function directTlsRequest(
   });
 }
 
+interface RuntimeStreamResponse {
+  status: number;
+  headers: Headers;
+}
+
+async function directTlsStreamRequest(
+  url: string,
+  init: RequestInit,
+  maximumBytes: number,
+  deadlineMs: number,
+  onResponse: (response: RuntimeStreamResponse) => void,
+  onChunk: (chunk: Uint8Array) => void,
+): Promise<RuntimeStreamResponse> {
+  const parsed = new URL(url);
+  const headers = Object.fromEntries(new Headers(init.headers).entries());
+  const body = typeof init.body === 'string' ? Buffer.from(init.body, 'utf8') : null;
+  return new Promise<RuntimeStreamResponse>((resolve, reject) => {
+    let settled = false;
+    const fail = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const request = httpsRequest({
+      protocol: 'https:',
+      hostname: parsed.hostname,
+      port: Number(parsed.port),
+      path: `${parsed.pathname}${parsed.search}`,
+      method: init.method,
+      headers,
+      ca: runtimeCa(),
+      rejectUnauthorized: true,
+      timeout: deadlineMs,
+    }, (incoming) => {
+      const responseHeaders = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (Array.isArray(value)) {
+          for (const member of value) responseHeaders.append(name, member);
+        } else if (value !== undefined) {
+          responseHeaders.set(name, String(value));
+        }
+      }
+      const response = {
+        status: incoming.statusCode ?? 502,
+        headers: responseHeaders,
+      };
+      try {
+        onResponse(response);
+      } catch (error) {
+        incoming.destroy();
+        fail(error instanceof Error ? error : new RuntimeProxyError('runtime_response_invalid', 502));
+        return;
+      }
+      let total = 0;
+      incoming.on('data', (chunk: Buffer | string) => {
+        if (settled) return;
+        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        total += bytes.length;
+        if (total > maximumBytes) {
+          incoming.destroy();
+          fail(new RuntimeProxyError('runtime_response_too_large', 502, response.status));
+          return;
+        }
+        try {
+          onChunk(bytes);
+        } catch (error) {
+          incoming.destroy();
+          fail(error instanceof Error ? error : new RuntimeProxyError('runtime_response_invalid', 502));
+        }
+      });
+      incoming.on('error', fail);
+      incoming.on('end', () => {
+        if (settled) return;
+        settled = true;
+        resolve(response);
+      });
+    });
+    request.once('timeout', () => {
+      request.destroy();
+      fail(new RuntimeProxyError('runtime_deadline_exceeded', 504, null, deadlineMs));
+    });
+    request.once('error', (error) => {
+      fail(error instanceof RuntimeProxyError
+        ? error
+        : new RuntimeProxyError('runtime_unreachable', 502));
+    });
+    if (init.signal) {
+      const abort = (): void => {
+        request.destroy();
+        fail(new RuntimeProxyError('runtime_deadline_exceeded', 504, null, deadlineMs));
+      };
+      if (init.signal.aborted) abort();
+      else init.signal.addEventListener('abort', abort, { once: true });
+    }
+    if (body) request.write(body);
+    request.end();
+  });
+}
+
+async function runtimeStreamRequest(
+  url: string,
+  init: RequestInit,
+  maximumBytes: number,
+  deadlineMs: number,
+  onResponse: (response: RuntimeStreamResponse) => void,
+  onChunk: (chunk: Uint8Array) => void,
+): Promise<RuntimeStreamResponse> {
+  if (
+    process.env.APOCV4_RUNTIME_TRANSPORT === 'test-fetch'
+    && process.env.NODE_ENV !== 'production'
+  ) {
+    const response = await fetch(url, init);
+    const projected = { status: response.status, headers: response.headers };
+    onResponse(projected);
+    if (!response.body) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
+    }
+    const reader = response.body.getReader();
+    let total = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        total += chunk.value.byteLength;
+        if (total > maximumBytes) {
+          await reader.cancel();
+          throw new RuntimeProxyError('runtime_response_too_large', 502, response.status);
+        }
+        onChunk(chunk.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return projected;
+  }
+  return directTlsStreamRequest(
+    url,
+    init,
+    maximumBytes,
+    deadlineMs,
+    onResponse,
+    onChunk,
+  );
+}
+
 async function runtimeRequest(
   url: string,
   init: RequestInit,
@@ -1726,6 +1873,193 @@ async function callRuntime(
   }
 }
 
+async function callRuntimeChatStream(
+  body: JsonObject,
+  traceparent: string | undefined,
+  credentialProfile: RuntimeCredentialProfile,
+  onTextDelta: (text: string) => void,
+): Promise<RuntimeCall> {
+  const path: RuntimePath = '/v1/chat/stream';
+  const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
+  const token = runtimeToken(credentialProfile);
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), CHAT_DEADLINE_MS);
+  const started = Date.now();
+  const traceMatch = traceparent ? TRACEPARENT_RE.exec(traceparent) : null;
+  const transmittedBody = withSessionBinding(path, body);
+  const bindingMac = typeof transmittedBody.session_binding_mac === 'string'
+    ? transmittedBody.session_binding_mac
+    : null;
+  const bindingSecret = bindingMac === null ? null : process.env.APOCV4_SESSION_BINDING_SECRET ?? null;
+  const protectedValues = bindingMac === null
+    ? [token]
+    : [token, bindingMac, bindingSecret ?? ''];
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let lineBuffer = '';
+  let rawText = '';
+  let streamedText = '';
+  let terminalResult: JsonObject | null = null;
+  let responseMeta: RuntimeStreamResponse | null = null;
+
+  const acceptLine = (rawLine: string): void => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    if (!line) return;
+    let event: unknown;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta?.status ?? null);
+    }
+    if (!isObject(event) || event.schema_version !== CHAT_STREAM_EVENT_SCHEMA) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta?.status ?? null);
+    }
+    if (event.type === 'delta') {
+      if (
+        terminalResult !== null
+        || !exactKeys(event, ['schema_version', 'type', 'text'])
+        || typeof event.text !== 'string'
+        || event.text.length < 1
+        || Buffer.byteLength(event.text, 'utf8') > 32 * 1024
+        || Buffer.byteLength(streamedText + event.text, 'utf8') > 128 * 1024
+      ) {
+        throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta?.status ?? null);
+      }
+      streamedText += event.text;
+      onTextDelta(event.text);
+      return;
+    }
+    if (event.type === 'completed') {
+      if (
+        terminalResult !== null
+        || !exactKeys(event, ['schema_version', 'type', 'result'])
+        || !isObject(event.result)
+        || !boundedJsonValue(event.result, CHAT_RESPONSE_LIMIT)
+      ) {
+        throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta?.status ?? null);
+      }
+      terminalResult = event.result;
+      return;
+    }
+    if (event.type === 'error') {
+      if (
+        !exactKeys(event, ['schema_version', 'type', 'error', 'error_digest'])
+        || event.error !== 'engine_failure'
+        || typeof event.error_digest !== 'string'
+        || !SHA256_RE.test(event.error_digest)
+      ) {
+        throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta?.status ?? null);
+      }
+      throw new RuntimeProxyError('runtime_stream_failed', 502, responseMeta?.status ?? null);
+    }
+    throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta?.status ?? null);
+  };
+
+  const acceptText = (text: string): void => {
+    rawText += text;
+    if (protectedValues.some((value) => value.length > 0 && rawText.includes(value))) {
+      throw new RuntimeProxyError('runtime_reflected_credential', 502, responseMeta?.status ?? null);
+    }
+    lineBuffer += text;
+    if (Buffer.byteLength(lineBuffer, 'utf8') > CHAT_RESPONSE_LIMIT) {
+      throw new RuntimeProxyError('runtime_response_too_large', 502, responseMeta?.status ?? null);
+    }
+    let newline = lineBuffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = lineBuffer.slice(0, newline);
+      lineBuffer = lineBuffer.slice(newline + 1);
+      acceptLine(line);
+      newline = lineBuffer.indexOf('\n');
+    }
+  };
+
+  try {
+    responseMeta = await runtimeStreamRequest(
+      `${origin}${path}`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/x-ndjson',
+          'Accept-Encoding': 'identity',
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...(traceMatch ? {
+            Traceparent: traceparent,
+            'X-Apocky-Trace-Id': traceMatch[1],
+          } : {}),
+        },
+        body: JSON.stringify(transmittedBody),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: controller.signal,
+      },
+      CHAT_STREAM_RESPONSE_LIMIT,
+      CHAT_DEADLINE_MS,
+      (response) => {
+        const contentType = response.headers.get('content-type')
+          ?.split(';', 1)[0]?.trim().toLowerCase();
+        const contentEncoding = response.headers.get('content-encoding');
+        if (
+          response.status !== 200
+          || contentType !== 'application/x-ndjson'
+          || (contentEncoding && contentEncoding.toLowerCase() !== 'identity')
+          || response.headers.get('x-apocv4-session-binding') !== 'VERIFIED'
+        ) {
+          throw new RuntimeProxyError(
+            response.status === 200 ? 'runtime_response_invalid' : 'runtime_http_error',
+            502,
+            response.status,
+          );
+        }
+        responseMeta = response;
+      },
+      (chunk) => {
+        acceptText(decoder.decode(chunk, { stream: true }));
+      },
+    );
+    acceptText(decoder.decode());
+    if (lineBuffer) {
+      acceptLine(lineBuffer);
+      lineBuffer = '';
+    }
+    const completedResult = terminalResult as JsonObject | null;
+    if (!completedResult) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta.status);
+    }
+    if (
+      streamedText
+      && (typeof completedResult.text !== 'string' || streamedText.trim() !== completedResult.text)
+    ) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, responseMeta.status);
+    }
+    return {
+      data: { schema_version: RUNTIME_SCHEMA, result: completedResult },
+      rollback_lease_ref: null,
+      receipt: {
+        observed_at: new Date().toISOString(),
+        latency_ms: Math.max(0, Date.now() - started),
+        upstream_status: responseMeta.status,
+        auth_mode: boundedMode(responseMeta.headers),
+        auth_registry_ref: boundedHeaderRef(responseMeta.headers, 'x-apocv4-auth-registry-ref'),
+        binding_ref: boundedHeaderRef(responseMeta.headers, 'x-apocv4-binding-ref'),
+        principal_ref: boundedHeaderRef(responseMeta.headers, 'x-apocv4-principal-ref'),
+        privacy_partition_ref: boundedHeaderRef(responseMeta.headers, 'x-apocv4-privacy-partition-ref'),
+        effect_scope_ref: boundedHeaderRef(responseMeta.headers, 'x-apocv4-effect-scope-ref'),
+      },
+    };
+  } catch (error) {
+    if (error instanceof RuntimeProxyError) throw error;
+    const timedOut = controller.signal.aborted;
+    throw new RuntimeProxyError(
+      timedOut ? 'runtime_deadline_exceeded' : 'runtime_unreachable',
+      timedOut ? 504 : 502,
+      null,
+      timedOut ? CHAT_DEADLINE_MS : null,
+    );
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
 function selected(source: JsonObject, keys: readonly string[]): JsonObject {
   const result: JsonObject = {};
   for (const key of keys) {
@@ -1836,6 +2170,7 @@ export async function submitRuntimeObjective(objective: string, traceparent?: st
 export async function submitRuntimeChat(
   input: RuntimeChatInput,
   traceparent?: string,
+  onTextDelta?: (text: string) => void,
 ): Promise<RuntimeChatProjection> {
   const {
     message, conversationId, requestId, sessionId, sessionPrincipal, privacyPartition,
@@ -1865,7 +2200,7 @@ export async function submitRuntimeChat(
   ) {
     throw new RuntimeProxyError('chat_request_invalid', 400);
   }
-  const call = await callRuntime('/v1/chat', {
+  const runtimeBody = {
     message,
     conversation_id: conversationId,
     request_id: requestId,
@@ -1874,7 +2209,15 @@ export async function submitRuntimeChat(
       session_principal: sessionPrincipal,
     }),
     privacy_partition: privacyPartition,
-  }, traceparent, credentialProfile);
+  };
+  const call = onTextDelta
+    ? await callRuntimeChatStream(
+      runtimeBody,
+      traceparent,
+      credentialProfile,
+      onTextDelta,
+    )
+    : await callRuntime('/v1/chat', runtimeBody, traceparent, credentialProfile);
   const result = call.data.result;
   if (!isObject(result)) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
@@ -1984,6 +2327,17 @@ export async function submitRuntimeChat(
     identity: responseV2 ? result.identity as RuntimeChatIdentity : null,
     context: responseV2 ? result.context as RuntimeChatContext : null,
   };
+}
+
+export async function streamRuntimeChat(
+  input: RuntimeChatInput,
+  onTextDelta: (text: string) => void,
+  traceparent?: string,
+): Promise<RuntimeChatProjection> {
+  if (typeof onTextDelta !== 'function') {
+    throw new RuntimeProxyError('chat_stream_callback_invalid', 500);
+  }
+  return submitRuntimeChat(input, traceparent, onTextDelta);
 }
 
 function sessionObservation(

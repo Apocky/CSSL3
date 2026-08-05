@@ -15,6 +15,8 @@ interface Output {
   statusCode: number;
   body: unknown;
   headers: Record<string, string>;
+  chunks: string[];
+  ended: boolean;
 }
 
 interface RequestOptions {
@@ -23,6 +25,7 @@ interface RequestOptions {
   member?: boolean;
   origin?: string;
   email?: string;
+  accept?: string;
 }
 
 function assert(condition: boolean, message: string): asserts condition {
@@ -46,7 +49,7 @@ function reqRes(
   method: string,
   options: RequestOptions = {},
 ): { req: NextApiRequest; res: NextApiResponse; out: Output } {
-  const out: Output = { statusCode: 0, body: null, headers: {} };
+  const out: Output = { statusCode: 0, body: null, headers: {}, chunks: [], ended: false };
   const headers: Record<string, string> = {
     host: 'www.apocky.com',
     origin: options.origin ?? 'https://www.apocky.com',
@@ -56,6 +59,7 @@ function reqRes(
   if (options.member !== false) {
     headers['x-apocky-test-admin-email'] = options.email ?? 'member@example.test';
   }
+  if (options.accept) headers.accept = options.accept;
   const req = {
     method,
     body: options.body,
@@ -75,6 +79,18 @@ function reqRes(
       out.headers[name.toLowerCase()] = Array.isArray(value)
         ? value.join(', ')
         : String(value);
+      return this;
+    },
+    flushHeaders() {
+      return this;
+    },
+    write(value: string | Uint8Array) {
+      out.chunks.push(String(value));
+      return true;
+    },
+    end(value?: string | Uint8Array) {
+      if (value !== undefined) out.chunks.push(String(value));
+      out.ended = true;
       return this;
     },
   } as unknown as NextApiResponse;
@@ -218,7 +234,24 @@ async function main(): Promise<void> {
       headers: new Headers(init?.headers),
       url: String(input),
     });
-    return new Response(JSON.stringify(runtimeChatEnvelope(body)), {
+    const runtimeEnvelope = runtimeChatEnvelope(body);
+    if (String(input).endsWith('/v1/chat/stream')) {
+      const result = runtimeEnvelope.result as Record<string, unknown>;
+      const answer = String(result.text);
+      const events = [
+        { schema_version: 'apocv4.chat-stream-event.v1', type: 'delta', text: answer.slice(0, 10) },
+        { schema_version: 'apocv4.chat-stream-event.v1', type: 'delta', text: answer.slice(10) },
+        { schema_version: 'apocv4.chat-stream-event.v1', type: 'completed', result },
+      ];
+      return new Response(`${events.map((event) => JSON.stringify(event)).join('\n')}\n`, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/x-ndjson',
+          'X-Apocv4-Session-Binding': 'VERIFIED',
+        },
+      });
+    }
+    return new Response(JSON.stringify(runtimeEnvelope), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
@@ -331,6 +364,31 @@ async function main(): Promise<void> {
   assert(!JSON.stringify(successBody).includes('principal:apocky-member:'), 'principal stays server-side');
   assert(!JSON.stringify(successBody).includes('member@example.test'), 'member email stays server-side');
 
+  const streamRequestId = randomUUID();
+  const streamed = reqRes('POST', {
+    body: { ...baseBody, request_id: streamRequestId },
+    accept: 'application/x-ndjson',
+  });
+  await chatHandler(streamed.req, streamed.res);
+  equal(streamed.out.statusCode, 200, 'verified member stream succeeds');
+  equal(streamed.out.ended, true, 'member stream closes after its terminal event');
+  assert(
+    streamed.out.headers['content-type']?.startsWith('application/x-ndjson'),
+    'member stream exposes the typed NDJSON contract',
+  );
+  const streamEvents = streamed.out.chunks.join('').trim().split('\n').map(
+    (line) => JSON.parse(line) as Record<string, unknown>,
+  );
+  equal(streamEvents[0]?.type, 'delta', 'first browser event is a real model delta');
+  equal(streamEvents[1]?.type, 'delta', 'second browser event is a real model delta');
+  equal(streamEvents[2]?.type, 'completed', 'terminal browser event carries the verified receipt');
+  equal(
+    `${streamEvents[0]?.text}${streamEvents[1]?.text}`,
+    'A bounded Apocv4 response.',
+    'streamed text matches the terminal runtime response',
+  );
+  equal(observed[1]?.url, `${RUNTIME_ORIGIN}/v1/chat/stream`, 'stream uses the direct private runtime stream route');
+
   const firstCall = observed[0];
   assert(firstCall !== undefined, 'upstream call observed');
   equal(firstCall.url, `${RUNTIME_ORIGIN}/v1/chat`, 'direct private Apocv4 chat route used');
@@ -362,7 +420,7 @@ async function main(): Promise<void> {
   });
   await chatHandler(ownerTurn.req, ownerTurn.res);
   equal(ownerTurn.out.statusCode, 200, 'allowlisted owner uses the governed owner profile');
-  const ownerCall = observed[1];
+  const ownerCall = observed[2];
   assert(ownerCall !== undefined, 'owner upstream call observed');
   equal(ownerCall.headers.get('authorization'), `Bearer ${RUNTIME_TOKEN}`, 'owner runtime credential stays server-side');
   equal(ownerCall.body.privacy_partition, 'owner:apocky', 'owner request uses the owner memory partition');
