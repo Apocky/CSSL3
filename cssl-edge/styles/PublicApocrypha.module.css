@@ -1834,6 +1834,8 @@
 
 .composerShell > textarea { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
 
+.conversationMenu { top: 12px !important; }
+
 /* The creation workspace is always contextual, never a permanent second canvas. */
 .workspacePanel {
   position: fixed;
