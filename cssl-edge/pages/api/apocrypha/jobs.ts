@@ -18,7 +18,8 @@ import {
 } from '@/lib/apocv4/runtime-proxy';
 import { hasSameOrigin } from '@/lib/auth-session';
 import { envelope } from '@/lib/response';
-import { createServerTrace, traceparentFor } from '@/lib/telemetry/server';
+import { buildCreationLedgerRecord } from '@/lib/telemetry/creation-ledger';
+import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
 const OWNER_RUNTIME_PRIVACY_PARTITION = 'owner:apocky';
 const PUBLIC_RUNTIME_PRIVACY_PARTITION = 'public:apocrypha';
@@ -87,6 +88,7 @@ export default async function handler(
   res: NextApiResponse,
 ): Promise<void> {
   const trace = createServerTrace(req);
+  const started = performance.now();
   setPrivateNoStore(res);
   res.setHeader('X-Apocky-Trace-Id', trace.traceId);
   res.setHeader('Traceparent', traceparentFor(trace));
@@ -212,10 +214,43 @@ export default async function handler(
         objective,
         maxIterations: 1,
       }, traceparentFor(trace));
+      const jobRecord = projection.job as Record<string, unknown>;
+      const projectedJobId = typeof jobRecord.job_id === 'string' ? jobRecord.job_id : null;
+      const projectedJobState = typeof jobRecord.state === 'string' ? jobRecord.state : 'UNKNOWN';
       res.status(202).json({
         job: projection.job,
         upstream_status: projection.observed.receipt.upstream_status,
         ...envelope(),
+      });
+      await emitOperationalTelemetry({
+        trace,
+        kind: 'creation.apocrypha.background_job.accepted',
+        source: 'apocv4-runtime-proxy',
+        plane: 'runtime',
+        severity: 'info',
+        outcome: 'accepted',
+        status: 202,
+        durationMs: Math.round(performance.now() - started),
+        message: 'Bounded background creation request accepted by the runtime.',
+        effectClass: 'apocrypha.background_work',
+        authority: 'authenticated-member-bounded-job',
+        receiptRef: projectedJobId,
+        attributes: {
+          upstream_status: projection.observed.receipt.upstream_status,
+          creation_ledger: buildCreationLedgerRecord({
+            creationKind: 'apocrypha.background_job',
+            origin: 'human_prompt',
+            stage: 'attempt',
+            channel: 'web',
+            actorRef: principalRef,
+            requestRef: requestId,
+            inputText: objective,
+            outputText: JSON.stringify({ job_id: projectedJobId, state: projectedJobState }),
+            artifactRef: projectedJobId,
+            toolId: 'apocv4.background_job',
+            effectAuthority: 'bounded-runtime-job',
+          }),
+        },
       });
       return;
     }

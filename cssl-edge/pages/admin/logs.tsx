@@ -6,7 +6,7 @@ import { authFetch } from '../../lib/browser-auth';
 
 const REFRESH_INTERVAL_MS = 5_000;
 const MAX_RESPONSE_CHARACTERS = 2_000_000;
-const MAX_ROWS = 500;
+const MAX_ROWS = 1_000;
 const MAX_PAYLOAD_CHARACTERS = 16_384;
 
 type TelemetrySummary = Record<string, unknown>;
@@ -40,8 +40,35 @@ export interface TelemetryResponse {
   schema_version: string;
   observed_at: string;
   cursor: string | number | null;
+  hasMore: boolean;
   rows: TelemetryRow[];
   summary: TelemetrySummary;
+  creationLedger: CreationLedgerRow[];
+}
+
+export interface CreationLedgerRow {
+  id: string;
+  ts: string;
+  kind: string;
+  outcome: string;
+  recordDigest: string;
+  creationKind: string;
+  origin: string;
+  stage: string;
+  channel: string;
+  actorRef: string;
+  requestRef: string;
+  artifactRef: string | null;
+  modelId: string | null;
+  toolId: string | null;
+  effectAuthority: string | null;
+  inputDigest: string | null;
+  outputDigest: string | null;
+  inputBytes: number;
+  outputBytes: number;
+  safetyDisposition: string;
+  safetySignals: string[];
+  contentRetained: false;
 }
 
 export interface TelemetryFilters {
@@ -62,6 +89,15 @@ function boundedString(value: unknown, maximum = 4_096): string | null {
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function summaryRecord(summary: TelemetrySummary, key: string): Record<string, unknown> {
+  const value = summary[key];
+  return isRecord(value) ? value : {};
+}
+
+function summaryCount(summary: Record<string, unknown>, key: string): number {
+  return finiteNumber(summary[key]) ?? 0;
 }
 
 function normalizeRow(value: unknown): TelemetryRow | null {
@@ -95,6 +131,46 @@ function normalizeRow(value: unknown): TelemetryRow | null {
   };
 }
 
+function normalizeCreationLedgerRow(value: unknown): CreationLedgerRow | null {
+  if (!isRecord(value) || value.contentRetained !== false) return null;
+  const id = boundedString(value.id, 512);
+  const ts = boundedString(value.ts, 128);
+  const recordDigest = boundedString(value.recordDigest, 64);
+  const creationKind = boundedString(value.creationKind, 128);
+  const actorRef = boundedString(value.actorRef, 512);
+  const requestRef = boundedString(value.requestRef, 512);
+  if (!id || !ts || !recordDigest || !creationKind || !actorRef || !requestRef) return null;
+  return {
+    id,
+    ts,
+    kind: boundedString(value.kind, 128) ?? 'unknown',
+    outcome: boundedString(value.outcome, 128) ?? 'unknown',
+    recordDigest,
+    creationKind,
+    origin: boundedString(value.origin, 64) ?? 'unknown',
+    stage: boundedString(value.stage, 64) ?? 'unknown',
+    channel: boundedString(value.channel, 64) ?? 'unknown',
+    actorRef,
+    requestRef,
+    artifactRef: boundedString(value.artifactRef, 512),
+    modelId: boundedString(value.modelId, 256),
+    toolId: boundedString(value.toolId, 256),
+    effectAuthority: boundedString(value.effectAuthority, 256),
+    inputDigest: boundedString(value.inputDigest, 64),
+    outputDigest: boundedString(value.outputDigest, 64),
+    inputBytes: finiteNumber(value.inputBytes) ?? 0,
+    outputBytes: finiteNumber(value.outputBytes) ?? 0,
+    safetyDisposition: boundedString(value.safetyDisposition, 64) ?? 'unknown',
+    safetySignals: Array.isArray(value.safetySignals)
+      ? value.safetySignals
+        .map((signal) => boundedString(signal, 128))
+        .filter((signal): signal is string => signal !== null)
+        .slice(0, 16)
+      : [],
+    contentRetained: false,
+  };
+}
+
 export function normalizeTelemetryResponse(value: unknown): TelemetryResponse {
   if (!isRecord(value) || !Array.isArray(value.rows)) {
     throw new Error('telemetry_schema_invalid');
@@ -113,8 +189,15 @@ export function normalizeTelemetryResponse(value: unknown): TelemetryResponse {
     schema_version: schemaVersion,
     observed_at: observedAt,
     cursor,
+    hasMore: value.has_more === true,
     rows,
     summary: isRecord(value.summary) ? value.summary : {},
+    creationLedger: Array.isArray(value.creation_ledger)
+      ? value.creation_ledger
+        .slice(0, MAX_ROWS)
+        .map(normalizeCreationLedgerRow)
+        .filter((row): row is CreationLedgerRow => row !== null)
+      : [],
   };
 }
 
@@ -176,6 +259,7 @@ const Logs: NextPage = () => {
   const [authorized, setAuthorized] = useState(false);
   const [data, setData] = useState<TelemetryResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
@@ -211,7 +295,22 @@ const Logs: NextPage = () => {
       if (!response.ok) throw new Error(`telemetry_request_${response.status}`);
       const normalized = normalizeTelemetryResponse(body);
       if (!mountedRef.current) return;
-      setData(normalized);
+      setData((current) => {
+        if (!current) return normalized;
+        const rows = [...normalized.rows, ...current.rows]
+          .filter((row, index, all) => all.findIndex((candidate) => candidate.id === row.id) === index)
+          .slice(0, MAX_ROWS);
+        const creationLedger = [...normalized.creationLedger, ...current.creationLedger]
+          .filter((row, index, all) => all.findIndex((candidate) => candidate.recordDigest === row.recordDigest) === index)
+          .slice(0, MAX_ROWS);
+        return {
+          ...normalized,
+          cursor: current.cursor ?? normalized.cursor,
+          hasMore: current.hasMore && rows.length < MAX_ROWS,
+          rows,
+          creationLedger,
+        };
+      });
       setError(null);
     } catch (refreshError) {
       if (!mountedRef.current) return;
@@ -221,6 +320,41 @@ const Logs: NextPage = () => {
       if (mountedRef.current) setBusy(false);
     }
   }, [authorized]);
+
+  const loadOlder = useCallback(async () => {
+    if (!authorized || !data?.hasMore || data.cursor === null || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const response = await authFetch(
+        `/api/admin/logs?limit=240&before_id=${encodeURIComponent(String(data.cursor))}`,
+        { cache: 'no-store' },
+      );
+      const rawBody = await response.text();
+      if (!response.ok) throw new Error(`telemetry_history_${response.status}`);
+      if (rawBody.length > MAX_RESPONSE_CHARACTERS) throw new Error('telemetry_response_too_large');
+      const older = normalizeTelemetryResponse(JSON.parse(rawBody) as unknown);
+      setData((current) => {
+        if (!current) return older;
+        const rows = [...current.rows, ...older.rows]
+          .filter((row, index, all) => all.findIndex((candidate) => candidate.id === row.id) === index)
+          .slice(0, MAX_ROWS);
+        const creationLedger = [...current.creationLedger, ...older.creationLedger]
+          .filter((row, index, all) => all.findIndex((candidate) => candidate.recordDigest === row.recordDigest) === index)
+          .slice(0, MAX_ROWS);
+        return {
+          ...current,
+          cursor: older.cursor,
+          hasMore: older.hasMore && rows.length < MAX_ROWS,
+          rows,
+          creationLedger,
+        };
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'telemetry_history_failed');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [authorized, data, loadingOlder]);
 
   useEffect(() => {
     if (!authorized) return;
@@ -238,9 +372,15 @@ const Logs: NextPage = () => {
   const sources = useMemo(() => uniqueSorted(data?.rows ?? [], 'source'), [data]);
   const kinds = useMemo(() => uniqueSorted(data?.rows ?? [], 'kind'), [data]);
   const summaryEntries = useMemo(
-    () => Object.entries(data?.summary ?? {}).slice(0, 8),
+    () => Object.entries(data?.summary ?? {})
+      .filter(([key]) => !['visitors', 'interactions', 'creations'].includes(key))
+      .slice(0, 8),
     [data],
   );
+  const visitorSummary = summaryRecord(data?.summary ?? {}, 'visitors');
+  const interactionSummary = summaryRecord(data?.summary ?? {}, 'interactions');
+  const creationSummary = summaryRecord(data?.summary ?? {}, 'creations');
+  const reviewRequired = data?.creationLedger.filter((row) => row.safetyDisposition === 'review_required') ?? [];
 
   const copyValue = useCallback(async (label: string, value: string | null) => {
     if (!value) return;
@@ -302,6 +442,9 @@ const Logs: NextPage = () => {
             <button type="button" onClick={() => void refresh()} disabled={busy || !authorized}>
               {busy ? 'Reading…' : 'Refresh now'}
             </button>
+            <button type="button" onClick={() => void loadOlder()} disabled={!data?.hasMore || loadingOlder}>
+              {loadingOlder ? 'Loading…' : 'Load older'}
+            </button>
             <button type="button" onClick={downloadVisibleJson} disabled={!data}>Download visible JSON</button>
           </div>
         </header>
@@ -320,6 +463,37 @@ const Logs: NextPage = () => {
             <span>{error}. The last valid snapshot remains visible.</span>
             <button type="button" onClick={() => void refresh()} disabled={busy}>Retry</button>
           </div>
+        )}
+
+        {data && (
+          <>
+            <section className="observatory-grid" aria-label="Apocky observatory overview">
+              <article>
+                <span>Consented visitors</span>
+                <strong>{summaryCount(visitorSummary, 'consented_sessions')}</strong>
+                <small>{summaryCount(visitorSummary, 'page_views')} page views · ephemeral sessions</small>
+              </article>
+              <article>
+                <span>Apocrypha interactions</span>
+                <strong>{summaryCount(interactionSummary, 'completed')}</strong>
+                <small>{summaryCount(interactionSummary, 'started')} started · {summaryCount(interactionSummary, 'failed')} failed</small>
+              </article>
+              <article data-alert={reviewRequired.length > 0 ? 'true' : 'false'}>
+                <span>Creation ledger</span>
+                <strong>{summaryCount(creationSummary, 'results')}</strong>
+                <small>{summaryCount(creationSummary, 'attempts')} attempts · {reviewRequired.length} need review</small>
+              </article>
+              <article>
+                <span>Visible event health</span>
+                <strong>{data.rows.length}</strong>
+                <small>{String(data.summary.unique_traces ?? 0)} traces · newest bounded window</small>
+              </article>
+            </section>
+            <p className="privacy-scope">
+              Visitor totals cover only people who explicitly enabled first-party diagnostics, use tab-scoped identifiers,
+              and exclude private content. Creation records retain digests and risk signals—not prompts, replies, media, IPs, or credentials.
+            </p>
+          </>
         )}
 
         <section className="filter-deck" aria-label="Telemetry filters">
@@ -360,6 +534,62 @@ const Logs: NextPage = () => {
             {summaryEntries.map(([label, value]) => (
               <div key={label}><span>{label.replace(/_/g, ' ')}</span><strong>{typeof value === 'object' ? boundedJson(value) : String(value)}</strong></div>
             ))}
+          </section>
+        )}
+
+        {data && (
+          <section className="creation-ledger" aria-label="Apocrypha creation ledger">
+            <header>
+              <div>
+                <span className="pulse" aria-hidden="true" />
+                <div><h2>Creation ledger</h2><small>Prompted and system-originated generative records · newest first</small></div>
+              </div>
+              <strong data-alert={reviewRequired.length > 0 ? 'true' : 'false'}>
+                {reviewRequired.length > 0 ? `${reviewRequired.length} review required` : 'No risk signals'}
+              </strong>
+            </header>
+            {data.creationLedger.length === 0 ? (
+              <div className="ledger-empty">
+                <strong>No creation records in this event window</strong>
+                <span>The next wired Apocrypha response, background job, visual observation, code effect, or SMS reply will appear here.</span>
+              </div>
+            ) : (
+              <div className="ledger-list">
+                {data.creationLedger.slice(0, 80).map((row) => (
+                  <article key={`${row.id}:${row.recordDigest}`} data-review={row.safetyDisposition === 'review_required' ? 'true' : 'false'}>
+                    <header>
+                      <div>
+                        <strong>{row.creationKind}</strong>
+                        <span>{row.stage}</span><span>{row.origin}</span><span>{row.channel}</span>
+                      </div>
+                      <time dateTime={row.ts}>{formatTimestamp(row.ts)}</time>
+                    </header>
+                    <div className="ledger-disposition">
+                      <span>{row.safetyDisposition === 'review_required' ? 'Review required' : 'No first-party risk signal'}</span>
+                      {row.safetySignals.map((signal) => <code key={signal}>{signal}</code>)}
+                    </div>
+                    <dl>
+                      <div><dt>Record</dt><dd title={row.recordDigest}>{compactIdentifier(row.recordDigest)}</dd></div>
+                      <div><dt>Actor</dt><dd title={row.actorRef}>{compactIdentifier(row.actorRef)}</dd></div>
+                      <div><dt>Request</dt><dd title={row.requestRef}>{compactIdentifier(row.requestRef)}</dd></div>
+                      <div><dt>Artifact / receipt</dt><dd title={row.artifactRef ?? 'none'}>{compactIdentifier(row.artifactRef)}</dd></div>
+                      <div><dt>Input</dt><dd>{row.inputDigest ? `${compactIdentifier(row.inputDigest)} · ${row.inputBytes} B` : 'not recorded'}</dd></div>
+                      <div><dt>Output</dt><dd>{row.outputDigest ? `${compactIdentifier(row.outputDigest)} · ${row.outputBytes} B` : 'not recorded'}</dd></div>
+                    </dl>
+                    <div className="ledger-actions">
+                      <span>Content retained: no</span>
+                      <button type="button" onClick={() => void copyValue(`ledger:${row.id}`, row.recordDigest)}>
+                        {copied === `ledger:${row.id}` ? 'Digest copied' : 'Copy record digest'}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+            <p className="ledger-boundary">
+              “No risk signal” is not a claim of harmlessness. It means the bounded first-party scanner found no configured signal;
+              flagged records require owner review through their correlated request and artifact receipts.
+            </p>
           </section>
         )}
 
@@ -459,6 +689,13 @@ const Logs: NextPage = () => {
           .error-banner { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid rgba(255,185,104,.4); border-radius:12px; color:#ffd0a0; background:rgba(90,52,19,.22); font-size:.76rem; }
           .error-banner span { flex:1; color:#c3a98e; }
           .error-banner button { min-height:36px; }
+          .observatory-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+          .observatory-grid article { min-width:0; padding:16px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(18,17,28,.96),rgba(10,10,16,.96)); }
+          .observatory-grid article[data-alert=true] { border-color:rgba(255,185,104,.48); background:linear-gradient(145deg,rgba(64,42,18,.42),rgba(13,11,17,.96)); }
+          .observatory-grid span { display:block; color:#777386; font:700 .59rem/1 ui-monospace,monospace; text-transform:uppercase; letter-spacing:.1em; }
+          .observatory-grid strong { display:block; margin:10px 0 6px; color:#f0edf6; font-size:1.8rem; line-height:1; }
+          .observatory-grid small { display:block; color:#918da0; font-size:.66rem; line-height:1.45; }
+          .privacy-scope { margin:-2px 2px 0; color:#706c7d; font-size:.65rem; line-height:1.5; }
           .filter-deck { display:grid; grid-template-columns:minmax(130px,.7fr) minmax(160px,1fr) minmax(170px,1fr) minmax(180px,1fr) minmax(220px,1.5fr) auto; gap:10px; align-items:end; padding:14px; border:1px solid var(--line); border-radius:14px; background:rgba(14,13,22,.84); }
           .filter-deck label { min-width:0; }
           input,select { width:100%; min-height:44px; padding:0 11px; border:1px solid #312e43; border-radius:9px; color:#e4e1ed; background:#0c0b13; font-size:.74rem; }
@@ -467,6 +704,32 @@ const Logs: NextPage = () => {
           .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px; overflow:hidden; border:1px solid var(--line); border-radius:12px; background:var(--line); }
           .summary-grid div { min-width:0; padding:11px 13px; background:#0d0c14; }
           .summary-grid strong { display:block; max-height:72px; overflow:auto; color:#d0cddd; font-size:.7rem; white-space:pre-wrap; overflow-wrap:anywhere; }
+          .creation-ledger { overflow:hidden; border:1px solid rgba(184,165,255,.26); border-radius:18px; background:linear-gradient(180deg,rgba(17,15,27,.98),rgba(9,8,14,.98)); }
+          .creation-ledger > header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:15px 18px; border-bottom:1px solid var(--line); }
+          .creation-ledger > header > div { display:flex; align-items:center; gap:10px; }
+          .creation-ledger h2 { margin:0; font-size:.78rem; text-transform:uppercase; letter-spacing:.09em; }
+          .creation-ledger header small { display:block; margin-top:4px; color:#777386; font-size:.63rem; }
+          .creation-ledger > header > strong { padding:7px 10px; border:1px solid rgba(123,233,196,.25); border-radius:999px; color:#7be9c4; font-size:.65rem; }
+          .creation-ledger > header > strong[data-alert=true] { border-color:rgba(255,185,104,.4); color:#ffc783; background:rgba(255,185,104,.06); }
+          .ledger-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:#242130; }
+          .ledger-list > article { min-width:0; padding:15px 17px; background:#0d0c14; }
+          .ledger-list > article[data-review=true] { background:linear-gradient(145deg,rgba(62,39,17,.34),#0d0c14 62%); }
+          .ledger-list article > header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+          .ledger-list article > header > div { display:flex; min-width:0; flex-wrap:wrap; align-items:center; gap:6px; }
+          .ledger-list article > header strong { color:#dedbe7; font-size:.72rem; overflow-wrap:anywhere; }
+          .ledger-list article > header span { padding:3px 6px; border:1px solid #302d40; border-radius:5px; color:#888497; font-size:.56rem; text-transform:uppercase; letter-spacing:.06em; }
+          .ledger-list time { padding-top:3px; white-space:nowrap; }
+          .ledger-disposition { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
+          .ledger-disposition span,.ledger-disposition code { padding:4px 7px; border:1px solid rgba(118,230,238,.2); border-radius:999px; color:#8edbe1; background:rgba(118,230,238,.04); font-size:.58rem; }
+          [data-review=true] .ledger-disposition span,[data-review=true] .ledger-disposition code { border-color:rgba(255,185,104,.35); color:#ffc783; background:rgba(255,185,104,.06); }
+          .creation-ledger dl { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:0; }
+          .creation-ledger dl div { min-width:0; padding:8px; border:1px solid #292637; border-radius:7px; background:#09080f; }
+          .creation-ledger dd { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+          .ledger-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px; color:#6f6b7c; font-size:.6rem; }
+          .ledger-actions button { min-height:32px; padding:0 10px; font-size:.6rem; }
+          .ledger-empty { display:grid; place-items:center; min-height:150px; padding:24px; text-align:center; }
+          .ledger-empty span { max-width:640px; margin-top:6px; color:#777486; font-size:.69rem; }
+          .ledger-boundary { margin:0; padding:11px 16px; border-top:1px solid var(--line); color:#716d7f; background:#0a0910; font-size:.62rem; line-height:1.5; }
           .timeline { overflow:hidden; border:1px solid var(--line); border-radius:18px; background:linear-gradient(180deg,rgba(15,14,23,.96),rgba(8,8,13,.96)); }
           .timeline-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:15px 18px; border-bottom:1px solid var(--line); }
           .timeline-heading > div { display:flex; align-items:center; gap:9px; }
@@ -512,9 +775,9 @@ const Logs: NextPage = () => {
           .empty-state strong { color:#bcb8ca; }
           .empty-state span { margin-top:6px; color:#777486; font-size:.72rem; }
           .boundary-note { margin:0; color:#646173; font-size:.66rem; text-align:center; }
-          @media (max-width:1100px) { .console-header { align-items:flex-start; flex-direction:column; } .header-actions { justify-content:flex-start; } .filter-deck { grid-template-columns:repeat(3,minmax(0,1fr)); } .search-field { grid-column:span 2; } .signal-strip { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-          @media (max-width:700px) { .console-header { padding:19px 16px; border-radius:15px; } .header-actions { display:grid; width:100%; grid-template-columns:1fr 1fr; } .auto-toggle { grid-column:1/-1; } .filter-deck { grid-template-columns:1fr 1fr; } .search-field { grid-column:1/-1; } .clear-button { width:100%; } .signal-strip { grid-template-columns:1fr 1fr; } .signal-strip div { border-bottom:1px solid var(--line); } .timeline-heading { align-items:flex-start; flex-direction:column; } .event-main > header { flex-direction:column; gap:8px; } .correlation-row { align-items:stretch; } .correlation-row code { width:100%; } .row-actions { width:100%; margin-left:0; } .row-actions button { flex:1; } }
-          @media (max-width:430px) { .header-actions { grid-template-columns:1fr; } .auto-toggle { grid-column:auto; } .filter-deck { grid-template-columns:1fr; } .search-field { grid-column:auto; } .signal-strip { grid-template-columns:1fr; } .signal-strip div { border-right:0; } .event-card { grid-template-columns:14px minmax(0,1fr); } .event-main { padding-right:12px; } }
+          @media (max-width:1100px) { .console-header { align-items:flex-start; flex-direction:column; } .header-actions { justify-content:flex-start; } .filter-deck { grid-template-columns:repeat(3,minmax(0,1fr)); } .search-field { grid-column:span 2; } .signal-strip { grid-template-columns:repeat(3,minmax(0,1fr)); } .observatory-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .creation-ledger dl { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+          @media (max-width:700px) { .console-header { padding:19px 16px; border-radius:15px; } .header-actions { display:grid; width:100%; grid-template-columns:1fr 1fr; } .auto-toggle { grid-column:1/-1; } .filter-deck { grid-template-columns:1fr 1fr; } .search-field { grid-column:1/-1; } .clear-button { width:100%; } .signal-strip { grid-template-columns:1fr 1fr; } .signal-strip div { border-bottom:1px solid var(--line); } .creation-ledger > header { align-items:flex-start; flex-direction:column; } .ledger-list { grid-template-columns:1fr; } .timeline-heading { align-items:flex-start; flex-direction:column; } .event-main > header { flex-direction:column; gap:8px; } .correlation-row { align-items:stretch; } .correlation-row code { width:100%; } .row-actions { width:100%; margin-left:0; } .row-actions button { flex:1; } }
+          @media (max-width:430px) { .header-actions { grid-template-columns:1fr; } .auto-toggle { grid-column:auto; } .filter-deck { grid-template-columns:1fr; } .search-field { grid-column:auto; } .signal-strip,.observatory-grid { grid-template-columns:1fr; } .signal-strip div { border-right:0; } .creation-ledger dl { grid-template-columns:1fr; } .ledger-actions { align-items:stretch; flex-direction:column; } .event-card { grid-template-columns:14px minmax(0,1fr); } .event-main { padding-right:12px; } }
           @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
         `}</style>
       </main>

@@ -4,6 +4,7 @@
 export {
   init,
   capture,
+  capturePageView,
   flush,
   withConsent,
   currentTier,

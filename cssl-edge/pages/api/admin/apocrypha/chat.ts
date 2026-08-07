@@ -20,6 +20,7 @@ import {
 } from '@/lib/apocrypha/proxy';
 import { hasSameOrigin } from '@/lib/auth-session';
 import { envelope } from '@/lib/response';
+import { buildCreationLedgerRecord } from '@/lib/telemetry/creation-ledger';
 import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
 const MAX_TEXT_BYTES = 16_384;
@@ -180,7 +181,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     severity: 'info', outcome: 'started', status: null, durationMs: Math.round(performance.now() - started),
     message: 'Owner response-only chat admitted for direct runtime dispatch.',
     effectClass: 'apocv4.owner.chat.response_only', authority: 'owner-admin-no-tools-no-effects',
-    attributes: { ...baseTelemetry, message_bytes: Buffer.byteLength(text, 'utf8'), upstream_stage: 'dispatch' },
+    attributes: {
+      ...baseTelemetry,
+      message_bytes: Buffer.byteLength(text, 'utf8'),
+      upstream_stage: 'dispatch',
+      creation_ledger: buildCreationLedgerRecord({
+        creationKind: 'apocrypha.assistant_response',
+        origin: 'human_prompt',
+        stage: 'attempt',
+        channel: 'admin',
+        actorRef: owner.principalRef,
+        requestRef: scopedRequestId,
+        inputText: text,
+        effectAuthority: 'NONE',
+      }),
+    },
   });
 
   try {
@@ -349,6 +364,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         tool_authority: 'NONE',
         upstream_status: upstream.observed.receipt.upstream_status,
         upstream_stage: 'response_projected',
+        creation_ledger: buildCreationLedgerRecord({
+          creationKind: 'apocrypha.assistant_response',
+          origin: 'human_prompt',
+          stage: 'result',
+          channel: 'admin',
+          actorRef: owner.principalRef,
+          requestRef: scopedRequestId,
+          inputText: text,
+          outputText: responseText,
+          artifactRef: responseDigest,
+          modelId,
+          effectAuthority: 'NONE',
+        }),
       },
     });
   } catch (error) {

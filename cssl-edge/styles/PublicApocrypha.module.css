@@ -1046,6 +1046,13 @@
 .composerBar { padding: 7px 9px 9px; }
 .composerTools { gap: 5px; }
 
+.safetyLedgerNotice {
+  margin: 0;
+  padding: 0 16px 10px;
+  color: #737d78;
+  font: 0.59rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
 .voiceConsent {
   display: flex;
   align-items: center;

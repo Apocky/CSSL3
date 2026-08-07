@@ -19,6 +19,7 @@ import {
   setPrivateNoStore,
 } from '@/lib/apocrypha/proxy';
 import { envelope } from '@/lib/response';
+import { buildCreationLedgerRecord } from '@/lib/telemetry/creation-ledger';
 import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
 export const maxDuration = 300;
@@ -137,13 +138,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     return;
   }
+  const scopedRequestRef = scopeRequestId(sessionPrincipal, body.requestId);
   const runtimeBodyBytes = Buffer.byteLength(JSON.stringify({
     objective: body.objective,
     privacy_partition: OWNER_PRIVACY_PARTITION,
     allowed_paths: body.allowedPaths,
     session_id: body.sessionId,
     session_principal: sessionPrincipal,
-    request_id: scopeRequestId(sessionPrincipal, body.requestId),
+    request_id: scopedRequestRef,
     session_binding_mac: '0'.repeat(64),
   }), 'utf8');
   if (runtimeBodyBytes > MAX_RUNTIME_BODY_BYTES) {
@@ -194,6 +196,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       path_set_digest: pathSetDigest,
       path_count: body.allowedPaths.length,
       principal_ref: sessionPrincipal,
+      creation_ledger: buildCreationLedgerRecord({
+        creationKind: 'apocrypha.code_effect',
+        origin: 'human_prompt',
+        stage: 'attempt',
+        channel: 'admin',
+        actorRef: sessionPrincipal,
+        requestRef: scopedRequestRef,
+        inputText: body.objective,
+        toolId: 'apocv4.runtime_code',
+        effectAuthority: 'owner-admin-confirmed',
+      }),
     },
   });
   try {
@@ -203,7 +216,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       privacyPartition: OWNER_PRIVACY_PARTITION,
       sessionId: body.sessionId,
       sessionPrincipal,
-      requestId: scopeRequestId(sessionPrincipal, body.requestId),
+      requestId: scopedRequestRef,
     }, traceparentFor(trace));
     res.status(200).json({
       ...result,
@@ -237,6 +250,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         runtime_state: state,
         test_passed: result.observed.test?.passed ?? null,
         upstream_status: result.observed.receipt.upstream_status,
+        creation_ledger: buildCreationLedgerRecord({
+          creationKind: 'apocrypha.code_effect',
+          origin: 'human_prompt',
+          stage: 'result',
+          channel: 'admin',
+          actorRef: sessionPrincipal,
+          requestRef: scopedRequestRef,
+          inputText: body.objective,
+          outputText: JSON.stringify({
+            state,
+            changed_paths: result.observed.runtime.changed_paths ?? [],
+            test_passed: result.observed.test?.passed ?? null,
+          }),
+          artifactRef: typeof result.observed.runtime.promotion_event_digest === 'string'
+            ? result.observed.runtime.promotion_event_digest
+            : result.observed.runtime.terminal_event_digest as string | null,
+          toolId: 'apocv4.runtime_code',
+          effectAuthority: 'owner-admin-confirmed',
+        }),
       },
     });
   } catch (error) {

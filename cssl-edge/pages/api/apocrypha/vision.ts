@@ -15,7 +15,8 @@ import {
 } from '@/lib/apocv4/runtime-proxy';
 import { hasSameOrigin } from '@/lib/auth-session';
 import { envelope } from '@/lib/response';
-import { createServerTrace, traceparentFor } from '@/lib/telemetry/server';
+import { buildCreationLedgerRecord } from '@/lib/telemetry/creation-ledger';
+import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
 const OWNER_RUNTIME_PRIVACY_PARTITION = 'owner:apocky';
 const MAX_IMAGE_B64 = 5_600_000;
@@ -54,6 +55,7 @@ export default async function handler(
   res: NextApiResponse,
 ): Promise<void> {
   const trace = createServerTrace(req);
+  const started = performance.now();
   setPrivateNoStore(res);
   res.setHeader('X-Apocky-Trace-Id', trace.traceId);
   res.setHeader('Traceparent', traceparentFor(trace));
@@ -130,6 +132,38 @@ export default async function handler(
       perception_digest: projection.observed.perception_digest,
       upstream_status: projection.observed.receipt.upstream_status,
       ...envelope(),
+    });
+    await emitOperationalTelemetry({
+      trace,
+      kind: 'creation.apocrypha.vision_observation.completed',
+      source: 'apocv4-runtime-proxy',
+      plane: 'runtime',
+      severity: 'info',
+      outcome: 'succeeded',
+      status: 200,
+      durationMs: Math.round(performance.now() - started),
+      message: 'Owner visual observation completed with a bounded evidence digest.',
+      effectClass: 'apocrypha.vision_observation',
+      authority: 'owner-vision-read-only',
+      receiptRef: projection.observed.perception_digest,
+      attributes: {
+        mime_type: body.mime_type,
+        image_bytes: Buffer.byteLength(body.image_b64, 'base64'),
+        upstream_status: projection.observed.receipt.upstream_status,
+        creation_ledger: buildCreationLedgerRecord({
+          creationKind: 'apocrypha.vision_observation',
+          origin: 'human_prompt',
+          stage: 'result',
+          channel: 'web',
+          actorRef: principalRef,
+          requestRef: perceptId,
+          inputText: body.question,
+          outputText: JSON.stringify(projection.observed.observation),
+          artifactRef: projection.observed.perception_digest,
+          modelId: 'apocv4.vision',
+          effectAuthority: 'NONE',
+        }),
+      },
     });
   } catch (error) {
     const status = error instanceof RuntimeProxyError ? error.publicStatus : 502;

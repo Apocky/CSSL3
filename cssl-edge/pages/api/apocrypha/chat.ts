@@ -24,6 +24,7 @@ import {
 } from '@/lib/apocv4/runtime-proxy';
 import { hasSameOrigin } from '@/lib/auth-session';
 import { envelope } from '@/lib/response';
+import { buildCreationLedgerRecord } from '@/lib/telemetry/creation-ledger';
 import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
 
 const MAX_TEXT_BYTES = 16_384;
@@ -266,6 +267,16 @@ export default async function handler(
       privacy_class: 'restricted',
       memory_scope: ownerProfile ? 'owner_partitioned_retrieval' : 'public_safe_retrieval',
       training_consent: false,
+      creation_ledger: buildCreationLedgerRecord({
+        creationKind: 'apocrypha.assistant_response',
+        origin: 'human_prompt',
+        stage: 'attempt',
+        channel: 'web',
+        actorRef: principalRef,
+        requestRef: scopedRequestId,
+        inputText: text,
+        effectAuthority: 'NONE',
+      }),
     },
   });
   let projection;
@@ -408,6 +419,19 @@ export default async function handler(
       tool_authority: projection.authority.tool_authority,
       memory_scope: projection.authority.memory_scope,
       training_consent: false,
+      creation_ledger: buildCreationLedgerRecord({
+        creationKind: 'apocrypha.assistant_response',
+        origin: 'human_prompt',
+        stage: 'result',
+        channel: 'web',
+        actorRef: principalRef,
+        requestRef: scopedRequestId,
+        inputText: text,
+        outputText: projection.model_reported.text,
+        artifactRef: responseDigest,
+        modelId,
+        effectAuthority: projection.authority.effect_authority,
+      }),
     },
   });
 }

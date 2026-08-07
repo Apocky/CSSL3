@@ -50,6 +50,32 @@ const normalized = normalizeTelemetryResponse({
     { id: 'missing-ts' },
   ],
   summary: { errors: 1 },
+  creation_ledger: [
+    {
+      id: 'row-1',
+      ts: '2026-08-02T08:00:00.000Z',
+      kind: 'creation.apocrypha.response.completed',
+      outcome: 'succeeded',
+      recordDigest: 'a'.repeat(64),
+      creationKind: 'apocrypha.assistant_response',
+      origin: 'human_prompt',
+      stage: 'result',
+      channel: 'web',
+      actorRef: `principal:apocky-member:${'b'.repeat(64)}`,
+      requestRef: `request:${'c'.repeat(64)}`,
+      artifactRef: 'd'.repeat(64),
+      modelId: 'apocv4',
+      toolId: null,
+      effectAuthority: 'NONE',
+      inputDigest: 'e'.repeat(64),
+      outputDigest: 'f'.repeat(64),
+      inputBytes: 12,
+      outputBytes: 24,
+      safetyDisposition: 'no_signal',
+      safetySignals: [],
+      contentRetained: false,
+    },
+  ],
 });
 
 assert(normalized.rows.length === 1, 'invalid rows are rejected');
@@ -58,6 +84,8 @@ assert(normalizedRow !== undefined, 'one normalized row is present');
 assert(normalizedRow.severity === 'ERROR', 'severity is canonicalized');
 assert(normalized.cursor === 17, 'cursor is preserved');
 assert(normalized.summary.errors === 1, 'summary is preserved');
+assert(normalized.creationLedger.length === 1, 'creation ledger is normalized');
+assert(normalized.creationLedger[0]?.contentRetained === false, 'creation ledger rejects retained content');
 
 let invalidSchemaRejected = false;
 try {
@@ -88,9 +116,19 @@ for (const token of [
   'Copy fingerprint',
   '<details>',
   'MAX_PAYLOAD_CHARACTERS',
+  'Consented visitors',
+  'Creation ledger',
+  'No first-party risk signal',
+  'Content retained: no',
 ]) {
   assert(source.includes(token), `owner telemetry console contract missing: ${token}`);
 }
 assert(!source.includes('dangerouslySetInnerHTML'), 'telemetry UI must not render raw HTML');
+
+const apiSource = readFileSync(resolve(process.cwd(), 'pages/api/admin/logs.ts'), 'utf8');
+assert(apiSource.includes('requireAdmin(req, res)'), 'telemetry API must require owner authorization');
+assert(apiSource.includes('readAdminTelemetry'), 'telemetry API must read the first-party event store');
+assert(apiSource.includes('creationLedgerEntries'), 'telemetry API must project the creation ledger');
+assert(!apiSource.includes('stub: true'), 'telemetry API must not remain a stub');
 
 console.log('admin-logs.test : OK · schema, filters, owner polling, bounded inspection, copy, and export passed');

@@ -373,7 +373,7 @@ async function main(): Promise<void> {
   equal(streamed.out.statusCode, 200, 'verified member stream succeeds');
   equal(streamed.out.ended, true, 'member stream closes after its terminal event');
   assert(
-    streamed.out.headers['content-type']?.startsWith('application/x-ndjson'),
+    Boolean(streamed.out.headers['content-type']?.startsWith('application/x-ndjson')),
     'member stream exposes the typed NDJSON contract',
   );
   const streamEvents = streamed.out.chunks.join('').trim().split('\n').map(

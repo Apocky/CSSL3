@@ -15,6 +15,8 @@ import {
   type RuntimeSessionGetProjection,
 } from '@/lib/apocv4/runtime-proxy';
 import { scopeConversationId, scopeRequestId } from '@/lib/apocrypha/proxy';
+import { buildCreationLedgerRecord } from '@/lib/telemetry/creation-ledger';
+import { emitOperationalTelemetry, type ServerTraceContext } from '@/lib/telemetry/server';
 
 import type { SmsSystemConfiguration } from './config';
 import {
@@ -82,6 +84,7 @@ export type SmsWorkerResult =
 interface RuntimeReply {
   text: string;
   responseDigest: string;
+  inputText?: string;
 }
 
 type RuntimeReplyOutcome =
@@ -155,7 +158,7 @@ function providerFailure(error: unknown): ProviderFailure | null {
   return null;
 }
 
-function validRuntimeReply(projection: RuntimeChatProjection): RuntimeReply | null {
+function validRuntimeReply(projection: RuntimeChatProjection, inputText?: string): RuntimeReply | null {
   const digest = projection.model_reported.response_digest;
   const text = projection.model_reported.text;
   if (
@@ -171,7 +174,7 @@ function validRuntimeReply(projection: RuntimeChatProjection): RuntimeReply | nu
     || typeof digest !== 'string'
     || !SHA256_RE.test(digest)
   ) return null;
-  return { text, responseDigest: digest };
+  return { text, responseDigest: digest, ...(inputText ? { inputText } : {}) };
 }
 
 function recoveredRuntimeReply(
@@ -278,13 +281,14 @@ async function runtimeReply(
     smsInboundAad(config.provider.accountSid, job.providerMessageSid, job.requestId),
   );
   const envelope = parseInboundEnvelope(plaintext);
+  const inputText = envelope.body.trim();
   let projection: RuntimeChatProjection;
   try {
     projection = await runtime.submit({
       // Preserve the exact signed Body in the durable envelope. Only the
       // runtime input is canonicalized because its request contract requires
       // surrounding whitespace to be removed.
-      message: envelope.body.trim(),
+      message: inputText,
       conversationId,
       requestId,
       sessionId: config.binding.sessionId,
@@ -302,7 +306,7 @@ async function runtimeReply(
     // never blindly submit the same model turn.
     return { state: 'uncertain' };
   }
-  const reply = validRuntimeReply(projection);
+  const reply = validRuntimeReply(projection, inputText);
   if (!reply) throw codedError('sms_runtime_authority_invalid');
   return { state: 'reply', reply };
 }
@@ -526,6 +530,47 @@ export async function runSmsWorkerOnce(
   if (!ready) {
     return { state: 'not_dispatched', processed: 1, messageId: job.messageId, reason: 'state_changed' };
   }
+  const actorRef = publicMemberPrincipalRef(deps.config.binding.ownerUserId);
+  const traceDigest = createHash('sha256')
+    .update(`APOCRYPHA-SMS-CREATION-LEDGER-v1\0${job.messageId}\0${reply.responseDigest}`, 'utf8')
+    .digest('hex');
+  const trace: ServerTraceContext = {
+    traceId: traceDigest.slice(0, 32),
+    spanId: traceDigest.slice(32, 48),
+    parentSpanId: null,
+    route: 'apocrypha:sms-worker',
+    method: 'WORK',
+  };
+  await emitOperationalTelemetry({
+    trace,
+    kind: 'creation.apocrypha.sms_reply.materialized',
+    source: 'apocrypha.sms.worker',
+    plane: 'runtime',
+    severity: 'info',
+    outcome: 'succeeded',
+    status: null,
+    message: 'Consent-authorized Apocrypha SMS reply materialized into the durable outbox.',
+    effectClass: 'apocrypha.sms.response_only',
+    authority: 'owner-sms-consent-response-only',
+    receiptRef: reply.responseDigest,
+    attributes: {
+      message_ref: job.messageId,
+      outbound_segments: outboundSegments,
+      creation_ledger: buildCreationLedgerRecord({
+        creationKind: 'apocrypha.sms_reply',
+        origin: 'human_prompt',
+        stage: 'result',
+        channel: 'sms',
+        actorRef,
+        requestRef: scopeRequestId(actorRef, job.requestId),
+        inputText: reply.inputText,
+        outputText: reply.text,
+        artifactRef: reply.responseDigest,
+        modelId: 'apocv4.sms',
+        effectAuthority: 'NONE',
+      }),
+    },
+  });
   // A fresh runtime turn and a carrier call never share one serverless
   // invocation. The durable ready row is drained first by the next cycle,
   // preserving a full provider deadline and an explicit outbox boundary.

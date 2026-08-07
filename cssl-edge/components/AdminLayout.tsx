@@ -46,9 +46,9 @@ const NAV: ReadonlyArray<NavItem> = [
     tip: 'Live Apocv4 presence · bounded objectives · observed evidence receipts' },
   { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true,
     tip: 'One authenticated V2 REST turn · one committed final response' },
-  { href: '/admin/cognition', label: 'Cognition', glyph: '∞', mobile: true,
+  { href: '/admin/cognition', label: 'Cognition', glyph: '∞',
     tip: 'Predecessor visualization · legacy live feed retired' },
-  { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬',
+  { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬', mobile: true,
     tip: 'Owner-only V2 health · capabilities · telemetry · Organarium projections' },
   { href: '/admin/sub-minds', label: 'Sub-Minds', glyph: 'Ω',
     tip: 'Predecessor surface retired · no V2 replacement' },
@@ -58,8 +58,8 @@ const NAV: ReadonlyArray<NavItem> = [
     tip: 'Predecessor tools surface retired · no V2 replacement' },
   { href: '/admin/analytics', label: 'Analytics', glyph: '∂',
     tip: 'Predecessor cost surface retired · no V2 replacement' },
-  { href: '/admin/logs', label: 'Logs', glyph: 'G',
-    tip: 'Apocrypha dispatch + cloudflared process logs · audit events' },
+  { href: '/admin/logs', label: 'Observatory', glyph: '◫', mobile: true,
+    tip: 'Consented visitors · Apocrypha interactions · creation ledger · operational events' },
 ];
 
 const MOBILE_NAV = NAV.filter((item) => item.mobile);

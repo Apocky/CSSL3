@@ -252,6 +252,33 @@ export interface InitOpts {
   install_observers?: boolean;
 }
 
+function pageRoute(rawRoute?: string): string {
+  const candidate = rawRoute
+    ?? (typeof location !== 'undefined' ? location.pathname : '/');
+  try {
+    const pathname = new URL(
+      candidate,
+      typeof location !== 'undefined' && typeof location.href === 'string'
+        ? location.href
+        : 'https://apocky.com',
+    ).pathname;
+    return pathname.slice(0, 256) || '/';
+  } catch {
+    return '/';
+  }
+}
+
+export function capturePageView(
+  rawRoute?: string,
+  navigation: 'document' | 'client' = 'document',
+): string {
+  return capture('page.view', {
+    route: pageRoute(rawRoute),
+    navigation,
+    viewport: viewport(),
+  });
+}
+
 // Idempotent · safe to call repeatedly. Returns false if already initialized.
 export function init(opts: InitOpts = {}): boolean {
   if (isTelemetryBlackoutPath()) {
@@ -288,11 +315,7 @@ export function init(opts: InitOpts = {}): boolean {
   state.ring_idx = 0;
 
   // Stamp the page-view cell immediately (consent-checked).
-  capture('page.view', {
-    url: typeof location !== 'undefined' ? location.href : 'about:blank',
-    referrer: typeof document !== 'undefined' ? document.referrer : '',
-    viewport: viewport(),
-  });
+  capturePageView(undefined, 'document');
 
   // Wire up flush-interval + beforeunload + version-probe (skip in test mode).
   if (opts.install_observers !== false) {

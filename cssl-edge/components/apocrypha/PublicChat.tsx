@@ -3232,6 +3232,10 @@ export function PublicChat(): JSX.Element {
                     </button>
                   </div>
                 </div>
+                <p className={styles.safetyLedgerNotice}>
+                  Safety record · sends and generated work create an admin-only ledger of origin, receipts,
+                  content digests, and first-party risk signals. Prompts, replies, media, IPs, and credentials are not copied into telemetry.
+                </p>
                 {voiceConsentPending && (
                   <div className={styles.voiceConsent} role="group" aria-label="Voice input disclosure">
                     <p>

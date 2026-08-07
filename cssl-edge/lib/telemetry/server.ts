@@ -50,7 +50,7 @@ const KIND_RX = /^[a-z][a-z0-9._-]{2,63}$/;
 const SECRET_VALUE_RX = /(?:bearer\s+[a-z0-9._~+\/-]+=*|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/gi;
 const EMAIL_RX = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const QUERY_SECRET_RX = /([?&](?:token|key|secret|api[_-]?key|password|auth)=)([^&\s]+)/gi;
-const SENSITIVE_KEY_RX = /^(?:authorization|cookie|set-cookie|token|secret|password|api[_-]?key|access[_-]?token|refresh[_-]?token|headers?|raw|body|prompt|text|content|email|ip|address|user)$/i;
+const SENSITIVE_KEY_RX = /^(?:authorization|cookie|set-cookie|token|secret|password|api[_-]?key|access[_-]?token|refresh[_-]?token|headers?|raw|body|prompt|text|content|email|ip|address|user|url|uri|referrer)$/i;
 const MAX_STRING = 2_048;
 const MAX_KEYS = 64;
 const MAX_ARRAY = 32;

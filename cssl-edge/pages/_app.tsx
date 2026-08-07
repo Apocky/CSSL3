@@ -17,6 +17,7 @@ import {
   AkashicErrorBoundary,
   CONSENT_CHANGE_EVENT,
   capture,
+  capturePageView,
   isTelemetryBlackoutPath,
 } from '@/lib/akashic-telemetry';
 import AkashicConsent from '@/components/AkashicConsent';
@@ -147,33 +148,38 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
       akashicDisable();
     };
 
-    const reconcile = (): void => {
+    const reconcile = (): boolean => {
       cleanupEarlyListeners();
       const active = akashicInstall(opts);
       if (!active || isTelemetryBlackoutPath()) {
         clearEarlyBuffer();
         detachGlobalErrorListeners();
-        return;
+        return false;
       }
       attachGlobalErrorListeners();
       drainEarlyBuffer();
+      return true;
     };
 
     const handleRouteStart = (url: string): void => {
       if (isTelemetryBlackoutPath(url)) suspend();
     };
 
+    const handleRouteComplete = (url: string): void => {
+      if (reconcile()) capturePageView(url, 'client');
+    };
+
     reconcile();
     window.addEventListener(CONSENT_CHANGE_EVENT, reconcile);
     router.events.on('routeChangeStart', handleRouteStart);
-    router.events.on('routeChangeComplete', reconcile);
+    router.events.on('routeChangeComplete', handleRouteComplete);
     router.events.on('routeChangeError', reconcile);
 
     return () => {
       suspend();
       window.removeEventListener(CONSENT_CHANGE_EVENT, reconcile);
       router.events.off('routeChangeStart', handleRouteStart);
-      router.events.off('routeChangeComplete', reconcile);
+      router.events.off('routeChangeComplete', handleRouteComplete);
       router.events.off('routeChangeError', reconcile);
     };
   }, [router.events]);
