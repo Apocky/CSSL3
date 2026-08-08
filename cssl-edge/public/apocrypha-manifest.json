@@ -81,6 +81,15 @@
       "availability": "public"
     },
     {
+      "rel": "optional_support",
+      "href": "/buy",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
       "rel": "writing",
       "href": "/akashic-records",
       "method": "GET",

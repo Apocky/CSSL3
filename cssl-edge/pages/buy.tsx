@@ -1,18 +1,9 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 
-export const SUPPORT_LINKS = [
-  {
-    name: 'Ko-fi',
-    href: 'https://ko-fi.com/oneinfinity',
-    description: 'A one-time or recurring contribution through Ko-fi.',
-  },
-  {
-    name: 'Patreon',
-    href: 'https://www.patreon.com/0ne1nfinity',
-    description: 'Recurring support through Patreon.',
-  },
-] as const;
+import { SUPPORT_LINKS } from '../lib/support-links';
+
+export { SUPPORT_LINKS };
 
 const Buy: NextPage = () => (
   <>
@@ -22,7 +13,7 @@ const Buy: NextPage = () => (
         name="description"
         content="Download the free Labyrinth of Apocalypse test build or choose an external way to support Apocky’s work."
       />
-      <link rel="canonical" href="https://apocky.com/buy" />
+      <link rel="canonical" href="https://www.apocky.com/buy" />
       <style>{`
         .support-page {
           width: min(900px, calc(100% - 36px));

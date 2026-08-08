@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { SUPPORT_LINKS } from '../lib/support-links';
 import { useSiteSession } from './hub/SiteSession';
 
-type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean };
+type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean; accent?: boolean };
 
 const NAV: ReadonlyArray<NavItem> = [
   { href: '/#projects', label: 'Creative work', shortLabel: 'Work' },
@@ -10,6 +11,7 @@ const NAV: ReadonlyArray<NavItem> = [
   { href: '/apocrypha', label: 'Talk with Apocrypha', shortLabel: 'Apocrypha' },
   { href: '/clearing', label: 'The Clearing', shortLabel: 'Clearing' },
   { href: '/atlas', label: 'Atlas' },
+  { href: '/buy', label: 'Support the work', shortLabel: 'Support', accent: true },
 ];
 
 const WORK: ReadonlyArray<NavItem> = [
@@ -25,8 +27,6 @@ const WORK: ReadonlyArray<NavItem> = [
 
 const ABOUT: ReadonlyArray<NavItem> = [
   { href: 'https://github.com/Apocky', label: 'Code on GitHub', ext: true },
-  { href: 'https://ko-fi.com/oneinfinity', label: 'Support on Ko-fi', ext: true },
-  { href: 'https://www.patreon.com/0ne1nfinity', label: 'Support on Patreon', ext: true },
   { href: '/words', label: 'Words & symbols' },
   { href: '/legal/privacy', label: 'Privacy' },
   { href: '/legal/terms', label: 'Terms' },
@@ -56,7 +56,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
         key={item.label}
         href={item.href}
         {...extProps(item)}
-        className={className}
+        className={`${className}${item.accent ? ' apx-nav-link--support' : ''}`}
         data-active={isActivePath(pathname, item.href) ? 'true' : undefined}
         aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}
         aria-label={visibleLabel === item.label ? undefined : item.label}
@@ -119,9 +119,20 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             </div>
           </div>
           <div>
-            <h2 className="apx-footer-title">Elsewhere & support</h2>
+            <h2 className="apx-footer-title">Elsewhere & legal</h2>
             <div className="apx-footer-links">
               {ABOUT.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
+            </div>
+          </div>
+          <div className="apx-footer-support">
+            <h2 className="apx-footer-title">Optional support</h2>
+            <p className="apx-footer-support-copy">Help sustain the work if you would like to. No obligation.</p>
+            <div className="apx-footer-links">
+              {SUPPORT_LINKS.map((item) => (
+                <a key={item.name} href={item.href} target="_blank" rel="noopener noreferrer" className="apx-footer-link">
+                  {item.label} <span aria-hidden="true">↗</span>
+                </a>
+              ))}
             </div>
           </div>
         </div>

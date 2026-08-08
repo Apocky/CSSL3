@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
 import { normalizeAuthReturnPath } from '../lib/auth-return';
+import { SUPPORT_LINKS } from '../lib/support-links';
 import { useSiteSession } from '../components/hub/SiteSession';
 
 const PORTALS = [
@@ -195,6 +196,43 @@ const Home: NextPage = () => {
                 </Link>
               )
             ))}
+          </div>
+        </section>
+
+        <section id="support" className="apx-section apx-section--support" aria-labelledby="support-title">
+          <div className="apx-support-band">
+            <div>
+              <p className="apx-kicker">Optional support</p>
+              <h2 id="support-title">Help sustain the work.</h2>
+              <p className="apx-support-copy">
+                If you would like to help keep Apocky’s writing, software, and creative projects moving,
+                Ko-fi and Patreon are available. Support is appreciated, never required, and does not buy
+                control over creative decisions.
+              </p>
+              <Link href="/buy" className="apx-support-details">
+                Read how support works <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+
+            <div className="apx-support-options" aria-label="Ways to support Apocky">
+              {SUPPORT_LINKS.map((link) => (
+                <a
+                  key={link.name}
+                  className="apx-support-option"
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span>
+                    <strong>{link.name}</strong>
+                    <small>{link.description}</small>
+                  </span>
+                  <span className="apx-support-option-action">
+                    {link.label} <span aria-hidden="true">↗</span>
+                  </span>
+                </a>
+              ))}
+            </div>
           </div>
         </section>
 

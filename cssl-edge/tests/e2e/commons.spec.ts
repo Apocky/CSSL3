@@ -32,6 +32,13 @@ async function expectNoSeriousAccessibilityFindings(page: import('@playwright/te
 test('@visual native hub stays horizontally bounded and keeps primary routes reachable', async ({ page }) => {
   test.setTimeout(120_000);
   const errors = collectBrowserErrors(page);
+  const unexpectedSupportRequests: string[] = [];
+  page.on('request', (request) => {
+    const hostname = new URL(request.url()).hostname;
+    if (hostname === 'ko-fi.com' || hostname.endsWith('.ko-fi.com') || hostname === 'patreon.com' || hostname.endsWith('.patreon.com')) {
+      unexpectedSupportRequests.push(request.url());
+    }
+  });
   const artifactRoot = path.join(process.cwd(), 'test-results', 'public-route-matrix');
   fs.mkdirSync(artifactRoot, { recursive: true });
 
@@ -42,11 +49,30 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
     await expect(page.getByRole('heading', { level: 1, name: /Worlds, languages, symbols, and living systems/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Meet Apocrypha/i }).first()).toBeVisible();
     await expect(page.locator('main').getByRole('link', { name: /CSSL.*Visit CSSL/i })).toBeVisible();
+    const supportSection = page.locator('main').getByRole('region', { name: 'Help sustain the work.' });
+    await expect(supportSection).toBeVisible();
+    await expect(supportSection).toContainText(/never required.*does not buy control/i);
+    const koFi = supportSection.getByRole('link', { name: /Support on Ko-fi/i });
+    const patreon = supportSection.getByRole('link', { name: /Support on Patreon/i });
+    await expect(koFi).toHaveAttribute('href', 'https://ko-fi.com/oneinfinity');
+    await expect(patreon).toHaveAttribute('href', 'https://www.patreon.com/0ne1nfinity');
+    for (const supportLink of [koFi, patreon]) {
+      await expect(supportLink).toBeVisible();
+      await expect(supportLink).toHaveAttribute('target', '_blank');
+      await expect(supportLink).toHaveAttribute('rel', 'noopener noreferrer');
+      const hitArea = await supportLink.boundingBox();
+      expect(hitArea?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(hitArea?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
 
-    if (viewport.width <= 660) {
-      await expect(page.locator('summary', { hasText: 'Explore' })).toBeVisible();
+    if (viewport.width <= 1080) {
+      const mobileMenu = page.locator('details.apx-mobile-menu');
+      await expect(mobileMenu.locator('summary', { hasText: 'Explore' })).toBeVisible();
+      await mobileMenu.locator('summary').click();
+      await expect(mobileMenu.getByRole('link', { name: 'Support the work' })).toBeVisible();
+      await mobileMenu.locator('summary').click();
     } else {
-      await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+      await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Support the work' })).toBeVisible();
     }
 
     const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -58,8 +84,20 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
     });
   }
 
+  const supportSection = page.locator('main').getByRole('region', { name: 'Help sustain the work.' });
+  const supportDetails = supportSection.getByRole('link', { name: /Read how support works/i });
+  const koFi = supportSection.getByRole('link', { name: /Support on Ko-fi/i });
+  const patreon = supportSection.getByRole('link', { name: /Support on Patreon/i });
+  await supportDetails.focus();
+  await expect(supportDetails).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(koFi).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(patreon).toBeFocused();
+
   await expectNoSeriousAccessibilityFindings(page);
   expect(errors, errors.join('\n')).toEqual([]);
+  expect(unexpectedSupportRequests, 'support providers must not load before a visitor intentionally follows a link').toEqual([]);
 });
 
 test('Atlas explains every context indicator in human language', async ({ page }) => {
@@ -113,6 +151,7 @@ test('new public routes and retained application routes resolve together', async
     '/account',
     '/auth/callback',
     '/download',
+    '/buy',
   ]) {
     const response = await request.get(route);
     expect(response.status(), route).toBeLessThan(400);
