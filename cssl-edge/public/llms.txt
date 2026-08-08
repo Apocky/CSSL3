@@ -9,6 +9,7 @@ or permission to speak for anyone named on the site.
 ## Main public pages
 
 - Home and project links: https://www.apocky.com/
+- Akashic Records, Shawn Apocky's public works archive: https://www.apocky.com/akashic-records
 - Live public social room, The Clearing: https://www.apocky.com/clearing
 - Project Atlas: https://www.apocky.com/atlas
 - Interface principles: https://www.apocky.com/principles
@@ -24,10 +25,16 @@ or permission to speak for anyone named on the site.
 - CSSL programming language: https://cssl.dev/
 - CSLv3 notation: https://cssl.dev/CSLv3
 - Chaos Tarot: https://chaos-tarot.com/
-- Writing: https://medium.com/@noneisone.oneisall
+- Writing archive: https://www.apocky.com/akashic-records
+- Hash-sealed writing catalog (JSON): https://www.apocky.com/akashic-records/manifest.json
 - Public code: https://github.com/Apocky
 - Optional support: https://ko-fi.com/oneinfinity
 - Optional support: https://www.patreon.com/0ne1nfinity
+
+The Akashic Records contains author-approved, non-draft public works. Each
+record has a stable apocky.com reader page and source provenance. Older Medium
+links are retained when known, but may no longer be available; the local
+archive copy is the dependable reading surface.
 
 ## Apocrypha
 

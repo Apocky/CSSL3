@@ -38,9 +38,9 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveTitle(/digital commons/i);
-    await expect(page.getByRole('heading', { level: 1, name: /A place for minds, systems, and the worlds between them/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Meet Apocrypha', exact: true }).first()).toBeVisible();
+    await expect(page).toHaveTitle(/creative works and projects/i);
+    await expect(page.getByRole('heading', { level: 1, name: /Worlds, languages, symbols, and living systems/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Meet Apocrypha/i }).first()).toBeVisible();
     await expect(page.locator('main').getByRole('link', { name: /CSSL.*Visit CSSL/i })).toBeVisible();
 
     if (viewport.width <= 660) {
@@ -66,7 +66,10 @@ test('Atlas explains every context indicator in human language', async ({ page }
   const errors = collectBrowserErrors(page);
   await page.goto('/atlas');
 
-  await expect(page.getByRole('heading', { level: 2, name: /Six doors/i })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: /Seven doors/i })).toBeVisible();
+  const akashicDoor = page.locator('a.atlas-entry[href="/akashic-records"]');
+  await expect(akashicDoor).toBeVisible();
+  await expect(akashicDoor.getByRole('heading', { name: 'Akashic Records' })).toBeVisible();
   const firstContext = page.locator('.coordinate-strip').first();
   for (const label of ['People', 'Meaning', 'Visibility', 'Time']) {
     await expect(firstContext.getByText(label, { exact: false })).toBeVisible();
@@ -101,6 +104,7 @@ test('Clearing resolves as the live React social room without route aliasing', a
 test('new public routes and retained application routes resolve together', async ({ request }) => {
   for (const route of [
     '/',
+    '/akashic-records',
     '/atlas',
     '/clearing',
     '/membership',
@@ -118,5 +122,5 @@ test('new public routes and retained application routes resolve together', async
 test('legacy Commons hub forwards to the native React homepage', async ({ page }) => {
   await page.goto('/commons');
   await expect.poll(() => new URL(page.url()).pathname).toBe('/');
-  await expect(page.getByRole('heading', { level: 1, name: /A place for minds, systems, and the worlds between them/i })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Worlds, languages, symbols, and living systems/i })).toBeVisible();
 });

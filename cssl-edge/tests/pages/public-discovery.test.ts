@@ -45,6 +45,11 @@ assert.doesNotMatch(llms, /authored interaction sample/i);
 assert.doesNotMatch(llms, /conversation doorway|persistent digital intelligence|sovereign creative systems/i);
 assert.match(JSON.stringify(manifest['entry_points']), /words_and_symbols/);
 assert.match(JSON.stringify(manifest['entry_points']), /game_download/);
+assert.match(JSON.stringify(manifest['entry_points']), /works_archive/);
+assert.match(JSON.stringify(manifest['entry_points']), /"rel":"writing","href":"\/akashic-records"/);
+assert.match(JSON.stringify(manifest['entry_points']), /"href":"\/akashic-records"/);
+assert.match(JSON.stringify(manifest['entry_points']), /"rel":"works_archive_manifest","href":"\/akashic-records\/manifest\.json"/);
+assert.match(llms, /https:\/\/www\.apocky\.com\/akashic-records\/manifest\.json/);
 assert.match(JSON.stringify(manifest['entry_points']), /public_social_room/);
 assert.match(JSON.stringify(manifest['entry_points']), /"href":"\/clearing"/);
 assert.match(JSON.stringify(manifest['entry_points']), /apocrypha_conversation/);
@@ -71,6 +76,7 @@ assert.match(sitemap, /https:\/\/www\.apocky\.com\/apocrypha/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/clearing/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/words/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/download/);
+assert.match(sitemap, /https:\/\/www\.apocky\.com\/akashic-records/);
 assert.doesNotMatch(sitemap, /\/admin|\/api|\/account|\/login|\/register|\/chat/);
 assert.doesNotMatch(sitemap, /\/content/, 'unavailable shared-content routes must not be advertised');
 
@@ -94,6 +100,8 @@ for (const supportPage of [atlasPage, membershipPage, principlesPage]) {
   assert.doesNotMatch(supportPage, /href="\/apocrypha">(?:The )?Clearing/);
   assert.match(supportPage, /href="\/clearing">(?:The )?Clearing/);
 }
+assert.match(atlasPage, /Seven doors\./, 'Atlas must describe its full seven-door map');
+assert.match(atlasPage, /href="\/akashic-records"/, 'Atlas must expose the same-origin works archive');
 
 const clearingHeaders = vercel.headers?.find((entry) => entry.source === '/clearing')?.headers ?? [];
 assert.ok(clearingHeaders.some((header) => header.key === 'Cache-Control' && header.value.includes('no-store')));

@@ -886,6 +886,11 @@ select { font: inherit; }
     justify-content: center;
   }
   .apx-diagnostics-opener-label { display: none; }
+  .apx-diagnostics-opener::after {
+    content: "Data";
+    font: 700 0.62rem/1 system-ui, sans-serif;
+    letter-spacing: 0.02em;
+  }
 }
 
 @media (max-width: 480px) {

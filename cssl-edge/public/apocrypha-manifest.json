@@ -82,12 +82,30 @@
     },
     {
       "rel": "writing",
-      "href": "https://medium.com/@noneisone.oneisall",
+      "href": "/akashic-records",
       "method": "GET",
       "media_type": "text/html",
       "authn": "none",
       "authorization": "public",
-      "availability": "external_public"
+      "availability": "public"
+    },
+    {
+      "rel": "works_archive",
+      "href": "/akashic-records",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "works_archive_manifest",
+      "href": "/akashic-records/manifest.json",
+      "method": "GET",
+      "media_type": "application/json",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
     },
     {
       "rel": "language",

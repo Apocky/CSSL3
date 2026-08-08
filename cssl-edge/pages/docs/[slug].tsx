@@ -12,14 +12,26 @@ interface DocsPageProps {
 }
 
 const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
+  const isLegacyAkashicSpecification = spec.slug === '18_AKASHIC_RECORDS';
+  const displayTitle = isLegacyAkashicSpecification
+    ? 'Akashic Records — legacy Labyrinth technical specification'
+    : spec.title;
+  const canonicalUrl = isLegacyAkashicSpecification
+    ? `https://www.apocky.com/docs/${spec.slug}`
+    : `https://apocky.com/docs/${spec.slug}`;
   return (
     <>
       <Head>
-        <title>{spec.title} · Apocky docs</title>
-        <meta name="description" content={`${spec.slug}: a technical architecture specification written in CSLv3 notation.`} />
+        <title>{displayTitle} · Apocky docs</title>
+        <meta
+          name="description"
+          content={isLegacyAkashicSpecification
+            ? 'Preserved legacy Labyrinth of Apocalypse technical specification. This is distinct from Shawn Apocky’s public works archive.'
+            : `${spec.slug}: a technical architecture specification written in CSLv3 notation.`}
+        />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0a0a0f" />
-        <link rel="canonical" href={`https://apocky.com/docs/${spec.slug}`} />
+        <link rel="canonical" href={canonicalUrl} />
         <style>{`
           * { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; }
@@ -62,6 +74,26 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
           ← /docs
         </a>
 
+        {isLegacyAkashicSpecification ? (
+          <div
+            style={{
+              marginBottom: '1.5rem',
+              padding: '1rem 1.1rem',
+              border: '1px solid rgba(251, 191, 36, 0.3)',
+              borderLeft: '3px solid #fbbf24',
+              borderRadius: 6,
+              color: '#cdd6e4',
+              background: 'rgba(251, 191, 36, 0.05)',
+            }}
+          >
+            <strong>Legacy Labyrinth technical specification.</strong>{' '}
+            This preserved document is distinct from the{' '}
+            <a href="/akashic-records" style={{ color: '#fbbf24', textDecoration: 'underline' }}>
+              Akashic Records public works archive
+            </a>.
+          </div>
+        ) : null}
+
         <div style={{ fontSize: '0.7rem', color: '#7a7a8c', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           {spec.filename}
         </div>
@@ -74,7 +106,7 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
             letterSpacing: '-0.01em',
           }}
         >
-          {spec.title}
+          {displayTitle}
         </h1>
 
         <div

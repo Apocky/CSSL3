@@ -2,12 +2,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useSiteSession } from './hub/SiteSession';
 
-type NavItem = { href: string; label: string; ext?: boolean };
+type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean };
 
 const NAV: ReadonlyArray<NavItem> = [
-  { href: '/#projects', label: 'Creative work' },
-  { href: '/apocrypha', label: 'Talk with Apocrypha' },
-  { href: '/clearing', label: 'The Clearing' },
+  { href: '/#projects', label: 'Creative work', shortLabel: 'Work' },
+  { href: '/akashic-records', label: 'Akashic Records', shortLabel: 'Akashic' },
+  { href: '/apocrypha', label: 'Talk with Apocrypha', shortLabel: 'Apocrypha' },
+  { href: '/clearing', label: 'The Clearing', shortLabel: 'Clearing' },
   { href: '/atlas', label: 'Atlas' },
 ];
 
@@ -16,13 +17,13 @@ const WORK: ReadonlyArray<NavItem> = [
   { href: '/download', label: 'Explore Labyrinth of Apocalypse' },
   { href: 'https://cssl.dev', label: 'Visit CSSL', ext: true },
   { href: 'https://cssl.dev/CSLv3', label: 'Read about CSLv3', ext: true },
+  { href: '/akashic-records', label: 'Read the Akashic Records' },
   { href: '/apocrypha', label: 'Talk with Apocrypha' },
   { href: '/clearing', label: 'Enter the Clearing' },
   { href: '/atlas', label: 'Explore the Atlas' },
 ];
 
 const ABOUT: ReadonlyArray<NavItem> = [
-  { href: 'https://medium.com/@noneisone.oneisall', label: 'Writing on Medium', ext: true },
   { href: 'https://github.com/Apocky', label: 'Code on GitHub', ext: true },
   { href: 'https://ko-fi.com/oneinfinity', label: 'Support on Ko-fi', ext: true },
   { href: 'https://www.patreon.com/0ne1nfinity', label: 'Support on Patreon', ext: true },
@@ -39,22 +40,31 @@ function extProps(item: NavItem) {
     : {};
 }
 
+function isActivePath(pathname: string, href: string): boolean {
+  if (!href.startsWith('/') || href.includes('#')) return false;
+  return pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
+}
+
 export default function SiteShell({ children }: { children: React.ReactNode }): JSX.Element {
   const { pathname } = useRouter();
   const { authenticated } = useSiteSession();
 
-  const navLinks = (className = 'apx-nav-link') => NAV.map((item) => (
-    <Link
-      key={item.label}
-      href={item.href}
-      {...extProps(item)}
-      className={className}
-      data-active={pathname === item.href ? 'true' : undefined}
-      aria-current={pathname === item.href ? 'page' : undefined}
-    >
-      {item.label}{item.ext ? <span aria-hidden="true"> ↗</span> : null}
-    </Link>
-  ));
+  const navLinks = (className = 'apx-nav-link') => NAV.map((item) => {
+    const visibleLabel = className === 'apx-mobile-menu-link' ? item.label : (item.shortLabel ?? item.label);
+    return (
+      <Link
+        key={item.label}
+        href={item.href}
+        {...extProps(item)}
+        className={className}
+        data-active={isActivePath(pathname, item.href) ? 'true' : undefined}
+        aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}
+        aria-label={visibleLabel === item.label ? undefined : item.label}
+      >
+        {visibleLabel}{item.ext ? <span aria-hidden="true"> ↗</span> : null}
+      </Link>
+    );
+  });
 
   return (
     <div className="apx-shell">

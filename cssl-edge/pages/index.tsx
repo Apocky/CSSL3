@@ -38,6 +38,13 @@ const PORTALS = [
 
 const CREATIVE_WORK = [
   {
+    title: 'Akashic Records',
+    copy: 'A searchable public archive of my approved non-draft Medium writing, with a governed path for future works.',
+    href: '/akashic-records',
+    label: 'Explore the archive',
+    external: false,
+  },
+  {
     title: 'Chaos Tarot',
     copy: 'An evolving symbolic-art and tarot project built around atmosphere, reflection, and authored interpretation.',
     href: 'https://chaos-tarot.com',
