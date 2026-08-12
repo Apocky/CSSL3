@@ -23,7 +23,25 @@ function longestUnbrokenTokenLength(value: string): number {
 
 const records = getAkashicRecords();
 const summaries = getAkashicRecordSummaries();
-const longestTitle = summaries.reduce((longest, record) => (
+const primaryConversations = new Map<string, (typeof summaries)[number]>();
+for (const record of summaries) {
+  if (record.conversationId === undefined) continue;
+  const current = primaryConversations.get(record.conversationId);
+  if (current === undefined || (record.part ?? 1) < (current.part ?? 1)) {
+    primaryConversations.set(record.conversationId, record);
+  }
+}
+const indexSummaries = summaries.filter((record) => {
+  if (record.conversationId === undefined) return true;
+  return primaryConversations.get(record.conversationId)?.slug === record.slug;
+});
+const conversationEntries = indexSummaries.filter((record) => record.source === 'Codex');
+const conversationRecord = records.find((record) => (
+  record.source === 'Codex' && record.publicationState !== 'withheld'
+));
+if (conversationRecord === undefined) throw new Error('Akashic fixture must include an approved Codex transcript');
+const topicCount = new Set(indexSummaries.flatMap((record) => record.topics)).size;
+const longestTitle = indexSummaries.reduce((longest, record) => (
   record.title.length > longest.title.length ? record : longest
 ));
 const structuredRecord = records.reduce((richest, record) => (
@@ -46,8 +64,8 @@ const linkedTextRecord = records.find((record) => record.blocks.some((block) => 
   (block.kind === 'heading' || block.kind === 'blockquote') && (block.links?.length ?? 0) > 0
 )));
 if (linkedTextRecord === undefined) throw new Error('Akashic fixture must include a linked heading or quotation');
-const filterYear = Array.from(new Set(summaries.map((record) => record.year))).find(
-  (year) => summaries.some((record) => record.year !== year),
+const filterYear = Array.from(new Set(indexSummaries.map((record) => record.year))).find(
+  (year) => indexSummaries.some((record) => record.year !== year),
 );
 
 function collectBrowserErrors(page: Page): string[] {
@@ -91,7 +109,7 @@ test('@visual archive index and longest title remain readable across the viewpor
     await page.goto('/akashic-records', { waitUntil: 'domcontentloaded' });
     await disableOptionalSiteData(page);
     await expect(page.getByRole('heading', { level: 1, name: 'Akashic Records' })).toBeVisible();
-    await expect(page.locator('main').getByRole('status')).toContainText('204 works');
+    await expect(page.locator('main').getByRole('status')).toContainText(`${indexSummaries.length} entries`);
     await expectNoHorizontalOverflow(page, `archive index at ${viewport.width}x${viewport.height}`);
     await page.screenshot({
       path: path.join(artifactRoot, `${viewport.width}x${viewport.height}-index.png`),
@@ -115,33 +133,45 @@ test('@visual archive index and longest title remain readable across the viewpor
 });
 
 test('archive controls filter locally and announce their result', async ({ page }) => {
+  test.setTimeout(60_000);
   const browserErrors = collectBrowserErrors(page);
   await page.goto('/akashic-records');
   await disableOptionalSiteData(page);
 
   const search = page.getByRole('searchbox', { name: 'Search' });
   const resultStatus = page.locator('main').getByRole('status');
-  await expect(page.getByRole('combobox', { name: 'Source' })).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Topic' })).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Type' })).toHaveCount(0);
+  const sourceFilter = page.getByRole('combobox', { name: 'Source' });
+  const typeFilter = page.getByRole('combobox', { name: 'Type' });
+  await expect(sourceFilter).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Topic' })).toHaveCount(topicCount > 0 ? 1 : 0);
+  await expect(typeFilter).toBeVisible();
   await search.fill(longestTitle.title);
-  await expect(resultStatus).toHaveText('1 of 204 works');
+  await expect(resultStatus).toHaveText(`1 of ${indexSummaries.length} entries`);
   await expect(page.getByRole('link', { name: longestTitle.title }).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear' }).click();
   await expect(search).toHaveValue('');
-  await expect(resultStatus).toContainText('204 works');
+  await expect(resultStatus).toContainText(`${indexSummaries.length} entries`);
+
+  await sourceFilter.selectOption('Codex');
+  await expect(resultStatus).toHaveText(`${conversationEntries.length} of ${indexSummaries.length} entries`);
+  await expect(page.getByRole('link', { name: conversationEntries[0]?.title ?? '' }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Clear' }).click();
+
+  await typeFilter.selectOption('Conversation transcript');
+  await expect(resultStatus).toHaveText(`${conversationEntries.length} of ${indexSummaries.length} entries`);
+  await page.getByRole('button', { name: 'Clear' }).click();
 
   if (filterYear !== undefined) {
     await page.getByRole('combobox', { name: 'Year' }).selectOption(String(filterYear));
-    await expect(resultStatus).toContainText('of 204 works');
+    await expect(resultStatus).toContainText(`of ${indexSummaries.length} entries`);
     await page.getByRole('button', { name: 'Clear' }).click();
   }
 
   await search.fill('no-record-can-match-this-exact-phrase-7f6e37');
-  await expect(page.getByRole('heading', { name: 'No works match these filters.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Show all works' }).click();
-  await expect(resultStatus).toContainText('204 works');
+  await expect(page.getByRole('heading', { name: 'No records match these filters.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Show all records' }).click();
+  await expect(resultStatus).toContainText(`${indexSummaries.length} entries`);
 
   const accessibility = await new AxeBuilder({ page }).include('main').analyze();
   const serious = accessibility.violations.filter((entry) => entry.impact === 'serious' || entry.impact === 'critical');
@@ -196,6 +226,41 @@ test('reader renders the safe semantic block projection without raw HTML', async
   const linkedTextAnchor = page.locator('article [class*="readerBody"] h2 a, article [class*="readerBody"] h3 a, article [class*="readerBody"] blockquote a').first();
   await expect(linkedTextAnchor).toHaveAttribute('href', expectedLinkedHref);
 
+  const accessibility = await new AxeBuilder({ page }).include('main').analyze();
+  const serious = accessibility.violations.filter((entry) => entry.impact === 'serious' || entry.impact === 'critical');
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+  expect(browserErrors, browserErrors.join('\n')).toEqual([]);
+});
+
+test('conversation reader preserves roles, provenance, part navigation, and responsive safety', async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page);
+  const artifactRoot = path.join(process.cwd(), 'test-results', 'akashic-records');
+  fs.mkdirSync(artifactRoot, { recursive: true });
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`/akashic-records/${conversationRecord.slug}`);
+  await disableOptionalSiteData(page);
+
+  await expect(page.getByRole('heading', { level: 1, name: conversationRecord.title })).toBeVisible();
+  await expect(page.getByLabel(/(?:user|assistant) message/).first()).toBeVisible();
+  await expect(page.getByText('Owner-approved public-safe conversation projection')).toBeVisible();
+  await expect(page.getByText('Projection fingerprint')).toBeVisible();
+  if ((conversationRecord.parts ?? 1) > 1) {
+    const partNavigation = page.getByRole('navigation', { name: 'Conversation transcript parts' });
+    await expect(partNavigation).toBeVisible();
+    await expect(partNavigation.getByText(`Part ${conversationRecord.part ?? 1}`, { exact: true })).toBeVisible();
+  }
+
+  await expectNoHorizontalOverflow(page, 'conversation transcript at 320x568');
+  await page.screenshot({
+    path: path.join(artifactRoot, '320x568-conversation-transcript.png'),
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expectNoHorizontalOverflow(page, 'conversation transcript at 1440x900');
+  await page.screenshot({
+    path: path.join(artifactRoot, '1440x900-conversation-transcript.png'),
+    fullPage: false,
+  });
   const accessibility = await new AxeBuilder({ page }).include('main').analyze();
   const serious = accessibility.violations.filter((entry) => entry.impact === 'serious' || entry.impact === 'critical');
   expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);

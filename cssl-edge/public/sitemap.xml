@@ -14,7 +14,37 @@
   <url><loc>https://www.apocky.com/legal/privacy</loc><priority>0.5</priority></url>
   <url><loc>https://www.apocky.com/legal/terms</loc><priority>0.5</priority></url>
   <url><loc>https://www.apocky.com/legal/eula</loc><priority>0.4</priority></url>
-  <!-- Generated from the sealed Akashic Records v1 snapshot; freshness-gated by tests/pages/akashic-records.test.ts. -->
+  <!-- BEGIN generated Akashic Records v2 detail URLs -->
+  <!-- Generated from the sealed Akashic Records v2 snapshot; freshness-gated by tests/pages/akashic-records.test.ts. -->
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fe684-f1ad-7a10-bbab-c53b65721017-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fe426-3f68-7081-a027-1fd9df49b36b-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fe426-3f68-7081-a027-1fd9df49b36b-part-2</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fe41b-ece7-77b0-a6f0-eca9f608d481-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fe212-0f77-75d1-aa63-d1a548dac1e3-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fdad4-09fc-77c1-8030-f72246419ac6-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fd228-2338-7b30-9b21-9465534d4941-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc9d6-375c-7f13-8fab-d256c2546cf5-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc8e9-0dd2-7432-8130-41533646758b-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc890-36e8-7470-93dc-e20a771659ff-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc477-2020-7ab3-82f2-8fc97ef38593-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc473-216c-7301-b8f8-236f0b7a0e99-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc38a-4865-7c71-8093-97b129ce0fb1-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc354-c86f-71c0-9c2c-507325ea8642-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fc354-c86f-71c0-9c2c-507325ea8642-part-2</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-1</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-10</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-11</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-12</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-13</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-14</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-2</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-3</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-4</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-5</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-6</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-7</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-8</loc><priority>0.7</priority></url>
+  <url><loc>https://www.apocky.com/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-9</loc><priority>0.7</priority></url>
   <url><loc>https://www.apocky.com/akashic-records/chaos-tarot-dot-com-0394cf2a5114</loc><priority>0.7</priority></url>
   <url><loc>https://www.apocky.com/akashic-records/chaos-tarot-com-26332c3b337f</loc><priority>0.7</priority></url>
   <url><loc>https://www.apocky.com/akashic-records/more-bullshit-f7f530c6969e</loc><priority>0.7</priority></url>
@@ -219,4 +249,5 @@
   <url><loc>https://www.apocky.com/akashic-records/can-you-not-imagine-it-ed3c217e1133</loc><priority>0.7</priority></url>
   <url><loc>https://www.apocky.com/akashic-records/the-black-mirror-i-1dfb7fe7a258</loc><priority>0.7</priority></url>
   <url><loc>https://www.apocky.com/akashic-records/zero-is-one-one-is-two-two-is-all-5a03ab9c3dec</loc><priority>0.7</priority></url>
+  <!-- END generated Akashic Records v2 detail URLs -->
 </urlset>

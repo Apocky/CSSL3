@@ -108,6 +108,15 @@
       "availability": "public"
     },
     {
+      "rel": "conversations_archive",
+      "href": "/akashic-records",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
       "rel": "works_archive_manifest",
       "href": "/akashic-records/manifest.json",
       "method": "GET",

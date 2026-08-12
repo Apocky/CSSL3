@@ -412,6 +412,81 @@
   line-height: 1.55;
 }
 
+.contentNotice {
+  margin-top: 28px;
+  border: 1px solid rgba(169, 139, 192, 0.35);
+  border-radius: var(--apx-radius-sm);
+  background: rgba(169, 139, 192, 0.07);
+  color: var(--apx-copy);
+  padding: 18px;
+}
+
+.contentNotice strong {
+  color: var(--apx-violet);
+  font-family: var(--apx-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.contentNotice p {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.partNavigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--apx-line);
+  padding: 22px 0;
+}
+
+.partNavigation > span {
+  color: var(--apx-muted);
+  font-family: var(--apx-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.partNavigation ol {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.partNavigation a,
+.partNavigation strong {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  border: 1px solid var(--apx-line);
+  border-radius: 999px;
+  color: var(--apx-copy);
+  padding: 0 12px;
+  font-family: var(--apx-mono);
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.partNavigation a:hover {
+  border-color: var(--apx-line-strong);
+  color: var(--apx-mint-bright);
+}
+
+.partNavigation strong {
+  border-color: var(--apx-warm);
+  color: var(--apx-warm);
+}
+
 .readerBody {
   padding: clamp(52px, 9vw, 96px) 0;
   color: var(--apx-copy);
@@ -444,6 +519,43 @@
   color: var(--apx-warm);
   font-size: 3.5em;
   line-height: 0.78;
+}
+
+.transcriptTurn {
+  min-width: 0;
+  border: 1px solid var(--apx-line);
+  border-radius: var(--apx-radius);
+  background: rgba(10, 16, 13, 0.8);
+  padding: clamp(20px, 4vw, 30px);
+}
+
+.transcriptTurn[aria-label="user message"] {
+  border-left: 3px solid var(--apx-warm);
+}
+
+.transcriptTurn[aria-label="assistant message"] {
+  border-left: 3px solid var(--apx-mint);
+}
+
+.readerBody .transcriptRole {
+  margin: 0 0 14px;
+  padding: 0;
+  color: var(--apx-muted);
+  font-family: var(--apx-mono);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.transcriptMessage {
+  min-width: 0;
+  color: var(--apx-copy);
+  font-family: var(--apx-sans);
+  font-size: clamp(0.96rem, 1.6vw, 1.06rem);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .readerBody h2,
@@ -758,6 +870,15 @@
   .provenance dl div,
   .adjacent {
     grid-template-columns: 1fr;
+  }
+
+  .partNavigation {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .partNavigation ol {
+    justify-content: flex-start;
   }
 
   .readerHeader h1 {

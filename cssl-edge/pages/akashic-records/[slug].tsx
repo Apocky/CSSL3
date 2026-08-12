@@ -18,12 +18,17 @@ interface RecordNeighbor {
   title: string;
 }
 
+interface ConversationPartLink extends RecordNeighbor {
+  part: number;
+}
+
 type AkashicRecordPageRecord = Omit<AkashicRecord, 'body'>;
 
 interface AkashicRecordPageProps {
   record: AkashicRecordPageRecord;
   previous: RecordNeighbor | null;
   next: RecordNeighbor | null;
+  conversationParts: ConversationPartLink[];
 }
 
 function formatDate(value: string): string {
@@ -141,6 +146,13 @@ function renderRecordBlock(block: AkashicBlock, index: number): JSX.Element {
         </div>
       );
     }
+    case 'turn':
+      return (
+        <section key={key} className={styles.transcriptTurn} aria-label={`${block.role} message`}>
+          <h2 className={styles.transcriptRole}>{block.role === 'user' ? 'User' : 'Assistant'}</h2>
+          <div className={styles.transcriptMessage}>{block.text}</div>
+        </section>
+      );
     case 'divider':
       return <hr key={key} />;
   }
@@ -148,10 +160,18 @@ function renderRecordBlock(block: AkashicBlock, index: number): JSX.Element {
   throw new Error(`Unsupported Akashic block: ${String(unreachable)}`);
 }
 
-const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({ record, previous, next }) => {
+const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({
+  record,
+  previous,
+  next,
+  conversationParts,
+}) => {
   const localUrl = `https://www.apocky.com/akashic-records/${record.slug}`;
   const pageTitle = `${record.title} · Akashic Records`;
   const sourceUrl = safeExternalHref(record.sourceUrl);
+  const isConversation = record.type === 'Conversation transcript';
+  const isWithheld = record.publicationState === 'withheld';
+  const recordDate = record.recordedAt ?? record.publishedAt;
 
   return (
     <>
@@ -163,7 +183,7 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({ record, previous,
         <meta property="og:description" content={record.excerpt} />
         <meta property="og:type" content="article" />
         <meta property="og:url" content={localUrl} />
-        <meta property="article:published_time" content={record.publishedAt} />
+        <meta property="article:published_time" content={recordDate} />
         <link rel="canonical" href={localUrl} />
       </Head>
 
@@ -180,8 +200,8 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({ record, previous,
 
             <dl className={styles.readerMeta}>
               <div>
-                <dt>Published</dt>
-                <dd><time dateTime={record.publishedAt}>{formatDate(record.publishedAt)}</time></dd>
+                <dt>{isConversation ? 'Recorded' : 'Published'}</dt>
+                <dd><time dateTime={recordDate}>{formatDate(recordDate)}</time></dd>
               </div>
               <div>
                 <dt>Source</dt>
@@ -207,7 +227,29 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({ record, previous,
                 <p>This archive copy remains readable even if the off-site source has moved or disappeared.</p>
               </div>
             ) : null}
+
+            {record.contentNotice !== undefined ? (
+              <aside className={styles.contentNotice} aria-label="Transcript content notice">
+                <strong>Public transcript note</strong>
+                <p>{record.contentNotice}</p>
+              </aside>
+            ) : null}
           </header>
+
+          {isConversation && conversationParts.length > 1 ? (
+            <nav className={styles.partNavigation} aria-label="Conversation transcript parts">
+              <span>Transcript parts</span>
+              <ol>
+                {conversationParts.map((candidate) => (
+                  <li key={candidate.slug}>
+                    {candidate.slug === record.slug
+                      ? <strong aria-current="page">Part {candidate.part}</strong>
+                      : <Link href={`/akashic-records/${candidate.slug}`}>Part {candidate.part}</Link>}
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          ) : null}
 
           <div className={styles.readerBody}>
             {record.blocks.map(renderRecordBlock)}
@@ -219,7 +261,11 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({ record, previous,
             <dl>
               <div>
                 <dt>Publication state</dt>
-                <dd>Author-approved public non-draft work</dd>
+                <dd>{isWithheld
+                  ? 'Owner-approved record; transcript withheld for third-party privacy'
+                  : isConversation
+                    ? 'Owner-approved public-safe conversation projection'
+                  : 'Author-approved public non-draft work'}</dd>
               </div>
               <div>
                 <dt>Archive source</dt>
@@ -235,6 +281,48 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({ record, previous,
                 <dt>Source fingerprint</dt>
                 <dd><code>{record.sourceSha256}</code></dd>
               </div>
+              {record.projectionSha256 !== undefined ? (
+                <div>
+                  <dt>Projection fingerprint</dt>
+                  <dd><code>{record.projectionSha256}</code></dd>
+                </div>
+              ) : null}
+              {record.conversationId !== undefined ? (
+                <div>
+                  <dt>Conversation</dt>
+                  <dd><code>{record.conversationId}</code></dd>
+                </div>
+              ) : null}
+              {record.part !== undefined && record.parts !== undefined ? (
+                <div>
+                  <dt>Transcript part</dt>
+                  <dd>{record.part} of {record.parts}</dd>
+                </div>
+              ) : null}
+              {record.messageCount !== undefined && !isWithheld ? (
+                <div>
+                  <dt>Messages in this part</dt>
+                  <dd>{record.messageCount}</dd>
+                </div>
+              ) : null}
+              {isWithheld && record.withheldMessageCount !== undefined ? (
+                <div>
+                  <dt>Source messages withheld</dt>
+                  <dd>{record.withheldMessageCount}</dd>
+                </div>
+              ) : null}
+              {isWithheld && record.withheldReason !== undefined ? (
+                <div>
+                  <dt>Withholding reason</dt>
+                  <dd>{record.withheldReason}</dd>
+                </div>
+              ) : null}
+              {record.redactionCount !== undefined ? (
+                <div>
+                  <dt>Redactions</dt>
+                  <dd>{record.redactionCount}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Stable archive address</dt>
                 <dd><a href={localUrl}>{localUrl}</a></dd>
@@ -242,16 +330,16 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({ record, previous,
             </dl>
           </aside>
 
-          <nav className={styles.adjacent} aria-label="Nearby works">
+          <nav className={styles.adjacent} aria-label="Nearby archive records">
             {previous !== null ? (
               <Link href={`/akashic-records/${previous.slug}`}>
-                <span>Previous work</span>
+                <span>Previous record</span>
                 <strong><span aria-hidden="true">←</span> {previous.title}</strong>
               </Link>
             ) : <span />}
             {next !== null ? (
               <Link href={`/akashic-records/${next.slug}`}>
-                <span>Next work</span>
+                <span>Next record</span>
                 <strong>{next.title} <span aria-hidden="true">→</span></strong>
               </Link>
             ) : <span />}
@@ -280,6 +368,16 @@ export const getStaticProps: GetStaticProps<AkashicRecordPageProps> = (context) 
       record: pageRecord,
       previous: recordNeighbor(summaries[index - 1]),
       next: recordNeighbor(summaries[index + 1]),
+      conversationParts: record.conversationId === undefined
+        ? []
+        : summaries
+          .filter((candidate) => candidate.conversationId === record.conversationId)
+          .map((candidate) => ({
+            slug: candidate.slug,
+            title: candidate.title,
+            part: candidate.part ?? 1,
+          }))
+          .sort((left, right) => left.part - right.part),
     },
   };
 };

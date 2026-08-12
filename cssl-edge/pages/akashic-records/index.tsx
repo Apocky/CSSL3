@@ -37,17 +37,33 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
   const [year, setYear] = useState(ALL);
   const [type, setType] = useState(ALL);
 
-  const sources = useMemo(() => uniqueSorted(records.map((record) => record.source)), [records]);
-  const topics = useMemo(() => uniqueSorted(records.flatMap((record) => record.topics)), [records]);
+  const archiveEntries = useMemo(() => {
+    const primaryConversationRecords = new Map<string, AkashicRecordSummary>();
+    for (const record of records) {
+      if (record.conversationId === undefined) continue;
+      const current = primaryConversationRecords.get(record.conversationId);
+      if (current === undefined || (record.part ?? 1) < (current.part ?? 1)) {
+        primaryConversationRecords.set(record.conversationId, record);
+      }
+    }
+    return records.filter((record) => {
+      if (record.conversationId === undefined) return true;
+      return primaryConversationRecords.get(record.conversationId)?.slug === record.slug;
+    });
+  }, [records]);
+  const sources = useMemo(() => uniqueSorted(archiveEntries.map((record) => record.source)), [archiveEntries]);
+  const topics = useMemo(() => uniqueSorted(archiveEntries.flatMap((record) => record.topics)), [archiveEntries]);
   const years = useMemo(
-    () => Array.from(new Set(records.map((record) => record.year))).sort((a, b) => b - a),
-    [records],
+    () => Array.from(new Set(archiveEntries.map((record) => record.year))).sort((a, b) => b - a),
+    [archiveEntries],
   );
-  const types = useMemo(() => uniqueSorted(records.map((record) => record.type)), [records]);
+  const types = useMemo(() => uniqueSorted(archiveEntries.map((record) => record.type)), [archiveEntries]);
+  const conversationCount = archiveEntries.filter((record) => record.conversationId !== undefined).length;
+  const workCount = archiveEntries.length - conversationCount;
 
   const filteredRecords = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    return records.filter((record) => {
+    return archiveEntries.filter((record) => {
       const searchable = [
         record.title,
         record.excerpt,
@@ -60,7 +76,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
         (type === ALL || record.type === type)
       );
     });
-  }, [query, records, source, topic, type, year]);
+  }, [archiveEntries, query, source, topic, type, year]);
 
   const activeFilters = query.trim().length > 0 || [source, topic, year, type].some((value) => value !== ALL);
   const yearRange = years.length > 0
@@ -80,16 +96,16 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
   return (
     <>
       <Head>
-        <title>Akashic Records — Works by Shawn Apocky</title>
+        <title>Akashic Records — Public Works and Conversations</title>
         <meta
           name="description"
-          content="A searchable public archive of Shawn Apocky’s approved non-draft Medium works."
+          content="A searchable archive of Shawn Apocky’s explicitly approved public works and Codex conversations."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta property="og:title" content="Akashic Records — Works by Shawn Apocky" />
+        <meta property="og:title" content="Akashic Records — Public Works and Conversations" />
         <meta
           property="og:description"
-          content="Search Shawn Apocky’s approved public Medium works by title or description, and browse them by year."
+          content="Search Shawn Apocky’s approved public works and Codex conversations by title, description, source, type, or year."
         />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://www.apocky.com/akashic-records" />
@@ -99,25 +115,29 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
       <main className={styles.root}>
         <section className={styles.hero} aria-labelledby="akashic-title">
           <div className={styles.heroCopy}>
-            <p className={styles.eyebrow}>Public works archive · Shawn Apocky</p>
+            <p className={styles.eyebrow}>Public archive · Shawn Apocky</p>
             <h1 id="akashic-title">Akashic Records</h1>
             <p className={styles.lede}>
-              Read, search, compare, and follow recurring ideas across my
-              approved non-draft Medium works. Future sources can join the
-              archive only through the same explicit public-approval gate.
+              Read, search, compare, and follow recurring ideas across my approved
+              public works and conversations. Each source enters through an explicit
+              public-approval gate and a reproducible, hash-sealed projection.
             </p>
             <p className={styles.publicationNote}>
-              Every work here is a non-draft publication approved by the author for
-              this public archive. Original off-site links are preserved when known,
-              but some may no longer be available. For analysis and verification, view
-              the <a href="/akashic-records/manifest.json">hash-sealed public catalog</a>.
+              Medium works are approved non-draft publications. Codex conversations are
+              approved, public-safe transcript projections; redactions are counted and
+              their projection fingerprints are published. For verification, view the{' '}
+              <a href="/akashic-records/manifest.json">hash-sealed public catalog</a>.
             </p>
           </div>
 
           <dl className={styles.metrics} aria-label="Archive overview">
             <div>
               <dt>Works</dt>
-              <dd>{records.length}</dd>
+              <dd>{workCount}</dd>
+            </div>
+            <div>
+              <dt>Conversations</dt>
+              <dd>{conversationCount}</dd>
             </div>
             <div>
               <dt>Years</dt>
@@ -137,7 +157,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
             <div className={styles.filterHeading}>
               <div>
                 <p className={styles.eyebrow}>Explore the archive</p>
-                <h2 id="explore-records-title">Find a work</h2>
+                <h2 id="explore-records-title">Find a record</h2>
               </div>
               <button
                 className={styles.clearButton}
@@ -204,9 +224,9 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
 
           <div className={styles.results}>
             <p className={styles.resultCount} role="status" aria-live="polite" aria-atomic="true">
-              {filteredRecords.length === records.length
-                ? `${records.length} ${records.length === 1 ? 'work' : 'works'}`
-                : `${filteredRecords.length} of ${records.length} works`}
+              {filteredRecords.length === archiveEntries.length
+                ? `${archiveEntries.length} ${archiveEntries.length === 1 ? 'entry' : 'entries'}`
+                : `${filteredRecords.length} of ${archiveEntries.length} entries`}
             </p>
 
             {filteredRecords.length > 0 ? (
@@ -219,6 +239,12 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
                       <time dateTime={record.publishedAt}>{formatDate(record.publishedAt)}</time>
                       <span aria-hidden="true">·</span>
                       <span>{record.type}</span>
+                      {(record.parts ?? 1) > 1 ? (
+                        <><span aria-hidden="true">·</span><span>{record.parts} parts</span></>
+                      ) : null}
+                      {record.publicationState === 'withheld' ? (
+                        <><span aria-hidden="true">·</span><span>Transcript withheld</span></>
+                      ) : null}
                     </div>
                     <h3>
                       <Link href={`/akashic-records/${record.slug}`}>{record.title}</Link>
@@ -230,16 +256,19 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
                       </ul>
                     ) : null}
                     <Link className={styles.readLink} href={`/akashic-records/${record.slug}`}>
-                      Read this work <span aria-hidden="true">→</span>
+                      {record.publicationState === 'withheld'
+                        ? 'View withheld record'
+                        : record.type === 'Conversation transcript' ? 'Read transcript' : 'Read this work'}{' '}
+                      <span aria-hidden="true">→</span>
                     </Link>
                   </article>
                 ))}
               </div>
             ) : (
               <div id="akashic-record-list" className={styles.emptyState}>
-                <h3>No works match these filters.</h3>
+                <h3>No records match these filters.</h3>
                 <p>Try a broader search, or clear the filters to see the whole archive.</p>
-                <button type="button" onClick={clearFilters}>Show all works</button>
+                <button type="button" onClick={clearFilters}>Show all records</button>
               </div>
             )}
           </div>

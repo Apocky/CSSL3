@@ -40,7 +40,7 @@ const PORTALS = [
 const CREATIVE_WORK = [
   {
     title: 'Akashic Records',
-    copy: 'A searchable public archive of my approved non-draft Medium writing, with a governed path for future works.',
+    copy: 'A searchable, hash-sealed public archive of my approved writing and public-safe Codex conversation transcripts.',
     href: '/akashic-records',
     label: 'Explore the archive',
     external: false,
