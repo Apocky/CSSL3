@@ -9,6 +9,7 @@ or permission to speak for anyone named on the site.
 ## Main public pages
 
 - Home and project links: https://www.apocky.com/
+- Omnoid Singularity, Shawn Apocky's authored cosmology with visual and CSLv3 maps: https://www.apocky.com/omnoid-singularity
 - Akashic Records, Shawn Apocky's public works and conversations archive: https://www.apocky.com/akashic-records
 - Live public social room, The Clearing: https://www.apocky.com/clearing
 - Project Atlas: https://www.apocky.com/atlas

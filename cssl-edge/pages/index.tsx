@@ -39,6 +39,13 @@ const PORTALS = [
 
 const CREATIVE_WORK = [
   {
+    title: 'Omnoid Singularity',
+    copy: 'My concise cosmology of recursive totality, distinct centers, freedom, True Neutral, singularity, and return—with visual and CSLv3 maps.',
+    href: '/omnoid-singularity',
+    label: 'Read the cosmology',
+    external: false,
+  },
+  {
     title: 'Akashic Records',
     copy: 'A searchable, hash-sealed public archive of my approved writing and public-safe Codex conversation transcripts.',
     href: '/akashic-records',

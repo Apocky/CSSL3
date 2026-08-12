@@ -27,6 +27,7 @@ const clearingRoom = read('components/clearing/ClearingRoom.tsx');
 const atlasPage = read('public/commons/atlas.html');
 const membershipPage = read('public/commons/membership.html');
 const principlesPage = read('public/commons/principles.html');
+const homePage = read('pages/index.tsx');
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
@@ -76,6 +77,7 @@ assert.match(robots, /Disallow: \/admin\//);
 assert.match(robots, /Disallow: \/api\//);
 assert.match(robots, /Allow: \/clearing/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\//);
+assert.match(sitemap, /https:\/\/www\.apocky\.com\/omnoid-singularity/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/apocrypha/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/clearing/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/words/);
@@ -84,6 +86,8 @@ assert.match(sitemap, /https:\/\/www\.apocky\.com\/buy/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/akashic-records/);
 assert.doesNotMatch(sitemap, /\/admin|\/api|\/account|\/login|\/register|\/chat/);
 assert.doesNotMatch(sitemap, /\/content/, 'unavailable shared-content routes must not be advertised');
+assert.match(llms, /https:\/\/www\.apocky\.com\/omnoid-singularity/);
+assert.match(homePage, /href: '\/omnoid-singularity'/);
 
 const expectedStaticRewrites = [
   { source: '/atlas', destination: '/commons/atlas.html' },
