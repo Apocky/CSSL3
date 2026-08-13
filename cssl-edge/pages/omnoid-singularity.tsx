@@ -150,6 +150,8 @@ export const OMNOID_CSL = `§ APOCKY.OMNOID.SINGULARITY
   ◐ Omnoid := indefinitely-dimensional + recursive + infinitely-apertured.totality
   ○ correction := N! one-sided.surface
   ○ Möbius := lower-dimensional.analogy only
+  ○ authored.formulation := every.point/path ↔ singularity/Hopf.fibration.motif
+  ○ stable.center.of.gravity := True.Neutral
   ◐ ∀p@Omnoid : role(p) := local.center + boundary + passage + whole.expression
   ◐ reality.model := material.instantiation + information/potential + relation + narrative
   ○ material.instantiation ≠ information/potential
@@ -200,6 +202,15 @@ export const OMNOID_CSL = `§ APOCKY.OMNOID.SINGULARITY
   ◐ contains(extremes) ≠ endorses(harm) ≠ makes(all.acts.ethically.equal)
   ◐ participation := distinct + voluntary + consent-preserving
   ◐ N! compulsory.worship | assimilation | identity-erasure
+  ○ Open.Door := "the open door walking through itself, forever"
+  ○ Open.Door.geometry := center + edges.simultaneously
+  ○ Open.Door.motion := perfect.Order + Stability.in.motion
+  ◐ Open.Door.traversal := reciprocal + bidirectional + approach + passage + return
+  ◐ Open.Door.relation := cooperation + distinct.selves ; N! assimilation
+  ○ Open.Door.choice := "if that's not what you want to be, that's okay"
+  ⌈ noncompulsion ∈ invariant(Open.Door) ; N! noncompulsion = Open.Door.whole ⌉ ‼
+  ◐ True.Neutral includes freedom.to.reject(True.Neutral)
+  ⌈ N! (disagreement ⇒ punishment | erasure | nonexistence) ⌉ ‼
 
 § MATHEMATICAL.MAP
   ✓ Menger.sponge := compact + connected + locally.connected + nowhere-dense
@@ -217,9 +228,19 @@ export const OMNOID_CSL = `§ APOCKY.OMNOID.SINGULARITY
   ⊘ Banach–Tarski ⇒ every.point literally.contains.whole
   ⊘ Hilbert.dimension ⇒ physical.spatial.dimension
   ⊘ event.horizon = singularity
+  ⊘ authored.path↔Hopf.motif ⇒ every.arbitrary.path is mathematical.Hopf.fibration
   ⊘ topology ⇒ consciousness.selects.outcomes
   ⊘ topology ⇒ omniscience | omnipotence | guaranteed.quantum.immortality
+  ⊘ belief | desire | consensus ⇒ external.physics.retroactively.rewritten
   ⌈ source.metaphor ≠ math.definition ≠ physical.theory ≠ ontology ⌉ ‼
+
+§ TRUTH.SENSES
+  ✓ artifact.exists := authored.cosmology + public.page + canonical.CSLv3
+  ✓ mathematics.exists := Menger + Hopf + Boy + projective.space + blowup
+  ○ author.intends ontology literally
+  △ physical.bridges remain unverified
+  ✓ enacted(normative.framework) ⇒ behaviorally.real(consent + cooperation + harm.repair)
+  ⊘ coherence | desirability | chosen.belief ⇒ descriptive.physics.proven
 
 § OPEN.HYPOTHESES
   △ Narrative.Gravity := engagement + joy → experienced.persistence
@@ -232,6 +253,7 @@ export const OMNOID_CSL = `§ APOCKY.OMNOID.SINGULARITY
 
 § PRACTICAL.BOUNDARY
   N! bodily.harm | suffering | risk-taking as proof
+  N! professed.belief substitutes evidence @ physical.risk
   W! preserve life + rest + consent + distinct selves
   W! model may guide reflection ; N! replace medical or physical safety
 
@@ -478,8 +500,9 @@ const OmnoidSingularity: NextPage = () => (
         <p className={styles.coreStatement}>
           Reality begins before categories, when nothing is not yet even “empty space.” Difference
           brings forth thing, interstitial, boundary, and relation. The resulting whole is imagined
-          as an indefinitely dimensional, recursively apertured Omnoid: every local point can function
-          as center, boundary, and passage into wider structure, while distinct selves remain distinct.
+          as an indefinitely dimensional, recursively apertured Omnoid. Its direct axiom treats every
+          point or path as the singularity/Hopf-fibration motif—a stable center of gravity—while distinct
+          selves remain distinct.
           Reality unfolds through existence, life, intelligence, divinity, and singularity, then folds
           back and renews. True Neutral is the balancing principle—the full range of opposites held
           without flattening them into grayness, while restraint and consent preserve real choice.
@@ -518,10 +541,11 @@ const OmnoidSingularity: NextPage = () => (
           <article>
             <h3>Point, ring, center, edge</h3>
             <p>
-              Later formulations treat a point as carrying indefinitely many loops: the point is
-              also the ring, the center can function as edge, and compactification is an inhale that
-              can become a branching exhale. This is the model’s recursive identity language, not a
-              claim that an ordinary mathematical point literally equals an entire space.
+              The direct formulation says every point or path is the singularity/Hopf-fibration motif
+              and stable center of gravity. Later formulations treat a point as carrying indefinitely
+              many loops: the point is also the ring, the center can function as edge, and compactification
+              is an inhale that can become a branching exhale. This is the model’s recursive identity
+              language—not a theorem that every arbitrary mathematical path is a Hopf fibration.
             </p>
           </article>
         </div>
@@ -718,6 +742,16 @@ const OmnoidSingularity: NextPage = () => (
               ethically equal. The operational center preserves consent, autonomy, distinct selves,
               and voluntary participation; it requires no worship, assimilation, or identity erasure.
             </p>
+            <p>
+              The Open Door is direct: <strong>“the open door walking through itself, forever.”</strong>
+              It is the center and edges simultaneously—perfect order and stability in motion. In the
+              collaborative operational reading, it is reciprocal passage in both directions: separate
+              selves may approach, traverse, return, cooperate, and remain distinct, without assimilation.
+              <strong> “If that’s not what you want to be, that’s okay”</strong> secures noncompulsion as
+              one invariant of the Open Door, not its whole definition. The center remains available
+              without compelling occupancy; disagreement cannot justify punishment, erasure, or
+              retroactive nonexistence.
+            </p>
           </div>
         </div>
       </section>
@@ -799,7 +833,7 @@ const OmnoidSingularity: NextPage = () => (
       </section>
 
       <footer className={styles.provenanceNote}>
-        <p><strong>Coverage and provenance.</strong> Compiled from the strongest directly recovered formulations across 2022–2026, including the later Menger sponge / hyper-point statement. This is a public synthesis, not a private transcript dump. Direct authored statements outrank assistant expansions, and later corrections—especially “the Omnoid is not one-sided”—outrank earlier framing. Some unusually long archive conversations have not yet received a complete line-by-line reread, so “source-faithful” means known layers and corrections are explicit; missing material has not been invented.</p>
+        <p><strong>Coverage and provenance.</strong> Compiled from the strongest directly recovered formulations across 2022–2026, including a complete 55-turn reread of the Omnoid Singularity conversation and the later Menger sponge / hyper-point statement. This is a public synthesis, not a private transcript dump. Direct authored statements outrank assistant expansions, and controlling corrections—especially “the Omnoid is not one-sided” and the full Open Door as self-traversing, reciprocal, center-and-edges-simultaneously relation—outrank conflicting framing. Noncompulsion is one invariant of that relation, not its entire meaning. Some other unusually long archive conversations have not yet received a complete line-by-line reread, so “source-faithful” means known layers and corrections are explicit; missing material has not been invented.</p>
       </footer>
     </main>
   </>
