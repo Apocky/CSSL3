@@ -111,6 +111,39 @@
   ✓ real.oriented.blowup(0@Rⁿ) replaces point with Sⁿ⁻¹
   ✓ Banach–Tarski := paradoxical.decomposition using nonmeasurable.sets
 
+§ COHEN.FRACTAL.UNCERTAINTY
+  ✓ source : string = "Alex Cohen - Fractal uncertainty in higher dimensions - arXiv:2305.05022v2"
+  ✓ publication : string = "Annals of Mathematics 202 (2025), 265-307"
+  ✓ dimension : i32 if dimension >= 1
+  ✓ scale_h : f64 if 0 < scale_h ∧ scale_h < 0.01
+  ✓ porosity_ratio : f64 if 0 < porosity_ratio ∧ porosity_ratio <= 1 / 3
+  ✓ X_domain : string = "X subset [-1,1]^d"
+  ✓ Y_domain : string = "Y subset [-h^-1,h^-1]^d"
+  ✓ physical_scales : string = "h < R < 1"
+  ✓ frequency_scales : string = "1 < R < h^-1"
+  ✓ X_ball_porous : bool @physical_scales
+  ✓ Y_line_porous : bool @frequency_scales
+  ✓ theorem-display : string = "support(f_hat) subset Y => L2(1_X f) <= C h^beta L2(f)"
+  ✓ theorem-bound : proposition = Fourier-support-in-Y ⇒ concentration-on-X <= C * (scale_h ^ beta)
+  ✓ theorem-quantifier : string = "for every f in L2(R^d)"
+  ✓ positive_constants : proposition = C > 0 ∧ beta > 0
+  ✓ constant-dependence : proposition = depends-only(C, beta, porosity_ratio, dimension)
+  ✓ line-porosity : proposition = every-eligible-straight-Euclidean-line-segment ⇒ exists-proportional-disjoint-ball
+  ✓ dimension_one_equivalence : proposition = ball-porosity = line-porosity
+  ✓ ball_porosity_insufficient : proposition = dimension >= 2 ⇒ ball-porosity != sufficient
+  ✓ counterexample : proposition = mutually-orthogonal-lines
+  ✓ proof-route : proposition = damping-functions → quantitative-unique-continuation → single-scale-mass-escape → power-saving
+  ◐ Omnoid-correspondence : proposition = interstitial-apertures ↔ quantitative-porosity
+  ◐ path-correspondence : proposition = path-emphasis ↔ directional-line-constraint
+  ◐ scale-correspondence : proposition = controlled-multiscale-repetition ↔ global-bound
+  ◐ uncertainty-gloss : proposition = strong-joint-concentration-beyond-bound != epistemic-ignorance
+  ⊘ holes-alone ⇒ Cohen-FUP
+  ⊘ Menger-sponge ⇒ line-porous
+  ⊘ Cohen-FUP ⇒ Omnoid-ontology | every-point-is-singularity | every-path-is-Hopf-fiber
+  ⊘ Cohen-FUP ⇒ consciousness-selection | retrocausality | omniscience | omnipotence | biological-immortality
+  ⌈correspondence != derivation⌉
+  ⌈correspondence != empirical-validation⌉
+
 § CATEGORY.BOUNDARIES
   ⊘ Banach–Tarski ⇒ every.point literally.contains.whole
   ⊘ Hilbert.dimension ⇒ physical.spatial.dimension
@@ -123,7 +156,7 @@
 
 § TRUTH.SENSES
   ✓ artifact.exists := authored.cosmology + public.page + canonical.CSLv3
-  ✓ mathematics.exists := Menger + Hopf + Boy + projective.space + blowup
+  ✓ mathematics.exists := Menger + Hopf + Boy + projective.space + blowup + Cohen.FUP
   ○ author.intends ontology literally
   △ physical.bridges remain unverified
   ✓ enacted(normative.framework) ⇒ behaviorally.real(consent + cooperation + harm.repair)

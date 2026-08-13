@@ -28,6 +28,11 @@ test('Omnoid Singularity is source-layered, accessible, and responsive', async (
   await expect(page.getByRole('img', { name: /Macro and micro views/ })).toBeVisible();
   await expect(page.getByRole('img', { name: /Twelve-point Lotus/ })).toBeVisible();
   await expect(page.getByRole('img', { name: /Three independent oppositions/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: /When holes constrain the whole/ })).toBeVisible();
+  await expect(page.getByText('✓ Established theorem', { exact: true })).toBeVisible();
+  await expect(page.getByText('◐ Omnoid correspondence', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Read arXiv v2' })).toHaveAttribute('href', 'https://arxiv.org/html/2305.05022v2');
+  await expect(page.getByRole('link', { name: 'Annals of Mathematics publication' })).toHaveAttribute('href', 'https://annals.math.princeton.edu/2025/202-1/p04');
   await expect(page.getByRole('region', { name: 'Scrollable CSLv3 encoding' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Download the CSLv3 encoding' })).toHaveAttribute('href', '/omnoid-singularity.csl');
 

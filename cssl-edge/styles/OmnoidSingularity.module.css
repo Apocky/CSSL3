@@ -151,6 +151,7 @@
 
 .legendSection,
 .section {
+  scroll-margin-top: 78px;
   border-top: 1px solid var(--apx-line);
   padding: clamp(58px, 8vw, 102px) 0;
 }
@@ -829,6 +830,205 @@
 .categoryBoundary span { border: 1px solid var(--apx-line); border-radius: 999px; padding: 6px 10px; }
 .categoryBoundary b { color: var(--apx-warm); }
 
+.cohenGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
+  gap: 18px;
+}
+
+.theoremCard,
+.connectionCard,
+.researchBoundary {
+  border: 1px solid var(--apx-line);
+  border-radius: var(--apx-radius);
+  background: rgba(9, 14, 12, 0.9);
+}
+
+.theoremCard,
+.connectionCard { padding: clamp(22px, 3.5vw, 34px); }
+
+.theoremCard {
+  background:
+    radial-gradient(circle at 92% 8%, rgba(82, 217, 189, 0.1), transparent 36%),
+    rgba(9, 14, 12, 0.92);
+}
+
+.connectionCard {
+  background:
+    radial-gradient(circle at 90% 8%, rgba(169, 139, 192, 0.11), transparent 40%),
+    rgba(9, 14, 12, 0.92);
+}
+
+.cardStatus {
+  display: block;
+  margin-bottom: 18px;
+  color: var(--apx-warm);
+  font-family: var(--apx-mono);
+  font-size: 0.68rem;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.theoremCard h3,
+.connectionCard h3,
+.proofRoute h3,
+.researchBoundary h3 {
+  margin: 0;
+  color: var(--apx-ink);
+  font-family: var(--apx-display);
+  font-size: clamp(1.3rem, 2.4vw, 1.85rem);
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+}
+
+.theoremCard > p {
+  margin: 18px 0 0;
+  color: var(--apx-muted);
+  font-size: 0.87rem;
+  line-height: 1.68;
+}
+
+.theoremFormula {
+  margin-top: 24px;
+  overflow-x: auto;
+  border-block: 1px solid rgba(82, 217, 189, 0.28);
+  padding: 24px 0;
+  scrollbar-color: var(--apx-line-strong) transparent;
+}
+
+.theoremFormula code {
+  display: block;
+  min-width: max-content;
+  color: var(--apx-mint-bright);
+  font-family: var(--apx-mono);
+  font-size: clamp(0.95rem, 2.2vw, 1.35rem);
+  letter-spacing: 0.01em;
+}
+
+.theoremCard .cardNote { color: var(--apx-copy); }
+
+.connectionCard ul {
+  display: grid;
+  gap: 0;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.connectionCard li {
+  border-top: 1px solid var(--apx-line);
+  padding: 14px 0;
+  color: var(--apx-muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.connectionCard li:last-child { padding-bottom: 0; }
+.connectionCard strong { color: var(--apx-copy); }
+
+.proofRoute {
+  margin-top: 38px;
+}
+
+.proofRoute h3 { font-size: 1.12rem; }
+
+.cohenFlow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cohenFlow li {
+  position: relative;
+  min-height: 174px;
+  border-top: 2px solid var(--apx-mint);
+  background: rgba(13, 21, 18, 0.68);
+  padding: 18px;
+}
+
+.cohenFlow li:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: -13px;
+  width: 26px;
+  color: var(--apx-warm);
+  font-family: var(--apx-mono);
+  font-size: 1rem;
+  text-align: center;
+  transform: translateY(-50%);
+}
+
+.cohenFlow span {
+  display: block;
+  color: var(--apx-warm);
+  font-family: var(--apx-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+}
+
+.cohenFlow strong {
+  display: block;
+  margin-top: 28px;
+  color: var(--apx-ink);
+  font-size: 0.88rem;
+}
+
+.cohenFlow small {
+  display: block;
+  margin-top: 8px;
+  color: var(--apx-muted);
+  font-size: 0.72rem;
+  line-height: 1.48;
+}
+
+.researchBoundary {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.58fr) minmax(0, 1.42fr);
+  gap: clamp(24px, 4vw, 58px);
+  margin-top: 38px;
+  border-color: rgba(228, 182, 109, 0.32);
+  background: linear-gradient(145deg, rgba(228, 182, 109, 0.07), rgba(10, 16, 13, 0.9));
+  padding: clamp(22px, 3.8vw, 38px);
+}
+
+.researchBoundary p {
+  margin: 0;
+  color: var(--apx-muted);
+  font-size: 0.84rem;
+  line-height: 1.66;
+}
+
+.researchBoundary p + p { margin-top: 14px; }
+
+.paperLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.paperLinks a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--apx-line-strong);
+  border-radius: 999px;
+  padding: 0 16px;
+  color: var(--apx-mint-bright);
+  font-size: 0.78rem;
+  font-weight: 720;
+  text-decoration: none;
+}
+
+.paperLinks a:hover { border-color: var(--apx-mint); }
+
 .codeFrame {
   max-height: 800px;
   overflow: auto;
@@ -909,6 +1109,9 @@
   .cycleList { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .experienceGrid, .freedomGrid { grid-template-columns: 1fr; }
   .bodyCard { grid-template-columns: minmax(180px, 0.55fr) minmax(0, 1.45fr); }
+  .cohenGrid { grid-template-columns: 1fr; }
+  .cohenFlow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cohenFlow li:nth-child(2)::after { display: none; }
   .openGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -918,6 +1121,7 @@
   .lotusFigure { max-width: 540px; }
   .textEquivalent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .splitCopy { grid-template-columns: 1fr; }
+  .researchBoundary { grid-template-columns: 1fr; }
   .neutralAxis { width: min(100%, 440px); margin: auto; }
 }
 
@@ -950,6 +1154,10 @@
   .neutralAxis b { width: 92px; font-size: 0.95rem; }
   .categoryBoundary { align-items: flex-start; }
   .categoryBoundary strong { width: 100%; }
+  .cohenFlow { grid-template-columns: 1fr; }
+  .cohenFlow li { min-height: 0; }
+  .cohenFlow li:not(:last-child)::after { display: none; }
+  .theoremCard, .connectionCard, .researchBoundary { border-radius: 14px; }
   .mathTable { min-width: 780px; }
   .codeFrame { max-height: 660px; margin-inline: -4px; }
 }
@@ -972,6 +1180,10 @@
   .bodyCard,
   .neutralAxis,
   .tableWrap,
+  .theoremCard,
+  .connectionCard,
+  .cohenFlow li,
+  .researchBoundary,
   .codeFrame,
   .provenanceNote { border: 1px solid CanvasText; }
 

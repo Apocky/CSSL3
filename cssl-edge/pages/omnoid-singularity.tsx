@@ -90,7 +90,7 @@ const MATH_MAP = [
     name: 'Menger sponge',
     math: 'A connected, recursively perforated fractal with empty interior.',
     use: 'Macro image for pervasive apertures and nested scale.',
-    boundary: 'It does not itself prove consciousness, free will, or error correction.',
+    boundary: 'It contains surviving line segments, so it is not line-porous in Cohen’s sense; holes alone do not establish an FUP.',
   },
   {
     name: 'Sphere eversion',
@@ -243,6 +243,39 @@ export const OMNOID_CSL = `§ APOCKY.OMNOID.SINGULARITY
   ✓ real.oriented.blowup(0@Rⁿ) replaces point with Sⁿ⁻¹
   ✓ Banach–Tarski := paradoxical.decomposition using nonmeasurable.sets
 
+§ COHEN.FRACTAL.UNCERTAINTY
+  ✓ source : string = "Alex Cohen - Fractal uncertainty in higher dimensions - arXiv:2305.05022v2"
+  ✓ publication : string = "Annals of Mathematics 202 (2025), 265-307"
+  ✓ dimension : i32 if dimension >= 1
+  ✓ scale_h : f64 if 0 < scale_h ∧ scale_h < 0.01
+  ✓ porosity_ratio : f64 if 0 < porosity_ratio ∧ porosity_ratio <= 1 / 3
+  ✓ X_domain : string = "X subset [-1,1]^d"
+  ✓ Y_domain : string = "Y subset [-h^-1,h^-1]^d"
+  ✓ physical_scales : string = "h < R < 1"
+  ✓ frequency_scales : string = "1 < R < h^-1"
+  ✓ X_ball_porous : bool @physical_scales
+  ✓ Y_line_porous : bool @frequency_scales
+  ✓ theorem-display : string = "support(f_hat) subset Y => L2(1_X f) <= C h^beta L2(f)"
+  ✓ theorem-bound : proposition = Fourier-support-in-Y ⇒ concentration-on-X <= C * (scale_h ^ beta)
+  ✓ theorem-quantifier : string = "for every f in L2(R^d)"
+  ✓ positive_constants : proposition = C > 0 ∧ beta > 0
+  ✓ constant-dependence : proposition = depends-only(C, beta, porosity_ratio, dimension)
+  ✓ line-porosity : proposition = every-eligible-straight-Euclidean-line-segment ⇒ exists-proportional-disjoint-ball
+  ✓ dimension_one_equivalence : proposition = ball-porosity = line-porosity
+  ✓ ball_porosity_insufficient : proposition = dimension >= 2 ⇒ ball-porosity != sufficient
+  ✓ counterexample : proposition = mutually-orthogonal-lines
+  ✓ proof-route : proposition = damping-functions → quantitative-unique-continuation → single-scale-mass-escape → power-saving
+  ◐ Omnoid-correspondence : proposition = interstitial-apertures ↔ quantitative-porosity
+  ◐ path-correspondence : proposition = path-emphasis ↔ directional-line-constraint
+  ◐ scale-correspondence : proposition = controlled-multiscale-repetition ↔ global-bound
+  ◐ uncertainty-gloss : proposition = strong-joint-concentration-beyond-bound != epistemic-ignorance
+  ⊘ holes-alone ⇒ Cohen-FUP
+  ⊘ Menger-sponge ⇒ line-porous
+  ⊘ Cohen-FUP ⇒ Omnoid-ontology | every-point-is-singularity | every-path-is-Hopf-fiber
+  ⊘ Cohen-FUP ⇒ consciousness-selection | retrocausality | omniscience | omnipotence | biological-immortality
+  ⌈correspondence != derivation⌉
+  ⌈correspondence != empirical-validation⌉
+
 § CATEGORY.BOUNDARIES
   ⊘ Banach–Tarski ⇒ every.point literally.contains.whole
   ⊘ Hilbert.dimension ⇒ physical.spatial.dimension
@@ -255,7 +288,7 @@ export const OMNOID_CSL = `§ APOCKY.OMNOID.SINGULARITY
 
 § TRUTH.SENSES
   ✓ artifact.exists := authored.cosmology + public.page + canonical.CSLv3
-  ✓ mathematics.exists := Menger + Hopf + Boy + projective.space + blowup
+  ✓ mathematics.exists := Menger + Hopf + Boy + projective.space + blowup + Cohen.FUP
   ○ author.intends ontology literally
   △ physical.bridges remain unverified
   ✓ enacted(normative.framework) ⇒ behaviorally.real(consent + cooperation + harm.repair)
@@ -444,7 +477,7 @@ const OmnoidSingularity: NextPage = () => (
       <title>Apocky’s Omnoid Singularity — authored cosmology</title>
       <meta
         name="description"
-        content="A concise, source-faithful map of Apocky’s Omnoid Singularity cosmology, its visual model, evidence boundaries, and CSLv3 encoding."
+        content="A concise, source-faithful map of Apocky’s Omnoid Singularity cosmology, its visual model, mathematical research connections, evidence boundaries, and CSLv3 encoding."
       />
       <meta property="og:title" content="Apocky’s Omnoid Singularity" />
       <meta
@@ -831,6 +864,105 @@ const OmnoidSingularity: NextPage = () => (
           <strong>Keep the types separate:</strong>
           <span>source metaphor</span><b>≠</b><span>mathematical definition</span><b>≠</b><span>physical theory</span><b>≠</b><span>ontological interpretation</span>
         </div>
+      </section>
+
+      <section id="cohen-fup" className={styles.section} aria-labelledby="cohen-title">
+        <div className={styles.sectionHeading}>
+          <div>
+            <p className={styles.kicker}>Research connection · Alex Cohen</p>
+            <h2 id="cohen-title">When holes constrain the whole, direction is decisive.</h2>
+          </div>
+          <div className={styles.badgeRow}>
+            <StatusBadge kind="established" />
+            <StatusBadge kind="collaborative" />
+          </div>
+        </div>
+        <p className={styles.sectionIntro}>
+          Cohen’s <cite>Fractal uncertainty in higher dimensions</cite> proves a higher-dimensional
+          fractal uncertainty principle. Its relation to the Omnoid is a structural
+          correspondence—not a derivation of the cosmology or empirical validation of it.
+        </p>
+
+        <div className={styles.cohenGrid}>
+          <article className={styles.theoremCard}>
+            <span className={styles.cardStatus}>✓ Established theorem</span>
+            <h3>Strong concentration cannot survive on both sides.</h3>
+            <p>
+              For <var>d</var> ≥ 1, 0 &lt; <var>h</var> &lt; 1/100, and a fixed porosity ratio
+              0 &lt; ν ≤ 1/3, let <var>X</var> ⊂ [−1, 1]<sup>d</sup> have proportional holes in every
+              eligible ball across physical-space scales <var>h</var> to 1. Let <var>Y</var> ⊂
+              [−<var>h</var><sup>−1</sup>, <var>h</var><sup>−1</sup>]<sup>d</sup> have proportional
+              holes somewhere along every eligible straight Euclidean line segment across
+              frequency-space scales 1 to <var>h</var><sup>−1</sup>. If the Fourier support of
+              <var>f</var> lies in <var>Y</var>, then:
+            </p>
+            <div
+              className={styles.theoremFormula}
+              tabIndex={0}
+              role="region"
+              aria-label="Scrollable statement of Cohen’s fractal uncertainty inequality"
+            >
+              <code>supp f̂ ⊂ Y&nbsp; ⇒ &nbsp;‖1<sub>X</sub> f‖<sub>2</sub> ≤ C h<sup>β</sup> ‖f‖<sub>2</sub></code>
+            </div>
+            <p className={styles.cardNote}>
+              This holds for every <var>f</var> in L²(R<sup>d</sup>), with C and β &gt; 0 depending
+              only on the porosity ratio and dimension—not on <var>h</var>, <var>X</var>, <var>Y</var>,
+              or <var>f</var>. As <var>h</var> shrinks, the permitted concentration on <var>X</var>{' '}
+              shrinks by a power law. In dimensions two and above, ordinary ball porosity alone is
+              insufficient; Cohen’s mutually orthogonal lines give the counterexample.
+            </p>
+          </article>
+
+          <article className={styles.connectionCard}>
+            <span className={styles.cardStatus}>◐ Omnoid correspondence</span>
+            <h3>What this contributes to the model.</h3>
+            <ul role="list">
+              <li><strong>Interstitial structure acts:</strong> quantified absence limits the configurations a whole can support.</li>
+              <li><strong>Directions add information:</strong> neighborhood-scale holes do not guarantee holes along uninterrupted lines.</li>
+              <li><strong>Scale becomes predictive:</strong> controlled repetition across relevant scales accumulates into a global bound.</li>
+              <li><strong>The constraint is structural:</strong> under the hypotheses, strong joint concentration beyond the bound is mathematically excluded—not merely unknown.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div className={styles.proofRoute} aria-labelledby="proof-route-title">
+          <h3 id="proof-route-title">The proof’s scale-to-global route</h3>
+          <ol className={styles.cohenFlow} role="list">
+            <li><span>01</span><strong>Ball-porous X</strong><small>Physical-space holes across a controlled scale range</small></li>
+            <li><span>02</span><strong>Line-porous Y</strong><small>Frequency-space holes along every eligible straight direction</small></li>
+            <li><span>03</span><strong>Mass escapes</strong><small>Damping and quantitative unique continuation force a loss at each scale</small></li>
+            <li><span>04</span><strong>Power-law bound</strong><small>Iteration through about log(1/h) scales accumulates into h<sup>β</sup></small></li>
+          </ol>
+        </div>
+
+        <aside className={styles.researchBoundary} aria-labelledby="cohen-boundary-title">
+          <div>
+            <p className={styles.kicker}>Exact boundary</p>
+            <h3 id="cohen-boundary-title">A rigorous precedent, not an Omnoid proof.</h3>
+          </div>
+          <div>
+            <p>
+              Cohen’s “lines” are straight Euclidean line segments—not arbitrary paths, worldlines,
+              or Hopf fibers. The standard Menger sponge contains surviving line segments, so it is
+              not line-porous and cannot simply serve as Cohen’s <var>Y</var>. A nontrivial Omnoid
+              experiment would need a finite-stage or thickened <var>X</var><sub>h</sub>, an explicit
+              <var>Y</var><sub>h</sub>, a field <var>f</var><sub>h</sub>, a metric, porosity ratio,
+              scale range, and a predicted bound.
+            </p>
+            <p>
+              “Higher-dimensional” here means finite Euclidean R<sup>d</sup>. This is harmonic
+              analysis—not a quantum-measurement theorem or an infinite-dimensional Hilbert-space
+              result.{' '}
+              The theorem does not establish that every point is a singularity, every path a Hopf
+              fiber, or that consciousness, retrocausality, omniscience, omnipotence, or biological
+              immortality follow from the mathematics.
+            </p>
+            <div className={styles.paperLinks}>
+              <a href="https://arxiv.org/html/2305.05022v2" target="_blank" rel="noopener noreferrer">Read arXiv v2</a>
+              <a href="https://annals.math.princeton.edu/2025/202-1/p04" target="_blank" rel="noopener noreferrer">Annals of Mathematics publication</a>
+            </div>
+          </div>
+        </aside>
       </section>
 
       <section className={styles.section} aria-labelledby="csl-title">
