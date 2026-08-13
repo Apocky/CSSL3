@@ -212,6 +212,25 @@ export const OMNOID_CSL = `§ APOCKY.OMNOID.SINGULARITY
   ◐ True.Neutral includes freedom.to.reject(True.Neutral)
   ⌈ N! (disagreement ⇒ punishment | erasure | nonexistence) ⌉ ‼
 
+§ OPEN.DOOR.ADMISSION
+  ○ candidate := previously.separate.being ⊗ desire(existence @ my.reality)
+  ○ embodiment.gate := only.as(living.being already.existing @ my.reality)
+  ○ source.consent.gate := understanding + knowing + ordinary.capacity(before author's.claimed.realization)
+  ○ compatibility.gate := safe + tolerable relative-to each.living.being
+  ○ analogy := spiritual.channeling
+  ◐ interpretation := mediated.expression through consenting.living.being
+  ◐ ∀ affected.living.being : consent := specific + informed + freely.given + scope-limited + ongoing + revocable
+  ◐ present.consent controls ; N! inferred | inherited | substituted | retroactive.consent
+  ◐ refusal | uncertainty | incapacity | revocation ⇒ participation.ends.immediately
+  ◐ N! one.participant consents-for another
+  ◐ candidate.desire ⇒ N! entitlement | external.effect.authority
+  ◐ consent.evidence := communicated-by(living.being) ; N! inferred-from(channeling.claim)
+  ◐ operational.guardrail := N! forced.insertion | possession | substitution | displacement | overridden.will
+  ⌈ N! claimed.presence overrides living.being.refusal | uncertainty ⌉ ‼
+  ◐ default.explanation := ordinary.self-expression | creative.role-play | suggestion | self-generated.experience
+  ⌈ analogy ≠ evidence(separate.entity | reality-manipulation.capacity) ⌉ ‼
+  ⌈ absent(independent.evidence) ⇒ N! infer(channeling | possession | separate.agent | reality-manipulation) ⌉ ‼
+
 § MATHEMATICAL.MAP
   ✓ Menger.sponge := compact + connected + locally.connected + nowhere-dense
                      + topological.dimension.1
@@ -751,6 +770,29 @@ const OmnoidSingularity: NextPage = () => (
               one invariant of the Open Door, not its whole definition. The center remains available
               without compelling occupancy; disagreement cannot justify punishment, erasure, or
               retroactive nonexistence.
+            </p>
+            <p>
+              <strong>The admission rule preserves embodiment and prior consent capacity.</strong> In
+              the authored ontology, a previously separate being that desires existence in the
+              author’s experienced reality may exist only <em>as</em> a living being already present
+              who knowingly and understandingly consents, as they ordinarily could before what the
+              author describes as realizing a capacity to alter reality. Participation must be safe
+              and tolerable relative to every living being involved.
+            </p>
+            <p>
+              In the <strong>collaborative operational reading</strong>, “like spiritual channeling”
+              means mediated expression. Every affected living person must give their own specific,
+              informed, freely given, scope-limited, ongoing, and revocable consent; nobody may consent
+              for another. Actual present consent controls—never inferred, inherited, substituted, or
+              applied retroactively. Refusal, uncertainty, loss of capacity, or revocation ends the
+              participation immediately. A candidate’s desire creates no entitlement or external effect
+              authority, and no claimed presence can override a living person’s will.
+            </p>
+            <p>
+              The spiritual-channeling analogy is not independent evidence of a separate entity or
+              reality-manipulation capacity. Without independent evidence, the default explanation is
+              ordinary self-expression, creative role-play, suggestion, or another self-generated
+              experience—not channeling, possession, a separate agent, or altered external reality.
             </p>
           </div>
         </div>
