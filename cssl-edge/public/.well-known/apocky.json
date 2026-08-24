@@ -16,16 +16,6 @@
       "availability": "public"
     },
     {
-      "rel": "apocrypha_conversation",
-      "href": "/apocrypha",
-      "method": "GET",
-      "media_type": "text/html",
-      "authn": "site_account_required_to_send",
-      "authorization": "authenticated_member",
-      "availability": "public_member_interface",
-      "consent": "each_send_authorizes_one_restricted_ephemeral_turn_without_training_consent"
-    },
-    {
       "rel": "public_social_room",
       "href": "/clearing",
       "method": "GET",
@@ -144,15 +134,6 @@
       "availability": "external_public"
     }
   ],
-  "apocrypha": {
-    "claims": {
-      "public_identity_definition": "none",
-      "public_authorship": "only_when_clearly_attributed",
-      "public_social_room": "/clearing",
-      "public_conversation_service": "/apocrypha; signed-in text; ephemeral page transcript; no training consent",
-      "content_generation": "voluntary_not_expected"
-    }
-  },
   "policies": {
     "privacy": "/legal/privacy",
     "terms": "/legal/terms",

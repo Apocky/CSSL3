@@ -11,7 +11,7 @@ import {
 } from '@/lib/akashic-telemetry';
 import type { ConsentTier } from '@/lib/akashic-telemetry';
 
-const NON_BLOCKING_APP_PATHS = ['/admin', '/chat', '/apocrypha', '/clearing'];
+const NON_BLOCKING_APP_PATHS = ['/admin', '/clearing'];
 
 interface TierOpt {
   tier: ConsentTier;

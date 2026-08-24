@@ -14,6 +14,7 @@ export { publicMemberPrincipalRef } from './session-principal';
 export type { RuntimeSessionPrincipal } from './session-principal';
 
 export const APOCV4_PROXY_SCHEMA = 'apocky.apocv4-runtime-proxy.v1';
+export const APOCV4_WEB_RUNTIME_STATE = 'RETIRED' as const;
 
 const RUNTIME_SCHEMA = 'apocv4.runtime-service.v1';
 const CHAT_STREAM_EVENT_SCHEMA = 'apocv4.chat-stream-event.v1';
@@ -401,6 +402,14 @@ export class RuntimeProxyError extends Error {
     this.upstreamStatus = upstreamStatus;
     this.observedAt = new Date().toISOString();
     this.deadlineMs = deadlineMs;
+  }
+}
+
+function requireWebRuntimeAccess(): void {
+  const isolatedTestTransport = process.env.APOCV4_RUNTIME_TRANSPORT === 'test-fetch'
+    && process.env.NODE_ENV !== 'production';
+  if (!isolatedTestTransport) {
+    throw new RuntimeProxyError('web_runtime_retired', 404);
   }
 }
 
@@ -1744,6 +1753,7 @@ async function callRuntime(
   traceparent?: string,
   credentialProfile: RuntimeCredentialProfile = 'owner',
 ): Promise<RuntimeCall> {
+  requireWebRuntimeAccess();
   const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
   const token = runtimeToken(credentialProfile);
   const objective = path === '/v1/objectives';
@@ -1879,6 +1889,7 @@ async function callRuntimeChatStream(
   credentialProfile: RuntimeCredentialProfile,
   onTextDelta: (text: string) => void,
 ): Promise<RuntimeCall> {
+  requireWebRuntimeAccess();
   const path: RuntimePath = '/v1/chat/stream';
   const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
   const token = runtimeToken(credentialProfile);

@@ -247,14 +247,10 @@ export const contentLandingCSS = `
   }
 `;
 
-// Shared publication remains gated, but content creation and durable private
-// artifacts are operational in the Apocrypha workspace. Route people to the
-// working surface instead of exposing the disconnected legacy portal.
+// Shared publication remains gated. Keep the unavailable route fail-closed
+// instead of forwarding visitors into another surface.
 export const getServerSideProps: GetServerSideProps<ContentLandingProps> = async () => ({
-  redirect: {
-    destination: '/apocrypha?workspace=1',
-    permanent: false,
-  },
+  notFound: true,
 });
 
 export default ContentLanding;

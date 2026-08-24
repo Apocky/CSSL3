@@ -4,7 +4,7 @@
   "title": "Apocky public site manifest v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "schema_href", "name", "canonical_url", "audiences", "declared_release_state", "entry_points", "apocrypha", "policies"],
+  "required": ["schema", "schema_href", "name", "canonical_url", "audiences", "declared_release_state", "entry_points", "policies"],
   "properties": {
     "schema": { "const": "apocky.site-manifest.v1" },
     "schema_href": { "const": "/schemas/site-manifest.v1.json" },
@@ -13,14 +13,6 @@
     "audiences": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
     "declared_release_state": { "enum": ["private_beta", "public_beta", "public"] },
     "entry_points": { "type": "array", "items": { "$ref": "#/$defs/route" } },
-    "apocrypha": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["claims"],
-      "properties": {
-        "claims": { "type": "object", "additionalProperties": { "type": "string" } }
-      }
-    },
     "policies": { "type": "object", "additionalProperties": { "type": "string" } }
   },
   "$defs": {

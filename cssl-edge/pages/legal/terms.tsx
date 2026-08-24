@@ -55,7 +55,7 @@ const Terms: NextPage = () => (
     <p>
       Ko-fi, Patreon, GitHub, Medium, and other linked services are operated by other organizations. Their terms
       govern activity on their sites. A donation supports the work; it does not purchase control over creative
-      decisions, a person, Apocrypha, or another participant.
+      decisions, a person, or another participant.
     </p>
     <p>
       If apocky.com offers a direct purchase, the checkout screen must show the item, price, renewal terms if

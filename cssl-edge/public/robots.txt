@@ -3,7 +3,6 @@ Allow: /
 Allow: /llms.txt
 Allow: /.well-known/apocky.json
 Allow: /schemas/site-manifest.v1.json
-Allow: /apocrypha
 Allow: /clearing
 Disallow: /account
 Disallow: /admin/

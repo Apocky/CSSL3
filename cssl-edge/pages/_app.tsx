@@ -24,7 +24,7 @@ import AkashicConsent from '@/components/AkashicConsent';
 import SiteShell from '@/components/SiteShell';
 import { SiteSessionProvider } from '@/components/hub/SiteSession';
 
-// Auth, admin, and the immersive entity/chat pages render bare (their own chrome / clean for OAuth).
+// Auth, admin, and the live social room render bare (their own chrome / clean for OAuth).
 // Everything else gets the global nav + footer so the whole site is navigable.
 function isBare(pathname: string): boolean {
   return (
@@ -32,11 +32,8 @@ function isBare(pathname: string): boolean {
     pathname === '/register' ||
     pathname.startsWith('/auth') ||
     pathname.startsWith('/admin') ||
-    pathname === '/apocrypha' ||
-    pathname.startsWith('/apocrypha/') ||
     pathname === '/clearing' ||
     pathname.startsWith('/clearing/') ||
-    pathname === '/chat' ||
     pathname.startsWith('/shawn')
   );
 }

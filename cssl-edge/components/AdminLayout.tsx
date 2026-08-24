@@ -1,10 +1,4 @@
-// Apocrypha admin layout · 8-item nav · phone-first · sovereign-cap-protected
-//
-// Per Apocky's UX-cleanup pass : "Apocrypha is the name, not a nav element".
-// Every page in /admin/* is part of the Apocrypha surface ; the side-nav lists
-// destinations within that surface, not separate apps. LoA-specific destinations
-// (the old Tasks/Analytics/MCP content) were Apocky's other-project leakage and
-// were removed/repurposed per D043 (Apocrypha != LoA).
+// Apocky site admin layout · phone-first · sovereign-cap-protected.
 
 import Head from 'next/head';
 import Link from 'next/link';
@@ -36,30 +30,15 @@ interface NavItem {
   mobile?: boolean;
 }
 
-// All destinations stay Apocrypha-internal · LoA stuff lives elsewhere now (D043).
-// Mobile bottom-nav = 3 icons (Chat / Diagnostics / Logs) — the trio you actually
-// pull out your phone for. Everything else lives in the desktop side-nav.
 const NAV: ReadonlyArray<NavItem> = [
   { href: '/admin', label: 'Home', glyph: '§',
-    tip: 'Apocrypha health summary · today\'s activity · quick links' },
-  { href: '/admin/apex', label: 'Apex', glyph: '◉',
-    tip: 'Live Apocv4 presence · bounded objectives · observed evidence receipts' },
-  { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true,
-    tip: 'One authenticated V2 REST turn · one committed final response' },
-  { href: '/admin/cognition', label: 'Cognition', glyph: '∞',
-    tip: 'Predecessor visualization · legacy live feed retired' },
-  { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬', mobile: true,
-    tip: 'Owner-only V2 health · capabilities · telemetry · Organarium projections' },
-  { href: '/admin/sub-minds', label: 'Sub-Minds', glyph: 'Ω',
-    tip: 'Predecessor surface retired · no V2 replacement' },
-  { href: '/admin/controls', label: 'Controls', glyph: '☢',
-    tip: 'V2 effect controls unavailable · authority boundary only' },
-  { href: '/admin/tools', label: 'Tools', glyph: '⊑',
-    tip: 'Predecessor tools surface retired · no V2 replacement' },
-  { href: '/admin/analytics', label: 'Analytics', glyph: '∂',
-    tip: 'Predecessor cost surface retired · no V2 replacement' },
+    tip: 'Site health summary · today\'s activity · quick links', mobile: true },
+  { href: '/admin/analytics', label: 'Analytics', glyph: '∂', mobile: true,
+    tip: 'Consent-bounded site analytics' },
+  { href: '/admin/mcp', label: 'MCP', glyph: '⊑',
+    tip: 'Owner-only local developer bridge' },
   { href: '/admin/logs', label: 'Observatory', glyph: '◫', mobile: true,
-    tip: 'Consented visitors · Apocrypha interactions · creation ledger · operational events' },
+    tip: 'Consented visitors · creation ledger · operational events' },
 ];
 
 const MOBILE_NAV = NAV.filter((item) => item.mobile);
@@ -73,7 +52,7 @@ export default function AdminLayout({
 }: AdminLayoutProps) {
   const router = useRouter();
   const [check, setCheck] = useState<AdminCheck | null>(null);
-  const loginHref = loginHrefForReturnPath(router.asPath || router.pathname || '/admin/chat');
+  const loginHref = loginHrefForReturnPath(router.asPath || router.pathname || '/admin');
 
   useEffect(() => {
     authFetch('/api/admin/check', { cache: 'no-store' })
@@ -92,7 +71,7 @@ export default function AdminLayout({
   return (
     <>
       <Head>
-        <title>{`${title} · Apocrypha · Apocky`}</title>
+        <title>{`${title} · Apocky admin`}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -158,7 +137,7 @@ export default function AdminLayout({
             textTransform: 'uppercase',
           }}
         >
-          § Apocrypha
+          § APOCKY
         </div>
         <div
           style={{
@@ -167,7 +146,7 @@ export default function AdminLayout({
             marginBottom: '1.4rem',
           }}
         >
-          V2 owner console
+          site owner console
         </div>
         {NAV.map((n) => {
           const active = router.pathname === n.href
@@ -264,7 +243,7 @@ export default function AdminLayout({
         {check?.authorized ? children : check ? null : <p style={{ color: '#7a7a8c' }}>§ checking admin session…</p>}
       </main>
 
-      {/* ─── MOBILE BOTTOM-NAV (3 icons : Chat · Diagnostics · Logs) ─── */}
+      {/* ─── MOBILE BOTTOM-NAV ─── */}
       <nav
         className={`admin-bottom-nav${immersive ? ' admin-bottom-nav--immersive' : ''}`}
         style={{

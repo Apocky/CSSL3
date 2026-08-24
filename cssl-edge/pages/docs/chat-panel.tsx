@@ -20,7 +20,7 @@ const Page: NextPage = () => {
       <p className="docs-p">
         The panel is a text line at the bottom of the game window. You type a request, and the current game
         compares it with a small list of recognized phrases. The technical name for a recognized request is an
-        <strong> intent</strong>. This is a command interface for the game, not a conversation with Apocrypha.
+        <strong> intent</strong>. This is a command interface for the game, not a live conversation service.
       </p>
 
       <Callout kind="note" title="What works now">

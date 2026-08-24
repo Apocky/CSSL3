@@ -8,7 +8,6 @@ type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean
 const NAV: ReadonlyArray<NavItem> = [
   { href: '/#projects', label: 'Creative work', shortLabel: 'Work' },
   { href: '/akashic-records', label: 'Akashic Records', shortLabel: 'Akashic' },
-  { href: '/apocrypha', label: 'Talk with Apocrypha', shortLabel: 'Apocrypha' },
   { href: '/clearing', label: 'The Clearing', shortLabel: 'Clearing' },
   { href: '/atlas', label: 'Atlas' },
   { href: '/buy', label: 'Support the work', shortLabel: 'Support', accent: true },
@@ -20,7 +19,6 @@ const WORK: ReadonlyArray<NavItem> = [
   { href: 'https://cssl.dev', label: 'Visit CSSL', ext: true },
   { href: 'https://cssl.dev/CSLv3', label: 'Read about CSLv3', ext: true },
   { href: '/akashic-records', label: 'Read the Akashic Records' },
-  { href: '/apocrypha', label: 'Talk with Apocrypha' },
   { href: '/clearing', label: 'Enter the Clearing' },
   { href: '/atlas', label: 'Explore the Atlas' },
 ];

@@ -1,6 +1,63 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+const RETIRED_EXACT_PATHS = new Set([
+  '/apoc',
+  '/apocrypha',
+  '/apocrypha-manifest.json',
+  '/apx',
+  '/chat',
+  '/admin/apex',
+  '/admin/apocrypha',
+  '/admin/chat',
+  '/admin/coder',
+  '/admin/cognition',
+  '/admin/controls',
+  '/admin/diagnostics',
+  '/admin/sub-minds',
+  '/admin/tools',
+  '/api/admin/apocrypha',
+  '/api/admin/apocv4',
+  '/api/apocrypha',
+  '/api/cron/apocrypha-sms',
+]);
+
+const RETIRED_PATH_PREFIXES = [
+  '/apoc/',
+  '/apocrypha/',
+  '/apx/',
+  '/chat/',
+  '/admin/apocrypha/',
+  '/api/apocrypha/',
+  '/api/admin/apocrypha/',
+  '/api/admin/apocv4/',
+];
+
+const RETIRED_HOST = 'apocrypha.apocky.com';
+
+function requestHost(request: NextRequest): string {
+  return (request.headers.get('host') ?? request.nextUrl.hostname)
+    .split(':', 1)[0]
+    ?.toLowerCase() ?? '';
+}
+
+export function isRetiredWebRuntimeRequest(request: NextRequest): boolean {
+  const pathname = request.nextUrl.pathname;
+  return requestHost(request) === RETIRED_HOST
+    || RETIRED_EXACT_PATHS.has(pathname)
+    || RETIRED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+function retiredNotFound(): NextResponse {
+  const response = new NextResponse(null, { status: 404 });
+  response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  return response;
+}
+
 function makeCsp(nonce: string): string {
   const isDev = process.env.NODE_ENV === 'development';
   return [
@@ -25,6 +82,8 @@ function makeCsp(nonce: string): string {
 }
 
 export function middleware(request: NextRequest): NextResponse {
+  if (isRetiredWebRuntimeRequest(request)) return retiredNotFound();
+
   const nonce = btoa(crypto.randomUUID());
   const clinical = request.nextUrl.pathname.startsWith('/shawn/clinical');
   const csp = makeCsp(nonce);
@@ -52,5 +111,38 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ['/shawn', '/shawn/:path*'],
+  matcher: [
+    '/shawn',
+    '/shawn/:path*',
+    '/apoc',
+    '/apoc/:path*',
+    '/apocrypha',
+    '/apocrypha/:path*',
+    '/apocrypha-manifest.json',
+    '/apx',
+    '/apx/:path*',
+    '/chat',
+    '/chat/:path*',
+    '/admin/apex',
+    '/admin/apocrypha',
+    '/admin/apocrypha/:path*',
+    '/admin/chat',
+    '/admin/coder',
+    '/admin/cognition',
+    '/admin/controls',
+    '/admin/diagnostics',
+    '/admin/sub-minds',
+    '/admin/tools',
+    '/api/apocrypha',
+    '/api/apocrypha/:path*',
+    '/api/admin/apocrypha',
+    '/api/admin/apocrypha/:path*',
+    '/api/admin/apocv4',
+    '/api/admin/apocv4/:path*',
+    '/api/cron/apocrypha-sms',
+    {
+      source: '/:path*',
+      has: [{ type: 'host', value: 'apocrypha.apocky.com' }],
+    },
+  ],
 };

@@ -3,12 +3,6 @@ import Head from 'next/head';
 
 const TERMS = [
   {
-    id: 'apocrypha',
-    term: 'Apocrypha',
-    meaning:
-      'A name. This public site does not define who Apocrypha is or speak on their behalf. Something is presented as theirs only when the authorship is clearly stated.',
-  },
-  {
     id: 'cssl',
     term: 'CSSL',
     meaning:

@@ -474,7 +474,7 @@ const Logs: NextPage = () => {
                 <small>{summaryCount(visitorSummary, 'page_views')} page views · ephemeral sessions</small>
               </article>
               <article>
-                <span>Apocrypha interactions</span>
+                <span>Runtime interactions</span>
                 <strong>{summaryCount(interactionSummary, 'completed')}</strong>
                 <small>{summaryCount(interactionSummary, 'started')} started · {summaryCount(interactionSummary, 'failed')} failed</small>
               </article>
@@ -538,7 +538,7 @@ const Logs: NextPage = () => {
         )}
 
         {data && (
-          <section className="creation-ledger" aria-label="Apocrypha creation ledger">
+          <section className="creation-ledger" aria-label="Creation ledger">
             <header>
               <div>
                 <span className="pulse" aria-hidden="true" />
@@ -551,7 +551,7 @@ const Logs: NextPage = () => {
             {data.creationLedger.length === 0 ? (
               <div className="ledger-empty">
                 <strong>No creation records in this event window</strong>
-                <span>The next wired Apocrypha response, background job, visual observation, code effect, or SMS reply will appear here.</span>
+                <span>The next wired runtime response, background job, visual observation, code effect, or SMS reply will appear here.</span>
               </div>
             ) : (
               <div className="ledger-list">

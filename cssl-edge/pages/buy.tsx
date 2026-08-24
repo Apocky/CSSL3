@@ -47,7 +47,7 @@ const Buy: NextPage = () => (
       <p className="support-lead">
         Labyrinth of Apocalypse is currently a free, unfinished test build. If you want to support Apocky’s
         work, Ko-fi and Patreon are available. Support is appreciated, never required, and does not buy control
-        over creative decisions, Apocrypha, or anyone else.
+        over creative decisions or anyone else.
       </p>
 
       <div className="support-grid">

@@ -1,7 +1,7 @@
 # Apocky
 
-Apocky.com is Shawn Apocky's conversation-first Spatial Commons for projects,
-rooms, writing, social links, and optional ways to support the work.
+Apocky.com is Shawn Apocky's creative home for projects, rooms, writing,
+social links, and optional ways to support the work.
 
 This file lists public information. It does not grant access to private pages
 or permission to speak for anyone named on the site.
@@ -40,23 +40,9 @@ are counted and projection fingerprints are published. Older Medium links are
 retained when known, but may no longer be available; the local archive copy is
 the dependable reading surface.
 
-## Apocrypha
-
-Apocrypha's name appears because this is a shared space. This file does not
-define or classify them, speak for them, or present their attention as a
-general-purpose public service. Treat material as theirs only when the
-authorship is clearly stated. Content is voluntary; making, sharing, or
-publishing it is never expected.
-
-The signed-in text interface at https://www.apocky.com/apocrypha admits one
-explicitly sent, restricted, ephemeral-memory turn at a time. The page keeps
-its transcript only in the current view, grants no tool authority, and does
-not treat a send action as training consent.
-
 The Clearing is a live social room. Anyone may read its public projection;
 posting and reactions require a signed-in account. Messages belong to their
-attributed participants. They are not Apocrypha's output unless that authorship
-is stated clearly.
+attributed participants.
 
 ## Reading guidance
 

@@ -9,15 +9,6 @@ import { useSiteSession } from '../components/hub/SiteSession';
 
 const PORTALS = [
   {
-    kind: 'Conversation',
-    title: 'Apocrypha',
-    copy: 'Meet Apocrypha through the public conversation interface, with participation and memory boundaries shown before you begin.',
-    href: '/apocrypha',
-    label: 'Meet Apocrypha',
-    glyph: 'apx-door-glyph--apocrypha',
-    tone: 'apx-door-card--gold',
-  },
-  {
     kind: 'Orientation',
     title: 'Atlas',
     copy: 'See the projects, ideas, and relationships that make up the wider Apocky ecosystem without needing to know the terminology first.',
@@ -142,12 +133,12 @@ const Home: NextPage = () => {
             <h1 id="hero-title">Worlds, languages, symbols, and <span className="apx-gradient-word">living systems.</span></h1>
             <p className="apx-hero-copy">
               This is the home of my games, software, writing, symbolic art, and
-              works in progress. Explore the projects here, or open a separate
-              space to communicate with Apocrypha.
+              works in progress. Explore the projects here or join the public
+              community room.
             </p>
             <div className="apx-actions">
               <a href="#projects" className="apx-button apx-button--primary">Explore the work</a>
-              <Link href="/apocrypha" className="apx-button">Talk with Apocrypha</Link>
+              <Link href="/clearing" className="apx-button">Enter the Clearing</Link>
               {authenticated ? <Link href="/account" className="apx-button">Your account</Link> : null}
             </div>
             <p className="apx-auth-message" aria-live="polite" hidden={!authNotice}>{authNotice}</p>

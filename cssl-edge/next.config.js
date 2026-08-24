@@ -9,24 +9,17 @@ const nextConfig = {
   env: {
     CSSL_EDGE_VERSION: '0.1.0',
   },
-  // Permanent redirects for the legacy /admin/apocrypha/* sub-routes.
-  // Per Apocky's nav-clarification : "Apocrypha is the name, not a nav element".
-  // Sub-routes moved to top-level /admin/{chat,diagnostics,controls,sub-minds}.
   async redirects() {
     return [
-      { source: '/admin/apocrypha/chat', destination: '/admin/chat', permanent: true },
-      { source: '/admin/apocrypha/diag', destination: '/admin/diagnostics', permanent: true },
-      { source: '/admin/apocrypha/controls', destination: '/admin/controls', permanent: true },
-      { source: '/admin/apocrypha/cockpit', destination: '/admin/diagnostics', permanent: true },
-      // /admin/tasks was LoA scheduling content ; Apocrypha-equivalent = /admin/sub-minds
-      { source: '/admin/tasks', destination: '/admin/sub-minds', permanent: true },
       // The old Commons hub is superseded by the native React homepage.
       { source: '/commons', destination: '/', permanent: true },
+      { source: '/commons/index.html', destination: '/', permanent: true },
+      { source: '/commons/clearing.html', destination: '/clearing', permanent: true },
     ];
   },
   // These three reference pages remain intentional static documents. The
-  // creative homepage, Apocrypha portal, and live Clearing are distinct native
-  // React routes and must never shadow one another.
+  // creative homepage and live Clearing are distinct native React routes and
+  // must never shadow one another.
   async rewrites() {
     return {
       beforeFiles: [
