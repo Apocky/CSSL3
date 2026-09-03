@@ -4,8 +4,9 @@ import AxeBuilder from '@axe-core/playwright';
 test.describe('symbolic studio public workbench', () => {
   test('Oracle answers an ordinary question and blocks high-stakes authority', async ({ page }) => {
     const externalRequests: string[] = [];
+    const firstPartyOrigin = new URL(process.env.APOCKY_E2E_BASE_URL ?? 'http://127.0.0.1:3000').origin;
     page.on('request', (request) => {
-      if (!request.url().startsWith('http://127.0.0.1') && !request.url().startsWith('http://localhost')) externalRequests.push(request.url());
+      if (new URL(request.url()).origin !== firstPartyOrigin) externalRequests.push(request.url());
     });
     await page.goto('/oracle');
     const question = page.getByLabel('Ask one question that can be answered yes or no');
