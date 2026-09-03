@@ -27,6 +27,9 @@ export type PublicSurfaceId =
   | 'start'
   | 'quests'
   | 'status'
+  | 'now'
+  | 'labs'
+  | 'memory-tools'
   | 'divination'
   | 'theory-of-everything'
   | 'clearing'
@@ -37,6 +40,8 @@ export type PublicSurfaceId =
   | 'support'
   | 'membership'
   | 'principles'
+  | 'documentation'
+  | 'infinity-engine'
   | 'chaos-tarot'
   | 'cssl'
   | 'cslv3'
@@ -387,6 +392,101 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
     },
   },
   {
+    id: 'now',
+    title: 'What is alive now',
+    shortTitle: 'Now',
+    eyebrow: 'Living-system ledger',
+    summary: 'A candid map of usable public work, experiments, and connections that remain deliberately unwired.',
+    href: '/now',
+    action: 'See what is alive now',
+    external: false,
+    availability: 'public',
+    kind: 'orientation',
+    axes: PUBLIC_SURFACE_AXES,
+    coordinates: {
+      People: 'Choose a currently usable path without decoding a roadmap',
+      Meaning: 'Public capability and maturity ledger',
+      Visibility: 'Public; plans and live behavior remain distinct',
+      Time: 'A current-state orientation surface',
+    },
+  },
+  {
+    id: 'labs',
+    title: 'Public labs and experiments',
+    shortTitle: 'Labs',
+    eyebrow: 'Experiment deck',
+    summary: 'An indexed launch surface for inspectable experiments, each carrying a maturity and dependency boundary.',
+    href: '/labs',
+    action: 'Enter the public labs',
+    external: false,
+    availability: 'public',
+    kind: 'orientation',
+    axes: PUBLIC_SURFACE_AXES,
+    coordinates: {
+      People: 'Try, inspect, or leave each experiment freely',
+      Meaning: 'Usable experiments and design studies',
+      Visibility: 'Public interfaces with explicit maturity labels',
+      Time: 'Experiments may change or report a degraded dependency',
+    },
+  },
+  {
+    id: 'memory-tools',
+    title: 'Memory banks and tools',
+    shortTitle: 'Memory + tools',
+    eyebrow: 'Nervous-system directory',
+    summary: 'A routed view of public memory banks, usable instruments, chosen handoffs, and private systems that remain closed.',
+    href: '/memory-tools',
+    action: 'Map memory and tools',
+    external: false,
+    availability: 'public',
+    kind: 'orientation',
+    axes: PUBLIC_SURFACE_AXES,
+    coordinates: {
+      People: 'Choose a memory bank or tool without surrendering control',
+      Meaning: 'Public knowledge, instruments, and guarded system boundaries',
+      Visibility: 'Public directory; private profile memory remains closed',
+      Time: 'Current routing contract, updated as connections are verified',
+    },
+  },
+  {
+    id: 'documentation',
+    title: 'Documentation',
+    shortTitle: 'Docs',
+    eyebrow: 'Plain language first',
+    summary: 'Guides for Labyrinth of Apocalypse, CSSL, the shared architecture, and deeper technical specifications.',
+    href: '/docs',
+    action: 'Read the documentation',
+    external: false,
+    availability: 'public',
+    kind: 'reference',
+    axes: ['Meaning', 'Visibility', 'Time'],
+    coordinates: {
+      People: 'Begin with ordinary explanations and choose deeper detail',
+      Meaning: 'Guides, status labels, and technical references',
+      Visibility: 'Public documentation',
+      Time: 'Each guide carries its current status',
+    },
+  },
+  {
+    id: 'infinity-engine',
+    title: 'Infinity Engine research',
+    shortTitle: 'Infinity',
+    eyebrow: 'Architecture design study',
+    summary: 'Research into reusable architecture across projects, separated into source, tests, experiments, specifications, and releases.',
+    href: '/infinity-engine',
+    action: 'Inspect the architecture study',
+    external: false,
+    availability: 'design_study',
+    kind: 'study',
+    axes: ['Meaning', 'Time', 'Visibility'],
+    coordinates: {
+      People: 'Inspect the evidence forms without treating plans as products',
+      Meaning: 'Shared architecture research',
+      Visibility: 'Public design study',
+      Time: 'Incomplete research connected to current projects',
+    },
+  },
+  {
     id: 'chaos-tarot',
     title: 'Chaos Tarot',
     shortTitle: 'Chaos Tarot',
@@ -541,6 +641,37 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'status', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The public status view links to the independent Chaos Tarot recovery path.' },
   { source: 'atlas', target: 'ko-fi', relation: 'hands_off_to', statement: 'The Atlas exposes Ko-fi as an optional external support relay.' },
   { source: 'atlas', target: 'patreon', relation: 'hands_off_to', statement: 'The Atlas exposes Patreon as an optional external support relay.' },
+  { source: 'home', target: 'now', relation: 'opens', statement: 'The public home opens the current-state ledger for a fast truthful orientation.' },
+  { source: 'home', target: 'labs', relation: 'opens', statement: 'The public home opens the experiment deck for visitors who want to operate the machinery.' },
+  { source: 'atlas', target: 'now', relation: 'indexes', statement: 'The Atlas indexes the current-state and maturity ledger.' },
+  { source: 'atlas', target: 'labs', relation: 'indexes', statement: 'The Atlas indexes the public experiment deck.' },
+  { source: 'atlas', target: 'documentation', relation: 'indexes', statement: 'The Atlas indexes the public documentation library.' },
+  { source: 'atlas', target: 'infinity-engine', relation: 'indexes', statement: 'The Atlas indexes the shared-architecture design study.' },
+  { source: 'now', target: 'status', relation: 'opens', statement: 'The current-state ledger opens a live bounded health probe.' },
+  { source: 'now', target: 'labs', relation: 'opens', statement: 'The current-state ledger separates experimental work into the public lab.' },
+  { source: 'now', target: 'akashic-records', relation: 'features', statement: 'The current-state ledger identifies the public archive as available now.' },
+  { source: 'now', target: 'labyrinth', relation: 'features', statement: 'The current-state ledger identifies the downloadable Labyrinth alpha as available now.' },
+  { source: 'now', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The current-state ledger hands off to the independent live Chaos Tarot product.' },
+  { source: 'now', target: 'membership', relation: 'supports', statement: 'The current-state ledger opens truthful active support paths.' },
+  { source: 'labs', target: 'quests', relation: 'features', statement: 'The lab features the device-local quest engine.' },
+  { source: 'labs', target: 'status', relation: 'features', statement: 'The lab features the public status probe.' },
+  { source: 'labs', target: 'infinity-engine', relation: 'features', statement: 'The lab features shared-architecture research as a design study.' },
+  { source: 'labs', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The lab links to Chaos Tarot as an independent live interactive product.' },
+  { source: 'documentation', target: 'cssl', relation: 'defines', statement: 'The documentation library contains the public CSSL guide.' },
+  { source: 'documentation', target: 'cslv3', relation: 'defines', statement: 'The documentation library points to the shared CSLv3 notation key.' },
+  { source: 'documentation', target: 'infinity-engine', relation: 'opens', statement: 'The documentation library opens the shared-architecture research overview.' },
+  { source: 'documentation', target: 'labyrinth', relation: 'opens', statement: 'The documentation library explains the public Labyrinth build.' },
+  { source: 'infinity-engine', target: 'cssl', relation: 'opens', statement: 'Infinity Engine research identifies CSSL as a connected language project.' },
+  { source: 'infinity-engine', target: 'labyrinth', relation: 'opens', statement: 'Infinity Engine research identifies Labyrinth as a connected game and engine test.' },
+  { source: 'home', target: 'memory-tools', relation: 'opens', statement: 'The public home opens the memory-bank and tool directory.' },
+  { source: 'atlas', target: 'memory-tools', relation: 'indexes', statement: 'The Atlas indexes the nervous-system directory as the route between public memory and tools.' },
+  { source: 'memory-tools', target: 'akashic-records', relation: 'indexes', statement: 'The directory identifies Akashic Records as approved public memory.' },
+  { source: 'memory-tools', target: 'words', relation: 'indexes', statement: 'The directory identifies the dictionary as shared semantic memory.' },
+  { source: 'memory-tools', target: 'documentation', relation: 'indexes', statement: 'The directory identifies documentation as reference memory.' },
+  { source: 'memory-tools', target: 'quests', relation: 'features', statement: 'The directory identifies quests as a tool with device-local reversible progress.' },
+  { source: 'memory-tools', target: 'status', relation: 'features', statement: 'The directory identifies the public status probe as an observable tool.' },
+  { source: 'memory-tools', target: 'divination', relation: 'features', statement: 'The directory identifies the divination comparator as a bounded interpretive tool.' },
+  { source: 'memory-tools', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The directory offers an intentional handoff to the independent live Chaos Tarot system.' },
 ];
 
 const NODE_BY_ID = new Map(PUBLIC_SURFACE_NODES.map((node) => [node.id, node]));

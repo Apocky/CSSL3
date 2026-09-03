@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -532,7 +532,7 @@ async function main(): Promise<void> {
   assert(Number(rateLimited.headers['retry-after']) >= 1, 'rate limit provides retry timing');
   equal(upstreamCalls, 8, 'only eight valid turns reach one warm-instance body window');
 
-  const page = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
+  const retiredPagePath = resolve(process.cwd(), 'pages/apocrypha.tsx');
   const component = readFileSync(
     resolve(process.cwd(), 'components/apocrypha/PublicChat.tsx'),
     'utf8',
@@ -548,8 +548,7 @@ async function main(): Promise<void> {
   const vercel = JSON.parse(
     readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
   ) as { functions?: Record<string, { maxDuration?: number }> };
-  assert(page.includes('<PublicChat />'), '/apocrypha renders the native public chat');
-  assert(!page.includes('ClearingRoom'), '/apocrypha is no longer the social room');
+  assert(!existsSync(retiredPagePath), '/apocrypha page remains retired from the public runtime');
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
   assert(component.includes('training_consent === false'), 'browser verifies no training consent');
   assert(component.includes("body.memory_scope === 'public_safe_retrieval'"), 'browser verifies public-safe memory');
@@ -562,9 +561,13 @@ async function main(): Promise<void> {
   assert(component.includes('Retry same turn'), 'bounded retry reuses one turn identity');
   assert(component.includes('CHAT_BROWSER_DEADLINE_MS = 85_000'), 'browser allows a full governed model turn');
   assert(runtimeProxy.includes('CHAT_DEADLINE_MS = 80_000'), 'BFF allows a full governed model turn');
-  equal(vercel.functions?.['pages/api/apocrypha/chat.ts']?.maxDuration, 90, 'production chat function exceeds the BFF deadline');
+  equal(vercel.functions?.['pages/api/apocrypha/chat.ts']?.maxDuration, undefined, 'retired public chat no longer reserves a production function duration');
   assert(component.includes('No message is sent until the session is verified.'), 'signed-out boundary is explicit');
-  assert(component.includes('<Link href="/clearing">The Clearing</Link>'), 'Apocrypha and Clearing remain distinct routes');
+  assert(
+    component.includes('<Link href="/clearing" className={styles.railAction}>')
+      && component.includes('<small>Clearing</small>'),
+    'the preserved conversation component still routes Clearing as a distinct surface',
+  );
   assert(css.includes('@media (max-width: 680px)'), 'narrow mobile layout exists');
   assert(css.includes('prefers-reduced-motion'), 'reduced-motion path exists');
   assert(css.includes('forced-colors'), 'forced-colors path exists');

@@ -69,7 +69,7 @@ const ContentLanding: NextPage<ContentLandingProps> = ({
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta name="author" content="Apocky" />
-        <link rel="canonical" href="https://apocky.com/content" />
+        <link rel="canonical" href="https://www.apocky.com/content" />
         <meta property="og:title" content="Shared content · Apocky" />
         <meta property="og:description" content="An experimental, optional library for community-created content." />
         <meta property="og:type" content="website" />

@@ -134,7 +134,36 @@ test('Constellation Atlas stays explicit, keyboard-readable, stateful, and quiet
   await expect(page.getByRole('heading', { level: 1, name: /Constellation Atlas/i })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('constellation-map')).toBeVisible();
+  const minimumNodeSeparation = await page.locator('[data-testid^="atlas-map-node-"]').evaluateAll((elements) => {
+    const points = elements.map((element) => {
+      const matrix = (element as SVGGElement).transform.baseVal.consolidate()?.matrix;
+      return { x: matrix?.e ?? 0, y: matrix?.f ?? 0 };
+    });
+    let minimum = Number.POSITIVE_INFINITY;
+    for (let left = 0; left < points.length; left += 1) {
+      for (let right = left + 1; right < points.length; right += 1) {
+        minimum = Math.min(minimum, Math.hypot(
+          points[left]!.x - points[right]!.x,
+          points[left]!.y - points[right]!.y,
+        ));
+      }
+    }
+    return minimum;
+  });
+  expect(minimumNodeSeparation, 'map node hit halos must not overlap').toBeGreaterThanOrEqual(80);
   const viewport = page.viewportSize();
+  if ((viewport?.width ?? 0) <= 480) {
+    await expect.poll(async () => {
+      const [stageBox, atlasBox] = await Promise.all([
+        page.getByTestId('constellation-map').boundingBox(),
+        page.getByTestId('atlas-map-node-atlas').boundingBox(),
+      ]);
+      if (!stageBox || !atlasBox) return false;
+      const atlasCenter = atlasBox.x + (atlasBox.width / 2);
+      return atlasCenter >= stageBox.x && atlasCenter <= stageBox.x + stageBox.width;
+    }, { message: 'mobile map must initially center the Atlas root node' }).toBe(true);
+    await expect(page.getByText(/Swipe or drag the starfield/i)).toBeVisible();
+  }
   const artifactRoot = path.join(process.cwd(), 'test-results', 'public-route-matrix');
   fs.mkdirSync(artifactRoot, { recursive: true });
   await page.screenshot({
@@ -180,6 +209,32 @@ test('Constellation Atlas stays explicit, keyboard-readable, stateful, and quiet
   await expectNoSeriousAccessibilityFindings(page);
   expect(errors, errors.join('\n')).toEqual([]);
   expect(unexpectedRelayRequests, 'external destinations must not load before a visitor intentionally follows a relay').toEqual([]);
+});
+
+test('Now, Labs, and memory tools expose usable labeled routes without silent external requests', async ({ page }) => {
+  const errors = collectBrowserErrors(page);
+  const unexpectedExternalRequests: string[] = [];
+  page.on('request', (request) => {
+    const hostname = new URL(request.url()).hostname;
+    if (hostname !== '127.0.0.1') unexpectedExternalRequests.push(request.url());
+  });
+
+  for (const route of [
+    { href: '/now', title: /What is alive now/i, heading: /What is alive.*What is becoming/i },
+    { href: '/labs', title: /Public labs and experiments/i, heading: /Touch the machinery.*Keep the labels attached/i },
+    { href: '/memory-tools', title: /Memory banks and tools/i, heading: /Memory banks.*Tools.*One routed mind/i },
+  ]) {
+    await page.goto(route.href);
+    await expect(page).toHaveTitle(route.title);
+    await expect(page.getByRole('heading', { level: 1, name: route.heading })).toBeVisible();
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://www.apocky.com${route.href}`);
+    const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(horizontalOverflow, `${route.href} horizontal overflow`).toBeLessThanOrEqual(1);
+    await expectNoSeriousAccessibilityFindings(page);
+  }
+
+  expect(errors, errors.join('\n')).toEqual([]);
+  expect(unexpectedExternalRequests, 'linked external systems must remain quiet until a visitor chooses a handoff').toEqual([]);
 });
 
 test('Clearing resolves as the live React social room without route aliasing', async ({ page }) => {

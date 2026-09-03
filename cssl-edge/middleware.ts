@@ -33,6 +33,12 @@ const RETIRED_PATH_PREFIXES = [
   '/api/admin/apocv4/',
 ];
 
+// Mneme routes currently accept a caller-supplied profile id while using a
+// service-role database client. Keep the implementation available for local
+// tests, but never expose it through the public runtime until an authenticated
+// principal is cryptographically bound to exactly one profile.
+const UNBROKERED_PRIVATE_PATH_PREFIXES = ['/api/mneme/'];
+
 const RETIRED_HOST = 'apocrypha.apocky.com';
 
 function requestHost(request: NextRequest): string {
@@ -46,6 +52,10 @@ export function isRetiredWebRuntimeRequest(request: NextRequest): boolean {
   return requestHost(request) === RETIRED_HOST
     || RETIRED_EXACT_PATHS.has(pathname)
     || RETIRED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function isUnbrokeredPrivateRuntimeRequest(request: NextRequest): boolean {
+  return UNBROKERED_PRIVATE_PATH_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
 }
 
 function retiredNotFound(): NextResponse {
@@ -82,7 +92,9 @@ function makeCsp(nonce: string): string {
 }
 
 export function middleware(request: NextRequest): NextResponse {
-  if (isRetiredWebRuntimeRequest(request)) return retiredNotFound();
+  if (isRetiredWebRuntimeRequest(request) || isUnbrokeredPrivateRuntimeRequest(request)) {
+    return retiredNotFound();
+  }
 
   const nonce = btoa(crypto.randomUUID());
   const clinical = request.nextUrl.pathname.startsWith('/shawn/clinical');
@@ -140,6 +152,7 @@ export const config = {
     '/api/admin/apocv4',
     '/api/admin/apocv4/:path*',
     '/api/cron/apocrypha-sms',
+    '/api/mneme/:path*',
     {
       source: '/:path*',
       has: [{ type: 'host', value: 'apocrypha.apocky.com' }],

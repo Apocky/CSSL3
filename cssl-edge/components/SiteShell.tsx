@@ -18,6 +18,8 @@ const NAV: ReadonlyArray<NavItem> = [
 const WORK: ReadonlyArray<NavItem> = [
   { href: 'https://chaos-tarot.com/free-reading?source=apocky-footer', label: 'Begin a Chaos Tarot reading', ext: true },
   { href: '/atlas', label: 'Explore the Constellation Atlas' },
+  { href: '/memory-tools', label: 'Connect memory banks and tools' },
+  { href: '/labs', label: 'Operate the public labs' },
   { href: '/akashic-records', label: 'Search the Akashic Records' },
   { href: '/omnoid-singularity', label: 'Enter the Omnoid Singularity' },
   { href: '/download', label: 'Explore Labyrinth of Apocalypse' },
@@ -26,6 +28,7 @@ const WORK: ReadonlyArray<NavItem> = [
 
 const ABOUT: ReadonlyArray<NavItem> = [
   { href: '/start', label: 'Choose a starting path' },
+  { href: '/now', label: 'What is alive now' },
   { href: '/quests', label: 'Public quests' },
   { href: '/status', label: 'System status' },
   { href: '/docs', label: 'Documentation' },

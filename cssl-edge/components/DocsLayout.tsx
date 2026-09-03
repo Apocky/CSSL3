@@ -28,12 +28,12 @@ const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProp
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta name="author" content="Apocky" />
-        <link rel="canonical" href={`https://apocky.com${canonicalPath}`} />
+        <link rel="canonical" href={`https://www.apocky.com${canonicalPath}`} />
         <meta property="og:title" content={title} />
         <meta property="og:description" content={description} />
         <meta property="og:type" content="article" />
         <meta property="og:site_name" content="Apocky Docs" />
-        <meta property="og:url" content={`https://apocky.com${canonicalPath}`} />
+        <meta property="og:url" content={`https://www.apocky.com${canonicalPath}`} />
         <meta name="twitter:card" content="summary" />
         <meta name="twitter:title" content={title} />
         <meta name="twitter:description" content={description} />

@@ -409,6 +409,16 @@
   border-top: 1px solid var(--atlas-line);
 }
 
+.mapPanHint {
+  display: none;
+  margin: 0;
+  border-top: 1px solid var(--atlas-line);
+  padding: 12px 18px;
+  color: var(--atlas-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .mapKey ul,
 .indexGrid,
 .relayGrid,
@@ -878,6 +888,10 @@
   .mapStage {
     overflow-x: auto;
     overscroll-behavior-inline: contain;
+  }
+
+  .mapPanHint {
+    display: block;
   }
 
   .mapSvg {

@@ -13,7 +13,7 @@ import {
   type PublicSurfaceId,
 } from '../../lib/public-surface-graph';
 
-assert.equal(PUBLIC_SURFACE_NODES.length, 20, 'the first public graph slice must stay deliberately small');
+assert.equal(PUBLIC_SURFACE_NODES.length, 25, 'the public graph must project every ratified top-level capability');
 assert.equal(PUBLIC_SURFACE_AXES.length, 4);
 
 const ids = PUBLIC_SURFACE_NODES.map((node) => node.id);
@@ -48,6 +48,10 @@ assert.equal(getPublicSurfaceNode('membership')?.availability, 'public');
 assert.equal(getPublicSurfaceNode('start')?.kind, 'orientation');
 assert.equal(getPublicSurfaceNode('quests')?.kind, 'orientation');
 assert.equal(getPublicSurfaceNode('status')?.kind, 'reference');
+assert.equal(getPublicSurfaceNode('now')?.kind, 'orientation');
+assert.equal(getPublicSurfaceNode('labs')?.kind, 'orientation');
+assert.equal(getPublicSurfaceNode('memory-tools')?.availability, 'public');
+assert.equal(getPublicSurfaceNode('infinity-engine')?.availability, 'design_study');
 assert.equal(getPublicSurfaceNode('divination')?.kind, 'reference');
 assert.equal(getPublicSurfaceNode('theory-of-everything')?.kind, 'cosmology');
 assert.equal(getPublicSurfaceNode('clearing')?.availability, 'public_read_account_write');

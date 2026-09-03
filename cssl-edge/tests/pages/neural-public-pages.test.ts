@@ -19,6 +19,9 @@ const start = read('pages/start.tsx');
 const membership = read('pages/membership.tsx');
 const quests = read('pages/quests.tsx');
 const status = read('pages/status.tsx');
+const now = read('pages/now.tsx');
+const labs = read('pages/labs.tsx');
+const memoryTools = read('pages/memory-tools.tsx');
 const divination = read('pages/divination.tsx');
 const theory = read('pages/theory-of-everything.tsx');
 const principles = read('pages/principles.tsx');
@@ -34,6 +37,9 @@ for (const [name, source, canonical] of [
   ['membership', membership, 'https://www.apocky.com/membership'],
   ['quests', quests, 'https://www.apocky.com/quests'],
   ['status', status, 'https://www.apocky.com/status'],
+  ['now', now, 'https://www.apocky.com/now'],
+  ['labs', labs, 'https://www.apocky.com/labs'],
+  ['memory-tools', memoryTools, 'https://www.apocky.com/memory-tools'],
   ['divination', divination, 'https://www.apocky.com/divination'],
   ['theory', theory, 'https://www.apocky.com/theory-of-everything'],
   ['principles', principles, 'https://www.apocky.com/principles'],
@@ -41,7 +47,7 @@ for (const [name, source, canonical] of [
   assert(source.includes(`rel="canonical" href="${canonical}"`), `${name} must self-canonicalize on the www origin`);
 }
 
-for (const route of ['/start', '/divination', '/theory-of-everything', '/principles', '/membership', '/quests', '/status']) {
+for (const route of ['/start', '/divination', '/theory-of-everything', '/principles', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/infinity-engine']) {
   assert(sitemap.includes(`<loc>https://www.apocky.com${route}</loc>`), `sitemap missing ${route}`);
   assert(llms.includes(`https://www.apocky.com${route}`), `llms.txt missing ${route}`);
 }
@@ -73,6 +79,11 @@ assert(theory.includes('not yet a proven physical theory'), 'Theory of Everythin
 assert(theory.includes('FAQPage'), 'Theory of Everything guide must include structured FAQ data');
 assert(principles.includes('Four invariants'), 'principles must preserve the four-invariant structure');
 assert(principles.includes('Equivalent interface views'), 'principles must expose the graph-equivalence visual aid');
+assert(now.includes('Still unwired.'), 'current-state ledger must name capabilities that are not connected yet');
+assert(labs.includes('Keep the labels attached.'), 'labs must make maturity labels part of the interface promise');
+assert(memoryTools.includes('Private means closed.'), 'memory directory must preserve the private memory boundary');
+assert(memoryTools.includes('device-local'), 'memory directory must name local persistence semantics');
+assert(!memoryTools.includes('/api/mneme/'), 'public memory directory must not expose an unbrokered Mneme endpoint');
 
 const manifest = JSON.parse(read('public/.well-known/apocky.json')) as Record<string, unknown>;
 const manifestSchema = JSON.parse(read('public/schemas/site-manifest.v1.json')) as Record<string, unknown>;
@@ -82,7 +93,7 @@ const validate = ajv.compile(manifestSchema);
 assert(validate(manifest), `site manifest must validate: ${ajv.errorsText(validate.errors)}`);
 
 const entryPoints = manifest.entry_points as Array<{ href?: string }>;
-for (const href of ['/start', '/divination', '/theory-of-everything', '/membership', '/quests', '/status', 'https://chaos-tarot.com/']) {
+for (const href of ['/start', '/divination', '/theory-of-everything', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/docs', '/infinity-engine', 'https://chaos-tarot.com/']) {
   assert(entryPoints.some((entry) => entry.href === href), `site manifest missing ${href}`);
 }
 assert(!entryPoints.some((entry) => entry.href?.startsWith('https://cssl.dev')), 'site manifest must use the local CSSL recovery rail while cssl.dev is unavailable');

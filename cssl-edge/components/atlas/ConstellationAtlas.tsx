@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import RecoveryPanel from '../RecoveryPanel';
 import {
@@ -113,15 +113,33 @@ function positionNodes(nodes: readonly PublicSurfaceNode[]): readonly Positioned
   const orbit = nodes.filter((node) => node.id !== center?.id);
   const positioned: PositionedNode[] = center ? [{ node: center, x: 480, y: 320 }] : [];
 
-  orbit.forEach((node, index) => {
-    const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / Math.max(orbit.length, 1));
-    const radius = index % 2 === 0 ? 222 : 274;
-    positioned.push({
-      node,
-      x: 480 + (Math.cos(angle) * radius),
-      y: 320 + (Math.sin(angle) * radius * 0.82),
+  const addRing = (
+    ring: readonly PublicSurfaceNode[],
+    radiusX: number,
+    radiusY: number,
+    phase = 0,
+  ): void => {
+    ring.forEach((node, index) => {
+      const angle = (-Math.PI / 2) + phase + ((Math.PI * 2 * index) / Math.max(ring.length, 1));
+      // Keep SVG attributes byte-stable across Node and browser Math implementations.
+      const roundCoordinate = (value: number): number => Math.round(value * 1_000) / 1_000;
+      positioned.push({
+        node,
+        x: roundCoordinate(480 + (Math.cos(angle) * radiusX)),
+        y: roundCoordinate(320 + (Math.sin(angle) * radiusY)),
+      });
     });
-  });
+  };
+
+  if (orbit.length <= 16) {
+    addRing(orbit, 340, 235);
+  } else {
+    const innerCount = Math.round(orbit.length / 3);
+    const inner = orbit.slice(0, innerCount);
+    const outer = orbit.slice(innerCount);
+    addRing(inner, 160, 125);
+    addRing(outer, 350, 235, Math.PI / Math.max(outer.length, 1));
+  }
 
   return positioned;
 }
@@ -135,6 +153,7 @@ function MapView({
   selected: PublicSurfaceNode;
   onSelect: (id: PublicSurfaceId) => void;
 }): JSX.Element {
+  const mapStageRef = useRef<HTMLDivElement>(null);
   const positioned = positionNodes(nodes);
   const positions = new Map(positioned.map((item) => [item.node.id, item]));
   const visibleEdges = PUBLIC_SURFACE_EDGES.flatMap((edge) => {
@@ -145,10 +164,19 @@ function MapView({
   const visibleNodeIds = new Set(nodes.map((node) => node.id));
   const relations = getPublicSurfaceRelations(selected.id).filter((relation) => visibleNodeIds.has(relation.neighbor.id));
 
+  useEffect(() => {
+    const stage = mapStageRef.current;
+    if (!stage || stage.scrollWidth <= stage.clientWidth) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      stage.scrollLeft = Math.max(0, (stage.scrollWidth - stage.clientWidth) / 2);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [nodes.length]);
+
   return (
     <div className={styles.mapLayout}>
       <div className={styles.mapColumn}>
-        <div className={styles.mapStage} data-testid="constellation-map">
+        <div ref={mapStageRef} className={styles.mapStage} data-testid="constellation-map">
           <svg
             className={styles.mapSvg}
             viewBox="0 0 960 640"
@@ -209,6 +237,7 @@ function MapView({
             ))}
           </svg>
         </div>
+        <p className={styles.mapPanHint}>Swipe or drag the starfield to scan it. Every destination is also listed below.</p>
 
         <div className={styles.mapKey}>
           <p className={styles.microcopy}>Readable map key</p>

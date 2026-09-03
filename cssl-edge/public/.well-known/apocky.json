@@ -107,6 +107,51 @@
       "availability": "public"
     },
     {
+      "rel": "current_state",
+      "href": "/now",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "public_labs",
+      "href": "/labs",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public_with_maturity_labels"
+    },
+    {
+      "rel": "memory_and_tools",
+      "href": "/memory-tools",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public_directory_private_profiles_excluded",
+      "availability": "public"
+    },
+    {
+      "rel": "documentation",
+      "href": "/docs",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "architecture_study",
+      "href": "/infinity-engine",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "design_study"
+    },
+    {
       "rel": "words_and_symbols",
       "href": "/words",
       "method": "GET",

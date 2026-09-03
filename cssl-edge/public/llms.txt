@@ -16,6 +16,9 @@ or permission to speak for anyone named on the site.
 - Akashic Records, Shawn Apocky's public works and conversations archive: https://www.apocky.com/akashic-records
 - Live public social room, The Clearing: https://www.apocky.com/clearing
 - Project Atlas: https://www.apocky.com/atlas
+- Current public capability and maturity ledger: https://www.apocky.com/now
+- Public labs and inspectable experiments: https://www.apocky.com/labs
+- Public memory-bank and tool directory: https://www.apocky.com/memory-tools
 - Interface principles and truth boundaries: https://www.apocky.com/principles
 - Active membership and external support paths: https://www.apocky.com/membership
 - Device-local public quests: https://www.apocky.com/quests
@@ -24,6 +27,7 @@ or permission to speak for anyone named on the site.
 - Labyrinth of Apocalypse download: https://www.apocky.com/download
 - Optional support details and external options: https://www.apocky.com/buy
 - Technical documentation: https://www.apocky.com/docs
+- Infinity Engine architecture research: https://www.apocky.com/infinity-engine
 - Privacy: https://www.apocky.com/legal/privacy
 - Terms: https://www.apocky.com/legal/terms
 
