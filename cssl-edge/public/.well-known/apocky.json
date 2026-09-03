@@ -34,6 +34,42 @@
       "availability": "public"
     },
     {
+      "rel": "yes_no_oracle",
+      "href": "/oracle",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public_device_local_reflection",
+      "availability": "public"
+    },
+    {
+      "rel": "symbolic_spellcraft",
+      "href": "/spellcraft",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public_non_executable_symbolic_compiler",
+      "availability": "public"
+    },
+    {
+      "rel": "sigil_studio",
+      "href": "/sigils",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public_device_local_svg_generation",
+      "availability": "public"
+    },
+    {
+      "rel": "local_spellbook",
+      "href": "/spellbook",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "visitor_controlled_browser_storage",
+      "availability": "public_route_private_local_data"
+    },
+    {
       "rel": "theory_of_everything_guide",
       "href": "/theory-of-everything",
       "method": "GET",

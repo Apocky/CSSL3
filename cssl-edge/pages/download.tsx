@@ -21,7 +21,7 @@ const Download: NextPage = () => {
         <title>Download · Labyrinth of Apocalypse · alpha</title>
         <meta name="description" content="Download the first public test build of Labyrinth of Apocalypse for 64-bit Windows. Read what works and what is unfinished before downloading." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <meta property="og:title" content="Download · Labyrinth of Apocalypse · alpha" />
         <meta property="og:description" content="First public test build for 64-bit Windows, with plain-language setup and current limitations." />
         <meta property="og:url" content="https://www.apocky.com/download" />

@@ -145,6 +145,16 @@ const Membership: NextPage = () => {
                 <p>Use the words and symbols dictionary when the work gets dense.</p>
                 <Link className={styles.cardLink} href="/words">Open the dictionary →</Link>
               </article>
+              <article className={styles.card}>
+                <h3>Ask one question</h3>
+                <p>Use the private Yes / No Oracle and keep your own judgment in charge.</p>
+                <Link className={styles.cardLink} href="/oracle">Reveal a signal →</Link>
+              </article>
+              <article className={styles.card}>
+                <h3>Craft a working</h3>
+                <p>Compile symbolic language, render a sigil, and save it locally without an account.</p>
+                <Link className={styles.cardLink} href="/spellcraft">Open Spellcraft →</Link>
+              </article>
             </div>
           </section>
 

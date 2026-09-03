@@ -13,7 +13,7 @@ import {
   type PublicSurfaceId,
 } from '../../lib/public-surface-graph';
 
-assert.equal(PUBLIC_SURFACE_NODES.length, 25, 'the public graph must project every ratified top-level capability');
+assert.equal(PUBLIC_SURFACE_NODES.length, 29, 'the public graph must project every ratified top-level capability');
 assert.equal(PUBLIC_SURFACE_AXES.length, 4);
 
 const ids = PUBLIC_SURFACE_NODES.map((node) => node.id);

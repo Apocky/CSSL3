@@ -30,14 +30,14 @@ const Start: NextPage = () => (
         <section className={styles.section} aria-labelledby="choose-title">
           <div className={styles.sectionHead}>
             <h2 id="choose-title">What brought you here?</h2>
-            <p>Four useful beginnings. No quiz gate, no email wall, no invented recommendation engine.</p>
+            <p>Five useful beginnings. No quiz gate, no email wall, no invented recommendation engine.</p>
           </div>
           <div className={styles.grid2}>
             <article className={`${styles.card} ${styles.tierFeatured}`}>
               <span className={styles.tag}>I want an experience</span>
               <h3>Read the pattern in front of you.</h3>
               <p>Enter Chaos Tarot for interactive readings, multiple divination systems, learning tools, journaling, and progression.</p>
-              <a className={styles.cardLink} href="https://chaos-tarot.com/free-reading" target="_blank" rel="noopener noreferrer">
+              <a className={styles.cardLink} href="https://chaos-tarot.com/free-reading?source=apocky-start" target="_blank" rel="noopener noreferrer">
                 Begin a free reading <span aria-hidden="true">↗</span>
               </a>
             </article>
@@ -60,6 +60,15 @@ const Start: NextPage = () => (
               <div className={styles.actions}>
                 <Link className={styles.cardLink} href="/clearing">Enter the Clearing →</Link>
                 <Link className={styles.cardLink} href="/quests">Choose a quest →</Link>
+              </div>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>I want to make something</span>
+              <h3>Turn an intention into inspectable form.</h3>
+              <p>Ask a quick Yes / No question, compose with the symbolic language engine, generate a sigil, and save only what you choose.</p>
+              <div className={styles.actions}>
+                <Link className={styles.cardLink} href="/oracle">Ask the Oracle →</Link>
+                <Link className={styles.cardLink} href="/spellcraft">Open Spellcraft →</Link>
               </div>
             </article>
           </div>
@@ -109,10 +118,11 @@ const Start: NextPage = () => (
             <p>Chaos Tarot is the most complete interactive doorway. The Atlas is the best doorway if you want to understand the whole.</p>
           </div>
           <div className={styles.actions}>
-            <a className={styles.primary} href="https://chaos-tarot.com/free-reading" target="_blank" rel="noopener noreferrer">
+            <a className={styles.primary} href="https://chaos-tarot.com/free-reading?source=apocky-start-end" target="_blank" rel="noopener noreferrer">
               Draw your first cards <span aria-hidden="true">↗</span>
             </a>
             <Link className={styles.secondary} href="/atlas">Explore the constellation →</Link>
+            <Link className={styles.secondary} href="/spellcraft">Craft a symbolic working →</Link>
             <Link className={styles.secondary} href="/membership">Help power the work →</Link>
           </div>
         </section>

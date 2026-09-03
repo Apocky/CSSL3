@@ -28,7 +28,7 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
             : `${spec.slug}: a technical architecture specification written in CSLv3 notation.`}
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <link rel="canonical" href={canonicalUrl} />
         <style>{`
           * { box-sizing: border-box; }

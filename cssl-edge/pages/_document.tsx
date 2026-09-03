@@ -25,14 +25,24 @@ export default class ApockyDocument extends Document<DocumentProps> {
   override render(): JSX.Element {
     const { nonce } = this.props;
     return (
-      <Html lang="en" style={{ backgroundColor: '#0a0a0f' }}>
+      <Html lang="en" style={{ backgroundColor: '#000000' }}>
         <Head nonce={nonce}>
           <link rel="manifest" href="/manifest.json" />
-          <meta name="theme-color" content="#0a0a0f" />
-          <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
-          <link rel="apple-touch-icon" href="/icon-192.svg" />
+          <meta name="application-name" content="Apocky" />
+          <meta name="theme-color" content="#000000" />
+          <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+          <link rel="icon" sizes="any" href="/favicon.ico" />
+          <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+          <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167x167.png" />
+          <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png" />
+          <meta property="og:image" content="https://www.apocky.com/og/apocky-default-v2.png" />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:image:alt" content="Apocky section constellation on an AMOLED black field" />
+          <meta name="twitter:image" content="https://www.apocky.com/og/apocky-default-v2.png" />
+          <meta name="twitter:image:alt" content="Apocky section constellation on an AMOLED black field" />
           <style nonce={nonce}>{`
-            html, body { background-color: #0a0a0f; color: #e6e6f0; }
+            html, body { background-color: #000000; color: #e6e6f0; }
             html { color-scheme: dark; }
           `}</style>
           {/* Install the in-memory early buffer only after a prior positive
@@ -44,7 +54,7 @@ export default class ApockyDocument extends Document<DocumentProps> {
             }}
           />
         </Head>
-        <body style={{ backgroundColor: '#0a0a0f', color: '#e6e6f0', margin: 0 }}>
+        <body style={{ backgroundColor: '#000000', color: '#e6e6f0', margin: 0 }}>
           <Main />
           <NextScript nonce={nonce} />
         </body>

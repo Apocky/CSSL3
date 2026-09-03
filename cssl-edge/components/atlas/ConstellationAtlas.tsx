@@ -27,13 +27,14 @@ import {
 import { ATLAS_EMPTY_STATE } from '../../lib/public-ui-state';
 import styles from './ConstellationAtlas.module.css';
 
-type AtlasView = 'map' | 'index' | 'dictionary';
+type AtlasView = 'map' | 'matrix' | 'index' | 'dictionary';
 type AxisFilter = PublicSurfaceAxis | 'all';
 type KindFilter = PublicSurfaceKind | 'all';
 type AvailabilityFilter = PublicSurfaceAvailability | 'all';
 
 const VIEWS: readonly { readonly id: AtlasView; readonly label: string; readonly description: string }[] = [
   { id: 'map', label: 'Map', description: 'Trace visible relationships between public destinations.' },
+  { id: 'matrix', label: 'Matrix', description: 'Cross kind with access state and inspect every populated coordinate.' },
   { id: 'index', label: 'Index', description: 'Scan every matching destination as a readable list.' },
   { id: 'dictionary', label: 'Dictionary', description: 'Look up words and symbols used across Apocky.' },
 ];
@@ -318,6 +319,53 @@ function IndexView({ nodes }: { nodes: readonly PublicSurfaceNode[] }): JSX.Elem
   );
 }
 
+function MatrixView({ nodes }: { nodes: readonly PublicSurfaceNode[] }): JSX.Element {
+  const kinds = KIND_OPTIONS.filter(([kind]) => nodes.some((node) => node.kind === kind));
+  const states = AVAILABILITY_OPTIONS.filter(([state]) => nodes.some((node) => node.availability === state));
+
+  return (
+    <div className={styles.matrixWrap}>
+      <table className={styles.matrix} aria-label="Public destinations by kind and access state">
+        <caption>Each cell is one coordinate: content kind × access state. The active filters also constrain People, Meaning, Visibility, and Time.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Kind ↓ / access →</th>
+            {states.map(([state, label]) => <th scope="col" key={state}>{label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {kinds.map(([kind, label]) => (
+            <tr key={kind}>
+              <th scope="row">{label}</th>
+              {states.map(([state]) => {
+                const occupants = nodes.filter((node) => node.kind === kind && node.availability === state);
+                return (
+                  <td key={state} data-count={occupants.length}>
+                    {occupants.length > 0 ? (
+                      <ul>
+                        {occupants.map((node) => (
+                          <li key={node.id}>
+                            {node.external ? (
+                              <a href={node.href} target="_blank" rel="noopener noreferrer">{node.shortTitle}<span className={styles.srOnly}> (opens in a new tab)</span></a>
+                            ) : (
+                              <Link href={node.href}>{node.shortTitle}</Link>
+                            )}
+                            <span>{node.axes.join(' · ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <span className={styles.matrixEmpty} aria-label="No matching destinations">—</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DictionaryView({ query, onReset }: { query: string; onReset: () => void }): JSX.Element {
   const glossary = useMemo(() => filterPublicGlossary(query), [query]);
   const count = glossary.terms.length + glossary.symbols.length;
@@ -503,7 +551,7 @@ export default function ConstellationAtlas(): JSX.Element {
         <div className={styles.explorerHeading}>
           <div>
             <p className={styles.eyebrow}>Choose your projection</p>
-            <h2 id="explorer-title">One field. Three readable views.</h2>
+            <h2 id="explorer-title">One field. Four readable views.</h2>
           </div>
           <p>{VIEWS.find((item) => item.id === view)?.description}</p>
         </div>
@@ -607,6 +655,7 @@ export default function ConstellationAtlas(): JSX.Element {
           {!showEmptyGraph && view === 'map' && selectedNode ? (
             <MapView nodes={filteredNodes} selected={selectedNode} onSelect={selectNode} />
           ) : null}
+          {!showEmptyGraph && view === 'matrix' ? <MatrixView nodes={filteredNodes} /> : null}
           {!showEmptyGraph && view === 'index' ? <IndexView nodes={filteredNodes} /> : null}
           {view === 'dictionary' ? <DictionaryView query={query} onReset={resetFilters} /> : null}
         </div>

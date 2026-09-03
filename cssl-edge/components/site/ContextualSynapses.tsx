@@ -8,7 +8,7 @@ import {
   type PublicSurfaceRelation,
 } from '../../lib/public-surface-graph';
 
-const PRIORITY = ['chaos-tarot', 'atlas', 'membership', 'quests', 'akashic-records', 'clearing', 'status'] as const;
+const PRIORITY = ['chaos-tarot', 'oracle', 'spellcraft', 'sigils', 'atlas', 'membership', 'quests', 'akashic-records', 'clearing', 'status'] as const;
 
 function rank(relation: PublicSurfaceRelation): number {
   const index = PRIORITY.indexOf(relation.neighbor.id as typeof PRIORITY[number]);

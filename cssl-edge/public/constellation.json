@@ -67,7 +67,7 @@
     {
       "id": "quests",
       "title": "Public quests",
-      "summary": "Eight self-directed missions through public projects, with progress kept only in the current browser.",
+      "summary": "Eleven self-directed missions through public projects, with progress kept only in the current browser.",
       "href": "/quests",
       "external": false,
       "availability": "public",
@@ -81,7 +81,7 @@
         "People": "Choose, complete, or reset your own route",
         "Meaning": "A guided traversal of public work",
         "Visibility": "Public; progress stays in this browser",
-        "Time": "Eight missions with reversible local progress"
+        "Time": "Eleven missions with reversible local progress"
       }
     },
     {
@@ -121,6 +121,90 @@
         "Meaning": "Tarot and divination with an explicit epistemic boundary",
         "Visibility": "Public on apocky.com",
         "Time": "Readings inform reflection rather than guaranteeing a future"
+      }
+    },
+    {
+      "id": "oracle",
+      "title": "Yes / No Oracle",
+      "summary": "A private, device-local yes or no reflection with a reproducible receipt and a counter-question.",
+      "href": "/oracle",
+      "external": false,
+      "availability": "public",
+      "kind": "game",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "You ask; the generated signal does not take decision authority",
+        "Meaning": "Yes or no as reflective friction, not guaranteed prediction",
+        "Visibility": "Question and result remain in the current browser tab",
+        "Time": "Fresh 128-bit seed with a reproducible versioned receipt"
+      }
+    },
+    {
+      "id": "spellcraft",
+      "title": "Symbolic Spellcraft Engine",
+      "summary": "Compose, validate, compile, and inspect bounded symbolic intentions through a deterministic language engine.",
+      "href": "/spellcraft",
+      "external": false,
+      "availability": "public",
+      "kind": "language",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "You author and inspect every term before choosing to save",
+        "Meaning": "Language becomes a non-executable symbolic plan and interpretation",
+        "Visibility": "Input stays local; unknown and ambiguous forms are quarantined",
+        "Time": "Versioned engine, vocabulary, hashes, and reproducible receipt"
+      }
+    },
+    {
+      "id": "sigils",
+      "title": "Deterministic Sigil Studio",
+      "summary": "Transform a validated symbolic program into bounded, deterministic SVG geometry with its construction logic disclosed.",
+      "href": "/sigils",
+      "external": false,
+      "availability": "public",
+      "kind": "creative_project",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Choose the text and visible variant; download only when ready",
+        "Meaning": "Morphemes map to disclosed rings, paths, and nodes",
+        "Visibility": "No hidden payload, remote generation, or private publication",
+        "Time": "The same validated program and variant reproduce the same image"
+      }
+    },
+    {
+      "id": "spellbook",
+      "title": "Local Spellbook",
+      "summary": "Explicitly save, inspect, export, import, and delete validated symbolic artifacts in this browser.",
+      "href": "/spellbook",
+      "external": false,
+      "availability": "public",
+      "kind": "archive",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "You choose each save, import, export, and deletion",
+        "Meaning": "A personal collection of versioned symbolic artifacts",
+        "Visibility": "Private to this browser unless you export a file",
+        "Time": "Receipts preserve engine and vocabulary lineage across versions"
       }
     },
     {
@@ -536,6 +620,18 @@
     },
     {
       "source": "home",
+      "target": "oracle",
+      "relation": "features",
+      "statement": "The public home features the private Yes / No Oracle as a fast interactive doorway."
+    },
+    {
+      "source": "home",
+      "target": "spellcraft",
+      "relation": "features",
+      "statement": "The public home features the symbolic compiler, sigil, and local Spellbook loop."
+    },
+    {
+      "source": "home",
       "target": "theory-of-everything",
       "relation": "features",
       "statement": "The public home features the evidence-typed Theory of Everything question."
@@ -614,6 +710,18 @@
     },
     {
       "source": "start",
+      "target": "oracle",
+      "relation": "opens",
+      "statement": "Start here opens the fast private Yes / No Oracle."
+    },
+    {
+      "source": "start",
+      "target": "spellcraft",
+      "relation": "opens",
+      "statement": "Start here opens the symbolic creation workbench."
+    },
+    {
+      "source": "start",
       "target": "theory-of-everything",
       "relation": "opens",
       "statement": "Start here opens the evidence-typed overview for visitors asking the largest cosmology question."
@@ -677,6 +785,30 @@
       "target": "divination",
       "relation": "indexes",
       "statement": "The Atlas indexes the grounded guide to tarot and divination systems."
+    },
+    {
+      "source": "atlas",
+      "target": "oracle",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the private, device-local Yes / No Oracle."
+    },
+    {
+      "source": "atlas",
+      "target": "spellcraft",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the deterministic symbolic spellcraft workbench."
+    },
+    {
+      "source": "atlas",
+      "target": "sigils",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the deterministic visible sigil studio."
+    },
+    {
+      "source": "atlas",
+      "target": "spellbook",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the route to the private local Spellbook without indexing its entries."
     },
     {
       "source": "atlas",
@@ -799,6 +931,24 @@
       "statement": "The final public quest asks visitors to review active support paths without requiring payment."
     },
     {
+      "source": "quests",
+      "target": "oracle",
+      "relation": "opens",
+      "statement": "A public quest asks visitors to use a bounded Yes / No signal without ceding decision authority."
+    },
+    {
+      "source": "quests",
+      "target": "spellcraft",
+      "relation": "opens",
+      "statement": "A public quest asks visitors to compile and inspect one symbolic working."
+    },
+    {
+      "source": "quests",
+      "target": "sigils",
+      "relation": "opens",
+      "statement": "A public quest asks visitors to craft and download deterministic visible geometry."
+    },
+    {
       "source": "divination",
       "target": "chaos-tarot",
       "relation": "hands_off_to",
@@ -809,6 +959,72 @@
       "target": "words",
       "relation": "defines",
       "statement": "The public words reference defines specialist language used across Apocky."
+    },
+    {
+      "source": "divination",
+      "target": "oracle",
+      "relation": "opens",
+      "statement": "The divination guide opens the bounded Yes / No Oracle as a quick reflective tool."
+    },
+    {
+      "source": "divination",
+      "target": "spellcraft",
+      "relation": "opens",
+      "statement": "The divination guide opens symbolic spellcraft with the same epistemic boundary."
+    },
+    {
+      "source": "oracle",
+      "target": "spellcraft",
+      "relation": "opens",
+      "statement": "The Oracle can hand a reaction onward to the more inspectable symbolic language workbench."
+    },
+    {
+      "source": "oracle",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The Oracle offers a visitor-chosen handoff to a deeper free Chaos Tarot reading."
+    },
+    {
+      "source": "spellcraft",
+      "target": "sigils",
+      "relation": "defines",
+      "statement": "A validated symbolic program deterministically defines visible sigil geometry."
+    },
+    {
+      "source": "spellcraft",
+      "target": "spellbook",
+      "relation": "opens",
+      "statement": "Spellcraft offers explicit local saving into the private browser Spellbook."
+    },
+    {
+      "source": "spellcraft",
+      "target": "membership",
+      "relation": "supports",
+      "statement": "After delivering the tool, Spellcraft offers optional routes to sustain its development."
+    },
+    {
+      "source": "sigils",
+      "target": "spellbook",
+      "relation": "opens",
+      "statement": "The Sigil Studio offers explicit local saving of validated source artifacts."
+    },
+    {
+      "source": "sigils",
+      "target": "ko-fi",
+      "relation": "supports",
+      "statement": "After generating and downloading a sigil, the studio offers an optional Ko-fi handoff."
+    },
+    {
+      "source": "spellbook",
+      "target": "membership",
+      "relation": "supports",
+      "statement": "The local Spellbook offers an optional path to sustain continued engine development."
+    },
+    {
+      "source": "spellbook",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The local Spellbook offers a visitor-chosen handoff to deeper live divination."
     },
     {
       "source": "theory-of-everything",
@@ -943,6 +1159,30 @@
       "statement": "The lab links to Chaos Tarot as an independent live interactive product."
     },
     {
+      "source": "labs",
+      "target": "oracle",
+      "relation": "features",
+      "statement": "The lab features the private Yes / No Oracle."
+    },
+    {
+      "source": "labs",
+      "target": "spellcraft",
+      "relation": "features",
+      "statement": "The lab features the deterministic symbolic compiler and interpreter."
+    },
+    {
+      "source": "labs",
+      "target": "sigils",
+      "relation": "features",
+      "statement": "The lab features reproducible morphology-derived sigil geometry."
+    },
+    {
+      "source": "labs",
+      "target": "spellbook",
+      "relation": "features",
+      "statement": "The lab features the explicit device-local Spellbook."
+    },
+    {
       "source": "documentation",
       "target": "cssl",
       "relation": "defines",
@@ -1025,6 +1265,18 @@
       "target": "divination",
       "relation": "features",
       "statement": "The directory identifies the divination comparator as a bounded interpretive tool."
+    },
+    {
+      "source": "memory-tools",
+      "target": "spellbook",
+      "relation": "indexes",
+      "statement": "The directory identifies the Spellbook as private, user-controlled device memory."
+    },
+    {
+      "source": "memory-tools",
+      "target": "spellcraft",
+      "relation": "features",
+      "statement": "The directory identifies Spellcraft as a deterministic symbolic instrument."
     },
     {
       "source": "memory-tools",

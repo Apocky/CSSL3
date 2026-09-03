@@ -37,7 +37,7 @@ const ContentTrending: NextPage = () => {
           content="Popular shared content with a visible explanation of the ranking method."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <link rel="canonical" href="https://www.apocky.com/content/trending" />
         <style>{contentLandingCSS}</style>
       </Head>

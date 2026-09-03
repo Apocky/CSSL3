@@ -80,12 +80,16 @@ const Divination: NextPage = () => {
             that a random draw is a guaranteed command from the future.
           </p>
           <div className={styles.actions}>
+            <Link className={styles.primary} href="/oracle">
+              Ask a quick Yes / No →
+            </Link>
             <a className={styles.primary} href="https://chaos-tarot.com/free-reading?source=apocky-divination" target="_blank" rel="noopener noreferrer">
               Try a free reading <span aria-hidden="true">↗</span>
             </a>
             <a className={styles.secondary} href="https://chaos-tarot.com/system-quiz?source=apocky-divination" target="_blank" rel="noopener noreferrer">
               Find your system <span aria-hidden="true">↗</span>
             </a>
+            <Link className={styles.secondary} href="/spellcraft">Compose a symbolic working →</Link>
           </div>
 
           <section className={styles.section} aria-labelledby="systems-title">
@@ -158,6 +162,7 @@ const Divination: NextPage = () => {
               <a className={styles.primary} href="https://chaos-tarot.com/free-reading?source=apocky-divination-end" target="_blank" rel="noopener noreferrer">Begin free <span aria-hidden="true">↗</span></a>
               <a className={styles.secondary} href="https://chaos-tarot.com/glossary?source=apocky-divination" target="_blank" rel="noopener noreferrer">Open the divination glossary <span aria-hidden="true">↗</span></a>
               <Link className={styles.secondary} href="/atlas">Trace the wider constellation →</Link>
+              <Link className={styles.secondary} href="/sigils">Craft a deterministic sigil →</Link>
             </div>
           </section>
         </div>

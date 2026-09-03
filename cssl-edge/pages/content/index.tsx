@@ -67,7 +67,7 @@ const ContentLanding: NextPage<ContentLandingProps> = ({
           content="An experimental library for content people deliberately choose to share. Participation is optional."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <meta name="author" content="Apocky" />
         <link rel="canonical" href="https://www.apocky.com/content" />
         <meta property="og:title" content="Shared content · Apocky" />

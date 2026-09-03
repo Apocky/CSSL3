@@ -72,6 +72,13 @@ const Privacy: NextPage = () => (
       features use session storage or cookies to keep you signed in. Blocking or clearing this storage may sign
       you out or reset preferences.
     </p>
+    <p>
+      Public quests and the symbolic Spellbook use separate versioned browser-local records. Quest progress is
+      saved as completion markers. The Spellbook stores only workings you explicitly choose to save, including
+      their source text, symbolic plan, interpretation, and integrity receipt. Oracle questions and unsaved
+      Spellcraft input are not written by those tools. The symbolic tools do not send question or working text
+      through site telemetry, and the Spellbook provides export, delete-one, and delete-all controls.
+    </p>
 
     <h2>Why information is used</h2>
     <ul>
@@ -102,6 +109,7 @@ const Privacy: NextPage = () => (
       <li>Keep optional site data off or change the saved level.</li>
       <li>Use the public pages without creating an account.</li>
       <li>Sign out and clear browser storage.</li>
+      <li>Export or delete one or all device-local Spellbook entries.</li>
       <li>Choose whether to submit or upload content.</li>
       <li>Ask for access, correction, export, or deletion of personal information associated with you.</li>
     </ul>

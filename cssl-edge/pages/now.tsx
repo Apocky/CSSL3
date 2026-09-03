@@ -38,7 +38,7 @@ const Now: NextPage = () => (
             <article className={`${styles.card} ${styles.tierFeatured}`}>
               <span className={styles.tag}>Interactive</span>
               <h3>Constellation Atlas</h3>
-              <p>Map, index, dictionary, filters, shareable state, and explicit relationships across the public work.</p>
+              <p>Relationship map, kind × access matrix, index, dictionary, filters, shareable state, and explicit links across the public work.</p>
               <Link className={styles.cardLink} href="/atlas">Explore the whole map →</Link>
             </article>
             <article className={styles.card}>
@@ -77,6 +77,12 @@ const Now: NextPage = () => (
               <p>One directory connects public memory, working instruments, chosen handoffs, and the private rails that remain closed.</p>
               <Link className={styles.cardLink} href="/memory-tools">Trace the signal →</Link>
             </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Private symbolic tools</span>
+              <h3>Oracle, Spellcraft, Sigils, Spellbook</h3>
+              <p>A fast Yes / No prompt, fail-closed language compiler, deterministic SVG studio, and explicit device-local collection.</p>
+              <Link className={styles.cardLink} href="/spellcraft">Operate the studio →</Link>
+            </article>
           </div>
         </section>
 
@@ -88,7 +94,7 @@ const Now: NextPage = () => (
           <div className={styles.grid2}>
             <article className={styles.card}>
               <h3>Public experiments</h3>
-              <p>Device-local quests, live diagnostics, cross-system divination, visual cosmology, and architecture research.</p>
+              <p>Device-local quests, live diagnostics, cross-system divination, symbolic compilation, visual cosmology, and architecture research.</p>
               <Link className={styles.cardLink} href="/labs">Enter the labs →</Link>
             </article>
             <article className={styles.card}>

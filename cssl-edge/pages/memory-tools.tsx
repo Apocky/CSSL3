@@ -15,6 +15,8 @@ const structuredData = {
     { '@type': 'WebPage', name: 'Constellation Atlas', url: 'https://www.apocky.com/atlas' },
     { '@type': 'WebPage', name: 'Public quests', url: 'https://www.apocky.com/quests' },
     { '@type': 'WebPage', name: 'System status', url: 'https://www.apocky.com/status' },
+    { '@type': 'WebApplication', name: 'Symbolic Spellcraft Engine', url: 'https://www.apocky.com/spellcraft' },
+    { '@type': 'WebPage', name: 'Local Spellbook', url: 'https://www.apocky.com/spellbook' },
   ],
 };
 
@@ -118,7 +120,7 @@ const MemoryTools: NextPage = () => (
             <article className={styles.card}>
               <span className={styles.tag}>DEVICE-LOCAL · REVERSIBLE</span>
               <h3>Quest progress</h3>
-              <p>Eight journey markers live only in this browser. They can be reset from the quest page and are not transmitted as an account history.</p>
+              <p>Eleven journey markers live only in this browser. They can be reset from the quest page and are not transmitted as an account history.</p>
               <Link className={styles.cardLink} href="/quests">Open local memory →</Link>
             </article>
             <article className={styles.card}>
@@ -126,6 +128,12 @@ const MemoryTools: NextPage = () => (
               <h3>Documentation</h3>
               <p>Guides, status labels, and technical specifications preserve how the systems are intended to work without claiming runtime proof.</p>
               <Link className={styles.cardLink} href="/docs">Browse reference memory →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>DEVICE-LOCAL · PRIVATE</span>
+              <h3>Symbolic Spellbook</h3>
+              <p>Only workings you explicitly save are stored. Each carries an engine and vocabulary receipt; export, import, delete-one, and delete-all stay under your control.</p>
+              <Link className={styles.cardLink} href="/spellbook">Open private local memory →</Link>
             </article>
           </div>
         </section>
@@ -157,7 +165,7 @@ const MemoryTools: NextPage = () => (
             <article className={styles.card}>
               <span className={styles.tag}>GUIDE</span>
               <h3>Public quests</h3>
-              <p>Turn exploration into an eight-step, device-local journey across the constellation.</p>
+              <p>Turn exploration into an eleven-step, device-local journey across the constellation.</p>
               <Link className={styles.cardLink} href="/quests">Begin a quest →</Link>
             </article>
             <article className={styles.card}>
@@ -171,6 +179,18 @@ const MemoryTools: NextPage = () => (
               <h3>Chaos Tarot</h3>
               <p>Continue into the independent reading and study system. Its account and payment boundary remains separate.</p>
               <a className={styles.cardLink} href="https://chaos-tarot.com/free-reading?source=apocky-memory-tools" target="_blank" rel="noopener noreferrer">Begin a free reading ↗</a>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>SIGNAL · LOCAL</span>
+              <h3>Yes / No Oracle</h3>
+              <p>Generate a bounded two-state signal and counter-question from a 128-bit local seed.</p>
+              <Link className={styles.cardLink} href="/oracle">Ask one question →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>COMPILER · LOCAL</span>
+              <h3>Spellcraft and Sigils</h3>
+              <p>Parse an owner-authorized Haloic-derived vocabulary into an inspectable non-executable graph, then render its deterministic geometry.</p>
+              <Link className={styles.cardLink} href="/spellcraft">Operate the engine →</Link>
             </article>
           </div>
         </section>

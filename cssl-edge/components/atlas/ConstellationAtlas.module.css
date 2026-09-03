@@ -647,6 +647,59 @@
   background: linear-gradient(135deg, rgba(89, 115, 244, 0.65), rgba(151, 81, 204, 0.56));
 }
 
+.matrixWrap {
+  overflow-x: auto;
+  border: 1px solid var(--atlas-line);
+  border-radius: 22px;
+  background: var(--atlas-panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+.matrix {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  color: var(--atlas-copy);
+}
+
+.matrix caption {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--atlas-line);
+  color: var(--atlas-muted);
+  line-height: 1.55;
+  text-align: left;
+}
+
+.matrix th,
+.matrix td {
+  min-width: 155px;
+  border-right: 1px solid var(--atlas-line);
+  border-bottom: 1px solid var(--atlas-line);
+  padding: 14px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.matrix tr:last-child > * { border-bottom: 0; }
+.matrix tr > *:last-child { border-right: 0; }
+.matrix thead th,
+.matrix tbody th {
+  color: #e8e6ff;
+  background: rgba(14, 14, 39, 0.88);
+  font-family: var(--apx-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.matrix td[data-count='0'] { background: rgba(3, 3, 12, 0.3); }
+.matrix ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.matrix li { display: grid; gap: 3px; }
+.matrix a { min-height: 44px; display: flex; align-items: center; color: #93ddff; font-weight: 760; text-decoration: none; }
+.matrix a:hover { color: #fff; }
+.matrix li > span { color: var(--atlas-muted); font-size: 0.68rem; line-height: 1.45; }
+.matrixEmpty { display: block; color: rgba(171, 178, 224, 0.34); text-align: center; }
+
 .indexGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

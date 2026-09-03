@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="apocky-mark-spectrum" x1="126" y1="110" x2="389" y2="409" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.48" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+    <linearGradient id="apocky-mark-core" x1="171" y1="129" x2="348" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFF"/>
+      <stop offset="0.54" stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#D8B4FE"/>
+    </linearGradient>
+  </defs>
+  <path d="M112 194C139 126 202 91 270 96C330 100 379 137 402 194" stroke="url(#apocky-mark-spectrum)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M400 316C373 384 310 421 242 416C182 412 133 375 110 318" stroke="url(#apocky-mark-spectrum)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M354 157C317 118 239 111 193 142C150 171 152 216 184 240C207 258 243 266 285 277C333 290 360 313 354 345C346 387 298 409 249 402C207 396 173 376 155 346" stroke="url(#apocky-mark-core)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M340 201C312 174 252 165 215 185C186 201 183 224 205 242C224 257 253 264 290 274C353 292 380 327 358 365" stroke="url(#apocky-mark-spectrum)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M256 224L288 256L256 288L224 256Z" fill="#000000" stroke="#F8FAFF" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M256 242L270 256L256 270L242 256Z" fill="#38BDF8"/>
+  <path d="M103 181L116 194L103 207L90 194Z" fill="#38BDF8"/>
+  <path d="M409 181L422 194L409 207L396 194Z" fill="#A855F7"/>
+  <path d="M101 305L114 318L101 331L88 318Z" fill="#6366F1"/>
+  <path d="M409 303L422 316L409 329L396 316Z" fill="#D8B4FE"/>
+</svg>

@@ -11,6 +11,10 @@ or permission to speak for anyone named on the site.
 - Home and project links: https://www.apocky.com/
 - Guided starting paths: https://www.apocky.com/start
 - Grounded guide to Chaos Tarot and divination systems: https://www.apocky.com/divination
+- Private, seeded Yes / No reflection tool: https://www.apocky.com/oracle
+- Deterministic, owner-authorized Haloic-derived symbolic compiler and interpreter: https://www.apocky.com/spellcraft
+- Downloadable deterministic sigil studio: https://www.apocky.com/sigils
+- Explicit browser-local symbolic Spellbook: https://www.apocky.com/spellbook
 - Evidence-typed introduction to the Omnoid and the Theory of Everything question: https://www.apocky.com/theory-of-everything
 - Omnoid Singularity, Shawn Apocky's authored cosmology with visual and CSLv3 maps: https://www.apocky.com/omnoid-singularity
 - Akashic Records, Shawn Apocky's public works and conversations archive: https://www.apocky.com/akashic-records

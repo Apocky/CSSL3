@@ -23,6 +23,10 @@ const now = read('pages/now.tsx');
 const labs = read('pages/labs.tsx');
 const memoryTools = read('pages/memory-tools.tsx');
 const divination = read('pages/divination.tsx');
+const oracle = read('pages/oracle.tsx');
+const spellcraft = read('pages/spellcraft.tsx');
+const sigils = read('pages/sigils.tsx');
+const spellbook = read('pages/spellbook.tsx');
 const theory = read('pages/theory-of-everything.tsx');
 const principles = read('pages/principles.tsx');
 const shell = read('components/SiteShell.tsx');
@@ -41,13 +45,17 @@ for (const [name, source, canonical] of [
   ['labs', labs, 'https://www.apocky.com/labs'],
   ['memory-tools', memoryTools, 'https://www.apocky.com/memory-tools'],
   ['divination', divination, 'https://www.apocky.com/divination'],
+  ['oracle', oracle, 'https://www.apocky.com/oracle'],
+  ['spellcraft', spellcraft, 'https://www.apocky.com/spellcraft'],
+  ['sigils', sigils, 'https://www.apocky.com/sigils'],
+  ['spellbook', spellbook, 'https://www.apocky.com/spellbook'],
   ['theory', theory, 'https://www.apocky.com/theory-of-everything'],
   ['principles', principles, 'https://www.apocky.com/principles'],
 ] as const) {
   assert(source.includes(`rel="canonical" href="${canonical}"`), `${name} must self-canonicalize on the www origin`);
 }
 
-for (const route of ['/start', '/divination', '/theory-of-everything', '/principles', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/infinity-engine']) {
+for (const route of ['/start', '/divination', '/oracle', '/spellcraft', '/sigils', '/spellbook', '/theory-of-everything', '/principles', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/infinity-engine']) {
   assert(sitemap.includes(`<loc>https://www.apocky.com${route}</loc>`), `sitemap missing ${route}`);
   assert(llms.includes(`https://www.apocky.com${route}`), `llms.txt missing ${route}`);
 }
@@ -93,7 +101,7 @@ const validate = ajv.compile(manifestSchema);
 assert(validate(manifest), `site manifest must validate: ${ajv.errorsText(validate.errors)}`);
 
 const entryPoints = manifest.entry_points as Array<{ href?: string }>;
-for (const href of ['/start', '/divination', '/theory-of-everything', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/docs', '/infinity-engine', 'https://chaos-tarot.com/']) {
+for (const href of ['/start', '/divination', '/oracle', '/spellcraft', '/sigils', '/spellbook', '/theory-of-everything', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/docs', '/infinity-engine', 'https://chaos-tarot.com/']) {
   assert(entryPoints.some((entry) => entry.href === href), `site manifest missing ${href}`);
 }
 assert(!entryPoints.some((entry) => entry.href?.startsWith('https://cssl.dev')), 'site manifest must use the local CSSL recovery rail while cssl.dev is unavailable');

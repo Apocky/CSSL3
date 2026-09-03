@@ -26,7 +26,7 @@ const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProp
         <title>{title}</title>
         <meta name="description" content={description} />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <meta name="author" content="Apocky" />
         <link rel="canonical" href={`https://www.apocky.com${canonicalPath}`} />
         <meta property="og:title" content={title} />

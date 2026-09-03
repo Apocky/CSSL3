@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" fill="none">
+  <defs>
+    <radialGradient id="apocky-social-field" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(303 300) rotate(20) scale(535 450)">
+      <stop stop-color="#171044"/>
+      <stop offset="0.5" stop-color="#09061A"/>
+      <stop offset="1" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="apocky-social-spectrum" x1="130" y1="130" x2="480" y2="490" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.48" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+    <linearGradient id="apocky-social-type" x1="578" y1="210" x2="1050" y2="375" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFF"/>
+      <stop offset="0.56" stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#D8B4FE"/>
+    </linearGradient>
+  </defs>
+  <path d="M0 0H1200V630H0Z" fill="#000000"/>
+  <path d="M0 0H1200V630H0Z" fill="url(#apocky-social-field)"/>
+  <path d="M36 120C36 74 74 36 120 36H1080C1126 36 1164 74 1164 120V510C1164 556 1126 594 1080 594H120C74 594 36 556 36 510Z" stroke="#312E81" stroke-width="3"/>
+  <g transform="translate(40 42) scale(.96)">
+    <path d="M112 194C139 126 202 91 270 96C330 100 379 137 402 194" stroke="url(#apocky-social-spectrum)" stroke-width="14" stroke-linecap="round"/>
+    <path d="M400 316C373 384 310 421 242 416C182 412 133 375 110 318" stroke="url(#apocky-social-spectrum)" stroke-width="14" stroke-linecap="round"/>
+    <path d="M354 157C317 118 239 111 193 142C150 171 152 216 184 240C207 258 243 266 285 277C333 290 360 313 354 345C346 387 298 409 249 402C207 396 173 376 155 346" stroke="#F8FAFF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M340 201C312 174 252 165 215 185C186 201 183 224 205 242C224 257 253 264 290 274C353 292 380 327 358 365" stroke="url(#apocky-social-spectrum)" stroke-width="18" stroke-linecap="round"/>
+    <path d="M256 224L288 256L256 288L224 256Z" fill="#000000" stroke="#93C5FD" stroke-width="10"/>
+  </g>
+  <text x="570" y="278" fill="url(#apocky-social-type)" font-family="Inter, Arial, sans-serif" font-size="96" font-weight="800" letter-spacing="12">APOCKY</text>
+  <text x="576" y="342" fill="#B7C0E8" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="600" letter-spacing="1.5">INTERCONNECTED WORLDS · TOOLS · LIVING IDEAS</text>
+  <path d="M576 390H1035" stroke="url(#apocky-social-spectrum)" stroke-width="4" stroke-linecap="round"/>
+  <text x="576" y="444" fill="#8993C1" font-family="Inter, Arial, sans-serif" font-size="24">Follow the signal. Enter the system.</text>
+</svg>

@@ -30,15 +30,36 @@ const PATHS = [
   {
     kind: 'Participation',
     title: 'Public quests',
-    copy: 'Turn passive browsing into an eight-node expedition. Progress stays on your device and no account is required.',
+    copy: 'Turn passive browsing into an eleven-node expedition. Progress stays on your device and no account is required.',
     href: '/quests',
     label: 'Choose a quest',
     external: false,
     tone: 'apx-door-card--violet',
   },
+  {
+    kind: 'Creation',
+    title: 'Symbolic Studio',
+    copy: 'Ask a fast Yes / No Oracle, compile an owner-authorized Haloic-derived working, craft its sigil, and keep it in a private local Spellbook.',
+    href: '/spellcraft',
+    label: 'Open the workbench',
+    external: false,
+    tone: 'apx-door-card--indigo',
+  },
 ] as const;
 
 const CREATIVE_WORK = [
+  {
+    title: 'Yes / No Oracle',
+    copy: 'A private one-question signal with a reproducible receipt, a counterweight, and no claim of decision authority.',
+    href: '/oracle',
+    label: 'Ask one question',
+  },
+  {
+    title: 'Spellcraft and Sigils',
+    copy: 'A deterministic symbolic language engine, visible SVG generator, and explicit device-local Spellbook.',
+    href: '/spellcraft',
+    label: 'Compose a working',
+  },
   {
     title: 'Omnoid Singularity',
     copy: 'A source-typed cosmology of recursive totality, distinct centers, freedom, True Neutral, singularity, and return.',
@@ -150,6 +171,7 @@ const Home: NextPage = () => {
                 Begin a free reading <span aria-hidden="true">↗</span>
               </a>
               <Link href="/atlas" className="apx-button">Explore the Atlas</Link>
+              <Link href="/oracle" className="apx-button">Ask Yes / No</Link>
               <Link href="/start" className="apx-button">Choose your path</Link>
               {authenticated ? <Link href="/account" className="apx-button">Your account</Link> : null}
             </div>
@@ -158,6 +180,7 @@ const Home: NextPage = () => {
               <span><strong>PUBLIC</strong> archive + map</span>
               <span><strong>LIVE</strong> Chaos Tarot</span>
               <span><strong>OPEN</strong> Clearing</span>
+              <span><strong>NEW</strong> Spellcraft + Sigils</span>
             </div>
           </div>
 

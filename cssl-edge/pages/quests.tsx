@@ -80,6 +80,33 @@ const QUESTS = [
     action: 'Review membership',
     external: false,
   },
+  {
+    id: 'ask-oracle',
+    rank: '09 · DECIDE',
+    title: 'Ask one clean question',
+    copy: 'Use the private Yes / No Oracle, notice your reaction, and keep the generated signal in its reflective boundary.',
+    href: '/oracle',
+    action: 'Ask the Oracle',
+    external: false,
+  },
+  {
+    id: 'compose-working',
+    rank: '10 · COMPOSE',
+    title: 'Compile a symbolic working',
+    copy: 'Build a valid Haloic-derived form and inspect its vocabulary, interpretation, graph, confidence, and authority-none receipt.',
+    href: '/spellcraft',
+    action: 'Open Spellcraft',
+    external: false,
+  },
+  {
+    id: 'craft-sigil',
+    rank: '11 · CREATE',
+    title: 'Craft visible geometry',
+    copy: 'Turn a validated symbolic program into a deterministic sigil and download one deliberate variant.',
+    href: '/sigils',
+    action: 'Enter the Sigil Studio',
+    external: false,
+  },
 ] as const;
 
 function readStoredProgress(): ReadonlySet<string> {
@@ -131,7 +158,7 @@ const Quests: NextPage = () => {
     <>
       <Head>
         <title>Public quests · Apocky</title>
-        <meta name="description" content="Eight self-directed quests through Apocky’s tools, archive, cosmology, community, game, and Chaos Tarot." />
+        <meta name="description" content="Eleven self-directed quests through Apocky’s tools, archive, cosmology, community, symbolic studio, game, and Chaos Tarot." />
         <meta property="og:title" content="Public quests · Apocky" />
         <meta property="og:description" content="Turn passive browsing into an eight-part expedition through the Apocky constellation." />
         <meta property="og:url" content="https://www.apocky.com/quests" />
@@ -160,7 +187,7 @@ const Quests: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="quest-list-title">
             <div className={styles.sectionHead}>
-              <h2 id="quest-list-title">Eight nodes. One traversal.</h2>
+              <h2 id="quest-list-title">Eleven nodes. One traversal.</h2>
               <p>Do them in order for a guided path, or start wherever the signal is strongest.</p>
             </div>
             <div className={styles.grid2}>

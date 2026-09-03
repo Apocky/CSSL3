@@ -63,7 +63,7 @@ const ContentSubscribed: NextPage = () => {
           content="Content packages you chose to follow, when the subscription service is available."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <link rel="canonical" href="https://www.apocky.com/content/subscribed" />
         <style>{contentLandingCSS}</style>
       </Head>

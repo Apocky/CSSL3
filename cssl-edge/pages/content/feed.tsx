@@ -86,7 +86,7 @@ const ContentFeedPage: NextPage = () => {
         <title>Newest shared content · Apocky</title>
         <meta name="description" content="Shared content listed by publication time, newest first." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <link rel="canonical" href="https://www.apocky.com/content/feed" />
         <style>{contentLandingCSS}</style>
       </Head>

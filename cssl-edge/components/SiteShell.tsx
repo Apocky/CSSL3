@@ -10,6 +10,7 @@ type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean
 const NAV: ReadonlyArray<NavItem> = [
   { href: '/start', label: 'Start here', shortLabel: 'Start' },
   { href: '/atlas', label: 'Atlas' },
+  { href: '/spellcraft', label: 'Spellcraft', shortLabel: 'Create' },
   { href: '/akashic-records', label: 'Akashic Records', shortLabel: 'Records' },
   { href: '/clearing', label: 'The Clearing', shortLabel: 'Clearing' },
   { href: 'https://chaos-tarot.com/free-reading?source=apocky-nav', label: 'Chaos Tarot', shortLabel: 'Chaos', ext: true, accent: true },
@@ -18,6 +19,10 @@ const NAV: ReadonlyArray<NavItem> = [
 const WORK: ReadonlyArray<NavItem> = [
   { href: 'https://chaos-tarot.com/free-reading?source=apocky-footer', label: 'Begin a Chaos Tarot reading', ext: true },
   { href: '/atlas', label: 'Explore the Constellation Atlas' },
+  { href: '/oracle', label: 'Ask the Yes / No Oracle' },
+  { href: '/spellcraft', label: 'Compose with Spellcraft' },
+  { href: '/sigils', label: 'Craft a deterministic sigil' },
+  { href: '/spellbook', label: 'Open the local Spellbook' },
   { href: '/memory-tools', label: 'Connect memory banks and tools' },
   { href: '/labs', label: 'Operate the public labs' },
   { href: '/akashic-records', label: 'Search the Akashic Records' },

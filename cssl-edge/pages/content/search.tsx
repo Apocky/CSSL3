@@ -75,7 +75,7 @@ const ContentSearch: NextPage = () => {
           content="Search available shared content by words or tags."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <link rel="canonical" href="https://www.apocky.com/content/search" />
         <style>{contentLandingCSS}</style>
       </Head>

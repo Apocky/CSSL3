@@ -30,7 +30,7 @@ const Labs: NextPage = () => (
 
         <section className={styles.section} aria-labelledby="lab-title">
           <div className={styles.sectionHead}>
-            <h2 id="lab-title">Eight connected public surfaces</h2>
+            <h2 id="lab-title">Twelve connected public surfaces</h2>
             <p>Start anywhere; the contextual synapses beneath each mapped page provide a route onward.</p>
           </div>
           <div className={styles.grid2}>
@@ -81,6 +81,30 @@ const Labs: NextPage = () => (
               <h3>Chaos Tarot</h3>
               <p>Use the constellation’s independent live reading and study system. It keeps its own account, data, and payment boundary.</p>
               <a className={styles.cardLink} href="https://chaos-tarot.com/free-reading?source=apocky-labs" target="_blank" rel="noopener noreferrer">Begin a free reading ↗</a>
+            </article>
+            <article className={`${styles.card} ${styles.tierFeatured}`}>
+              <span className={styles.tag}>PUBLIC · DEVICE-LOCAL</span>
+              <h3>Yes / No Oracle</h3>
+              <p>Ask one bounded question and use a reproducible symbolic signal to inspect your own reaction.</p>
+              <Link className={styles.cardLink} href="/oracle">Reveal a signal →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>PUBLIC · DETERMINISTIC</span>
+              <h3>Spellcraft engine</h3>
+              <p>Compile Haloic-derived language into an inspectable, authority-none symbolic graph and interpretation.</p>
+              <Link className={styles.cardLink} href="/spellcraft">Open the compiler →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>PUBLIC · EXPORTABLE SVG</span>
+              <h3>Sigil studio</h3>
+              <p>Render a validated working as visible, bounded geometry and download the reproducible artifact.</p>
+              <Link className={styles.cardLink} href="/sigils">Generate a sigil →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>PUBLIC ROUTE · PRIVATE DATA</span>
+              <h3>Local Spellbook</h3>
+              <p>Explicitly save, verify, export, import, and delete private workings in the current browser.</p>
+              <Link className={styles.cardLink} href="/spellbook">Open the shelf →</Link>
             </article>
           </div>
         </section>

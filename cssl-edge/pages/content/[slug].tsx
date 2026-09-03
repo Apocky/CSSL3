@@ -34,7 +34,7 @@ const ContentDetailPage: NextPage<ContentDetailPageProps> = ({
         <title>{titleText}</title>
         <meta name="description" content={descText} />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
         <link rel="canonical" href={`https://www.apocky.com/content/${encodeURIComponent(slug)}`} />
         <meta property="og:title" content={titleText} />
         <meta property="og:description" content={descText} />
