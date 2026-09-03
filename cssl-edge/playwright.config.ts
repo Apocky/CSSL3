@@ -18,7 +18,6 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: 'test-results/playwright-report', open: 'never' }]],
   use: {
     baseURL,
-    channel: 'chrome',
     colorScheme: 'dark',
     locale: 'en-US',
     contextOptions: { reducedMotion: 'reduce' },
@@ -27,8 +26,16 @@ export default defineConfig({
     video: 'off',
   },
   projects: [
-    { name: 'desktop-chrome', grepInvert: /@mobile/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile-chrome', grepInvert: /@visual/, use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 } } },
+    { name: 'desktop-chrome', grepInvert: /@mobile/, use: { ...devices['Desktop Chrome'], channel: 'chrome', viewport: { width: 1440, height: 900 } } },
+    { name: 'mobile-chrome', grepInvert: /@visual/, use: { ...devices['Pixel 5'], channel: 'chrome', viewport: { width: 390, height: 844 } } },
+    {
+      name: 'ios-webkit-iphone-15-pro',
+      grepInvert: /@visual/,
+      use: {
+        ...devices['iPhone 15 Pro'],
+        browserName: 'webkit',
+      },
+    },
   ],
   webServer: externalBaseURL
     ? undefined
