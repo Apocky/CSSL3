@@ -2,28 +2,33 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { SUPPORT_LINKS } from '../lib/support-links';
 import { useSiteSession } from './hub/SiteSession';
+import CommandPalette from './site/CommandPalette';
+import ContextualSynapses from './site/ContextualSynapses';
 
 type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean; accent?: boolean };
 
 const NAV: ReadonlyArray<NavItem> = [
-  { href: '/#projects', label: 'Creative work', shortLabel: 'Work' },
-  { href: '/akashic-records', label: 'Akashic Records', shortLabel: 'Akashic' },
-  { href: '/clearing', label: 'The Clearing', shortLabel: 'Clearing' },
+  { href: '/start', label: 'Start here', shortLabel: 'Start' },
   { href: '/atlas', label: 'Atlas' },
-  { href: '/buy', label: 'Support the work', shortLabel: 'Support', accent: true },
+  { href: '/akashic-records', label: 'Akashic Records', shortLabel: 'Records' },
+  { href: '/clearing', label: 'The Clearing', shortLabel: 'Clearing' },
+  { href: 'https://chaos-tarot.com/free-reading?source=apocky-nav', label: 'Chaos Tarot', shortLabel: 'Chaos', ext: true, accent: true },
 ];
 
 const WORK: ReadonlyArray<NavItem> = [
-  { href: 'https://chaos-tarot.com', label: 'Enter Chaos Tarot', ext: true },
+  { href: 'https://chaos-tarot.com/free-reading?source=apocky-footer', label: 'Begin a Chaos Tarot reading', ext: true },
+  { href: '/atlas', label: 'Explore the Constellation Atlas' },
+  { href: '/akashic-records', label: 'Search the Akashic Records' },
+  { href: '/omnoid-singularity', label: 'Enter the Omnoid Singularity' },
   { href: '/download', label: 'Explore Labyrinth of Apocalypse' },
-  { href: 'https://cssl.dev', label: 'Visit CSSL', ext: true },
-  { href: 'https://cssl.dev/CSLv3', label: 'Read about CSLv3', ext: true },
-  { href: '/akashic-records', label: 'Read the Akashic Records' },
-  { href: '/clearing', label: 'Enter the Clearing' },
-  { href: '/atlas', label: 'Explore the Atlas' },
+  { href: '/docs/cssl-language', label: 'Read the CSSL guide' },
 ];
 
 const ABOUT: ReadonlyArray<NavItem> = [
+  { href: '/start', label: 'Choose a starting path' },
+  { href: '/quests', label: 'Public quests' },
+  { href: '/status', label: 'System status' },
+  { href: '/docs', label: 'Documentation' },
   { href: 'https://github.com/Apocky', label: 'Code on GitHub', ext: true },
   { href: '/words', label: 'Words & symbols' },
   { href: '/legal/privacy', label: 'Privacy' },
@@ -79,6 +84,8 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
           </div>
 
           <div className="apx-nav-actions">
+            <CommandPalette />
+            <Link href="/membership" className="apx-nav-action apx-nav-action--primary">Join</Link>
             <Link
               href={authenticated ? '/account' : '/login?next=%2Faccount'}
               className="apx-nav-action"
@@ -91,12 +98,20 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             <summary>Explore</summary>
             <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
               {navLinks('apx-mobile-menu-link')}
+              <Link href="/membership" className="apx-mobile-menu-link apx-nav-link--support">Membership &amp; support</Link>
+              <Link
+                href={authenticated ? '/account' : '/login?next=%2Faccount'}
+                className="apx-mobile-menu-link"
+              >
+                {authenticated ? 'Account' : 'Sign in'}
+              </Link>
             </div>
           </details>
         </nav>
       </header>
 
       <div id="main-content" className="apx-main" tabIndex={-1}>{children}</div>
+      <ContextualSynapses pathname={pathname} />
 
       <footer className="apx-footer">
         <div className="apx-footer-inner">
@@ -106,26 +121,27 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
               <span>APOCKY</span>
             </Link>
             <p className="apx-footer-copy">
-              Shawn Apocky’s creative home for games, software, language,
-              symbolic art, writing, and interconnected works in progress.
+              An interconnected creative system for divination, games, software,
+              language, cosmology, public memory, and shared discovery.
             </p>
           </div>
           <div>
-            <h2 className="apx-footer-title">Creative work & portals</h2>
+            <h2 className="apx-footer-title">Living work</h2>
             <div className="apx-footer-links">
               {WORK.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
             </div>
           </div>
           <div>
-            <h2 className="apx-footer-title">Elsewhere & legal</h2>
+            <h2 className="apx-footer-title">Navigate & verify</h2>
             <div className="apx-footer-links">
               {ABOUT.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
             </div>
           </div>
           <div className="apx-footer-support">
-            <h2 className="apx-footer-title">Optional support</h2>
-            <p className="apx-footer-support-copy">Help sustain the work if you would like to. No obligation.</p>
+            <h2 className="apx-footer-title">Keep it alive</h2>
+            <p className="apx-footer-support-copy">If the work has earned your attention, turn some of that attention into runway.</p>
             <div className="apx-footer-links">
+              <Link href="/membership" className="apx-footer-link">Compare every support path</Link>
               {SUPPORT_LINKS.map((item) => (
                 <a key={item.name} href={item.href} target="_blank" rel="noopener noreferrer" className="apx-footer-link">
                   {item.label} <span aria-hidden="true">↗</span>
@@ -136,7 +152,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
         </div>
         <div className="apx-footer-bottom">
           <span>© {new Date().getFullYear()} Apocky</span>
-          <span>Plain language first. Technical detail when it helps.</span>
+          <span>Every claim typed. Every connection earned.</span>
         </div>
       </footer>
     </div>

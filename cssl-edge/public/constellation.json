@@ -1,0 +1,747 @@
+{
+  "schema": "apocky.public-surface.v1",
+  "schema_href": "/schemas/public-surface.v1.json",
+  "canonical_origin": "https://www.apocky.com",
+  "generated_from": "lib/public-surface-graph.ts",
+  "nodes": [
+    {
+      "id": "home",
+      "title": "Apocky",
+      "summary": "The public starting point for Shawn Apocky’s projects, writing, software, and shared spaces.",
+      "href": "/",
+      "external": false,
+      "availability": "public",
+      "kind": "orientation",
+      "axes": [
+        "People",
+        "Meaning"
+      ],
+      "coordinates": {
+        "People": "A visitor-led starting point",
+        "Meaning": "Creative home and project index",
+        "Visibility": "Public",
+        "Time": "Updated as the work changes"
+      }
+    },
+    {
+      "id": "atlas",
+      "title": "Constellation Atlas",
+      "summary": "A visual map, complete index, and plain-language dictionary for the public Apocky constellation.",
+      "href": "/atlas",
+      "external": false,
+      "availability": "public",
+      "kind": "orientation",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Choose a destination or relationship",
+        "Meaning": "Map, index, and dictionary",
+        "Visibility": "Public",
+        "Time": "A living orientation layer"
+      }
+    },
+    {
+      "id": "start",
+      "title": "Start here",
+      "summary": "A clear launch point for choosing an experience, the big picture, source material, participation, or support.",
+      "href": "/start",
+      "external": false,
+      "availability": "public",
+      "kind": "orientation",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Choose the purpose that brought you here",
+        "Meaning": "Guided entry into the public constellation",
+        "Visibility": "Public with no quiz or email gate",
+        "Time": "A starting route you can leave at any point"
+      }
+    },
+    {
+      "id": "quests",
+      "title": "Public quests",
+      "summary": "Eight self-directed missions through public projects, with progress kept only in the current browser.",
+      "href": "/quests",
+      "external": false,
+      "availability": "public",
+      "kind": "orientation",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Choose, complete, or reset your own route",
+        "Meaning": "A guided traversal of public work",
+        "Visibility": "Public; progress stays in this browser",
+        "Time": "Eight missions with reversible local progress"
+      }
+    },
+    {
+      "id": "status",
+      "title": "System status",
+      "summary": "A privacy-bounded view of public core, identity, archive, relay, and support-route availability.",
+      "href": "/status",
+      "external": false,
+      "availability": "public",
+      "kind": "reference",
+      "axes": [
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Run a same-origin health check or choose a fallback",
+        "Meaning": "Public status and recovery routes",
+        "Visibility": "Public, without keys or private logs",
+        "Time": "Observed when the page checks the health endpoint"
+      }
+    },
+    {
+      "id": "divination",
+      "title": "Chaos, Tarot, and Divination",
+      "summary": "A grounded guide to eight symbolic systems, what reflective readings can do, and what they cannot establish.",
+      "href": "/divination",
+      "external": false,
+      "availability": "public",
+      "kind": "reference",
+      "axes": [
+        "Meaning",
+        "Time",
+        "People"
+      ],
+      "coordinates": {
+        "People": "Learn, reflect, or choose a free external reading",
+        "Meaning": "Tarot and divination with an explicit epistemic boundary",
+        "Visibility": "Public on apocky.com",
+        "Time": "Readings inform reflection rather than guaranteeing a future"
+      }
+    },
+    {
+      "id": "theory-of-everything",
+      "title": "The Theory of Everything question",
+      "summary": "An evidence-typed introduction to the Omnoid’s unification-sized ambition, established mathematics, open bridges, and falsifiers.",
+      "href": "/theory-of-everything",
+      "external": false,
+      "availability": "public",
+      "kind": "cosmology",
+      "axes": [
+        "Meaning",
+        "Time",
+        "Visibility"
+      ],
+      "coordinates": {
+        "People": "Examine the claims and their limits",
+        "Meaning": "Evidence-typed introduction to an authored cosmology",
+        "Visibility": "Public; explicitly not presented as a proven physical theory",
+        "Time": "Open bridges require definition, prediction, and falsification"
+      }
+    },
+    {
+      "id": "clearing",
+      "title": "The Clearing",
+      "summary": "A public community room: reading is open, while posting and reacting require sign-in.",
+      "href": "/clearing",
+      "external": false,
+      "availability": "public_read_account_write",
+      "kind": "community",
+      "axes": [
+        "People",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Read publicly; sign in to contribute",
+        "Meaning": "Shared conversation",
+        "Visibility": "Public room",
+        "Time": "Live and changing"
+      }
+    },
+    {
+      "id": "akashic-records",
+      "title": "Akashic Records",
+      "summary": "Approved public writing and public-safe conversation transcripts with stable reader pages and provenance.",
+      "href": "/akashic-records",
+      "external": false,
+      "availability": "public",
+      "kind": "archive",
+      "axes": [
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Read without an account",
+        "Meaning": "Published writing and conversations",
+        "Visibility": "Public approved records",
+        "Time": "Stable records in a growing archive"
+      }
+    },
+    {
+      "id": "words",
+      "title": "Words and symbols",
+      "summary": "Definitions for specialist words, abbreviations, and symbols used across public Apocky pages.",
+      "href": "/words",
+      "external": false,
+      "availability": "public",
+      "kind": "reference",
+      "axes": [
+        "Meaning",
+        "Visibility"
+      ],
+      "coordinates": {
+        "People": "For any reader who wants a definition",
+        "Meaning": "Plain-language vocabulary",
+        "Visibility": "Public",
+        "Time": "Updated when terminology changes"
+      }
+    },
+    {
+      "id": "omnoid",
+      "title": "Omnoid Singularity",
+      "summary": "An evolving cosmology presented with explicit boundaries between authored ideas, mathematical motifs, and open hypotheses.",
+      "href": "/omnoid-singularity",
+      "external": false,
+      "availability": "public",
+      "kind": "cosmology",
+      "axes": [
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Read and examine the model",
+        "Meaning": "Authored cosmology with evidence labels",
+        "Visibility": "Public",
+        "Time": "Evolving work"
+      }
+    },
+    {
+      "id": "labyrinth",
+      "title": "Labyrinth of Apocalypse",
+      "summary": "A game shaped by procedural history, persistent consequences, strange systems, and discovery.",
+      "href": "/download",
+      "external": false,
+      "availability": "public",
+      "kind": "game",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Download and try an early build",
+        "Meaning": "Playable game project",
+        "Visibility": "Public test build",
+        "Time": "Alpha; unfinished and changing"
+      }
+    },
+    {
+      "id": "support",
+      "title": "Download or support",
+      "summary": "The public explanation of downloads, optional support, external providers, and what a contribution does not purchase.",
+      "href": "/buy",
+      "external": false,
+      "availability": "public",
+      "kind": "support",
+      "axes": [
+        "People",
+        "Visibility"
+      ],
+      "coordinates": {
+        "People": "Choose freely whether to contribute",
+        "Meaning": "Downloads and optional support terms",
+        "Visibility": "Public before any handoff",
+        "Time": "Current published terms"
+      }
+    },
+    {
+      "id": "membership",
+      "title": "Membership and support",
+      "summary": "A public guide to the active Patreon, Ko-fi, and Chaos Tarot paths that help sustain independent work.",
+      "href": "/membership",
+      "external": false,
+      "availability": "public",
+      "kind": "support",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Choose a product, recurring patronage, direct support, or no payment",
+        "Meaning": "Active external paths that sustain the work",
+        "Visibility": "Public terms before every external handoff",
+        "Time": "Current provider terms apply after your click"
+      }
+    },
+    {
+      "id": "principles",
+      "title": "Interface principles",
+      "summary": "Consent, sovereignty, truthful appearance, and complete stillness beneath the public spatial interface.",
+      "href": "/principles",
+      "external": false,
+      "availability": "public",
+      "kind": "principles",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Participation remains voluntary",
+        "Meaning": "Interface truth and consent boundaries",
+        "Visibility": "Public",
+        "Time": "Persistent design invariants"
+      }
+    },
+    {
+      "id": "chaos-tarot",
+      "title": "Chaos Tarot",
+      "summary": "An evolving symbolic-art and tarot project built around atmosphere, reflection, and authored interpretation.",
+      "href": "https://chaos-tarot.com",
+      "external": true,
+      "availability": "external_public",
+      "kind": "creative_project",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Choose whether to continue on another site",
+        "Meaning": "Symbolic art, tarot, and reflection",
+        "Visibility": "External public site",
+        "Time": "Evolving project"
+      }
+    },
+    {
+      "id": "cssl",
+      "title": "CSSL",
+      "summary": "A plain introduction to the CSSL programming language, with technical examples and current status.",
+      "href": "/docs/cssl-language",
+      "external": false,
+      "availability": "public",
+      "kind": "language",
+      "axes": [
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Read the public guide without an account",
+        "Meaning": "Programming language and technical examples",
+        "Visibility": "Public on apocky.com",
+        "Time": "Current documented status"
+      }
+    },
+    {
+      "id": "cslv3",
+      "title": "CSLv3",
+      "summary": "Definitions for the relationships, evidence marks, uncertainty symbols, and rules used in CSLv3 notation.",
+      "href": "/words#symbols",
+      "external": false,
+      "availability": "public",
+      "kind": "language",
+      "axes": [
+        "Meaning",
+        "Visibility"
+      ],
+      "coordinates": {
+        "People": "Read the public symbol definitions",
+        "Meaning": "Reasoning and specification notation",
+        "Visibility": "Public on apocky.com",
+        "Time": "Updated with the shared glossary"
+      }
+    },
+    {
+      "id": "ko-fi",
+      "title": "Ko-fi",
+      "summary": "A one-time or recurring contribution through Ko-fi. The provider’s own terms and privacy policy apply after you follow the link.",
+      "href": "https://ko-fi.com/oneinfinity",
+      "external": true,
+      "availability": "external_public",
+      "kind": "support",
+      "axes": [
+        "People",
+        "Visibility"
+      ],
+      "coordinates": {
+        "People": "Optional visitor-chosen contribution",
+        "Meaning": "One-time or recurring support",
+        "Visibility": "External provider",
+        "Time": "Only contacted after your click"
+      }
+    },
+    {
+      "id": "patreon",
+      "title": "Patreon",
+      "summary": "Recurring support through Patreon. The provider’s own terms and privacy policy apply after you follow the link.",
+      "href": "https://www.patreon.com/0ne1nfinity",
+      "external": true,
+      "availability": "external_public",
+      "kind": "support",
+      "axes": [
+        "People",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Optional visitor-chosen contribution",
+        "Meaning": "Recurring support",
+        "Visibility": "External provider",
+        "Time": "Only contacted after your click"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "home",
+      "target": "start",
+      "relation": "opens",
+      "statement": "The public home opens Start here as a guided orientation route."
+    },
+    {
+      "source": "home",
+      "target": "atlas",
+      "relation": "opens",
+      "statement": "The public home opens the Atlas as its orientation layer."
+    },
+    {
+      "source": "home",
+      "target": "clearing",
+      "relation": "opens",
+      "statement": "The public home opens The Clearing for shared conversation."
+    },
+    {
+      "source": "home",
+      "target": "akashic-records",
+      "relation": "features",
+      "statement": "The public home features the approved writing archive."
+    },
+    {
+      "source": "home",
+      "target": "divination",
+      "relation": "features",
+      "statement": "The public home features the grounded divination guide."
+    },
+    {
+      "source": "home",
+      "target": "theory-of-everything",
+      "relation": "features",
+      "statement": "The public home features the evidence-typed Theory of Everything question."
+    },
+    {
+      "source": "home",
+      "target": "omnoid",
+      "relation": "features",
+      "statement": "The public home features the authored cosmology."
+    },
+    {
+      "source": "home",
+      "target": "labyrinth",
+      "relation": "features",
+      "statement": "The public home features the game project."
+    },
+    {
+      "source": "home",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The public home offers a direct handoff to Chaos Tarot."
+    },
+    {
+      "source": "home",
+      "target": "cssl",
+      "relation": "opens",
+      "statement": "The public home opens the same-origin CSSL language guide."
+    },
+    {
+      "source": "home",
+      "target": "cslv3",
+      "relation": "defines",
+      "statement": "The public words page defines the symbols used in CSLv3 notation."
+    },
+    {
+      "source": "start",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "Start here offers a direct handoff to a free Chaos Tarot reading."
+    },
+    {
+      "source": "start",
+      "target": "atlas",
+      "relation": "opens",
+      "statement": "Start here opens the Atlas for visitors who want the big picture."
+    },
+    {
+      "source": "start",
+      "target": "akashic-records",
+      "relation": "opens",
+      "statement": "Start here opens the archive for visitors who want the source material."
+    },
+    {
+      "source": "start",
+      "target": "clearing",
+      "relation": "opens",
+      "statement": "Start here opens The Clearing for visitors who want to participate."
+    },
+    {
+      "source": "start",
+      "target": "quests",
+      "relation": "opens",
+      "statement": "Start here opens the device-local public quest route."
+    },
+    {
+      "source": "start",
+      "target": "membership",
+      "relation": "supports",
+      "statement": "Start here links to the active membership and support paths."
+    },
+    {
+      "source": "start",
+      "target": "divination",
+      "relation": "opens",
+      "statement": "Start here opens the grounded guide for visitors who want to understand divination before practicing."
+    },
+    {
+      "source": "start",
+      "target": "theory-of-everything",
+      "relation": "opens",
+      "statement": "Start here opens the evidence-typed overview for visitors asking the largest cosmology question."
+    },
+    {
+      "source": "atlas",
+      "target": "clearing",
+      "relation": "indexes",
+      "statement": "The Atlas indexes The Clearing as a public shared space."
+    },
+    {
+      "source": "atlas",
+      "target": "akashic-records",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the approved public archive."
+    },
+    {
+      "source": "atlas",
+      "target": "words",
+      "relation": "defines",
+      "statement": "The Atlas dictionary uses the public words and symbols reference."
+    },
+    {
+      "source": "atlas",
+      "target": "omnoid",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the authored cosmology."
+    },
+    {
+      "source": "atlas",
+      "target": "labyrinth",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the public game page."
+    },
+    {
+      "source": "atlas",
+      "target": "support",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the published download and support terms."
+    },
+    {
+      "source": "atlas",
+      "target": "membership",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the active membership and support guide."
+    },
+    {
+      "source": "atlas",
+      "target": "quests",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the device-local public quests."
+    },
+    {
+      "source": "atlas",
+      "target": "status",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the privacy-bounded public status view."
+    },
+    {
+      "source": "atlas",
+      "target": "divination",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the grounded guide to tarot and divination systems."
+    },
+    {
+      "source": "atlas",
+      "target": "theory-of-everything",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the evidence-typed Theory of Everything overview."
+    },
+    {
+      "source": "atlas",
+      "target": "principles",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the public interface principles."
+    },
+    {
+      "source": "atlas",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The Atlas offers a direct external handoff to Chaos Tarot."
+    },
+    {
+      "source": "atlas",
+      "target": "cssl",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the same-origin CSSL language guide."
+    },
+    {
+      "source": "atlas",
+      "target": "cslv3",
+      "relation": "defines",
+      "statement": "The Atlas dictionary links to the public CSLv3 symbol key."
+    },
+    {
+      "source": "support",
+      "target": "ko-fi",
+      "relation": "supports",
+      "statement": "The support page offers an optional external contribution through Ko-fi."
+    },
+    {
+      "source": "support",
+      "target": "patreon",
+      "relation": "supports",
+      "statement": "The support page offers optional recurring support through Patreon."
+    },
+    {
+      "source": "membership",
+      "target": "ko-fi",
+      "relation": "supports",
+      "statement": "Membership offers direct support through Ko-fi under the provider’s published terms."
+    },
+    {
+      "source": "membership",
+      "target": "patreon",
+      "relation": "supports",
+      "statement": "Membership offers recurring patronage through Patreon under the provider’s published terms."
+    },
+    {
+      "source": "membership",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "Membership links to current Chaos Tarot product plans on the independent site."
+    },
+    {
+      "source": "membership",
+      "target": "akashic-records",
+      "relation": "opens",
+      "statement": "Membership keeps the public archive visible as a no-payment route."
+    },
+    {
+      "source": "membership",
+      "target": "clearing",
+      "relation": "opens",
+      "statement": "Membership keeps public reading in The Clearing visible as a no-payment route."
+    },
+    {
+      "source": "membership",
+      "target": "words",
+      "relation": "opens",
+      "statement": "Membership keeps the public dictionary visible as a no-payment route."
+    },
+    {
+      "source": "quests",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The first public quest links to a free Chaos Tarot reading."
+    },
+    {
+      "source": "quests",
+      "target": "akashic-records",
+      "relation": "opens",
+      "statement": "A public quest asks visitors to open an approved archive record."
+    },
+    {
+      "source": "quests",
+      "target": "words",
+      "relation": "opens",
+      "statement": "A public quest asks visitors to learn a word or symbol."
+    },
+    {
+      "source": "quests",
+      "target": "omnoid",
+      "relation": "opens",
+      "statement": "A public quest asks visitors to examine the Omnoid evidence boundaries."
+    },
+    {
+      "source": "quests",
+      "target": "labyrinth",
+      "relation": "opens",
+      "statement": "A public quest asks visitors to inspect the game build before downloading."
+    },
+    {
+      "source": "quests",
+      "target": "clearing",
+      "relation": "opens",
+      "statement": "A public quest opens The Clearing while keeping participation optional."
+    },
+    {
+      "source": "quests",
+      "target": "membership",
+      "relation": "supports",
+      "statement": "The final public quest asks visitors to review active support paths without requiring payment."
+    },
+    {
+      "source": "divination",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The divination guide offers direct handoffs to free Chaos Tarot experiences."
+    },
+    {
+      "source": "divination",
+      "target": "words",
+      "relation": "defines",
+      "statement": "The public words reference defines specialist language used across Apocky."
+    },
+    {
+      "source": "theory-of-everything",
+      "target": "omnoid",
+      "relation": "opens",
+      "statement": "The Theory of Everything overview opens the full Omnoid synthesis."
+    },
+    {
+      "source": "theory-of-everything",
+      "target": "words",
+      "relation": "defines",
+      "statement": "The Theory of Everything overview links to plain-language definitions for its technical terms."
+    },
+    {
+      "source": "status",
+      "target": "home",
+      "relation": "opens",
+      "statement": "The public status view keeps the home route available as a fallback."
+    },
+    {
+      "source": "status",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The public status view links to the independent Chaos Tarot recovery path."
+    },
+    {
+      "source": "atlas",
+      "target": "ko-fi",
+      "relation": "hands_off_to",
+      "statement": "The Atlas exposes Ko-fi as an optional external support relay."
+    },
+    {
+      "source": "atlas",
+      "target": "patreon",
+      "relation": "hands_off_to",
+      "statement": "The Atlas exposes Patreon as an optional external support relay."
+    }
+  ]
+}

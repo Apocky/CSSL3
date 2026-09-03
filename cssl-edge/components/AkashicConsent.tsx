@@ -151,9 +151,9 @@ export function AkashicConsent(): React.ReactElement | null {
           minHeight: '44px',
           padding: '0.5rem 0.8rem',
           borderRadius: '999px',
-          border: '1px solid rgba(168, 216, 192, 0.24)',
-          backgroundColor: 'rgba(9, 14, 11, 0.94)',
-          color: '#eee7d8',
+          border: '1px solid rgba(120, 231, 255, 0.3)',
+          backgroundColor: 'rgba(4, 6, 20, 0.96)',
+          color: '#e7e9ff',
           cursor: 'pointer',
           font: '600 0.72rem system-ui, sans-serif',
         }}
@@ -182,13 +182,13 @@ export function AkashicConsent(): React.ReactElement | null {
         width: 'min(28rem, calc(100vw - 1rem))',
         maxWidth: 'calc(100vw - 1rem)',
         fontFamily: 'system-ui, sans-serif',
-        color: '#eee7d8',
+        color: '#e7e9ff',
       }}
     >
       <div
         style={{
-          backgroundColor: '#0b100d',
-          border: '1px solid #2a352e',
+          backgroundColor: '#050719',
+          border: '1px solid #293660',
           borderRadius: '0.65rem',
           width: '100%',
           maxHeight: 'min(32rem, calc(100vh - 4rem), calc(100dvh - 4rem))',
@@ -226,7 +226,7 @@ export function AkashicConsent(): React.ReactElement | null {
             system is sent until you choose a level and save it.
           </p>
           {blackout && (
-            <p role="status" style={{ lineHeight: 1.4, fontSize: '0.72rem', color: '#a8d8c0', margin: '0.5rem 0 0' }}>
+            <p role="status" style={{ lineHeight: 1.4, fontSize: '0.72rem', color: '#78e7ff', margin: '0.5rem 0 0' }}>
               This page never uses optional reporting. A saved choice applies
               only after you leave this page.
             </p>
@@ -258,10 +258,10 @@ export function AkashicConsent(): React.ReactElement | null {
                   minHeight: '52px',
                   textAlign: 'left',
                   padding: '0.5rem 0.65rem',
-                  backgroundColor: chosen === opt.tier ? '#17211b' : '#090d0b',
-                  border: chosen === opt.tier ? '2px solid #72d7bd' : '1px solid #304036',
+                  backgroundColor: chosen === opt.tier ? '#11183c' : '#060817',
+                  border: chosen === opt.tier ? '2px solid #78e7ff' : '1px solid #293660',
                   borderRadius: '0.45rem',
-                  color: '#eee7d8',
+                  color: '#e7e9ff',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
@@ -284,7 +284,7 @@ export function AkashicConsent(): React.ReactElement | null {
             key={selectedTier?.tier}
             open={tierDetailOpen}
             onToggle={(event) => setTierDetailOpen(event.currentTarget.open)}
-            style={{ marginTop: '0.55rem', borderTop: '1px solid #2a352e' }}
+            style={{ marginTop: '0.55rem', borderTop: '1px solid #293660' }}
           >
             <summary
               style={{
@@ -303,7 +303,7 @@ export function AkashicConsent(): React.ReactElement | null {
             </p>
           </details>
 
-          <details style={{ borderTop: '1px solid #2a352e' }}>
+          <details style={{ borderTop: '1px solid #293660' }}>
             <summary
               style={{
                 minHeight: '44px',
@@ -334,8 +334,8 @@ export function AkashicConsent(): React.ReactElement | null {
             gap: '0.5rem',
             flexWrap: 'wrap',
             padding: '0.7rem 0.85rem',
-            borderTop: '1px solid #2a352e',
-            backgroundColor: '#0b100d',
+            borderTop: '1px solid #293660',
+            backgroundColor: '#050719',
           }}
         >
           <button
@@ -344,8 +344,8 @@ export function AkashicConsent(): React.ReactElement | null {
             style={{
               minHeight: '44px',
               padding: '0.55rem 0.85rem',
-              backgroundColor: '#d6b170',
-              color: '#10130f',
+              background: 'linear-gradient(135deg, #78e7ff, #a78bfa)',
+              color: '#03040d',
               border: 'none',
               borderRadius: '0.4rem',
               cursor: 'pointer',
@@ -364,8 +364,8 @@ export function AkashicConsent(): React.ReactElement | null {
               minHeight: '44px',
               padding: '0.55rem 0.85rem',
               backgroundColor: 'transparent',
-              color: '#eee7d8',
-              border: '1px solid #405044',
+              color: '#e7e9ff',
+              border: '1px solid #5265a7',
               borderRadius: '0.4rem',
               cursor: 'pointer',
               fontSize: '0.82rem',

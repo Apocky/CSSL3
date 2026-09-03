@@ -1,7 +1,7 @@
 # Apocky
 
-Apocky.com is Shawn Apocky's creative home for projects, rooms, writing,
-social links, and optional ways to support the work.
+Apocky.com is Shawn Apocky's interconnected creative home for divination,
+games, software, cosmology, public knowledge, community, and support.
 
 This file lists public information. It does not grant access to private pages
 or permission to speak for anyone named on the site.
@@ -9,12 +9,17 @@ or permission to speak for anyone named on the site.
 ## Main public pages
 
 - Home and project links: https://www.apocky.com/
+- Guided starting paths: https://www.apocky.com/start
+- Grounded guide to Chaos Tarot and divination systems: https://www.apocky.com/divination
+- Evidence-typed introduction to the Omnoid and the Theory of Everything question: https://www.apocky.com/theory-of-everything
 - Omnoid Singularity, Shawn Apocky's authored cosmology with visual and CSLv3 maps: https://www.apocky.com/omnoid-singularity
 - Akashic Records, Shawn Apocky's public works and conversations archive: https://www.apocky.com/akashic-records
 - Live public social room, The Clearing: https://www.apocky.com/clearing
 - Project Atlas: https://www.apocky.com/atlas
-- Interface principles: https://www.apocky.com/principles
-- Membership covenant and designed plans: https://www.apocky.com/membership
+- Interface principles and truth boundaries: https://www.apocky.com/principles
+- Active membership and external support paths: https://www.apocky.com/membership
+- Device-local public quests: https://www.apocky.com/quests
+- Privacy-bounded public system status: https://www.apocky.com/status
 - Words and symbols: https://www.apocky.com/words
 - Labyrinth of Apocalypse download: https://www.apocky.com/download
 - Optional support details and external options: https://www.apocky.com/buy
@@ -24,8 +29,8 @@ or permission to speak for anyone named on the site.
 
 ## Projects and public profiles
 
-- CSSL programming language: https://cssl.dev/
-- CSLv3 notation: https://cssl.dev/CSLv3
+- CSSL programming language guide (local fallback while cssl.dev is unavailable): https://www.apocky.com/docs/cssl-language
+- CSLv3 words and notation key: https://www.apocky.com/words#symbols
 - Chaos Tarot: https://chaos-tarot.com/
 - Public works and Codex conversations: https://www.apocky.com/akashic-records
 - Hash-sealed archive catalog (JSON): https://www.apocky.com/akashic-records/manifest.json
@@ -54,3 +59,5 @@ attributed participants.
 
 Machine-readable site information: https://www.apocky.com/.well-known/apocky.json
 File format: https://www.apocky.com/schemas/site-manifest.v1.json
+Public constellation graph: https://www.apocky.com/constellation.json
+Constellation graph format: https://www.apocky.com/schemas/public-surface.v1.json

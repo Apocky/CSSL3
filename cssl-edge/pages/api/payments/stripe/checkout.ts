@@ -219,8 +219,8 @@ export async function testCheckoutStubModeShape(): Promise<void> {
   _resetStripeForTests();
   const { req, res, out } = mockReqRes('POST', {
     product_id: 'loa-cosmetic-mycelial-bloom',
-    success_url: 'https://apocky.com/account?paid=1',
-    cancel_url: 'https://apocky.com/buy?cancelled=1',
+    success_url: 'https://www.apocky.com/account?paid=1',
+    cancel_url: 'https://www.apocky.com/buy?cancelled=1',
     cap: STRIPE_CHECKOUT_INIT,
   });
   await handler(req, res);
@@ -235,8 +235,8 @@ export async function testCheckoutStubModeShape(): Promise<void> {
 export async function testCheckoutCapDenied(): Promise<void> {
   const { req, res, out } = mockReqRes('POST', {
     product_id: 'loa-cosmetic-mycelial-bloom',
-    success_url: 'https://apocky.com/account',
-    cancel_url: 'https://apocky.com/buy',
+    success_url: 'https://www.apocky.com/account',
+    cancel_url: 'https://www.apocky.com/buy',
     cap: 0,
   });
   await handler(req, res);

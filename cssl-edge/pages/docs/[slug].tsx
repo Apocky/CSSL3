@@ -16,9 +16,7 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
   const displayTitle = isLegacyAkashicSpecification
     ? 'Akashic Records — legacy Labyrinth technical specification'
     : spec.title;
-  const canonicalUrl = isLegacyAkashicSpecification
-    ? `https://www.apocky.com/docs/${spec.slug}`
-    : `https://apocky.com/docs/${spec.slug}`;
+  const canonicalUrl = `https://www.apocky.com/docs/${spec.slug}`;
   return (
     <>
       <Head>

@@ -51,6 +51,10 @@ export function clusterSignature(stack: string, scope: string | undefined): stri
   return hash16(`${scope ?? 'global'}|${frames.join('|')}`);
 }
 
+export function publicErrorCode(err: Error, scope: string | undefined): string {
+  return `APX-RENDER-${clusterSignature(err.stack ?? err.name, scope).toUpperCase()}`;
+}
+
 export class AkashicErrorBoundary extends React.Component<AkashicErrorBoundaryProps, AEBState> {
   override state: AEBState = { err: null };
 
@@ -75,46 +79,48 @@ export class AkashicErrorBoundary extends React.Component<AkashicErrorBoundaryPr
       const fb = this.props.fallback;
       if (typeof fb === 'function') return fb(this.state.err);
       if (fb !== undefined) return fb;
-      return defaultFallback(this.state.err, () => this.setState({ err: null }));
+      return defaultFallback(this.state.err, this.props.scope, () => this.setState({ err: null }));
     }
     return this.props.children;
   }
 }
 
 // ─── default-fallback · sovereignty-respecting copy · NO blame-the-user ────
-function defaultFallback(err: Error, retry: () => void): React.ReactElement {
+function defaultFallback(err: Error, scope: string | undefined, retry: () => void): React.ReactElement {
+  const code = publicErrorCode(err, scope);
   return (
     <div
       role="alert"
       style={{
-        padding: '2rem',
-        margin: '2rem auto',
-        maxWidth: '40rem',
-        backgroundColor: '#15151f',
-        border: '1px solid #303040',
-        borderRadius: '0.5rem',
-        color: '#e6e6f0',
+        padding: 'clamp(1.5rem, 5vw, 3rem)',
+        margin: 'clamp(2rem, 8vw, 6rem) auto',
+        maxWidth: '42rem',
+        background: 'linear-gradient(145deg, rgba(14,17,48,.98), rgba(2,3,14,.99))',
+        border: '1px solid rgba(120, 231, 255, .38)',
+        borderRadius: '1.1rem',
+        color: '#f5f3ff',
         fontFamily: 'system-ui, sans-serif',
+        boxShadow: '0 30px 90px rgba(0,0,0,.72)',
       }}
     >
       <h2 style={{ marginTop: 0, fontSize: '1.25rem' }}>
-        This page hit an error
+        This signal broke before it reached you
       </h2>
       <p style={{ opacity: 0.8 }}>
-        You can retry this view or refresh the page. Diagnostics are reported
-        only when you have explicitly enabled them and this route permits it.
+        Retry the view, refresh the page, or use the public status route. Diagnostics
+        are reported only when you have explicitly enabled them and this route permits it.
       </p>
       <pre
         style={{
-          backgroundColor: '#0a0a0f',
+          backgroundColor: '#030412',
           padding: '0.75rem',
           borderRadius: '0.25rem',
           fontSize: '0.85rem',
           overflowX: 'auto',
-          color: '#aaa',
+          color: '#78e7ff',
         }}
       >
-        {err.message}
+        {code}
       </pre>
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
         <button
@@ -122,16 +128,17 @@ function defaultFallback(err: Error, retry: () => void): React.ReactElement {
           onClick={retry}
           style={{
             padding: '0.5rem 1rem',
-            backgroundColor: '#5a4cff',
-            color: 'white',
+            background: 'linear-gradient(110deg, #78e7ff, #9f9cff)',
+            color: '#050515',
             border: 'none',
             borderRadius: '0.25rem',
             cursor: 'pointer',
           }}
         >
-          retry
+          retry view
         </button>
         <button
+          type="button"
           onClick={() => {
             if (typeof window !== 'undefined') window.location.reload();
           }}
@@ -146,6 +153,18 @@ function defaultFallback(err: Error, retry: () => void): React.ReactElement {
         >
           refresh page
         </button>
+        <a
+          href="/status"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '0.5rem 1rem',
+            color: '#78e7ff',
+            textDecoration: 'none',
+          }}
+        >
+          system status
+        </a>
       </div>
     </div>
   );

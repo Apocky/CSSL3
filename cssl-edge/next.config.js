@@ -2,6 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Playwright binds the local verification server to this loopback host.
+  // Declare that development origin explicitly so Next does not treat its
+  // own test assets as a future cross-origin error. Production is unaffected.
+  allowedDevOrigins: ['127.0.0.1'],
   // Restrict route discovery to .ts/.tsx (skip *.test.ts files even if accidentally
   // dropped under pages/). Tests live in tests/ outside pages/ by convention.
   pageExtensions: ['ts', 'tsx', 'js', 'jsx'],

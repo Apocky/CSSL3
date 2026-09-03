@@ -16,6 +16,33 @@
       "availability": "public"
     },
     {
+      "rel": "orientation",
+      "href": "/start",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "divination_guide",
+      "href": "/divination",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "theory_of_everything_guide",
+      "href": "/theory-of-everything",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
       "rel": "public_social_room",
       "href": "/clearing",
       "method": "GET",
@@ -35,6 +62,15 @@
       "availability": "public"
     },
     {
+      "rel": "public_surface_graph",
+      "href": "/constellation.json",
+      "method": "GET",
+      "media_type": "application/json",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
       "rel": "interface_principles",
       "href": "/principles",
       "method": "GET",
@@ -44,13 +80,31 @@
       "availability": "public"
     },
     {
-      "rel": "membership_design_study",
+      "rel": "membership_and_support",
       "href": "/membership",
       "method": "GET",
       "media_type": "text/html",
       "authn": "none",
-      "authorization": "public_read_only",
-      "availability": "design_study_not_enrollment"
+      "authorization": "public",
+      "availability": "public_external_checkout_handoffs"
+    },
+    {
+      "rel": "public_quests",
+      "href": "/quests",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public_device_local_progress",
+      "availability": "public"
+    },
+    {
+      "rel": "public_status",
+      "href": "/status",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public_bounded_health",
+      "availability": "public"
     },
     {
       "rel": "words_and_symbols",
@@ -117,20 +171,47 @@
     },
     {
       "rel": "language",
-      "href": "https://cssl.dev/",
+      "href": "/docs/cssl-language",
       "method": "GET",
       "media_type": "text/html",
       "authn": "none",
       "authorization": "public",
-      "availability": "external_public"
+      "availability": "public_local_fallback"
     },
     {
       "rel": "notation",
-      "href": "https://cssl.dev/CSLv3",
+      "href": "/words#symbols",
       "method": "GET",
       "media_type": "text/html",
       "authn": "none",
       "authorization": "public",
+      "availability": "public_local_fallback"
+    },
+    {
+      "rel": "creative_project",
+      "href": "https://chaos-tarot.com/",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "independent_account_optional",
+      "authorization": "external_public",
+      "availability": "external_public"
+    },
+    {
+      "rel": "external_support",
+      "href": "https://ko-fi.com/oneinfinity",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "provider_controlled",
+      "authorization": "external_public",
+      "availability": "external_public"
+    },
+    {
+      "rel": "external_membership",
+      "href": "https://www.patreon.com/0ne1nfinity",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "provider_controlled",
+      "authorization": "external_public",
       "availability": "external_public"
     }
   ],

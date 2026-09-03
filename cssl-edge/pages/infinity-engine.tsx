@@ -9,7 +9,7 @@ const InfinityEngine: NextPage = () => (
         name="description"
         content="A plain-language explanation of the Infinity Engine name, the shared architecture research behind it, and its current status."
       />
-      <link rel="canonical" href="https://apocky.com/infinity-engine" />
+      <link rel="canonical" href="https://www.apocky.com/infinity-engine" />
       <style>{`
         .ie-page {
           width: min(900px, calc(100% - 36px));
@@ -80,11 +80,11 @@ const InfinityEngine: NextPage = () => (
           </div>
           <div className="ie-card">
             <h3>CSSL</h3>
-            <p>A programming language under development. <a href="https://cssl.dev">Visit cssl.dev.</a></p>
+            <p>A programming language under development. <a href="/docs/cssl-language">Read the local CSSL guide.</a></p>
           </div>
           <div className="ie-card">
             <h3>CSLv3</h3>
-            <p>A compact notation used in technical specifications. <a href="https://cssl.dev/CSLv3">Read its introduction.</a></p>
+            <p>A compact notation used in technical specifications. <a href="/words#symbols">Read the local notation key.</a></p>
           </div>
           <div className="ie-card">
             <h3>Planned network research</h3>
