@@ -14,10 +14,11 @@ async function expectNoSeriousAccessibilityFindings(page: import('@playwright/te
 
 test('home remains a useful creative-work entry point', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle(/creative works and projects/i);
-  await expect(page.getByRole('heading', { level: 1, name: /Worlds, languages, symbols, and living systems/i })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Explore the work', exact: true })).toHaveAttribute('href', '#projects');
-  await expect(page.getByRole('link', { name: /Enter the Clearing/ }).first()).toHaveAttribute('href', '/clearing');
+  await expect(page).toHaveTitle(/Interconnected worlds, tools, and living ideas/i);
+  await expect(page.getByRole('heading', { level: 1, name: /Follow the signal.*Enter the system/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Begin a free reading/i })).toHaveAttribute('href', 'https://chaos-tarot.com/free-reading?source=apocky-home');
+  await expect(page.getByRole('link', { name: /Explore the Atlas/i }).first()).toHaveAttribute('href', '/atlas');
+  await expect(page.getByRole('link', { name: /The Clearing.*Join the signal/i })).toHaveAttribute('href', '/clearing');
   await expect(page.locator('body')).not.toContainText(/apocrypha/i);
   await expect(page.locator('a[href^="/apoc"], a[href="/chat"], a[href="/apx"]')).toHaveCount(0);
   await expect(page.locator('main')).toHaveCount(1);
@@ -26,8 +27,22 @@ test('home remains a useful creative-work entry point', async ({ page }) => {
   await expectNoSeriousAccessibilityFindings(page);
 });
 
+test('Atlas resolves as the native public map rather than the static fallback', async ({ page }) => {
+  await page.goto('/atlas');
+  await expect(page.getByRole('heading', { level: 1, name: /Constellation Atlas/i })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Constellation Atlas/i })).toHaveCount(1);
+  await expect(page.locator('main')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Map', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Index', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.apocky.com/atlas');
+  await expect(page.locator('body')).not.toContainText(/Seven doors/i);
+  await expectNoHorizontalOverflow(page);
+  await expectNoSeriousAccessibilityFindings(page);
+});
+
 test('ordinary applications remain reachable while retired web paths are neutral 404s', async ({ request }) => {
-  for (const route of ['/clearing', '/account', '/atlas']) {
+  for (const route of ['/clearing', '/account', '/atlas', '/start', '/quests', '/status', '/membership', '/divination', '/theory-of-everything']) {
     const response = await request.get(route);
     expect(response.status(), route).toBeLessThan(400);
   }
@@ -88,5 +103,5 @@ test('machine-readable discovery surfaces omit retired service routes', async ({
 test('legacy Commons entry redirects to the native hub', async ({ page }) => {
   await page.goto('/commons');
   await expect.poll(() => new URL(page.url()).pathname).toBe('/');
-  await expect(page.getByRole('heading', { level: 1, name: /Worlds, languages, symbols, and living systems/i })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Follow the signal.*Enter the system/i })).toBeVisible();
 });

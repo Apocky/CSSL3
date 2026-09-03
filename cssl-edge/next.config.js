@@ -17,18 +17,6 @@ const nextConfig = {
       { source: '/commons/clearing.html', destination: '/clearing', permanent: true },
     ];
   },
-  // These three reference pages remain intentional static documents. The
-  // creative homepage and live Clearing are distinct native React routes and
-  // must never shadow one another.
-  async rewrites() {
-    return {
-      beforeFiles: [
-        { source: '/atlas', destination: '/commons/atlas.html' },
-        { source: '/membership', destination: '/commons/membership.html' },
-        { source: '/principles', destination: '/commons/principles.html' },
-      ],
-    };
-  },
 };
 
 module.exports = nextConfig;

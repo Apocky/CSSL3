@@ -1,0 +1,945 @@
+.root {
+  --atlas-bg: #05050b;
+  --atlas-panel: rgba(13, 13, 27, 0.92);
+  --atlas-panel-soft: rgba(20, 19, 42, 0.72);
+  --atlas-line: rgba(165, 174, 255, 0.2);
+  --atlas-line-strong: rgba(151, 164, 255, 0.56);
+  --atlas-ink: #f7f5ff;
+  --atlas-copy: #cbcbe2;
+  --atlas-muted: #a9a9c5;
+  --atlas-blue: #7da8ff;
+  --atlas-indigo: #8c91ff;
+  --atlas-violet: #c19cff;
+  --atlas-cyan: #76d8f5;
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  overflow: hidden;
+  color: var(--atlas-ink);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(58, 75, 180, 0.2), transparent 31rem),
+    radial-gradient(circle at 88% 22%, rgba(117, 61, 170, 0.17), transparent 34rem),
+    linear-gradient(180deg, #080812 0%, var(--atlas-bg) 48%, #080711 100%);
+}
+
+.root::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  opacity: 0.28;
+  background-image:
+    linear-gradient(rgba(133, 145, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(133, 145, 255, 0.08) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, black, transparent 64%);
+}
+
+.hero,
+.explorer,
+.relaySection,
+.truthNote {
+  width: min(1240px, calc(100% - 40px));
+  margin-inline: auto;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(270px, 0.55fr);
+  gap: clamp(36px, 8vw, 104px);
+  align-items: flex-end;
+  padding: clamp(76px, 10vw, 132px) 0 68px;
+}
+
+.kicker,
+.eyebrow,
+.microcopy {
+  margin: 0;
+  color: var(--atlas-cyan);
+  font-family: var(--apx-mono);
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  max-width: 850px;
+  margin: 14px 0 0;
+  font-family: var(--apx-display);
+  font-size: clamp(3.2rem, 9vw, 7.6rem);
+  font-weight: 680;
+  letter-spacing: -0.062em;
+  line-height: 0.88;
+}
+
+.hero h1 span {
+  color: transparent;
+  background: linear-gradient(105deg, #bcd8ff 0%, var(--atlas-indigo) 48%, #e2b8ff 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.lede {
+  max-width: 760px;
+  margin: 28px 0 0;
+  color: var(--atlas-copy);
+  font-size: clamp(1rem, 2vw, 1.16rem);
+  line-height: 1.75;
+}
+
+.overview {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--atlas-line);
+  border-radius: 22px;
+  background: var(--atlas-line);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+}
+
+.overview div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 17px 20px;
+  background: rgba(8, 8, 18, 0.96);
+}
+
+.overview dt {
+  color: var(--atlas-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.overview dd {
+  margin: 0;
+  color: var(--atlas-violet);
+  font-family: var(--apx-mono);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.explorer {
+  padding: 40px 0 90px;
+}
+
+.explorerHeading,
+.sectionHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 36px;
+  align-items: flex-end;
+}
+
+.explorerHeading h2,
+.sectionHeading h2,
+.truthNote h2 {
+  margin: 8px 0 0;
+  font-family: var(--apx-display);
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.explorerHeading > p,
+.sectionHeading > p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--atlas-copy);
+  line-height: 1.65;
+}
+
+.sectionHeading a {
+  color: var(--atlas-blue);
+  font-weight: 760;
+  text-underline-offset: 0.25em;
+}
+
+.viewSwitch {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-width: 630px;
+  margin: 32px 0 0;
+  padding: 6px;
+  border: 1px solid var(--atlas-line);
+  border-radius: 16px;
+  background: rgba(7, 7, 16, 0.9);
+}
+
+.viewSwitch button,
+.resetButton,
+.recovery button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--atlas-copy);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 760;
+}
+
+.viewSwitch button:hover,
+.viewSwitch button[aria-pressed='true'] {
+  border-color: rgba(137, 151, 255, 0.44);
+  color: var(--atlas-ink);
+  background: linear-gradient(135deg, rgba(68, 91, 212, 0.34), rgba(129, 76, 184, 0.28));
+}
+
+.filters {
+  margin: 22px 0 0;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--atlas-line);
+  border-radius: 22px;
+  background: var(--atlas-panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+.searchField,
+.filterGrid label {
+  display: grid;
+  gap: 8px;
+  color: var(--atlas-muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.045em;
+}
+
+.searchField input,
+.filterGrid select {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(158, 169, 255, 0.3);
+  border-radius: 12px;
+  outline: none;
+  color: var(--atlas-ink);
+  background: #0b0b18;
+}
+
+.searchField input {
+  padding: 0 16px;
+  font-size: 1rem;
+}
+
+.filterGrid select {
+  padding: 0 38px 0 13px;
+}
+
+.searchField input:focus,
+.filterGrid select:focus {
+  border-color: var(--atlas-blue);
+  box-shadow: 0 0 0 3px rgba(95, 128, 255, 0.22);
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 16px 0 0;
+}
+
+.filterFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 16px 0 0;
+}
+
+.resultStatus {
+  margin: 0;
+  color: var(--atlas-muted);
+  font-family: var(--apx-mono);
+  font-size: 0.82rem;
+}
+
+.resetButton,
+.recovery button {
+  padding: 0 16px;
+  border-color: var(--atlas-line-strong);
+  color: var(--atlas-blue);
+}
+
+.resetButton:hover,
+.recovery button:hover {
+  color: var(--atlas-ink);
+  background: rgba(104, 122, 255, 0.14);
+}
+
+.noScript {
+  margin: 18px 0 0;
+  padding: 16px 18px;
+  border-left: 3px solid var(--atlas-violet);
+  color: var(--atlas-copy);
+  background: rgba(25, 21, 44, 0.72);
+  line-height: 1.6;
+}
+
+.viewPanel {
+  margin: 24px 0 0;
+}
+
+.mapLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(310px, 0.72fr);
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.mapColumn,
+.detailCard,
+.indexCard,
+.relayCard,
+.dictionary section,
+.recovery {
+  border: 1px solid var(--atlas-line);
+  border-radius: 22px;
+  background: var(--atlas-panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+.mapColumn {
+  overflow: hidden;
+}
+
+.mapStage {
+  position: relative;
+  min-height: 460px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at center, rgba(73, 88, 202, 0.2), transparent 35%),
+    linear-gradient(180deg, rgba(18, 18, 39, 0.9), rgba(6, 6, 14, 0.98));
+}
+
+.mapStage::after {
+  position: absolute;
+  inset: 12% 18%;
+  border: 1px solid rgba(155, 150, 255, 0.12);
+  border-radius: 50%;
+  pointer-events: none;
+  content: '';
+}
+
+.mapSvg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 460px;
+}
+
+.edge,
+.edgeActive {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.2;
+}
+
+.edge {
+  stroke: rgba(139, 151, 255, 0.22);
+}
+
+.edgeActive {
+  stroke: rgba(132, 214, 255, 0.78);
+  stroke-width: 2;
+}
+
+.mapNode {
+  cursor: pointer;
+  outline: none;
+}
+
+.nodeHalo {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2;
+}
+
+.nodeCore {
+  fill: url('#atlas-node-fill');
+  stroke: rgba(192, 199, 255, 0.72);
+  stroke-width: 1.6;
+  transition: transform 160ms ease, stroke 160ms ease;
+}
+
+.nodeLabel {
+  fill: #e9e8fb;
+  font-family: var(--apx-sans);
+  font-size: 14px;
+  font-weight: 760;
+  paint-order: stroke;
+  stroke: #080812;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.mapNode:hover .nodeCore,
+.mapNode:focus .nodeCore,
+.mapNode[data-selected='true'] .nodeCore {
+  transform: scale(1.14);
+  stroke: #9ee8ff;
+  stroke-width: 3;
+}
+
+.mapNode:focus .nodeHalo,
+.mapNode[data-selected='true'] .nodeHalo {
+  fill: rgba(91, 119, 255, 0.12);
+  stroke: rgba(158, 222, 255, 0.72);
+  animation: selectedGlow 3.6s ease-in-out infinite;
+}
+
+.mapNode[data-external='true'] .nodeCore {
+  stroke-dasharray: 5 3;
+}
+
+@keyframes selectedGlow {
+  0%, 100% { opacity: 0.48; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+.mapKey {
+  padding: 20px;
+  border-top: 1px solid var(--atlas-line);
+}
+
+.mapKey ul,
+.indexGrid,
+.relayGrid,
+.relations ul {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mapKey ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mapKey button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  color: var(--atlas-copy);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mapKey li {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(158, 169, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(19, 19, 40, 0.7);
+}
+
+.mapKey li[data-selected='true'] {
+  border-color: var(--atlas-line-strong);
+  background: rgba(67, 73, 150, 0.26);
+}
+
+.mapKey button:hover,
+.mapKey button[aria-pressed='true'] {
+  color: var(--atlas-ink);
+  background: rgba(67, 73, 150, 0.2);
+}
+
+.mapKey button span {
+  font-weight: 760;
+}
+
+.mapKey button small {
+  color: var(--atlas-muted);
+}
+
+.mapKeyLink {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--atlas-line);
+  color: var(--atlas-blue);
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.mapKeyLink:hover {
+  color: var(--atlas-ink);
+  background: rgba(83, 104, 210, 0.2);
+}
+
+.detailCard {
+  position: sticky;
+  top: 92px;
+  padding: clamp(22px, 3vw, 32px);
+}
+
+.detailCard h2,
+.indexCard h2,
+.relayCard h3 {
+  margin: 8px 0 12px;
+  color: var(--atlas-ink);
+  font-family: var(--apx-display);
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.detailSummary,
+.indexCard > p,
+.relayCard > p,
+.truthNote > p {
+  color: var(--atlas-copy);
+  line-height: 1.68;
+}
+
+.availability,
+.kind {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid rgba(146, 160, 255, 0.34);
+  border-radius: 999px;
+  color: #d7dcff;
+  background: rgba(59, 70, 148, 0.23);
+  font-family: var(--apx-mono);
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.availability[data-availability='design_study'] {
+  border-color: rgba(206, 160, 255, 0.44);
+  color: #e5c9ff;
+  background: rgba(110, 56, 148, 0.22);
+}
+
+.availability[data-availability='external_public'] {
+  border-style: dashed;
+}
+
+.coordinateList,
+.coordinateListCompact {
+  display: grid;
+  gap: 1px;
+  margin: 24px 0 0;
+  overflow: hidden;
+  border: 1px solid var(--atlas-line);
+  border-radius: 14px;
+  background: var(--atlas-line);
+}
+
+.coordinateList div,
+.coordinateListCompact div {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.32fr) 1fr;
+  gap: 12px;
+  padding: 11px 13px;
+  background: rgba(8, 8, 18, 0.92);
+}
+
+.coordinateList dt,
+.coordinateListCompact dt {
+  color: var(--atlas-cyan);
+  font-family: var(--apx-mono);
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.coordinateList dd,
+.coordinateListCompact dd {
+  margin: 0;
+  color: var(--atlas-copy);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.relations {
+  margin: 28px 0 0;
+}
+
+.relations h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.relations li {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--atlas-line);
+}
+
+.relations button {
+  width: fit-content;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  color: var(--atlas-blue);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 760;
+}
+
+.relations span {
+  color: var(--atlas-muted);
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
+.externalNotice {
+  margin: 20px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--atlas-violet);
+  color: var(--atlas-muted) !important;
+  font-size: 0.82rem;
+  line-height: 1.55 !important;
+}
+
+.primaryLink,
+.cardLink,
+.relayLink {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  margin: 22px 0 0;
+  padding: 10px 16px;
+  border: 1px solid rgba(146, 160, 255, 0.52);
+  border-radius: 12px;
+  color: #f5f3ff;
+  text-decoration: none;
+  background: linear-gradient(135deg, rgba(73, 96, 214, 0.48), rgba(123, 69, 173, 0.42));
+  font-weight: 780;
+}
+
+.primaryLink:hover,
+.cardLink:hover,
+.relayLink:hover {
+  border-color: #a7dfff;
+  background: linear-gradient(135deg, rgba(89, 115, 244, 0.65), rgba(151, 81, 204, 0.56));
+}
+
+.indexGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.indexGrid > li,
+.relayGrid > li {
+  min-width: 0;
+}
+
+.indexCard {
+  height: 100%;
+  padding: clamp(20px, 3vw, 28px);
+}
+
+.cardHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.indexCard h2 {
+  font-size: clamp(1.65rem, 3vw, 2.25rem);
+}
+
+.coordinateListCompact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coordinateListCompact div {
+  display: block;
+}
+
+.coordinateListCompact dd {
+  margin-top: 5px;
+}
+
+.dictionary {
+  display: grid;
+  gap: 20px;
+}
+
+.dictionary > .resultStatus {
+  padding-inline: 4px;
+}
+
+.dictionary section {
+  padding: clamp(22px, 4vw, 38px);
+}
+
+.definitionGrid,
+.symbolGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 28px 0 0;
+}
+
+.definitionGrid > div,
+.symbolGrid > div {
+  padding: 18px;
+  border: 1px solid var(--atlas-line);
+  border-radius: 14px;
+  background: var(--atlas-panel-soft);
+}
+
+.definitionGrid dt,
+.symbolGrid dt {
+  color: var(--atlas-ink);
+  font-weight: 800;
+}
+
+.symbolGrid dt {
+  color: var(--atlas-violet);
+  font-family: var(--apx-mono);
+  font-size: 1.25rem;
+}
+
+.definitionGrid dd,
+.symbolGrid dd {
+  margin: 8px 0 0;
+  color: var(--atlas-copy);
+  line-height: 1.62;
+}
+
+.recovery {
+  padding: clamp(28px, 5vw, 56px);
+  text-align: center;
+}
+
+.recovery > p:first-child {
+  color: var(--atlas-cyan);
+  font-family: var(--apx-mono);
+  font-size: 0.75rem;
+  font-weight: 760;
+}
+
+.recovery h3 {
+  margin: 8px 0;
+  font-family: var(--apx-display);
+  font-size: 2rem;
+}
+
+.recovery > p:not(:first-child) {
+  max-width: 620px;
+  margin-inline: auto;
+  color: var(--atlas-copy);
+  line-height: 1.65;
+}
+
+.relaySection {
+  padding: 74px 0 96px;
+  border-top: 1px solid var(--atlas-line);
+}
+
+.relayGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.relayCard {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  padding: 22px;
+}
+
+.relayCard > p:first-child {
+  margin: 0;
+  color: var(--atlas-cyan);
+  font-family: var(--apx-mono);
+  font-size: 0.69rem;
+  font-weight: 760;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.relayCard h3 {
+  font-size: 1.65rem;
+}
+
+.relayCard > p:not(:first-child) {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.relayLink {
+  align-self: stretch;
+  margin-top: auto;
+  padding-top: 14px;
+  transform: translateY(14px);
+}
+
+.truthNote {
+  margin-bottom: 100px;
+  padding: clamp(28px, 5vw, 52px);
+  border: 1px solid rgba(185, 157, 255, 0.3);
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(44, 44, 95, 0.36), rgba(78, 38, 102, 0.26));
+}
+
+.truthNote h2 {
+  max-width: 920px;
+  font-size: clamp(1.7rem, 4vw, 3rem);
+}
+
+.truthNote > p:last-child {
+  max-width: 820px;
+  margin-bottom: 0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1060px) {
+  .mapLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .detailCard {
+    position: static;
+  }
+
+  .relayGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .hero,
+  .explorer,
+  .relaySection,
+  .truthNote {
+    width: min(100% - 28px, 1240px);
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding-top: 62px;
+  }
+
+  .explorerHeading,
+  .sectionHeading {
+    display: grid;
+    gap: 14px;
+  }
+
+  .filterGrid,
+  .indexGrid,
+  .definitionGrid,
+  .symbolGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .mapKey ul,
+  .relayGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mapStage,
+  .mapSvg {
+    min-height: 500px;
+  }
+
+  .mapStage {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .mapSvg {
+    width: 750px;
+    max-width: none;
+  }
+
+  .coordinateListCompact {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .viewSwitch {
+    grid-template-columns: 1fr;
+  }
+
+  .filterFooter,
+  .cardHeading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .resetButton {
+    width: 100%;
+  }
+
+  .mapKey ul,
+  .relayGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .coordinateList div {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nodeCore,
+  .nodeHalo {
+    transition: none;
+    animation: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .root,
+  .root::before,
+  .mapStage,
+  .truthNote {
+    background: Canvas;
+  }
+
+  .mapNode .nodeCore,
+  .mapNode .nodeHalo,
+  .edge,
+  .edgeActive {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .hero h1 span {
+    color: CanvasText;
+  }
+}

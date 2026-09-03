@@ -27,9 +27,14 @@ const vercel = JSON.parse(read('vercel.json')) as {
 };
 const clearingPage = read('pages/clearing.tsx');
 const clearingRoom = read('components/clearing/ClearingRoom.tsx');
-const atlasPage = read('public/commons/atlas.html');
-const membershipPage = read('public/commons/membership.html');
-const principlesPage = read('public/commons/principles.html');
+const atlasPage = read('pages/atlas.tsx');
+const atlasComponent = read('components/atlas/ConstellationAtlas.tsx');
+const atlasGraph = read('lib/public-surface-graph.ts');
+const atlasFallback = read('public/commons/atlas.html');
+const membershipPage = read('pages/membership.tsx');
+const membershipFallback = read('public/commons/membership.html');
+const principlesPage = read('pages/principles.tsx');
+const principlesFallback = read('public/commons/principles.html');
 const homePage = read('pages/index.tsx');
 const siteShell = read('components/SiteShell.tsx');
 
@@ -51,6 +56,11 @@ const activePublicSurfaces: Record<string, string> = {
   homePage,
   siteShell,
   words: read('pages/words.tsx'),
+  start: read('pages/start.tsx'),
+  quests: read('pages/quests.tsx'),
+  status: read('pages/status.tsx'),
+  divination: read('pages/divination.tsx'),
+  theoryOfEverything: read('pages/theory-of-everything.tsx'),
   buy: read('pages/buy.tsx'),
   terms: read('pages/legal/terms.tsx'),
   docsChatPanel: read('pages/docs/chat-panel.tsx'),
@@ -60,7 +70,11 @@ const activePublicSurfaces: Record<string, string> = {
   sitemap,
   robots,
   atlasPage,
+  atlasComponent,
+  atlasGraph,
+  atlasFallback,
   membershipPage,
+  membershipFallback,
   staticClearing: read('public/commons/clearing.html'),
   staticHub: read('public/commons/index.html'),
   staticSiteScript: read('public/commons/assets/site.js'),
@@ -81,7 +95,14 @@ assert.match(entryPoints, /"rel":"writing","href":"\/akashic-records"/);
 assert.match(entryPoints, /"rel":"works_archive_manifest","href":"\/akashic-records\/manifest\.json"/);
 assert.match(entryPoints, /public_social_room/);
 assert.match(entryPoints, /"href":"\/clearing"/);
-assert.match(entryPoints, /design_study_not_enrollment/);
+assert.match(entryPoints, /"rel":"membership_and_support","href":"\/membership"/);
+assert.match(entryPoints, /"rel":"orientation","href":"\/start"/);
+assert.match(entryPoints, /"rel":"public_quests","href":"\/quests"/);
+assert.match(entryPoints, /"rel":"public_status","href":"\/status"/);
+assert.match(entryPoints, /"rel":"divination_guide","href":"\/divination"/);
+assert.match(entryPoints, /"rel":"theory_of_everything_guide","href":"\/theory-of-everything"/);
+assert.match(entryPoints, /"rel":"language","href":"\/docs\/cssl-language"/);
+assert.match(entryPoints, /"rel":"notation","href":"\/words#symbols"/);
 assert.doesNotMatch(entryPoints, /conversation_doorway|\/login|\/register|\/chat/);
 assert.match(llms, /live public social room/i);
 assert.match(llms, /https:\/\/www\.apocky\.com\/clearing/);
@@ -93,6 +114,8 @@ assert.match(robots, /Disallow: \/api\//);
 assert.match(robots, /Allow: \/clearing/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\//);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/omnoid-singularity/);
+assert.match(sitemap, /https:\/\/www\.apocky\.com\/divination/);
+assert.match(sitemap, /https:\/\/www\.apocky\.com\/theory-of-everything/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/clearing/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/words/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/download/);
@@ -101,12 +124,16 @@ assert.match(sitemap, /https:\/\/www\.apocky\.com\/akashic-records/);
 assert.doesNotMatch(sitemap, /\/admin|\/api|\/account|\/login|\/register|\/chat|\/content/);
 assert.match(homePage, /href: '\/omnoid-singularity'/);
 
-const expectedStaticRewrites = [
-  { source: '/atlas', destination: '/commons/atlas.html' },
-  { source: '/membership', destination: '/commons/membership.html' },
-  { source: '/principles', destination: '/commons/principles.html' },
-];
-assert.deepEqual(vercel.rewrites, expectedStaticRewrites, 'Vercel may retain only the three intentional static reference pages');
+assert.deepEqual(vercel.rewrites ?? [], [], 'native public pages must not be shadowed by Vercel rewrites');
+assert.doesNotMatch(nextConfig, /source:\s*'\/atlas'[^\n]*destination:\s*'\/commons\/atlas\.html'/);
+assert.doesNotMatch(nextConfig, /source:\s*'\/membership'[^\n]*destination:\s*'\/commons\/membership\.html'/);
+assert.doesNotMatch(nextConfig, /source:\s*'\/principles'[^\n]*destination:\s*'\/commons\/principles\.html'/);
+assert.equal(exists('pages/atlas.tsx'), true, 'Atlas must resolve through the native React page');
+assert.equal(exists('pages/membership.tsx'), true, 'membership must resolve through the native React page');
+assert.equal(exists('pages/principles.tsx'), true, 'principles must resolve through the native React page');
+assert.equal(exists('public/commons/atlas.html'), true, 'the prior static Atlas must remain available as a rollback artifact');
+assert.equal(exists('public/commons/membership.html'), true, 'the prior static membership study must remain available as a rollback artifact');
+assert.match(principlesFallback, /Four invariants/, 'the prior static principles page must remain available as a rollback artifact');
 assert.doesNotMatch(nextConfig, /destination:\s*'\/commons\/index\.html'/);
 assert.match(nextConfig, /\{\s*source:\s*'\/commons',\s*destination:\s*'\/',\s*permanent:\s*true\s*\}/);
 assert.match(nextConfig, /\{\s*source:\s*'\/commons\/index\.html',\s*destination:\s*'\/',\s*permanent:\s*true\s*\}/);
@@ -125,13 +152,20 @@ assert.match(clearingPage, /pathname:\s*CLEARING_PATH/);
 assert.doesNotMatch(clearingPage, /GetServerSideProps|destination:\s*`\/apocrypha/);
 assert.match(clearingRoom, /Sign in to join the room/);
 assert.doesNotMatch(clearingRoom, /onUpload|onMic|onHeadset|onCamera|Microphone unavailable|Camera unavailable/);
+assert.match(membershipPage, /Membership and support/);
+assert.match(membershipPage, /SUPPORT_LINKS/);
 assert.doesNotMatch(membershipPage, /data-prototype-action|Preview a Member seat|Preview the covenant step/);
-assert.match(membershipPage, /disabled>Enrollment not open/);
-for (const supportPage of [atlasPage, membershipPage, principlesPage]) {
-  assert.match(supportPage, /href="\/clearing">(?:The )?Clearing/);
-}
-assert.match(atlasPage, /Seven doors\./, 'Atlas must describe its full seven-door map');
-assert.match(atlasPage, /href="\/akashic-records"/, 'Atlas must expose the same-origin works archive');
+assert.match(principlesPage, /href="\/clearing"/);
+assert.match(principlesPage, /Enter the Clearing/);
+assert.match(membershipPage, /href="\/clearing"/);
+assert.match(atlasPage, /canonical" href="https:\/\/www\.apocky\.com\/atlas"/);
+assert.match(atlasComponent, /Constellation\s*<span>Atlas<\/span>/);
+assert.match(atlasComponent, /Map/);
+assert.match(atlasComponent, /Index/);
+assert.match(atlasComponent, /Dictionary/);
+assert.match(atlasGraph, /href: '\/akashic-records'/, 'Atlas must expose the same-origin works archive');
+assert.match(atlasGraph, /href: '\/clearing'/, 'Atlas must expose the public social room');
+assert.doesNotMatch(`${atlasPage}\n${atlasComponent}\n${atlasGraph}`, /(?:from|import\()[^\n]*\/shawn/i);
 
 const clearingHeaders = vercel.headers?.find((entry) => entry.source === '/clearing')?.headers ?? [];
 assert.ok(clearingHeaders.some((header) => header.key === 'Cache-Control' && header.value.includes('no-store')));

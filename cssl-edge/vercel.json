@@ -22,11 +22,6 @@
     { "path": "/api/cron/sigma-chain-checkpoint", "schedule": "0 */6 * * *" },
     { "path": "/api/cron/shawn-reference-audit", "schedule": "0 16 * * 1" }
   ],
-  "rewrites": [
-    { "source": "/atlas", "destination": "/commons/atlas.html" },
-    { "source": "/membership", "destination": "/commons/membership.html" },
-    { "source": "/principles", "destination": "/commons/principles.html" }
-  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -63,10 +58,10 @@
       ]
     },
     {
-      "source": "/:path((?:atlas|membership|principles))",
+      "source": "/principles",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
-        { "key": "X-Served-By", "value": "apocky-spatial-commons" }
+        { "key": "X-Served-By", "value": "apocky-com-hub" }
       ]
     },
     {

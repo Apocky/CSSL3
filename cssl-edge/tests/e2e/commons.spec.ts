@@ -4,6 +4,8 @@ import path from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
+import { PUBLIC_SURFACE_NODES } from '../../lib/public-surface-graph';
+
 const VIEWPORTS = [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
@@ -35,7 +37,14 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
   const unexpectedSupportRequests: string[] = [];
   page.on('request', (request) => {
     const hostname = new URL(request.url()).hostname;
-    if (hostname === 'ko-fi.com' || hostname.endsWith('.ko-fi.com') || hostname === 'patreon.com' || hostname.endsWith('.patreon.com')) {
+    if (
+      hostname === 'chaos-tarot.com'
+      || hostname.endsWith('.chaos-tarot.com')
+      || hostname === 'ko-fi.com'
+      || hostname.endsWith('.ko-fi.com')
+      || hostname === 'patreon.com'
+      || hostname.endsWith('.patreon.com')
+    ) {
       unexpectedSupportRequests.push(request.url());
     }
   });
@@ -45,18 +54,18 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveTitle(/creative works and projects/i);
-    await expect(page.getByRole('heading', { level: 1, name: /Worlds, languages, symbols, and living systems/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Meet Apocrypha/i }).first()).toBeVisible();
-    await expect(page.locator('main').getByRole('link', { name: /CSSL.*Visit CSSL/i })).toBeVisible();
-    const supportSection = page.locator('main').getByRole('region', { name: 'Help sustain the work.' });
+    await expect(page).toHaveTitle(/Interconnected worlds, tools, and living ideas/i);
+    await expect(page.getByRole('heading', { level: 1, name: /Follow the signal.*Enter the system/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Explore the Atlas/i }).first()).toBeVisible();
+    await expect(page.locator('main').getByRole('link', { name: /CSSL and CSLv3.*Read the language guide/i })).toHaveAttribute('href', '/docs/cssl-language');
+    const supportSection = page.locator('main').getByRole('region', { name: /If this deserves to exist, help it compound/i });
     await expect(supportSection).toBeVisible();
-    await expect(supportSection).toContainText(/never required.*does not buy control/i);
-    const koFi = supportSection.getByRole('link', { name: /Support on Ko-fi/i });
-    const patreon = supportSection.getByRole('link', { name: /Support on Patreon/i });
+    await expect(supportSection).toContainText(/Patreon, Ko-fi, and paid Chaos Tarot access/i);
+    const chaosTarot = supportSection.getByRole('link', { name: /Unlock Chaos Tarot.*See plans/i });
+    const koFi = supportSection.getByRole('link', { name: /Fuel the next release.*Open Ko-fi/i });
+    await expect(chaosTarot).toHaveAttribute('href', 'https://chaos-tarot.com/pricing?source=apocky-home');
     await expect(koFi).toHaveAttribute('href', 'https://ko-fi.com/oneinfinity');
-    await expect(patreon).toHaveAttribute('href', 'https://www.patreon.com/0ne1nfinity');
-    for (const supportLink of [koFi, patreon]) {
+    for (const supportLink of [chaosTarot, koFi]) {
       await expect(supportLink).toBeVisible();
       await expect(supportLink).toHaveAttribute('target', '_blank');
       await expect(supportLink).toHaveAttribute('rel', 'noopener noreferrer');
@@ -69,10 +78,12 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
       const mobileMenu = page.locator('details.apx-mobile-menu');
       await expect(mobileMenu.locator('summary', { hasText: 'Explore' })).toBeVisible();
       await mobileMenu.locator('summary').click();
-      await expect(mobileMenu.getByRole('link', { name: 'Support the work' })).toBeVisible();
+      await expect(mobileMenu.getByRole('link', { name: 'Chaos Tarot' })).toBeVisible();
+      const openMenuOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(openMenuOverflow, `open mobile menu overflow at ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(1);
       await mobileMenu.locator('summary').click();
     } else {
-      await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Support the work' })).toBeVisible();
+      await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Chaos Tarot' })).toBeVisible();
     }
 
     const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -84,40 +95,91 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
     });
   }
 
-  const supportSection = page.locator('main').getByRole('region', { name: 'Help sustain the work.' });
-  const supportDetails = supportSection.getByRole('link', { name: /Read how support works/i });
-  const koFi = supportSection.getByRole('link', { name: /Support on Ko-fi/i });
-  const patreon = supportSection.getByRole('link', { name: /Support on Patreon/i });
+  const supportSection = page.locator('main').getByRole('region', { name: /If this deserves to exist, help it compound/i });
+  const supportDetails = supportSection.getByRole('link', { name: /Compare the live paths/i });
+  const chaosTarot = supportSection.getByRole('link', { name: /Unlock Chaos Tarot.*See plans/i });
+  const koFi = supportSection.getByRole('link', { name: /Fuel the next release.*Open Ko-fi/i });
   await supportDetails.focus();
   await expect(supportDetails).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(koFi).toBeFocused();
+  await expect(chaosTarot).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(patreon).toBeFocused();
+  await expect(koFi).toBeFocused();
 
   await expectNoSeriousAccessibilityFindings(page);
   expect(errors, errors.join('\n')).toEqual([]);
   expect(unexpectedSupportRequests, 'support providers must not load before a visitor intentionally follows a link').toEqual([]);
 });
 
-test('Atlas explains every context indicator in human language', async ({ page }) => {
+test('Constellation Atlas stays explicit, keyboard-readable, stateful, and quiet before external handoff', async ({ page }) => {
   const errors = collectBrowserErrors(page);
+  const unexpectedRelayRequests: string[] = [];
+  page.on('request', (request) => {
+    const hostname = new URL(request.url()).hostname;
+    if (
+      hostname === 'chaos-tarot.com'
+      || hostname === 'cssl.dev'
+      || hostname === 'ko-fi.com'
+      || hostname.endsWith('.ko-fi.com')
+      || hostname === 'patreon.com'
+      || hostname.endsWith('.patreon.com')
+    ) {
+      unexpectedRelayRequests.push(request.url());
+    }
+  });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/atlas');
 
-  await expect(page.getByRole('heading', { level: 2, name: /Seven doors/i })).toBeVisible();
-  const akashicDoor = page.locator('a.atlas-entry[href="/akashic-records"]');
-  await expect(akashicDoor).toBeVisible();
-  await expect(akashicDoor.getByRole('heading', { name: 'Akashic Records' })).toBeVisible();
-  const firstContext = page.locator('.coordinate-strip').first();
-  for (const label of ['People', 'Meaning', 'Visibility', 'Time']) {
-    await expect(firstContext.getByText(label, { exact: false })).toBeVisible();
-  }
-  await expect(page.getByText(/X ·|Y ·|Z ·|T ·/)).toHaveCount(0);
+  await expect(page).toHaveTitle(/Constellation Atlas/i);
+  await expect(page.getByRole('heading', { level: 1, name: /Constellation Atlas/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('constellation-map')).toBeVisible();
+  const viewport = page.viewportSize();
   const artifactRoot = path.join(process.cwd(), 'test-results', 'public-route-matrix');
   fs.mkdirSync(artifactRoot, { recursive: true });
-  await page.screenshot({ path: path.join(artifactRoot, '1440x900-atlas.png'), fullPage: true });
+  await page.screenshot({
+    path: path.join(artifactRoot, `${viewport?.width ?? 'unknown'}x${viewport?.height ?? 'unknown'}-atlas-map.png`),
+    fullPage: true,
+  });
+
+  const akashicNode = page.getByTestId('atlas-node-akashic-records');
+  await akashicNode.focus();
+  await expect(akashicNode).toBeFocused();
+  await page.keyboard.press('Enter');
+  const selection = page.getByTestId('atlas-selection');
+  await expect(selection.getByRole('heading', { level: 2, name: 'Akashic Records' })).toBeVisible();
+  for (const label of ['People', 'Meaning', 'Visibility', 'Time']) {
+    await expect(selection.getByText(label, { exact: true })).toBeVisible();
+  }
+
+  await page.getByTestId('atlas-node-chaos-tarot').click();
+  await expect(page).toHaveURL(/node=chaos-tarot/);
+  const chaosLink = selection.getByRole('link', { name: /Enter Chaos Tarot/i });
+  await expect(chaosLink).toHaveAttribute('href', 'https://chaos-tarot.com');
+  await expect(chaosLink).toHaveAttribute('target', '_blank');
+  await expect(chaosLink).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(selection).toContainText(/Nothing is sent there unless you choose the handoff/i);
+
+  await page.getByRole('button', { name: 'Index', exact: true }).click();
+  await expect(page).toHaveURL(/view=index/);
+  await page.getByRole('searchbox', { name: 'Search public destinations' }).fill('atmosphere');
+  await expect(page.getByText('1 destination match', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('atlas-index-node-chaos-tarot')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click();
+  await expect(page).toHaveURL(/view=dictionary/);
+  await page.getByRole('searchbox', { name: 'Search the dictionary' }).fill('consent');
+  await expect(page.locator('dt').filter({ hasText: /^Consent$/ })).toBeVisible();
+
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+  await page.screenshot({
+    path: path.join(artifactRoot, `${viewport?.width ?? 'unknown'}x${viewport?.height ?? 'unknown'}-atlas-dictionary.png`),
+    fullPage: true,
+  });
   await expectNoSeriousAccessibilityFindings(page);
   expect(errors, errors.join('\n')).toEqual([]);
+  expect(unexpectedRelayRequests, 'external destinations must not load before a visitor intentionally follows a relay').toEqual([]);
 });
 
 test('Clearing resolves as the live React social room without route aliasing', async ({ page }) => {
@@ -140,26 +202,19 @@ test('Clearing resolves as the live React social room without route aliasing', a
 });
 
 test('new public routes and retained application routes resolve together', async ({ request }) => {
-  for (const route of [
-    '/',
-    '/akashic-records',
-    '/atlas',
-    '/clearing',
-    '/membership',
-    '/principles',
-    '/chat',
-    '/account',
-    '/auth/callback',
-    '/download',
-    '/buy',
-  ]) {
-    const response = await request.get(route);
-    expect(response.status(), route).toBeLessThan(400);
+  const graphRoutes = PUBLIC_SURFACE_NODES
+    .filter((node) => !node.external)
+    .map((node) => node.href.split('#', 1)[0] ?? node.href);
+  for (const route of [...new Set([...graphRoutes, '/account', '/auth/callback'])]) {
+    await expect.poll(async () => (await request.get(route)).status(), {
+      message: route,
+      timeout: 10_000,
+    }).toBeLessThan(400);
   }
 });
 
 test('legacy Commons hub forwards to the native React homepage', async ({ page }) => {
   await page.goto('/commons');
   await expect.poll(() => new URL(page.url()).pathname).toBe('/');
-  await expect(page.getByRole('heading', { level: 1, name: /Worlds, languages, symbols, and living systems/i })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Follow the signal.*Enter the system/i })).toBeVisible();
 });
