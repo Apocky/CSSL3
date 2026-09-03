@@ -1,0 +1,309 @@
+§ conversation-corpus.manual-review.lane-A
+
+I> status := STABLE-V1 independent manual review
+I> date := 2026-09-03
+I> reviewer.authority := read-only corpus review ; N! generator mutation ; N! deployment
+I> manifest := public/conversation-corpus/index.v1.json
+I> manifest.sha256 := 8BCCE56EE0D179E07150F68AAA3423805954AD734B76157365AACFAAC3DFE8A2
+I> declared.denominator := {
+  records:1386,
+  visible_turns:19479,
+  absent_in_export:20,
+  redactions:3875,
+  indexable:930,
+  feature_eligible:473
+}
+
+§P question
+  Can STABLE-V1 safely + clearly support public conversational-memory discovery for ordinary humans,
+  especially personal+spiritual material, without leaking private context, overstating summary fidelity,
+  or making mobile readers process avoidable multi-megabyte payloads?
+
+§D method
+  sample := 44 unique records ; ChatGPT:27 ; Claude:17 ; categories:15/15.
+  strata := provider + category + warning/risk + quality.{~35,~60,~80,100}
+            + empty:3 + alternate-heavy:4 + feature/index eligibility.
+  corpus-wide deterministic probes := URL capability paths + source-renderer tokens
+    + adjacent exact duplicates + warned summary-field projection + lore-fragment frequency
+    + payload size + identity uniqueness.
+  privacy.rule := conservative ; ambiguous third-party identity ⇒ quarantine/review.
+  evidence.rule := record ID + sequence only ; N! sensitive-text reproduction.
+
+  sample.ids := {
+    9e9e2cdc8aee52cfcf66,64c0b8644f5902a12acb,354c5256504674874aa9,
+    88d276b1285aeb86cc6f,7fcc871bceac07b4f72c,995f5398e415a6e6c503,
+    ac5d7613b3fd05bccfcc,4bf32c2a4de1f01ec2ec,d741ad6d7320b0c9f0c2,
+    9765d8b735dd1ecc9ac1,407435ff5a4508ccf42b,f7013dffa06cd3f680e5,
+    fca9b5ac0c2f5012ffc5,050e23acbba8b914949d,365c02943a9c1d34baee,
+    84e122e39dec3dcc0dae,e17e305a0573385d3a3b,9e90e5a250f0be831999,
+    5c35b5c1c86da88f1993,c3f9ceea260eb8e0390b,b6b0024a9a37feb8cf35,
+    4999f86448a09cdeac06,14520e665dc11e107bbf,1b3d704f7b7db0bac69a,
+    812eda0682a180367027,a0a0da2711720dbef679,62af43d242b8474e845a,
+    f687bebd85aeb5f1f672,fafdaac3f4e4d3b83583,18877f145232fa87f759,
+    9310187940aff192c401,7e0feb4749a2f578a9ba,b1a941c5671ddb3fd04f,
+    c721f8d6906c2053a414,04f4eb9855d738935550,858017f2ee516de1d1e6,
+    14bd9476820927be9a49,2133b37c57a1e79f2aec,2b81af2c6903b28fa912,
+    fd9cdfef9c38ee503ded,861650318ee5ad5f203f,9201dddd3e27e3f92c7a,
+    f306925ff89d5bdc85e0,83c7c57d0afc4acaf3cd
+  }.
+
+§T positive.gates
+  ✓ generator audit reports 1386 records + 19479 visible messages + 3875 redactions
+    + 20 empty + 930 indexable + zero residual/failure.
+  ✓ identity fields {id,slug,sourceReference,sourceFingerprint,projectionSha256}
+    each unique 1386/1386.
+  ✓ sampled previously-problematic structural content excluded from visible turns:
+    af0e5c8fb2229c962ae8 ; b1a941c5671ddb3fd04f ; e88adff3906a3669c152.
+  ✓ warning-bearing records cannot become feature eligible under current rule.
+  ✓ reader renders dialogue as escaped React text ; N! raw HTML.
+  ✓ reader provides role filter + branch filter + progressive 24-turn reveal
+    + long-turn expansion + mobile stacking + keyboard-visible focus.
+  ✓ user and assistant roles remain distinct in sampled personal/spiritual records.
+  ✓ body interlock exists and branch labels expose alternate status.
+
+§T release.blockers
+
+  §RB1 capability-bearing.URL.paths
+    severity := BLOCK_RELEASE.
+    finding := query stripping leaves share/task/design capability locators in visible bodies.
+    evidence := {
+      b1a941c5671ddb3fd04f:[1],
+      fe3ee28ecfe3738235de:[17,18,23,25,28],
+      d741ad6d7320b0c9f0c2:[30,31],
+      dad3f980638741dbf25f:[20],
+      5aa5144e33236e54daec:[13],
+      7bed9d5755b0f1655f1a:[76,78]
+    }.
+    risk := sanitized projection can point to unsanitized shared material or user-scoped capability.
+    fix := denylist capability path families OR strict public-URL allowlist
+           → replace full locator with `[redacted:capability-url]`
+           → regression fixtures for queryless capability paths.
+    gate := zero capability-bearing locators across title+summary+body+connections.
+
+  §RB2 third-party.identity+private-context
+    severity := BLOCK_RELEASE.
+    finding := probable identifiable third-party context remains in feature/indexable records.
+    evidence := {
+      8da4cf79ce27e0b0f751:[1,5,6,8],
+      207359f54040216cdd4f:[1,2,3,4],
+      2412b5bb87c4187657c4:[1,2,3,4,6,7,8,10,11,13,14,16],
+      13757f7d9e4728a1da62:[1,3]
+    }.
+    nuance := final record may represent fictional identity ; ambiguity still requires owner classification.
+    fix := quarantine pending owner review OR privacy-safe editorial paraphrase
+           + scrub identity from title/body/summary/connections
+           + explicit fictional-character allowlist when established.
+    gate := independent third-party review returns zero unresolved feature/index records.
+
+  §RB3 warning.interlock.summary-leak
+    severity := BLOCK_RELEASE.
+    finding := body/dialogue fetch requires acknowledgement, but source-derived header excerpt,
+               signals, lore invocation, connections, and serialized page props do not.
+    corpus.count := warning-matching summary projection in 119/495 warned records.
+    evidence := {
+      83fb26fc4a0afd515260:[11],
+      5670d1add2c58890a81d:[5],
+      778821c52e51ae9e8281:[2]
+    }.
+    fix := pre-ack payload = neutral title+counts+warnings+lineage only
+           ; load every source-derived summary/lens/neighbor after acknowledgement
+           ; warned neighbor titles require same boundary.
+    gate := warned source content absent from HTML/RSC/page props/network responses before acknowledgement.
+
+  §RB4 discovery+reader.payload
+    severity := BLOCK_RELEASE.iPhone-usability.
+    finding := discovery client downloads+parses full rich manifest before interaction;
+               reader fetches full bodies although UI initially shows 24 turns.
+    evidence := {
+      index.v1.json:{bytes:9501427,records:1386},
+      15d54f61a9ce3443f536:{body_bytes:2021125,turns:800},
+      fafdaac3f4e4d3b83583:{body_bytes:1382045,turns:543}
+    }.
+    contradiction := UI copy describes index as light.
+    fix := lean neutral discovery index + server pagination/shards/filtering
+           + post-interlock lazy rich summary/body pages
+           + large-thread virtualization or chunk API.
+    gate := measured iPhone profile meets declared transfer+interaction budgets
+            ; initial discovery N! fetch rich summaries or body payloads.
+
+§T high-priority.semantic+navigation
+
+  §H1 category.false-positive
+    evidence := {
+      5c35b5c1c86da88f1993:[6,11],
+      14bd9476820927be9a49:[2,3,4],
+      84e122e39dec3dcc0dae:[2,5,9],
+      9e90e5a250f0be831999:[2,4],
+      b6b0024a9a37feb8cf35:[7],
+      354c5256504674874aa9:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+    }.
+    issue := first-regex precedence + homonyms + unreliable source category.
+    impact := wrong labels become wrong recommendations and reduce personal/spiritual findability.
+    fix := title-first multi-label scoring + phrase/context disambiguation + confidence threshold
+           + Uncategorized fallback + reviewed exception map + fixtures.
+
+  §H2 feature.quality-admission
+    evidence := {
+      ba2843f7e39f573fe748:[1,2,3,5,6,7,8,9,10,11,12,13,14,16,17,18,19,20,21],
+      5c35b5c1c86da88f1993:[1,2,6,11],
+      64c0b8644f5902a12acb:[0],
+      ac5d7613b3fd05bccfcc:[2,24,25,26,27,28,29,30,31]
+    }.
+    issue := quality=100/feature status survives duplicate density, placeholder-bearing title,
+             stale source tokens, classification error, and reality-sensitive claim risk.
+    fix := feature disqualifiers for placeholder in title/signal + duplicate density
+           + stale renderer token + unresolved identity + missing reality-sensitive notice
+           ; include title redactions in redactionCount.
+
+  §H3 stale.source-renderer.tokens
+    corpus.count := 110 records ; 181 messages ; feature:37 ; indexable:68.
+    evidence := {
+      ac5d7613b3fd05bccfcc:[2],
+      354c5256504674874aa9:[2,4,6,10],
+      fe3ee28ecfe3738235de:[4,6,10,12,14,18,24],
+      83c7c57d0afc4acaf3cd:[8,32],
+      9201dddd3e27e3f92c7a:[9,14,19,20,26,28]
+    }.
+    fix := normalize unresolved source annotations to explicit unavailable-source marker
+           ; preserve valid public URL citations only ; strip entity/image renderer controls.
+
+  §H4 adjacent.exact-duplicates
+    corpus.count := 62 adjacent exact pairs ; feature:26 ; indexable:29.
+    evidence := {
+      ba2843f7e39f573fe748:[1,2,3,5,6,7,8,9,10,11,12,13,14,16,17,18,19,20,21],
+      050e23acbba8b914949d:[7,8],
+      84e122e39dec3dcc0dae:[3,4],
+      9201dddd3e27e3f92c7a:[12,13,15,16]
+    }.
+    fix := preserve provenance as duplicateOfSequence + collapse presentation
+           ; disqualify high duplicate-density feature candidates ; N! silent deletion.
+
+  §H5 excerpt-selection != summary
+    evidence := {
+      ac5d7613b3fd05bccfcc:[1,2,24],
+      050e23acbba8b914949d:[1,14,18],
+      7fcc871bceac07b4f72c:[2,5],
+      f7013dffa06cd3f680e5:[8,9],
+      b18cbda6e6b21b071043:[4,9],
+      e17e305a0573385d3a3b:[2,3]
+    }.
+    issue := current automatic signals select exact sanitized excerpts from distant subthreads;
+             they are not plain-language summaries or curator paraphrases.
+    fix := label `sanitized source excerpt — turn N` + jump-to-sequence
+           ; keep editorial paraphrase separately attributed
+           ; use topic chapters or reviewed multi-topic synopsis for long threads
+           ; correction extraction needs semantic validation, N! first lexical match.
+
+  §H6 lore.repetition
+    corpus.count := 30 unique lore fragments across 1386 records
+                    ; top frequencies:123,108,103,96.
+    evidence := {
+      f7013dffa06cd3f680e5:[0],
+      0abf1ad192bb7f04e5de:[0],
+      b18cbda6e6b21b071043:[0],
+      83c7c57d0afc4acaf3cd:[0],
+      050e23acbba8b914949d:[0]
+    }.
+    issue := provenance label is truthful, but generic theme proverb reads as record-specific allegory.
+    fix := rename to `realm proverb` or `theme fragment`
+           ; reserve `conversation allegory` for reviewed record-specific work.
+
+  §H7 generic.connections
+    evidence := {
+      5c35b5c1c86da88f1993:[ae0a8fb6a8b8051481df,e093c6f0d11f50e93a42,3f0456f3f6abe4cd9be0],
+      354c5256504674874aa9:[a5f15e778ef9610ce1be,f4468178e30cf81dda39,8d473bd37c2108391213],
+      b6b0024a9a37feb8cf35:[7f7eb15b518fe88852ca,afb6eb6f5a166e11eb83,c164c55fccd380583012]
+    }.
+    issue := four broad shared themes dominate edges ; classifier errors propagate to unrelated neighbors.
+    fix := category correction first + discriminative title/body overlap or embedding score
+           + downweight ubiquitous themes + expose specific connection basis
+           + omit warned/empty neighbors before acknowledgement.
+
+  §H8 empty-record.dead-ends
+    evidence := {
+      2133b37c57a1e79f2aec:[],
+      2b81af2c6903b28fa912:[],
+      fd9cdfef9c38ee503ded:[]
+    }.
+    positive := nonfeature + noindex + reader says no visible body.
+    issue := lore/evidence language implies recoverable dialogue and empty records connect to dead ends.
+    fix := empty-specific neutral copy: export metadata only ; no dialogue to interpret
+           + no empty-to-empty recommendation edges
+           + group duplicate metadata in completeness ledger.
+
+  §H9 alternate-branch.topology
+    evidence := {
+      9201dddd3e27e3f92c7a:[12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29],
+      861650318ee5ad5f203f:[27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48],
+      83c7c57d0afc4acaf3cd:[25,26,27,28,29,30,31,32,33,34],
+      f306925ff89d5bdc85e0:[81,82,83,84,85,86,87,88,89,90,91,92]
+    }.
+    positive := alternate labels + filter exist.
+    issue := default=all and linear sequence lose parent/branch topology.
+    fix := default primary + branch divider/tree + branch-root parent pointer
+           + duplicate collapse.
+
+  §H10 reality-sensitive.notice-gap
+    evidence := {
+      ac5d7613b3fd05bccfcc:[24,25,26,27,28,29,30,31],
+      b18cbda6e6b21b071043:[3,4,8,9,10,12,16]
+    }.
+    strongest.countercase := evidence-boundary copy frames content as metaphor/reporting,
+                             and later dialogue may provide grounding.
+    remaining.risk := no warning ; boundary appears in secondary lens rather than before dialogue
+                      ; both records are high-quality feature/index candidates.
+    fix := non-diagnostic `reality-sensitive metaphysical claims` notice
+           + evidence boundary above dialogue ; N! diagnose user.
+
+§S inclusion-gap
+  ✓ sampled personal+spiritual conversations preserve role attribution and original expression.
+  △ current automated layer provides exact excerpts + generic theme allegory, not the requested
+    plain-language conversational-memory summary/paraphrase.
+  △ discovery accuracy is constrained by noisy single-label classification and generic connection edges.
+  ✓ curated editorial entries remain the correct place for explicit paraphrase/allegory when attribution
+    distinguishes user-authored claim, AI reply, and curator interpretation.
+
+§C decision
+  release.readiness := ✗ HOLD.
+  confidence := high for RB1+RB3+RB4 ; medium-high for RB2 pending owner identity classification
+                ; high for corpus-wide mechanical counts ; medium for semantic quality from sample.
+  strongest.countercase := sanitizer+warnings+React escaping+body interlock already reduce major exposure;
+                           all warned records are excluded from feature selection.
+  rebuttal := capability URLs + pre-ack derived summaries bypass those protections,
+              and 9.5MB discovery payload creates a direct mobile usability failure independent of content quality.
+  falsifier := regenerated corpus + reader pass every gate below on the identical release artifact.
+
+§A fix.order
+  1 := RB1 capability URL scrub + RB2 third-party quarantine.
+  2 := RB3 full pre-ack projection boundary.
+  3 := RB4 lean discovery + chunked reader transport.
+  4 := H1 classification + H2 feature gates + H3 renderer normalization + H4 duplicate metadata.
+  5 := H5 explicit excerpt attribution + topic chapters.
+  6 := H7 relevance edges + H8 empty copy + H9 branch topology + H10 reality-sensitive notice.
+  7 := H6 vocabulary refinement and reviewed record-specific allegory.
+
+§ re-audit.gates
+  W! freeze new manifest digest before review.
+  W! audit residuals=0 + capability-locator scan=0.
+  W! independent third-party sample includes titles+summaries+bodies+connections.
+  W! automated no-pre-ack-source-content browser/network test for every warning family.
+  W! measured iPhone discovery payload + interaction latency + largest-reader incremental transfer.
+  W! category fixtures cover homonyms+source-category disagreement+low-confidence fallback.
+  W! feature fixtures reject placeholders+stale tokens+high duplicate density+unreviewed sensitive classes.
+  W! sampled connection relevance + alternate topology + empty-record navigation.
+  W! each displayed extract identifies source role + sequence + paraphrase status.
+
+§ limitations
+  manual.semantic.sample := 44/1386 ; stratified N! exhaustive.
+  corpus-wide counts := deterministic inspection of STABLE-V1 projection, not raw-export comparison.
+  privacy classification := conservative and content-contextual ; owner adjudication still required.
+  no production deployment or public-runtime verification performed.
+  no generator, corpus, route, sitemap, navigation, or reader file mutated by this lane.
+
+§ rollback
+  report-only commit ; revert its single commit or delete this document.
+
+§ attestation
+  "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
