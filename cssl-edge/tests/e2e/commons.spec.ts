@@ -211,6 +211,54 @@ test('Constellation Atlas stays explicit, keyboard-readable, stateful, and quiet
   expect(unexpectedRelayRequests, 'external destinations must not load before a visitor intentionally follows a relay').toEqual([]);
 });
 
+test('Atlas URL state resets cleanly and remains the shareable source of truth', async ({ page }) => {
+  await page.goto('/atlas?view=dictionary&q=consent&axis=Meaning&kind=reference&state=public&node=words');
+  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('searchbox', { name: 'Search the dictionary' })).toHaveValue('consent');
+
+  await page.locator('.apx-synapses-head').getByRole('link', { name: /Open the full map/i }).click();
+  await expect(page).toHaveURL(/\/atlas$/);
+  await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('searchbox', { name: 'Search public destinations' })).toHaveValue('');
+  await expect(page.getByRole('combobox', { name: 'Dimension' })).toHaveValue('all');
+  await expect(page.getByRole('combobox', { name: 'Kind' })).toHaveValue('all');
+  await expect(page.getByRole('combobox', { name: 'Access state' })).toHaveValue('all');
+  await expect(page.getByTestId('atlas-selection').getByRole('heading', { level: 2 })).toHaveText('Constellation Atlas');
+});
+
+test('neural index contains keyboard focus and restores its trigger', async ({ page }) => {
+  await page.goto('/memory-tools');
+  const trigger = page.getByRole('button', { name: 'Find anything in the Apocky neural index' });
+  await trigger.focus();
+  await page.keyboard.press('Control+KeyK');
+
+  const dialog = page.getByRole('dialog', { name: 'Find any public signal' });
+  const search = dialog.getByRole('textbox', { name: 'Search projects, concepts, and destinations' });
+  const close = dialog.getByRole('button', { name: 'Close neural index' });
+  const last = dialog.getByRole('link', { name: /Full Atlas/i });
+  await expect(dialog).toBeVisible();
+  await expect(search).toBeFocused();
+  await expectNoSeriousAccessibilityFindings(page);
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(last).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+
+  await search.focus();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  const cardTargetHeights = await page.locator('main article a').evaluateAll((links) => (
+    links.map((link) => link.getBoundingClientRect().height)
+  ));
+  expect(cardTargetHeights).toHaveLength(10);
+  expect(cardTargetHeights.every((height) => height >= 44), `card link heights: ${cardTargetHeights.join(', ')}`).toBe(true);
+});
+
 test('Now, Labs, and memory tools expose usable labeled routes without silent external requests', async ({ page }) => {
   const errors = collectBrowserErrors(page);
   const unexpectedExternalRequests: string[] = [];

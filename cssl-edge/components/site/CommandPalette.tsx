@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   PUBLIC_SURFACE_AVAILABILITY_LABELS,
@@ -11,7 +11,14 @@ export default function CommandPalette(): JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const close = useCallback((): void => {
+    setOpen(false);
+    setQuery('');
+    window.setTimeout(() => triggerRef.current?.focus(), 0);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -19,17 +26,39 @@ export default function CommandPalette(): JSX.Element {
       const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        setOpen((value) => !value);
+        if (open) close();
+        else setOpen(true);
       } else if (!typing && event.key === '/') {
         event.preventDefault();
         setOpen(true);
-      } else if (event.key === 'Escape') {
-        setOpen(false);
+      } else if (open && event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      } else if (open && event.key === 'Tab') {
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const focusable = [...dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )].filter((element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true');
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (!first || !last) return;
+
+        if (!dialog.contains(document.activeElement)) {
+          event.preventDefault();
+          first.focus();
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [close, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -43,12 +72,6 @@ export default function CommandPalette(): JSX.Element {
   }, [open]);
 
   const results = useMemo(() => filterPublicSurfaceNodes({ query }).slice(0, 14), [query]);
-
-  const close = (): void => {
-    setOpen(false);
-    setQuery('');
-    window.setTimeout(() => triggerRef.current?.focus(), 0);
-  };
 
   return (
     <>
@@ -70,7 +93,7 @@ export default function CommandPalette(): JSX.Element {
         <div className="apx-command-backdrop" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) close();
         }}>
-          <section className="apx-command" role="dialog" aria-modal="true" aria-labelledby="apx-command-title">
+          <section ref={dialogRef} className="apx-command" role="dialog" aria-modal="true" aria-labelledby="apx-command-title">
             <header className="apx-command-head">
               <div>
                 <p>NEURAL INDEX</p>

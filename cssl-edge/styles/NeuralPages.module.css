@@ -191,7 +191,10 @@
 .cardLink {
   position: relative;
   display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   margin-top: 18px;
+  padding-block: 8px;
   color: var(--apx-neon);
   font-weight: 740;
   text-decoration: none;

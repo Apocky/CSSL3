@@ -418,13 +418,16 @@ export default function ConstellationAtlas(): JSX.Element {
     const urlAvailability = firstQueryValue(router.query.state);
     const urlNode = firstQueryValue(router.query.node);
 
-    if (isView(urlView)) setView(urlView);
-    if (typeof urlQuery === 'string') setQuery(urlQuery);
-    if (isAxis(urlAxis)) setAxis(urlAxis);
-    if (isKind(urlKind)) setKind(urlKind);
-    if (isAvailability(urlAvailability)) setAvailability(urlAvailability);
+    // The URL is the shareable source of truth. Missing or invalid values
+    // restore the documented defaults instead of leaving state behind from a
+    // previous shallow navigation to this same page.
+    setView(isView(urlView) ? urlView : 'map');
+    setQuery(typeof urlQuery === 'string' ? urlQuery : '');
+    setAxis(isAxis(urlAxis) ? urlAxis : 'all');
+    setKind(isKind(urlKind) ? urlKind : 'all');
+    setAvailability(isAvailability(urlAvailability) ? urlAvailability : 'all');
     const selected = urlNode ? getPublicSurfaceNode(urlNode) : undefined;
-    if (selected) setSelectedId(selected.id);
+    setSelectedId(selected?.id ?? 'atlas');
   }, [router.isReady, router.query]);
 
   const replaceUrl = useCallback((next: {
