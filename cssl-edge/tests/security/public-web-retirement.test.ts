@@ -37,6 +37,17 @@ const unbrokeredPrivateUrls = [
   'https://www.apocky.com/api/mneme/scratch/remember',
   'https://www.apocky.com/api/mneme/scratch/forget',
   'https://www.apocky.com/api/mneme/scratch/export',
+  'https://www.apocky.com/api/mneme/me/ingest',
+  'https://www.apocky.com/api/mneme/me/smoke',
+];
+
+const brokeredMemberUrls = [
+  'https://www.apocky.com/api/mneme/me/health',
+  'https://www.apocky.com/api/mneme/me/list',
+  'https://www.apocky.com/api/mneme/me/remember',
+  'https://www.apocky.com/api/mneme/me/recall',
+  'https://www.apocky.com/api/mneme/me/forget',
+  'https://www.apocky.com/api/mneme/me/export',
 ];
 
 async function testRetiredRoutes(): Promise<void> {
@@ -59,6 +70,13 @@ async function testRetiredRoutes(): Promise<void> {
     assert.equal(await response.text(), '', `${url} must not reveal whether a memory profile exists`);
     assert.match(response.headers.get('cache-control') ?? '', /no-store/);
     assert.match(response.headers.get('x-robots-tag') ?? '', /noindex/);
+  }
+
+  for (const url of brokeredMemberUrls) {
+    const request = new NextRequest(url, { method: url.endsWith('/health') || url.endsWith('/list') || url.endsWith('/export') ? 'GET' : 'POST' });
+    assert.equal(isRetiredWebRuntimeRequest(request), false, `${url} is not retired`);
+    assert.equal(isUnbrokeredPrivateRuntimeRequest(request), false, `${url} must reach the authenticated member handler`);
+    assert.equal(middleware(request).status, 200, `${url} must pass middleware so its handler can verify the session`);
   }
 
   for (const url of [

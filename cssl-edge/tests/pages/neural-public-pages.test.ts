@@ -89,7 +89,7 @@ assert(principles.includes('Four invariants'), 'principles must preserve the fou
 assert(principles.includes('Equivalent interface views'), 'principles must expose the graph-equivalence visual aid');
 assert(now.includes('Still unwired.'), 'current-state ledger must name capabilities that are not connected yet');
 assert(labs.includes('Keep the labels attached.'), 'labs must make maturity labels part of the interface promise');
-assert(memoryTools.includes('Private means closed.'), 'memory directory must preserve the private memory boundary');
+assert(memoryTools.includes('Private stays private.'), 'memory directory must preserve the private memory boundary');
 assert(memoryTools.includes('device-local'), 'memory directory must name local persistence semantics');
 assert(!memoryTools.includes('/api/mneme/'), 'public memory directory must not expose an unbrokered Mneme endpoint');
 

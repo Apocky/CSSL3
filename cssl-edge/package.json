@@ -20,7 +20,7 @@
     "test:apocrypha-sms": "node --import tsx tests/lib/apocrypha-sms.test.ts && node --import tsx tests/api/apocrypha-sms-migration.test.ts && node --import tsx tests/api/apocrypha-sms-ingress.test.ts && node --import tsx tests/api/apocrypha-sms-worker.test.ts",
     "test:public-discovery": "node --import tsx tests/pages/public-discovery.test.ts",
     "test:showcase": "node --import tsx tests/pages/showcase.test.ts",
-    "test:neural-public-pages": "node --import tsx tests/pages/neural-public-pages.test.ts && node --import tsx tests/lib/public-error-code.test.ts && node --import tsx tests/lib/public-surface-graph.test.ts",
+    "test:neural-public-pages": "node --import tsx tests/pages/neural-public-pages.test.ts && node --import tsx tests/pages/memory-tools.test.ts && node --import tsx tests/lib/public-error-code.test.ts && node --import tsx tests/lib/public-surface-graph.test.ts",
     "test:symbolic-studio": "node --import tsx tests/lib/spellcraft-engine.test.ts && node --import tsx tests/lib/oracle.test.ts && node --import tsx tests/lib/spellbook-local.test.ts && node --import tsx tests/pages/symbolic-public-pages.test.ts",
     "test:public-web-retirement": "node --import tsx tests/security/public-web-retirement.test.ts",
     "test:akashic-records": "node tests/akashic/akashic-records.test.mjs && node --import tsx tests/pages/akashic-records.test.ts",

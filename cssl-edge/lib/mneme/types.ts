@@ -163,7 +163,10 @@ export interface ForgetResponse {
 
 export interface ExportResponse {
     ok:        true;
-    profile:   Profile;
+    profile:   Omit<Profile, 'sovereign_pk' | 'sigma_mask'> & {
+        sovereign_pk_hex: string;
+        sigma_mask_hex:   string;
+    };
     memories:  MemoryPublic[];
     messages:  Array<Omit<Message, 'sigma_mask'>>;
     served_by: string;

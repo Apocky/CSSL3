@@ -37,6 +37,8 @@
 }
 
 .hero,
+.breadcrumbs,
+.quickPaths,
 .explorer,
 .relaySection,
 .truthNote {
@@ -44,13 +46,54 @@
   margin-inline: auto;
 }
 
+.breadcrumbs {
+  padding-top: max(34px, env(safe-area-inset-top));
+  color: var(--atlas-muted);
+  font-size: 0.82rem;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breadcrumbs li:not(:last-child)::after { content: '›'; margin-left: 8px; color: var(--atlas-indigo); }
+.breadcrumbs li { display: flex; min-height: 44px; align-items: center; }
+.breadcrumbs a { min-height: 44px; display: inline-flex; align-items: center; color: var(--atlas-cyan); text-underline-offset: 0.24em; }
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(270px, 0.55fr);
   gap: clamp(36px, 8vw, 104px);
   align-items: flex-end;
-  padding: clamp(76px, 10vw, 132px) 0 68px;
+  padding: clamp(46px, 7vw, 92px) 0 68px;
 }
+
+.quickPaths { padding: 0 0 34px; }
+.quickPathsHeading { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; }
+.quickPathsHeading h2 { margin: 8px 0 0; font-family: var(--apx-display); font-size: clamp(1.9rem, 4vw, 3.4rem); letter-spacing: -0.04em; line-height: 1; }
+.quickPathGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 24px; }
+.quickPathGrid a {
+  display: grid;
+  min-height: 170px;
+  align-content: center;
+  gap: 8px;
+  border: 1px solid var(--atlas-line);
+  border-radius: 16px;
+  padding: 20px;
+  color: var(--atlas-ink);
+  text-decoration: none;
+  background: linear-gradient(145deg, rgba(20, 22, 57, 0.9), rgba(7, 7, 19, 0.96));
+}
+.quickPathGrid a:hover,
+.quickPathGrid a:focus-visible { border-color: #9ee8ff; outline: none; box-shadow: 0 0 0 3px rgba(95, 128, 255, 0.2); }
+.quickPathGrid span { color: var(--atlas-cyan); font: 800 0.67rem/1.4 var(--apx-mono); letter-spacing: 0.1em; }
+.quickPathGrid strong { font-family: var(--apx-display); font-size: 1.25rem; line-height: 1.12; }
+.quickPathGrid small { color: var(--atlas-muted); line-height: 1.5; }
 
 .kicker,
 .eyebrow,
@@ -888,6 +931,10 @@
 }
 
 @media (max-width: 1060px) {
+  .quickPathGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .mapLayout {
     grid-template-columns: 1fr;
   }
@@ -903,6 +950,8 @@
 
 @media (max-width: 760px) {
   .hero,
+  .breadcrumbs,
+  .quickPaths,
   .explorer,
   .relaySection,
   .truthNote {
@@ -912,7 +961,11 @@
   .hero {
     grid-template-columns: 1fr;
     gap: 32px;
-    padding-top: 62px;
+    padding-top: 42px;
+  }
+
+  .quickPathsHeading {
+    align-items: flex-start;
   }
 
   .explorerHeading,
@@ -958,6 +1011,14 @@
 }
 
 @media (max-width: 480px) {
+  .quickPathGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .quickPathGrid a {
+    min-height: 142px;
+  }
+
   .viewSwitch {
     grid-template-columns: 1fr;
   }

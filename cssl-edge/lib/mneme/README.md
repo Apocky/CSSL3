@@ -1,6 +1,6 @@
 # lib/mneme — developer guide
 
-Status: v1 · 2026-05-02 · routes wired · self-tests inline.
+Status: v1 · 2026-09-03 · private member broker wired · self-tests inline.
 
 MNEME is the agent-memory service for the CSSL/LoA portfolio. It is a
 proprietary, sovereign-gated mirror of Cloudflare's "Agent Memory" pattern,
@@ -47,21 +47,29 @@ lib/mneme/
 
 ## REST surface
 
-All routes live under `pages/api/mneme/[profile]/*`:
+The public member broker exposes only `/api/mneme/me/*`. `me` is a route
+sentinel, not a profile identifier: the server derives an opaque profile ID
+from the verified site session. Client-supplied profile names, and the old
+public `ingest` and `smoke` routes, are neutral `404` responses in middleware.
 
-| Route       | Method | Body / Query                                                                |
-| ---         | ---    | ---                                                                         |
-| `health`    | GET    | —                                                                           |
-| `ingest`    | POST   | `{ session_id, messages: [{role, content}], sigma_mask_hex? }`              |
-| `recall`    | POST   | `{ query, k?, types?, audience_bits?, debug? }`                             |
-| `remember`  | POST   | `{ csl, paraphrase?, type?, topic_key?, sigma_mask_hex? }`                  |
-| `list`      | GET    | `?type=&limit=&cursor=`                                                     |
-| `forget`    | POST   | `{ memory_id, reason }`                                                     |
-| `export`    | GET    | —                                                                           |
-| `smoke`     | GET    | exercises pipelines with stubbed LLM/embed/DB (no env required)             |
+| Route       | Method | Body / Query                                                | Requirement                              |
+| ---         | ---    | ---                                                         | ---                                      |
+| `health`    | GET    | —                                                           | verified session                         |
+| `recall`    | POST   | `{ query, k?, types?, audience_bits? }`                     | provisioned profile + semantic services  |
+| `remember`  | POST   | `{ csl, paraphrase?, type?, topic_key?, sigma_mask_hex? }`  | provisioned profile + semantic services  |
+| `list`      | GET    | `?type=&limit=&cursor=`                                     | provisioned profile + storage            |
+| `forget`    | POST   | `{ memory_id, reason }`                                     | provisioned profile + storage            |
+| `export`    | GET    | —                                                           | provisioned profile + storage            |
 
-Every response carries `served_by` + `ts` per the cssl-edge envelope
-convention. Errors use `{ error, served_by, ts }`.
+POST requests must be same-origin. Every response is private and non-cacheable.
+The member routes never create a profile implicitly and never report mock
+storage as a successful write. A signed-in member without a provisioned
+profile receives `MNEME_PROFILE_NOT_PROVISIONED`; unavailable storage receives
+`MNEME_STORAGE_UNAVAILABLE`.
+
+Successful responses carry `served_by` + `ts` per the cssl-edge envelope
+convention. Errors include a stable machine-readable `code` alongside a short,
+non-sensitive `error` message.
 
 ## Local development
 
@@ -73,7 +81,7 @@ convention. Errors use `{ error, served_by, ts }`.
    # set ANTHROPIC_API_KEY, VOYAGE_API_KEY, NEXT_PUBLIC_SUPABASE_URL,
    # SUPABASE_SERVICE_ROLE_KEY, MNEME_SOVEREIGN_PUBKEY_HEX
    npm run check        # typecheck (must pass before push)
-   npm run dev          # next dev — visit http://localhost:3000/api/mneme/scratch/health
+   npm run dev          # next dev — use /memory-tools through a signed-in site session
    ```
 
 2. Apply migrations to a Supabase project:
@@ -85,13 +93,12 @@ convention. Errors use `{ error, served_by, ts }`.
    psql -f cssl-supabase/verify-mneme.sql
    ```
 
-3. Smoke the pipelines without any external services:
+3. Run the isolated pipeline suite without external services. These tests call
+   the library directly; no unauthenticated HTTP smoke route is exposed:
 
    ```sh
-   curl http://localhost:3000/api/mneme/scratch/smoke
+   npm run test:mneme
    ```
-
-   Expected: 200 with `{ ok:true, ingest:{…}, retrieve:{…} }`.
 
 4. Self-test sigma codec:
 

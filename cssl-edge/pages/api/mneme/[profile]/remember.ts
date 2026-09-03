@@ -11,6 +11,12 @@ import { envelope, logHit } from '@/lib/response';
 import { getMnemeClient, memoryToPublic } from '@/lib/mneme/store';
 import { rememberPipeline } from '@/lib/mneme/pipeline-ingest';
 import { maskFromHex } from '@/lib/mneme/sigma';
+import {
+    requireMnemeMemberProfile,
+    requireStoredMnemeProfile,
+    respondMnemeMemberFailure,
+    setMnemePrivateHeaders,
+} from '@/lib/mneme/member-profile';
 import type {
     RememberRequest,
     RememberResponse,
@@ -19,11 +25,11 @@ import type {
 
 interface ErrorResponse {
     error:     string;
+    code?:     string;
     served_by: string;
     ts:        string;
 }
 
-const PROFILE_RE = /^[a-z0-9-]{1,64}$/;
 const TYPES: MemoryType[] = ['fact', 'event', 'instruction', 'task'];
 
 function isObject(b: unknown): b is Record<string, unknown> {
@@ -35,6 +41,7 @@ export default async function handler(
     res: NextApiResponse<RememberResponse | ErrorResponse>,
 ): Promise<void> {
     logHit('mneme.remember', { method: req.method ?? 'GET' });
+    setMnemePrivateHeaders(res);
 
     if (req.method !== 'POST') {
         const env = envelope();
@@ -46,15 +53,12 @@ export default async function handler(
         return;
     }
 
-    const profile_id = String(req.query['profile'] ?? '');
-    if (!PROFILE_RE.test(profile_id)) {
-        const env = envelope();
-        res.status(422).json({
-            error: 'Invalid profile_id',
-            served_by: env.served_by, ts: env.ts,
-        });
+    const binding = await requireMnemeMemberProfile(req);
+    if (!binding.ok) {
+        respondMnemeMemberFailure(res, binding);
         return;
     }
+    const profile_id = binding.profileId;
 
     const body: unknown = req.body;
     if (!isObject(body)) {
@@ -101,6 +105,11 @@ export default async function handler(
     }
 
     const sb = getMnemeClient();
+    const storageFailure = await requireStoredMnemeProfile(sb, profile_id);
+    if (storageFailure) {
+        respondMnemeMemberFailure(res, storageFailure);
+        return;
+    }
     try {
         const m = await rememberPipeline(sb, {
             profile_id,
@@ -119,10 +128,15 @@ export default async function handler(
         });
     } catch (e) {
         const env = envelope();
-        const msg = e instanceof Error ? e.message : String(e);
-        const status = e instanceof Error && /^csl invalid/i.test(msg) ? 400 : 502;
+        const rejected = e instanceof Error && /^csl invalid/i.test(e.message);
+        const status = rejected ? 400 : 502;
         // eslint-disable-next-line no-console
-        console.error(JSON.stringify({ evt: 'mneme.remember.fail', err: msg }));
-        res.status(status).json({ error: msg, served_by: env.served_by, ts: env.ts });
+        console.error(JSON.stringify({ evt: 'mneme.remember.fail', code: e instanceof Error ? e.name : 'UNKNOWN' }));
+        res.status(status).json({
+            error: rejected ? 'The memory format was rejected. Review the text and label, then try again.' : 'Private memory could not be saved. Nothing was stored.',
+            code: rejected ? 'MNEME_MEMORY_REJECTED' : 'MNEME_REMEMBER_FAILED',
+            served_by: env.served_by,
+            ts: env.ts,
+        });
     }
 }

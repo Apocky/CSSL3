@@ -33,11 +33,11 @@ const RETIRED_PATH_PREFIXES = [
   '/api/admin/apocv4/',
 ];
 
-// Mneme routes currently accept a caller-supplied profile id while using a
-// service-role database client. Keep the implementation available for local
-// tests, but never expose it through the public runtime until an authenticated
-// principal is cryptographically bound to exactly one profile.
+// Only the authenticated, server-derived `me` profile may reach the member
+// handlers. Named profiles, smoke probes, and bulk ingestion stay unreachable
+// through the public runtime.
 const UNBROKERED_PRIVATE_PATH_PREFIXES = ['/api/mneme/'];
+const BROKERED_MEMBER_MEMORY_PATH = /^\/api\/mneme\/me\/(?:health|list|remember|recall|forget|export)\/?$/;
 
 const RETIRED_HOST = 'apocrypha.apocky.com';
 
@@ -55,7 +55,9 @@ export function isRetiredWebRuntimeRequest(request: NextRequest): boolean {
 }
 
 export function isUnbrokeredPrivateRuntimeRequest(request: NextRequest): boolean {
-  return UNBROKERED_PRIVATE_PATH_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
+  const pathname = request.nextUrl.pathname;
+  return UNBROKERED_PRIVATE_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+    && !BROKERED_MEMBER_MEMORY_PATH.test(pathname);
 }
 
 function retiredNotFound(): NextResponse {

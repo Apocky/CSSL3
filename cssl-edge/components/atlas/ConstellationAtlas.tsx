@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import RecoveryPanel from '../RecoveryPanel';
+import HelpTip from '../ui/HelpTip';
 import {
   filterPublicGlossary,
   PUBLIC_GLOSSARY_SYMBOLS,
@@ -531,6 +532,12 @@ export default function ConstellationAtlas(): JSX.Element {
 
   return (
     <main className={styles.root}>
+      <nav className={styles.breadcrumbs} aria-label="Breadcrumb">
+        <ol>
+          <li><Link href="/">Home</Link></li>
+          <li aria-current="page">Atlas</li>
+        </ol>
+      </nav>
       <section className={styles.hero} aria-labelledby="atlas-title">
         <div>
           <p className={styles.kicker}>Interactive orientation · public routes only</p>
@@ -547,13 +554,29 @@ export default function ConstellationAtlas(): JSX.Element {
         </dl>
       </section>
 
+      <section className={styles.quickPaths} aria-labelledby="atlas-quick-paths-title">
+        <div className={styles.quickPathsHeading}>
+          <div>
+            <p className={styles.eyebrow}>What brought you here?</p>
+            <h2 id="atlas-quick-paths-title">Take a useful path first.</h2>
+          </div>
+          <HelpTip label="How the Atlas works">The same public destinations can appear as a visual map, comparison matrix, readable index, or dictionary. Filters are copied into the URL so you can share a view.</HelpTip>
+        </div>
+        <div className={styles.quickPathGrid}>
+          <Link href="/conversations"><span>FOLLOW IDEAS</span><strong>Read human–AI conversations</strong><small>Roles, paraphrases, allegories, and sources stay labeled.</small></Link>
+          <Link href="/akashic-records"><span>SEARCH MEMORY</span><strong>Explore published writing</strong><small>Approved public records with provenance.</small></Link>
+          <Link href="/atlas?view=dictionary"><span>TRANSLATE</span><strong>Explain a word or symbol</strong><small>Plain-language definitions before technical depth.</small></Link>
+          <Link href="/memory-tools"><span>MANAGE MEMORY</span><strong>See public, local, and private layers</strong><small>Know what persists and who can reach it.</small></Link>
+        </div>
+      </section>
+
       <section className={styles.explorer} aria-labelledby="explorer-title">
         <div className={styles.explorerHeading}>
           <div>
             <p className={styles.eyebrow}>Choose your projection</p>
-            <h2 id="explorer-title">One field. Four readable views.</h2>
+            <h2 id="explorer-title">Choose the view that helps.</h2>
           </div>
-          <p>{VIEWS.find((item) => item.id === view)?.description}</p>
+          <p>One field. Four readable views. {VIEWS.find((item) => item.id === view)?.description}</p>
         </div>
 
         <div className={styles.viewSwitch} role="group" aria-label="Atlas view">

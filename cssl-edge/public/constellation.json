@@ -452,7 +452,7 @@
     {
       "id": "memory-tools",
       "title": "Memory banks and tools",
-      "summary": "A routed view of public memory banks, usable instruments, chosen handoffs, and private systems that remain closed.",
+      "summary": "A task-first guide to public records, device-local saves, and genuinely user-bound private memory controls.",
       "href": "/memory-tools",
       "external": false,
       "availability": "public",
@@ -464,10 +464,10 @@
         "Time"
       ],
       "coordinates": {
-        "People": "Choose a memory bank or tool without surrendering control",
-        "Meaning": "Public knowledge, instruments, and guarded system boundaries",
-        "Visibility": "Public directory; private profile memory remains closed",
-        "Time": "Current routing contract, updated as connections are verified"
+        "People": "Choose a task first; signed-in controls bind only to your server-derived profile",
+        "Meaning": "Plain-language previews, public knowledge, local tools, and private recall",
+        "Visibility": "Public directory; device-local saves stay local; Mneme requires verified sign-in",
+        "Time": "Current routing and capability checks, with export, correction, and forgetting when ready"
       }
     },
     {
@@ -1279,7 +1279,7 @@
       "source": "atlas",
       "target": "memory-tools",
       "relation": "indexes",
-      "statement": "The Atlas indexes the nervous-system directory as the route between public memory and tools."
+      "statement": "The Atlas indexes a task-first guide to public, device-local, and signed-in private memory."
     },
     {
       "source": "memory-tools",
@@ -1328,6 +1328,12 @@
       "target": "spellcraft",
       "relation": "features",
       "statement": "The directory identifies Spellcraft as a deterministic symbolic instrument."
+    },
+    {
+      "source": "memory-tools",
+      "target": "clearing",
+      "relation": "opens",
+      "statement": "The directory distinguishes public dialogue in the Clearing from private profile memory."
     },
     {
       "source": "memory-tools",

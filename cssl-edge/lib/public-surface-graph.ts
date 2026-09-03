@@ -534,7 +534,7 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
     title: 'Memory banks and tools',
     shortTitle: 'Memory + tools',
     eyebrow: 'Nervous-system directory',
-    summary: 'A routed view of public memory banks, usable instruments, chosen handoffs, and private systems that remain closed.',
+    summary: 'A task-first guide to public records, device-local saves, and genuinely user-bound private memory controls.',
     href: '/memory-tools',
     action: 'Map memory and tools',
     external: false,
@@ -542,10 +542,10 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
     kind: 'orientation',
     axes: PUBLIC_SURFACE_AXES,
     coordinates: {
-      People: 'Choose a memory bank or tool without surrendering control',
-      Meaning: 'Public knowledge, instruments, and guarded system boundaries',
-      Visibility: 'Public directory; private profile memory remains closed',
-      Time: 'Current routing contract, updated as connections are verified',
+      People: 'Choose a task first; signed-in controls bind only to your server-derived profile',
+      Meaning: 'Plain-language previews, public knowledge, local tools, and private recall',
+      Visibility: 'Public directory; device-local saves stay local; Mneme requires verified sign-in',
+      Time: 'Current routing and capability checks, with export, correction, and forgetting when ready',
     },
   },
   {
@@ -795,7 +795,7 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'infinity-engine', target: 'cssl', relation: 'opens', statement: 'Infinity Engine research identifies CSSL as a connected language project.' },
   { source: 'infinity-engine', target: 'labyrinth', relation: 'opens', statement: 'Infinity Engine research identifies Labyrinth as a connected game and engine test.' },
   { source: 'home', target: 'memory-tools', relation: 'opens', statement: 'The public home opens the memory-bank and tool directory.' },
-  { source: 'atlas', target: 'memory-tools', relation: 'indexes', statement: 'The Atlas indexes the nervous-system directory as the route between public memory and tools.' },
+  { source: 'atlas', target: 'memory-tools', relation: 'indexes', statement: 'The Atlas indexes a task-first guide to public, device-local, and signed-in private memory.' },
   { source: 'memory-tools', target: 'akashic-records', relation: 'indexes', statement: 'The directory identifies Akashic Records as approved public memory.' },
   { source: 'memory-tools', target: 'words', relation: 'indexes', statement: 'The directory identifies the dictionary as shared semantic memory.' },
   { source: 'memory-tools', target: 'documentation', relation: 'indexes', statement: 'The directory identifies documentation as reference memory.' },
@@ -804,6 +804,7 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'memory-tools', target: 'divination', relation: 'features', statement: 'The directory identifies the divination comparator as a bounded interpretive tool.' },
   { source: 'memory-tools', target: 'spellbook', relation: 'indexes', statement: 'The directory identifies the Spellbook as private, user-controlled device memory.' },
   { source: 'memory-tools', target: 'spellcraft', relation: 'features', statement: 'The directory identifies Spellcraft as a deterministic symbolic instrument.' },
+  { source: 'memory-tools', target: 'clearing', relation: 'opens', statement: 'The directory distinguishes public dialogue in the Clearing from private profile memory.' },
   { source: 'memory-tools', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The directory offers an intentional handoff to the independent live Chaos Tarot system.' },
 ];
 

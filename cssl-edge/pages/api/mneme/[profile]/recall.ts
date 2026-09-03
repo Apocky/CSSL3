@@ -15,14 +15,20 @@ import type {
     RecallResponse,
     MemoryType,
 } from '@/lib/mneme/types';
+import {
+    requireMnemeMemberProfile,
+    requireStoredMnemeProfile,
+    respondMnemeMemberFailure,
+    setMnemePrivateHeaders,
+} from '@/lib/mneme/member-profile';
 
 interface ErrorResponse {
     error:     string;
+    code?:     string;
     served_by: string;
     ts:        string;
 }
 
-const PROFILE_RE = /^[a-z0-9-]{1,64}$/;
 const TYPES: MemoryType[] = ['fact', 'event', 'instruction', 'task'];
 
 function isObject(b: unknown): b is Record<string, unknown> {
@@ -34,6 +40,7 @@ export default async function handler(
     res: NextApiResponse<RecallResponse | ErrorResponse>,
 ): Promise<void> {
     logHit('mneme.recall', { method: req.method ?? 'GET' });
+    setMnemePrivateHeaders(res);
 
     if (req.method !== 'POST') {
         const env = envelope();
@@ -45,15 +52,12 @@ export default async function handler(
         return;
     }
 
-    const profile_id = String(req.query['profile'] ?? '');
-    if (!PROFILE_RE.test(profile_id)) {
-        const env = envelope();
-        res.status(422).json({
-            error: 'Invalid profile_id',
-            served_by: env.served_by, ts: env.ts,
-        });
+    const binding = await requireMnemeMemberProfile(req);
+    if (!binding.ok) {
+        respondMnemeMemberFailure(res, binding);
         return;
     }
+    const profile_id = binding.profileId;
 
     const body: unknown = req.body;
     if (!isObject(body)) {
@@ -89,6 +93,11 @@ export default async function handler(
     const debug = reqBody.debug === true;
 
     const sb = getMnemeClient();
+    const storageFailure = await requireStoredMnemeProfile(sb, profile_id);
+    if (storageFailure) {
+        respondMnemeMemberFailure(res, storageFailure);
+        return;
+    }
     try {
         const result = await retrievePipeline(sb, {
             profile_id,
@@ -113,9 +122,8 @@ export default async function handler(
         res.status(200).json(responseBody);
     } catch (e) {
         const env = envelope();
-        const msg = e instanceof Error ? e.message : String(e);
         // eslint-disable-next-line no-console
-        console.error(JSON.stringify({ evt: 'mneme.recall.fail', err: msg }));
-        res.status(502).json({ error: msg, served_by: env.served_by, ts: env.ts });
+        console.error(JSON.stringify({ evt: 'mneme.recall.fail', code: e instanceof Error ? e.name : 'UNKNOWN' }));
+        res.status(502).json({ error: 'Private recall could not complete. No memory was changed.', code: 'MNEME_RECALL_FAILED', served_by: env.served_by, ts: env.ts });
     }
 }
