@@ -30,6 +30,11 @@ export default class ApockyDocument extends Document<DocumentProps> {
           <link rel="manifest" href="/manifest.json" />
           <meta name="application-name" content="Apocky" />
           <meta name="theme-color" content="#000000" />
+          <meta name="mobile-web-app-capable" content="yes" />
+          <meta name="apple-mobile-web-app-capable" content="yes" />
+          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+          <meta name="apple-mobile-web-app-title" content="Apocky" />
+          <meta name="format-detection" content="telephone=no" />
           <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
           <link rel="icon" sizes="any" href="/favicon.ico" />
           <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
