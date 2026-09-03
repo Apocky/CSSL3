@@ -24,6 +24,7 @@ export type PublicSurfaceKind =
 export type PublicSurfaceId =
   | 'home'
   | 'atlas'
+  | 'showcase'
   | 'start'
   | 'quests'
   | 'status'
@@ -146,6 +147,25 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
       Meaning: 'Map, index, and dictionary',
       Visibility: 'Public',
       Time: 'A living orientation layer',
+    },
+  },
+  {
+    id: 'showcase',
+    title: 'Apocky + Chaos Tarot Showcase',
+    shortTitle: 'Showcase',
+    eyebrow: 'Two doors · one constellation',
+    summary: 'A captioned 23-second illustrated passage between the Apocky Atlas and the free Chaos Tarot reading experience.',
+    href: '/showcase',
+    action: 'Watch the showcase',
+    external: false,
+    availability: 'public',
+    kind: 'creative_project',
+    axes: PUBLIC_SURFACE_AXES,
+    coordinates: {
+      People: 'Watch, read the transcript, or choose a public destination',
+      Meaning: 'An illustrated orientation between two independent live sites',
+      Visibility: 'Public; concept art is explicitly labeled and playback is visitor-controlled',
+      Time: 'A 23-second captioned film with landscape and portrait formats',
     },
   },
   {
@@ -666,6 +686,7 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
 export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'home', target: 'start', relation: 'opens', statement: 'The public home opens Start here as a guided orientation route.' },
   { source: 'home', target: 'atlas', relation: 'opens', statement: 'The public home opens the Atlas as its orientation layer.' },
+  { source: 'home', target: 'showcase', relation: 'features', statement: 'The public home features the captioned Apocky and Chaos Tarot connected-worlds showcase.' },
   { source: 'home', target: 'clearing', relation: 'opens', statement: 'The public home opens The Clearing for shared conversation.' },
   { source: 'home', target: 'akashic-records', relation: 'features', statement: 'The public home features the approved writing archive.' },
   { source: 'home', target: 'divination', relation: 'features', statement: 'The public home features the grounded divination guide.' },
@@ -706,6 +727,10 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'atlas', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The Atlas offers a direct external handoff to Chaos Tarot.' },
   { source: 'atlas', target: 'cssl', relation: 'indexes', statement: 'The Atlas indexes the same-origin CSSL language guide.' },
   { source: 'atlas', target: 'cslv3', relation: 'defines', statement: 'The Atlas dictionary links to the public CSLv3 symbol key.' },
+  { source: 'atlas', target: 'showcase', relation: 'indexes', statement: 'The Atlas indexes the public video showcase and its explicit visual truth boundary.' },
+  { source: 'showcase', target: 'oracle', relation: 'opens', statement: 'The showcase opens the private, device-local Yes / No Oracle as a visitor-chosen next step.' },
+  { source: 'showcase', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The showcase offers a direct handoff to a free Chaos Tarot reading.' },
+  { source: 'showcase', target: 'membership', relation: 'supports', statement: 'The showcase links to active support paths only after presenting useful no-payment routes.' },
   { source: 'support', target: 'ko-fi', relation: 'supports', statement: 'The support page offers an optional external contribution through Ko-fi.' },
   { source: 'support', target: 'patreon', relation: 'supports', statement: 'The support page offers optional recurring support through Patreon.' },
   { source: 'membership', target: 'ko-fi', relation: 'supports', statement: 'Membership offers direct support through Ko-fi under the provider’s published terms.' },

@@ -10,6 +10,7 @@ or permission to speak for anyone named on the site.
 
 - Home and project links: https://www.apocky.com/
 - Guided starting paths: https://www.apocky.com/start
+- Connected-worlds video showcase with captions, transcript, and concept-art disclosure: https://www.apocky.com/showcase
 - Grounded guide to Chaos Tarot and divination systems: https://www.apocky.com/divination
 - Private, seeded Yes / No reflection tool: https://www.apocky.com/oracle
 - Deterministic, owner-authorized Haloic-derived symbolic compiler and interpreter: https://www.apocky.com/spellcraft

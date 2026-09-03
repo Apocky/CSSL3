@@ -98,6 +98,16 @@
       "availability": "public"
     },
     {
+      "rel": "media_showcase",
+      "href": "/showcase",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public_captioned_video_with_transcript",
+      "consent": "media_playback_requires_visitor_action"
+    },
+    {
       "rel": "public_surface_graph",
       "href": "/constellation.json",
       "method": "GET",

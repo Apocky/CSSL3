@@ -57,6 +57,7 @@ const activePublicSurfaces: Record<string, string> = {
   siteShell,
   words: read('pages/words.tsx'),
   start: read('pages/start.tsx'),
+  showcase: read('pages/showcase.tsx'),
   quests: read('pages/quests.tsx'),
   status: read('pages/status.tsx'),
   divination: read('pages/divination.tsx'),
@@ -97,6 +98,7 @@ assert.match(entryPoints, /public_social_room/);
 assert.match(entryPoints, /"href":"\/clearing"/);
 assert.match(entryPoints, /"rel":"membership_and_support","href":"\/membership"/);
 assert.match(entryPoints, /"rel":"orientation","href":"\/start"/);
+assert.match(entryPoints, /"rel":"media_showcase","href":"\/showcase"/);
 assert.match(entryPoints, /"rel":"public_quests","href":"\/quests"/);
 assert.match(entryPoints, /"rel":"public_status","href":"\/status"/);
 assert.match(entryPoints, /"rel":"divination_guide","href":"\/divination"/);
@@ -116,6 +118,7 @@ assert.match(sitemap, /https:\/\/www\.apocky\.com\//);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/omnoid-singularity/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/divination/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/oracle/);
+assert.match(sitemap, /https:\/\/www\.apocky\.com\/showcase/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/spellcraft/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/sigils/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/spellbook/);

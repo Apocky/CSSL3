@@ -17,6 +17,7 @@ const NAV: ReadonlyArray<NavItem> = [
 ];
 
 const WORK: ReadonlyArray<NavItem> = [
+  { href: '/showcase', label: 'Watch the connected-worlds showcase' },
   { href: 'https://chaos-tarot.com/free-reading?source=apocky-footer', label: 'Begin a Chaos Tarot reading', ext: true },
   { href: '/atlas', label: 'Explore the Constellation Atlas' },
   { href: '/oracle', label: 'Ask the Yes / No Oracle' },

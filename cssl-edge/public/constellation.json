@@ -45,6 +45,27 @@
       }
     },
     {
+      "id": "showcase",
+      "title": "Apocky + Chaos Tarot Showcase",
+      "summary": "A captioned 23-second illustrated passage between the Apocky Atlas and the free Chaos Tarot reading experience.",
+      "href": "/showcase",
+      "external": false,
+      "availability": "public",
+      "kind": "creative_project",
+      "axes": [
+        "People",
+        "Meaning",
+        "Visibility",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Watch, read the transcript, or choose a public destination",
+        "Meaning": "An illustrated orientation between two independent live sites",
+        "Visibility": "Public; concept art is explicitly labeled and playback is visitor-controlled",
+        "Time": "A 23-second captioned film with landscape and portrait formats"
+      }
+    },
+    {
       "id": "start",
       "title": "Start here",
       "summary": "A clear launch point for choosing an experience, the big picture, source material, participation, or support.",
@@ -602,6 +623,12 @@
     },
     {
       "source": "home",
+      "target": "showcase",
+      "relation": "features",
+      "statement": "The public home features the captioned Apocky and Chaos Tarot connected-worlds showcase."
+    },
+    {
+      "source": "home",
       "target": "clearing",
       "relation": "opens",
       "statement": "The public home opens The Clearing for shared conversation."
@@ -839,6 +866,30 @@
       "target": "cslv3",
       "relation": "defines",
       "statement": "The Atlas dictionary links to the public CSLv3 symbol key."
+    },
+    {
+      "source": "atlas",
+      "target": "showcase",
+      "relation": "indexes",
+      "statement": "The Atlas indexes the public video showcase and its explicit visual truth boundary."
+    },
+    {
+      "source": "showcase",
+      "target": "oracle",
+      "relation": "opens",
+      "statement": "The showcase opens the private, device-local Yes / No Oracle as a visitor-chosen next step."
+    },
+    {
+      "source": "showcase",
+      "target": "chaos-tarot",
+      "relation": "hands_off_to",
+      "statement": "The showcase offers a direct handoff to a free Chaos Tarot reading."
+    },
+    {
+      "source": "showcase",
+      "target": "membership",
+      "relation": "supports",
+      "statement": "The showcase links to active support paths only after presenting useful no-payment routes."
     },
     {
       "source": "support",
