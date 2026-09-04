@@ -228,7 +228,11 @@ export function buildReleaseBundle(sourceValue, publicRoot = DEFAULT_PUBLIC_ROOT
     },
     download_status: artifact.downloadStatus,
     download: artifact.download,
-    claim_boundary: 'Candidate metadata is not a release. Browser installation is distinct from a downloadable native artifact; production availability requires exact-revision promotion and acceptance.',
+    claim_boundary: source.release_state === 'RELEASED'
+      ? 'Released web/PWA metadata does not attest to production deployment, physical-device verification, or a downloadable native artifact.'
+      : source.release_state === 'RETIRED'
+        ? 'Retired metadata does not attest to current availability or a downloadable native artifact.'
+        : 'Candidate metadata is not a release. Browser installation is distinct from a downloadable native artifact; production availability requires exact-revision promotion and acceptance.',
   };
   const manifest = {
     ...manifestCore,

@@ -19,7 +19,7 @@ test('home remains a useful creative-work entry point', async ({ page }) => {
   await expect(page.getByRole('link', { name: /Talk to Apocrypha/i })).toHaveAttribute('href', '/login?next=%2Fapocrypha');
   await expect(page.getByRole('link', { name: /Begin a free reading/i })).toHaveAttribute('href', 'https://chaos-tarot.com/free-reading?source=apocky-home');
   await expect(page.getByRole('link', { name: /Explore Atlas/i }).first()).toHaveAttribute('href', '/atlas');
-  await expect(page.getByText('Candidate — not released')).toBeVisible();
+  await expect(page.getByText('Released')).toBeVisible();
   const more = page.getByText('More of Apocky', { exact: true });
   await expect(more).toBeVisible();
   await expect(page.getByRole('link', { name: /Gather.*public social room/i })).not.toBeVisible();

@@ -22,20 +22,17 @@ assert.equal(ajv.validate(schema, manifest), true, JSON.stringify(ajv.errors));
 
 assert.equal(apocryphaRelease.status, 'live', 'checked-in manifest must parse');
 if (apocryphaRelease.status !== 'live') throw new Error('checked-in release manifest degraded');
-assert.equal(apocryphaRelease.manifest.release_state, 'CANDIDATE');
-assert.equal(apocryphaRelease.manifest.release_label, 'Candidate — not released');
-assert.equal(apocryphaRelease.manifest.version, '1.0.0-rc.1');
-assert.equal(apocryphaRelease.manifest.build.state, 'INSTALLABLE_PWA_CANDIDATE');
-assert.equal(apocryphaRelease.manifest.build.verification, 'LOCAL_DESKTOP_CHROME_MOBILE_CHROME_IPHONE_WEBKIT_MATRIX_PASSED');
-assert.match(apocryphaRelease.manifest.claim_boundary, /Browser installation is distinct from a downloadable native artifact/);
+assert.equal(apocryphaRelease.manifest.release_state, 'RELEASED');
+assert.equal(apocryphaRelease.manifest.release_label, 'Released');
+assert.equal(apocryphaRelease.manifest.version, '1.0.0');
+assert.equal(apocryphaRelease.manifest.build.state, 'RELEASED_PWA');
+assert.equal(apocryphaRelease.manifest.build.verification, 'AUTOMATED_DESKTOP_CHROME_MOBILE_CHROME_IPHONE_WEBKIT_MATRIX_PASSED');
+assert.equal(apocryphaRelease.manifest.build.release_gate, 'OPEN');
+assert.deepEqual(apocryphaRelease.manifest.build.missing, []);
+assert.match(apocryphaRelease.manifest.claim_boundary, /does not attest to production deployment, physical-device verification, or a downloadable native artifact/);
 assert.equal(apocryphaRelease.manifest.download, null);
 assert.equal(apocryphaRelease.manifest.download_status, 'NO_PROMOTED_ARTIFACT');
 assert.equal(publicReleaseDownload(apocryphaRelease.manifest), null);
-const missingGates = apocryphaRelease.manifest.build.missing.join(' · ');
-assert.match(missingGates, /Physical iPhone installation/);
-assert.match(missingGates, /Physical Android installation/);
-assert.match(missingGates, /Production promotion approval/);
-assert.doesNotMatch(missingGates, /Promoted native installer/, 'native packaging is not a gate for the 1.0 web/PWA lane');
 
 for (const binding of [
   apocryphaRelease.manifest.documents.plan,
@@ -53,6 +50,14 @@ assert.doesNotMatch(serialized, /\b(?:bearer|credential|password|service[_-]?rol
 assert.doesNotMatch(serialized, /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i, 'manifest cannot expose private turn UUIDs');
 
 const forgedCandidate = structuredClone(manifest);
+forgedCandidate.release_state = 'CANDIDATE';
+forgedCandidate.release_label = 'Candidate — not released';
+forgedCandidate.build = {
+  ...(forgedCandidate.build as Record<string, unknown>),
+  state: 'CANDIDATE',
+  release_gate: 'CLOSED',
+  missing: ['Release acceptance is incomplete'],
+};
 forgedCandidate.download_status = 'RELEASED_ARTIFACT_PRESENT';
 forgedCandidate.download = {
   filename: 'not-a-release.zip',
@@ -76,4 +81,4 @@ assert.throws(
   'candidate metadata cannot grow a public download link',
 );
 
-console.log('brain-release-manifest.test : OK · public-safe bindings + candidate gate + no phantom download');
+console.log('brain-release-manifest.test : OK · public-safe PWA release + candidate gate + no phantom download');

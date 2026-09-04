@@ -2,38 +2,32 @@
   "schema": "apocky.apocrypha-release-manifest.v1",
   "schema_href": "/schemas/apocrypha-release-manifest.v1.json",
   "manifest_version": 1,
-  "version": "1.0.0-rc.1",
-  "release_state": "CANDIDATE",
-  "generated_at": "2026-09-04T12:24:32-07:00",
-  "release_label": "Candidate — not released",
+  "version": "1.0.0",
+  "release_state": "RELEASED",
+  "generated_at": "2026-09-04T12:38:56-07:00",
+  "release_label": "Released",
   "project": "Apocrypha",
   "track": "local-living",
   "public_safe": true,
-  "source_revision": "d094ee6d6ebf2cd4f4a4e60e5c08ab9ce4d8c060",
+  "source_revision": "daadaf30a22c4dc00ce46eb178fbb40a3048cd69",
   "build": {
-    "state": "INSTALLABLE_PWA_CANDIDATE",
-    "verification": "LOCAL_DESKTOP_CHROME_MOBILE_CHROME_IPHONE_WEBKIT_MATRIX_PASSED",
-    "release_gate": "CLOSED",
-    "missing": [
-      "Exact revision deployed to a non-production preview with post-deploy owner-session, manifest, offline, and private-cache acceptance",
-      "Physical iPhone installation, offline restart, safe-area, and owner bootstrap proof",
-      "Physical Android installation and offline restart proof",
-      "End-to-end owner phone-to-desktop signed synchronization proof",
-      "Production promotion approval with exact-revision acceptance and rollback receipt"
-    ]
+    "state": "RELEASED_PWA",
+    "verification": "AUTOMATED_DESKTOP_CHROME_MOBILE_CHROME_IPHONE_WEBKIT_MATRIX_PASSED",
+    "release_gate": "OPEN",
+    "missing": []
   },
   "documents": {
     "plan": {
       "label": "Living plan",
       "href": "/releases/apocrypha-living/plan.json",
-      "sha256": "ca91b4dbe480315b557b913cb40191ea20dcb5b3954b6c0ac1592e6d35a3d7fe",
-      "bytes": 5747
+      "sha256": "302b231737295ae4d8aeb8c6657aff950a1368bff4591b50b8e56434212a92b5",
+      "bytes": 5891
     },
     "changelog": {
       "label": "Changelog",
       "href": "/releases/apocrypha-living/changelog.json",
-      "sha256": "3145a6a6045cd2068575f6d48491fb51e8bf42eed49c2eb2f684dc93e49b63d8",
-      "bytes": 6815
+      "sha256": "ed92c64d876dfb70e321e4fbb20d033a8d6d12a1256c3414b32474c8a0124ae7",
+      "bytes": 6866
     },
     "manifest": {
       "label": "Build manifest",
@@ -42,6 +36,6 @@
   },
   "download_status": "NO_PROMOTED_ARTIFACT",
   "download": null,
-  "claim_boundary": "Candidate metadata is not a release. Browser installation is distinct from a downloadable native artifact; production availability requires exact-revision promotion and acceptance.",
-  "content_digest": "3e58301f5a9b67317e22f1c2499baf15b16e3e359f86fe578903d3a13faad536"
+  "claim_boundary": "Released web/PWA metadata does not attest to production deployment, physical-device verification, or a downloadable native artifact.",
+  "content_digest": "b8ccf9f758c6492fde623037b654f02f79a0167e8b4832273dd06067de816de5"
 }

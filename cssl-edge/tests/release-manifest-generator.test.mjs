@@ -33,6 +33,8 @@ try {
 
   const declared = {
     ...source,
+    release_state: 'CANDIDATE',
+    build: { ...source.build, state: 'CANDIDATE', release_gate: 'CLOSED', missing: ['Release acceptance is incomplete'] },
     artifact: {
       filename,
       media_type: 'application/zip',
@@ -50,7 +52,7 @@ try {
   const released = buildReleaseBundle({
     ...declared,
     release_state: 'RELEASED',
-    build: { ...declared.build, state: 'RELEASED', release_gate: 'OPEN', missing: [] },
+    build: { ...declared.build, state: 'RELEASED_PWA_WITH_NATIVE_ARTIFACT', release_gate: 'OPEN', missing: [] },
   }, temporary).manifest;
   assert.equal(released.download_status, 'RELEASED_ARTIFACT_PRESENT');
   assert.equal(released.download?.href, `/downloads/${filename}`);
@@ -68,7 +70,7 @@ try {
   const tampered = buildReleaseBundle({
     ...declared,
     release_state: 'RELEASED',
-    build: { ...declared.build, state: 'RELEASED', release_gate: 'OPEN', missing: [] },
+    build: { ...declared.build, state: 'RELEASED_PWA_WITH_NATIVE_ARTIFACT', release_gate: 'OPEN', missing: [] },
   }, temporary).manifest;
   assert.equal(tampered.download, null, 'a mismatched signature receipt closes the download gate');
 } finally {

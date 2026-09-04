@@ -1,11 +1,11 @@
 {
   "schema": "apocky.apocrypha-public-plan.v1",
-  "version": "1.0.0-rc.1",
-  "release_state": "CANDIDATE",
-  "generated_at": "2026-09-04T12:24:32-07:00",
+  "version": "1.0.0",
+  "release_state": "RELEASED",
+  "generated_at": "2026-09-04T12:38:56-07:00",
   "project": "Apocrypha",
   "track": "local-living",
-  "summary": "Apocrypha 1.0 web/PWA release candidate 1 is installable from supported desktop and mobile browsers and passed local desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks covering owner access, manifest identity, service-worker scope, offline encrypted continuity, no private API caching, accessibility, safe areas, and overflow. It is not a native mobile binary or a production release; physical-device install, live-revision, and phone-to-desktop acceptance remain open.",
+  "summary": "Apocrypha 1.0 is the browser-delivered web/PWA release for responsive desktop, iOS, and Android surfaces. The exact candidate passed local automated desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks covering owner access, manifest identity, service-worker scope, offline encrypted continuity, no private API caching, accessibility, safe areas, and overflow. No downloadable native binary is part of this release, and this record does not claim App Store or Play Store packaging, physical-device verification, phone-to-desktop live acceptance, or production deployment.",
   "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
   "principles": [
     "Local operation remains useful when network access is removed.",
@@ -17,8 +17,8 @@
     {
       "id": "web-pwa",
       "label": "1.0 cross-platform web/PWA",
-      "state": "LOCAL_BROWSER_MATRIX_PASSED_LIVE_AND_PHYSICAL_DEVICE_ACCEPTANCE_OPEN",
-      "summary": "Version 1.0.0-rc.1 is an installable browser-delivered PWA candidate. The local matrix passed desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks for access, manifest identity, service-worker scope, offline encrypted continuity, private-cache exclusion, accessibility, safe areas, and overflow. It is not an App Store, Play Store, desktop-native, or downloadable package, and production has not been promoted."
+      "state": "RELEASED_PWA_AUTOMATED_MATRIX_PASSED",
+      "summary": "Version 1.0.0 is an installable browser-delivered PWA release. The local automated matrix passed desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks for access, manifest identity, service-worker scope, offline encrypted continuity, private-cache exclusion, accessibility, safe areas, and overflow. No App Store, Play Store, desktop-native, or downloadable package is claimed; production deployment and physical-device verification remain separate operational acceptance gates."
     },
     {
       "id": "brain",
@@ -29,8 +29,8 @@
     {
       "id": "mobile-lobe",
       "label": "Mobile mini Brain and desktop sync",
-      "state": "LOCAL_DESKTOP_ANDROID_IOS_WEBKIT_MATRIX_PASSED",
-      "summary": "The 1.0 PWA candidate includes an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks passed locally; no physical-phone or end-to-end phone-to-desktop claim has been made."
+      "state": "AUTOMATED_DESKTOP_ANDROID_IOS_WEBKIT_MATRIX_PASSED",
+      "summary": "The 1.0 PWA release includes an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks passed in local automation; no physical-phone or end-to-end phone-to-desktop verification is claimed."
     },
     {
       "id": "conversation-corpus",
@@ -75,5 +75,5 @@
       "summary": "A reversible Windows migration package exists and passed focused checks, but remains withheld pending native cryptographic signing, SBOM, and clean-machine lifecycle proof."
     }
   ],
-  "release_boundary": "This plan is a public-safe projection of the 1.0 web/PWA candidate. It is not a deployment receipt, production acceptance result, native-app claim, or release announcement."
+  "release_boundary": "This plan is the public-safe 1.0 web/PWA release record. It is not a deployment receipt, production acceptance result, native-app claim, or physical-device verification."
 }
