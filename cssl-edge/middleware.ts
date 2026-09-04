@@ -71,7 +71,7 @@ function retiredNotFound(): NextResponse {
   return response;
 }
 
-function makeCsp(nonce: string): string {
+function makeCsp(nonce: string, accountSurface = false): string {
   const isDev = process.env.NODE_ENV === 'development';
   return [
     "default-src 'self'",
@@ -81,7 +81,7 @@ function makeCsp(nonce: string): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    accountSurface ? "connect-src 'self' https://pzirbmyfmrbtkllrtcmx.supabase.co" : "connect-src 'self'",
     "media-src 'self'",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
@@ -105,7 +105,7 @@ export function middleware(request: NextRequest): NextResponse {
     || request.nextUrl.pathname === '/brain'
     || request.nextUrl.pathname.startsWith('/brain/')
     || request.nextUrl.pathname.startsWith('/api/brain/');
-  const csp = makeCsp(nonce);
+  const csp = makeCsp(nonce, request.nextUrl.pathname === '/apocrypha');
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);

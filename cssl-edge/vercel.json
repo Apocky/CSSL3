@@ -6,6 +6,9 @@
   "installCommand": "npm install",
   "regions": ["iad1"],
   "functions": {
+    "pages/api/mobile/turn.ts": {
+      "maxDuration": 120
+    },
     "pages/api/**/*.ts": {
       "maxDuration": 30
     },

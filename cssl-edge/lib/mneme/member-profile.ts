@@ -7,6 +7,7 @@ import { getRequestUser, type RequestUser } from '../admin-auth';
 import { hasSameOrigin } from '../auth-session';
 import { envelope } from '../response';
 import { getProfile } from './store';
+import { MnemeError } from './types';
 
 export const MNEME_MEMBER_ROUTE_PROFILE = 'me';
 
@@ -121,7 +122,13 @@ export async function requireStoredMnemeProfile(
       code: 'MNEME_PROFILE_NOT_PROVISIONED',
       message: 'This verified account does not have a provisioned Mneme profile. No profile was created automatically.',
     };
-  } catch {
+  } catch (error) {
+    let category: 'upstream_query' | 'decode' | 'unknown' = 'unknown';
+    if (error instanceof MnemeError) {
+      if (error.code === 'SB_PROFILE_GET') category = 'upstream_query';
+      else if (error.code === 'BYTEA_FMT') category = 'decode';
+    }
+    console.error(JSON.stringify({ evt: 'mneme.profile.lookup.fail', category }));
     return {
       ok: false,
       status: 503,

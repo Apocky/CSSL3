@@ -16,7 +16,7 @@ function rank(relation: PublicSurfaceRelation): number {
 }
 
 export default function ContextualSynapses({ pathname }: { pathname: string }): JSX.Element {
-  const isHome = pathname === '/';
+  const isHome = pathname === '/' || pathname === '/download/apocrypha';
   const current = isHome ? undefined : (findPublicSurfaceNodeForPath(pathname) ?? getPublicSurfaceNode('home'));
   const relations = useMemo(() => {
     if (!current) return [];

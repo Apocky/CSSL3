@@ -548,8 +548,8 @@ async function main(): Promise<void> {
   const vercel = JSON.parse(
     readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
   ) as { functions?: Record<string, { maxDuration?: number }> };
-  assert(primaryPage.includes('BrainExperience'), 'exact /apocrypha now aliases the private Brain experience');
-  assert(primaryPage.includes('requireBrainOwner'), 'exact /apocrypha remains owner-gated');
+  assert(primaryPage.includes('AccountChat'), 'exact /apocrypha exposes the new authenticated account conversation surface');
+  assert(!primaryPage.includes('requireBrainOwner'), 'public account entry must not remain owner-gated');
   assert(!primaryPage.includes('PublicChat'), 'exact /apocrypha must not revive the retired member chat');
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
   assert(component.includes('training_consent === false'), 'browser verifies no training consent');

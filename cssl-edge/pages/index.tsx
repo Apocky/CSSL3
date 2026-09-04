@@ -38,7 +38,7 @@ function GatewayContents({ gateway }: { gateway: Gateway }): JSX.Element {
 
 const Home: NextPage = () => {
   const [authNotice, setAuthNotice] = useState<string | null>(null);
-  const { access, authenticated, refresh } = useSiteSession();
+  const { authenticated, refresh } = useSiteSession();
   const koFi = SUPPORT_LINKS.find((link) => link.name === 'Ko-fi');
   const release = apocryphaRelease.status === 'live' ? apocryphaRelease.manifest : null;
 
@@ -65,21 +65,12 @@ const Home: NextPage = () => {
     return () => { cancelled = true; };
   }, [refresh]);
 
-  const apocryphaGateway: Gateway = access === 'owner'
-    ? {
-      eyebrow: 'OWNER-PRIVATE · AVAILABLE',
+  const apocryphaGateway: Gateway = {
+      eyebrow: authenticated ? 'YOUR ACCOUNT · CONVERSATIONS' : 'APOCRYPHA · SIGN IN TO CHAT',
       title: 'Talk to Apocrypha',
-      copy: 'Open your persistent conversation, contextual memory, and source-linked Brain.',
-      action: 'Open private conversation',
+      copy: 'Ask a question, explore an idea, and return to your own conversations. Use Apocrypha here or get the mobile app.',
+      action: 'Open Apocrypha',
       href: '/apocrypha',
-      primary: true,
-    }
-    : {
-      eyebrow: authenticated ? 'OWNER-PRIVATE · RESTRICTED' : 'OWNER-PRIVATE · SIGN-IN',
-      title: 'Talk to Apocrypha',
-      copy: 'Persistent conversation is private while the public relay remains closed behind its runtime and privacy gates.',
-      action: authenticated ? 'View the access boundary' : 'Sign in to verify access',
-      href: authenticated ? '/apocrypha' : '/login?next=%2Fapocrypha',
       primary: true,
     };
 

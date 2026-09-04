@@ -69,9 +69,9 @@ assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the compl
 for (const path of ['Talk to Apocrypha', 'Explore Atlas', 'Enter Chaos Tarot']) {
   assert(home.includes(path), `home must expose the primary ${path} path`);
 }
-assert(home.includes("href: '/apocrypha'"), 'owner Apocrypha entry must use the primary private route');
-assert(home.includes("href: authenticated ? '/apocrypha' : '/login?next=%2Fapocrypha'"), 'signed-out Apocrypha entry must verify access and return to the primary route');
-assert(home.includes('Persistent conversation is private while the public relay remains closed'), 'home must not imply a public Apocrypha surface exists');
+assert(home.includes("href: '/apocrypha'"), 'every visitor must have a direct Apocrypha entry');
+assert(!home.includes("access === 'owner'"), 'account chat entry must not be restricted to the owner');
+assert(!home.includes('public relay remains closed'), 'home must not retain the superseded owner-only copy');
 assert(home.includes('<details className="apx-home-more">'), 'secondary amenities must use progressive disclosure');
 assert(home.includes('/releases/apocrypha-living/manifest.json'), 'home must link its compact release claim to public-safe evidence');
 assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
@@ -94,13 +94,14 @@ assert(command.includes('aria-label="Find anything in the Apocky neural index"')
 assert(shell.includes('<ContextualSynapses pathname={pathname} />'), 'global shell must expose contextual graph edges');
 const primaryNav = shell.match(/const NAV:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
 assert((primaryNav.match(/href:/g) ?? []).length === 5, 'global shell must expose no more than five primary destinations');
-for (const label of ['Atlas', 'Create', 'Archive', 'Clearing', 'Chaos']) {
+for (const label of ['Apocrypha', 'Atlas', 'Create', 'Clearing', 'Chaos']) {
   assert(primaryNav.includes(label), `primary navigation missing ${label}`);
 }
 assert(!primaryNav.includes('/start'), 'home now owns orientation; Start must not remain a primary destination');
 assert(!shell.includes("href: '/oracle'"), 'global navigation and footer must not advertise the retired local Oracle');
 assert(!shell.includes('const WORK') && !shell.includes('const ABOUT'), 'footer must not restore the two long link inventories');
 assert(synapses.includes("pathname === '/'"), 'contextual synapses must stay hidden on the home page');
+assert(synapses.includes("pathname === '/download/apocrypha'"), 'native app download must not inherit Labyrinth links');
 assert(synapses.includes("relation.neighbor.id !== 'oracle'"), 'contextual synapses must not re-advertise the retired local Oracle');
 assert(synapses.includes('.slice(0, 2)'), 'contextual synapses must expose at most two related destinations');
 assert(nextConfig.includes("source: '/oracle', destination: 'https://chaos-tarot.com/yes-no?source=apocky-oracle', permanent: true"), 'legacy Oracle requests must permanently hand off to Chaos Tarot');

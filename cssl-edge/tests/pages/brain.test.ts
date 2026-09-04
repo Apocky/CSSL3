@@ -6,6 +6,7 @@ const read = (path: string): string => readFileSync(resolve(process.cwd(), path)
 
 const page = read('pages/brain.tsx');
 const apocryphaPage = read('pages/apocrypha.tsx');
+const accountChat = read('components/apocrypha/AccountChat.tsx');
 const experience = read('components/brain/BrainExperience.tsx');
 const owner = read('lib/brain/owner.ts');
 const snapshot = read('pages/api/brain/snapshot.ts');
@@ -35,16 +36,17 @@ assert.match(page, /requireBrainOwner/, 'Brain page must use the owner allowlist
 assert.match(page, /private, no-store/, 'Brain document must be private and non-cacheable');
 assert.match(page, /noindex,nofollow,noarchive,nosnippet/, 'Brain page must be crawler-dark');
 assert.match(page, /viewport-fit=cover/, 'Brain page must expose iOS safe areas to its installed layout');
-assert.match(apocryphaPage, /getServerSideProps/, 'primary Apocrypha page must authorize before render');
-assert.match(apocryphaPage, /requireBrainOwner/, 'primary Apocrypha page must use the same owner allowlist boundary');
-assert.match(apocryphaPage, /<BrainExperience serverAccess=\{serverAccess\} \/>/, 'primary route must render the existing Brain experience');
+assert.match(apocryphaPage, /<AccountChat \/>/, 'primary Apocrypha page must expose the account conversation surface');
+assert.match(apocryphaPage, /getServerSideProps/, 'account shell must receive the request nonce instead of static scripts blocked by CSP');
+assert.doesNotMatch(apocryphaPage, /requireBrainOwner|BrainExperience/, 'public account entry must not render the private Brain surface');
 assert.match(apocryphaPage, /<title>Apocrypha · Apocky<\/title>/, 'primary route must carry Apocrypha branding');
-assert.match(apocryphaPage, /Persistent owner-private Apocrypha conversation/, 'primary route must describe its private conversation honestly');
-assert.match(apocryphaPage, /private, no-store/, 'primary Apocrypha document must be private and non-cacheable');
+assert.match(apocryphaPage, /Sign in to your Apocky account/, 'primary route must describe account access honestly');
 assert.match(apocryphaPage, /noindex,nofollow,noarchive,nosnippet/, 'primary Apocrypha page must be crawler-dark');
 assert.match(apocryphaPage, /viewport-fit=cover/, 'primary Apocrypha page must expose iOS safe areas to its installed layout');
-assert.match(apocryphaPage, /destination: '\/login\?next=%2Fapocrypha'/, 'sign-in must return to the primary Apocrypha route');
-assert.match(apocryphaPage, /apple-mobile-web-app-capable" content="yes"/, 'primary route must opt into the iOS installed surface');
+assert.match(accountChat, /\/login\?next=%2Fapocrypha/, 'sign-in must return to the primary Apocrypha route');
+assert.match(accountChat, /\/register\?next=%2Fapocrypha/, 'new accounts must return to the primary Apocrypha route');
+assert.match(accountChat, /authFetch\('\/api\/mobile\/turn'/, 'account chat must use the authenticated account adapter');
+assert.doesNotMatch(accountChat, /\/api\/brain\/|\/api\/apocrypha\//, 'public account chat must not invoke private or retired adapters');
 assert.match(owner, /getAdminAuthorization/, 'Brain APIs must derive authority from the server session');
 assert.match(owner, /BRAIN_OWNER_REQUIRED/, 'non-owner identities must have a stable denial code');
 assert.match(snapshot, /deriveMemberProfileId\(owner\.user\.id\)/, 'snapshot profile must be derived server-side');
@@ -69,9 +71,10 @@ assert.match(consent, /if \(blackout \|\| compactSurface\) return null/, 'teleme
 assert.match(app, /pathname === '\/apocrypha'/, 'primary private alias must render without the public site shell');
 assert.match(app, /privateBrainSurface[\s\S]*?href="\/manifest\.json"/, 'the public manifest must be route-aware across client navigation');
 assert.doesNotMatch(document, /rel="manifest"/, 'the fixed document head must not pin the public manifest onto the private PWA');
-assert.match(home, /access === 'owner'[\s\S]*?href: '\/apocrypha'/, 'home must send owner access to the primary Apocrypha route');
-assert.match(home, /href: authenticated \? '\/apocrypha' : '\/login\?next=%2Fapocrypha'/, 'home sign-in must return to the primary route');
-assert.match(shell, /access === 'owner'.*href="\/apocrypha"/, 'shell must reveal the primary route only after owner authorization');
+assert.match(home, /href: '\/apocrypha'/, 'home must expose Apocrypha to every visitor');
+assert.doesNotMatch(home, /OWNER-PRIVATE|public relay remains closed/, 'home must not retain the superseded owner-only promise');
+assert.match(shell, /href: '\/apocrypha', label: 'Apocrypha'/, 'public shell must reveal account chat');
+assert.match(shell, /access === 'owner'.*href="\/brain"/, 'advanced private Brain link must retain owner authorization');
 assert.match(experience, /Mini Brain · deterministic/, 'offline response must not impersonate learned Apocrypha');
 assert.match(experience, /desktop remains authoritative/i, 'mobile topology must name desktop authority');
 assert.match(experience, /Retry on current history/, 'cursor conflict requires an explicit owner rebase');

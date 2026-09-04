@@ -1,0 +1,135 @@
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { getRequestUser, type RequestUserResult } from '../admin-auth';
+import { ACCOUNT_UUID, CONVERSATION_UUID } from './account-grant';
+import { accountRuntimeConfigured, AccountRuntimeError, callAccountRuntime } from './account-runtime';
+
+type Surface = 'turn' | 'sessions' | 'status';
+type Dict = Record<string, unknown>;
+const SHA = /^[a-f0-9]{64}$/;
+function record(value: unknown): value is Dict { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+function text(value: unknown, max = 131_072): value is string { return typeof value === 'string' && Buffer.byteLength(value) <= max; }
+function stamp(value: unknown): value is string { return typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value)); }
+
+function verifiedTurn(value: Dict, sent: Dict): Dict {
+  if (value.schema_version !== 'apocky.mobile.turn.v1' || value.status !== 'completed'
+    || value.session_id !== sent.session_id || value.request_id !== sent.request_id
+    || !text(value.text) || value.text.length === 0 || !text(value.model_id, 512)
+    || typeof value.response_digest !== 'string' || !SHA.test(value.response_digest)) throw new AccountRuntimeError('ACCOUNT_TURN_UNVERIFIED');
+  return { schema_version: value.schema_version, status: value.status, text: value.text,
+    session_id: value.session_id, request_id: value.request_id, model_id: value.model_id, response_digest: value.response_digest };
+}
+
+function verifiedSummary(value: unknown): Dict {
+  if (!record(value) || typeof value.session_id !== 'string' || !CONVERSATION_UUID.test(value.session_id)
+    || !text(value.title, 640) || !stamp(value.updated_at) || !Number.isSafeInteger(value.message_count)
+    || Number(value.message_count) < 0) throw new AccountRuntimeError('ACCOUNT_HISTORY_UNVERIFIED');
+  return { session_id: value.session_id, title: value.title, updated_at: value.updated_at, message_count: value.message_count };
+}
+
+function verifiedHistory(value: Dict, sessionId?: string): Dict {
+  if (value.status !== 'live') throw new AccountRuntimeError('ACCOUNT_HISTORY_UNVERIFIED');
+  if (!sessionId) {
+    if (value.schema_version !== 'apocky.mobile.sessions.v1' || !Array.isArray(value.sessions) || value.sessions.length > 100
+      || value.count !== value.sessions.length || typeof value.discovery_scope !== 'string'
+      || !['account_conversations', 'latest_conversation_only'].includes(value.discovery_scope)) {
+      throw new AccountRuntimeError('ACCOUNT_HISTORY_UNVERIFIED');
+    }
+    return { schema_version: value.schema_version, status: 'live', sessions: value.sessions.map(verifiedSummary),
+      count: value.count, discovery_scope: value.discovery_scope };
+  }
+  const session = value.session;
+  if (value.schema_version !== 'apocky.mobile.session.v1' || !record(session)
+    || session.schema_version !== 'apocky.mobile.history-session.v1' || session.session_id !== sessionId
+    || !text(session.title, 640) || !stamp(session.created_at) || !stamp(session.updated_at)
+    || typeof session.events_truncated !== 'boolean' || !Array.isArray(session.messages) || session.messages.length > 64) {
+    throw new AccountRuntimeError('ACCOUNT_HISTORY_UNVERIFIED');
+  }
+  const messages = session.messages.map((message: unknown) => {
+    if (!record(message) || typeof message.role !== 'string' || !['user', 'assistant'].includes(message.role) || !text(message.content)
+      || typeof message.request_id !== 'string' || !CONVERSATION_UUID.test(message.request_id)
+      || !stamp(message.recorded_at) || typeof message.event_digest !== 'string' || !SHA.test(message.event_digest)) {
+      throw new AccountRuntimeError('ACCOUNT_HISTORY_UNVERIFIED');
+    }
+    return { role: message.role, content: message.content, request_id: message.request_id,
+      recorded_at: message.recorded_at, event_digest: message.event_digest };
+  });
+  return { schema_version: value.schema_version, status: 'live', session: {
+    schema_version: session.schema_version, session_id: sessionId, title: session.title,
+    created_at: session.created_at, updated_at: session.updated_at, events_truncated: session.events_truncated, messages,
+  } };
+}
+
+export function createAccountHandler(surface: Surface, dependencies: {
+  user?: (req: NextApiRequest) => Promise<RequestUserResult>;
+  configured?: () => boolean;
+  call?: typeof callAccountRuntime;
+} = {}) {
+  return async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('Vary', 'Authorization, Cookie, Origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    const method = surface === 'turn' ? 'POST' : 'GET';
+    res.setHeader('Allow', method);
+    const fail = (status: number, code: string, error: string) => { res.status(status).json({ code, error }); };
+    if (req.method !== method) { fail(405, 'ACCOUNT_METHOD_DENIED', 'This request method is unavailable.'); return; }
+    if (method === 'POST') {
+      const localOrigin = process.env.NODE_ENV !== 'production' && typeof req.headers.origin === 'string'
+        && /^http:\/\/(localhost|127\.0\.0\.1):[0-9]{1,5}$/.test(req.headers.origin)
+        && new URL(req.headers.origin).host === req.headers.host;
+      if (req.headers.origin !== 'https://www.apocky.com' && !localOrigin) {
+        fail(403, 'ACCOUNT_ORIGIN_DENIED', 'Open Apocrypha from apocky.com or its official app.'); return;
+      }
+      if (typeof req.headers['content-type'] !== 'string'
+        || req.headers['content-type'].split(';', 1)[0]?.trim().toLowerCase() !== 'application/json') {
+        fail(415, 'ACCOUNT_CONTENT_TYPE_REQUIRED', 'Send this request as JSON.'); return;
+      }
+    }
+    let session: RequestUserResult;
+    try { session = await (dependencies.user ?? getRequestUser)(req); }
+    catch { fail(503, 'ACCOUNT_SIGN_IN_UNAVAILABLE', 'Sign-in could not be verified. Please retry.'); return; }
+    if (!session.user || !ACCOUNT_UUID.test(session.user.id)) {
+      const unavailable = ['upstream-unavailable', 'unconfigured'].includes(session.failureKind ?? '');
+      fail(unavailable ? 503 : 401, unavailable ? 'ACCOUNT_SIGN_IN_UNAVAILABLE' : 'ACCOUNT_SIGN_IN_REQUIRED',
+        unavailable ? 'Sign-in could not be verified. Please retry.' : 'Sign in or create an account to continue.'); return;
+    }
+    let sessionId: string | undefined;
+    if (surface === 'sessions') {
+      if (Object.keys(req.query).some((key) => key !== 'session_id')
+        || (req.query.session_id !== undefined && (typeof req.query.session_id !== 'string' || !CONVERSATION_UUID.test(req.query.session_id)))) {
+        fail(400, 'ACCOUNT_SESSION_INVALID', 'Choose a valid conversation.'); return;
+      }
+      sessionId = req.query.session_id as string | undefined;
+    } else if (Object.keys(req.query).length !== 0) { fail(400, 'ACCOUNT_QUERY_INVALID', 'This request has unsupported parameters.'); return; }
+    if (surface === 'turn' && (!record(req.body) || Object.keys(req.body).sort().join(',') !== 'request_id,session_id,text'
+      || !text(req.body.text, 16_384) || !req.body.text || req.body.text !== req.body.text.trim()
+      || typeof req.body.session_id !== 'string' || !CONVERSATION_UUID.test(req.body.session_id)
+      || typeof req.body.request_id !== 'string' || !CONVERSATION_UUID.test(req.body.request_id))) {
+      fail(400, 'ACCOUNT_TURN_INVALID', 'Enter a message and start a valid conversation.'); return;
+    }
+    if (!(dependencies.configured ?? accountRuntimeConfigured)()) {
+      if (surface === 'status') { res.status(200).json({ schema_version: 'apocky.mobile.status.v1', status: 'degraded', message: 'Apocrypha is reconnecting. Please try again shortly.' }); }
+      else fail(503, 'ACCOUNT_SERVICE_UNAVAILABLE', 'Apocrypha is reconnecting. Please try again shortly.');
+      return;
+    }
+    try {
+      const value = await (dependencies.call ?? callAccountRuntime)({ subject: session.user.id, method,
+        target: `/v1/account/${surface}${sessionId ? `?session_id=${sessionId}` : ''}`,
+        ...(surface === 'turn' ? { body: req.body as Record<string, string> } : {}) });
+      if (surface === 'turn') res.status(200).json(verifiedTurn(value, req.body as Dict));
+      else if (surface === 'sessions') res.status(200).json(verifiedHistory(value, sessionId));
+      else {
+        if (value.schema_version !== 'apocky.mobile.status.v1' || typeof value.status !== 'string'
+          || !['live', 'degraded'].includes(value.status)) throw new AccountRuntimeError('ACCOUNT_STATUS_UNVERIFIED');
+        res.status(200).json({ schema_version: value.schema_version, status: value.status,
+          ...(value.status === 'degraded' ? { message: 'Apocrypha is reconnecting. Please try again shortly.' } : {}) });
+      }
+    } catch (error) {
+      // ∀ post-admission failure → 5xx ; clients retain uncertain request identity.
+      if (surface === 'status') res.status(200).json({ schema_version: 'apocky.mobile.status.v1', status: 'degraded', message: 'Apocrypha is reconnecting. Please try again shortly.' });
+      else fail(error instanceof AccountRuntimeError ? error.publicStatus : 502,
+        error instanceof AccountRuntimeError ? error.code : 'ACCOUNT_SERVICE_UNAVAILABLE',
+        surface === 'turn' ? 'A completed reply could not be verified. Refresh this conversation before sending again.' : 'This conversation could not be loaded. Please retry.');
+    }
+  };
+}
