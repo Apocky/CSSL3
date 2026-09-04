@@ -28,6 +28,15 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
   await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'owner-test' } }) }));
   await page.route('**/api/admin/check', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authorized: true }) }));
+  await page.route('**/api/brain/mobile/device', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.mini-brain.device-registration.v1', status: 'bound',
+      device_token: 'test-device-token', owner_ref: 'a'.repeat(64), key_thumbprint: 'b'.repeat(64),
+      expires_at: '2099-01-01T00:00:00.000Z', served_by: 'fixture', ts: '2026-09-03T13:00:00.000Z',
+    }),
+  }));
   await page.route('**/api/brain/snapshot', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
@@ -57,9 +66,14 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await page.goto('/brain');
   await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
   await expect(page.getByText('Mneme storage')).toBeVisible();
-  await expect(page.getByText('not connected · conversation read-only')).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Message your local Apocrypha' })).toBeDisabled();
-  await expect(page.getByText(/New generated turns stay disabled until the server observes/i)).toBeVisible();
+  await expect(page.getByText('not connected · turns stay queued')).toBeVisible();
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
+  await expect(composer).toBeEnabled();
+  await expect(page.getByText(/deterministic core recalls compact memory/i)).toBeVisible();
+  await composer.fill('How do I preserve the source boundary?');
+  await page.getByRole('button', { name: 'Reflect + queue' }).click();
+  await expect(page.getByText(/Mini Brain · deterministic offline recall/i)).toBeVisible();
+  await expect(page.getByText(/encrypted queue · not yet committed/i)).toBeVisible();
   const releaseShelf = page.locator('#brain-releases');
   await expect(releaseShelf.getByText('Candidate — not released')).toBeVisible();
   await releaseShelf.locator('summary').click();
@@ -77,10 +91,130 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await expect(page.getByText(/preserves exact topic, time, CSL, and source-message links/i)).toBeVisible();
 
   await page.getByRole('button', { name: 'timeline' }).click();
-  await expect(page.getByText('The personal Brain remains owner-private and crawler-dark.')).toBeVisible();
+  await expect(page.getByText('The personal Brain remains owner-private and crawler-dark.', { exact: true })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   const a11y = await new AxeBuilder({ page }).analyze();
   expect(a11y.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('brain.png'), fullPage: true });
+});
+
+test('verified owner explicitly creates the first private Mneme profile', async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
+  await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'owner-test' } }) }));
+  await page.route('**/api/admin/check', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authorized: true }) }));
+  await page.route('**/api/brain/mobile/device', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.mini-brain.device-registration.v1', status: 'bound',
+      device_token: 'test-device-token', owner_ref: 'a'.repeat(64), key_thumbprint: 'b'.repeat(64),
+      expires_at: '2099-01-01T00:00:00.000Z', served_by: 'fixture', ts: '2026-09-03T13:00:00.000Z',
+    }),
+  }));
+  let provisioned = false;
+  let confirmation = '';
+  await page.route('**/api/brain/snapshot', route => route.fulfill({
+    status: provisioned ? 200 : 409,
+    contentType: 'application/json',
+    body: JSON.stringify(provisioned ? {
+      schema_version: 'apocky.owner-brain.snapshot.v1', status: 'live',
+      connectors: { mneme_storage: 'live', source_projection: 'live', local_apocv4: 'retired' },
+      memories: [], messages: [], counts: { memories: 0, messages: 0, source_links: 0 },
+      limits: { memories: 200, recent_messages: 120, source_messages: 200 },
+      served_by: 'fixture', ts: '2026-09-03T13:00:00.000Z',
+    } : {
+      error: 'This verified account does not have a provisioned Mneme profile.',
+      code: 'MNEME_PROFILE_NOT_PROVISIONED',
+    }),
+  }));
+  await page.route('**/api/brain/mneme/bootstrap', async route => {
+    confirmation = (await route.request().postDataJSON() as { confirmation?: string }).confirmation ?? '';
+    provisioned = true;
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema_version: 'apocky.owner-brain.mneme-bootstrap.v1', status: 'created',
+        key_source: 'server_derived_owner_binding', served_by: 'fixture', ts: '2026-09-03T13:00:00.000Z',
+      }),
+    });
+  });
+  await page.route('**/api/brain/runtime/status', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.owner-brain.runtime-status.v1', status: 'degraded',
+      reason_code: 'BRAIN_LOCAL_PROVIDER_DISABLED', observed_at: '2026-09-03T13:00:00.000Z',
+      latency_ms: null, upstream_status: null, served_by: 'fixture', ts: '2026-09-03T13:00:00.000Z',
+    }),
+  }));
+
+  await page.goto('/apocrypha');
+  await expect(page.getByText('Mneme needs your confirmation.')).toBeVisible();
+  await page.getByRole('button', { name: 'Create my private memory profile' }).click();
+  await expect(page.getByText(/Private Mneme profile created for this verified owner session/i)).toBeVisible();
+  await expect(page.getByText('0 records · 0 source links')).toBeVisible();
+  expect(confirmation).toBe('CREATE_OWNER_PRIVATE_MNEME_PROFILE');
+});
+
+test('@mobile installed Mini Brain restores an encrypted queued worldline offline', async ({ page, context }, testInfo) => {
+  await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
+  await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'owner-test' } }) }));
+  await page.route('**/api/admin/check', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authorized: true }) }));
+  await page.route('**/api/brain/mobile/device', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.mini-brain.device-registration.v1', status: 'bound',
+      device_token: 'test-device-token', owner_ref: 'a'.repeat(64), key_thumbprint: 'b'.repeat(64),
+      expires_at: '2099-01-01T00:00:00.000Z', served_by: 'fixture', ts: '2026-09-03T13:00:00.000Z',
+    }),
+  }));
+  await page.route('**/api/brain/snapshot', route => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'Private memory storage could not verify this profile.', code: 'MNEME_STORAGE_UNAVAILABLE' }),
+  }));
+  await page.route('**/api/brain/runtime/status', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.owner-brain.runtime-status.v1', status: 'degraded',
+      reason_code: 'BRAIN_LOCAL_PROVIDER_DISABLED', observed_at: '2026-09-03T13:00:00.000Z',
+      latency_ms: null, upstream_status: null, served_by: 'fixture', ts: '2026-09-03T13:00:00.000Z',
+    }),
+  }));
+
+  await page.goto('/apocrypha');
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
+  await expect(composer).toBeEnabled();
+  await composer.fill('What is the smallest reversible move?');
+  await page.getByRole('button', { name: 'Reflect + queue' }).click();
+  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  await expect(page.getByText(/This is a local prompt, not a generated Apocrypha answer/i)).toBeVisible();
+
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  await expect(page.getByText('Offline shell ready')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  await expect.poll(() => page.evaluate(async () => Boolean(await caches.match('/apocrypha')))).toBe(true);
+  await context.setOffline(true);
+  await page.goto('/apocrypha', { waitUntil: 'domcontentloaded' }).catch((error: unknown) => {
+    if (
+      !testInfo.project.name.startsWith('ios-webkit')
+      || !(error instanceof Error)
+      || !error.message.includes('WebKit encountered an internal error')
+    ) throw error;
+  });
+  await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
+  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  await expect(page.getByText('What is the smallest reversible move?')).toBeVisible();
+  await expect(page.getByText(/Offline · encrypted recent history/i)).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  const a11y = await new AxeBuilder({ page }).analyze();
+  expect(a11y.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('mini-brain-offline.png'), fullPage: true });
 });

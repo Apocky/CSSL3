@@ -36,6 +36,13 @@ const ApocryphaPage: NextPage<ApocryphaPageProps> = ({ serverAccess }) => (
       <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#03040c" />
+      <link rel="manifest" href="/brain-manifest.json" />
+      <meta name="application-name" content="Apocrypha Mini Brain" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-title" content="Mini Brain" />
+      <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     </Head>
     <BrainExperience serverAccess={serverAccess} />
   </>
