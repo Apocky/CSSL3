@@ -3,6 +3,13 @@
 import { createHash, createHmac } from 'node:crypto';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
+import {
+  decodeVerifiedHistoryEnvelope,
+  HistoryProofCodecError,
+  HISTORY_PROOF_ACCEPT,
+  HISTORY_PROOF_WIRE_LIMIT,
+  isVerifiedHistoryValue,
+} from './history-proof-codec';
 
 import {
   isRuntimeSessionPrincipal,
@@ -94,6 +101,9 @@ const PROTECTED_CODE_PREFIXES = [
 ];
 
 type JsonObject = Record<string, unknown>;
+const JSON_NUMBER_TOKEN_RE = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
+const canonicalNumberSources = new WeakMap<object, Map<string, string>>();
+
 type RuntimePath = '/health' | '/v1/chat' | '/v1/chat/stream' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
   | '/v1/chat/history'
   | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete'
@@ -515,18 +525,33 @@ function boundedJsonValue(value: unknown, maximumBytes: number): boolean {
   }
 }
 
-function canonicalJson(value: unknown): string {
+function canonicalJson(value: unknown, numberSource?: string): string {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return JSON.stringify(value);
   }
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) throw new RuntimeProxyError('session_binding_invalid', 500);
+    // § G12.digest := Python.json.dumps ; source.token preserves 100.0|-0.0|exponents.
+    if (numberSource !== undefined) {
+      if (!JSON_NUMBER_TOKEN_RE.test(numberSource) || !Object.is(Number(numberSource), value)) {
+        throw new RuntimeProxyError('session_binding_invalid', 500);
+      }
+      return numberSource;
+    }
     return JSON.stringify(value);
   }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (Array.isArray(value)) {
+    const sources = canonicalNumberSources.get(value);
+    return `[${value.map((entry, index) => canonicalJson(entry, sources?.get(String(index)))).join(',')}]`;
+  }
   if (isObject(value)) {
-    return `{${Object.keys(value).sort().map((key) => (
-      `${JSON.stringify(key)}:${canonicalJson(value[key])}`
+    const sources = canonicalNumberSources.get(value);
+    // § Python.key.order := Unicode.scalar.order ≡ UTF8.byte.order ; JS.UTF16 differs.
+    const keys = Object.keys(value).sort((left, right) => Buffer.compare(
+      Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'),
+    ));
+    return `{${keys.map((key) => (
+      `${JSON.stringify(key)}:${canonicalJson(value[key], sources?.get(key))}`
     )).join(',')}}`;
   }
   throw new RuntimeProxyError('session_binding_invalid', 500);
@@ -1800,7 +1825,13 @@ async function readBoundedJson(
   response: Response,
   maximumBytes: number,
   protectedValues: readonly string[],
+  historyProofAllowed = false,
 ): Promise<JsonObject> {
+  const historyCodec = response.headers.get('x-apocv4-history-codec');
+  if (historyCodec !== null && (!historyProofAllowed || historyCodec !== 'v2' || !response.ok)) {
+    throw new RuntimeProxyError('runtime_history_codec_mismatch', 502, response.status);
+  }
+  if (historyProofAllowed && historyCodec === null) maximumBytes = SESSION_RESPONSE_LIMIT;
   const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
   if (contentType !== 'application/json') {
     throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
@@ -1853,14 +1884,68 @@ async function readBoundedJson(
   if (protectedValues.some((value) => value.length > 0 && text.includes(value))) {
     throw new RuntimeProxyError('runtime_reflected_credential', 502, response.status);
   }
+  if (historyCodec === 'v2') {
+    try {
+      return await decodeVerifiedHistoryEnvelope(joined, protectedValues);
+    } catch (error) {
+      if (error instanceof HistoryProofCodecError) {
+        throw new RuntimeProxyError(error.code,
+          error.code === 'runtime_history_codec_unavailable' ? 503 : 502, response.status);
+      }
+      throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
+    }
+  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
-  } catch {
+    type JsonParseContext = { readonly source?: string };
+    type ContextualJsonReviver = (
+      this: unknown,
+      key: string,
+      value: unknown,
+      context: JsonParseContext,
+    ) => unknown;
+    const contextualParse = JSON.parse as unknown as (
+      source: string,
+      reviver: ContextualJsonReviver,
+    ) => unknown;
+    let sourceAvailable = false;
+    contextualParse('0', (_key, value, context) => {
+      sourceAvailable = value === 0 && context?.source === '0';
+      return value;
+    });
+    if (!sourceAvailable) {
+      throw new RuntimeProxyError('runtime_json_source_unavailable', 503, response.status);
+    }
+    parsed = contextualParse(text, function preserveNumberSource(key, value, context) {
+      // § canonical.UTF8 requires Unicode.scalars ; N! unpaired.surrogate replacement.
+      if (!key.isWellFormed() || (typeof value === 'string' && !value.isWellFormed())) {
+        throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
+      }
+      if (typeof value === 'number') {
+        if (typeof context?.source !== 'string' || typeof this !== 'object' || this === null) {
+          throw new RuntimeProxyError('runtime_json_source_unavailable', 503, response.status);
+        }
+        if (!Number.isFinite(value)) {
+          throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
+        }
+        let sources = canonicalNumberSources.get(this);
+        if (!sources) {
+          sources = new Map<string, string>();
+          canonicalNumberSources.set(this, sources);
+        }
+        sources.set(key, context.source);
+      }
+      return value;
+    });
+  } catch (error) {
+    if (error instanceof RuntimeProxyError) throw error;
     throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
   }
   if (!isObject(parsed) || parsed.schema_version !== RUNTIME_SCHEMA) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
+  }
+  if (isObject(parsed.result) && parsed.result.schema_version === 'apocv4.chat-history-proof-bundle.v2') {
+    throw new RuntimeProxyError('runtime_history_codec_mismatch', 502, response.status);
   }
   return parsed;
 }
@@ -1883,6 +1968,7 @@ async function callRuntime(
   const objective = path === '/v1/objectives';
   const chat = path === '/v1/chat';
   const history = path === '/v1/chat/history';
+  const historyProof = history && body === null && accessProfile === 'owner-brain';
   const code = path === '/v1/code';
   const rollback = path === '/v1/code/rollback';
   const session = path.startsWith('/v1/sessions/');
@@ -1912,7 +1998,7 @@ async function callRuntime(
         : chat
           ? CHAT_RESPONSE_LIMIT
           : history || session
-            ? SESSION_RESPONSE_LIMIT
+            ? historyProof ? HISTORY_PROOF_WIRE_LIMIT : SESSION_RESPONSE_LIMIT
             : job
               ? JOB_RESPONSE_LIMIT
               : vision
@@ -1932,7 +2018,7 @@ async function callRuntime(
     const response = await runtimeRequest(`${origin}${path}${queryString}`, {
       method: transmittedBody === null ? 'GET' : 'POST',
       headers: {
-        Accept: 'application/json',
+        Accept: historyProof ? HISTORY_PROOF_ACCEPT : 'application/json',
         'Accept-Encoding': 'identity',
         Authorization: `Bearer ${token}`,
         ...(traceMatch ? {
@@ -1952,6 +2038,7 @@ async function callRuntime(
       bindingMac === null
         ? [token, ...transportProtectedValues]
         : [token, bindingMac, bindingSecret ?? '', ...transportProtectedValues],
+      historyProof,
     );
     if (!response.ok) {
       if (
@@ -2008,6 +2095,8 @@ async function callRuntime(
     );
   } finally {
     clearTimeout(deadline);
+    // § early header rejection must also terminate the unread upstream body.
+    controller.abort();
   }
 }
 
@@ -2608,7 +2697,7 @@ function validateG12TokenAdmission(
     && boundedNonnegativeInteger(contextWindow)
     && Number(inputTokens) + Number(outputReserve) <= Number(contextWindow)
     && value.admitted === true
-    && digestJson(value) === digest
+    && (isVerifiedHistoryValue(value) || digestJson(value) === digest)
     && (expectedModelId === undefined || value.model_id === expectedModelId)
     && (expectedPromptTokens === undefined || value.input_tokens === expectedPromptTokens);
 }
@@ -2696,7 +2785,7 @@ function validateG12OwnerChatResult(
       usage.prompt_tokens as number,
     )
   ) return false;
-  return model.response_digest === digestJson({
+  return isVerifiedHistoryValue(value) || model.response_digest === digestJson({
     model_id: model.model_id,
     model_revision: model.model_revision,
     model_family: model.model_family,
@@ -2756,7 +2845,8 @@ function validateG12HistoryTurn(
       response.text !== value.assistant_message
       || model.response_digest !== value.response_digest
       || model.token_admission_digest !== value.token_admission_digest
-      || canonicalJson(model.token_admission) !== canonicalJson(value.token_admission)
+      || (!isVerifiedHistoryValue(value)
+        && canonicalJson(model.token_admission) !== canonicalJson(value.token_admission))
     ) return false;
   } else {
     const publicError = value.public_error;
@@ -2780,7 +2870,7 @@ function validateG12HistoryTurn(
   }
   const core = { ...value };
   delete core.turn_digest;
-  return value.turn_digest === digestJson(core);
+  return isVerifiedHistoryValue(value) || value.turn_digest === digestJson(core);
 }
 
 function normalizeG12HistoryPage(
@@ -2820,7 +2910,7 @@ function normalizeG12HistoryPage(
   ) return null;
   const core = { ...value };
   delete core.page_digest;
-  if (value.page_digest !== digestJson(core)) return null;
+  if (!isVerifiedHistoryValue(value) && value.page_digest !== digestJson(core)) return null;
   return {
     conversationId: conversationId as string | null,
     turns: value.turns as JsonObject[],

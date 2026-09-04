@@ -8,6 +8,8 @@ import {
   publicMemberPrincipalRef,
 } from '@/lib/apocv4/runtime-proxy';
 import { sendOwnerBrainTurn } from '@/lib/brain/runtime-provider';
+import pythonHistoryFixtures from '../fixtures/g12-python-history.json';
+import { decodeVerifiedHistoryEnvelope, HistoryProofCodecError, HISTORY_PROOF_ACCEPT, isVerifiedHistoryValue } from '@/lib/apocv4/history-proof-codec';
 
 type JsonObject = Record<string, unknown>;
 
@@ -34,8 +36,18 @@ function digest(character: string): string {
   return character.repeat(64);
 }
 
-function response(conversationId: string, requestId: string, text = 'A verified G12 response.'): JsonObject {
+function response(
+  conversationId: string,
+  requestId: string,
+  text = 'A verified G12 response.',
+): JsonObject {
   const usage = { prompt_tokens: 12, completion_tokens: 7 };
+  const observed = {
+    evidence_lane: 'observed_runtime_transport',
+    latency_ms: 4.25,
+    transport_kind: 'fixture',
+    transport_receipt_digest: null,
+  };
   const model = {
     evidence_lane: 'model_reported_not_observed_fact',
     model_id: 'fixture/g12',
@@ -67,12 +79,7 @@ function response(conversationId: string, requestId: string, text = 'A verified 
     schema_version: 'apocv4.chat-response.v2',
     text,
     model_reported: model,
-    observed: {
-      evidence_lane: 'observed_runtime_transport',
-      latency_ms: 4.25,
-      transport_kind: 'fixture',
-      transport_receipt_digest: null,
-    },
+    observed,
     authority: {
       effect_authority: 'NONE',
       tool_authority: 'READ_ONLY_CONTEXT',
@@ -111,7 +118,10 @@ function response(conversationId: string, requestId: string, text = 'A verified 
   };
 }
 
-function completedTurn(conversationId: string, requestId: string): JsonObject {
+function completedTurn(
+  conversationId: string,
+  requestId: string,
+): JsonObject {
   const chat = response(conversationId, requestId);
   const model = chat.model_reported as JsonObject;
   const core = {
@@ -177,7 +187,10 @@ function page(
   return { ...core, page_digest: digestJson(core) };
 }
 
-function runtimeEnvelope(result: JsonObject): Response {
+function runtimeEnvelope(
+  result: JsonObject,
+  rawBody?: string,
+): Response {
   const principalRef = digest('c');
   const privacyPartitionRef = digestJson({
     schema_version: 'apocv4.runtime-auth.v1',
@@ -188,7 +201,8 @@ function runtimeEnvelope(result: JsonObject): Response {
     principal_ref: principalRef,
     privacy_partition_ref: privacyPartitionRef,
   });
-  return new Response(JSON.stringify({ schema_version: 'apocv4.runtime-service.v1', result }), {
+  const body = rawBody ?? JSON.stringify({ schema_version: 'apocv4.runtime-service.v1', result });
+  return new Response(body, {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
@@ -199,6 +213,45 @@ function runtimeEnvelope(result: JsonObject): Response {
       'X-Apocv4-Privacy-Partition-Ref': privacyPartitionRef,
     },
   });
+}
+
+function proofResponse(rawBody: string): Response {
+  const result = runtimeEnvelope({}, rawBody);
+  result.headers.set('X-Apocv4-History-Codec', 'v2');
+  return result;
+}
+
+// § synthetic semantic negatives ; native producer fixtures remain the numeric oracle.
+function proofBody(page: JsonObject): string {
+  const blocks = new Map<string, string>();
+  function add(core: JsonObject): string {
+    const text = canonicalJson(core);
+    const id = createHash('sha256').update(text).digest('hex');
+    blocks.set(id, text);
+    return id;
+  }
+  for (const value of page.turns as JsonObject[]) {
+    if (value.token_admission !== null) add(value.token_admission as JsonObject);
+    if (value.state === 'COMPLETED') {
+      const chat = value.response as JsonObject;
+      const model = chat.model_reported as JsonObject;
+      const core = Object.fromEntries(['model_id', 'model_revision', 'model_family',
+        'serving_profile_digest', 'response_id', 'prompt_digest', 'token_admission_digest',
+        'rationale_digest', 'usage'].map(key => [key, model[key]]));
+      model.response_digest = add({ ...core, text: chat.text });
+      value.response_digest = model.response_digest;
+    }
+    const core = { ...value };
+    delete core.turn_digest;
+    value.turn_digest = add(core);
+  }
+  const core = { ...page };
+  delete core.page_digest;
+  const root = add(core);
+  return JSON.stringify({ schema_version: 'apocv4.runtime-service.v1', result: {
+    schema_version: 'apocv4.chat-history-proof-bundle.v2', encoding: 'utf8-json-text',
+    root_digest: root, blocks: [...blocks],
+  } });
 }
 
 async function rejectsCode(run: () => Promise<unknown>, code: string): Promise<void> {
@@ -304,6 +357,189 @@ async function main(): Promise<void> {
       () => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }),
       'runtime_response_invalid',
     );
+
+    assert.equal(pythonHistoryFixtures.fixtures.length, 15);
+    for (const fixture of pythonHistoryFixtures.fixtures) {
+      globalThis.fetch = async () => runtimeEnvelope({}, fixture.body);
+      if (!fixture.accepted) {
+        await rejectsCode(
+          () => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }),
+          'runtime_response_invalid',
+        );
+        continue;
+      }
+      const boundaryHistory = await getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }).catch(error => {
+        throw new Error(`Python fixture ${fixture.name} rejected`, { cause: error });
+      });
+      assert.equal(
+        boundaryHistory.session.session_id,
+        SESSION_ID,
+        `Python fixture ${fixture.name} preserves the G12 digest`,
+      );
+      assert.match(boundaryHistory.session.messages[1]?.content as string, /café, 中文, 🧠/u);
+    }
+
+    const integralFixture = pythonHistoryFixtures.fixtures[0]!;
+    for (const replacement of ['101.0', '100', '1e309']) {
+      globalThis.fetch = async () => runtimeEnvelope({}, integralFixture.body.replace('"latency_ms":100.0', `"latency_ms":${replacement}`));
+      await rejectsCode(
+        () => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }),
+        'runtime_response_invalid',
+      );
+    }
+    for (const malformedBody of [
+      integralFixture.body.replace('café', '\\ud800'),
+      integralFixture.body.replace('"latency_ms":100.0', '"\\udc00":100.0'),
+    ]) {
+      globalThis.fetch = async () => runtimeEnvelope({}, malformedBody);
+      await rejectsCode(
+        () => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }),
+        'runtime_response_invalid',
+      );
+    }
+
+    const nativeParse = JSON.parse;
+    try {
+      // § simulate pre-source-context parser ; float spelling must fail closed.
+      JSON.parse = (source, reviver) => nativeParse(source, reviver && function withoutSource(key, value) {
+        return reviver.call(this, key, value);
+      });
+      globalThis.fetch = async () => runtimeEnvelope({}, integralFixture.body);
+      await assert.rejects(
+        () => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }),
+        (error: unknown) => error instanceof RuntimeProxyError
+          && error.code === 'runtime_json_source_unavailable'
+          && error.publicStatus === 503,
+      );
+    } finally {
+      JSON.parse = nativeParse;
+    }
+    globalThis.fetch = async () => runtimeEnvelope({}, integralFixture.body);
+    assert.equal((await getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID })).session.session_id, SESSION_ID);
+
+    const firstProof = (integralFixture as { proof_body?: string }).proof_body!;
+    globalThis.fetch = async (_input, init) => {
+      assert.equal(new Headers(init?.headers).get('Accept'), HISTORY_PROOF_ACCEPT);
+      return proofResponse(firstProof);
+    };
+    const nativeCompile = WebAssembly.compile;
+    try {
+      WebAssembly.compile = async () => { throw new Error('synthetic missing/corrupt module'); };
+      await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }),
+        'runtime_history_codec_unavailable');
+    } finally { WebAssembly.compile = nativeCompile; }
+    const instanceDescriptor = Object.getOwnPropertyDescriptor(WebAssembly, 'Instance')!;
+    const NativeInstance = WebAssembly.Instance;
+    try {
+      Object.defineProperty(WebAssembly, 'Instance', { ...instanceDescriptor, value: class {
+        constructor(module: WebAssembly.Module, imports: WebAssembly.Imports) {
+          const actual = new NativeInstance(module, imports);
+          return { exports: { ...actual.exports, verify_history_proof_envelope() {
+            throw new WebAssembly.RuntimeError('synthetic trap after input allocation');
+          } } };
+        }
+      } });
+      await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }),
+        'runtime_history_codec_unavailable');
+    } finally { Object.defineProperty(WebAssembly, 'Instance', instanceDescriptor); }
+    assert.equal((await getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID })).session.session_id, SESSION_ID,
+      'failed compile and trapped instance recover without poisoning the compiled cache');
+    await assert.rejects(() => decodeVerifiedHistoryEnvelope(Buffer.from(firstProof), ['100.0']),
+      error => error instanceof HistoryProofCodecError && error.code === 'runtime_reflected_credential',
+      'protected values also scan verified raw page tokens before number projection');
+    assert.equal(isVerifiedHistoryValue({ verified: true, history_proof_verified: true }), false);
+    const nestedProof = pythonHistoryFixtures.fixtures.find(value => value.name === 'nested-unicode-and-key-order')!;
+    const verifiedEnvelope = await decodeVerifiedHistoryEnvelope(Buffer.from(nestedProof.proof_body!), []);
+    const verifiedPage = verifiedEnvelope.result as JsonObject;
+    const verifiedTurn = (verifiedPage.turns as JsonObject[])[0]!;
+    const verifiedResponse = verifiedTurn.response as JsonObject;
+    assert(isVerifiedHistoryValue(verifiedPage) && isVerifiedHistoryValue(verifiedTurn)
+      && isVerifiedHistoryValue(verifiedResponse));
+    const context = verifiedResponse.context as JsonObject;
+    const refs = (context.retrieval as JsonObject).refs as JsonObject[];
+    assert.equal(isVerifiedHistoryValue(refs[0]), false, 'arbitrary nested metadata never receives digest-skip authority');
+    assert.equal(isVerifiedHistoryValue(verifiedResponse.model_reported), false);
+    assert.equal(Object.isFrozen(refs[0]), true);
+    assert.equal(Object.hasOwn(refs[0]!, '__proto__'), true, 'prototype names remain ordinary own properties');
+
+    for (const fixture of pythonHistoryFixtures.fixtures) {
+      if (!('proof_body' in fixture)) continue;
+      globalThis.fetch = async () => proofResponse(fixture.proof_body!);
+      const result = await getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID });
+      assert.equal(result.session.session_id, SESSION_ID, `WASM verifies Python ${fixture.name}`);
+    }
+    try {
+      JSON.parse = (source, reviver) => nativeParse(source, reviver && function withoutSource(key, value) {
+        return reviver.call(this, key, value);
+      });
+      globalThis.fetch = async () => proofResponse(firstProof);
+      assert.equal((await getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID })).session.session_id, SESSION_ID,
+        'v2 requires no reviver source support');
+    } finally { JSON.parse = nativeParse; }
+
+    const bundle = JSON.parse(firstProof) as { result: { blocks: [string, string][]; root_digest: string } };
+    const attackCases: [string, string][] = [];
+    const duplicate = structuredClone(bundle);
+    duplicate.result.blocks.push(duplicate.result.blocks[0]!);
+    attackCases.push([JSON.stringify(duplicate), 'history_proof_block_duplicate']);
+    const missing = structuredClone(bundle);
+    missing.result.root_digest = digest('f');
+    attackCases.push([JSON.stringify(missing), 'history_proof_block_missing']);
+    const tampered = structuredClone(bundle);
+    tampered.result.blocks[0]![1] += ' ';
+    attackCases.push([JSON.stringify(tampered), 'history_proof_digest_invalid']);
+    const extra = structuredClone(bundle);
+    extra.result.blocks.push([digestJson({}), '{}']);
+    attackCases.push([JSON.stringify(extra), 'history_proof_block_unused']);
+    for (const [body, expected] of attackCases) {
+      let attempts = 0;
+      globalThis.fetch = async () => { attempts++; return proofResponse(body); };
+      await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }), expected);
+      assert.equal(attempts, 1, 'invalid v2 never retries legacy');
+    }
+    globalThis.fetch = async () => runtimeEnvelope({}, firstProof);
+    await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }), 'runtime_history_codec_mismatch');
+    globalThis.fetch = async () => proofResponse(integralFixture.body);
+    await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }), 'history_proof_limit_exceeded');
+    const pendingBody = { signal: null as AbortSignal | null, producerActive: true };
+    globalThis.fetch = async (_input, init) => {
+      pendingBody.signal = init?.signal ?? null;
+      const body = new ReadableStream<Uint8Array>({ start(controller) {
+        pendingBody.signal?.addEventListener('abort', () => {
+          pendingBody.producerActive = false;
+          controller.error(new DOMException('Synthetic upstream aborted', 'AbortError'));
+        }, { once: true });
+      } });
+      return new Response(body, { headers: {
+        'Content-Type': 'application/json', 'X-Apocv4-History-Codec': 'v3',
+      } });
+    };
+    await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }), 'runtime_history_codec_mismatch');
+    assert.equal(pendingBody.signal?.aborted, true, 'early header rejection aborts the upstream request');
+    assert.equal(pendingBody.producerActive, false, 'a never-ending body cannot survive a cleared deadline');
+    for (const mutation of [
+      (value: JsonObject) => { value.conversation_id = REQUEST_B; },
+      (value: JsonObject) => { value.next_cursor = REQUEST_B; },
+      (value: JsonObject) => { value.effect_authority = 'WRITE'; },
+      (value: JsonObject) => { ((value.turns as JsonObject[])[0]!.response as JsonObject).privacy_partition_ref = digest('f'); },
+    ]) {
+      const altered = page(SESSION_ID, [completedTurn(SESSION_ID, REQUEST_A)]);
+      mutation(altered);
+      const body = proofBody(altered);
+      globalThis.fetch = async () => proofResponse(body);
+      await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }), 'runtime_response_invalid');
+    }
+    globalThis.fetch = async () => {
+      const result = proofResponse(firstProof);
+      result.headers.set('X-Apocv4-Binding-Ref', digest('f'));
+      return result;
+    };
+    await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }), 'runtime_history_binding_invalid');
+    const reflected = page(SESSION_ID, [completedTurn(SESSION_ID, REQUEST_A)]);
+    (reflected.turns as JsonObject[])[0]!.user_message = TOKEN;
+    const escapedProof = proofBody(reflected).replaceAll(TOKEN, '\\u0067' + TOKEN.slice(1));
+    globalThis.fetch = async () => proofResponse(escapedProof);
+    await rejectsCode(() => getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID }), 'runtime_reflected_credential');
 
     process.env.APOCV4_RUNTIME_TRANSPORT = 'cloudflare-access';
     process.env.APOCV4_RUNTIME_URL = 'https://apocrypha.apocky.com';
