@@ -13,6 +13,11 @@ const nextConfig = {
   env: {
     CSSL_EDGE_VERSION: '0.1.0',
   },
+  // Approved bodies are intentionally absent today. When an owner-reviewed body is
+  // added later, trace only that approved store into the dynamic API function.
+  outputFileTracingIncludes: {
+    '/api/conversation-corpus/[id]': ['./public/conversation-corpus/approved-records/**/*.json'],
+  },
   async redirects() {
     return [
       // Binary Tarot now belongs to the Chaos Tarot divination platform.

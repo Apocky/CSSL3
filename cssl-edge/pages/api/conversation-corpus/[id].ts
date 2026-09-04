@@ -2,11 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import {
   CORPUS_REVIEW_HELD_CODE,
-  validatePublicConversationManifest,
-  type ConversationCorpusManifest,
   type ConversationCorpusPageResponse,
   type ConversationCorpusRecord,
 } from '@/lib/conversation-corpus';
+import { getBundledPublicConversationManifest } from '@/lib/server/conversation-corpus-manifest';
 
 const ID = /^[a-f0-9]{20}$/u;
 const ROLES = new Set(['all', 'user', 'assistant']);
@@ -41,16 +40,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const [{ readFile }, { join }] = await Promise.all([import('node:fs/promises'), import('node:path')]);
-    const manifest = JSON.parse(
-      await readFile(join(process.cwd(), 'public', 'conversation-corpus', 'public-index.v1.json'), 'utf8'),
-    ) as ConversationCorpusManifest;
-    validatePublicConversationManifest(manifest);
+    const manifest = getBundledPublicConversationManifest();
     const approvedSummary = manifest.records.find((candidate) => candidate.id === id);
     if (approvedSummary?.editorialReviewState !== 'approved') {
       held(res);
       return;
     }
+    const [{ readFile }, { join }] = await Promise.all([import('node:fs/promises'), import('node:path')]);
     const source = await readFile(join(process.cwd(), 'public', 'conversation-corpus', 'approved-records', `${id}.json`), 'utf8');
     const record = JSON.parse(source) as ConversationCorpusRecord;
     if (

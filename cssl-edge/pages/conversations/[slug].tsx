@@ -3,14 +3,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { validatePublicConversationManifest } from '@/lib/conversation-corpus';
 import type {
-  ConversationCorpusManifest,
   ConversationCorpusPageResponse,
   ConversationCorpusSummary,
   CorpusBranch,
   CorpusMessage,
 } from '@/lib/conversation-corpus';
+import { getBundledPublicConversationManifest } from '@/lib/server/conversation-corpus-manifest';
 import { SUPPORT_LINKS } from '@/lib/support-links';
 import styles from '@/styles/ConversationReader.module.css';
 
@@ -278,9 +277,7 @@ export const getStaticPaths: GetStaticPaths = async () => ({ paths: [], fallback
 
 export const getStaticProps: GetStaticProps<ConversationReaderProps> = async ({ params }) => {
   const slug = typeof params?.slug === 'string' ? params.slug : '';
-  const [{ readFile }, { join }] = await Promise.all([import('node:fs/promises'), import('node:path')]);
-  const manifest = JSON.parse(await readFile(join(process.cwd(), 'public', 'conversation-corpus', 'public-index.v1.json'), 'utf8')) as ConversationCorpusManifest;
-  validatePublicConversationManifest(manifest);
+  const manifest = getBundledPublicConversationManifest();
   const summary = manifest.records.find((record) => record.slug === slug && record.editorialReviewState === 'approved');
   if (!summary) return { notFound: true, revalidate: false };
   return { props: { summary }, revalidate: false };
