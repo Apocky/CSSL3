@@ -66,7 +66,14 @@ assert(home.includes('chaos-tarot.com/free-reading?source=apocky-home'), 'home m
 assert((home.match(/https:\/\/chaos-tarot\.com/g) ?? []).length === 1, 'home content must expose one clear Chaos funnel');
 assert(!home.includes("href=\"/oracle\"") && !home.includes("href: '/oracle'"), 'home must not host or advertise the local Yes / No route');
 assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the complete project index beneath its primary paths');
-assert(home.includes('<h2>Constellation Atlas</h2>'), 'the neural visual must orient visitors into the Atlas instead of duplicating Chaos');
+for (const path of ['Talk to Apocrypha', 'Explore Atlas', 'Enter Chaos Tarot']) {
+  assert(home.includes(path), `home must expose the primary ${path} path`);
+}
+assert(home.includes("href: '/brain'"), 'owner Apocrypha entry must use the private Brain route');
+assert(home.includes("href: authenticated ? '/brain' : '/login?next=%2Fbrain'"), 'signed-out Apocrypha entry must verify access through sign-in');
+assert(home.includes('Persistent conversation is private while the public relay remains closed'), 'home must not imply a public Apocrypha surface exists');
+assert(home.includes('<details className="apx-home-more">'), 'secondary amenities must use progressive disclosure');
+assert(home.includes('/releases/apocrypha-living/manifest.json'), 'home must link its compact release claim to public-safe evidence');
 assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
 assert(home.includes('location.replace(returnTo)'), 'home simplification must preserve the normalized post-auth return path');
 assert(membership.includes('https://chaos-tarot.com/pricing'), 'membership must expose the usable Chaos product path');

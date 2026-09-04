@@ -14,12 +14,17 @@ async function expectNoSeriousAccessibilityFindings(page: import('@playwright/te
 
 test('home remains a useful creative-work entry point', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle(/Interconnected worlds, tools, and living ideas/i);
-  await expect(page.getByRole('heading', { level: 1, name: /Follow the signal.*Enter the system/i })).toBeVisible();
+  await expect(page).toHaveTitle(/Conversation, symbolic tools, and connected worlds/i);
+  await expect(page.getByRole('heading', { level: 1, name: /Strange questions.*Useful ways through/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Talk to Apocrypha/i })).toHaveAttribute('href', '/login?next=%2Fbrain');
   await expect(page.getByRole('link', { name: /Begin a free reading/i })).toHaveAttribute('href', 'https://chaos-tarot.com/free-reading?source=apocky-home');
-  await expect(page.getByRole('link', { name: /Explore the Atlas/i }).first()).toHaveAttribute('href', '/atlas');
-  await expect(page.getByRole('link', { name: /The Clearing.*Join the signal/i })).toHaveAttribute('href', '/clearing');
-  await expect(page.locator('body')).not.toContainText(/apocrypha/i);
+  await expect(page.getByRole('link', { name: /Explore Atlas/i }).first()).toHaveAttribute('href', '/atlas');
+  await expect(page.getByText('Candidate — not released')).toBeVisible();
+  const more = page.getByText('More of Apocky', { exact: true });
+  await expect(more).toBeVisible();
+  await expect(page.getByRole('link', { name: /Gather.*public social room/i })).not.toBeVisible();
+  await more.click();
+  await expect(page.getByRole('link', { name: /Gather.*public social room/i })).toHaveAttribute('href', '/clearing');
   await expect(page.locator('a[href^="/apoc"], a[href="/chat"], a[href="/apx"]')).toHaveCount(0);
   await expect(page.locator('main')).toHaveCount(1);
   await expect(page.locator('h1')).toHaveCount(1);
@@ -70,7 +75,7 @@ test('@mobile mobile navigation remains discoverable and unclipped', async ({ pa
   await expect(explore).toBeVisible();
   await explore.click();
   const menu = page.getByRole('group', { name: 'Explore Apocky on mobile' });
-  await expect(menu.getByRole('link', { name: 'The Clearing' })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'Clearing', exact: true })).toBeVisible();
   await expect(menu).not.toContainText(/apocrypha/i);
   await expectNoHorizontalOverflow(page);
 });
@@ -103,5 +108,5 @@ test('machine-readable discovery surfaces omit retired service routes', async ({
 test('legacy Commons entry redirects to the native hub', async ({ page }) => {
   await page.goto('/commons');
   await expect.poll(() => new URL(page.url()).pathname).toBe('/');
-  await expect(page.getByRole('heading', { level: 1, name: /Follow the signal.*Enter the system/i })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Strange questions.*Useful ways through/i })).toBeVisible();
 });
