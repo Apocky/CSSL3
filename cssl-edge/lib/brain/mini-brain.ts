@@ -370,7 +370,7 @@ export function probeMiniBrainCortex(): MiniBrainCortexProbe {
   };
 }
 
-function normalizedRemoteMessages(messages: readonly Record<string, unknown>[]): MiniBrainMessage[] {
+export function normalizeMiniBrainRemoteMessages(messages: readonly Record<string, unknown>[]): MiniBrainMessage[] {
   return messages.flatMap((message): MiniBrainMessage[] => {
     if (
       (message.role !== 'user' && message.role !== 'assistant')
@@ -472,7 +472,7 @@ export class MiniBrainVault {
 
   async applySync(state: MiniBrainState, response: MiniBrainSyncResponse): Promise<MiniBrainState> {
     const prior = state.sessions.find(session => session.session_id === response.session_id);
-    const remote = normalizedRemoteMessages(response.messages);
+    const remote = normalizeMiniBrainRemoteMessages(response.messages);
     const completedRequestIds = new Set(remote.map(message => message.request_id));
     const pendingLocalIds = new Set(
       state.queue

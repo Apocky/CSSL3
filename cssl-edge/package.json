@@ -19,7 +19,7 @@
     "test:conversation-corpus": "node tests/conversation-corpus/public-aggregate-generator.test.mjs && node --import tsx tests/api/conversation-corpus.test.ts && node --import tsx tests/pages/conversation-corpus.test.ts && node scripts/audit-conversation-corpus.mjs",
     "snapshot:apocrypha-release": "node scripts/snapshot-apocrypha-release.mjs",
     "test:apocrypha-release": "node tests/release-manifest-generator.test.mjs && node --import tsx tests/lib/brain-release-manifest.test.ts && node --import tsx tests/pages/brain-release.test.ts",
-    "test:brain": "node --import tsx tests/pages/brain.test.ts && node --import tsx tests/api/brain/brain.test.ts && node --import tsx tests/api/brain/mneme-bootstrap.test.ts && node --import tsx tests/api/brain/mobile-sync.test.ts && npm run test:apocrypha-release",
+    "test:brain": "node --import tsx tests/pages/brain.test.ts && node --import tsx tests/api/brain/brain.test.ts && node --import tsx tests/api/brain/mneme-bootstrap.test.ts && node --import tsx tests/lib/apocv4-cloudflare-runtime-transport.test.ts && node --import tsx tests/lib/apocv4-g12-brain-history.test.ts && node --import tsx tests/api/brain/mobile-sync.test.ts && npm run test:apocrypha-release",
     "generate:brand-icons": "node scripts/generate-brand-icons.mjs",
     "preview:brand-icons": "node scripts/preview-brand-icons.mjs",
     "test:brand-icons": "node --import tsx tests/pages/brand-icons.test.ts",

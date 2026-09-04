@@ -1,6 +1,6 @@
 // Server-only transport for the authenticated Apocv4 runtime.
 
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 
@@ -9,6 +9,12 @@ import {
   publicMemberPrincipalRef,
   type RuntimeSessionPrincipal,
 } from './session-principal';
+import {
+  CloudflareRuntimeTransportError,
+  cloudflareRuntimeProtectedValues,
+  fetchCloudflareRuntime,
+  validateCloudflareRuntimeOrigin,
+} from './cloudflare-runtime-transport';
 
 export { publicMemberPrincipalRef } from './session-principal';
 export type { RuntimeSessionPrincipal } from './session-principal';
@@ -30,6 +36,8 @@ const CHAT_STREAM_RESPONSE_LIMIT = 1024 * 1024;
 const SESSION_RESPONSE_LIMIT = 2 * 1024 * 1024;
 const SESSION_PROJECTION_LIMIT = 512 * 1024;
 const SESSION_MESSAGE_LIMIT = 64;
+const OWNER_BRAIN_HISTORY_PAGE_LIMIT = 32;
+const OWNER_BRAIN_HISTORY_MAX_PAGES = 8;
 const SESSION_MESSAGE_BYTES = 256 * 1024;
 const SESSION_TURN_STATE_LIMIT = 64;
 const SESSION_TURN_STATE_BYTES = 32 * 1024;
@@ -87,6 +95,7 @@ const PROTECTED_CODE_PREFIXES = [
 
 type JsonObject = Record<string, unknown>;
 type RuntimePath = '/health' | '/v1/chat' | '/v1/chat/stream' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
+  | '/v1/chat/history'
   | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete'
   | '/v1/jobs/submit' | '/v1/jobs/list' | '/v1/jobs/status' | '/v1/jobs/cancel'
   | '/v1/vision';
@@ -325,6 +334,55 @@ export interface RuntimeSessionGetProjection {
   session: RuntimeSessionSnapshot;
 }
 
+export interface OwnerBrainHistorySessionSummary extends JsonObject {
+  schema_version: 'apocky.owner-brain.history-summary.v1';
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  failed_turn_count: number;
+  tip_digest: string;
+  history_surface: 'g12_chat_history';
+}
+
+export interface OwnerBrainHistorySessionSnapshot extends JsonObject {
+  schema_version: 'apocky.owner-brain.history-session.v1';
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  event_count: number;
+  events_truncated: boolean;
+  tip_digest: string | null;
+  messages: JsonObject[];
+  failed_turn_count: number;
+  history_surface: 'g12_chat_history';
+}
+
+interface OwnerBrainHistoryObservation {
+  evidence_lane: 'observed_runtime_http_and_principal_bound_history';
+  receipt: RuntimeReceipt;
+  request_contract: 'latest_conversation' | 'conversation_id';
+  page_count: number;
+}
+
+export interface OwnerBrainHistoryListProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'owner_brain_history_list';
+  observed: OwnerBrainHistoryObservation;
+  discovery_scope: 'latest_conversation_only';
+  sessions: OwnerBrainHistorySessionSummary[];
+  count: number;
+}
+
+export interface OwnerBrainHistoryGetProjection {
+  schema_version: typeof APOCV4_PROXY_SCHEMA;
+  kind: 'owner_brain_history_get';
+  observed: OwnerBrainHistoryObservation;
+  session: OwnerBrainHistorySessionSnapshot;
+}
+
 export interface RuntimeSessionDeleteProjection {
   schema_version: typeof APOCV4_PROXY_SCHEMA;
   kind: 'session_delete';
@@ -474,6 +532,10 @@ function canonicalJson(value: unknown): string {
   throw new RuntimeProxyError('session_binding_invalid', 500);
 }
 
+function digestJson(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+}
+
 function sessionBindingSecret(): Buffer {
   const raw = process.env.APOCV4_SESSION_BINDING_SECRET;
   if (!raw || raw !== raw.trim()) {
@@ -578,6 +640,7 @@ function normalizeSessionSummary(value: unknown): RuntimeSessionSummary | null {
 function projectSessionTurnReceipt(
   result: JsonObject,
   credentialProfile: RuntimeCredentialProfile,
+  expectedConversationHistory: RuntimeChatAuthority['conversation_history'] = 'durable_principal_bound',
 ): JsonObject | null {
   const model = result.model_reported;
   const authority = result.authority;
@@ -597,7 +660,7 @@ function projectSessionTurnReceipt(
     || authority.effect_authority !== 'NONE'
     || authority.tool_authority !== 'READ_ONLY_CONTEXT'
     || authority.memory_scope !== expectedMemoryScope
-    || authority.conversation_history !== 'durable_principal_bound'
+    || authority.conversation_history !== expectedConversationHistory
     || authority.training_consent !== false
     || !validateV2ChatIdentity(result.identity)
     || !validateV2ChatContext(result.context)
@@ -1362,7 +1425,35 @@ function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
       && boundedCanonicalString(entry.evidence, 512));
 }
 
+function validateOwnerBrainLivingCognition(value: unknown): boolean {
+  if (!isObject(value) || !exactKeys(value, ['user_percept', 'response_percept', 'runtime'])) {
+    return false;
+  }
+  if (
+    !isObject(value.user_percept)
+    || !isObject(value.response_percept)
+    || !isObject(value.runtime)
+    || typeof value.runtime.configured !== 'boolean'
+    || typeof value.runtime.perpetual !== 'boolean'
+    || !boundedCanonicalString(value.runtime.state, 128)
+    || Object.hasOwn(value.runtime, 'privacy_partition')
+  ) {
+    return false;
+  }
+  return boundedJsonValue(value, 128 * 1024);
+}
+
 function canonicalRuntimeOrigin(raw: string | undefined): string {
+  if (process.env.APOCV4_RUNTIME_TRANSPORT?.trim() === 'cloudflare-access') {
+    try {
+      return validateCloudflareRuntimeOrigin(raw);
+    } catch (error) {
+      if (error instanceof CloudflareRuntimeTransportError) {
+        throw new RuntimeProxyError(error.code, error.code === 'runtime_request_invalid' ? 500 : 503);
+      }
+      throw error;
+    }
+  }
   if (!raw || raw !== raw.trim() || raw.endsWith('/')) {
     throw new RuntimeProxyError('runtime_configuration_invalid', 503);
   }
@@ -1656,6 +1747,16 @@ async function runtimeRequest(
   ) {
     return fetch(url, init);
   }
+  if (process.env.APOCV4_RUNTIME_TRANSPORT === 'cloudflare-access') {
+    try {
+      return await fetchCloudflareRuntime(url, init);
+    } catch (error) {
+      if (error instanceof CloudflareRuntimeTransportError) {
+        throw new RuntimeProxyError(error.code, error.code === 'runtime_request_invalid' ? 500 : 503);
+      }
+      throw error;
+    }
+  }
   return directTlsRequest(url, init, maximumBytes, deadlineMs);
 }
 
@@ -1671,6 +1772,18 @@ function runtimeToken(profile: RuntimeCredentialProfile = 'owner'): string {
     throw new RuntimeProxyError('runtime_credential_unavailable', 503);
   }
   return token;
+}
+
+function runtimeTransportProtectedValues(): readonly string[] {
+  if (process.env.APOCV4_RUNTIME_TRANSPORT !== 'cloudflare-access') return [];
+  try {
+    return cloudflareRuntimeProtectedValues();
+  } catch (error) {
+    if (error instanceof CloudflareRuntimeTransportError) {
+      throw new RuntimeProxyError(error.code, error.code === 'runtime_request_invalid' ? 500 : 503);
+    }
+    throw error;
+  }
 }
 
 function boundedHeaderRef(headers: Headers, name: string): string | null {
@@ -1758,12 +1871,18 @@ async function callRuntime(
   traceparent?: string,
   credentialProfile: RuntimeCredentialProfile = 'owner',
   accessProfile: RuntimeAccessProfile = 'retired-web',
+  query: URLSearchParams | null = null,
 ): Promise<RuntimeCall> {
   requireRuntimeAccess(accessProfile);
+  if (query !== null && (path !== '/v1/chat/history' || body !== null)) {
+    throw new RuntimeProxyError('runtime_request_invalid', 500);
+  }
   const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
   const token = runtimeToken(credentialProfile);
+  const transportProtectedValues = runtimeTransportProtectedValues();
   const objective = path === '/v1/objectives';
   const chat = path === '/v1/chat';
+  const history = path === '/v1/chat/history';
   const code = path === '/v1/code';
   const rollback = path === '/v1/code/rollback';
   const session = path.startsWith('/v1/sessions/');
@@ -1777,7 +1896,7 @@ async function callRuntime(
         ? RUNPOD_SYNC_DEADLINE_MS
         : chat
           ? CHAT_DEADLINE_MS
-          : session
+          : history || session
             ? SESSION_DEADLINE_MS
             : job
               ? JOB_DEADLINE_MS
@@ -1792,7 +1911,7 @@ async function callRuntime(
         ? OBJECTIVE_RESPONSE_LIMIT
         : chat
           ? CHAT_RESPONSE_LIMIT
-          : session
+          : history || session
             ? SESSION_RESPONSE_LIMIT
             : job
               ? JOB_RESPONSE_LIMIT
@@ -1809,7 +1928,8 @@ async function callRuntime(
     : transmittedBody.session_binding_mac;
   const bindingSecret = bindingMac === null ? null : process.env.APOCV4_SESSION_BINDING_SECRET ?? null;
   try {
-    const response = await runtimeRequest(`${origin}${path}`, {
+    const queryString = query === null ? '' : `?${query.toString()}`;
+    const response = await runtimeRequest(`${origin}${path}${queryString}`, {
       method: transmittedBody === null ? 'GET' : 'POST',
       headers: {
         Accept: 'application/json',
@@ -1829,7 +1949,9 @@ async function callRuntime(
     const data = await readBoundedJson(
       response,
       responseLimit,
-      bindingMac === null ? [token] : [token, bindingMac, bindingSecret ?? ''],
+      bindingMac === null
+        ? [token, ...transportProtectedValues]
+        : [token, bindingMac, bindingSecret ?? '', ...transportProtectedValues],
     );
     if (!response.ok) {
       if (
@@ -1847,15 +1969,15 @@ async function callRuntime(
     ) {
       throw new RuntimeProxyError('runtime_session_binding_invalid', 502, response.status);
     }
-    const expectedKeys = objective || chat || code || rollback || session || job || vision
+    const expectedKeys = objective || chat || history || code || rollback || session || job || vision
       ? ['schema_version', 'result']
       : ['schema_version', 'status', 'engine', 'vision'];
     if (!exactKeys(data, expectedKeys)) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
     }
     if (
-      ((objective || chat || code || rollback || session || job || vision) && !isObject(data.result))
-      || (!objective && !chat && !code && !rollback && !session && !job && !vision
+      ((objective || chat || history || code || rollback || session || job || vision) && !isObject(data.result))
+      || (!objective && !chat && !history && !code && !rollback && !session && !job && !vision
         && (data.status !== 'READY' || !isObject(data.engine) || typeof data.vision !== 'boolean'))
     ) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
@@ -2272,8 +2394,21 @@ async function submitRuntimeChatWithAccess(
       'conversation_id', 'request_id', 'privacy_partition_ref', 'outcome',
       'learned_faculty_used', 'duplicate_effect_protection',
     ];
-  if (!exactKeys(result, expectedKeys)) {
+  const exactOwnerBrainG12 = accessProfile === 'owner-brain'
+    && responseV2
+    && exactKeys(result, [...expectedKeys, 'living_cognition'])
+    && validateOwnerBrainLivingCognition(result.living_cognition);
+  if (!exactKeys(result, expectedKeys) && !exactOwnerBrainG12) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  if (
+    accessProfile === 'owner-brain'
+    && !validateG12OwnerChatResult(result, conversationId, requestId, privacyPartition)
+  ) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  if (accessProfile === 'owner-brain' && !validOwnerRuntimeReceipt(call.receipt, privacyPartition)) {
+    throw new RuntimeProxyError('runtime_principal_binding_invalid', 502, call.receipt.upstream_status);
   }
   const model = result.model_reported;
   const observed = result.observed;
@@ -2376,10 +2511,21 @@ export async function submitRuntimeChat(
 }
 
 export async function submitOwnerBrainRuntimeChat(
-  input: RuntimeChatInput,
+  input: Omit<RuntimeChatInput, 'sessionId' | 'sessionPrincipal'> & {
+    readonly sessionPrincipal: RuntimeSessionPrincipal;
+  },
   traceparent?: string,
 ): Promise<RuntimeChatProjection> {
-  return submitRuntimeChatWithAccess(input, traceparent, undefined, 'owner-brain');
+  if (!isRuntimeSessionPrincipal(input.sessionPrincipal)) {
+    throw new RuntimeProxyError('chat_request_invalid', 400);
+  }
+  return submitRuntimeChatWithAccess({
+    message: input.message,
+    conversationId: input.conversationId,
+    requestId: input.requestId,
+    privacyPartition: input.privacyPartition,
+    credentialProfile: input.credentialProfile,
+  }, traceparent, undefined, 'owner-brain');
 }
 
 export async function streamRuntimeChat(
@@ -2401,6 +2547,472 @@ function sessionObservation(
     evidence_lane: 'observed_runtime_http_and_principal_bound_session',
     receipt,
     request_contract: requestContract,
+  };
+}
+
+interface OwnerBrainHistoryPage {
+  readonly conversationId: string | null;
+  readonly turns: JsonObject[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+  readonly pageDigest: string;
+}
+
+interface OwnerBrainHistoryRead {
+  readonly conversationId: string | null;
+  readonly turns: JsonObject[];
+  readonly receipt: RuntimeReceipt;
+  readonly pageCount: number;
+}
+
+function validateG12TokenAdmission(
+  value: unknown,
+  digest: unknown,
+  expectedModelId?: string,
+  expectedPromptTokens?: number,
+): boolean {
+  if (value === null) return digest === null;
+  if (!isObject(value) || typeof digest !== 'string' || !SHA256_RE.test(digest)) return false;
+  if (!exactKeys(value, [
+    'schema_version', 'model_id', 'tokenizer_revision', 'chat_template_id',
+    'request_payload_digest', 'offered_history_message_count', 'offered_history_digest',
+    'admitted_history_message_count', 'admitted_history_digest', 'dropped_history_pair_count',
+    'history_truncated', 'input_tokens', 'output_reserve_tokens', 'context_window_tokens',
+    'admitted',
+  ])) return false;
+  const offered = value.offered_history_message_count;
+  const admitted = value.admitted_history_message_count;
+  const dropped = value.dropped_history_pair_count;
+  const inputTokens = value.input_tokens;
+  const outputReserve = value.output_reserve_tokens;
+  const contextWindow = value.context_window_tokens;
+  return value.schema_version === 'apocv4.chat-token-admission.v1'
+    && boundedCanonicalString(value.model_id, 8192)
+    && boundedCanonicalString(value.tokenizer_revision, 8192)
+    && boundedCanonicalString(value.chat_template_id, 8192)
+    && ['request_payload_digest', 'offered_history_digest', 'admitted_history_digest']
+      .every((key) => typeof value[key] === 'string' && SHA256_RE.test(value[key] as string))
+    && boundedNonnegativeInteger(offered, 24)
+    && Number(offered) % 2 === 0
+    && boundedNonnegativeInteger(admitted, 24)
+    && Number(admitted) % 2 === 0
+    && Number(admitted) <= Number(offered)
+    && boundedNonnegativeInteger(dropped, 12)
+    && Number(offered) - Number(admitted) === Number(dropped) * 2
+    && typeof value.history_truncated === 'boolean'
+    && value.history_truncated === (Number(dropped) > 0)
+    && boundedNonnegativeInteger(inputTokens)
+    && Number(inputTokens) >= 1
+    && boundedNonnegativeInteger(outputReserve)
+    && Number(outputReserve) >= 1
+    && boundedNonnegativeInteger(contextWindow)
+    && Number(inputTokens) + Number(outputReserve) <= Number(contextWindow)
+    && value.admitted === true
+    && digestJson(value) === digest
+    && (expectedModelId === undefined || value.model_id === expectedModelId)
+    && (expectedPromptTokens === undefined || value.input_tokens === expectedPromptTokens);
+}
+
+function validateG12OwnerChatResult(
+  value: unknown,
+  conversationId: string,
+  requestId: string,
+  privacyPartition: string,
+): value is JsonObject {
+  if (!isObject(value)) return false;
+  const keys = [
+    'schema_version', 'text', 'model_reported', 'observed', 'authority',
+    'identity', 'context', 'conversation_id', 'request_id', 'privacy_partition_ref',
+    'outcome', 'learned_faculty_used', 'duplicate_effect_protection',
+  ];
+  const exactBase = exactKeys(value, keys);
+  const exactLiving = exactKeys(value, [...keys, 'living_cognition'])
+    && validateOwnerBrainLivingCognition(value.living_cognition);
+  if (!exactBase && !exactLiving) return false;
+  const model = value.model_reported;
+  const observed = value.observed;
+  const authority = value.authority;
+  if (
+    value.schema_version !== 'apocv4.chat-response.v2'
+    || value.conversation_id !== conversationId
+    || value.request_id !== requestId
+    || value.privacy_partition_ref !== digestJson(privacyPartition)
+    || value.outcome !== 'completed'
+    || value.learned_faculty_used !== true
+    || value.duplicate_effect_protection !== 'not_applicable_no_effect_authority'
+    || !boundedCanonicalUtf8(value.text, 128 * 1024)
+    || !isObject(model)
+    || !exactKeys(model, [
+      'evidence_lane', 'model_id', 'model_revision', 'model_family',
+      'serving_profile_digest', 'response_id', 'prompt_digest', 'response_digest',
+      'rationale_present', 'rationale_digest', 'token_admission_digest',
+      'token_admission', 'usage',
+    ])
+    || model.evidence_lane !== 'model_reported_not_observed_fact'
+    || !isObject(observed)
+    || !exactKeys(observed, [
+      'evidence_lane', 'latency_ms', 'transport_kind', 'transport_receipt_digest',
+    ])
+    || observed.evidence_lane !== 'observed_runtime_transport'
+    || typeof observed.latency_ms !== 'number'
+    || !Number.isFinite(observed.latency_ms)
+    || observed.latency_ms < 0
+    || !boundedCanonicalString(observed.transport_kind, 128)
+    || !nullableDigest(observed.transport_receipt_digest)
+    || !isObject(authority)
+    || !exactKeys(authority, [
+      'effect_authority', 'tool_authority', 'memory_scope',
+      'conversation_history', 'training_consent',
+    ])
+    || authority.effect_authority !== 'NONE'
+    || authority.tool_authority !== 'READ_ONLY_CONTEXT'
+    || authority.memory_scope !== 'owner_partitioned_retrieval'
+    || authority.conversation_history !== 'session_bounded'
+    || authority.training_consent !== false
+    || !validateV2ChatIdentity(value.identity)
+    || !validateV2ChatContext(value.context)
+  ) return false;
+  for (const key of ['model_id', 'model_revision', 'model_family', 'response_id'] as const) {
+    if (!boundedCanonicalString(model[key], 8192)) return false;
+  }
+  for (const key of ['serving_profile_digest', 'prompt_digest', 'response_digest'] as const) {
+    if (typeof model[key] !== 'string' || !SHA256_RE.test(model[key] as string)) return false;
+  }
+  const rationalePresent = model.rationale_present;
+  const rationaleDigest = model.rationale_digest;
+  const usage = model.usage;
+  if (
+    typeof rationalePresent !== 'boolean'
+    || (rationalePresent && (typeof rationaleDigest !== 'string' || !SHA256_RE.test(rationaleDigest)))
+    || (!rationalePresent && rationaleDigest !== null)
+    || !isObject(usage)
+    || !exactKeys(usage, ['prompt_tokens', 'completion_tokens'])
+    || !boundedNonnegativeInteger(usage.prompt_tokens)
+    || !boundedNonnegativeInteger(usage.completion_tokens)
+    || !validateG12TokenAdmission(
+      model.token_admission,
+      model.token_admission_digest,
+      model.model_id as string,
+      usage.prompt_tokens as number,
+    )
+  ) return false;
+  return model.response_digest === digestJson({
+    model_id: model.model_id,
+    model_revision: model.model_revision,
+    model_family: model.model_family,
+    serving_profile_digest: model.serving_profile_digest,
+    response_id: model.response_id,
+    prompt_digest: model.prompt_digest,
+    token_admission_digest: model.token_admission_digest,
+    text: value.text,
+    rationale_digest: model.rationale_digest,
+    usage,
+  });
+}
+
+function validateG12HistoryTurn(
+  value: unknown,
+  conversationId: string,
+  privacyPartition: string,
+): value is JsonObject {
+  if (!isObject(value) || !exactKeys(value, [
+    'schema_version', 'state', 'request_id', 'conversation_id', 'user_message',
+    'assistant_message', 'response', 'error_class', 'failure_digest', 'public_error',
+    'token_admission_digest', 'token_admission', 'recorded_at', 'response_digest',
+    'terminal_receipt_digest', 'turn_digest',
+  ])) return false;
+  if (
+    value.schema_version !== 'apocv4.chat-history-visible-turn.v3'
+    || (value.state !== 'COMPLETED' && value.state !== 'FAILED')
+    || value.conversation_id !== conversationId
+    || typeof value.request_id !== 'string'
+    || !UUID_RE.test(value.request_id)
+    || !boundedCanonicalUtf8(value.user_message, 16_384)
+    || !canonicalTimestamp(value.recorded_at)
+    || typeof value.terminal_receipt_digest !== 'string'
+    || !SHA256_RE.test(value.terminal_receipt_digest)
+    || typeof value.turn_digest !== 'string'
+    || !SHA256_RE.test(value.turn_digest)
+    || !validateG12TokenAdmission(value.token_admission, value.token_admission_digest)
+  ) return false;
+  if (value.state === 'COMPLETED') {
+    if (
+      !boundedCanonicalUtf8(value.assistant_message, 128 * 1024)
+      || !validateG12OwnerChatResult(
+        value.response,
+        conversationId,
+        value.request_id,
+        privacyPartition,
+      )
+      || typeof value.response_digest !== 'string'
+      || !SHA256_RE.test(value.response_digest)
+      || value.error_class !== null
+      || value.failure_digest !== null
+      || value.public_error !== null
+    ) return false;
+    const response = value.response as JsonObject;
+    const model = response.model_reported as JsonObject;
+    if (
+      response.text !== value.assistant_message
+      || model.response_digest !== value.response_digest
+      || model.token_admission_digest !== value.token_admission_digest
+      || canonicalJson(model.token_admission) !== canonicalJson(value.token_admission)
+    ) return false;
+  } else {
+    const publicError = value.public_error;
+    if (
+      value.assistant_message !== null
+      || value.response !== null
+      || value.response_digest !== null
+      || !boundedCanonicalString(value.error_class, 256)
+      || typeof value.failure_digest !== 'string'
+      || !SHA256_RE.test(value.failure_digest)
+      || !isObject(publicError)
+      || !exactKeys(publicError, ['schema_version', 'http_status', 'error', 'error_digest'])
+      || publicError.schema_version !== 'apocv4.chat-public-failure.v1'
+      || (publicError.http_status !== 422 && publicError.http_status !== 500)
+      || (publicError.error !== 'chat_prompt_capacity_exceeded' && publicError.error !== 'engine_failure')
+      || (publicError.http_status === 422 && publicError.error !== 'chat_prompt_capacity_exceeded')
+      || (publicError.http_status === 500 && publicError.error !== 'engine_failure')
+      || typeof publicError.error_digest !== 'string'
+      || !SHA256_RE.test(publicError.error_digest)
+    ) return false;
+  }
+  const core = { ...value };
+  delete core.turn_digest;
+  return value.turn_digest === digestJson(core);
+}
+
+function normalizeG12HistoryPage(
+  value: unknown,
+  requestedConversationId: string | null,
+  privacyPartition: string,
+): OwnerBrainHistoryPage | null {
+  if (!isObject(value) || !exactKeys(value, [
+    'schema_version', 'conversation_id', 'turns', 'next_cursor', 'has_more',
+    'persistence', 'effect_authority', 'page_digest',
+  ])) return null;
+  const conversationId = value.conversation_id;
+  if (
+    (conversationId !== null && (typeof conversationId !== 'string' || !UUID_RE.test(conversationId)))
+    || (requestedConversationId !== null && conversationId !== requestedConversationId)
+    || !Array.isArray(value.turns)
+    || value.turns.length > OWNER_BRAIN_HISTORY_PAGE_LIMIT
+    || typeof value.has_more !== 'boolean'
+    || value.persistence !== 'DURABLE_PRINCIPAL_BOUND'
+    || value.effect_authority !== 'NONE'
+    || typeof value.page_digest !== 'string'
+    || !SHA256_RE.test(value.page_digest)
+  ) return null;
+  if (
+    conversationId === null
+      ? value.turns.length !== 0
+      : !value.turns.every((turn) => validateG12HistoryTurn(turn, conversationId, privacyPartition))
+  ) return null;
+  const nextCursor = value.next_cursor;
+  if (
+    (value.has_more && (
+      value.turns.length === 0
+      || typeof nextCursor !== 'string'
+      || nextCursor !== (value.turns.at(-1) as JsonObject).request_id
+    ))
+    || (!value.has_more && nextCursor !== null)
+  ) return null;
+  const core = { ...value };
+  delete core.page_digest;
+  if (value.page_digest !== digestJson(core)) return null;
+  return {
+    conversationId: conversationId as string | null,
+    turns: value.turns as JsonObject[],
+    nextCursor: nextCursor as string | null,
+    hasMore: value.has_more,
+    pageDigest: value.page_digest,
+  };
+}
+
+function ownerHistoryQuery(input: {
+  readonly privacyPartition: string;
+  readonly conversationId: string | null;
+  readonly cursor: string | null;
+}): URLSearchParams {
+  const query = new URLSearchParams();
+  query.set('privacy_partition', input.privacyPartition);
+  if (input.conversationId !== null) query.set('conversation_id', input.conversationId);
+  if (input.cursor !== null) query.set('cursor', input.cursor);
+  query.set('limit', String(OWNER_BRAIN_HISTORY_PAGE_LIMIT));
+  return query;
+}
+
+function samePrincipalReceipt(left: RuntimeReceipt, right: RuntimeReceipt): boolean {
+  return left.auth_mode === right.auth_mode
+    && left.auth_registry_ref === right.auth_registry_ref
+    && left.binding_ref === right.binding_ref
+    && left.principal_ref === right.principal_ref
+    && left.privacy_partition_ref === right.privacy_partition_ref;
+}
+
+function validOwnerRuntimeReceipt(receipt: RuntimeReceipt, privacyPartition: string): boolean {
+  const expectedPartitionRef = digestJson({
+    schema_version: 'apocv4.runtime-auth.v1',
+    privacy_partition: privacyPartition,
+  });
+  const expectedBindingRef = typeof receipt.principal_ref === 'string'
+    ? digestJson({
+      schema_version: 'apocv4.runtime-auth.v1',
+      principal_ref: receipt.principal_ref,
+      privacy_partition_ref: expectedPartitionRef,
+    })
+    : null;
+  return receipt.auth_mode === 'STRICT_REGISTRY'
+    && typeof receipt.auth_registry_ref === 'string'
+    && SHA256_RE.test(receipt.auth_registry_ref)
+    && typeof receipt.binding_ref === 'string'
+    && SHA256_RE.test(receipt.binding_ref)
+    && receipt.binding_ref === expectedBindingRef
+    && typeof receipt.principal_ref === 'string'
+    && SHA256_RE.test(receipt.principal_ref)
+    && typeof receipt.privacy_partition_ref === 'string'
+    && SHA256_RE.test(receipt.privacy_partition_ref)
+    && receipt.privacy_partition_ref === expectedPartitionRef;
+}
+
+async function readOwnerBrainHistory(
+  input: RuntimeSessionBindingInput & { readonly conversationId: string | null },
+  traceparent?: string,
+): Promise<OwnerBrainHistoryRead> {
+  validateSessionBinding(input);
+  if (input.conversationId !== null && !CLIENT_SESSION_UUID_RE.test(input.conversationId)) {
+    throw new RuntimeProxyError('session_request_invalid', 400);
+  }
+  const credentialProfile = input.credentialProfile ?? 'owner';
+  let conversationId = input.conversationId;
+  let cursor: string | null = null;
+  let receipt: RuntimeReceipt | null = null;
+  const turns: JsonObject[] = [];
+  const requestIds = new Set<string>();
+  const pageDigests = new Set<string>();
+  for (let pageIndex = 0; pageIndex < OWNER_BRAIN_HISTORY_MAX_PAGES; pageIndex += 1) {
+    const call = await callRuntime(
+      '/v1/chat/history',
+      null,
+      traceparent,
+      credentialProfile,
+      'owner-brain',
+      ownerHistoryQuery({ privacyPartition: input.privacyPartition, conversationId, cursor }),
+    );
+    if (!validOwnerRuntimeReceipt(call.receipt, input.privacyPartition)) {
+      throw new RuntimeProxyError('runtime_history_binding_invalid', 502, call.receipt.upstream_status);
+    }
+    if (receipt !== null && !samePrincipalReceipt(receipt, call.receipt)) {
+      throw new RuntimeProxyError('runtime_history_binding_drift', 502, call.receipt.upstream_status);
+    }
+    receipt = receipt ?? call.receipt;
+    const page = normalizeG12HistoryPage(call.data.result, conversationId, input.privacyPartition);
+    if (!page || pageDigests.has(page.pageDigest)) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+    }
+    pageDigests.add(page.pageDigest);
+    if (conversationId === null) conversationId = page.conversationId;
+    for (const turn of page.turns) {
+      const requestId = turn.request_id as string;
+      if (requestIds.has(requestId)) {
+        throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+      }
+      requestIds.add(requestId);
+      turns.push(turn);
+    }
+    if (!page.hasMore) {
+      return {
+        conversationId,
+        turns,
+        receipt,
+        pageCount: pageIndex + 1,
+      };
+    }
+    if (conversationId === null || page.nextCursor === null || page.nextCursor === cursor) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+    }
+    cursor = page.nextCursor;
+  }
+  throw new RuntimeProxyError('runtime_history_bound_exceeded', 503);
+}
+
+function historyMessageDigest(turnDigest: string, role: 'user' | 'assistant'): string {
+  return digestJson({
+    schema_version: 'apocky.owner-brain.history-message.v1',
+    turn_digest: turnDigest,
+    role,
+  });
+}
+
+function projectOwnerBrainHistorySession(
+  read: OwnerBrainHistoryRead,
+  requestedSessionId?: string,
+): OwnerBrainHistorySessionSnapshot {
+  const sessionId = read.conversationId ?? requestedSessionId;
+  if (!sessionId || !CLIENT_SESSION_UUID_RE.test(sessionId)) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, read.receipt.upstream_status);
+  }
+  const messages = read.turns.flatMap((turn): JsonObject[] => {
+    const requestId = turn.request_id as string;
+    const recordedAt = turn.recorded_at as string;
+    const turnDigest = turn.turn_digest as string;
+    const userMessage: JsonObject = {
+      role: 'user',
+      content: turn.user_message,
+      request_id: requestId,
+      recorded_at: recordedAt,
+      event_digest: historyMessageDigest(turnDigest, 'user'),
+    };
+    if (turn.state !== 'COMPLETED') return [userMessage];
+    const response = turn.response as JsonObject;
+    const receipt = projectSessionTurnReceipt(response, 'owner', 'session_bounded');
+    if (!receipt) {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, read.receipt.upstream_status);
+    }
+    return [userMessage, {
+      role: 'assistant',
+      content: turn.assistant_message,
+      request_id: requestId,
+      recorded_at: recordedAt,
+      event_digest: historyMessageDigest(turnDigest, 'assistant'),
+      receipt,
+    }];
+  });
+  const projectedMessages = messages.slice(-SESSION_MESSAGE_LIMIT);
+  const first = read.turns[0];
+  const last = read.turns.at(-1);
+  const observedAt = read.receipt.observed_at;
+  return {
+    schema_version: 'apocky.owner-brain.history-session.v1',
+    session_id: sessionId,
+    title: typeof first?.user_message === 'string'
+      ? first.user_message.slice(0, 256)
+      : 'New conversation',
+    created_at: typeof first?.recorded_at === 'string' ? first.recorded_at : observedAt,
+    updated_at: typeof last?.recorded_at === 'string' ? last.recorded_at : observedAt,
+    event_count: read.turns.length,
+    events_truncated: projectedMessages.length < messages.length,
+    tip_digest: last ? digestJson({
+      schema_version: 'apocky.owner-brain.history-cursor.v1',
+      conversation_id: sessionId,
+      turn_digests: read.turns.map((turn) => turn.turn_digest),
+    }) : null,
+    messages: projectedMessages,
+    failed_turn_count: read.turns.filter((turn) => turn.state === 'FAILED').length,
+    history_surface: 'g12_chat_history',
+  };
+}
+
+function ownerBrainHistoryObservation(
+  read: OwnerBrainHistoryRead,
+  requestContract: OwnerBrainHistoryObservation['request_contract'],
+): OwnerBrainHistoryObservation {
+  return {
+    evidence_lane: 'observed_runtime_http_and_principal_bound_history',
+    receipt: read.receipt,
+    request_contract: requestContract,
+    page_count: read.pageCount,
   };
 }
 
@@ -2459,8 +3071,46 @@ export async function listRuntimeSessions(
 export async function listOwnerBrainRuntimeSessions(
   input: RuntimeSessionListInput,
   traceparent?: string,
-): Promise<RuntimeSessionListProjection> {
-  return listRuntimeSessionsWithAccess(input, traceparent, 'owner-brain');
+): Promise<OwnerBrainHistoryListProjection> {
+  validateSessionBinding(input);
+  const limit = input.limit ?? 24;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 128) {
+    throw new RuntimeProxyError('session_request_invalid', 400);
+  }
+  const read = await readOwnerBrainHistory({ ...input, conversationId: null }, traceparent);
+  if (read.conversationId === null) {
+    return {
+      schema_version: APOCV4_PROXY_SCHEMA,
+      kind: 'owner_brain_history_list',
+      observed: ownerBrainHistoryObservation(read, 'latest_conversation'),
+      discovery_scope: 'latest_conversation_only',
+      sessions: [],
+      count: 0,
+    };
+  }
+  const session = projectOwnerBrainHistorySession(read);
+  if (session.tip_digest === null) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, read.receipt.upstream_status);
+  }
+  const summary: OwnerBrainHistorySessionSummary = {
+    schema_version: 'apocky.owner-brain.history-summary.v1',
+    session_id: session.session_id,
+    title: session.title,
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+    message_count: session.event_count * 2 - session.failed_turn_count,
+    failed_turn_count: session.failed_turn_count,
+    tip_digest: session.tip_digest,
+    history_surface: 'g12_chat_history',
+  };
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'owner_brain_history_list',
+    observed: ownerBrainHistoryObservation(read, 'latest_conversation'),
+    discovery_scope: 'latest_conversation_only',
+    sessions: [summary],
+    count: 1,
+  };
 }
 
 async function getRuntimeSessionWithAccess(
@@ -2500,8 +3150,14 @@ export async function getRuntimeSession(
 export async function getOwnerBrainRuntimeSession(
   input: RuntimeSessionGetInput,
   traceparent?: string,
-): Promise<RuntimeSessionGetProjection> {
-  return getRuntimeSessionWithAccess(input, traceparent, 'owner-brain');
+): Promise<OwnerBrainHistoryGetProjection> {
+  const read = await readOwnerBrainHistory({ ...input, conversationId: input.sessionId }, traceparent);
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'owner_brain_history_get',
+    observed: ownerBrainHistoryObservation(read, 'conversation_id'),
+    session: projectOwnerBrainHistorySession(read, input.sessionId),
+  };
 }
 
 export async function deleteRuntimeSession(

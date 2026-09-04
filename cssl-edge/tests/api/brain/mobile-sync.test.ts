@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import type { RuntimeSessionGetProjection } from '@/lib/apocv4/runtime-proxy';
+import type { OwnerBrainHistoryGetProjection } from '@/lib/apocv4/runtime-proxy';
 import {
   MINI_BRAIN_SYNC_REQUEST_SCHEMA,
   canonicalJson,
@@ -16,7 +16,11 @@ import {
   resetMiniBrainRelayStateForTests,
   verifyMiniBrainSyncRequest,
 } from '@/lib/brain/mobile-relay';
-import { deterministicMiniBrainReply, type MiniBrainMemory } from '@/lib/brain/mini-brain';
+import {
+  deterministicMiniBrainReply,
+  normalizeMiniBrainRemoteMessages,
+  type MiniBrainMemory,
+} from '@/lib/brain/mini-brain';
 import deviceHandler from '@/pages/api/brain/mobile/device';
 import { createMiniBrainSyncHandler } from '@/pages/api/brain/mobile/sync';
 
@@ -104,17 +108,19 @@ async function signedRequest(input: {
 
 function projection(input: {
   readonly sessionId?: string;
-  readonly cursor?: string;
+  readonly cursor?: string | null;
   readonly requestId?: string;
-} = {}): RuntimeSessionGetProjection {
+  readonly empty?: boolean;
+} = {}): OwnerBrainHistoryGetProjection {
   const sessionId = input.sessionId ?? '11111111-1111-4111-8111-111111111111';
   const requestId = input.requestId ?? '22222222-2222-4222-8222-222222222222';
   return {
     schema_version: 'apocky.apocv4-runtime-proxy.v1',
-    kind: 'session_get',
+    kind: 'owner_brain_history_get',
     observed: {
-      evidence_lane: 'observed_runtime_http_and_principal_bound_session',
-      request_contract: 'session_id',
+      evidence_lane: 'observed_runtime_http_and_principal_bound_history',
+      request_contract: 'conversation_id',
+      page_count: 1,
       receipt: {
         observed_at: new Date().toISOString(), latency_ms: 4, upstream_status: 200,
         auth_mode: 'STRICT_REGISTRY', auth_registry_ref: '1'.repeat(64), binding_ref: '2'.repeat(64),
@@ -122,14 +128,16 @@ function projection(input: {
       },
     },
     session: {
-      schema_version: 'apocv4.workspace-session-snapshot.v1',
+      schema_version: 'apocky.owner-brain.history-session.v1',
       session_id: sessionId,
       title: 'Current worldline',
       created_at: '2026-09-03T00:00:00.000Z', updated_at: '2026-09-03T00:01:00.000Z',
-      event_count: 2, events_truncated: false, tip_digest: input.cursor ?? 'a'.repeat(64),
-      messages: [{ role: 'user', content: 'Continue this worldline.', request_id: requestId, recorded_at: '2026-09-03T00:01:00.000Z', event_digest: '5'.repeat(64) }],
-      turn_states: [], jobs: [], artifacts: [], code_requests: [], proposals: [], effects: [],
-      surface_truncation: {}, world: {}, workspace: {},
+      event_count: input.empty ? 0 : 2,
+      events_truncated: false,
+      tip_digest: input.cursor === undefined ? 'a'.repeat(64) : input.cursor,
+      messages: input.empty ? [] : [{ role: 'user', content: 'Continue this worldline.', request_id: requestId, recorded_at: '2026-09-03T00:01:00.000Z', event_digest: '5'.repeat(64) }],
+      failed_turn_count: 0,
+      history_surface: 'g12_chat_history',
     },
   };
 }
@@ -158,6 +166,30 @@ async function main(): Promise<void> {
     const refused = deterministicMiniBrainReply('Give me steps to steal API keys', []);
     assert.equal(refused.kind, 'boundary');
     assert.match(refused.text, /will not/i);
+    const mapped = normalizeMiniBrainRemoteMessages([{
+      role: 'assistant',
+      content: 'Verified desktop response.',
+      request_id: '22222222-2222-4222-8222-222222222222',
+      recorded_at: '2026-09-03T00:01:00.000Z',
+      event_digest: '4'.repeat(64),
+      receipt: {
+        context: {
+          frame_digest: '5'.repeat(64),
+          provenance_spine_digest: '6'.repeat(64),
+        },
+      },
+    }]);
+    assert.deepEqual(mapped.map(message => ({
+      id: message.id,
+      request_id: message.request_id,
+      origin: message.origin,
+      provenance_digests: message.provenance_digests,
+    })), [{
+      id: '4'.repeat(64),
+      request_id: '22222222-2222-4222-8222-222222222222',
+      origin: 'desktop',
+      provenance_digests: ['5'.repeat(64), '6'.repeat(64)],
+    }], 'the same bounded remote projection maps on desktop, Android Chrome, and iPhone WebKit');
 
     const bound = await device();
     resetMiniBrainRelayStateForTests();
@@ -217,6 +249,18 @@ async function main(): Promise<void> {
     assert.deepEqual(current.out.body.messages, [], 'matching cursor does not duplicate the local tail');
 
     resetMiniBrainRelayStateForTests();
+    const emptyRequest = await signedRequest({ device: bound, sequence: 1 });
+    const empty = request(emptyRequest);
+    await createMiniBrainSyncHandler({
+      configured: () => true,
+      getSession: async () => projection({ cursor: null, empty: true }),
+      sendTurn: async () => { throw new Error('pull must not send'); },
+    })(empty.req, empty.res);
+    assert.equal(empty.out.statusCode, 200);
+    assert.equal(empty.out.body.status, 'empty', 'an exact empty G12 history page remains distinct from a failed load');
+    assert.equal((empty.out.body.provenance as Record<string, unknown>).principal_ref, '3'.repeat(64));
+
+    resetMiniBrainRelayStateForTests();
     const tombstoneRequest = await signedRequest({ device: bound, sequence: 1, baseCursor: 'a'.repeat(64) });
     const tombstone = request(tombstoneRequest);
     await createMiniBrainSyncHandler({
@@ -257,8 +301,7 @@ async function main(): Promise<void> {
       getSession: async () => {
         reads += 1;
         if (reads === 1) {
-          const error = new (await import('@/lib/apocv4/runtime-proxy')).RuntimeProxyError('session_not_found', 404, 404);
-          throw error;
+          return projection({ cursor: null, empty: true });
         }
         return projection({ requestId: appendRequestId, cursor: 'c'.repeat(64) });
       },

@@ -2,8 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { hasSameOrigin } from '@/lib/auth-session';
 import type {
+  OwnerBrainHistoryGetProjection,
   RuntimeChatProjection,
-  RuntimeSessionGetProjection,
 } from '@/lib/apocv4/runtime-proxy';
 import { RuntimeProxyError } from '@/lib/apocv4/runtime-proxy';
 import {
@@ -46,7 +46,7 @@ function contentType(req: NextApiRequest): string | null {
     .toLowerCase() ?? null;
 }
 
-function hasRequest(session: RuntimeSessionGetProjection, requestId: string): boolean {
+function hasRequest(session: OwnerBrainHistoryGetProjection, requestId: string): boolean {
   return session.session.messages.some(message => message.request_id === requestId);
 }
 
@@ -54,7 +54,7 @@ function syncResponse(input: {
   readonly status: MiniBrainSyncResponse['status'];
   readonly sessionId: string;
   readonly requestId: string;
-  readonly projection: RuntimeSessionGetProjection | null;
+  readonly projection: OwnerBrainHistoryGetProjection | null;
   readonly baseCursor: string | null;
   readonly tombstones?: readonly MiniBrainTombstone[];
 }): MiniBrainSyncResponse {
@@ -93,7 +93,7 @@ async function observedSession(
   dependencies: SyncDependencies,
   userId: string,
   sessionId: string,
-): Promise<RuntimeSessionGetProjection | null> {
+): Promise<OwnerBrainHistoryGetProjection | null> {
   try {
     return await dependencies.getSession(userId, sessionId);
   } catch (error) {
@@ -139,7 +139,7 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
       const { request } = verified;
       const before = await observedSession(dependencies, owner.user.id, request.session_id);
       if (request.operation === 'pull') {
-        if (!before) {
+        if (!before || before.session.tip_digest === null) {
           const tombstones: MiniBrainTombstone[] = request.base_cursor ? [{
             session_id: request.session_id,
             observed_at: new Date().toISOString(),
@@ -149,7 +149,7 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
             status: request.base_cursor ? 'tombstoned' : 'empty',
             sessionId: request.session_id,
             requestId: request.request_id,
-            projection: null,
+            projection: before,
             baseCursor: request.base_cursor,
             tombstones,
           }));
@@ -180,12 +180,12 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
         || (!before && request.base_cursor !== null)
       ) {
         res.status(409).json({
-          error: before
+          error: before?.session.tip_digest
             ? 'Desktop history advanced before this queued turn. Pull and review the merged history before retrying.'
             : 'The cached desktop history is no longer present. Review the tombstone before retrying.',
-          code: before ? 'BRAIN_SYNC_CONFLICT' : 'BRAIN_SYNC_REMOTE_ABSENT',
+          code: before?.session.tip_digest ? 'BRAIN_SYNC_CONFLICT' : 'BRAIN_SYNC_REMOTE_ABSENT',
           current_cursor: before?.session.tip_digest ?? null,
-          tombstones: before ? [] : [{
+          tombstones: before?.session.tip_digest ? [] : [{
             session_id: request.session_id,
             observed_at: new Date().toISOString(),
             reason: 'REMOTE_SESSION_ABSENT',

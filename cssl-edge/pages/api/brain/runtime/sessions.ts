@@ -44,9 +44,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json({
       schema_version: sessionId ? 'apocky.owner-brain.session.v1' : 'apocky.owner-brain.sessions.v1',
       status: 'live',
-      ...(projection.kind === 'session_get'
+      history_surface: 'g12_chat_history',
+      ...(projection.kind === 'owner_brain_history_get'
         ? { session: projection.session }
-        : { sessions: projection.sessions, count: projection.count }),
+        : {
+          sessions: projection.sessions,
+          count: projection.count,
+          discovery_scope: projection.discovery_scope,
+        }),
       ...envelope(),
     });
   } catch (error) {

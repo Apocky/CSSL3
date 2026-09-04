@@ -5,12 +5,11 @@ import {
   listOwnerBrainRuntimeSessions,
   publicMemberPrincipalRef,
   submitOwnerBrainRuntimeChat,
+  type OwnerBrainHistoryGetProjection,
+  type OwnerBrainHistoryListProjection,
   type RuntimeChatProjection,
   type RuntimeHealthProjection,
-  type RuntimeSessionGetProjection,
-  type RuntimeSessionListProjection,
 } from '../apocv4/runtime-proxy';
-import { scopeConversationId, scopeRequestId } from '../apocrypha/proxy';
 
 const OWNER_PRIVACY_PARTITION = 'owner:apocky';
 
@@ -40,9 +39,8 @@ export async function sendOwnerBrainTurn(input: {
   const principal = publicMemberPrincipalRef(input.userId);
   return submitOwnerBrainRuntimeChat({
     message: input.text,
-    conversationId: scopeConversationId(principal, input.sessionId),
-    requestId: scopeRequestId(principal, input.requestId),
-    sessionId: input.sessionId,
+    conversationId: input.sessionId,
+    requestId: input.requestId,
     sessionPrincipal: principal,
     privacyPartition: OWNER_PRIVACY_PARTITION,
     credentialProfile: 'owner',
@@ -52,7 +50,7 @@ export async function sendOwnerBrainTurn(input: {
 export async function listOwnerBrainSessions(
   userId: string,
   traceparent?: string,
-): Promise<RuntimeSessionListProjection> {
+): Promise<OwnerBrainHistoryListProjection> {
   return listOwnerBrainRuntimeSessions({ ...binding(userId), limit: 24 }, traceparent);
 }
 
@@ -60,6 +58,6 @@ export async function getOwnerBrainSession(
   userId: string,
   sessionId: string,
   traceparent?: string,
-): Promise<RuntimeSessionGetProjection> {
+): Promise<OwnerBrainHistoryGetProjection> {
   return getOwnerBrainRuntimeSession({ ...binding(userId), sessionId }, traceparent);
 }

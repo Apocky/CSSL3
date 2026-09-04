@@ -109,6 +109,117 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await page.screenshot({ path: testInfo.outputPath('brain.png'), fullPage: true });
 });
 
+test('live G12 history and an idempotent queued turn map identically across browser engines', async ({ page }) => {
+  const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const initialRequestId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const initialMessages = [
+    {
+      role: 'user', content: 'Where did this worldline pause?', request_id: initialRequestId,
+      recorded_at: '2026-09-04T20:00:00.000Z', event_digest: '1'.repeat(64),
+    },
+    {
+      role: 'assistant', content: 'At the verified G12 relay boundary.', request_id: initialRequestId,
+      recorded_at: '2026-09-04T20:00:01.000Z', event_digest: '2'.repeat(64),
+    },
+  ];
+  await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
+  await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'owner-test' } }) }));
+  await page.route('**/api/admin/check', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authorized: true }) }));
+  await page.route('**/api/brain/mobile/device', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.mini-brain.device-registration.v1', status: 'bound',
+      device_token: 'test-device-token', owner_ref: 'a'.repeat(64), key_thumbprint: 'b'.repeat(64),
+      expires_at: '2099-01-01T00:00:00.000Z', served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
+    }),
+  }));
+  await page.route('**/api/brain/snapshot', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.owner-brain.snapshot.v1', status: 'live',
+      connectors: { mneme_storage: 'live', source_projection: 'live', local_apocv4: 'live' },
+      memories: [], messages: [], counts: { memories: 0, messages: 0, source_links: 0 },
+      limits: { memories: 200, recent_messages: 120, source_messages: 200 },
+      served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
+    }),
+  }));
+  await page.route('**/api/brain/runtime/status', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.owner-brain.runtime-status.v1', status: 'live', reason_code: null,
+      observed_at: '2026-09-04T20:00:00.000Z', latency_ms: 5, upstream_status: 200,
+      served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
+    }),
+  }));
+  await page.route('**/api/brain/runtime/sessions', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'apocky.owner-brain.sessions.v1', status: 'live', history_surface: 'g12_chat_history',
+      discovery_scope: 'latest_conversation_only',
+      sessions: [{
+        session_id: sessionId, title: 'Where did this worldline pause?',
+        updated_at: '2026-09-04T20:00:01.000Z', message_count: 2,
+      }],
+      count: 1, served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
+    }),
+  }));
+  let appendRequestId = '';
+  await page.route('**/api/brain/mobile/sync', async route => {
+    const request = await route.request().postDataJSON() as {
+      operation: 'pull' | 'append'; request_id: string; payload?: { text?: string } | null;
+    };
+    const appended = request.operation === 'append';
+    if (appended) appendRequestId = request.request_id;
+    const messages = appended ? [
+      ...initialMessages,
+      {
+        role: 'user', content: request.payload?.text ?? '', request_id: request.request_id,
+        recorded_at: '2026-09-04T20:01:00.000Z', event_digest: '3'.repeat(64),
+      },
+      {
+        role: 'assistant', content: 'This answer survived the signed queue and G12 readback.', request_id: request.request_id,
+        recorded_at: '2026-09-04T20:01:01.000Z', event_digest: '4'.repeat(64),
+      },
+    ] : initialMessages;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema_version: 'apocky.mini-brain.sync-response.v1', status: appended ? 'appended' : 'advanced',
+        session_id: sessionId, request_id: request.request_id, cursor: appended ? '6'.repeat(64) : '5'.repeat(64),
+        messages, tombstones: [], events_truncated: false,
+        provenance: {
+          transport: 'owner_bound_apocv4_runtime', privacy_partition_ref: '7'.repeat(64),
+          principal_ref: '8'.repeat(64), binding_ref: '9'.repeat(64),
+        },
+        controls: {
+          owner_session: 'verified', device_signature: 'verified',
+          replay: 'bounded_sequence_and_idempotent_request', rate_limit: 'relay_instance_burst',
+          partition: 'server_derived_owner',
+        },
+        served_by: 'fixture', ts: '2026-09-04T20:01:01.000Z',
+      }),
+    });
+  });
+
+  await page.goto('/apocrypha');
+  await expect(page.getByText('At the verified G12 relay boundary.')).toBeVisible();
+  await expect(page.getByText('observed HTTP 200 · sync ready')).toBeVisible();
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
+  await composer.fill('Carry this exact request across the device boundary.');
+  await page.getByRole('button', { name: 'Send + sync' }).click();
+  await expect(page.getByText('This answer survived the signed queue and G12 readback.')).toBeVisible();
+  await expect(page.getByText('Device queue and desktop worldline are current.')).toBeVisible();
+  expect(appendRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  await expect(page.getByText('encrypted queue · not yet committed')).toHaveCount(0);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
 test('verified owner explicitly creates the first private Mneme profile', async ({ page }) => {
   await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
   await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'owner-test' } }) }));
