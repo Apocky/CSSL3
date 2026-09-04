@@ -4,6 +4,21 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const EXPECTED_CONVERSATIONS = 1_386;
+const SEALED_LEGACY_INDEX_SHA256 = '8bcce56ee0d179e07150f68aaa3423805954ad734b76157365aacfaac3dfe8a2';
+const EXPECTED_STRUCTURAL_EXCLUSIONS = Object.freeze({
+  ChatGPT: { structuralRoleMessages: 7827, hiddenMessages: 183, toolDirectedMessages: 3323, reasoningOrToolBodies: 3472, emptyVisibleBodies: 1645 },
+  Claude: { thinkingBlocks: 7571, toolUseBlocks: 7721, toolResultBlocks: 7647, flagBlocks: 3, emptyVisibleBodies: 187 },
+});
+const EXPECTED_QUALITY_AUDIT = Object.freeze({
+  recordsScored: 1386,
+  qualityScoreMin: 7,
+  qualityScoreMax: 100,
+  qualityScoreMeanMilli: 77439,
+  recordsWithContentWarnings: 495,
+  automatedFeatureCandidates: 473,
+  indexableCandidates: 930,
+  reviewHeld: 1386,
+});
 const scriptRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const corpusRoot = resolve(process.argv[2] ?? join(scriptRoot, 'public', 'conversation-corpus'));
 const approvedRecordRoot = join(corpusRoot, 'approved-records');
@@ -61,7 +76,15 @@ async function namesIfPresent(path) {
   }
 }
 
-const [manifest, browse, sitemap, readerSource, middlewareSource, vercelIgnore, names, legacyNames] = await Promise.all([
+async function bytesIfPresent(path) {
+  try { return await readFile(path); }
+  catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+const [manifest, browse, sitemap, readerSource, middlewareSource, vercelIgnore, names, legacyNames, legacyIndexBytes] = await Promise.all([
   json(join(corpusRoot, 'public-index.v1.json')),
   json(join(corpusRoot, 'browse.v1.json')),
   readFile(join(repositoryRoot, 'public', 'sitemap.xml'), 'utf8'),
@@ -70,6 +93,7 @@ const [manifest, browse, sitemap, readerSource, middlewareSource, vercelIgnore, 
   readFile(join(repositoryRoot, '.vercelignore'), 'utf8'),
   namesIfPresent(approvedRecordRoot),
   namesIfPresent(join(corpusRoot, 'records')),
+  bytesIfPresent(join(corpusRoot, 'index.v1.json')),
 ]);
 
 const failures = [];
@@ -84,6 +108,16 @@ if (manifest.publicationState !== 'aggregate-public-bodies-review-held') failure
 if (browse.publicationState !== manifest.publicationState) failures.push('browse publication state mismatch');
 if (manifest.counts?.uniqueConversations !== EXPECTED_CONVERSATIONS) failures.push(`local denominator ${manifest.counts?.uniqueConversations ?? 0}`);
 if ((manifest.counts?.chatgptConversations ?? 0) + (manifest.counts?.claudeConversations ?? 0) !== EXPECTED_CONVERSATIONS) failures.push('provider denominator mismatch');
+if (manifest.counts?.automatedFeatureCandidates !== 473) failures.push('automated feature-candidate denominator mismatch');
+if (Object.values(manifest.counts ?? {}).some((value) => !Number.isInteger(value) || value < 0)) failures.push('manifest counts must be non-negative integers');
+if (JSON.stringify(manifest.counts) !== JSON.stringify(browse.counts)) failures.push('browse/manifest count parity mismatch');
+if (JSON.stringify(manifest.structuralExclusions) !== JSON.stringify(EXPECTED_STRUCTURAL_EXCLUSIONS)) failures.push('canonical structural-exclusion counts mismatch');
+if (JSON.stringify(browse.structuralExclusions) !== JSON.stringify(EXPECTED_STRUCTURAL_EXCLUSIONS)) failures.push('browse structural-exclusion parity mismatch');
+if (JSON.stringify(manifest.qualityAudit) !== JSON.stringify(EXPECTED_QUALITY_AUDIT)) failures.push('canonical quality-audit counts mismatch');
+if (JSON.stringify(browse.qualityAudit) !== JSON.stringify(EXPECTED_QUALITY_AUDIT)) failures.push('browse quality-audit parity mismatch');
+if (manifest.aggregateSourceSha256 !== SEALED_LEGACY_INDEX_SHA256 || browse.aggregateSourceSha256 !== SEALED_LEGACY_INDEX_SHA256) failures.push('aggregate source seal mismatch');
+if (!String(manifest.aggregateDerivation ?? '').includes('no conversation body is copied') || browse.aggregateDerivation !== manifest.aggregateDerivation) failures.push('aggregate derivation boundary missing or divergent');
+if (legacyIndexBytes !== null && sha256(legacyIndexBytes) !== SEALED_LEGACY_INDEX_SHA256) failures.push('preserved legacy index no longer matches aggregate source seal');
 if ((manifest.counts?.publiclyApprovedConversations ?? -1) !== summaries.length) failures.push('approved summary denominator mismatch');
 if ((manifest.counts?.reviewHeldConversations ?? 0) + (manifest.counts?.rejectedConversations ?? 0) + summaries.length !== EXPECTED_CONVERSATIONS) failures.push('review-state denominator mismatch');
 if (manifest.counts?.publishedMessages > manifest.counts?.messages) failures.push('published messages exceed local denominator');
@@ -153,6 +187,7 @@ const report = {
   heldForReview: manifest.counts?.reviewHeldConversations ?? 0,
   indexable: expectedSlugs.length,
   preservedLegacyLocalBodies: legacyNames.length,
+  legacyIndexSealVerified: legacyIndexBytes === null ? 'not-present-in-release-tree' : sha256(legacyIndexBytes) === SEALED_LEGACY_INDEX_SHA256,
   residuals: residuals.slice(0, 20),
   failures: failures.slice(0, 100),
 };

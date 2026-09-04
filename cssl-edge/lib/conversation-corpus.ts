@@ -135,7 +135,7 @@ export interface ConversationCorpusCounts {
   readonly assistantMessages: number;
   readonly alternateBranchMessages: number;
   readonly redactions: number;
-  readonly automatedFeatureCandidates: number | null;
+  readonly automatedFeatureCandidates: number;
   readonly editoriallyFeatureEligible: number;
   readonly indexable: number;
   readonly publiclyApprovedConversations: number;
@@ -187,6 +187,8 @@ export interface ConversationCorpusBrowseManifest {
   readonly scope: string;
   readonly boundaries: readonly string[];
   readonly counts: ConversationCorpusCounts;
+  readonly structuralExclusions: ConversationCorpusManifest['structuralExclusions'];
+  readonly qualityAudit: ConversationCorpusManifest['qualityAudit'];
   readonly records: readonly ConversationCorpusBrowseRecord[];
 }
 
@@ -216,6 +218,9 @@ export function validatePublicConversationManifest(manifest: ConversationCorpusM
   if (manifest.schema !== 'apocky.public-conversation-corpus.v1') throw new Error('CORPUS_MANIFEST_SCHEMA_INVALID');
   if (manifest.publicationState !== 'aggregate-public-bodies-review-held') throw new Error('CORPUS_MANIFEST_PUBLICATION_STATE_INVALID');
   if (manifest.records.length !== manifest.counts.publiclyApprovedConversations) throw new Error('CORPUS_MANIFEST_APPROVED_COUNT_INVALID');
+  if (!Number.isInteger(manifest.counts.automatedFeatureCandidates) || manifest.counts.automatedFeatureCandidates < 0) throw new Error('CORPUS_MANIFEST_CANDIDATE_COUNT_INVALID');
+  if (Object.keys(manifest.structuralExclusions).length === 0) throw new Error('CORPUS_MANIFEST_STRUCTURAL_COUNTS_MISSING');
+  if (Object.keys(manifest.qualityAudit).length === 0 || Object.values(manifest.qualityAudit).some((value) => !Number.isFinite(value))) throw new Error('CORPUS_MANIFEST_QUALITY_COUNTS_MISSING');
   if (duplicateValues(manifest.records.map((record) => record.id)).length > 0) throw new Error('CORPUS_MANIFEST_DUPLICATE_ID');
   if (duplicateValues(manifest.records.map((record) => record.slug)).length > 0) throw new Error('CORPUS_MANIFEST_DUPLICATE_SLUG');
   if (manifest.records.some((record) => (
@@ -228,6 +233,8 @@ export function validatePublicConversationBrowseManifest(manifest: ConversationC
   if (manifest.schema !== 'apocky.public-conversation-corpus.browse.v1') throw new Error('CORPUS_BROWSE_SCHEMA_INVALID');
   if (manifest.publicationState !== 'aggregate-public-bodies-review-held') throw new Error('CORPUS_BROWSE_PUBLICATION_STATE_INVALID');
   if (manifest.records.length !== manifest.counts.publiclyApprovedConversations) throw new Error('CORPUS_BROWSE_APPROVED_COUNT_INVALID');
+  if (JSON.stringify(manifest.structuralExclusions).length <= 2) throw new Error('CORPUS_BROWSE_STRUCTURAL_COUNTS_MISSING');
+  if (Object.keys(manifest.qualityAudit).length === 0 || Object.values(manifest.qualityAudit).some((value) => !Number.isFinite(value))) throw new Error('CORPUS_BROWSE_QUALITY_COUNTS_MISSING');
   if (duplicateValues(manifest.records.map((record) => record.id)).length > 0) throw new Error('CORPUS_BROWSE_DUPLICATE_ID');
   if (duplicateValues(manifest.records.map((record) => record.slug)).length > 0) throw new Error('CORPUS_BROWSE_DUPLICATE_SLUG');
   if (manifest.records.some((record) => record.editorialReviewState !== 'approved')) throw new Error('CORPUS_BROWSE_UNAPPROVED_RECORD');

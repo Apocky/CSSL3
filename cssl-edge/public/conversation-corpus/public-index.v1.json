@@ -26,7 +26,7 @@
     "assistantMessages": 9679,
     "alternateBranchMessages": 363,
     "redactions": 3875,
-    "automatedFeatureCandidates": null,
+    "automatedFeatureCandidates": 473,
     "editoriallyFeatureEligible": 0,
     "indexable": 0,
     "publiclyApprovedConversations": 0,
@@ -34,7 +34,33 @@
     "rejectedConversations": 0,
     "publishedMessages": 0
   },
-  "structuralExclusions": {},
-  "qualityAudit": {},
+  "structuralExclusions": {
+    "ChatGPT": {
+      "structuralRoleMessages": 7827,
+      "hiddenMessages": 183,
+      "toolDirectedMessages": 3323,
+      "reasoningOrToolBodies": 3472,
+      "emptyVisibleBodies": 1645
+    },
+    "Claude": {
+      "thinkingBlocks": 7571,
+      "toolUseBlocks": 7721,
+      "toolResultBlocks": 7647,
+      "flagBlocks": 3,
+      "emptyVisibleBodies": 187
+    }
+  },
+  "qualityAudit": {
+    "recordsScored": 1386,
+    "qualityScoreMin": 7,
+    "qualityScoreMax": 100,
+    "qualityScoreMeanMilli": 77439,
+    "recordsWithContentWarnings": 495,
+    "automatedFeatureCandidates": 473,
+    "indexableCandidates": 930,
+    "reviewHeld": 1386
+  },
+  "aggregateSourceSha256": "8bcce56ee0d179e07150f68aaa3423805954ad734b76157365aacfaac3dfe8a2",
+  "aggregateDerivation": "Sealed legacy manifest top-level fields and summary metadata only; no conversation body is copied into this projection.",
   "records": []
 }

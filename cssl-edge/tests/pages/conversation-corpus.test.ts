@@ -29,10 +29,29 @@ validatePublicConversationManifest(manifest);
 validatePublicConversationBrowseManifest(browse);
 assert.equal(manifest.counts.uniqueConversations, 1_386, 'aggregate retains the complete local conversation denominator');
 assert.equal(manifest.counts.messages, 19_479, 'aggregate retains the complete local visible-turn denominator');
+assert.equal(manifest.counts.automatedFeatureCandidates, 473, 'candidate denominator remains numeric and source-sealed');
 assert.equal(manifest.counts.publiclyApprovedConversations, 0, 'no body is public before review');
 assert.equal(manifest.counts.reviewHeldConversations, 1_386, 'every current record is explicitly held');
 assert.deepEqual(manifest.records, [], 'public index contains no unreviewed summary');
 assert.deepEqual(browse.records, [], 'browse projection contains no unreviewed title, excerpt, or signal');
+assert.deepEqual(browse.counts, manifest.counts, 'browse and canonical aggregate counts remain identical');
+assert.deepEqual(browse.structuralExclusions, manifest.structuralExclusions, 'browse preserves structural-exclusion aggregates');
+assert.deepEqual(browse.qualityAudit, manifest.qualityAudit, 'browse preserves quality-audit aggregates');
+assert.deepEqual(manifest.structuralExclusions, {
+  ChatGPT: { structuralRoleMessages: 7827, hiddenMessages: 183, toolDirectedMessages: 3323, reasoningOrToolBodies: 3472, emptyVisibleBodies: 1645 },
+  Claude: { thinkingBlocks: 7571, toolUseBlocks: 7721, toolResultBlocks: 7647, flagBlocks: 3, emptyVisibleBodies: 187 },
+}, 'structural-exclusion counts match the sealed legacy aggregate');
+assert.deepEqual(manifest.qualityAudit, {
+  recordsScored: 1386,
+  qualityScoreMin: 7,
+  qualityScoreMax: 100,
+  qualityScoreMeanMilli: 77439,
+  recordsWithContentWarnings: 495,
+  automatedFeatureCandidates: 473,
+  indexableCandidates: 930,
+  reviewHeld: 1386,
+}, 'quality aggregates are numeric and explicit');
+assert.equal((manifest as ConversationCorpusManifest & { aggregateSourceSha256: string }).aggregateSourceSha256, '8bcce56ee0d179e07150f68aaa3423805954ad734b76157365aacfaac3dfe8a2');
 assert.doesNotMatch(manifestSource, /"(?:excerpt|humanSignal|aiSignal|bodyHref)"/u, 'aggregate carries no source-derived preview fields');
 assert.doesNotMatch(browseSource, /"(?:excerpt|humanSignal|aiSignal|bodyHref)"/u, 'held browse carries no source-derived preview fields');
 

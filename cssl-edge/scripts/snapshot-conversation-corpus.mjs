@@ -1032,6 +1032,8 @@ export async function buildCorpus({ chatgptDir, claudeJson, categories: category
     scope: manifest.scope,
     boundaries: manifest.boundaries,
     counts: manifest.counts,
+    structuralExclusions: manifest.structuralExclusions,
+    qualityAudit: manifest.qualityAudit,
     records: approvedRecords.map(browseSummary),
   };
   validatePublicValue(browseManifest, 'browse manifest');
