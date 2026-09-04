@@ -1,11 +1,11 @@
 {
   "schema": "apocky.apocrypha-public-plan.v1",
-  "version": "2026.09.03-candidate.6",
+  "version": "1.0.0-rc.1",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:52:31-07:00",
+  "generated_at": "2026-09-04T12:24:32-07:00",
   "project": "Apocrypha",
   "track": "local-living",
-  "summary": "Apocrypha candidate 6 keeps the repaired forward route and adds the missing owner-controlled Mneme bootstrap, an encrypted offline Mini Brain, signed replay-safe mobile synchronization, and the first measured Graphify query vertical driven by sealed CSSLv3 policy with an inspectable NIL trace. Physical-phone and phone-to-desktop acceptance remain open and are not represented as complete.",
+  "summary": "Apocrypha 1.0 web/PWA release candidate 1 is installable from supported desktop and mobile browsers and passed local desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks covering owner access, manifest identity, service-worker scope, offline encrypted continuity, no private API caching, accessibility, safe areas, and overflow. It is not a native mobile binary or a production release; physical-device install, live-revision, and phone-to-desktop acceptance remain open.",
   "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
   "principles": [
     "Local operation remains useful when network access is removed.",
@@ -15,6 +15,12 @@
   ],
   "milestones": [
     {
+      "id": "web-pwa",
+      "label": "1.0 cross-platform web/PWA",
+      "state": "LOCAL_BROWSER_MATRIX_PASSED_LIVE_AND_PHYSICAL_DEVICE_ACCEPTANCE_OPEN",
+      "summary": "Version 1.0.0-rc.1 is an installable browser-delivered PWA candidate. The local matrix passed desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks for access, manifest identity, service-worker scope, offline encrypted continuity, private-cache exclusion, accessibility, safe areas, and overflow. It is not an App Store, Play Store, desktop-native, or downloadable package, and production has not been promoted."
+    },
+    {
       "id": "brain",
       "label": "Personal Brain",
       "state": "MNEME_SCHEMA_LIVE_BOOTSTRAP_IMPLEMENTED_ACCEPTANCE_OPEN",
@@ -23,8 +29,8 @@
     {
       "id": "mobile-lobe",
       "label": "Mobile mini Brain and desktop sync",
-      "state": "COMPONENT_AND_SIMULATED_IOS_CHECKS_PASSED",
-      "summary": "Candidate 6 adds an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Browser, Pixel, and iPhone WebKit checks passed; no physical-phone or end-to-end phone-to-desktop claim has been made."
+      "state": "LOCAL_DESKTOP_ANDROID_IOS_WEBKIT_MATRIX_PASSED",
+      "summary": "The 1.0 PWA candidate includes an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks passed locally; no physical-phone or end-to-end phone-to-desktop claim has been made."
     },
     {
       "id": "conversation-corpus",
@@ -69,5 +75,5 @@
       "summary": "A reversible Windows migration package exists and passed focused checks, but remains withheld pending native cryptographic signing, SBOM, and clean-machine lifecycle proof."
     }
   ],
-  "release_boundary": "This plan is a public-safe projection of active work. It is not a deployment receipt, acceptance result, or release announcement."
+  "release_boundary": "This plan is a public-safe projection of the 1.0 web/PWA candidate. It is not a deployment receipt, production acceptance result, native-app claim, or release announcement."
 }

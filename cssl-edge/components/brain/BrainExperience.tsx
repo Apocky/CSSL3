@@ -244,8 +244,10 @@ function ReleaseShelf(): JSX.Element {
             </a>
           ) : (
             <div className={styles.releaseHold}>
-              <strong>No promoted public package is attached.</strong>
-              <p>{manifest.build.missing.length} release gate{manifest.build.missing.length === 1 ? '' : 's'} remain. Candidate work is visible here without being mislabeled as released.</p>
+              <strong>No downloadable native package is attached.</strong>
+              <p>The PWA installs from a supported browser; a native binary is a separate distribution surface. {manifest.release_state === 'CANDIDATE'
+                ? `${manifest.build.missing.length} release gate${manifest.build.missing.length === 1 ? '' : 's'} remain. Candidate work is visible here without being mislabeled as released.`
+                : 'No native download is part of this release.'}</p>
             </div>
           )}
         </div>

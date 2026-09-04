@@ -24,8 +24,18 @@ assert.equal(apocryphaRelease.status, 'live', 'checked-in manifest must parse');
 if (apocryphaRelease.status !== 'live') throw new Error('checked-in release manifest degraded');
 assert.equal(apocryphaRelease.manifest.release_state, 'CANDIDATE');
 assert.equal(apocryphaRelease.manifest.release_label, 'Candidate — not released');
+assert.equal(apocryphaRelease.manifest.version, '1.0.0-rc.1');
+assert.equal(apocryphaRelease.manifest.build.state, 'INSTALLABLE_PWA_CANDIDATE');
+assert.equal(apocryphaRelease.manifest.build.verification, 'LOCAL_DESKTOP_CHROME_MOBILE_CHROME_IPHONE_WEBKIT_MATRIX_PASSED');
+assert.match(apocryphaRelease.manifest.claim_boundary, /Browser installation is distinct from a downloadable native artifact/);
 assert.equal(apocryphaRelease.manifest.download, null);
+assert.equal(apocryphaRelease.manifest.download_status, 'NO_PROMOTED_ARTIFACT');
 assert.equal(publicReleaseDownload(apocryphaRelease.manifest), null);
+const missingGates = apocryphaRelease.manifest.build.missing.join(' · ');
+assert.match(missingGates, /Physical iPhone installation/);
+assert.match(missingGates, /Physical Android installation/);
+assert.match(missingGates, /Production promotion approval/);
+assert.doesNotMatch(missingGates, /Promoted native installer/, 'native packaging is not a gate for the 1.0 web/PWA lane');
 
 for (const binding of [
   apocryphaRelease.manifest.documents.plan,

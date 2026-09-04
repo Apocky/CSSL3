@@ -2,11 +2,11 @@
   "schema": "apocky.apocrypha-release-source.v1",
   "project": "Apocrypha",
   "track": "local-living",
-  "version": "2026.09.03-candidate.6",
+  "version": "1.0.0-rc.1",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:52:31-07:00",
-  "source_revision": "22e73fde3b37c11ca72234798ff83f84e29d7b85",
-  "summary": "Apocrypha candidate 6 keeps the repaired forward route and adds the missing owner-controlled Mneme bootstrap, an encrypted offline Mini Brain, signed replay-safe mobile synchronization, and the first measured Graphify query vertical driven by sealed CSSLv3 policy with an inspectable NIL trace. Physical-phone and phone-to-desktop acceptance remain open and are not represented as complete.",
+  "generated_at": "2026-09-04T12:24:32-07:00",
+  "source_revision": "d094ee6d6ebf2cd4f4a4e60e5c08ab9ce4d8c060",
+  "summary": "Apocrypha 1.0 web/PWA release candidate 1 is installable from supported desktop and mobile browsers and passed local desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks covering owner access, manifest identity, service-worker scope, offline encrypted continuity, no private API caching, accessibility, safe areas, and overflow. It is not a native mobile binary or a production release; physical-device install, live-revision, and phone-to-desktop acceptance remain open.",
   "plan": {
     "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
     "principles": [
@@ -17,6 +17,12 @@
     ],
     "milestones": [
       {
+        "id": "web-pwa",
+        "label": "1.0 cross-platform web/PWA",
+        "state": "LOCAL_BROWSER_MATRIX_PASSED_LIVE_AND_PHYSICAL_DEVICE_ACCEPTANCE_OPEN",
+        "summary": "Version 1.0.0-rc.1 is an installable browser-delivered PWA candidate. The local matrix passed desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks for access, manifest identity, service-worker scope, offline encrypted continuity, private-cache exclusion, accessibility, safe areas, and overflow. It is not an App Store, Play Store, desktop-native, or downloadable package, and production has not been promoted."
+      },
+      {
         "id": "brain",
         "label": "Personal Brain",
         "state": "MNEME_SCHEMA_LIVE_BOOTSTRAP_IMPLEMENTED_ACCEPTANCE_OPEN",
@@ -25,8 +31,8 @@
       {
         "id": "mobile-lobe",
         "label": "Mobile mini Brain and desktop sync",
-        "state": "COMPONENT_AND_SIMULATED_IOS_CHECKS_PASSED",
-        "summary": "Candidate 6 adds an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Browser, Pixel, and iPhone WebKit checks passed; no physical-phone or end-to-end phone-to-desktop claim has been made."
+        "state": "LOCAL_DESKTOP_ANDROID_IOS_WEBKIT_MATRIX_PASSED",
+        "summary": "The 1.0 PWA candidate includes an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks passed locally; no physical-phone or end-to-end phone-to-desktop claim has been made."
       },
       {
         "id": "conversation-corpus",
@@ -71,7 +77,7 @@
         "summary": "A reversible Windows migration package exists and passed focused checks, but remains withheld pending native cryptographic signing, SBOM, and clean-machine lifecycle proof."
       }
     ],
-    "release_boundary": "This plan is a public-safe projection of active work. It is not a deployment receipt, acceptance result, or release announcement."
+    "release_boundary": "This plan is a public-safe projection of the 1.0 web/PWA candidate. It is not a deployment receipt, production acceptance result, native-app claim, or release announcement."
   },
   "changelog": [
     {
@@ -181,22 +187,24 @@
       "kind": "graphify-native-query",
       "state": "DIFFERENTIAL_BENCHMARK_PASSED",
       "summary": "The first Trinity organ now executes a sealed CSSLv3 query policy through a bounded native runtime and emits an inspectable non-authoritative NIL trace. Exact fixed-query parity, morphology retention, policy countertests, startup latency, and rollback were measured; product integration remains open."
+    },
+    {
+      "at": "2026-09-04",
+      "kind": "web-pwa-1.0-rc",
+      "state": "LOCAL_CROSS_PLATFORM_MATRIX_PASSED",
+      "summary": "The 1.0.0-rc.1 web/PWA candidate now has one route-aware install manifest, iOS safe-area activation, an unobscured telemetry-blackout surface, strict private-response no-store behavior, no private API entries in service-worker caches, offline encrypted restart coverage, serious and critical accessibility checks, and narrow-screen overflow checks across desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit. Production and physical-device acceptance remain open."
     }
   ],
   "build": {
-    "state": "CANDIDATE",
-    "verification": "PUBLIC_FLOW_AND_NATIVE_SHADOW_CHECKS_NOT_RELEASE_ACCEPTANCE",
+    "state": "INSTALLABLE_PWA_CANDIDATE",
+    "verification": "LOCAL_DESKTOP_CHROME_MOBILE_CHROME_IPHONE_WEBKIT_MATRIX_PASSED",
     "release_gate": "CLOSED",
     "missing": [
-      "Promoted native installer or portable package",
-      "Matched real-turn tokenizer, semantic parity, and native canary proof",
-      "Three promoted CSSLv3-authored behaviors under one inspectable NIL graph",
-      "Per-organ Graphify, Anamnesis, MemPalace, MetaHarness, and 3MNEME parity and supremacy proof",
-      "Physical iPhone install, offline restart, owner bootstrap, and signed phone-to-desktop synchronization proof",
-      "Software bill of materials",
-      "Verified native artifact signature without placeholder cryptography",
-      "Clean Windows install, offline, upgrade, rollback, and uninstall proof",
-      "Exact promoted-revision acceptance record"
+      "Exact revision deployed to a non-production preview with post-deploy owner-session, manifest, offline, and private-cache acceptance",
+      "Physical iPhone installation, offline restart, safe-area, and owner bootstrap proof",
+      "Physical Android installation and offline restart proof",
+      "End-to-end owner phone-to-desktop signed synchronization proof",
+      "Production promotion approval with exact-revision acceptance and rollback receipt"
     ]
   },
   "artifact": null

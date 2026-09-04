@@ -228,7 +228,7 @@ export function buildReleaseBundle(sourceValue, publicRoot = DEFAULT_PUBLIC_ROOT
     },
     download_status: artifact.downloadStatus,
     download: artifact.download,
-    claim_boundary: 'Candidate metadata is not a release. A public download appears only after exact artifact, digest, signature-receipt, promotion, and release gates pass.',
+    claim_boundary: 'Candidate metadata is not a release. Browser installation is distinct from a downloadable native artifact; production availability requires exact-revision promotion and acceptance.',
   };
   const manifest = {
     ...manifestCore,

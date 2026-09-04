@@ -84,11 +84,13 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await expect(page.getByText(/encrypted queue · not yet committed/i)).toBeVisible();
   const releaseShelf = page.locator('#brain-releases');
   await expect(releaseShelf.getByText('Candidate — not released')).toBeVisible();
+  await expect(releaseShelf.locator('summary').getByText('1.0.0-rc.1 · integrity-linked evidence')).toBeVisible();
   await releaseShelf.locator('summary').click();
   await expect(releaseShelf.getByRole('link', { name: /Living plan/i })).toHaveAttribute('href', '/releases/apocrypha-living/plan.json');
   await expect(releaseShelf.getByRole('link', { name: /Changelog/i })).toHaveAttribute('href', '/releases/apocrypha-living/changelog.json');
   await expect(releaseShelf.getByRole('link', { name: /Build manifest/i })).toHaveAttribute('href', '/releases/apocrypha-living/manifest.json');
   await expect(releaseShelf.locator('a[href^="/downloads/"]')).toHaveCount(0);
+  await expect(releaseShelf.getByText('No downloadable native package is attached.')).toBeVisible();
 
   await page.getByLabel('Find a memory, topic, or phrase').fill('source boundary');
   await expect(page.getByText('2 of 3 loaded records match')).toBeVisible();

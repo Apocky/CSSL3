@@ -10,7 +10,8 @@ assert.match(experience, /manifest\.documents\.plan/, 'release shelf must link t
 assert.match(experience, /manifest\.documents\.changelog/, 'release shelf must link the public-safe changelog');
 assert.match(experience, /manifest\.documents\.manifest/, 'release shelf must link the build manifest');
 assert.match(experience, /publicReleaseDownload\(manifest\)/, 'download visibility must use the release gate');
-assert.match(experience, /No promoted public package is attached/, 'candidate state must be explicit');
+assert.match(experience, /No downloadable native package is attached/, 'PWA and native distribution must remain distinct');
+assert.match(experience, /The PWA installs from a supported browser/, 'candidate state must explain the install surface truthfully');
 assert.doesNotMatch(experience, /C:\\Users|127\.0\.0\.1|localhost/, 'release UI cannot expose owner-local coordinates');
 
 console.log('brain-release-page.test : OK · owner shelf + evidence links + gated download seam');

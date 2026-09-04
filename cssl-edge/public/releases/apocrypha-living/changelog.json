@@ -1,8 +1,8 @@
 {
   "schema": "apocky.apocrypha-public-changelog.v1",
-  "version": "2026.09.03-candidate.6",
+  "version": "1.0.0-rc.1",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:52:31-07:00",
+  "generated_at": "2026-09-04T12:24:32-07:00",
   "project": "Apocrypha",
   "entries": [
     {
@@ -112,6 +112,12 @@
       "kind": "graphify-native-query",
       "state": "DIFFERENTIAL_BENCHMARK_PASSED",
       "summary": "The first Trinity organ now executes a sealed CSSLv3 query policy through a bounded native runtime and emits an inspectable non-authoritative NIL trace. Exact fixed-query parity, morphology retention, policy countertests, startup latency, and rollback were measured; product integration remains open."
+    },
+    {
+      "at": "2026-09-04",
+      "kind": "web-pwa-1.0-rc",
+      "state": "LOCAL_CROSS_PLATFORM_MATRIX_PASSED",
+      "summary": "The 1.0.0-rc.1 web/PWA candidate now has one route-aware install manifest, iOS safe-area activation, an unobscured telemetry-blackout surface, strict private-response no-store behavior, no private API entries in service-worker caches, offline encrypted restart coverage, serious and critical accessibility checks, and narrow-screen overflow checks across desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit. Production and physical-device acceptance remain open."
     }
   ],
   "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."
