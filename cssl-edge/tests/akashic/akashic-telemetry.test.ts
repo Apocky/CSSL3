@@ -305,6 +305,7 @@ export function test_auth_blackout_suspends_prior_consent(): void {
   assert(capture('page.error', { message: 'SENTINEL_CODE SENTINEL_TOKEN' }) === '', 'callback sentinel denied');
   assert(_ringSize() === 0, 'callback sentinel never enters ring');
   assert(isTelemetryBlackoutPath('/brain?memory=PRIVATE_SENTINEL'), 'private Brain query normalizes to blackout');
+  assert(isTelemetryBlackoutPath('/apocrypha?memory=PRIVATE_SENTINEL'), 'primary private Apocrypha query normalizes to blackout');
   setPath('/brain');
   assert(akashicInstall() === false, 'private Brain keeps telemetry suspended');
   assert(capture('page.view', { memory: 'PRIVATE_SENTINEL' }) === '', 'private Brain payload cannot enter telemetry');

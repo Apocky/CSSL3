@@ -76,7 +76,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
 
           <div className="apx-nav-actions">
             <CommandPalette />
-            {access === 'owner' ? <Link href="/brain" className="apx-nav-action">Brain</Link> : null}
+            {access === 'owner' ? <Link href="/apocrypha" className="apx-nav-action">Brain</Link> : null}
             <Link href="/membership" className="apx-nav-action apx-nav-action--primary">Join</Link>
             <Link
               href={authenticated ? '/account' : '/login?next=%2Faccount'}
@@ -90,7 +90,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             <summary>Explore</summary>
             <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
               {navLinks('apx-mobile-menu-link')}
-              {access === 'owner' ? <Link href="/brain" className="apx-mobile-menu-link">Private Brain</Link> : null}
+              {access === 'owner' ? <Link href="/apocrypha" className="apx-mobile-menu-link">Private Brain</Link> : null}
               <Link href="/membership" className="apx-mobile-menu-link apx-nav-link--support">Membership &amp; support</Link>
               <Link
                 href={authenticated ? '/account' : '/login?next=%2Faccount'}

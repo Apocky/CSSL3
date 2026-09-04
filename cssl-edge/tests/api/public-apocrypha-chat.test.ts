@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -532,7 +532,7 @@ async function main(): Promise<void> {
   assert(Number(rateLimited.headers['retry-after']) >= 1, 'rate limit provides retry timing');
   equal(upstreamCalls, 8, 'only eight valid turns reach one warm-instance body window');
 
-  const retiredPagePath = resolve(process.cwd(), 'pages/apocrypha.tsx');
+  const primaryPage = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
   const component = readFileSync(
     resolve(process.cwd(), 'components/apocrypha/PublicChat.tsx'),
     'utf8',
@@ -548,7 +548,9 @@ async function main(): Promise<void> {
   const vercel = JSON.parse(
     readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
   ) as { functions?: Record<string, { maxDuration?: number }> };
-  assert(!existsSync(retiredPagePath), '/apocrypha page remains retired from the public runtime');
+  assert(primaryPage.includes('BrainExperience'), 'exact /apocrypha now aliases the private Brain experience');
+  assert(primaryPage.includes('requireBrainOwner'), 'exact /apocrypha remains owner-gated');
+  assert(!primaryPage.includes('PublicChat'), 'exact /apocrypha must not revive the retired member chat');
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
   assert(component.includes('training_consent === false'), 'browser verifies no training consent');
   assert(component.includes("body.memory_scope === 'public_safe_retrieval'"), 'browser verifies public-safe memory');

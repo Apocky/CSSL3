@@ -149,6 +149,7 @@ export function isTelemetryBlackoutPath(rawPath?: string): boolean {
     pathname === '/register' ||
     pathname === '/auth' ||
     pathname.startsWith('/auth/') ||
+    pathname === '/apocrypha' ||
     pathname === '/brain' ||
     pathname.startsWith('/brain/') ||
     pathname === '/shawn/clinical' ||

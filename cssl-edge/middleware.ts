@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 
 const RETIRED_EXACT_PATHS = new Set([
   '/apoc',
-  '/apocrypha',
   '/apocrypha-manifest.json',
   '/apx',
   '/chat',
@@ -100,6 +99,7 @@ export function middleware(request: NextRequest): NextResponse {
 
   const nonce = btoa(crypto.randomUUID());
   const privateSurface = request.nextUrl.pathname.startsWith('/shawn/clinical')
+    || request.nextUrl.pathname === '/apocrypha'
     || request.nextUrl.pathname === '/brain'
     || request.nextUrl.pathname.startsWith('/brain/')
     || request.nextUrl.pathname.startsWith('/api/brain/');

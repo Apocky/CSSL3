@@ -65,6 +65,7 @@ export function testAuthCallbackParamParsing(): void {
 
 export function testAuthReturnPathNormalization(): void {
   assertEqual('available admin return preserved', normalizeAuthReturnPath('/admin'), '/admin');
+  assertEqual('primary private route preserved', normalizeAuthReturnPath('/apocrypha'), '/apocrypha');
   assertEqual('retired admin return rejected', normalizeAuthReturnPath('/admin/chat'), '/account');
   assertEqual('retired public chat return rejected', normalizeAuthReturnPath('/chat'), '/account');
   assertEqual('retired public chat query rejected', normalizeAuthReturnPath('/chat?x=1'), '/account');
@@ -72,6 +73,7 @@ export function testAuthReturnPathNormalization(): void {
   assertEqual('external return rejected', normalizeAuthReturnPath('https://evil.example/admin/chat'), '/account');
   assertEqual('callback loop rejected', normalizeAuthReturnPath('/auth/callback?next=/admin/chat'), '/account');
   assertEqual('login href includes available next', loginHrefForReturnPath('/admin'), '/login?next=%2Fadmin');
+  assertEqual('login href includes primary private next', loginHrefForReturnPath('/apocrypha'), '/login?next=%2Fapocrypha');
   assertEqual('login href recovers retired next', loginHrefForReturnPath('/admin/chat'), '/login?next=%2Faccount');
   assertEqual(
     'callback URL carries safe next',

@@ -15,7 +15,6 @@ import {
 
 const retiredUrls = [
   'https://www.apocky.com/apoc',
-  'https://www.apocky.com/apocrypha',
   'https://www.apocky.com/apocrypha/thread/example',
   'https://www.apocky.com/apocrypha-manifest.json',
   'https://www.apocky.com/apx',
@@ -80,10 +79,12 @@ async function testRetiredRoutes(): Promise<void> {
   }
 
   for (const url of [
+    'https://www.apocky.com/apocrypha',
     'https://www.apocky.com/brain',
     'https://www.apocky.com/api/brain/snapshot',
     'https://www.apocky.com/api/brain/runtime/status',
   ]) {
+    assert.equal(isRetiredWebRuntimeRequest(new NextRequest(url)), false, `${url} must remain outside the retirement boundary`);
     const response = middleware(new NextRequest(url));
     assert.equal(response.status, 200, `${url} must reach its owner authorization handler`);
     assert.match(response.headers.get('cache-control') ?? '', /no-store/, `${url} must never be publicly cached`);

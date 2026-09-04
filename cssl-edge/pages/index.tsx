@@ -71,7 +71,7 @@ const Home: NextPage = () => {
       title: 'Talk to Apocrypha',
       copy: 'Open your persistent conversation, contextual memory, and source-linked Brain.',
       action: 'Open private conversation',
-      href: '/brain',
+      href: '/apocrypha',
       primary: true,
     }
     : {
@@ -79,7 +79,7 @@ const Home: NextPage = () => {
       title: 'Talk to Apocrypha',
       copy: 'Persistent conversation is private while the public relay remains closed behind its runtime and privacy gates.',
       action: authenticated ? 'View the access boundary' : 'Sign in to verify access',
-      href: authenticated ? '/brain' : '/login?next=%2Fbrain',
+      href: authenticated ? '/apocrypha' : '/login?next=%2Fapocrypha',
       primary: true,
     };
 

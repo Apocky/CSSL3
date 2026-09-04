@@ -4,7 +4,6 @@ const DEFAULT_AUTH_RETURN_PATH = '/account';
 // otherwise-successful sign-in by sending a person into a known 404.
 const RETIRED_AUTH_RETURN_EXACT = new Set([
   '/apoc',
-  '/apocrypha',
   '/apx',
   '/chat',
   '/admin/apex',

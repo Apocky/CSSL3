@@ -37,6 +37,7 @@ const principlesPage = read('pages/principles.tsx');
 const principlesFallback = read('public/commons/principles.html');
 const homePage = read('pages/index.tsx');
 const siteShell = read('components/SiteShell.tsx');
+const apocryphaPage = read('pages/apocrypha.tsx');
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
@@ -48,13 +49,14 @@ assert.equal(pwa['start_url'], '/', 'public PWA must not enter the owner-only ad
 assert.equal('apocrypha' in manifest, false, 'retired service must not have a discovery object');
 assert.equal(exists('public/apocrypha-manifest.json'), false, 'retired manifest alias must not ship');
 
-for (const retiredPage of ['pages/apocrypha.tsx', 'pages/apoc.tsx', 'pages/apx.tsx', 'pages/chat.tsx']) {
+assert.match(apocryphaPage, /BrainExperience/, 'exact /apocrypha must render the owner-private Brain experience');
+assert.match(apocryphaPage, /requireBrainOwner/, 'exact /apocrypha must remain owner-gated');
+assert.doesNotMatch(apocryphaPage, /PublicChat|ClearingRoom/, 'exact /apocrypha must not revive the retired public chat');
+for (const retiredPage of ['pages/apoc.tsx', 'pages/apx.tsx', 'pages/chat.tsx']) {
   assert.equal(exists(retiredPage), false, `${retiredPage} must not be built as a page`);
 }
 
 const activePublicSurfaces: Record<string, string> = {
-  homePage,
-  siteShell,
   words: read('pages/words.tsx'),
   start: read('pages/start.tsx'),
   showcase: read('pages/showcase.tsx'),
@@ -85,6 +87,9 @@ for (const [surface, source] of Object.entries(activePublicSurfaces)) {
   assert.doesNotMatch(source, /apocrypha/i, `${surface} must not advertise or name the retired service`);
   assert.doesNotMatch(source, /href=["']\/apoc(?:rypha)?(?:[?"'/])/i, `${surface} must not link a retired route`);
 }
+assert.match(homePage, /href: '\/apocrypha'/, 'home may advertise only the exact owner-private Apocrypha route');
+assert.match(siteShell, /href="\/apocrypha"/, 'owner shell may advertise only the exact owner-private Apocrypha route');
+assert.doesNotMatch(`${homePage}\n${siteShell}`, /href=["']\/apocrypha\//, 'public navigation must not revive an Apocrypha descendant');
 
 const entryPoints = JSON.stringify(manifest['entry_points']);
 assert.match(entryPoints, /words_and_symbols/);

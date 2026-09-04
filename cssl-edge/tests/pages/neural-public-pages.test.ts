@@ -69,8 +69,8 @@ assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the compl
 for (const path of ['Talk to Apocrypha', 'Explore Atlas', 'Enter Chaos Tarot']) {
   assert(home.includes(path), `home must expose the primary ${path} path`);
 }
-assert(home.includes("href: '/brain'"), 'owner Apocrypha entry must use the private Brain route');
-assert(home.includes("href: authenticated ? '/brain' : '/login?next=%2Fbrain'"), 'signed-out Apocrypha entry must verify access through sign-in');
+assert(home.includes("href: '/apocrypha'"), 'owner Apocrypha entry must use the primary private route');
+assert(home.includes("href: authenticated ? '/apocrypha' : '/login?next=%2Fapocrypha'"), 'signed-out Apocrypha entry must verify access and return to the primary route');
 assert(home.includes('Persistent conversation is private while the public relay remains closed'), 'home must not imply a public Apocrypha surface exists');
 assert(home.includes('<details className="apx-home-more">'), 'secondary amenities must use progressive disclosure');
 assert(home.includes('/releases/apocrypha-living/manifest.json'), 'home must link its compact release claim to public-safe evidence');

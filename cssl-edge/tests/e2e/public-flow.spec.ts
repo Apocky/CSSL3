@@ -16,7 +16,7 @@ test('home remains a useful creative-work entry point', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/Conversation, symbolic tools, and connected worlds/i);
   await expect(page.getByRole('heading', { level: 1, name: /Strange questions.*Useful ways through/i })).toBeVisible();
-  await expect(page.getByRole('link', { name: /Talk to Apocrypha/i })).toHaveAttribute('href', '/login?next=%2Fbrain');
+  await expect(page.getByRole('link', { name: /Talk to Apocrypha/i })).toHaveAttribute('href', '/login?next=%2Fapocrypha');
   await expect(page.getByRole('link', { name: /Begin a free reading/i })).toHaveAttribute('href', 'https://chaos-tarot.com/free-reading?source=apocky-home');
   await expect(page.getByRole('link', { name: /Explore Atlas/i }).first()).toHaveAttribute('href', '/atlas');
   await expect(page.getByText('Candidate — not released')).toBeVisible();
@@ -25,7 +25,7 @@ test('home remains a useful creative-work entry point', async ({ page }) => {
   await expect(page.getByRole('link', { name: /Gather.*public social room/i })).not.toBeVisible();
   await more.click();
   await expect(page.getByRole('link', { name: /Gather.*public social room/i })).toHaveAttribute('href', '/clearing');
-  await expect(page.locator('a[href^="/apoc"], a[href="/chat"], a[href="/apx"]')).toHaveCount(0);
+  await expect(page.locator('a[href^="/apocrypha/"], a[href="/apoc"], a[href="/chat"], a[href="/apx"]')).toHaveCount(0);
   await expect(page.locator('main')).toHaveCount(1);
   await expect(page.locator('h1')).toHaveCount(1);
   await expectNoHorizontalOverflow(page);
@@ -52,9 +52,13 @@ test('ordinary applications remain reachable while retired web paths are neutral
     expect(response.status(), route).toBeLessThan(400);
   }
 
+  const privateAlias = await request.get('/apocrypha', { maxRedirects: 0 });
+  expect(privateAlias.status()).toBe(307);
+  expect(privateAlias.headers()['location']).toBe('/login?next=%2Fapocrypha');
+
   for (const route of [
     '/apoc',
-    '/apocrypha',
+    '/apocrypha/thread/example',
     '/apx',
     '/chat',
     '/apocrypha-manifest.json',

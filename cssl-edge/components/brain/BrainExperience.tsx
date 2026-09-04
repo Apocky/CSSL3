@@ -530,7 +530,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     <main className={styles.brain} data-brain-state={runtime?.status ?? 'degraded'}>
       <header className={styles.header}>
         <Link href="/" className={styles.brand} aria-label="Apocky home"><span aria-hidden="true">∞</span><strong>APOCKY</strong></Link>
-        <div><p>OWNER-PRIVATE MICROSCOSM</p><h1>Brain</h1></div>
+        <div><p>OWNER-PRIVATE BRAIN</p><h1>Apocrypha</h1></div>
         <nav aria-label="Private Brain navigation"><a href="#brain-releases">Releases</a><Link href="/memory-tools">Memory tools</Link><Link href="/account">Account</Link></nav>
       </header>
 

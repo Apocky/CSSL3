@@ -55,7 +55,7 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   }));
 
   await page.goto('/brain');
-  await expect(page.getByRole('heading', { level: 1, name: 'Brain' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
   await expect(page.getByText('Mneme storage')).toBeVisible();
   await expect(page.getByText('not connected · conversation read-only')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Message your local Apocrypha' })).toBeDisabled();
