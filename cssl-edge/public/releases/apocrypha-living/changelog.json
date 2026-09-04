@@ -1,8 +1,8 @@
 {
   "schema": "apocky.apocrypha-public-changelog.v1",
-  "version": "2026.09.03-candidate.3",
+  "version": "2026.09.03-candidate.4",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:02:16-07:00",
+  "generated_at": "2026-09-03T21:22:27-07:00",
   "project": "Apocrypha",
   "entries": [
     {
@@ -64,6 +64,24 @@
       "kind": "mycelial-package",
       "state": "CANDIDATE_HELD",
       "summary": "A reversible Windows migration package was built and verified locally; no public download is exposed until native signature and lifecycle gates pass."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "conversation-corpus-generator",
+      "state": "LIVE_VERIFIED",
+      "summary": "The public aggregate is now generated deterministically from sealed privacy-safe facts during every build; both live projections are byte-identical and all 1,386 records remain review-held."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mobile-mini-brain",
+      "state": "FAULT_OBSERVED_IMPLEMENTATION_ACTIVE",
+      "summary": "A real mobile visit exposed a 503 Mneme storage fault. Candidate 4 binds offline local usefulness, signed incremental sync, and per-region degradation so one memory failure cannot close the whole conversation."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "Trinity-organs",
+      "state": "GRAPHIFY_FIRST_VERTICAL_ACTIVE",
+      "summary": "The native migration now covers cognitive organs themselves: Graphify first, then shared traversal, provenance, scheduling, memory, diagnostics, MCP, API, and TTY kernels, with Python retained only as a frozen differential oracle until superseded."
     }
   ],
   "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."

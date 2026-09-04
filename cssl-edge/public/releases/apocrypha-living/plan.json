@@ -1,11 +1,11 @@
 {
   "schema": "apocky.apocrypha-public-plan.v1",
-  "version": "2026.09.03-candidate.3",
+  "version": "2026.09.03-candidate.4",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:02:16-07:00",
+  "generated_at": "2026-09-03T21:22:27-07:00",
   "project": "Apocrypha",
   "track": "local-living",
-  "summary": "Apocrypha now has a measured local living runtime, an owner-gated conversation and memory surface, a live review-held conversation-corpus prototype, bounded causal interoception, and a measured Rust context-compiler shadow while the CSSLv3-native core is built and proven.",
+  "summary": "Apocrypha has a measured local living runtime, a live review-held conversation-corpus prototype, and a governed native migration in progress. Candidate 4 adds the explicit mobile mini Brain and desktop-sync contract plus a shared CSLv3 to NIL to CSSLv3 migration path for Graphify and the other cognitive organs; the current mobile memory fault and every remaining promotion gate stay visible.",
   "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
   "principles": [
     "Local operation remains useful when network access is removed.",
@@ -17,8 +17,14 @@
     {
       "id": "brain",
       "label": "Personal Brain",
-      "state": "PUBLIC_SHELL_LIVE_OWNER_ROUTE_GATED",
-      "summary": "The simplified public shell is live while the persistent Apocrypha conversation remains owner-gated; the local living runtime and source-linked memory surfaces retain separate runtime acceptance gates."
+      "state": "PUBLIC_SHELL_LIVE_MOBILE_MEMORY_DEGRADED",
+      "summary": "The simplified public shell and owner gate are live. A real mobile request reached the private Brain, but the Mneme snapshot returned MNEME_STORAGE_UNAVAILABLE; the repair must isolate that region so conversation and the offline mini Brain still open."
+    },
+    {
+      "id": "mobile-lobe",
+      "label": "Mobile mini Brain and desktop sync",
+      "state": "IMPLEMENTATION_ACTIVE_NOT_YET_ACCEPTED",
+      "summary": "The bound design adds an encrypted device-local store, deterministic offline cognition, a signed cursor and outbox protocol, region-isolated failure, and a restricted desktop relay. No end-to-end phone-to-desktop sync claim has been made yet."
     },
     {
       "id": "conversation-corpus",
@@ -41,8 +47,14 @@
     {
       "id": "native-core",
       "label": "CSL, NIL, and CSSL native core",
-      "state": "RUST_SHADOW_BENCHMARKED",
-      "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target; a deterministic Rust bootstrap now compiles the bounded fixture while tokenizer, real-turn semantic parity, and live latency gates remain open."
+      "state": "RUST_SHADOW_REPAIR_AND_PARITY_ACTIVE",
+      "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target. The bootstrap reduced the exact tokenizer envelope by 83.82 percent, but source binding, ranking, semantic parity, persistent-shell latency, and live canary gates remain open."
+    },
+    {
+      "id": "trinity-organs",
+      "label": "Trinity-native cognitive organs",
+      "state": "GRAPHIFY_QUERY_VERTICAL_ACTIVE",
+      "summary": "Graphify is the first differential replacement: its current Python launcher failed before query execution, so a read-only native query and path slice is being measured against the preserved Python behavior before the shared kernels extend to Anamnesis, MemPalace, MetaHarness, and 3MNEME."
     },
     {
       "id": "distribution",
