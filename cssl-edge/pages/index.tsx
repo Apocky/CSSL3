@@ -10,21 +10,27 @@ import { SUPPORT_LINKS } from '../lib/support-links';
 
 const PATHS = [
   {
-    kind: 'Experience',
-    title: 'Chaos Tarot',
-    copy: 'Start with a free interactive reading, then move into eight divination systems, study tools, journals, patterns, and progression.',
-    href: 'https://chaos-tarot.com/free-reading?source=apocky-home',
-    label: 'Draw your first cards',
-    external: true,
+    kind: 'Creation',
+    title: 'Symbolic Studio',
+    copy: 'Compose an owner-authorized Haloic-derived working, craft its sigil, and keep what you choose in a private local Spellbook.',
+    href: '/spellcraft',
+    label: 'Open the workbench',
+    tone: 'apx-door-card--indigo',
+  },
+  {
+    kind: 'Archive',
+    title: 'Akashic Records',
+    copy: 'Search approved writing and public-safe conversations in a readable, hash-sealed archive.',
+    href: '/akashic-records',
+    label: 'Search the archive',
     tone: 'apx-door-card--neon',
   },
   {
-    kind: 'Orientation',
-    title: 'Constellation Atlas',
-    copy: 'Navigate the projects and ideas as a visual map, multidimensional index, and living dictionary.',
-    href: '/atlas',
-    label: 'Map the constellation',
-    external: false,
+    kind: 'Community',
+    title: 'The Clearing',
+    copy: 'Read the public room freely. Sign in only when you choose to post or react.',
+    href: '/clearing',
+    label: 'Enter the Clearing',
     tone: 'apx-door-card--indigo',
   },
   {
@@ -33,74 +39,13 @@ const PATHS = [
     copy: 'Turn passive browsing into an eleven-node expedition. Progress stays on your device and no account is required.',
     href: '/quests',
     label: 'Choose a quest',
-    external: false,
     tone: 'apx-door-card--violet',
-  },
-  {
-    kind: 'Creation',
-    title: 'Symbolic Studio',
-    copy: 'Ask a fast Yes / No Oracle, compile an owner-authorized Haloic-derived working, craft its sigil, and keep it in a private local Spellbook.',
-    href: '/spellcraft',
-    label: 'Open the workbench',
-    external: false,
-    tone: 'apx-door-card--indigo',
-  },
-] as const;
-
-const CREATIVE_WORK = [
-  {
-    title: 'Yes / No Oracle',
-    copy: 'A private one-question signal with a reproducible receipt, a counterweight, and no claim of decision authority.',
-    href: '/oracle',
-    label: 'Ask one question',
-  },
-  {
-    title: 'Spellcraft and Sigils',
-    copy: 'A deterministic symbolic language engine, visible SVG generator, and explicit device-local Spellbook.',
-    href: '/spellcraft',
-    label: 'Compose a working',
-  },
-  {
-    title: 'Omnoid Singularity',
-    copy: 'A source-typed cosmology of recursive totality, distinct centers, freedom, True Neutral, singularity, and return.',
-    href: '/omnoid-singularity',
-    label: 'Enter the cosmology',
-  },
-  {
-    title: 'Akashic Records',
-    copy: 'A searchable, hash-sealed public archive of approved writing and public-safe conversation records.',
-    href: '/akashic-records',
-    label: 'Search the archive',
-  },
-  {
-    title: 'The Clearing',
-    copy: 'A public community room. Reading is open; an account is required only when you choose to post or react.',
-    href: '/clearing',
-    label: 'Join the signal',
-  },
-  {
-    title: 'Labyrinth of Apocalypse',
-    copy: 'A game world shaped by procedural history, persistent consequence, strange systems, and discovery.',
-    href: '/download',
-    label: 'Inspect the test build',
-  },
-  {
-    title: 'CSSL and CSLv3',
-    copy: 'Software and notation for expressing relationships, evidence, uncertainty, decisions, and interconnected systems.',
-    href: '/docs/cssl-language',
-    label: 'Read the language guide',
-  },
-  {
-    title: 'Words and symbols',
-    copy: 'A plain-language dictionary for the recurring concepts, evidence marks, and relational notation used across Apocky.',
-    href: '/words',
-    label: 'Decode the vocabulary',
   },
 ] as const;
 
 const Home: NextPage = () => {
   const [authNotice, setAuthNotice] = useState<string | null>(null);
-  const { authenticated, refresh } = useSiteSession();
+  const { access, authenticated, refresh } = useSiteSession();
   const koFi = SUPPORT_LINKS.find((link) => link.name === 'Ko-fi');
 
   useEffect(() => {
@@ -170,10 +115,11 @@ const Home: NextPage = () => {
               <a href="https://chaos-tarot.com/free-reading?source=apocky-home" target="_blank" rel="noopener noreferrer" className="apx-button apx-button--primary">
                 Begin a free reading <span aria-hidden="true">↗</span>
               </a>
-              <Link href="/atlas" className="apx-button">Explore the Atlas</Link>
-              <Link href="/oracle" className="apx-button">Ask Yes / No</Link>
-              <Link href="/start" className="apx-button">Choose your path</Link>
-              {authenticated ? <Link href="/account" className="apx-button">Your account</Link> : null}
+              {access === 'owner'
+                ? <Link href="/brain" className="apx-button">Open your Brain</Link>
+                : authenticated
+                  ? <Link href="/account" className="apx-button">Your account</Link>
+                  : null}
             </div>
             <p className="apx-auth-message" aria-live="polite" hidden={!authNotice}>{authNotice}</p>
             <div className="apx-signal-proof" aria-label="What is available">
@@ -184,7 +130,7 @@ const Home: NextPage = () => {
             </div>
           </div>
 
-          <div className="apx-neural-card" aria-label="Choose a live signal">
+          <div className="apx-neural-card" aria-label="Explore the connected Atlas">
             <div className="apx-neural-field" aria-hidden="true">
               <svg viewBox="0 0 420 260">
                 <defs>
@@ -206,21 +152,21 @@ const Home: NextPage = () => {
               </svg>
             </div>
             <div className="apx-neural-copy">
-              <p className="apx-presence-label">Strongest live signal</p>
-              <h2>Chaos Tarot</h2>
-              <p>Do not settle for a brochure about the work. Use the system that is already alive.</p>
+              <p className="apx-presence-label">One map · Four views</p>
+              <h2>Constellation Atlas</h2>
+              <p>See every project as a map, matrix, searchable index, or plain-language dictionary.</p>
             </div>
             <div className="apx-neural-actions">
-              <a href="https://chaos-tarot.com/free-reading?source=apocky-home-card" target="_blank" rel="noopener noreferrer">Try it free <span aria-hidden="true">↗</span></a>
-              <a href="https://chaos-tarot.com/pricing?source=apocky-home-card" target="_blank" rel="noopener noreferrer">Unlock the Oracle <span aria-hidden="true">↗</span></a>
+              <Link href="/atlas">Open the map <span aria-hidden="true">→</span></Link>
+              <Link href="/atlas?view=dictionary">Browse the dictionary <span aria-hidden="true">→</span></Link>
             </div>
           </div>
         </section>
 
         <section id="pathways" className="apx-section apx-section--compact" aria-labelledby="pathways-title">
           <div className="apx-section-head">
-            <div><p className="apx-kicker">Choose your mode</p><h2 id="pathways-title">Experience. Understand. Participate.</h2></div>
-            <p className="apx-section-intro">Every doorway is useful by itself. The neural layer reveals what each one connects to next.</p>
+            <div><p className="apx-kicker">Choose what to do</p><h2 id="pathways-title">Create. Read. Gather. Play.</h2></div>
+            <p className="apx-section-intro">Four direct doors. The Atlas and neural index keep everything else findable without putting everything on this page.</p>
           </div>
           <div className="apx-door-grid">
             {PATHS.map((path) => {
@@ -228,32 +174,12 @@ const Home: NextPage = () => {
                 <>
                   <div className="apx-door-card-top"><span className="apx-door-kind">{path.kind}</span><span className="apx-door-node" aria-hidden="true"><i /></span></div>
                   <div><h3>{path.title}</h3><p>{path.copy}</p></div>
-                  <span className="apx-door-link">{path.label} <span aria-hidden="true">{path.external ? '↗' : '→'}</span></span>
+                  <span className="apx-door-link">{path.label} <span aria-hidden="true">→</span></span>
                 </>
               );
-              return path.external ? (
-                <a key={path.title} href={path.href} target="_blank" rel="noopener noreferrer" className={`apx-door-card ${path.tone}`}>{body}</a>
-              ) : (
-                <Link key={path.title} href={path.href} className={`apx-door-card ${path.tone}`}>{body}</Link>
-              );
+              return <Link key={path.title} href={path.href} className={`apx-door-card ${path.tone}`}>{body}</Link>;
             })}
           </div>
-        </section>
-
-        <section id="projects" className="apx-section" aria-labelledby="projects-title">
-          <div className="apx-section-head">
-            <div><p className="apx-kicker">The connected corpus</p><h2 id="projects-title">Worlds with their own gravity.</h2></div>
-            <p className="apx-section-intro">Nothing here is filler made to catch a keyword. Each destination contains an authored project, usable tool, public record, shared space, or documented language.</p>
-          </div>
-          <div className="apx-project-list">
-            {CREATIVE_WORK.map((project) => (
-              <Link key={project.title} href={project.href} className="apx-project-link">
-                <span><strong>{project.title}</strong><small>{project.copy}</small></span>
-                <span className="apx-project-action">{project.label} <span aria-hidden="true">→</span></span>
-              </Link>
-            ))}
-          </div>
-          <div className="apx-section-endcap"><Link href="/atlas" className="apx-button">See every mapped connection →</Link></div>
         </section>
 
         <section id="support" className="apx-section apx-section--support" aria-labelledby="support-title">
@@ -261,14 +187,13 @@ const Home: NextPage = () => {
             <div>
               <p className="apx-kicker">Become a sustaining node</p>
               <h2 id="support-title">If this deserves to exist, help it compound.</h2>
-              <p className="apx-support-copy">Years of uncommon work are already here. Patreon, Ko-fi, and paid Chaos Tarot access turn appreciation into the focused time required to connect, refine, and release more of it.</p>
-              <Link href="/membership" className="apx-support-details">Compare the live paths <span aria-hidden="true">→</span></Link>
+              <p className="apx-support-copy">Years of uncommon work are already here. Membership, Patreon, and Ko-fi turn appreciation into the focused time required to connect, refine, and release more of it.</p>
             </div>
             <div className="apx-support-options" aria-label="Ways to sustain Apocky">
-              <a className="apx-support-option apx-support-option--featured" href="https://chaos-tarot.com/pricing?source=apocky-home" target="_blank" rel="noopener noreferrer">
-                <span><strong>Unlock Chaos Tarot</strong><small>Support a living product while gaining access to its current paid experience.</small></span>
-                <span className="apx-support-option-action">See plans ↗</span>
-              </a>
+              <Link className="apx-support-option apx-support-option--featured" href="/membership">
+                <span><strong>Choose your support path</strong><small>Compare membership, recurring support, and direct ways to fund the work.</small></span>
+                <span className="apx-support-option-action">Compare paths →</span>
+              </Link>
               {koFi ? (
                 <a className="apx-support-option" href={koFi.href} target="_blank" rel="noopener noreferrer">
                   <span><strong>Fuel the next release</strong><small>{koFi.description}</small></span>

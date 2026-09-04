@@ -30,7 +30,9 @@ const spellbook = read('pages/spellbook.tsx');
 const theory = read('pages/theory-of-everything.tsx');
 const principles = read('pages/principles.tsx');
 const shell = read('components/SiteShell.tsx');
+const synapses = read('components/site/ContextualSynapses.tsx');
 const command = read('components/site/CommandPalette.tsx');
+const nextConfig = read('next.config.js');
 const errorBoundary = read('lib/akashic-telemetry/error-boundary.tsx');
 const sitemap = read('public/sitemap.xml');
 const llms = read('public/llms.txt');
@@ -61,7 +63,12 @@ for (const route of ['/start', '/divination', '/oracle', '/spellcraft', '/sigils
 }
 
 assert(home.includes('chaos-tarot.com/free-reading?source=apocky-home'), 'home must hand off directly to a measurable free Chaos reading');
-assert(home.includes('chaos-tarot.com/pricing?source=apocky-home'), 'home must expose the live Chaos pricing route');
+assert((home.match(/https:\/\/chaos-tarot\.com/g) ?? []).length === 1, 'home content must expose one clear Chaos funnel');
+assert(!home.includes("href=\"/oracle\"") && !home.includes("href: '/oracle'"), 'home must not host or advertise the local Yes / No route');
+assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the complete project index beneath its primary paths');
+assert(home.includes('<h2>Constellation Atlas</h2>'), 'the neural visual must orient visitors into the Atlas instead of duplicating Chaos');
+assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
+assert(home.includes('location.replace(returnTo)'), 'home simplification must preserve the normalized post-auth return path');
 assert(membership.includes('https://chaos-tarot.com/pricing'), 'membership must expose the usable Chaos product path');
 assert(membership.includes('SUPPORT_LINKS'), 'membership must reuse canonical support links');
 assert(!membership.includes('Enrollment not open'), 'native membership must not retain the retired mock-enrollment state');
@@ -76,6 +83,19 @@ assert(status.includes('Configuration flags mean a connection is present; they d
 
 assert(command.includes('aria-label="Find anything in the Apocky neural index"'), 'mobile command trigger must retain an accessible name');
 assert(shell.includes('<ContextualSynapses pathname={pathname} />'), 'global shell must expose contextual graph edges');
+const primaryNav = shell.match(/const NAV:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
+assert((primaryNav.match(/href:/g) ?? []).length === 5, 'global shell must expose no more than five primary destinations');
+for (const label of ['Atlas', 'Create', 'Archive', 'Clearing', 'Chaos']) {
+  assert(primaryNav.includes(label), `primary navigation missing ${label}`);
+}
+assert(!primaryNav.includes('/start'), 'home now owns orientation; Start must not remain a primary destination');
+assert(!shell.includes("href: '/oracle'"), 'global navigation and footer must not advertise the retired local Oracle');
+assert(!shell.includes('const WORK') && !shell.includes('const ABOUT'), 'footer must not restore the two long link inventories');
+assert(synapses.includes("pathname === '/'"), 'contextual synapses must stay hidden on the home page');
+assert(synapses.includes("relation.neighbor.id !== 'oracle'"), 'contextual synapses must not re-advertise the retired local Oracle');
+assert(synapses.includes('.slice(0, 2)'), 'contextual synapses must expose at most two related destinations');
+assert(nextConfig.includes("source: '/oracle', destination: 'https://chaos-tarot.com/yes-no?source=apocky-oracle', permanent: true"), 'legacy Oracle requests must permanently hand off to Chaos Tarot');
+assert(!nextConfig.includes("source: '/auth/callback'"), 'the Oracle handoff must not intercept the auth callback route');
 assert(!shell.includes('https://cssl.dev'), 'global shell must not send visitors to the observed-unavailable CSSL host');
 
 assert(errorBoundary.includes('publicErrorCode'), 'render failures must derive a stable public error code');

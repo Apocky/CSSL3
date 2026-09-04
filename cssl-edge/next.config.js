@@ -15,6 +15,8 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      // Binary Tarot now belongs to the Chaos Tarot divination platform.
+      { source: '/oracle', destination: 'https://chaos-tarot.com/yes-no?source=apocky-oracle', permanent: true },
       // The old Commons hub is superseded by the native React homepage.
       { source: '/commons', destination: '/', permanent: true },
       { source: '/commons/index.html', destination: '/', permanent: true },

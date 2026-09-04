@@ -8,41 +8,23 @@ import ContextualSynapses from './site/ContextualSynapses';
 type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean; accent?: boolean };
 
 const NAV: ReadonlyArray<NavItem> = [
-  { href: '/start', label: 'Start here', shortLabel: 'Start' },
   { href: '/atlas', label: 'Atlas' },
-  { href: '/spellcraft', label: 'Spellcraft', shortLabel: 'Create' },
-  { href: '/akashic-records', label: 'Akashic Records', shortLabel: 'Records' },
-  { href: '/clearing', label: 'The Clearing', shortLabel: 'Clearing' },
+  { href: '/spellcraft', label: 'Create' },
+  { href: '/akashic-records', label: 'Archive' },
+  { href: '/clearing', label: 'Clearing' },
   { href: 'https://chaos-tarot.com/free-reading?source=apocky-nav', label: 'Chaos Tarot', shortLabel: 'Chaos', ext: true, accent: true },
 ];
 
-const WORK: ReadonlyArray<NavItem> = [
-  { href: '/showcase', label: 'Watch the connected-worlds showcase' },
-  { href: 'https://chaos-tarot.com/free-reading?source=apocky-footer', label: 'Begin a Chaos Tarot reading', ext: true },
-  { href: '/atlas', label: 'Explore the Constellation Atlas' },
-  { href: '/oracle', label: 'Ask the Yes / No Oracle' },
-  { href: '/spellcraft', label: 'Compose with Spellcraft' },
-  { href: '/sigils', label: 'Craft a deterministic sigil' },
-  { href: '/spellbook', label: 'Open the local Spellbook' },
-  { href: '/memory-tools', label: 'Connect memory banks and tools' },
-  { href: '/labs', label: 'Operate the public labs' },
-  { href: '/akashic-records', label: 'Search the Akashic Records' },
-  { href: '/omnoid-singularity', label: 'Enter the Omnoid Singularity' },
-  { href: '/download', label: 'Explore Labyrinth of Apocalypse' },
-  { href: '/docs/cssl-language', label: 'Read the CSSL guide' },
+const EXPLORE: ReadonlyArray<NavItem> = [
+  { href: '/atlas', label: 'Atlas' },
+  { href: '/spellcraft', label: 'Create' },
+  { href: '/akashic-records', label: 'Archive' },
+  { href: '/clearing', label: 'Clearing' },
 ];
 
-const ABOUT: ReadonlyArray<NavItem> = [
-  { href: '/start', label: 'Choose a starting path' },
-  { href: '/now', label: 'What is alive now' },
-  { href: '/quests', label: 'Public quests' },
-  { href: '/status', label: 'System status' },
-  { href: '/docs', label: 'Documentation' },
-  { href: 'https://github.com/Apocky', label: 'Code on GitHub', ext: true },
-  { href: '/words', label: 'Words & symbols' },
+const LEGAL: ReadonlyArray<NavItem> = [
   { href: '/legal/privacy', label: 'Privacy' },
   { href: '/legal/terms', label: 'Terms' },
-  { href: '/legal/eula', label: 'Game license' },
   { href: 'mailto:apocky13@gmail.com', label: 'Contact', ext: true },
 ];
 
@@ -59,7 +41,7 @@ function isActivePath(pathname: string, href: string): boolean {
 
 export default function SiteShell({ children }: { children: React.ReactNode }): JSX.Element {
   const { pathname } = useRouter();
-  const { authenticated } = useSiteSession();
+  const { access, authenticated } = useSiteSession();
 
   const navLinks = (className = 'apx-nav-link') => NAV.map((item) => {
     const visibleLabel = className === 'apx-mobile-menu-link' ? item.label : (item.shortLabel ?? item.label);
@@ -94,6 +76,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
 
           <div className="apx-nav-actions">
             <CommandPalette />
+            {access === 'owner' ? <Link href="/brain" className="apx-nav-action">Brain</Link> : null}
             <Link href="/membership" className="apx-nav-action apx-nav-action--primary">Join</Link>
             <Link
               href={authenticated ? '/account' : '/login?next=%2Faccount'}
@@ -107,6 +90,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             <summary>Explore</summary>
             <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
               {navLinks('apx-mobile-menu-link')}
+              {access === 'owner' ? <Link href="/brain" className="apx-mobile-menu-link">Private Brain</Link> : null}
               <Link href="/membership" className="apx-mobile-menu-link apx-nav-link--support">Membership &amp; support</Link>
               <Link
                 href={authenticated ? '/account' : '/login?next=%2Faccount'}
@@ -135,27 +119,26 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             </p>
           </div>
           <div>
-            <h2 className="apx-footer-title">Living work</h2>
+            <h2 className="apx-footer-title">Explore</h2>
             <div className="apx-footer-links">
-              {WORK.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
-            </div>
-          </div>
-          <div>
-            <h2 className="apx-footer-title">Navigate & verify</h2>
-            <div className="apx-footer-links">
-              {ABOUT.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
+              {EXPLORE.map((item) => <Link key={item.label} href={item.href} className="apx-footer-link">{item.label}</Link>)}
             </div>
           </div>
           <div className="apx-footer-support">
-            <h2 className="apx-footer-title">Keep it alive</h2>
-            <p className="apx-footer-support-copy">If the work has earned your attention, turn some of that attention into runway.</p>
+            <h2 className="apx-footer-title">Support</h2>
             <div className="apx-footer-links">
-              <Link href="/membership" className="apx-footer-link">Compare every support path</Link>
+              <Link href="/membership" className="apx-footer-link">Membership &amp; support</Link>
               {SUPPORT_LINKS.map((item) => (
                 <a key={item.name} href={item.href} target="_blank" rel="noopener noreferrer" className="apx-footer-link">
                   {item.label} <span aria-hidden="true">↗</span>
                 </a>
               ))}
+            </div>
+          </div>
+          <div>
+            <h2 className="apx-footer-title">Legal</h2>
+            <div className="apx-footer-links">
+              {LEGAL.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
             </div>
           </div>
         </div>

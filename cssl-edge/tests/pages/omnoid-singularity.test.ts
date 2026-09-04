@@ -9,7 +9,7 @@ const page = read('pages/omnoid-singularity.tsx');
 const styles = read('styles/OmnoidSingularity.module.css');
 const canonicalCsl = read('../specs/cosmology/APOCKY_OMNOID_SINGULARITY_COSMOLOGY_2026-08-12.csl');
 const publicCsl = read('public/omnoid-singularity.csl');
-const homepage = read('pages/index.tsx');
+const publicSurfaceGraph = read('lib/public-surface-graph.ts');
 const siteShell = read('components/SiteShell.tsx');
 const sitemap = read('public/sitemap.xml');
 const llms = read('public/llms.txt');
@@ -112,7 +112,7 @@ assert.doesNotMatch(page, /https?:\/\/[^"']+\.(?:png|jpe?g|webp|svg|js)/i);
 assert.match(styles, /@media \(max-width: 42rem\)/);
 assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 assert.match(styles, /@media \(forced-colors: active\)/);
-assert.match(homepage, /href: '\/omnoid-singularity'/);
+assert.match(publicSurfaceGraph, /href: '\/omnoid-singularity'/, 'the consolidated home delegates specialized-world discovery to the Atlas');
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/omnoid-singularity/);
 assert.match(llms, /https:\/\/www\.apocky\.com\/omnoid-singularity/);
 

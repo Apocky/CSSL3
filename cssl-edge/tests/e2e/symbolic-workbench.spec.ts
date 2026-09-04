@@ -2,25 +2,10 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 test.describe('symbolic studio public workbench', () => {
-  test('Oracle answers an ordinary question and blocks high-stakes authority', async ({ page }) => {
-    const externalRequests: string[] = [];
-    const firstPartyOrigin = new URL(process.env.APOCKY_E2E_BASE_URL ?? 'http://127.0.0.1:3000').origin;
-    page.on('request', (request) => {
-      if (new URL(request.url()).origin !== firstPartyOrigin) externalRequests.push(request.url());
-    });
-    await page.goto('/oracle');
-    const question = page.getByLabel('Ask one question that can be answered yes or no');
-    await question.fill('Should I make the smallest reversible move today?');
-    await page.getByRole('button', { name: 'Reveal yes / no' }).click();
-    await expect(page.getByLabel('Oracle result')).toContainText(/yes|no/i);
-    await expect(page.getByRole('definition').first()).not.toBeEmpty();
-    await expect(page.getByLabel('Oracle result')).toContainText('apocky-oracle/1.0.0');
-    await expect(page.getByRole('link', { name: 'Ask Chaos Tarot' })).toHaveAttribute('href', 'https://chaos-tarot.com/free-reading?source=apocky-oracle-result');
-
-    await question.fill('Should I change my medication dose?');
-    await page.getByRole('button', { name: 'Reveal yes / no' }).click();
-    await expect(page.getByText('This oracle does not answer medical, legal, financial, safety, self-harm, surveillance, coercion, or directed-harm decisions.', { exact: false })).toBeVisible();
-    expect(externalRequests).toEqual([]);
+  test('Legacy Oracle route permanently hands off to Chaos Tarot', async ({ request }) => {
+    const response = await request.get('/oracle', { maxRedirects: 0 });
+    expect(response.status()).toBe(308);
+    expect(response.headers()['location']).toBe('https://chaos-tarot.com/yes-no?source=apocky-oracle');
   });
 
   test('Spellcraft exposes valid and quarantined compiler states', async ({ page }) => {
@@ -62,7 +47,7 @@ test.describe('symbolic studio public workbench', () => {
   });
 
   test('New public surfaces stay accessible and viewport-bound', async ({ page }) => {
-    for (const route of ['/oracle', '/spellcraft', '/sigils', '/spellbook', '/atlas?view=matrix']) {
+    for (const route of ['/spellcraft', '/sigils', '/spellbook', '/atlas?view=matrix']) {
       await page.goto(route);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow, `${route} horizontal overflow`).toBeLessThanOrEqual(1);
@@ -71,10 +56,6 @@ test.describe('symbolic studio public workbench', () => {
       expect(severe, `${route} serious or critical accessibility findings`).toEqual([]);
     }
 
-    await page.goto('/oracle');
-    for (const button of await page.locator('[aria-label="Example questions"] button').all()) {
-      expect((await button.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
-    }
     await page.goto('/spellcraft');
     for (const button of await page.locator('[aria-label="Example spells"] button, [aria-label="Vocabulary category"] button').all()) {
       expect((await button.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);

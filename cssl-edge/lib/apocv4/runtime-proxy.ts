@@ -15,6 +15,7 @@ export type { RuntimeSessionPrincipal } from './session-principal';
 
 export const APOCV4_PROXY_SCHEMA = 'apocky.apocv4-runtime-proxy.v1';
 export const APOCV4_WEB_RUNTIME_STATE = 'RETIRED' as const;
+export const APOCV4_BRAIN_RUNTIME_ENABLE_ENV = 'APOCKY_BRAIN_LOCAL_PROVIDER_ENABLED' as const;
 
 const RUNTIME_SCHEMA = 'apocv4.runtime-service.v1';
 const CHAT_STREAM_EVENT_SCHEMA = 'apocv4.chat-stream-event.v1';
@@ -405,10 +406,14 @@ export class RuntimeProxyError extends Error {
   }
 }
 
-function requireWebRuntimeAccess(): void {
+type RuntimeAccessProfile = 'retired-web' | 'owner-brain';
+
+function requireRuntimeAccess(profile: RuntimeAccessProfile): void {
   const isolatedTestTransport = process.env.APOCV4_RUNTIME_TRANSPORT === 'test-fetch'
     && process.env.NODE_ENV !== 'production';
-  if (!isolatedTestTransport) {
+  const ownerBrainEnabled = profile === 'owner-brain'
+    && process.env[APOCV4_BRAIN_RUNTIME_ENABLE_ENV] === '1';
+  if (!isolatedTestTransport && !ownerBrainEnabled) {
     throw new RuntimeProxyError('web_runtime_retired', 404);
   }
 }
@@ -1752,8 +1757,9 @@ async function callRuntime(
   body: JsonObject | null,
   traceparent?: string,
   credentialProfile: RuntimeCredentialProfile = 'owner',
+  accessProfile: RuntimeAccessProfile = 'retired-web',
 ): Promise<RuntimeCall> {
-  requireWebRuntimeAccess();
+  requireRuntimeAccess(accessProfile);
   const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
   const token = runtimeToken(credentialProfile);
   const objective = path === '/v1/objectives';
@@ -1888,8 +1894,9 @@ async function callRuntimeChatStream(
   traceparent: string | undefined,
   credentialProfile: RuntimeCredentialProfile,
   onTextDelta: (text: string) => void,
+  accessProfile: RuntimeAccessProfile = 'retired-web',
 ): Promise<RuntimeCall> {
-  requireWebRuntimeAccess();
+  requireRuntimeAccess(accessProfile);
   const path: RuntimePath = '/v1/chat/stream';
   const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
   const token = runtimeToken(credentialProfile);
@@ -2110,6 +2117,24 @@ export async function fetchRuntimeHealth(traceparent?: string): Promise<RuntimeH
   };
 }
 
+export async function fetchOwnerBrainRuntimeHealth(traceparent?: string): Promise<RuntimeHealthProjection> {
+  const call = await callRuntime('/health', null, traceparent, 'owner', 'owner-brain');
+  return {
+    schema_version: APOCV4_PROXY_SCHEMA,
+    kind: 'health',
+    observed: {
+      evidence_lane: 'observed_runtime_http',
+      receipt: call.receipt,
+      runtime: call.data,
+    },
+    model_reported: {
+      evidence_lane: 'model_reported',
+      present: false,
+      note: 'Health contains runtime observations only; it is not a model reasoning claim.',
+    },
+  };
+}
+
 export async function submitRuntimeObjective(objective: string, traceparent?: string): Promise<RuntimeObjectiveProjection> {
   if (
     typeof objective !== 'string'
@@ -2178,10 +2203,11 @@ export async function submitRuntimeObjective(objective: string, traceparent?: st
   };
 }
 
-export async function submitRuntimeChat(
+async function submitRuntimeChatWithAccess(
   input: RuntimeChatInput,
   traceparent?: string,
   onTextDelta?: (text: string) => void,
+  accessProfile: RuntimeAccessProfile = 'retired-web',
 ): Promise<RuntimeChatProjection> {
   const {
     message, conversationId, requestId, sessionId, sessionPrincipal, privacyPartition,
@@ -2227,8 +2253,9 @@ export async function submitRuntimeChat(
       traceparent,
       credentialProfile,
       onTextDelta,
+      accessProfile,
     )
-    : await callRuntime('/v1/chat', runtimeBody, traceparent, credentialProfile);
+    : await callRuntime('/v1/chat', runtimeBody, traceparent, credentialProfile, accessProfile);
   const result = call.data.result;
   if (!isObject(result)) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
@@ -2340,6 +2367,21 @@ export async function submitRuntimeChat(
   };
 }
 
+export async function submitRuntimeChat(
+  input: RuntimeChatInput,
+  traceparent?: string,
+  onTextDelta?: (text: string) => void,
+): Promise<RuntimeChatProjection> {
+  return submitRuntimeChatWithAccess(input, traceparent, onTextDelta, 'retired-web');
+}
+
+export async function submitOwnerBrainRuntimeChat(
+  input: RuntimeChatInput,
+  traceparent?: string,
+): Promise<RuntimeChatProjection> {
+  return submitRuntimeChatWithAccess(input, traceparent, undefined, 'owner-brain');
+}
+
 export async function streamRuntimeChat(
   input: RuntimeChatInput,
   onTextDelta: (text: string) => void,
@@ -2362,9 +2404,10 @@ function sessionObservation(
   };
 }
 
-export async function listRuntimeSessions(
+async function listRuntimeSessionsWithAccess(
   input: RuntimeSessionListInput,
   traceparent?: string,
+  accessProfile: RuntimeAccessProfile = 'retired-web',
 ): Promise<RuntimeSessionListProjection> {
   validateSessionBinding(input);
   const limit = input.limit ?? 24;
@@ -2375,7 +2418,7 @@ export async function listRuntimeSessions(
     privacy_partition: input.privacyPartition,
     session_principal: input.sessionPrincipal,
     limit,
-  }, traceparent, input.credentialProfile ?? 'owner');
+  }, traceparent, input.credentialProfile ?? 'owner', accessProfile);
   const result = call.data.result;
   const listKeys = ['schema_version', 'sessions', 'count'];
   if (
@@ -2406,9 +2449,24 @@ export async function listRuntimeSessions(
   };
 }
 
-export async function getRuntimeSession(
+export async function listRuntimeSessions(
+  input: RuntimeSessionListInput,
+  traceparent?: string,
+): Promise<RuntimeSessionListProjection> {
+  return listRuntimeSessionsWithAccess(input, traceparent, 'retired-web');
+}
+
+export async function listOwnerBrainRuntimeSessions(
+  input: RuntimeSessionListInput,
+  traceparent?: string,
+): Promise<RuntimeSessionListProjection> {
+  return listRuntimeSessionsWithAccess(input, traceparent, 'owner-brain');
+}
+
+async function getRuntimeSessionWithAccess(
   input: RuntimeSessionGetInput,
   traceparent?: string,
+  accessProfile: RuntimeAccessProfile = 'retired-web',
 ): Promise<RuntimeSessionGetProjection> {
   validateSessionBinding(input);
   if (!CLIENT_SESSION_UUID_RE.test(input.sessionId)) {
@@ -2419,7 +2477,7 @@ export async function getRuntimeSession(
     privacy_partition: input.privacyPartition,
     session_principal: input.sessionPrincipal,
     session_id: input.sessionId,
-  }, traceparent, credentialProfile);
+  }, traceparent, credentialProfile, accessProfile);
   const session = normalizeSessionSnapshot(call.data.result, input.sessionId, credentialProfile);
   if (!session) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
@@ -2430,6 +2488,20 @@ export async function getRuntimeSession(
     observed: sessionObservation(call.receipt, 'session_id'),
     session,
   };
+}
+
+export async function getRuntimeSession(
+  input: RuntimeSessionGetInput,
+  traceparent?: string,
+): Promise<RuntimeSessionGetProjection> {
+  return getRuntimeSessionWithAccess(input, traceparent, 'retired-web');
+}
+
+export async function getOwnerBrainRuntimeSession(
+  input: RuntimeSessionGetInput,
+  traceparent?: string,
+): Promise<RuntimeSessionGetProjection> {
+  return getRuntimeSessionWithAccess(input, traceparent, 'owner-brain');
 }
 
 export async function deleteRuntimeSession(

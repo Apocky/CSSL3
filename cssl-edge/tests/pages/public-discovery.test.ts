@@ -129,7 +129,7 @@ assert.match(sitemap, /https:\/\/www\.apocky\.com\/download/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/buy/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/akashic-records/);
 assert.doesNotMatch(sitemap, /\/admin|\/api|\/account|\/login|\/register|\/chat|\/content/);
-assert.match(homePage, /href: '\/omnoid-singularity'/);
+assert.match(atlasGraph, /href: '\/omnoid-singularity'/, 'specialized worlds must remain discoverable through the Atlas after home consolidation');
 
 assert.deepEqual(vercel.rewrites ?? [], [], 'native public pages must not be shadowed by Vercel rewrites');
 assert.doesNotMatch(nextConfig, /source:\s*'\/atlas'[^\n]*destination:\s*'\/commons\/atlas\.html'/);
@@ -144,6 +144,8 @@ assert.match(principlesFallback, /Four invariants/, 'the prior static principles
 assert.doesNotMatch(nextConfig, /destination:\s*'\/commons\/index\.html'/);
 assert.match(nextConfig, /\{\s*source:\s*'\/commons',\s*destination:\s*'\/',\s*permanent:\s*true\s*\}/);
 assert.match(nextConfig, /\{\s*source:\s*'\/commons\/index\.html',\s*destination:\s*'\/',\s*permanent:\s*true\s*\}/);
+assert.match(nextConfig, /\{\s*source:\s*'\/oracle',\s*destination:\s*'https:\/\/chaos-tarot\.com\/yes-no\?source=apocky-oracle',\s*permanent:\s*true\s*\}/);
+assert.doesNotMatch(nextConfig, /source:\s*'\/auth\/callback'/, 'public redirects must preserve the authentication callback');
 assert.match(contentPage, /notFound:\s*true/);
 assert.doesNotMatch(contentPage, /destination:\s*['"]\/apoc/);
 

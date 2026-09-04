@@ -99,7 +99,10 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   const nonce = btoa(crypto.randomUUID());
-  const clinical = request.nextUrl.pathname.startsWith('/shawn/clinical');
+  const privateSurface = request.nextUrl.pathname.startsWith('/shawn/clinical')
+    || request.nextUrl.pathname === '/brain'
+    || request.nextUrl.pathname.startsWith('/brain/')
+    || request.nextUrl.pathname.startsWith('/api/brain/');
   const csp = makeCsp(nonce);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
@@ -115,7 +118,7 @@ export function middleware(request: NextRequest): NextResponse {
     'camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()'
   );
 
-  if (clinical) {
+  if (privateSurface) {
     response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
@@ -128,6 +131,9 @@ export const config = {
   matcher: [
     '/shawn',
     '/shawn/:path*',
+    '/brain',
+    '/brain/:path*',
+    '/api/brain/:path*',
     '/apoc',
     '/apoc/:path*',
     '/apocrypha',

@@ -80,6 +80,18 @@ async function testRetiredRoutes(): Promise<void> {
   }
 
   for (const url of [
+    'https://www.apocky.com/brain',
+    'https://www.apocky.com/api/brain/snapshot',
+    'https://www.apocky.com/api/brain/runtime/status',
+  ]) {
+    const response = middleware(new NextRequest(url));
+    assert.equal(response.status, 200, `${url} must reach its owner authorization handler`);
+    assert.match(response.headers.get('cache-control') ?? '', /no-store/, `${url} must never be publicly cached`);
+    assert.match(response.headers.get('x-robots-tag') ?? '', /noindex/, `${url} must never be indexed`);
+    assert.match(response.headers.get('content-security-policy') ?? '', /connect-src 'self'/, `${url} browser connections remain same-origin`);
+  }
+
+  for (const url of [
     'https://www.apocky.com/',
     'https://www.apocky.com/clearing',
     'https://www.apocky.com/atlas',

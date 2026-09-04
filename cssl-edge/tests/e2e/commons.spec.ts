@@ -56,23 +56,25 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/Interconnected worlds, tools, and living ideas/i);
     await expect(page.getByRole('heading', { level: 1, name: /Follow the signal.*Enter the system/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Explore the Atlas/i }).first()).toBeVisible();
-    await expect(page.locator('main').getByRole('link', { name: /CSSL and CSLv3.*Read the language guide/i })).toHaveAttribute('href', '/docs/cssl-language');
+    await expect(page.locator('main').getByRole('link', { name: /Begin a free reading/i })).toHaveAttribute('href', 'https://chaos-tarot.com/free-reading?source=apocky-home');
+    await expect(page.locator('main').getByRole('link', { name: /Open the map/i })).toHaveAttribute('href', '/atlas');
+    await expect(page.locator('main a[href^="https://chaos-tarot.com"]')).toHaveCount(1);
+    await expect(page.locator('.apx-synapses')).toHaveCount(0);
     const supportSection = page.locator('main').getByRole('region', { name: /If this deserves to exist, help it compound/i });
     await expect(supportSection).toBeVisible();
-    await expect(supportSection).toContainText(/Patreon, Ko-fi, and paid Chaos Tarot access/i);
-    const chaosTarot = supportSection.getByRole('link', { name: /Unlock Chaos Tarot.*See plans/i });
+    await expect(supportSection).toContainText(/Membership, Patreon, and Ko-fi/i);
+    const membership = supportSection.getByRole('link', { name: /Choose your support path.*Compare paths/i });
     const koFi = supportSection.getByRole('link', { name: /Fuel the next release.*Open Ko-fi/i });
-    await expect(chaosTarot).toHaveAttribute('href', 'https://chaos-tarot.com/pricing?source=apocky-home');
+    await expect(membership).toHaveAttribute('href', '/membership');
     await expect(koFi).toHaveAttribute('href', 'https://ko-fi.com/oneinfinity');
-    for (const supportLink of [chaosTarot, koFi]) {
+    for (const supportLink of [membership, koFi]) {
       await expect(supportLink).toBeVisible();
-      await expect(supportLink).toHaveAttribute('target', '_blank');
-      await expect(supportLink).toHaveAttribute('rel', 'noopener noreferrer');
       const hitArea = await supportLink.boundingBox();
       expect(hitArea?.width ?? 0).toBeGreaterThanOrEqual(44);
       expect(hitArea?.height ?? 0).toBeGreaterThanOrEqual(44);
     }
+    await expect(koFi).toHaveAttribute('target', '_blank');
+    await expect(koFi).toHaveAttribute('rel', 'noopener noreferrer');
 
     if (viewport.width <= 1080) {
       const mobileMenu = page.locator('details.apx-mobile-menu');
@@ -96,19 +98,40 @@ test('@visual native hub stays horizontally bounded and keeps primary routes rea
   }
 
   const supportSection = page.locator('main').getByRole('region', { name: /If this deserves to exist, help it compound/i });
-  const supportDetails = supportSection.getByRole('link', { name: /Compare the live paths/i });
-  const chaosTarot = supportSection.getByRole('link', { name: /Unlock Chaos Tarot.*See plans/i });
+  const membership = supportSection.getByRole('link', { name: /Choose your support path.*Compare paths/i });
   const koFi = supportSection.getByRole('link', { name: /Fuel the next release.*Open Ko-fi/i });
-  await supportDetails.focus();
-  await expect(supportDetails).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(chaosTarot).toBeFocused();
+  await membership.focus();
+  await expect(membership).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(koFi).toBeFocused();
 
   await expectNoSeriousAccessibilityFindings(page);
   expect(errors, errors.join('\n')).toEqual([]);
   expect(unexpectedSupportRequests, 'support providers must not load before a visitor intentionally follows a link').toEqual([]);
+});
+
+test('@mobile consolidated home keeps the five-way architecture usable', async ({ page }, testInfo) => {
+  const errors = collectBrowserErrors(page);
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.locator('main a[href^="https://chaos-tarot.com"]')).toHaveCount(1);
+  await expect(page.locator('.apx-synapses')).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 2, name: 'Constellation Atlas' })).toBeVisible();
+  for (const destination of ['Symbolic Studio', 'Akashic Records', 'The Clearing', 'Public quests']) {
+    await expect(page.getByRole('heading', { level: 3, name: destination })).toBeVisible();
+  }
+
+  const mobileMenu = page.locator('details.apx-mobile-menu');
+  await mobileMenu.locator('summary').click();
+  for (const destination of ['Atlas', 'Create', 'Archive', 'Clearing', 'Chaos Tarot']) {
+    await expect(mobileMenu.getByRole('link', { name: destination, exact: true })).toBeVisible();
+  }
+  await expect(mobileMenu.locator('a')).toHaveCount(7);
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow, `${testInfo.project.name} home horizontal overflow`).toBeLessThanOrEqual(1);
+  await expectNoSeriousAccessibilityFindings(page);
+  expect(errors, errors.join('\n')).toEqual([]);
 });
 
 test('Constellation Atlas stays explicit, keyboard-readable, stateful, and quiet before external handoff', async ({ page }) => {
@@ -226,6 +249,12 @@ test('Atlas URL state resets cleanly and remains the shareable source of truth',
   await expect(page.getByTestId('atlas-selection').getByRole('heading', { level: 2 })).toHaveText('Constellation Atlas');
 });
 
+test('contextual synapses stay compact and exclude the migrated Oracle', async ({ page }) => {
+  await page.goto('/memory-tools');
+  await expect(page.locator('.apx-synapse-list > a')).toHaveCount(2);
+  await expect(page.locator('.apx-synapse-list')).not.toContainText('Yes / No Oracle');
+});
+
 test('neural index contains keyboard focus and restores its trigger', async ({ page }) => {
   await page.goto('/memory-tools');
   const trigger = page.getByRole('button', { name: 'Find anything in the Apocky neural index' });
@@ -306,7 +335,7 @@ test('Clearing resolves as the live React social room without route aliasing', a
 
 test('new public routes and retained application routes resolve together', async ({ request }) => {
   const graphRoutes = PUBLIC_SURFACE_NODES
-    .filter((node) => !node.external)
+    .filter((node) => !node.external && node.href !== '/oracle')
     .map((node) => node.href.split('#', 1)[0] ?? node.href);
   for (const route of [...new Set([...graphRoutes, '/account', '/auth/callback'])]) {
     await expect.poll(async () => (await request.get(route)).status(), {
@@ -314,6 +343,9 @@ test('new public routes and retained application routes resolve together', async
       timeout: 10_000,
     }).toBeLessThan(400);
   }
+  const oracle = await request.get('/oracle', { maxRedirects: 0 });
+  expect(oracle.status()).toBe(308);
+  expect(oracle.headers()['location']).toBe('https://chaos-tarot.com/yes-no?source=apocky-oracle');
 });
 
 test('legacy Commons hub forwards to the native React homepage', async ({ page }) => {

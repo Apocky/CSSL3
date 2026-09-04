@@ -8,7 +8,7 @@ import {
   type PublicSurfaceRelation,
 } from '../../lib/public-surface-graph';
 
-const PRIORITY = ['chaos-tarot', 'oracle', 'spellcraft', 'sigils', 'atlas', 'membership', 'quests', 'akashic-records', 'clearing', 'status'] as const;
+const PRIORITY = ['chaos-tarot', 'spellcraft', 'sigils', 'atlas', 'membership', 'quests', 'akashic-records', 'clearing', 'status'] as const;
 
 function rank(relation: PublicSurfaceRelation): number {
   const index = PRIORITY.indexOf(relation.neighbor.id as typeof PRIORITY[number]);
@@ -16,13 +16,17 @@ function rank(relation: PublicSurfaceRelation): number {
 }
 
 export default function ContextualSynapses({ pathname }: { pathname: string }): JSX.Element {
-  const current = findPublicSurfaceNodeForPath(pathname) ?? getPublicSurfaceNode('home');
+  const isHome = pathname === '/';
+  const current = isHome ? undefined : (findPublicSurfaceNodeForPath(pathname) ?? getPublicSurfaceNode('home'));
   const relations = useMemo(() => {
     if (!current) return [];
-    return [...getPublicSurfaceRelations(current.id)].sort((left, right) => rank(left) - rank(right)).slice(0, 5);
+    return [...getPublicSurfaceRelations(current.id)]
+      .filter((relation) => relation.neighbor.id !== 'oracle')
+      .sort((left, right) => rank(left) - rank(right))
+      .slice(0, 2);
   }, [current]);
 
-  if (!current || relations.length === 0) return <></>;
+  if (isHome || !current || relations.length === 0) return <></>;
 
   return (
     <aside className="apx-synapses" aria-labelledby="apx-synapses-title">

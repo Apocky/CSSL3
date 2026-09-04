@@ -244,6 +244,40 @@ export async function insertMessages(
     return { stored, deduped: rows.length - stored };
 }
 
+export async function listMessages(
+    sb: SupabaseClient,
+    profile_id: string,
+    opts: { limit?: number; session_id?: string } = {},
+): Promise<Message[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 120, 1), 200);
+    let query = sb
+        .from('mneme_messages')
+        .select('*')
+        .eq('profile_id', profile_id);
+    if (opts.session_id) query = query.eq('session_id', opts.session_id);
+    const { data, error } = await query
+        .order('ts', { ascending: false })
+        .limit(limit);
+    if (error) throw new MnemeError('SB_MSG_LIST', error.message, 502);
+    return (data ?? []).map(row => rowToMessage(row as MessageRow)).reverse();
+}
+
+export async function getMessagesByIds(
+    sb: SupabaseClient,
+    profile_id: string,
+    message_ids: readonly string[],
+): Promise<Message[]> {
+    const ids = [...new Set(message_ids)].slice(0, 200);
+    if (ids.length === 0) return [];
+    const { data, error } = await sb
+        .from('mneme_messages')
+        .select('*')
+        .eq('profile_id', profile_id)
+        .in('id', ids);
+    if (error) throw new MnemeError('SB_MSG_BATCH', error.message, 502);
+    return (data ?? []).map(row => rowToMessage(row as MessageRow));
+}
+
 // ── Memory insert ──────────────────────────────────────────────────────
 
 export interface MemoryInsertInput {
