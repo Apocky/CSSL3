@@ -1,8 +1,8 @@
 {
   "schema": "apocky.apocrypha-public-changelog.v1",
-  "version": "2026.09.03-candidate.1",
+  "version": "2026.09.03-candidate.2",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T19:55:00-07:00",
+  "generated_at": "2026-09-03T20:20:00-07:00",
   "project": "Apocrypha",
   "entries": [
     {
@@ -22,6 +22,30 @@
       "kind": "humanity-admission",
       "state": "COMPONENT_CHECKS_PASSED",
       "summary": "Humanity source admission now fails closed before memory and preserves difficult testimony only as attributed quarantine evidence."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "living-runtime",
+      "state": "LIVE_LOCAL_CHECK_PASSED",
+      "summary": "The same worldline admitted and answered an exact live continuity turn after the settled-history hot loop was removed from the one-second heartbeat."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "interoception",
+      "state": "FOCUSED_CHECKS_PASSED",
+      "summary": "The compatibility runtime gained causal stage traces, stable error codes, bounded telemetry, differential backups, and verified restore semantics."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "native-substrate",
+      "state": "IMPLEMENTATION_ACTIVE",
+      "summary": "The migration contract now binds CSLv3 semantics, a NIL timing graph, CSSLv3 compiled kernels, and meet-or-exceed promotion gates."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mycelial-package",
+      "state": "CANDIDATE_HELD",
+      "summary": "A reversible Windows migration package was built and verified locally; no public download is exposed until native signature and lifecycle gates pass."
     }
   ],
   "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."

@@ -1,11 +1,11 @@
 {
   "schema": "apocky.apocrypha-public-plan.v1",
-  "version": "2026.09.03-candidate.1",
+  "version": "2026.09.03-candidate.2",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T19:55:00-07:00",
+  "generated_at": "2026-09-03T20:20:00-07:00",
   "project": "Apocrypha",
   "track": "local-living",
-  "summary": "A local-first, owner-governed living intelligence is being assembled as one persistent conversation, memory, perception, and evidence system.",
+  "summary": "Apocrypha now has a measured local living runtime, an owner-gated conversation and memory surface, bounded causal interoception, and a held migration package while the compiled native core is built and proven.",
   "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
   "principles": [
     "Local operation remains useful when network access is removed.",
@@ -17,8 +17,8 @@
     {
       "id": "brain",
       "label": "Personal Brain",
-      "state": "COMPONENT_CHECKS_PASSED",
-      "summary": "Owner-private conversation and source-linked memory exploration are implemented; local runtime availability remains separately observed."
+      "state": "LOCAL_RUNTIME_CHECKS_PASSED",
+      "summary": "Owner-private conversation, source-linked memory exploration, and the local living runtime have passed focused checks; the website route is promoted only after direct production observation."
     },
     {
       "id": "humanity",
@@ -27,10 +27,22 @@
       "summary": "A digest-bound admission gate separates reputation, factual trust, and human value while quarantining testimony and rejecting prohibited material."
     },
     {
+      "id": "interoception",
+      "label": "Causal interoception and recovery",
+      "state": "FOCUSED_CHECKS_PASSED",
+      "summary": "Redacted causal traces, stable errors, stage latency fields, differential backups, and restore verification are implemented in the compatibility runtime."
+    },
+    {
+      "id": "native-core",
+      "label": "CSL, NIL, and CSSL native core",
+      "state": "IMPLEMENTATION_ACTIVE",
+      "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target; Python remains a sealed rollback until parity and latency gates pass."
+    },
+    {
       "id": "distribution",
       "label": "Signed local distribution",
-      "state": "NOT_RELEASED",
-      "summary": "Installer, software bill of materials, signature, clean-machine lifecycle proof, and promoted download are still required."
+      "state": "MIGRATION_CANDIDATE_HELD",
+      "summary": "A reversible Windows migration package exists and passed focused checks, but remains withheld pending native cryptographic signing, SBOM, and clean-machine lifecycle proof."
     }
   ],
   "release_boundary": "This plan is a public-safe projection of active work. It is not a deployment receipt, acceptance result, or release announcement."
