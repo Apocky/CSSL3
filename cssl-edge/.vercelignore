@@ -5,6 +5,8 @@ node_modules
 test-results
 playwright-report
 coverage
+public/conversation-corpus/index.v1.json
+public/conversation-corpus/records/
 *.log
 .env
 .env.*

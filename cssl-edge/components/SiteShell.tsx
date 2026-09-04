@@ -18,6 +18,7 @@ const NAV: ReadonlyArray<NavItem> = [
 const EXPLORE: ReadonlyArray<NavItem> = [
   { href: '/atlas', label: 'Atlas' },
   { href: '/spellcraft', label: 'Create' },
+  { href: '/conversations', label: 'Conversations' },
   { href: '/akashic-records', label: 'Archive' },
   { href: '/clearing', label: 'Clearing' },
 ];

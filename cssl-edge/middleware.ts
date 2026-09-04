@@ -19,6 +19,7 @@ const RETIRED_EXACT_PATHS = new Set([
   '/api/admin/apocv4',
   '/api/apocrypha',
   '/api/cron/apocrypha-sms',
+  '/conversation-corpus/index.v1.json',
 ]);
 
 const RETIRED_PATH_PREFIXES = [
@@ -30,6 +31,7 @@ const RETIRED_PATH_PREFIXES = [
   '/api/apocrypha/',
   '/api/admin/apocrypha/',
   '/api/admin/apocv4/',
+  '/conversation-corpus/records/',
 ];
 
 // Only the authenticated, server-derived `me` profile may reach the member
@@ -161,6 +163,8 @@ export const config = {
     '/api/admin/apocv4/:path*',
     '/api/cron/apocrypha-sms',
     '/api/mneme/:path*',
+    '/conversation-corpus/index.v1.json',
+    '/conversation-corpus/records/:path*',
     {
       source: '/:path*',
       has: [{ type: 'host', value: 'apocrypha.apocky.com' }],

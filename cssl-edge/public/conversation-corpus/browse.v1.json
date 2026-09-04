@@ -1,0 +1,30 @@
+{
+  "schema": "apocky.public-conversation-corpus.browse.v1",
+  "generatedAt": "2026-09-03",
+  "publicationState": "aggregate-public-bodies-review-held",
+  "scope": "The complete local export is counted, while public browse records are limited to explicitly approved privacy- and rights-reviewed projections.",
+  "boundaries": [
+    "No unreviewed title, excerpt, signal, or conversation body appears in this public projection.",
+    "The twelve curated constellations on the page are hand-written paraphrases, not raw transcript bodies."
+  ],
+  "counts": {
+    "uniqueConversations": 1386,
+    "chatgptConversations": 1230,
+    "claudeConversations": 156,
+    "anthropicDuplicateDelivery": 37,
+    "messages": 19479,
+    "emptyConversationRecords": 20,
+    "userMessages": 9800,
+    "assistantMessages": 9679,
+    "alternateBranchMessages": 363,
+    "redactions": 3875,
+    "automatedFeatureCandidates": null,
+    "editoriallyFeatureEligible": 0,
+    "indexable": 0,
+    "publiclyApprovedConversations": 0,
+    "reviewHeldConversations": 1386,
+    "rejectedConversations": 0,
+    "publishedMessages": 0
+  },
+  "records": []
+}

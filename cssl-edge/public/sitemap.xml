@@ -23,6 +23,7 @@
   <url><loc>https://www.apocky.com/spellbook</loc><priority>0.8</priority></url>
   <url><loc>https://www.apocky.com/theory-of-everything</loc><priority>0.9</priority></url>
   <url><loc>https://www.apocky.com/omnoid-singularity</loc><priority>0.9</priority></url>
+  <url><loc>https://www.apocky.com/conversations</loc><priority>0.8</priority></url>
   <url><loc>https://www.apocky.com/akashic-records</loc><priority>0.9</priority></url>
   <url><loc>https://www.apocky.com/clearing</loc><priority>0.8</priority></url>
   <url><loc>https://www.apocky.com/atlas</loc><priority>0.9</priority></url>
@@ -41,6 +42,9 @@
   <url><loc>https://www.apocky.com/legal/privacy</loc><priority>0.5</priority></url>
   <url><loc>https://www.apocky.com/legal/terms</loc><priority>0.5</priority></url>
   <url><loc>https://www.apocky.com/legal/eula</loc><priority>0.4</priority></url>
+  <!-- BEGIN generated approved Conversation detail URLs -->
+  <!-- Only explicitly approved and indexable conversation projections appear here. -->
+  <!-- END generated approved Conversation detail URLs -->
   <!-- BEGIN generated Akashic Records v2 detail URLs -->
   <!-- Generated from the sealed Akashic Records v2 snapshot; freshness-gated by tests/pages/akashic-records.test.ts. -->
   <url><loc>https://www.apocky.com/akashic-records/codex-019fe684-f1ad-7a10-bbab-c53b65721017-part-1</loc><priority>0.7</priority></url>
