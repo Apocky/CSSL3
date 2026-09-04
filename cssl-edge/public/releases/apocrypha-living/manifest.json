@@ -2,14 +2,14 @@
   "schema": "apocky.apocrypha-release-manifest.v1",
   "schema_href": "/schemas/apocrypha-release-manifest.v1.json",
   "manifest_version": 1,
-  "version": "2026.09.03-candidate.4",
+  "version": "2026.09.03-candidate.5",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:22:27-07:00",
+  "generated_at": "2026-09-03T21:35:00-07:00",
   "release_label": "Candidate — not released",
   "project": "Apocrypha",
   "track": "local-living",
   "public_safe": true,
-  "source_revision": "10c52e817a0d5715098b72ff2f661068e4eeffe2",
+  "source_revision": "94aad9837c43aac6b8dc1ffc7f8b86d871310656",
   "build": {
     "state": "CANDIDATE",
     "verification": "PUBLIC_FLOW_AND_NATIVE_SHADOW_CHECKS_NOT_RELEASE_ACCEPTANCE",
@@ -17,6 +17,7 @@
     "missing": [
       "Promoted native installer or portable package",
       "Matched real-turn tokenizer, semantic parity, and native canary proof",
+      "Three promoted CSSLv3-authored behaviors under one inspectable NIL graph",
       "Per-organ Graphify, Anamnesis, MemPalace, MetaHarness, and 3MNEME parity and supremacy proof",
       "Installed mobile offline restart and signed phone-to-desktop synchronization proof",
       "Software bill of materials",
@@ -29,14 +30,14 @@
     "plan": {
       "label": "Living plan",
       "href": "/releases/apocrypha-living/plan.json",
-      "sha256": "7513fd4ffd5b5f3571d310206024d07c649a5a7360a8a2b78feabeb09230df07",
-      "bytes": 4270
+      "sha256": "6962cd87427d08bd3a82ee21890185814edeabe513483ebabda22853329d5dad",
+      "bytes": 4697
     },
     "changelog": {
       "label": "Changelog",
       "href": "/releases/apocrypha-living/changelog.json",
-      "sha256": "6cc3cfabadae522aa4ec909cbbc2bf68c63ece19e2e5f45f8670812259483e65",
-      "bytes": 4253
+      "sha256": "60f6210353c2d349423f2409ad9ac0cb7433469e05b8451a4f9a81c9b723e92e",
+      "bytes": 5011
     },
     "manifest": {
       "label": "Build manifest",
@@ -46,5 +47,5 @@
   "download_status": "NO_PROMOTED_ARTIFACT",
   "download": null,
   "claim_boundary": "Candidate metadata is not a release. A public download appears only after exact artifact, digest, signature-receipt, promotion, and release gates pass.",
-  "content_digest": "a501117b5d7ff55a9b23f1c19d950660b624027af0ccf242f06bc3111798cb5a"
+  "content_digest": "028d2f4f94767f348cec7bfdec69888e2e71efdf8b0840e04dbc2a2f16d0143f"
 }

@@ -1,11 +1,11 @@
 {
   "schema": "apocky.apocrypha-public-plan.v1",
-  "version": "2026.09.03-candidate.4",
+  "version": "2026.09.03-candidate.5",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:22:27-07:00",
+  "generated_at": "2026-09-03T21:35:00-07:00",
   "project": "Apocrypha",
   "track": "local-living",
-  "summary": "Apocrypha has a measured local living runtime, a live review-held conversation-corpus prototype, and a governed native migration in progress. Candidate 4 adds the explicit mobile mini Brain and desktop-sync contract plus a shared CSLv3 to NIL to CSSLv3 migration path for Graphify and the other cognitive organs; the current mobile memory fault and every remaining promotion gate stay visible.",
+  "summary": "Apocrypha has a measured local living runtime, a live review-held conversation-corpus prototype, and a governed native migration in progress. Candidate 5 records the repaired Mneme storage schema and makes executable CSLv3 to NIL to CSSLv3 behavior a release gate: language text embedded in another runtime no longer counts as a proprietary capability.",
   "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
   "principles": [
     "Local operation remains useful when network access is removed.",
@@ -17,8 +17,8 @@
     {
       "id": "brain",
       "label": "Personal Brain",
-      "state": "PUBLIC_SHELL_LIVE_MOBILE_MEMORY_DEGRADED",
-      "summary": "The simplified public shell and owner gate are live. A real mobile request reached the private Brain, but the Mneme snapshot returned MNEME_STORAGE_UNAVAILABLE; the repair must isolate that region so conversation and the offline mini Brain still open."
+      "state": "MNEME_SCHEMA_LIVE_OWNER_BOOTSTRAP_ACTIVE",
+      "summary": "The simplified public shell and owner gate are live. The missing Mneme schema is now installed with row-level security and zero anonymous-visible rows; governed owner bootstrap and authenticated mobile synchronization remain active acceptance gates."
     },
     {
       "id": "mobile-lobe",
@@ -48,7 +48,13 @@
       "id": "native-core",
       "label": "CSL, NIL, and CSSL native core",
       "state": "RUST_SHADOW_REPAIR_AND_PARITY_ACTIVE",
-      "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target. The bootstrap reduced the exact tokenizer envelope by 83.82 percent, but source binding, ranking, semantic parity, persistent-shell latency, and live canary gates remain open."
+      "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target. The hardened native context frame is 1,780 tokenizer tokens, but the first canary exposed missing child-exit evidence; semantic parity, executable CSSLv3 policy, latency, and stable canary gates remain open."
+    },
+    {
+      "id": "proprietary-language-stack",
+      "label": "Own executable language stack",
+      "state": "THREE_EXECUTION_PROOFS_ACTIVE",
+      "summary": "An authored artifact must change bounded behavior through a verified compiler or runtime to count. The first proofs are context selection, Graphify traversal, and mobile reconciliation under one inspectable NIL trace, with plain-language CSLv3 expansion and rollback."
     },
     {
       "id": "trinity-organs",

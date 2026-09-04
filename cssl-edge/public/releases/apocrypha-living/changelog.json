@@ -1,8 +1,8 @@
 {
   "schema": "apocky.apocrypha-public-changelog.v1",
-  "version": "2026.09.03-candidate.4",
+  "version": "2026.09.03-candidate.5",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:22:27-07:00",
+  "generated_at": "2026-09-03T21:35:00-07:00",
   "project": "Apocrypha",
   "entries": [
     {
@@ -74,14 +74,26 @@
     {
       "at": "2026-09-03",
       "kind": "mobile-mini-brain",
-      "state": "FAULT_OBSERVED_IMPLEMENTATION_ACTIVE",
-      "summary": "A real mobile visit exposed a 503 Mneme storage fault. Candidate 4 binds offline local usefulness, signed incremental sync, and per-region degradation so one memory failure cannot close the whole conversation."
+      "state": "SCHEMA_REPAIRED_OWNER_BOOTSTRAP_ACTIVE",
+      "summary": "A real mobile visit exposed a missing Mneme schema. The four storage tables and thirteen owner/service policies are now live with row-level security and zero anonymous-visible rows; owner bootstrap and signed two-device synchronization remain unproven."
     },
     {
       "at": "2026-09-03",
       "kind": "Trinity-organs",
       "state": "GRAPHIFY_FIRST_VERTICAL_ACTIVE",
       "summary": "The native migration now covers cognitive organs themselves: Graphify first, then shared traversal, provenance, scheduling, memory, diagnostics, MCP, API, and TTY kernels, with Python retained only as a frozen differential oracle until superseded."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "proprietary-language-execution",
+      "state": "ACCEPTANCE_GATE_ACTIVE",
+      "summary": "CSLv3 contracts, NIL graphs, and CSSLv3 kernels now have an execution gate: embedded, displayed, or hashed language artifacts do not count until they produce a measured behavioral change through the language runtime."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mneme-schema",
+      "state": "LIVE_SCHEMA_BOUNDARY_VERIFIED",
+      "summary": "The private Mneme substrate now exposes four row-secured tables and thirteen policies; anonymous boundary probes see no rows. Authenticated owner registration and phone-to-desktop data flow remain separate gates."
     }
   ],
   "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."
