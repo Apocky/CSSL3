@@ -86,6 +86,8 @@ assert(!quests.includes('fetch(') && !quests.includes('sendBeacon'), 'quest prog
 
 assert(status.includes("fetch('/api/health'"), 'status page must probe the same-origin health route');
 assert(status.includes('APX-STATUS-UNAVAILABLE'), 'status failures must carry a stable recovery code');
+assert(status.includes('health API version'), 'status page must label the health contract version distinctly from product releases');
+assert(!status.includes('public version'), 'status page must not present the health contract version as a product release');
 assert(status.includes('Configuration flags mean a connection is present; they do not prove every user flow succeeds'), 'status page must state its evidence boundary');
 
 assert(command.includes('aria-label="Find anything in the Apocky neural index"'), 'mobile command trigger must retain an accessible name');

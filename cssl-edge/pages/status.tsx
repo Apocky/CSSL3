@@ -117,7 +117,7 @@ const Status: NextPage = () => {
             <strong>{probe.code}</strong>
             <span>
               {probe.kind === 'ready'
-                ? `Observed at ${probe.health.ts ?? 'the latest response'}${probe.health.version ? ` · public version ${probe.health.version}` : ''}. Configuration flags mean a connection is present; they do not prove every user flow succeeds.`
+                ? `Observed at ${probe.health.ts ?? 'the latest response'}${probe.health.version ? ` · health API version ${probe.health.version}` : ''}. Configuration flags mean a connection is present; they do not prove every user flow succeeds.`
                 : probe.kind === 'unavailable'
                   ? `${probe.detail} Refresh or use the public fallback links below.`
                   : 'Waiting for a bounded response from the same-origin health endpoint.'}
