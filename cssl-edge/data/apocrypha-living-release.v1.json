@@ -1,0 +1,73 @@
+{
+  "schema": "apocky.apocrypha-release-source.v1",
+  "project": "Apocrypha",
+  "track": "local-living",
+  "version": "2026.09.03-candidate.1",
+  "release_state": "CANDIDATE",
+  "generated_at": "2026-09-03T19:55:00-07:00",
+  "source_revision": "971887e5a1d3cecc75040d6c7bec1c336396617a",
+  "summary": "A local-first, owner-governed living intelligence is being assembled as one persistent conversation, memory, perception, and evidence system.",
+  "plan": {
+    "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
+    "principles": [
+      "Local operation remains useful when network access is removed.",
+      "Memory, claims, and actions retain source and authority boundaries.",
+      "Unavailable capabilities remain visibly degraded instead of simulated.",
+      "Public distribution waits for integrity, signature, install, rollback, and privacy proof."
+    ],
+    "milestones": [
+      {
+        "id": "brain",
+        "label": "Personal Brain",
+        "state": "COMPONENT_CHECKS_PASSED",
+        "summary": "Owner-private conversation and source-linked memory exploration are implemented; local runtime availability remains separately observed."
+      },
+      {
+        "id": "humanity",
+        "label": "Humanity source admission",
+        "state": "COMPONENT_CHECKS_PASSED",
+        "summary": "A digest-bound admission gate separates reputation, factual trust, and human value while quarantining testimony and rejecting prohibited material."
+      },
+      {
+        "id": "distribution",
+        "label": "Signed local distribution",
+        "state": "NOT_RELEASED",
+        "summary": "Installer, software bill of materials, signature, clean-machine lifecycle proof, and promoted download are still required."
+      }
+    ],
+    "release_boundary": "This plan is a public-safe projection of active work. It is not a deployment receipt, acceptance result, or release announcement."
+  },
+  "changelog": [
+    {
+      "at": "2026-09-03",
+      "kind": "blueprint",
+      "state": "ACTIVE_DIRECTION",
+      "summary": "The local-living architecture became the active build direction with local-first, privacy, authority, and rollback constraints."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "owner-brain",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "The private Brain gained persistent-conversation seams plus graph, timeline, and source-tunnel memory views."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "humanity-admission",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "Humanity source admission now fails closed before memory and preserves difficult testimony only as attributed quarantine evidence."
+    }
+  ],
+  "build": {
+    "state": "CANDIDATE",
+    "verification": "COMPONENT_CHECKS_ONLY_NOT_RELEASE_ACCEPTANCE",
+    "release_gate": "CLOSED",
+    "missing": [
+      "Promoted installer or portable package",
+      "Software bill of materials",
+      "Verified artifact signature",
+      "Clean Windows install, offline, upgrade, rollback, and uninstall proof",
+      "Exact promoted-revision acceptance record"
+    ]
+  },
+  "artifact": null
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "apocky.apocrypha-public-plan.v1",
+  "version": "2026.09.03-candidate.1",
+  "release_state": "CANDIDATE",
+  "generated_at": "2026-09-03T19:55:00-07:00",
+  "project": "Apocrypha",
+  "track": "local-living",
+  "summary": "A local-first, owner-governed living intelligence is being assembled as one persistent conversation, memory, perception, and evidence system.",
+  "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
+  "principles": [
+    "Local operation remains useful when network access is removed.",
+    "Memory, claims, and actions retain source and authority boundaries.",
+    "Unavailable capabilities remain visibly degraded instead of simulated.",
+    "Public distribution waits for integrity, signature, install, rollback, and privacy proof."
+  ],
+  "milestones": [
+    {
+      "id": "brain",
+      "label": "Personal Brain",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "Owner-private conversation and source-linked memory exploration are implemented; local runtime availability remains separately observed."
+    },
+    {
+      "id": "humanity",
+      "label": "Humanity source admission",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "A digest-bound admission gate separates reputation, factual trust, and human value while quarantining testimony and rejecting prohibited material."
+    },
+    {
+      "id": "distribution",
+      "label": "Signed local distribution",
+      "state": "NOT_RELEASED",
+      "summary": "Installer, software bill of materials, signature, clean-machine lifecycle proof, and promoted download are still required."
+    }
+  ],
+  "release_boundary": "This plan is a public-safe projection of active work. It is not a deployment receipt, acceptance result, or release announcement."
+}

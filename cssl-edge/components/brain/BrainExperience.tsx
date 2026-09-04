@@ -8,6 +8,12 @@ import type {
   BrainRuntimeTurn,
   BrainSnapshot,
 } from '@/lib/brain/contracts';
+import {
+  apocryphaRelease,
+  publicReleaseDownload,
+  type ReleaseDocumentBinding,
+  type ReleaseDocumentLink,
+} from '@/lib/brain/release-manifest';
 import { authFetch } from '@/lib/browser-auth';
 import { useSiteSession } from '@/components/hub/SiteSession';
 import styles from './BrainExperience.module.css';
@@ -147,6 +153,64 @@ function Connector({ label, state, detail }: { label: string; state: string; det
       <span aria-hidden="true" />
       <div><strong>{label}</strong><small>{detail}</small></div>
     </div>
+  );
+}
+
+function ReleaseShelf(): JSX.Element {
+  if (apocryphaRelease.status === 'degraded') {
+    return (
+      <section id="brain-releases" className={styles.releaseShelf} aria-labelledby="brain-release-title">
+        <div className={styles.releaseUnavailable}>
+          <div><p>VERSIONED RELEASE SHELF</p><h2 id="brain-release-title">Release evidence unavailable</h2></div>
+          <code>{apocryphaRelease.code}</code>
+        </div>
+      </section>
+    );
+  }
+  const manifest = apocryphaRelease.manifest;
+  const downloadable = publicReleaseDownload(manifest);
+  const documents: readonly (ReleaseDocumentBinding | ReleaseDocumentLink)[] = [
+    manifest.documents.plan,
+    manifest.documents.changelog,
+    manifest.documents.manifest,
+  ];
+  return (
+    <section id="brain-releases" className={styles.releaseShelf} aria-labelledby="brain-release-title">
+      <details>
+        <summary>
+          <span><b id="brain-release-title">Release shelf</b><small>{manifest.version} · integrity-linked evidence</small></span>
+          <em data-release-state={manifest.release_state}>{manifest.release_label}</em>
+        </summary>
+        <div className={styles.releaseBody}>
+          <p className={styles.releaseBoundary}>{manifest.claim_boundary}</p>
+          <dl className={styles.releaseMeta}>
+            <div><dt>Version</dt><dd>{manifest.version}</dd></div>
+            <div><dt>Build</dt><dd>{manifest.build.state}</dd></div>
+            <div><dt>Gate</dt><dd>{manifest.build.release_gate}</dd></div>
+            <div><dt>Manifest integrity</dt><dd title={manifest.content_digest}>{manifest.content_digest.slice(0, 14)}…</dd></div>
+          </dl>
+          <nav className={styles.releaseLinks} aria-label="Apocrypha release evidence">
+            {documents.map(document => (
+              <a key={document.href} href={document.href}>
+                <strong>{document.label}</strong>
+                <small>{'sha256' in document ? `SHA-256 ${document.sha256.slice(0, 10)}… · ${document.bytes.toLocaleString()} bytes` : 'Canonical public-safe JSON'}</small>
+              </a>
+            ))}
+          </nav>
+          {downloadable ? (
+            <a className={styles.releaseDownload} href={downloadable.href} download>
+              <strong>Download {downloadable.filename}</strong>
+              <small>{downloadable.platform} · {downloadable.bytes.toLocaleString()} bytes · SHA-256 {downloadable.sha256.slice(0, 12)}… · signature verified</small>
+            </a>
+          ) : (
+            <div className={styles.releaseHold}>
+              <strong>No promoted public package is attached.</strong>
+              <p>{manifest.build.missing.length} release gate{manifest.build.missing.length === 1 ? '' : 's'} remain. Candidate work is visible here without being mislabeled as released.</p>
+            </div>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -451,10 +515,13 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   }
   if (!snapshot) {
     return (
-      <main className={styles.gate}>
-        <p>PRIVATE BRAIN · MEMORY DEGRADED</p><h1>The private projection did not open.</h1>
-        <span>{error || 'No private payload was returned.'}</span>
-        <button type="button" onClick={() => { void load(); }}>Retry private Brain</button>
+      <main className={styles.brain} data-brain-state="degraded">
+        <section className={styles.degradedMain}>
+          <p>PRIVATE BRAIN · MEMORY DEGRADED</p><h1>The private projection did not open.</h1>
+          <span>{error || 'No private payload was returned.'}</span>
+          <button type="button" onClick={() => { void load(); }}>Retry private Brain</button>
+        </section>
+        <ReleaseShelf />
       </main>
     );
   }
@@ -464,7 +531,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       <header className={styles.header}>
         <Link href="/" className={styles.brand} aria-label="Apocky home"><span aria-hidden="true">∞</span><strong>APOCKY</strong></Link>
         <div><p>OWNER-PRIVATE MICROSCOSM</p><h1>Brain</h1></div>
-        <nav aria-label="Private Brain navigation"><Link href="/memory-tools">Memory tools</Link><Link href="/account">Account</Link></nav>
+        <nav aria-label="Private Brain navigation"><a href="#brain-releases">Releases</a><Link href="/memory-tools">Memory tools</Link><Link href="/account">Account</Link></nav>
       </header>
 
       <section className={styles.statusStrip} aria-label="Observed connector states">
@@ -477,6 +544,8 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
         />
         <button type="button" onClick={() => { void load(); }}>Refresh evidence</button>
       </section>
+
+      <ReleaseShelf />
 
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
 

@@ -1,0 +1,28 @@
+{
+  "schema": "apocky.apocrypha-public-changelog.v1",
+  "version": "2026.09.03-candidate.1",
+  "release_state": "CANDIDATE",
+  "generated_at": "2026-09-03T19:55:00-07:00",
+  "project": "Apocrypha",
+  "entries": [
+    {
+      "at": "2026-09-03",
+      "kind": "blueprint",
+      "state": "ACTIVE_DIRECTION",
+      "summary": "The local-living architecture became the active build direction with local-first, privacy, authority, and rollback constraints."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "owner-brain",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "The private Brain gained persistent-conversation seams plus graph, timeline, and source-tunnel memory views."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "humanity-admission",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "Humanity source admission now fails closed before memory and preserves difficult testimony only as attributed quarantine evidence."
+    }
+  ],
+  "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."
+}
