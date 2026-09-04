@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
 
 const root = process.cwd();
 const read = (relative: string): string => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -43,6 +45,8 @@ assert(icons.some((icon) => icon.purpose === 'any' && icon.sizes === '512x512'))
 assert(icons.some((icon) => icon.purpose === 'maskable' && icon.sizes === '192x192'));
 assert(icons.some((icon) => icon.purpose === 'maskable' && icon.sizes === '512x512'));
 assert(icons.some((icon) => icon.purpose === 'monochrome'));
+assert(icons.filter((icon) => icon.purpose !== 'monochrome').every((icon) => /apocky-(?:maskable-)?v3-/.test(icon.src)));
+assert(icons.every((icon) => !icon.src.includes('-v2-')), 'the install manifest must not advertise retired v2 icons');
 
 for (const icon of icons) {
   const relative = fromPublicUrl(icon.src);
@@ -70,6 +74,12 @@ for (const icon of shortcutIcons) {
 }
 
 for (const [relative, size] of [
+  ['public/icons/apocky-v3-16.png', 16],
+  ['public/icons/apocky-v3-32.png', 32],
+  ['public/icons/apocky-v3-192.png', 192],
+  ['public/icons/apocky-v3-512.png', 512],
+  ['public/icons/apocky-maskable-v3-192.png', 192],
+  ['public/icons/apocky-maskable-v3-512.png', 512],
   ['public/apple-touch-icon.png', 180],
   ['public/apple-touch-icon-167x167.png', 167],
   ['public/apple-touch-icon-152x152.png', 152],
@@ -77,8 +87,22 @@ for (const [relative, size] of [
   assert.deepEqual(pngDimensions(relative), { width: size, height: size });
 }
 
+const master = bytes('public/brand/apocky-neural-mark-v3.png');
+assert.deepEqual(pngDimensions('public/brand/apocky-neural-mark-v3.png'), { width: 1254, height: 1254 });
+assert.equal(
+  createHash('sha256').update(master).digest('hex'),
+  '68a7b0dfe1f24bacbe171d6b2c95aa4c424d8121900b79d9f67ff48581bc25f7',
+  'derived icons must remain bound to the approved production master',
+);
+
+const opaqueSurfaces = [
+  'public/icons/apocky-maskable-v3-192.png',
+  'public/icons/apocky-maskable-v3-512.png',
+  'public/apple-touch-icon.png',
+] as const;
+
 assert.deepEqual(icoDimensions('public/favicon.ico'), [[16, 16], [32, 32], [48, 48], [256, 256]]);
-assert.deepEqual(pngDimensions('public/og/apocky-default-v2.png'), { width: 1200, height: 630 });
+assert.deepEqual(pngDimensions('public/og/apocky-default-v3.png'), { width: 1200, height: 630 });
 
 for (const relative of [
   'public/brand/apocky-mark.svg',
@@ -93,13 +117,17 @@ for (const relative of [
 }
 
 const documentSource = read('pages/_document.tsx');
-assert.match(documentSource, /href="\/favicon\.svg"/);
+assert.match(documentSource, /href="\/icons\/apocky-v3-32\.png"/);
+assert.match(documentSource, /href="\/icons\/apocky-v3-16\.png"/);
 assert.match(documentSource, /href="\/favicon\.ico"/);
+assert.match(documentSource, /rel="mask-icon" href="\/brand\/apocky-monochrome\.svg" color="#6366f1"/);
 assert.match(documentSource, /href="\/apple-touch-icon\.png"/);
 assert.match(documentSource, /name="apple-mobile-web-app-capable" content="yes"/);
 assert.match(documentSource, /name="apple-mobile-web-app-status-bar-style" content="black-translucent"/);
 assert.match(documentSource, /name="apple-mobile-web-app-title" content="Apocky"/);
-assert.match(documentSource, /apocky-default-v2\.png/);
+assert.match(documentSource, /msapplication-TileImage" content="\/icons\/apocky-v3-192\.png"/);
+assert.match(documentSource, /apocky-default-v3\.png/);
+assert.doesNotMatch(documentSource, /href="\/favicon\.svg"/);
 assert.doesNotMatch(documentSource, /apple-touch-icon" href="\/icon-192\.svg"/);
 assert.match(read('styles/apocky-system.css'), /url\('\/brand\/apocky-mark\.svg'\)/);
 
@@ -117,4 +145,14 @@ for (const relative of [
   assert.match(read(relative), /theme-color" content="#000000"/);
 }
 
-console.log('Apocky v2 brand icon contract passed.');
+Promise.all(opaqueSurfaces.map(async (relative) => ({ relative, stats: await sharp(path.join(root, relative)).stats() })))
+  .then((surfaces) => {
+    for (const { relative, stats } of surfaces) {
+      assert.equal(stats.isOpaque, true, `${relative} must fill every platform mask with the AMOLED field`);
+    }
+    console.log('Apocky v3 brand icon contract passed.');
+  })
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

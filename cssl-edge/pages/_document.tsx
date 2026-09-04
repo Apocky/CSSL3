@@ -34,18 +34,22 @@ export default class ApockyDocument extends Document<DocumentProps> {
           <meta name="apple-mobile-web-app-capable" content="yes" />
           <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
           <meta name="apple-mobile-web-app-title" content="Apocky" />
+          <meta name="msapplication-TileColor" content="#000000" />
+          <meta name="msapplication-TileImage" content="/icons/apocky-v3-192.png" />
           <meta name="format-detection" content="telephone=no" />
-          <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+          <link rel="icon" type="image/png" sizes="32x32" href="/icons/apocky-v3-32.png" />
+          <link rel="icon" type="image/png" sizes="16x16" href="/icons/apocky-v3-16.png" />
           <link rel="icon" sizes="any" href="/favicon.ico" />
+          <link rel="mask-icon" href="/brand/apocky-monochrome.svg" color="#6366f1" />
           <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
           <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167x167.png" />
           <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png" />
-          <meta property="og:image" content="https://www.apocky.com/og/apocky-default-v2.png" />
+          <meta property="og:image" content="https://www.apocky.com/og/apocky-default-v3.png" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
-          <meta property="og:image:alt" content="Apocky section constellation on an AMOLED black field" />
-          <meta name="twitter:image" content="https://www.apocky.com/og/apocky-default-v2.png" />
-          <meta name="twitter:image:alt" content="Apocky section constellation on an AMOLED black field" />
+          <meta property="og:image:alt" content="Luminous blue and violet Apocky infinity tree on an AMOLED black field" />
+          <meta name="twitter:image" content="https://www.apocky.com/og/apocky-default-v3.png" />
+          <meta name="twitter:image:alt" content="Luminous blue and violet Apocky infinity tree on an AMOLED black field" />
           <style nonce={nonce}>{`
             html, body { background-color: #000000; color: #e6e6f0; }
             html { color-scheme: dark; }

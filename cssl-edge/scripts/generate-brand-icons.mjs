@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -13,9 +14,18 @@ await Promise.all([
   mkdir(ogDir, { recursive: true }),
 ]);
 
-const iconSvg = await readFile(join(brandDir, 'apocky-icon.svg'));
-const maskableSvg = await readFile(join(brandDir, 'apocky-maskable.svg'));
-const faviconSvg = await readFile(join(brandDir, 'apocky-favicon.svg'));
+const MASTER_NAME = 'apocky-neural-mark-v3.png';
+const MASTER_SHA256 = '68a7b0dfe1f24bacbe171d6b2c95aa4c424d8121900b79d9f67ff48581bc25f7';
+const masterPng = await readFile(join(brandDir, MASTER_NAME));
+const masterDigest = createHash('sha256').update(masterPng).digest('hex');
+if (masterDigest !== MASTER_SHA256) {
+  throw new Error(`${MASTER_NAME} digest mismatch: expected ${MASTER_SHA256}, observed ${masterDigest}`);
+}
+
+const masterMetadata = await sharp(masterPng).metadata();
+if (masterMetadata.width !== 1254 || masterMetadata.height !== 1254 || !masterMetadata.hasAlpha) {
+  throw new Error(`${MASTER_NAME} must remain the 1254x1254 transparent production master`);
+}
 
 async function renderSquare(source, size, destination) {
   await sharp(source, { density: 384 })
@@ -24,10 +34,36 @@ async function renderSquare(source, size, destination) {
     .toFile(destination);
 }
 
-async function writeIco(source, sizes, destination) {
-  const images = await Promise.all(
-    sizes.map((size) => sharp(source, { density: 384 }).resize(size, size).png().toBuffer()),
-  );
+function iconField(size) {
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    <defs>
+      <radialGradient id="field" cx="50%" cy="43%" r="72%">
+        <stop offset="0" stop-color="#171044"/>
+        <stop offset="0.52" stop-color="#08051b"/>
+        <stop offset="1" stop-color="#000000"/>
+      </radialGradient>
+    </defs>
+    <rect width="${size}" height="${size}" fill="url(#field)"/>
+  </svg>`);
+}
+
+async function iconSurface(size, artScale) {
+  const artSize = Math.max(1, Math.round(size * artScale));
+  const artwork = await sharp(masterPng)
+    .resize(artSize, artSize, { fit: 'contain', kernel: sharp.kernel.lanczos3 })
+    .png()
+    .toBuffer();
+  let pipeline = sharp(iconField(size)).composite([{ input: artwork, gravity: 'centre' }]);
+  if (size <= 48) pipeline = pipeline.sharpen();
+  return pipeline.png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer();
+}
+
+async function renderIconSurface(size, artScale, destination) {
+  await writeFile(destination, await iconSurface(size, artScale));
+}
+
+async function writeIco(sizes, destination) {
+  const images = await Promise.all(sizes.map((size) => iconSurface(size, size <= 48 ? 1 : 0.94)));
   const directory = Buffer.alloc(6 + (16 * images.length));
   directory.writeUInt16LE(0, 0);
   directory.writeUInt16LE(1, 2);
@@ -47,6 +83,33 @@ async function writeIco(source, sizes, destination) {
     offset += image.length;
   });
   await writeFile(destination, Buffer.concat([directory, ...images]));
+}
+
+async function renderSocialCard(destination) {
+  const artwork = await sharp(masterPng)
+    .resize(510, 510, { fit: 'contain', kernel: sharp.kernel.lanczos3 })
+    .png()
+    .toBuffer();
+  const field = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+    <defs>
+      <radialGradient id="field" cx="28%" cy="48%" r="74%">
+        <stop offset="0" stop-color="#171044"/><stop offset="0.52" stop-color="#08051b"/><stop offset="1" stop-color="#000000"/>
+      </radialGradient>
+      <linearGradient id="word" x1="585" y1="210" x2="1055" y2="390" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#f8faff"/><stop offset="0.55" stop-color="#93c5fd"/><stop offset="1" stop-color="#d8b4fe"/>
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="630" fill="url(#field)"/>
+    <rect x="36" y="36" width="1128" height="558" rx="64" fill="none" stroke="#312e81" stroke-width="3"/>
+    <text x="585" y="284" fill="url(#word)" font-family="Inter, Arial, sans-serif" font-size="92" font-weight="800" letter-spacing="11">APOCKY</text>
+    <text x="591" y="340" fill="#b7c0e8" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="600" letter-spacing="1.4">A LIVING CONSTELLATION OF IDEAS + TOOLS</text>
+    <path d="M591 389H1050" stroke="#6366f1" stroke-width="4" stroke-linecap="round"/>
+    <text x="591" y="444" fill="#8993c1" font-family="Inter, Arial, sans-serif" font-size="23">Conversation, memory, creation, divination.</text>
+  </svg>`);
+  await sharp(field)
+    .composite([{ input: artwork, left: 36, top: 60 }])
+    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .toFile(destination);
 }
 
 function shortcutSvg(glyph) {
@@ -75,23 +138,21 @@ const shortcuts = {
 };
 
 await Promise.all([
-  renderSquare(iconSvg, 192, join(iconDir, 'apocky-v2-192.png')),
-  renderSquare(iconSvg, 512, join(iconDir, 'apocky-v2-512.png')),
-  renderSquare(maskableSvg, 192, join(iconDir, 'apocky-maskable-v2-192.png')),
-  renderSquare(maskableSvg, 512, join(iconDir, 'apocky-maskable-v2-512.png')),
-  renderSquare(iconSvg, 152, join(publicDir, 'apple-touch-icon-152x152.png')),
-  renderSquare(iconSvg, 167, join(publicDir, 'apple-touch-icon-167x167.png')),
-  renderSquare(iconSvg, 180, join(publicDir, 'apple-touch-icon.png')),
+  renderIconSurface(16, 1, join(iconDir, 'apocky-v3-16.png')),
+  renderIconSurface(32, 1, join(iconDir, 'apocky-v3-32.png')),
+  renderIconSurface(192, 0.94, join(iconDir, 'apocky-v3-192.png')),
+  renderIconSurface(512, 0.94, join(iconDir, 'apocky-v3-512.png')),
+  // Maskable/PWA and Apple masks keep the meaningful alpha bounds inside the
+  // central 80% safe region. The field deliberately fills the whole canvas.
+  renderIconSurface(192, 0.84, join(iconDir, 'apocky-maskable-v3-192.png')),
+  renderIconSurface(512, 0.84, join(iconDir, 'apocky-maskable-v3-512.png')),
+  renderIconSurface(152, 0.84, join(publicDir, 'apple-touch-icon-152x152.png')),
+  renderIconSurface(167, 0.84, join(publicDir, 'apple-touch-icon-167x167.png')),
+  renderIconSurface(180, 0.84, join(publicDir, 'apple-touch-icon.png')),
   ...Object.entries(shortcuts).map(([name, glyph]) =>
     renderSquare(shortcutSvg(glyph), 96, join(iconDir, `shortcut-${name}-v2-96.png`))),
-  sharp(join(brandDir, 'apocky-social.svg'), { density: 192 })
-    .resize(1200, 630)
-    .png({ compressionLevel: 9, adaptiveFiltering: true })
-    .toFile(join(ogDir, 'apocky-default-v2.png')),
-  writeIco(faviconSvg, [16, 32, 48, 256], join(publicDir, 'favicon.ico')),
-  writeFile(join(publicDir, 'favicon.svg'), faviconSvg),
-  writeFile(join(publicDir, 'icon-192.svg'), iconSvg.toString('utf8').replace('width="512" height="512"', 'width="192" height="192"')),
-  writeFile(join(publicDir, 'icon-512.svg'), iconSvg),
+  renderSocialCard(join(ogDir, 'apocky-default-v3.png')),
+  writeIco([16, 32, 48, 256], join(publicDir, 'favicon.ico')),
 ]);
 
-console.log('Generated Apocky v2 brand icons and social card.');
+console.log(`Generated Apocky v3 icon family from SHA-256 ${MASTER_SHA256}.`);
