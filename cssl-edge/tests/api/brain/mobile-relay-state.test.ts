@@ -154,9 +154,29 @@ class FakeDurableRelay implements MiniBrainRelayStateRpcClient {
     const requestKey = `${input.ownerRef}:${input.requestId}`;
     const sequenceKey = `${input.ownerRef}:${input.deviceId}:${input.sequence}`;
     const deviceKey = `${input.ownerRef}:${input.deviceId}`;
+    let rate = this.rates.get(input.ownerRef);
+    if (!rate || rate.startedAt + RATE_WINDOW_MS <= this.now) {
+      rate = { startedAt: this.now, count: 0, expiresAt: this.now + DAY_MS };
+      this.rates.set(input.ownerRef, rate);
+    }
+    const rejected = (code: string, stateExpiresAt = this.now + RETENTION_MS) => ({
+      data: [{
+        outcome: code,
+        accepted_sequence: input.sequence,
+        rate_count: rate.count,
+        rate_limit: RATE_LIMIT,
+        rate_resets_at: new Date(rate.startedAt + RATE_WINDOW_MS).toISOString(),
+        state_expires_at: new Date(stateExpiresAt).toISOString(),
+      }],
+      error: null,
+    });
+    if (rate.count >= RATE_LIMIT) return rejected('BRAIN_SYNC_RATE_LIMITED');
+    rate.count += 1;
+    rate.expiresAt = this.now + DAY_MS;
+
     const device = this.devices.get(deviceKey);
     if (device && device.keyThumbprint !== input.keyThumbprint) {
-      return fakeError('BRAIN_DEVICE_STATE_BINDING_MISMATCH');
+      return rejected('BRAIN_DEVICE_STATE_BINDING_MISMATCH', device.expiresAt);
     }
 
     const existingSequence = this.sequences.get(sequenceKey);
@@ -167,31 +187,22 @@ class FakeDurableRelay implements MiniBrainRelayStateRpcClient {
         existingSequence.requestId !== input.requestId
         || existingSequence.logicalRequestDigest !== input.logicalRequestDigest
         || existingSequence.envelopeDigest !== input.envelopeDigest
-      ) return fakeError('BRAIN_SYNC_REPLAY_REJECTED');
+      ) return rejected('BRAIN_SYNC_REPLAY_REJECTED', existingSequence.expiresAt);
       outcome = 'identical_retry';
       exactEnvelope = true;
     } else {
       if (device && input.sequence <= device.latestSequence) {
-        return fakeError('BRAIN_SYNC_REPLAY_REJECTED');
+        return rejected('BRAIN_SYNC_REPLAY_REJECTED', device.expiresAt);
       }
       const existingRequest = this.requests.get(requestKey);
       if (existingRequest) {
         if (
           existingRequest.deviceId !== input.deviceId
           || existingRequest.logicalRequestDigest !== input.logicalRequestDigest
-        ) return fakeError('BRAIN_SYNC_REQUEST_ID_REUSED');
+        ) return rejected('BRAIN_SYNC_REQUEST_ID_REUSED', existingRequest.expiresAt);
         outcome = 'identical_retry';
       }
     }
-
-    let rate = this.rates.get(input.ownerRef);
-    if (!rate || rate.startedAt + RATE_WINDOW_MS <= this.now) {
-      rate = { startedAt: this.now, count: 0, expiresAt: this.now + DAY_MS };
-      this.rates.set(input.ownerRef, rate);
-    }
-    if (rate.count >= RATE_LIMIT) return fakeError('BRAIN_SYNC_RATE_LIMITED');
-    rate.count += 1;
-    rate.expiresAt = this.now + DAY_MS;
 
     let expiry = existingSequence?.expiresAt ?? this.now + RETENTION_MS;
     if (!exactEnvelope) {
@@ -260,6 +271,7 @@ async function signedRequest(input: {
   readonly issuedAt: string;
   readonly requestId: string;
   readonly payload: { readonly text: string };
+  readonly baseCursor?: string | null;
 }): Promise<MiniBrainSyncRequest> {
   const unsigned: MiniBrainSyncUnsignedRequest = {
     schema_version: MINI_BRAIN_SYNC_REQUEST_SCHEMA,
@@ -269,7 +281,7 @@ async function signedRequest(input: {
     operation: 'append',
     session_id: '55555555-5555-4555-8555-555555555555',
     request_id: input.requestId,
-    base_cursor: null,
+    base_cursor: input.baseCursor ?? null,
     payload: input.payload,
     payload_digest: createHash('sha256').update(canonicalJson(input.payload)).digest('hex'),
   };
@@ -399,6 +411,30 @@ async function main(): Promise<void> {
     429,
   );
 
+  // A cryptographically verified but invalid replay must consume the same
+  // durable owner budget. Otherwise a compromised device can bypass the rate
+  // boundary by submitting endlessly divergent envelopes for one sequence.
+  const rejectedRateBackend = new FakeDurableRelay();
+  const rejectedRateStore = createMiniBrainRelayStateStoreForRpcClient(rejectedRateBackend);
+  const chargedBase = admissionInput({ ownerRef: '9'.repeat(64) });
+  await rejectedRateStore.admit(chargedBase);
+  for (let index = 0; index < RATE_LIMIT - 1; index += 1) {
+    await expectRelayCode(
+      rejectedRateStore.admit({
+        ...chargedBase,
+        requestId: randomUUID(),
+        envelopeDigest: (index + 500).toString(16).padStart(64, '0'),
+      }),
+      'BRAIN_SYNC_REPLAY_REJECTED',
+      409,
+    );
+  }
+  await expectRelayCode(
+    rejectedRateStore.admit(chargedBase),
+    'BRAIN_SYNC_RATE_LIMITED',
+    429,
+  );
+
   // The adapter transmits only opaque identity and two digests to storage.
   const promptBackend = new FakeDurableRelay();
   const promptStore = createMiniBrainRelayStateStoreForRpcClient(promptBackend);
@@ -421,7 +457,6 @@ async function main(): Promise<void> {
     request,
     ownerRef: 'c'.repeat(64),
     keyThumbprint: 'd'.repeat(64),
-    replayKind: 'new_sequence',
   };
   const admitted = await admitVerifiedMiniBrainRequest(promptStore, verified);
   assert.equal(admitted.replayKind, 'new_sequence');
@@ -448,6 +483,11 @@ async function main(): Promise<void> {
   assert.equal(
     durableMiniBrainLogicalRequestDigest(reSignedRequest),
     durableMiniBrainLogicalRequestDigest(request),
+  );
+  assert.equal(
+    durableMiniBrainLogicalRequestDigest({ ...reSignedRequest, base_cursor: 'f'.repeat(64) }),
+    durableMiniBrainLogicalRequestDigest(request),
+    'an explicit conflict rebase keeps the same logical request identity',
   );
   assert.notEqual(durableMiniBrainEnvelopeDigest(reSignedRequest), durableMiniBrainEnvelopeDigest(request));
   assert.notEqual(
@@ -489,6 +529,7 @@ async function main(): Promise<void> {
       issuedAt: new Date(nowMs).toISOString(),
       requestId: clientRequestId,
       payload: privatePayload,
+      baseCursor: '1'.repeat(64),
     });
     resetMiniBrainRelayStateForTests();
     const cryptographicallyVerifiedFirst = await verifyMiniBrainSyncRequest({
@@ -512,6 +553,7 @@ async function main(): Promise<void> {
       issuedAt: new Date(nowMs + 5_000).toISOString(),
       requestId: clientRequestId,
       payload: privatePayload,
+      baseCursor: '2'.repeat(64),
     });
     resetMiniBrainRelayStateForTests(); // model a different cold serverless instance
     const cryptographicallyVerifiedRetry = await verifyMiniBrainSyncRequest({

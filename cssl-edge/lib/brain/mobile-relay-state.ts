@@ -59,7 +59,7 @@ export interface MiniBrainRelayStateRpcClient {
 }
 
 export interface DurableVerifiedMiniBrainRequest
-  extends Omit<VerifiedMiniBrainRequest, 'replayKind'> {
+  extends VerifiedMiniBrainRequest {
   readonly replayKind: DurableMiniBrainReplayKind;
   readonly durableState: MiniBrainRelayAdmission;
 }
@@ -167,6 +167,8 @@ function admissionResult(value: unknown): MiniBrainRelayAdmission {
     'rate_resets_at',
     'state_expires_at',
   ]);
+  const rejected = REMOTE_ERRORS.find(([code]) => row.outcome === code);
+  if (rejected) throw new MiniBrainRelayError(rejected[0], rejected[1]);
   const acceptedSequence = safeInteger(row.accepted_sequence, 1, Number.MAX_SAFE_INTEGER);
   const rateCount = safeInteger(row.rate_count, 0, 30);
   const rateLimit = safeInteger(row.rate_limit, 30, 30);
@@ -322,7 +324,6 @@ export function durableMiniBrainLogicalRequestDigest(request: MiniBrainSyncReque
   return createHash('sha256')
     .update('apocky.mini-brain.logical-request.v1\u0000', 'utf8')
     .update(canonicalJson({
-      base_cursor: request.base_cursor,
       operation: request.operation,
       payload_digest: request.payload_digest,
       schema_version: request.schema_version,

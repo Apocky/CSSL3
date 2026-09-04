@@ -10,9 +10,10 @@
 --
 -- Identity split:
 --   envelope_digest = signed request fields, including sequence + issued_at
---   logical_digest  = operation + session + base cursor + payload digest
+--   logical_digest  = operation + session + payload digest
 -- A sequence may bind one envelope only. A request_id may advance through newly
--- signed envelopes only while its logical digest remains identical.
+-- signed envelopes only while its intent remains identical. A changed base
+-- cursor is an authorized rebase of the same queued append, not a new intent.
 --
 -- Retention:
 --   device/request/sequence replay evidence = 35 days. Device capabilities live
@@ -45,6 +46,9 @@ CREATE TABLE IF NOT EXISTS public.mini_brain_relay_device_state (
 
 CREATE INDEX IF NOT EXISTS mini_brain_relay_device_expiry_idx
     ON public.mini_brain_relay_device_state (expires_at);
+
+CREATE INDEX IF NOT EXISTS mini_brain_relay_device_owner_expiry_idx
+    ON public.mini_brain_relay_device_state (owner_ref, expires_at);
 
 CREATE TABLE IF NOT EXISTS public.mini_brain_relay_request_ledger (
     owner_ref             text        NOT NULL,
@@ -80,6 +84,9 @@ CREATE TABLE IF NOT EXISTS public.mini_brain_relay_request_ledger (
 CREATE INDEX IF NOT EXISTS mini_brain_relay_request_expiry_idx
     ON public.mini_brain_relay_request_ledger (expires_at);
 
+CREATE INDEX IF NOT EXISTS mini_brain_relay_request_owner_expiry_idx
+    ON public.mini_brain_relay_request_ledger (owner_ref, expires_at);
+
 CREATE TABLE IF NOT EXISTS public.mini_brain_relay_sequence_ledger (
     owner_ref      text        NOT NULL,
     device_id      uuid        NOT NULL,
@@ -112,6 +119,9 @@ CREATE TABLE IF NOT EXISTS public.mini_brain_relay_sequence_ledger (
 
 CREATE INDEX IF NOT EXISTS mini_brain_relay_sequence_expiry_idx
     ON public.mini_brain_relay_sequence_ledger (expires_at);
+
+CREATE INDEX IF NOT EXISTS mini_brain_relay_sequence_owner_expiry_idx
+    ON public.mini_brain_relay_sequence_ledger (owner_ref, expires_at);
 
 CREATE TABLE IF NOT EXISTS public.mini_brain_relay_rate_state (
     owner_ref         text        PRIMARY KEY,
@@ -217,6 +227,7 @@ BEGIN
          WHERE owner_ref = p_owner_ref AND expires_at <= v_now
          ORDER BY expires_at
          LIMIT 256
+           FOR UPDATE SKIP LOCKED
      ) AS doomed
      WHERE target.ctid = doomed.ctid;
     DELETE FROM public.mini_brain_relay_request_ledger AS target
@@ -233,6 +244,7 @@ BEGIN
            )
          ORDER BY req.expires_at
          LIMIT 256
+           FOR UPDATE OF req SKIP LOCKED
      ) AS doomed
      WHERE target.ctid = doomed.ctid;
     DELETE FROM public.mini_brain_relay_device_state AS target
@@ -249,68 +261,15 @@ BEGIN
            )
          ORDER BY dev.expires_at
          LIMIT 64
+           FOR UPDATE OF dev SKIP LOCKED
      ) AS doomed
      WHERE target.ctid = doomed.ctid;
     DELETE FROM public.mini_brain_relay_rate_state
      WHERE owner_ref = p_owner_ref AND expires_at <= v_now;
 
-    SELECT *
-      INTO v_device_state
-      FROM public.mini_brain_relay_device_state
-     WHERE owner_ref = p_owner_ref
-       AND device_id = p_device_id
-     FOR UPDATE;
-
-    IF FOUND AND v_device_state.key_thumbprint <> p_key_thumbprint THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'BRAIN_DEVICE_STATE_BINDING_MISMATCH';
-    END IF;
-
-    -- Exact same-sequence retries bind to the exact signed envelope. A newly
-    -- signed retry must use a newer sequence and is matched later by its stable
-    -- logical digest.
-    SELECT *
-      INTO v_sequence_state
-      FROM public.mini_brain_relay_sequence_ledger
-     WHERE owner_ref = p_owner_ref
-       AND device_id = p_device_id
-       AND sequence = p_sequence
-     FOR UPDATE;
-
-    IF FOUND THEN
-        IF v_sequence_state.request_id <> p_request_id
-           OR v_sequence_state.logical_digest <> p_logical_digest
-           OR v_sequence_state.envelope_digest <> p_envelope_digest THEN
-            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'BRAIN_SYNC_REPLAY_REJECTED';
-        END IF;
-        v_outcome := 'identical_retry';
-        v_exact_envelope := true;
-        v_result_expiry := v_sequence_state.expires_at;
-    ELSE
-        IF v_device_state.owner_ref IS NOT NULL
-           AND p_sequence <= v_device_state.latest_sequence THEN
-            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'BRAIN_SYNC_REPLAY_REJECTED';
-        END IF;
-
-        SELECT *
-          INTO v_request_state
-          FROM public.mini_brain_relay_request_ledger
-         WHERE owner_ref = p_owner_ref
-           AND request_id = p_request_id
-         FOR UPDATE;
-
-        IF FOUND THEN
-            IF v_request_state.device_id <> p_device_id
-               OR v_request_state.logical_digest <> p_logical_digest THEN
-                RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'BRAIN_SYNC_REQUEST_ID_REUSED';
-            END IF;
-            v_outcome := 'identical_retry';
-        END IF;
-        v_result_expiry := v_state_expiry;
-    END IF;
-
-    -- Every verified envelope, including an exact retry, is charged against
-    -- the owner-wide window. Idempotency prevents duplicate effect; it does not
-    -- create an unmetered replay channel.
+    -- Charge every cryptographically verified envelope before replay
+    -- classification. Expected replay/binding rejection is returned as a typed
+    -- row instead of an exception so this rate mutation commits atomically.
     SELECT *
       INTO v_rate_state
       FROM public.mini_brain_relay_rate_state
@@ -336,7 +295,16 @@ BEGIN
          WHERE owner_ref = p_owner_ref;
     ELSE
         IF v_rate_state.request_count >= 30 THEN
-            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'BRAIN_SYNC_RATE_LIMITED';
+            v_rate_count := v_rate_state.request_count;
+            v_rate_reset := v_rate_state.window_started_at + interval '60 seconds';
+            RETURN QUERY SELECT
+                'BRAIN_SYNC_RATE_LIMITED'::text,
+                p_sequence,
+                v_rate_count,
+                30,
+                v_rate_reset,
+                v_state_expiry;
+            RETURN;
         END IF;
         v_rate_count := v_rate_state.request_count + 1;
         v_rate_reset := v_rate_state.window_started_at + interval '60 seconds';
@@ -345,6 +313,88 @@ BEGIN
                updated_at = v_now,
                expires_at = v_now + interval '1 day'
          WHERE owner_ref = p_owner_ref;
+    END IF;
+
+    SELECT *
+      INTO v_device_state
+      FROM public.mini_brain_relay_device_state
+     WHERE owner_ref = p_owner_ref
+       AND device_id = p_device_id
+     FOR UPDATE;
+
+    IF FOUND AND v_device_state.key_thumbprint <> p_key_thumbprint THEN
+        RETURN QUERY SELECT
+            'BRAIN_DEVICE_STATE_BINDING_MISMATCH'::text,
+            p_sequence,
+            v_rate_count,
+            30,
+            v_rate_reset,
+            v_state_expiry;
+        RETURN;
+    END IF;
+
+    -- Exact same-sequence retries bind to the exact signed envelope. A newly
+    -- signed retry must use a newer sequence and is matched later by its stable
+    -- logical digest.
+    SELECT *
+      INTO v_sequence_state
+      FROM public.mini_brain_relay_sequence_ledger
+     WHERE owner_ref = p_owner_ref
+       AND device_id = p_device_id
+       AND sequence = p_sequence
+     FOR UPDATE;
+
+    IF FOUND THEN
+        IF v_sequence_state.request_id <> p_request_id
+           OR v_sequence_state.logical_digest <> p_logical_digest
+           OR v_sequence_state.envelope_digest <> p_envelope_digest THEN
+            RETURN QUERY SELECT
+                'BRAIN_SYNC_REPLAY_REJECTED'::text,
+                p_sequence,
+                v_rate_count,
+                30,
+                v_rate_reset,
+                v_sequence_state.expires_at;
+            RETURN;
+        END IF;
+        v_outcome := 'identical_retry';
+        v_exact_envelope := true;
+        v_result_expiry := v_sequence_state.expires_at;
+    ELSE
+        IF v_device_state.owner_ref IS NOT NULL
+           AND p_sequence <= v_device_state.latest_sequence THEN
+            RETURN QUERY SELECT
+                'BRAIN_SYNC_REPLAY_REJECTED'::text,
+                p_sequence,
+                v_rate_count,
+                30,
+                v_rate_reset,
+                v_device_state.expires_at;
+            RETURN;
+        END IF;
+
+        SELECT *
+          INTO v_request_state
+          FROM public.mini_brain_relay_request_ledger
+         WHERE owner_ref = p_owner_ref
+           AND request_id = p_request_id
+         FOR UPDATE;
+
+        IF FOUND THEN
+            IF v_request_state.device_id <> p_device_id
+               OR v_request_state.logical_digest <> p_logical_digest THEN
+                RETURN QUERY SELECT
+                    'BRAIN_SYNC_REQUEST_ID_REUSED'::text,
+                    p_sequence,
+                    v_rate_count,
+                    30,
+                    v_rate_reset,
+                    v_request_state.expires_at;
+                RETURN;
+            END IF;
+            v_outcome := 'identical_retry';
+        END IF;
+        v_result_expiry := v_state_expiry;
     END IF;
 
     IF NOT v_exact_envelope THEN
@@ -469,6 +519,7 @@ BEGIN
          WHERE expires_at <= v_now
          ORDER BY expires_at
          LIMIT p_limit
+           FOR UPDATE SKIP LOCKED
     ), removed AS (
         DELETE FROM public.mini_brain_relay_sequence_ledger AS target
          USING doomed
@@ -489,6 +540,7 @@ BEGIN
            )
          ORDER BY req.expires_at
          LIMIT p_limit
+           FOR UPDATE OF req SKIP LOCKED
     ), removed AS (
         DELETE FROM public.mini_brain_relay_request_ledger AS target
          USING doomed
@@ -509,6 +561,7 @@ BEGIN
            )
          ORDER BY dev.expires_at
          LIMIT p_limit
+           FOR UPDATE OF dev SKIP LOCKED
     ), removed AS (
         DELETE FROM public.mini_brain_relay_device_state AS target
          USING doomed
@@ -523,6 +576,7 @@ BEGIN
          WHERE expires_at <= v_now
          ORDER BY expires_at
          LIMIT p_limit
+           FOR UPDATE SKIP LOCKED
     ), removed AS (
         DELETE FROM public.mini_brain_relay_rate_state AS target
          USING doomed
@@ -553,3 +607,33 @@ COMMENT ON FUNCTION public.admit_mini_brain_relay_request(text,uuid,text,bigint,
     'Atomically enforces owner-wide rate, per-device sequence, and re-signed logical-request idempotency.';
 COMMENT ON FUNCTION public.cleanup_mini_brain_relay_state(integer) IS
     'Deletes bounded batches of expired Mini Brain relay metadata; safe for scheduled or manual service-role use.';
+
+-- Active owners prune their own expired rows during admission. When pg_cron
+-- exists, this offset hourly pass also retires inactive-owner metadata without
+-- adding cleanup latency to an interactive request. If pg_cron is unavailable,
+-- promotion readback must install an equivalent service-role caller.
+DO $mini_brain_cleanup_job$
+DECLARE
+    has_pg_cron boolean;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 FROM pg_extension WHERE extname = 'pg_cron'
+    ) INTO has_pg_cron;
+    IF NOT has_pg_cron THEN
+        RAISE NOTICE 'pg_cron unavailable · Mini Brain retains owner-local request-path cleanup; external bounded cleanup caller required';
+        RETURN;
+    END IF;
+
+    PERFORM cron.unschedule(jobid)
+      FROM cron.job
+     WHERE jobname = 'mini-brain-relay-state-cleanup';
+    PERFORM cron.schedule(
+        'mini-brain-relay-state-cleanup',
+        '17 * * * *',
+        $sql$ SELECT public.cleanup_mini_brain_relay_state(5000); $sql$
+    );
+    RAISE NOTICE 'pg_cron · Mini Brain relay cleanup scheduled hourly at minute 17 UTC';
+EXCEPTION
+    WHEN insufficient_privilege OR undefined_function OR undefined_table THEN
+        RAISE NOTICE 'pg_cron cleanup scheduling unavailable · external bounded cleanup caller required';
+END $mini_brain_cleanup_job$;
