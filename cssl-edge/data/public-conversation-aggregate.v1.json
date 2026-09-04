@@ -1,0 +1,75 @@
+{
+  "schema": "apocky.public-conversation-aggregate-facts.v1",
+  "generatedAt": "2026-09-03",
+  "publication": {
+    "state": "aggregate-public-bodies-review-held",
+    "authority": "Public bodies require explicit per-record owner approval after privacy and rights review.",
+    "publicIndexScope": "Aggregate facts describe the complete local ChatGPT and Claude export index. Public records contain only explicitly approved projections; unreviewed source-derived titles, excerpts, signals, and bodies remain local.",
+    "publicIndexBoundaries": [
+      "Automated redaction is a review aid, not proof of public safety or publication authority.",
+      "Unreviewed records never enter the public index, browse projection, sitemap, API body store, or static assets.",
+      "The curated Conversation Constellations are separately hand-written, privacy-safe paraphrases with source fingerprints."
+    ],
+    "selectionCriteria": {
+      "localInclusion": "All 1,386 unique export records remain counted in the local source index.",
+      "publicAdmission": "Explicit per-record editorial, privacy, and rights approval is required.",
+      "indexability": "Only approved public records can be considered for search indexing.",
+      "curatedLayer": "Hand-written constellations remain public paraphrases and do not expose raw private transcripts."
+    },
+    "browseScope": "The complete local export is counted, while public browse records are limited to explicitly approved privacy- and rights-reviewed projections.",
+    "browseBoundaries": [
+      "No unreviewed title, excerpt, signal, or conversation body appears in this public projection.",
+      "The twelve curated constellations on the page are hand-written paraphrases, not raw transcript bodies."
+    ]
+  },
+  "counts": {
+    "uniqueConversations": 1386,
+    "chatgptConversations": 1230,
+    "claudeConversations": 156,
+    "anthropicDuplicateDelivery": 37,
+    "messages": 19479,
+    "emptyConversationRecords": 20,
+    "userMessages": 9800,
+    "assistantMessages": 9679,
+    "alternateBranchMessages": 363,
+    "redactions": 3875,
+    "automatedFeatureCandidates": 473,
+    "editoriallyFeatureEligible": 0,
+    "indexable": 0,
+    "publiclyApprovedConversations": 0,
+    "reviewHeldConversations": 1386,
+    "rejectedConversations": 0,
+    "publishedMessages": 0
+  },
+  "structuralExclusions": {
+    "ChatGPT": {
+      "structuralRoleMessages": 7827,
+      "hiddenMessages": 183,
+      "toolDirectedMessages": 3323,
+      "reasoningOrToolBodies": 3472,
+      "emptyVisibleBodies": 1645
+    },
+    "Claude": {
+      "thinkingBlocks": 7571,
+      "toolUseBlocks": 7721,
+      "toolResultBlocks": 7647,
+      "flagBlocks": 3,
+      "emptyVisibleBodies": 187
+    }
+  },
+  "qualityAudit": {
+    "recordsScored": 1386,
+    "qualityScoreMin": 7,
+    "qualityScoreMax": 100,
+    "qualityScoreMeanMilli": 77439,
+    "recordsWithContentWarnings": 495,
+    "automatedFeatureCandidates": 473,
+    "indexableCandidates": 930,
+    "reviewHeld": 1386
+  },
+  "sourceSeal": {
+    "algorithm": "sha256",
+    "aggregateSha256": "8bcce56ee0d179e07150f68aaa3423805954ad734b76157365aacfaac3dfe8a2",
+    "derivation": "Sealed legacy manifest top-level fields and summary metadata only; no conversation body is copied into this projection."
+  }
+}

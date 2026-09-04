@@ -4,8 +4,8 @@
   "private": true,
   "description": "LoA-v13 Edge — public MCP gateway for CSSL/LoA scenes (Vercel-deployable Next.js)",
   "scripts": {
-    "prebuild": "node scripts/snapshot-specs.js && npm run snapshot:apocrypha-release && npm run snapshot:public-surface",
-    "predev": "node scripts/snapshot-specs.js && npm run snapshot:apocrypha-release && npm run snapshot:public-surface",
+    "prebuild": "node scripts/snapshot-specs.js && npm run snapshot:apocrypha-release && npm run snapshot:public-surface && npm run check:conversation-public-aggregate",
+    "predev": "node scripts/snapshot-specs.js && npm run snapshot:apocrypha-release && npm run snapshot:public-surface && npm run check:conversation-public-aggregate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -13,6 +13,10 @@
     "lint": "node scripts/lint-release.mjs",
     "snapshot:specs": "node scripts/snapshot-specs.js",
     "snapshot:akashic-records": "node scripts/snapshot-akashic-records.mjs",
+    "generate:conversation-public-aggregate": "node scripts/generate-public-conversation-aggregate.mjs --write",
+    "check:conversation-public-aggregate": "node scripts/generate-public-conversation-aggregate.mjs --check",
+    "build:conversation-review-corpus": "node scripts/build-conversation-review-corpus.mjs",
+    "test:conversation-corpus": "node tests/conversation-corpus/public-aggregate-generator.test.mjs && node --import tsx tests/api/conversation-corpus.test.ts && node --import tsx tests/pages/conversation-corpus.test.ts && node scripts/audit-conversation-corpus.mjs",
     "snapshot:apocrypha-release": "node scripts/snapshot-apocrypha-release.mjs",
     "test:apocrypha-release": "node tests/release-manifest-generator.test.mjs && node --import tsx tests/lib/brain-release-manifest.test.ts && node --import tsx tests/pages/brain-release.test.ts",
     "generate:brand-icons": "node scripts/generate-brand-icons.mjs",
@@ -96,7 +100,7 @@
     "lazarus:service:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lazarus-service.ps1 stop",
     "lazarus:service:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lazarus-service.ps1 restart",
     "lazarus:service:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lazarus-service.ps1 smoke",
-    "test": "npm run snapshot:specs && npm run test:akashic-records && npm run test:public-discovery && npm run test:showcase && npm run test:neural-public-pages && npm run test:symbolic-studio && npm run test:public-web-retirement && npm run test:omnoid-singularity-page && npm run test:health && npm run test:auth-redirect && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:gear-share-page && npm run test:run-share-feed-page && npm run test:stripe-checkout && npm run test:stripe-webhook && npm run test:stripe-refund && npm run test:health-w9 && npm run test:docs-page && npm run test:infinity-engine-page && npm run test:buy-page && npm run test:admin-chat-lib && npm run test:admin-analytics && npm run test:admin-tasks && npm run test:akashic-telemetry && npm run test:content-page && npm run test:content-publish-lib && npm run test:content-publish && npm run test:engine-status-lib && npm run test:engine-status && npm run test:cron-auth-lib && npm run test:cron-auth && npm run test:cron-endpoints && npm run test:cron-pgcron-migration && npm run test:mneme-sigma && npm run test:mneme"
+    "test": "npm run snapshot:specs && npm run test:conversation-corpus && npm run test:akashic-records && npm run test:public-discovery && npm run test:showcase && npm run test:neural-public-pages && npm run test:symbolic-studio && npm run test:public-web-retirement && npm run test:omnoid-singularity-page && npm run test:health && npm run test:auth-redirect && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:gear-share-page && npm run test:run-share-feed-page && npm run test:stripe-checkout && npm run test:stripe-webhook && npm run test:stripe-refund && npm run test:health-w9 && npm run test:docs-page && npm run test:infinity-engine-page && npm run test:buy-page && npm run test:admin-chat-lib && npm run test:admin-analytics && npm run test:admin-tasks && npm run test:akashic-telemetry && npm run test:content-page && npm run test:content-publish-lib && npm run test:content-publish && npm run test:engine-status-lib && npm run test:engine-status && npm run test:cron-auth-lib && npm run test:cron-auth && npm run test:cron-endpoints && npm run test:cron-pgcron-migration && npm run test:mneme-sigma && npm run test:mneme"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

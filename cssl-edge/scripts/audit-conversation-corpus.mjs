@@ -3,6 +3,12 @@ import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  buildPublicAggregate,
+  findPublicAggregateOutputDrift,
+  loadCommittedPublicAggregateFacts,
+} from './generate-public-conversation-aggregate.mjs';
+
 const EXPECTED_CONVERSATIONS = 1_386;
 const SEALED_LEGACY_INDEX_SHA256 = '8bcce56ee0d179e07150f68aaa3423805954ad734b76157365aacfaac3dfe8a2';
 const EXPECTED_STRUCTURAL_EXCLUSIONS = Object.freeze({
@@ -84,11 +90,14 @@ async function bytesIfPresent(path) {
   }
 }
 
-const [manifest, browse, sitemap, readerSource, middlewareSource, vercelIgnore, names, legacyNames, legacyIndexBytes] = await Promise.all([
+const [manifest, browse, sitemap, readerSource, bundledManifestSource, publicGeneratorSource, reviewBuilderSource, middlewareSource, vercelIgnore, names, legacyNames, legacyIndexBytes] = await Promise.all([
   json(join(corpusRoot, 'public-index.v1.json')),
   json(join(corpusRoot, 'browse.v1.json')),
   readFile(join(repositoryRoot, 'public', 'sitemap.xml'), 'utf8'),
   readFile(join(repositoryRoot, 'pages', 'conversations', '[slug].tsx'), 'utf8'),
+  readFile(join(repositoryRoot, 'lib', 'server', 'conversation-corpus-manifest.ts'), 'utf8'),
+  readFile(join(repositoryRoot, 'scripts', 'generate-public-conversation-aggregate.mjs'), 'utf8'),
+  readFile(join(repositoryRoot, 'scripts', 'snapshot-conversation-corpus.mjs'), 'utf8'),
   readFile(join(repositoryRoot, 'middleware.ts'), 'utf8'),
   readFile(join(repositoryRoot, '.vercelignore'), 'utf8'),
   namesIfPresent(approvedRecordRoot),
@@ -101,6 +110,17 @@ const residuals = [];
 const summaries = manifest.records ?? [];
 const browseRecords = browse.records ?? [];
 const summaryById = new Map(summaries.map((record) => [record.id, record]));
+
+try {
+  const generated = buildPublicAggregate(await loadCommittedPublicAggregateFacts());
+  const drift = findPublicAggregateOutputDrift(generated, {
+    publicIndexBytes: await readFile(join(corpusRoot, 'public-index.v1.json'), 'utf8'),
+    browseBytes: await readFile(join(corpusRoot, 'browse.v1.json'), 'utf8'),
+  });
+  if (drift.length > 0) failures.push(`deterministic public aggregate drift: ${drift.join(', ')}`);
+} catch (error) {
+  failures.push(`deterministic public aggregate invalid: ${error instanceof Error ? error.message : String(error)}`);
+}
 
 if (manifest.schema !== 'apocky.public-conversation-corpus.v1') failures.push('public manifest schema mismatch');
 if (browse.schema !== 'apocky.public-conversation-corpus.browse.v1') failures.push('browse manifest schema mismatch');
@@ -164,7 +184,9 @@ for (const [path, value] of [...allStrings(manifest, '$manifest'), ...allStrings
 if (JSON.stringify(manifest).includes('/conversation-corpus/records/')) failures.push('manifest references legacy body store');
 if (JSON.stringify(browse).includes('/conversation-corpus/records/')) failures.push('browse references legacy body store');
 if (!/summary\.indexable\s*\?\s*<script type="application\/ld\+json"/u.test(readerSource)) failures.push('detail JSON-LD is not indexability-gated');
-if (!readerSource.includes("'public-index.v1.json'")) failures.push('reader does not use approved-only public index');
+if (!readerSource.includes('getBundledPublicConversationManifest') || !bundledManifestSource.includes("public/conversation-corpus/public-index.v1.json")) failures.push('reader does not use bundled approved-only public index');
+if (!publicGeneratorSource.includes('PUBLIC_AGGREGATE_APPROVAL_REQUIRES_PROMOTION_PIPELINE')) failures.push('public aggregate generator lacks fail-closed approval boundary');
+if (!reviewBuilderSource.includes('must be outside the repository')) failures.push('raw review builder can target release paths');
 if (!middlewareSource.includes("'/conversation-corpus/index.v1.json'")) failures.push('legacy index static route is not blocked');
 if (!middlewareSource.includes("'/conversation-corpus/records/'")) failures.push('legacy body static route is not blocked');
 if (!vercelIgnore.includes('public/conversation-corpus/index.v1.json')) failures.push('legacy index missing from .vercelignore');

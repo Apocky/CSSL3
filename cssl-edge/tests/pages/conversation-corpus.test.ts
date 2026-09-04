@@ -20,7 +20,9 @@ const pageSource = read('pages/conversations.tsx');
 const readerSource = read('pages/conversations/[slug].tsx');
 const apiSource = read('pages/api/conversation-corpus/[id].ts');
 const bundledManifestSource = read('lib/server/conversation-corpus-manifest.ts');
-const generatorSource = read('scripts/snapshot-conversation-corpus.mjs');
+const publicGeneratorSource = read('scripts/generate-public-conversation-aggregate.mjs');
+const reviewBuilderSource = read('scripts/snapshot-conversation-corpus.mjs');
+const reviewEntrySource = read('scripts/build-conversation-review-corpus.mjs');
 const nextConfigSource = read('next.config.js');
 const shellSource = read('components/SiteShell.tsx');
 const middlewareSource = read('middleware.ts');
@@ -53,7 +55,7 @@ assert.deepEqual(manifest.qualityAudit, {
   indexableCandidates: 930,
   reviewHeld: 1386,
 }, 'quality aggregates are numeric and explicit');
-assert.equal((manifest as ConversationCorpusManifest & { aggregateSourceSha256: string }).aggregateSourceSha256, '8bcce56ee0d179e07150f68aaa3423805954ad734b76157365aacfaac3dfe8a2');
+assert.equal(manifest.aggregateSourceSha256, '8bcce56ee0d179e07150f68aaa3423805954ad734b76157365aacfaac3dfe8a2');
 assert.doesNotMatch(manifestSource, /"(?:excerpt|humanSignal|aiSignal|bodyHref)"/u, 'aggregate carries no source-derived preview fields');
 assert.doesNotMatch(browseSource, /"(?:excerpt|humanSignal|aiSignal|bodyHref)"/u, 'held browse carries no source-derived preview fields');
 
@@ -93,8 +95,12 @@ assert.match(apiSource, /approved-records/u, 'body API reads the approved-only b
 assert.match(apiSource, /CORPUS_REVIEW_HELD_CODE/u, 'body API exposes a stable held code');
 assert.match(apiSource, /getBundledPublicConversationManifest/u, 'body API resolves review holds before filesystem body access');
 assert.match(nextConfigSource, /public\/conversation-corpus\/approved-records\/\*\*\/\*\.json/u, 'future approved bodies are explicitly traced into the API bundle');
-assert.match(generatorSource, /approvedRecordRoot/u, 'generator writes only to the approved body store');
-assert.match(generatorSource, /public-index\.v1\.json/u, 'generator writes the safe public index');
+assert.match(publicGeneratorSource, /public-conversation-aggregate\.v1\.json/u, 'public aggregate reads the committed privacy-safe facts only');
+assert.match(publicGeneratorSource, /PUBLIC_AGGREGATE_APPROVAL_REQUIRES_PROMOTION_PIPELINE/u, 'aggregate writer cannot grant body publication authority');
+assert.doesNotMatch(publicGeneratorSource, /APOCKY_CHATGPT_EXPORT_DIR|APOCKY_CLAUDE_CONVERSATIONS_JSON/u, 'public aggregate has no raw-export input rail');
+assert.match(reviewBuilderSource, /must be outside the repository/u, 'raw review builder cannot target public or tracked paths');
+assert.match(reviewBuilderSource, /implementation-only and cannot write public assets/u, 'ambiguous legacy entry point fails closed');
+assert.match(reviewEntrySource, /buildReviewCorpus/u, 'raw review work has a separately named entry point');
 assert.match(shellSource, /href: '\/conversations', label: 'Conversations'/u, 'footer Explore navigation exposes the reading room');
 assert.match(middlewareSource, /'\/conversation-corpus\/records\/'/u, 'legacy static bodies are blocked at the edge');
 assert.match(vercelIgnore, /public\/conversation-corpus\/records\//u, 'legacy local bodies are excluded from dirty-root deployment');

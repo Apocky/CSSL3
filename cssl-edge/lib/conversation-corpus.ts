@@ -155,6 +155,8 @@ export interface ConversationCorpusManifest {
   readonly counts: ConversationCorpusCounts;
   readonly structuralExclusions: Readonly<Record<string, Readonly<Record<string, number>>>>;
   readonly qualityAudit: Readonly<Record<string, number>>;
+  readonly aggregateSourceSha256: string;
+  readonly aggregateDerivation: string;
   readonly records: readonly ConversationCorpusSummary[];
 }
 
@@ -189,6 +191,8 @@ export interface ConversationCorpusBrowseManifest {
   readonly counts: ConversationCorpusCounts;
   readonly structuralExclusions: ConversationCorpusManifest['structuralExclusions'];
   readonly qualityAudit: ConversationCorpusManifest['qualityAudit'];
+  readonly aggregateSourceSha256: string;
+  readonly aggregateDerivation: string;
   readonly records: readonly ConversationCorpusBrowseRecord[];
 }
 

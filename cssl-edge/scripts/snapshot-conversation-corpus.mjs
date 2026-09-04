@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { lstat, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sanitizePublicConversationText } from './snapshot-akashic-records.mjs';
@@ -11,8 +11,6 @@ const EXPECTED_CLAUDE = 156;
 const EXPECTED_UNIQUE = EXPECTED_CHATGPT + EXPECTED_CLAUDE;
 const GENERATED_AT = '2026-09-03';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const outputRoot = join(repositoryRoot, 'public', 'conversation-corpus');
-const approvedRecordRoot = join(outputRoot, 'approved-records');
 
 const REALMS = Object.freeze({
   'Spiritual life': ['The Violet Archive', 'lantern'],
@@ -154,7 +152,7 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function parseArgs(argv) {
+export function parseReviewArgs(argv) {
   const result = { check: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -162,6 +160,7 @@ function parseArgs(argv) {
     else if (argument === '--chatgpt-dir') result.chatgptDir = argv[++index];
     else if (argument === '--claude-json') result.claudeJson = argv[++index];
     else if (argument === '--categories') result.categories = argv[++index];
+    else if (argument === '--review-output') result.reviewOutput = argv[++index];
     else throw new Error(`Unknown argument: ${argument}`);
   }
   result.chatgptDir ??= process.env.APOCKY_CHATGPT_EXPORT_DIR;
@@ -171,10 +170,79 @@ function parseArgs(argv) {
     ['chatgptDir', '--chatgpt-dir'],
     ['claudeJson', '--claude-json'],
     ['categories', '--categories'],
+    ['reviewOutput', '--review-output'],
   ]) {
     if (typeof result[key] !== 'string' || result[key].length === 0) throw new Error(`Provide ${label}`);
   }
+  result.reviewOutput = assertExternalReviewOutput(result.reviewOutput);
   return result;
+}
+
+function within(parent, candidate) {
+  const suffix = relative(parent, candidate);
+  return suffix === '' || (suffix !== '..' && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix));
+}
+
+export function assertExternalReviewOutput(value) {
+  if (typeof value !== 'string' || value.length === 0) throw new Error('Provide --review-output');
+  const candidate = resolve(value);
+  if (candidate === dirname(candidate)) throw new Error('Conversation review output cannot be a filesystem root');
+  if (within(repositoryRoot, candidate)) {
+    throw new Error('Conversation review output must be outside the repository; public and tracked paths are forbidden');
+  }
+  return candidate;
+}
+
+async function existingPathInfo(path) {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+async function nearestExistingAncestor(path) {
+  let candidate = resolve(path);
+  while (await existingPathInfo(candidate) === undefined) {
+    const parent = dirname(candidate);
+    if (parent === candidate) throw new Error('Conversation review output has no resolvable parent');
+    candidate = parent;
+  }
+  return candidate;
+}
+
+export async function assertCanonicalExternalReviewOutput(value, { create = false } = {}) {
+  const candidate = assertExternalReviewOutput(value);
+  const canonicalRepositoryRoot = await realpath(repositoryRoot);
+  if (create && await existingPathInfo(candidate) === undefined) {
+    const ancestor = await nearestExistingAncestor(candidate);
+    const projectedCandidate = resolve(await realpath(ancestor), relative(ancestor, candidate));
+    if (within(canonicalRepositoryRoot, projectedCandidate)) {
+      throw new Error('Conversation review output would resolve inside the repository; aliases are forbidden');
+    }
+    await mkdir(candidate, { recursive: true });
+  }
+  const candidateInfo = await existingPathInfo(candidate);
+  if (candidateInfo === undefined) throw new Error('Conversation review output must be an existing external directory');
+  if (candidateInfo.isSymbolicLink()) throw new Error('Conversation review output cannot be a symbolic link or junction');
+  if (!candidateInfo.isDirectory()) throw new Error('Conversation review output must be a directory');
+
+  const canonicalCandidate = await realpath(candidate);
+  if (within(canonicalRepositoryRoot, canonicalCandidate)) {
+    throw new Error('Conversation review output resolves inside the repository; aliases are forbidden');
+  }
+  return canonicalCandidate;
+}
+
+async function assertSafeReviewFileTarget(path, reviewOutputRoot) {
+  const candidate = resolve(path);
+  if (!within(reviewOutputRoot, candidate)) throw new Error('Conversation review target escaped the external output root');
+  const canonicalParent = await realpath(dirname(candidate));
+  if (!within(reviewOutputRoot, canonicalParent)) throw new Error('Conversation review target parent resolves outside the external output root');
+  const info = await existingPathInfo(candidate);
+  if (info?.isSymbolicLink()) throw new Error('Conversation review target cannot be a symbolic link or junction');
+  if (info !== undefined && (!info.isFile() || info.nlink > 1)) throw new Error('Conversation review target must be a single-link regular file');
 }
 
 function csvRows(input) {
@@ -892,14 +960,15 @@ function browseSummary(record) {
   };
 }
 
-async function writeOrCheck(path, content, check) {
+async function writeOrCheck(path, content, check, reviewOutputRoot) {
+  if (!check) await mkdir(dirname(path), { recursive: true });
+  await assertSafeReviewFileTarget(path, reviewOutputRoot);
   if (check) {
     let current;
     try { current = await readFile(path, 'utf8'); } catch { current = undefined; }
-    if (current !== content) throw new Error(`Generated conversation corpus is stale: ${path.slice(repositoryRoot.length + 1)}`);
+    if (current !== content) throw new Error(`Generated conversation review corpus is stale: ${relative(reviewOutputRoot, path)}`);
     return;
   }
-  await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, 'utf8');
 }
 
@@ -930,18 +999,31 @@ function validatePublicValue(value, label) {
   visit(value);
 }
 
-async function removeStaleRecords(expected, check) {
+async function removeStaleRecords(expected, check, approvedRecordRoot, reviewOutputRoot) {
+  const rootInfo = await existingPathInfo(approvedRecordRoot);
+  if (rootInfo?.isSymbolicLink() || (rootInfo !== undefined && !rootInfo.isDirectory())) throw new Error('Conversation review approved-records root must be a real directory');
+  if (rootInfo !== undefined) {
+    const canonicalRoot = await realpath(approvedRecordRoot);
+    if (relative(reviewOutputRoot, canonicalRoot) !== 'approved-records') throw new Error('Conversation review approved-records root escaped the external output root');
+  }
   let names = [];
   try { names = await readdir(approvedRecordRoot); } catch { return; }
   const stale = names.filter((name) => /^[a-f0-9]{20}\.json$/u.test(name) && !expected.has(name));
   if (stale.length === 0) return;
-  if (check) throw new Error(`Generated conversation corpus contains ${stale.length} stale records`);
+  if (check) throw new Error(`Generated conversation review corpus contains ${stale.length} stale records`);
   const resolvedRoot = resolve(approvedRecordRoot);
-  if (resolvedRoot !== resolve(repositoryRoot, 'public', 'conversation-corpus', 'approved-records')) throw new Error('Unsafe stale-record root');
-  for (const name of stale) await rm(join(resolvedRoot, name), { force: true });
+  if (!within(reviewOutputRoot, resolvedRoot) || resolvedRoot !== resolve(reviewOutputRoot, 'approved-records')) throw new Error('Unsafe stale-record root');
+  for (const name of stale) {
+    const target = join(resolvedRoot, name);
+    const info = await existingPathInfo(target);
+    if (info?.isSymbolicLink() || (info !== undefined && (!info.isFile() || info.nlink > 1))) throw new Error('Conversation review stale target must be a single-link regular file');
+    await rm(target, { force: true });
+  }
 }
 
-export async function buildCorpus({ chatgptDir, claudeJson, categories: categoryPath, check = false }) {
+export async function buildReviewCorpus({ chatgptDir, claudeJson, categories: categoryPath, reviewOutput, check = false }) {
+  const outputRoot = await assertCanonicalExternalReviewOutput(reviewOutput, { create: !check });
+  const approvedRecordRoot = join(outputRoot, 'approved-records');
   const [categoryBytes, chatgptInfo, claudeInfo] = await Promise.all([
     readFile(categoryPath),
     stat(chatgptDir),
@@ -1041,20 +1123,15 @@ export async function buildCorpus({ chatgptDir, claudeJson, categories: category
   for (const record of approvedRecords) {
     const name = `${record.id}.json`;
     expectedFiles.add(name);
-    await writeOrCheck(join(approvedRecordRoot, name), `${JSON.stringify(record)}\n`, check);
+    await writeOrCheck(join(approvedRecordRoot, name), `${JSON.stringify(record)}\n`, check, outputRoot);
   }
-  await removeStaleRecords(expectedFiles, check);
-  await writeOrCheck(join(outputRoot, 'public-index.v1.json'), `${JSON.stringify(manifest)}\n`, check);
-  await writeOrCheck(join(outputRoot, 'browse.v1.json'), `${JSON.stringify(browseManifest)}\n`, check);
+  await removeStaleRecords(expectedFiles, check, approvedRecordRoot, outputRoot);
+  await writeOrCheck(join(outputRoot, 'public-index.v1.json'), `${JSON.stringify(manifest)}\n`, check, outputRoot);
+  await writeOrCheck(join(outputRoot, 'browse.v1.json'), `${JSON.stringify(browseManifest)}\n`, check, outputRoot);
   return manifest;
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = parseArgs(process.argv.slice(2));
-  buildCorpus(args).then((manifest) => {
-    console.log(`conversation corpus : ${args.check ? 'CURRENT' : 'WROTE'} · ${manifest.counts.uniqueConversations} conversations · ${manifest.counts.messages} messages · ${manifest.counts.redactions} redactions`);
-  }).catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+  console.error('snapshot-conversation-corpus.mjs is implementation-only and cannot write public assets. Use build-conversation-review-corpus.mjs with an explicit external --review-output.');
+  process.exitCode = 1;
 }
