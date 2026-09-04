@@ -1,8 +1,8 @@
 {
   "schema": "apocky.apocrypha-public-changelog.v1",
-  "version": "2026.09.03-candidate.5",
+  "version": "2026.09.03-candidate.6",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:35:00-07:00",
+  "generated_at": "2026-09-03T21:52:31-07:00",
   "project": "Apocrypha",
   "entries": [
     {
@@ -94,6 +94,24 @@
       "kind": "mneme-schema",
       "state": "LIVE_SCHEMA_BOUNDARY_VERIFIED",
       "summary": "The private Mneme substrate now exposes four row-secured tables and thirteen policies; anonymous boundary probes see no rows. Authenticated owner registration and phone-to-desktop data flow remain separate gates."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "routing",
+      "state": "LIVE_FORWARD_REPAIR_VERIFIED",
+      "summary": "The candidate 5 cutover was retained. Repeated probes now resolve the canonical and bare-domain Apocrypha routes plus plan, changelog, and manifest without rolling back."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mobile-mini-brain",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "The missing first-owner path now has an explicit Mneme bootstrap, and the mobile surface has an encrypted local vault, deterministic offline reflection, signed replay-safe synchronization, conflict preservation, and a no-API-cache service worker. Physical-phone and live desktop synchronization remain acceptance gates."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "graphify-native-query",
+      "state": "DIFFERENTIAL_BENCHMARK_PASSED",
+      "summary": "The first Trinity organ now executes a sealed CSSLv3 query policy through a bounded native runtime and emits an inspectable non-authoritative NIL trace. Exact fixed-query parity, morphology retention, policy countertests, startup latency, and rollback were measured; product integration remains open."
     }
   ],
   "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."

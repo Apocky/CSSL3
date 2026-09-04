@@ -2,11 +2,11 @@
   "schema": "apocky.apocrypha-release-source.v1",
   "project": "Apocrypha",
   "track": "local-living",
-  "version": "2026.09.03-candidate.5",
+  "version": "2026.09.03-candidate.6",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:35:00-07:00",
-  "source_revision": "94aad9837c43aac6b8dc1ffc7f8b86d871310656",
-  "summary": "Apocrypha has a measured local living runtime, a live review-held conversation-corpus prototype, and a governed native migration in progress. Candidate 5 records the repaired Mneme storage schema and makes executable CSLv3 to NIL to CSSLv3 behavior a release gate: language text embedded in another runtime no longer counts as a proprietary capability.",
+  "generated_at": "2026-09-03T21:52:31-07:00",
+  "source_revision": "22e73fde3b37c11ca72234798ff83f84e29d7b85",
+  "summary": "Apocrypha candidate 6 keeps the repaired forward route and adds the missing owner-controlled Mneme bootstrap, an encrypted offline Mini Brain, signed replay-safe mobile synchronization, and the first measured Graphify query vertical driven by sealed CSSLv3 policy with an inspectable NIL trace. Physical-phone and phone-to-desktop acceptance remain open and are not represented as complete.",
   "plan": {
     "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
     "principles": [
@@ -19,14 +19,14 @@
       {
         "id": "brain",
         "label": "Personal Brain",
-        "state": "MNEME_SCHEMA_LIVE_OWNER_BOOTSTRAP_ACTIVE",
-        "summary": "The simplified public shell and owner gate are live. The missing Mneme schema is now installed with row-level security and zero anonymous-visible rows; governed owner bootstrap and authenticated mobile synchronization remain active acceptance gates."
+        "state": "MNEME_SCHEMA_LIVE_BOOTSTRAP_IMPLEMENTED_ACCEPTANCE_OPEN",
+        "summary": "The simplified public shell, owner gate, and row-secured Mneme schema are live. Candidate 6 adds an explicit, authenticated, idempotent first-owner bootstrap instead of creating a profile silently; live owner creation and readback remain acceptance gates."
       },
       {
         "id": "mobile-lobe",
         "label": "Mobile mini Brain and desktop sync",
-        "state": "IMPLEMENTATION_ACTIVE_NOT_YET_ACCEPTED",
-        "summary": "The bound design adds an encrypted device-local store, deterministic offline cognition, a signed cursor and outbox protocol, region-isolated failure, and a restricted desktop relay. No end-to-end phone-to-desktop sync claim has been made yet."
+        "state": "COMPONENT_AND_SIMULATED_IOS_CHECKS_PASSED",
+        "summary": "Candidate 6 adds an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Browser, Pixel, and iPhone WebKit checks passed; no physical-phone or end-to-end phone-to-desktop claim has been made."
       },
       {
         "id": "conversation-corpus",
@@ -61,8 +61,8 @@
       {
         "id": "trinity-organs",
         "label": "Trinity-native cognitive organs",
-        "state": "GRAPHIFY_QUERY_VERTICAL_ACTIVE",
-        "summary": "Graphify is the first differential replacement: its current Python launcher failed before query execution, so a read-only native query and path slice is being measured against the preserved Python behavior before the shared kernels extend to Anamnesis, MemPalace, MetaHarness, and 3MNEME."
+        "state": "GRAPHIFY_NATIVE_QUERY_POLICY_MEASURED",
+        "summary": "Graphify is the first differential replacement. A read-only Rust query and path slice preserved exact fixed-query results, retained the Python oracle's morphology results, reduced cold-start cost, and proved that a sealed CSSLv3 policy changes bounded traversal while emitting a non-authoritative NIL trace. Product integration and a self-hosted CSSLv3 compiler remain open."
       },
       {
         "id": "distribution",
@@ -163,6 +163,24 @@
       "kind": "mneme-schema",
       "state": "LIVE_SCHEMA_BOUNDARY_VERIFIED",
       "summary": "The private Mneme substrate now exposes four row-secured tables and thirteen policies; anonymous boundary probes see no rows. Authenticated owner registration and phone-to-desktop data flow remain separate gates."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "routing",
+      "state": "LIVE_FORWARD_REPAIR_VERIFIED",
+      "summary": "The candidate 5 cutover was retained. Repeated probes now resolve the canonical and bare-domain Apocrypha routes plus plan, changelog, and manifest without rolling back."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mobile-mini-brain",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "The missing first-owner path now has an explicit Mneme bootstrap, and the mobile surface has an encrypted local vault, deterministic offline reflection, signed replay-safe synchronization, conflict preservation, and a no-API-cache service worker. Physical-phone and live desktop synchronization remain acceptance gates."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "graphify-native-query",
+      "state": "DIFFERENTIAL_BENCHMARK_PASSED",
+      "summary": "The first Trinity organ now executes a sealed CSSLv3 query policy through a bounded native runtime and emits an inspectable non-authoritative NIL trace. Exact fixed-query parity, morphology retention, policy countertests, startup latency, and rollback were measured; product integration remains open."
     }
   ],
   "build": {
@@ -174,7 +192,7 @@
       "Matched real-turn tokenizer, semantic parity, and native canary proof",
       "Three promoted CSSLv3-authored behaviors under one inspectable NIL graph",
       "Per-organ Graphify, Anamnesis, MemPalace, MetaHarness, and 3MNEME parity and supremacy proof",
-      "Installed mobile offline restart and signed phone-to-desktop synchronization proof",
+      "Physical iPhone install, offline restart, owner bootstrap, and signed phone-to-desktop synchronization proof",
       "Software bill of materials",
       "Verified native artifact signature without placeholder cryptography",
       "Clean Windows install, offline, upgrade, rollback, and uninstall proof",
