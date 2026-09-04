@@ -63,8 +63,16 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
     }),
   }));
 
-  await page.goto('/brain');
+  await page.goto('/');
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.json');
+  await page.getByRole('link', { name: /Open private conversation/i }).click();
+  await expect(page).toHaveURL(/\/apocrypha$/);
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/brain-manifest.json');
+
   await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
+  await expect(page.locator('.apx-diagnostics-opener')).toHaveCount(0);
   await expect(page.getByText('Mneme storage')).toBeVisible();
   await expect(page.getByText('not connected · turns stay queued')).toBeVisible();
   const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
@@ -186,7 +194,20 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
     }),
   }));
 
-  await page.goto('/apocrypha');
+  const onlineDocument = await page.goto('/apocrypha');
+  expect(onlineDocument?.status()).toBe(200);
+  expect(onlineDocument?.headers()['cache-control']).toContain('no-store');
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
+  await expect(page.locator('.apx-diagnostics-opener')).toHaveCount(0);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/brain-manifest.json');
+  const manifestResponse = await page.request.get('/brain-manifest.json');
+  expect(manifestResponse.ok()).toBe(true);
+  expect(await manifestResponse.json()).toMatchObject({
+    id: '/apocrypha',
+    start_url: '/apocrypha?source=installed-mini-brain',
+    scope: '/',
+    display: 'standalone',
+  });
   const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
   await expect(composer).toBeEnabled();
   await composer.fill('What is the smallest reversible move?');
@@ -194,12 +215,40 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
   await expect(page.getByText(/This is a local prompt, not a generated Apocrypha answer/i)).toBeVisible();
 
-  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  const worker = await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.ready;
+    return { scope: registration.scope, scriptURL: registration.active?.scriptURL ?? '' };
+  });
+  expect(new URL(worker.scope).pathname).toBe('/');
+  expect(new URL(worker.scriptURL).pathname).toBe('/brain-sw.js');
   await expect(page.getByText('Offline shell ready')).toBeVisible();
+  if (testInfo.project.name.startsWith('ios-webkit')) {
+    await expect(page.getByText('iPhone: Share → Add to Home Screen')).toBeVisible();
+  } else {
+    await page.evaluate(() => {
+      const prompt = new Event('beforeinstallprompt', { cancelable: true });
+      Object.defineProperties(prompt, {
+        prompt: { value: async () => undefined },
+        userChoice: { value: Promise.resolve({ outcome: 'dismissed', platform: 'web' }) },
+      });
+      window.dispatchEvent(prompt);
+    });
+    const installButton = page.getByRole('button', { name: 'Install Mini Brain' });
+    await expect(installButton).toBeVisible();
+    await installButton.click();
+    await expect(installButton).toHaveCount(0);
+  }
   await page.reload();
   await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   await expect.poll(() => page.evaluate(async () => Boolean(await caches.match('/apocrypha')))).toBe(true);
+  await page.evaluate(async () => { await fetch('/api/brain/snapshot', { cache: 'no-store' }); });
+  const cachedPrivateApiUrls = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const groups = await Promise.all(names.map(async name => (await caches.open(name)).keys()));
+    return groups.flat().map(request => new URL(request.url).pathname).filter(path => path.startsWith('/api/'));
+  });
+  expect(cachedPrivateApiUrls).toEqual([]);
   await context.setOffline(true);
   await page.goto('/apocrypha', { waitUntil: 'domcontentloaded' }).catch((error: unknown) => {
     if (
@@ -217,4 +266,7 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   const a11y = await new AxeBuilder({ page }).analyze();
   expect(a11y.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('mini-brain-offline.png'), fullPage: true });
+  await page.setViewportSize({ width: 320, height: 568 });
+  const minimumWidthOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(minimumWidthOverflow).toBeLessThanOrEqual(1);
 });

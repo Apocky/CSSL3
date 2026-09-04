@@ -116,7 +116,7 @@ async function run(): Promise<void> {
   assert.match(detailSource, /aria-label=\{`\$\{block\.role\} message`\}/, 'transcript turns must retain role semantics');
   assert.match(detailSource, /availability unverified|may be unavailable/, 'original links must disclose uncertainty');
   assert.match(shellSource, /href: '\/akashic-records'/, 'global navigation must expose the archive');
-  assert.match(homeSource, /title: 'Akashic Records'/, 'homepage must expose the archive');
+  assert.match(homeSource, /href: '\/akashic-records'/, 'homepage must expose the archive route');
   assert.match(docsDetailSource, /spec\.slug === '18_AKASHIC_RECORDS'/, 'legacy qualifier must target only the existing technical document');
   assert.match(
     docsDetailSource,

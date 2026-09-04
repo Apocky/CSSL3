@@ -1,5 +1,5 @@
-// _document.tsx · sets html-level background-color so mobile-PWAs never see white-flash
-// before page-CSS hydrates. Also injects the manifest + theme-color baseline.
+// _document.tsx · sets html-level background-color so mobile PWAs never see a
+// white flash before page CSS hydrates. Route-aware manifest metadata lives in _app.
 
 import Document, {
   Html,
@@ -27,13 +27,6 @@ export default class ApockyDocument extends Document<DocumentProps> {
     return (
       <Html lang="en" style={{ backgroundColor: '#000000' }}>
         <Head nonce={nonce}>
-          <link rel="manifest" href="/manifest.json" />
-          <meta name="application-name" content="Apocky" />
-          <meta name="theme-color" content="#000000" />
-          <meta name="mobile-web-app-capable" content="yes" />
-          <meta name="apple-mobile-web-app-capable" content="yes" />
-          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-          <meta name="apple-mobile-web-app-title" content="Apocky" />
           <meta name="msapplication-TileColor" content="#000000" />
           <meta name="msapplication-TileImage" content="/icons/apocky-v3-192.png" />
           <meta name="format-detection" content="telephone=no" />

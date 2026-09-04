@@ -4,6 +4,7 @@ const port = 3194;
 const localBaseURL = `http://127.0.0.1:${port}`;
 const externalBaseURL = process.env.APOCKY_E2E_BASE_URL?.replace(/\/$/, '');
 const baseURL = externalBaseURL ?? localBaseURL;
+const ownerBrainFixtureEnabled = process.env.BRAIN_E2E_OWNER === '1';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -46,6 +47,12 @@ export default defineConfig({
           ...process.env,
           NEXT_PUBLIC_SUPABASE_URL: `${localBaseURL}/fake-supabase`,
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'public-test-key-not-a-secret',
+          // The owner Brain matrix is opt-in and runs only against this local
+          // development server. Production ignores the test identity header.
+          ...(ownerBrainFixtureEnabled ? {
+            LAZARUS_TEST_AUTH_BYPASS: '1',
+            APOCKY_ADMIN_EMAILS: 'owner@example.com',
+          } : {}),
         },
         reuseExistingServer: false,
         timeout: 120_000,

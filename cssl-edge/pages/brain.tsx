@@ -33,6 +33,7 @@ const BrainPage: NextPage<BrainPageProps> = ({ serverAccess }) => (
     <Head>
       <title>Private Brain · Apocky</title>
       <meta name="description" content="Owner-private conversation, contextual recall, and source-linked memory exploration." />
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#03040c" />

@@ -26,6 +26,11 @@
 .gate,
 .gate * { box-sizing: border-box; }
 
+.brain {
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
 .brain button,
 .brain input,
 .brain textarea,
@@ -52,7 +57,7 @@
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 20px;
-  padding: 10px clamp(16px, 3vw, 42px);
+  padding: calc(10px + env(safe-area-inset-top, 0px)) clamp(16px, 3vw, 42px) 10px;
   border-bottom: 1px solid var(--line);
   background: rgba(3, 4, 12, 0.88);
   backdrop-filter: blur(22px);
@@ -592,7 +597,11 @@
   display: grid;
   place-content: center;
   justify-items: center;
-  padding: 32px;
+  padding:
+    max(32px, env(safe-area-inset-top, 0px))
+    max(32px, env(safe-area-inset-right, 0px))
+    max(32px, env(safe-area-inset-bottom, 0px))
+    max(32px, env(safe-area-inset-left, 0px));
   text-align: center;
 }
 .gate > p { margin: 0 0 14px; color: var(--indigo); font: 750 0.68rem/1.2 ui-monospace, monospace; letter-spacing: 0.14em; }
@@ -613,7 +622,7 @@
 }
 
 @media (max-width: 640px) {
-  .header { position: relative; min-height: 64px; grid-template-columns: 1fr auto; padding: 9px 12px; }
+  .header { position: relative; min-height: 64px; grid-template-columns: 1fr auto; padding: calc(9px + env(safe-area-inset-top, 0px)) 12px 9px; }
   .header > div { order: -1; text-align: left; }
   .brand { justify-self: end; }
   .brand strong { display: none; }

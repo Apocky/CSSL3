@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const read = (path: string): string => readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -14,6 +14,8 @@ const runtimeProxy = read('lib/apocv4/runtime-proxy.ts');
 const middleware = read('middleware.ts');
 const telemetry = read('lib/akashic-telemetry/client.ts');
 const app = read('pages/_app.tsx');
+const document = read('pages/_document.tsx');
+const consent = read('components/AkashicConsent.tsx');
 const home = read('pages/index.tsx');
 const shell = read('components/SiteShell.tsx');
 const miniBrain = read('lib/brain/mini-brain.ts');
@@ -22,11 +24,17 @@ const mobileSync = read('pages/api/brain/mobile/sync.ts');
 const mnemeBootstrap = read('pages/api/brain/mneme/bootstrap.ts');
 const brainManifest = JSON.parse(read('public/brain-manifest.json')) as Record<string, unknown>;
 const brainWorker = read('public/brain-sw.js');
+const brainStyles = read('components/brain/BrainExperience.module.css');
+const vercelConfig = JSON.parse(read('vercel.json')) as {
+  headers?: Array<{ source?: string; headers?: Array<{ key?: string; value?: string }> }>;
+};
+const playwrightConfig = read('playwright.config.ts');
 
 assert.match(page, /getServerSideProps/, 'Brain page must authorize before render');
 assert.match(page, /requireBrainOwner/, 'Brain page must use the owner allowlist boundary');
 assert.match(page, /private, no-store/, 'Brain document must be private and non-cacheable');
 assert.match(page, /noindex,nofollow,noarchive,nosnippet/, 'Brain page must be crawler-dark');
+assert.match(page, /viewport-fit=cover/, 'Brain page must expose iOS safe areas to its installed layout');
 assert.match(apocryphaPage, /getServerSideProps/, 'primary Apocrypha page must authorize before render');
 assert.match(apocryphaPage, /requireBrainOwner/, 'primary Apocrypha page must use the same owner allowlist boundary');
 assert.match(apocryphaPage, /<BrainExperience serverAccess=\{serverAccess\} \/>/, 'primary route must render the existing Brain experience');
@@ -34,6 +42,7 @@ assert.match(apocryphaPage, /<title>Apocrypha · Apocky<\/title>/, 'primary rout
 assert.match(apocryphaPage, /Persistent owner-private Apocrypha conversation/, 'primary route must describe its private conversation honestly');
 assert.match(apocryphaPage, /private, no-store/, 'primary Apocrypha document must be private and non-cacheable');
 assert.match(apocryphaPage, /noindex,nofollow,noarchive,nosnippet/, 'primary Apocrypha page must be crawler-dark');
+assert.match(apocryphaPage, /viewport-fit=cover/, 'primary Apocrypha page must expose iOS safe areas to its installed layout');
 assert.match(apocryphaPage, /destination: '\/login\?next=%2Fapocrypha'/, 'sign-in must return to the primary Apocrypha route');
 assert.match(apocryphaPage, /apple-mobile-web-app-capable" content="yes"/, 'primary route must opt into the iOS installed surface');
 assert.match(owner, /getAdminAuthorization/, 'Brain APIs must derive authority from the server session');
@@ -56,7 +65,10 @@ assert.match(middleware, /request\.nextUrl\.pathname === '\/brain'/, 'middleware
 assert.match(middleware, /request\.nextUrl\.pathname === '\/apocrypha'/, 'middleware must recognize the primary private alias');
 assert.match(telemetry, /pathname === '\/brain'/, 'private page must be a telemetry blackout');
 assert.match(telemetry, /pathname === '\/apocrypha'/, 'primary private alias must be a telemetry blackout');
+assert.match(consent, /if \(blackout \|\| compactSurface\) return null/, 'telemetry-blackout pages must not receive a fixed diagnostics control over the private PWA');
 assert.match(app, /pathname === '\/apocrypha'/, 'primary private alias must render without the public site shell');
+assert.match(app, /privateBrainSurface[\s\S]*?href="\/manifest\.json"/, 'the public manifest must be route-aware across client navigation');
+assert.doesNotMatch(document, /rel="manifest"/, 'the fixed document head must not pin the public manifest onto the private PWA');
 assert.match(home, /access === 'owner'[\s\S]*?href: '\/apocrypha'/, 'home must send owner access to the primary Apocrypha route');
 assert.match(home, /href: authenticated \? '\/apocrypha' : '\/login\?next=%2Fapocrypha'/, 'home sign-in must return to the primary route');
 assert.match(shell, /access === 'owner'.*href="\/apocrypha"/, 'shell must reveal the primary route only after owner authorization');
@@ -80,8 +92,35 @@ assert.match(mnemeBootstrap, /BRAIN_MNEME_PROFILE_BINDING_MISMATCH/, 'profile bo
 assert.doesNotMatch(mnemeBootstrap, /profile_id:/, 'profile bootstrap must not return the opaque profile id');
 assert.equal(brainManifest.id, '/apocrypha', 'installed Mini Brain identity is the private primary route');
 assert.equal(brainManifest.start_url, '/apocrypha?source=installed-mini-brain', 'installed Mini Brain opens the private route');
+assert.equal(brainManifest.scope, '/', 'installed Mini Brain scope must cover its primary route and immutable assets');
+assert.equal(brainManifest.display, 'standalone', 'installed Mini Brain must expose a standalone PWA display mode');
+const brainIcons = brainManifest.icons as Array<Record<string, unknown>>;
+for (const [size, purpose] of [['192x192', 'any'], ['512x512', 'any'], ['192x192', 'maskable'], ['512x512', 'maskable']] as const) {
+  const icon = brainIcons.find(candidate => candidate.sizes === size && candidate.purpose === purpose);
+  assert(icon, `manifest needs a ${size} ${purpose} icon`);
+  const relativePath = String(icon.src).replace(/^\//u, '');
+  const iconPath = resolve(process.cwd(), 'public', relativePath);
+  assert(existsSync(iconPath), `manifest icon is missing: ${relativePath}`);
+  const bytes = readFileSync(iconPath);
+  assert.equal(bytes.subarray(1, 4).toString('ascii'), 'PNG', `${relativePath} must be a PNG`);
+  const [expectedWidth, expectedHeight] = size.split('x').map(Number);
+  assert.equal(bytes.readUInt32BE(16), expectedWidth, `${relativePath} width drifted`);
+  assert.equal(bytes.readUInt32BE(20), expectedHeight, `${relativePath} height drifted`);
+}
 assert.match(brainWorker, /url\.pathname\.startsWith\('\/api\/'\)\) return/, 'service worker must never cache private API responses');
 assert.match(brainWorker, /url\.pathname === '\/apocrypha'/, 'service worker may cache only the private route shell');
 assert.doesNotMatch(brainWorker, /clients\.claim/, 'service worker must not seize the first owner page before its authenticated requests complete');
+assert(
+  brainWorker.indexOf("url.pathname.startsWith('/api/')") < brainWorker.indexOf('event.respondWith'),
+  'private API requests must exit before any service-worker response or cache path',
+);
+assert.match(experience, /iPhone: Share → Add to Home Screen/, 'iOS needs truthful manual installation guidance');
+for (const inset of ['top', 'right', 'bottom', 'left']) {
+  assert.match(brainStyles, new RegExp(`safe-area-inset-${inset}`), `installed layout must account for the ${inset} safe-area inset`);
+}
+const workerHeaders = vercelConfig.headers?.find(entry => entry.source === '/brain-sw.js')?.headers ?? [];
+assert(workerHeaders.some(header => header.key === 'Service-Worker-Allowed' && header.value === '/'), 'deployed worker must retain root-scope permission');
+assert.match(playwrightConfig, /process\.env\.BRAIN_E2E_OWNER === '1'/, 'owner browser fixtures must remain explicitly opt-in');
+assert.match(playwrightConfig, /ownerBrainFixtureEnabled[\s\S]*?LAZARUS_TEST_AUTH_BYPASS: '1'[\s\S]*?APOCKY_ADMIN_EMAILS: 'owner@example\.com'/, 'the local owner matrix must cross both the test-auth and owner-allowlist boundaries');
 
-console.log('brain-page.test : OK · owner gate + private projections + encrypted Mini Brain + signed sync seam');
+console.log('brain-page.test : OK · owner gate + private projections + installable encrypted Mini Brain + signed sync seam');

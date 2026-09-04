@@ -7,6 +7,7 @@
 // the ErrorBoundary catches any spore-fall in any branch · the Records remember.
 
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import 'katex/dist/katex.min.css';
@@ -184,8 +185,20 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
   }, [router.events]);
 
   const bare = isBare(router.pathname);
+  const privateBrainSurface = router.pathname === '/apocrypha' || router.pathname === '/brain';
   const content = (
     <>
+      {!privateBrainSurface ? (
+        <Head>
+          <link key="apocky-manifest" rel="manifest" href="/manifest.json" />
+          <meta name="application-name" content="Apocky" />
+          <meta name="theme-color" content="#000000" />
+          <meta name="mobile-web-app-capable" content="yes" />
+          <meta name="apple-mobile-web-app-capable" content="yes" />
+          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+          <meta name="apple-mobile-web-app-title" content="Apocky" />
+        </Head>
+      ) : null}
       <AkashicConsent />
       {bare ? (
         <Component {...pageProps} />
