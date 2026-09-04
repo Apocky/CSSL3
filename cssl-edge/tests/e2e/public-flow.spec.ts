@@ -46,6 +46,13 @@ test('Atlas resolves as the native public map rather than the static fallback', 
   await expectNoSeriousAccessibilityFindings(page);
 });
 
+test('Conversation Constellations remains readable at every supported viewport', async ({ page }) => {
+  await page.goto('/conversations');
+  await expect(page.getByRole('heading', { level: 1, name: /Conversation Constellations/i })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectNoSeriousAccessibilityFindings(page);
+});
+
 test('ordinary applications remain reachable while retired web paths are neutral 404s', async ({ request }) => {
   for (const route of ['/clearing', '/account', '/atlas', '/start', '/quests', '/status', '/membership', '/divination', '/theory-of-everything']) {
     const response = await request.get(route);
