@@ -1,8 +1,8 @@
 {
   "schema": "apocky.apocrypha-public-changelog.v1",
-  "version": "2026.09.03-candidate.2",
+  "version": "2026.09.03-candidate.3",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T20:20:00-07:00",
+  "generated_at": "2026-09-03T21:02:16-07:00",
   "project": "Apocrypha",
   "entries": [
     {
@@ -38,8 +38,26 @@
     {
       "at": "2026-09-03",
       "kind": "native-substrate",
-      "state": "IMPLEMENTATION_ACTIVE",
-      "summary": "The migration contract now binds CSLv3 semantics, a NIL timing graph, CSSLv3 compiled kernels, and meet-or-exceed promotion gates."
+      "state": "RUST_SHADOW_BENCHMARKED",
+      "summary": "The migration contract now binds CSLv3 semantics, a NIL timing graph, CSSLv3 compiled kernels, and meet-or-exceed promotion gates; the first deterministic Rust context shadow passed its focused tests and microbenchmark."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "public-shell",
+      "state": "LIVE_VERIFIED",
+      "summary": "The simplified Apocky home, owner-gated Apocrypha route, Atlas, conversation constellations, and new icon family were promoted and exercised across desktop, Pixel, and iPhone viewports."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "conversation-corpus",
+      "state": "REVIEW_HELD_PROTOTYPE_LIVE",
+      "summary": "The corpus prototype reports 1,386 held conversations and 19,479 messages through aggregate and curated projections while raw bodies and unreviewed detail remain unpublished."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "accessibility",
+      "state": "LIVE_VERIFIED",
+      "summary": "Muted text contrast was raised and the live conversation surface passed accessibility and overflow checks on desktop, Pixel, and iPhone viewports."
     },
     {
       "at": "2026-09-03",

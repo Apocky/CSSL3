@@ -2,11 +2,11 @@
   "schema": "apocky.apocrypha-release-source.v1",
   "project": "Apocrypha",
   "track": "local-living",
-  "version": "2026.09.03-candidate.2",
+  "version": "2026.09.03-candidate.3",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T20:20:00-07:00",
-  "source_revision": "44103bd59f3f341e05df5b07905f5517c192bc86",
-  "summary": "Apocrypha now has a measured local living runtime, an owner-gated conversation and memory surface, bounded causal interoception, and a held migration package while the compiled native core is built and proven.",
+  "generated_at": "2026-09-03T21:02:16-07:00",
+  "source_revision": "729ffd942dce32fa120efb5bafe298e855fcbcba",
+  "summary": "Apocrypha now has a measured local living runtime, an owner-gated conversation and memory surface, a live review-held conversation-corpus prototype, bounded causal interoception, and a measured Rust context-compiler shadow while the CSSLv3-native core is built and proven.",
   "plan": {
     "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
     "principles": [
@@ -19,8 +19,14 @@
       {
         "id": "brain",
         "label": "Personal Brain",
-        "state": "LOCAL_RUNTIME_CHECKS_PASSED",
-        "summary": "Owner-private conversation, source-linked memory exploration, and the local living runtime have passed focused checks; the website route is promoted only after direct production observation."
+        "state": "PUBLIC_SHELL_LIVE_OWNER_ROUTE_GATED",
+        "summary": "The simplified public shell is live while the persistent Apocrypha conversation remains owner-gated; the local living runtime and source-linked memory surfaces retain separate runtime acceptance gates."
+      },
+      {
+        "id": "conversation-corpus",
+        "label": "Conversation constellations",
+        "state": "REVIEW_HELD_PROTOTYPE_LIVE",
+        "summary": "A privacy-safe aggregate exposes corpus scale and curated constellations without publishing raw conversation bodies; every held record remains unavailable until individual review and approval."
       },
       {
         "id": "humanity",
@@ -37,8 +43,8 @@
       {
         "id": "native-core",
         "label": "CSL, NIL, and CSSL native core",
-        "state": "IMPLEMENTATION_ACTIVE",
-        "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target; Python remains a sealed rollback until parity and latency gates pass."
+        "state": "RUST_SHADOW_BENCHMARKED",
+        "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target; a deterministic Rust bootstrap now compiles the bounded fixture while tokenizer, real-turn semantic parity, and live latency gates remain open."
       },
       {
         "id": "distribution",
@@ -83,8 +89,26 @@
     {
       "at": "2026-09-03",
       "kind": "native-substrate",
-      "state": "IMPLEMENTATION_ACTIVE",
-      "summary": "The migration contract now binds CSLv3 semantics, a NIL timing graph, CSSLv3 compiled kernels, and meet-or-exceed promotion gates."
+      "state": "RUST_SHADOW_BENCHMARKED",
+      "summary": "The migration contract now binds CSLv3 semantics, a NIL timing graph, CSSLv3 compiled kernels, and meet-or-exceed promotion gates; the first deterministic Rust context shadow passed its focused tests and microbenchmark."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "public-shell",
+      "state": "LIVE_VERIFIED",
+      "summary": "The simplified Apocky home, owner-gated Apocrypha route, Atlas, conversation constellations, and new icon family were promoted and exercised across desktop, Pixel, and iPhone viewports."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "conversation-corpus",
+      "state": "REVIEW_HELD_PROTOTYPE_LIVE",
+      "summary": "The corpus prototype reports 1,386 held conversations and 19,479 messages through aggregate and curated projections while raw bodies and unreviewed detail remain unpublished."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "accessibility",
+      "state": "LIVE_VERIFIED",
+      "summary": "Muted text contrast was raised and the live conversation surface passed accessibility and overflow checks on desktop, Pixel, and iPhone viewports."
     },
     {
       "at": "2026-09-03",
@@ -95,10 +119,11 @@
   ],
   "build": {
     "state": "CANDIDATE",
-    "verification": "FOCUSED_COMPONENT_AND_LOCAL_RUNTIME_CHECKS_NOT_RELEASE_ACCEPTANCE",
+    "verification": "PUBLIC_FLOW_AND_NATIVE_SHADOW_CHECKS_NOT_RELEASE_ACCEPTANCE",
     "release_gate": "CLOSED",
     "missing": [
       "Promoted native installer or portable package",
+      "Matched real-turn tokenizer, semantic parity, and native canary proof",
       "Software bill of materials",
       "Verified native artifact signature without placeholder cryptography",
       "Clean Windows install, offline, upgrade, rollback, and uninstall proof",
