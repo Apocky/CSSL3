@@ -65,10 +65,10 @@ function isAvailability(value: string | undefined): value is PublicSurfaceAvaila
   return AVAILABILITY_OPTIONS.some(([availability]) => availability === value);
 }
 
-function DestinationLink({ node, className }: { node: PublicSurfaceNode; className?: string }): JSX.Element {
+function DestinationLink({ node, className, labelClassName }: { node: PublicSurfaceNode; className?: string; labelClassName?: string }): JSX.Element {
   const contents = (
     <>
-      {node.action}
+      {labelClassName ? <span className={labelClassName}>{node.action}</span> : node.action}
       <span aria-hidden="true"> {node.external ? '↗' : '→'}</span>
       {node.external ? <span className={styles.srOnly}> (opens in a new tab)</span> : null}
     </>
@@ -240,26 +240,6 @@ function MapView({
           </svg>
         </div>
         <p className={styles.mapPanHint}>Swipe or drag the starfield to scan it. Every destination is also listed below.</p>
-
-        <div className={styles.mapKey}>
-          <p className={styles.microcopy}>Readable map key</p>
-          <ul aria-label="Atlas destinations">
-            {nodes.map((node) => (
-              <li key={node.id} data-selected={node.id === selected.id ? 'true' : undefined}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(node.id)}
-                  aria-pressed={node.id === selected.id}
-                  data-testid={`atlas-node-${node.id}`}
-                >
-                  <span>{node.title}</span>
-                  <small>{PUBLIC_SURFACE_KIND_LABELS[node.kind]}</small>
-                </button>
-                <DestinationLink node={node} className={styles.mapKeyLink} />
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
 
       <article className={styles.detailCard} aria-live="polite" aria-atomic="true" data-testid="atlas-selection">
@@ -270,7 +250,7 @@ function MapView({
         <CoordinateList node={selected} />
 
         <section className={styles.relations} aria-labelledby="selected-relations-title">
-          <h3 id="selected-relations-title">Visible relationships</h3>
+          <h3 id="selected-relations-title">Visible relationships ({relations.length})</h3>
           <ul>
             {relations.map((relation) => (
               <li key={`${relation.source}-${relation.target}`}>
@@ -289,6 +269,27 @@ function MapView({
         ) : null}
         <DestinationLink node={selected} className={styles.primaryLink} />
       </article>
+
+      {/* Sibling of the stage so the grid can place it under the map on wide screens and after the detail card on narrow ones. */}
+      <div className={styles.mapKey}>
+        <p className={styles.microcopy}>Readable map key</p>
+        <ul aria-label="Atlas destinations">
+          {nodes.map((node) => (
+            <li key={node.id} data-selected={node.id === selected.id ? 'true' : undefined}>
+              <button
+                type="button"
+                onClick={() => onSelect(node.id)}
+                aria-pressed={node.id === selected.id}
+                data-testid={`atlas-node-${node.id}`}
+              >
+                <span>{node.title}</span>
+                <small>{PUBLIC_SURFACE_KIND_LABELS[node.kind]}</small>
+              </button>
+              <DestinationLink node={node} className={styles.mapKeyLink} labelClassName={styles.mapKeyLinkText} />
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

@@ -124,7 +124,7 @@ const Membership: NextPage = () => {
                 These public paths remain available whether or not you pay.
               </p>
             </div>
-            <div className={styles.grid4}>
+            <div className={styles.grid3}>
               <article className={styles.card}>
                 <h3>Map the system</h3>
                 <p>Navigate projects, concepts, and relationships in the Constellation Atlas.</p>

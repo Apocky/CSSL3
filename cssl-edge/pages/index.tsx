@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { useSiteSession } from '../components/hub/SiteSession';
+import HomeVisual from '../components/home/HomeVisual';
+import sections from '../components/home/HomeSections.module.css';
 import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
 import { normalizeAuthReturnPath } from '../lib/auth-return';
 import { apocryphaRelease } from '../lib/brain/release-manifest';
@@ -139,7 +141,10 @@ const Home: NextPage = () => {
       <main className="apx-home apx-home-landing">
         <section className="apx-home-stage" aria-labelledby="hero-title">
           <div className="apx-home-intro">
-            <p className="apx-home-identity">SHAWN APOCKY · A LIVING CREATIVE SYSTEM</p>
+            <div className={sections.lockup}>
+              <HomeVisual variant="compact" />
+              <p className={`apx-home-identity ${sections.identity}`}>SHAWN APOCKY · A LIVING CREATIVE SYSTEM</p>
+            </div>
             <h1 id="hero-title">Strange questions.<br /><span className="apx-gradient-word">Useful ways through.</span></h1>
             <p className="apx-home-value">
               Apocky connects conversation, symbolic tools, public memory, games, and cosmology without asking you to understand the whole machine first.
@@ -148,10 +153,7 @@ const Home: NextPage = () => {
             <p className="apx-auth-message" aria-live="polite" hidden={!authNotice}>{authNotice}</p>
           </div>
 
-          <div className="apx-home-mark" aria-hidden="true">
-            <img src="/icons/apocky-v3-512.png" width="512" height="512" alt="" />
-            <span>ONE SYSTEM · MANY WAYS IN</span>
-          </div>
+          <HomeVisual />
 
           <nav className="apx-home-gateways" aria-label="Three ways into Apocky">
             {gateways.map((gateway) => {
@@ -174,8 +176,8 @@ const Home: NextPage = () => {
           <div><span>BUILD</span><strong>{release?.release_label ?? 'Evidence unavailable'}</strong></div>
           <div><span>VERSION</span><strong>{release?.version ?? 'Unverified'}</strong></div>
           <nav aria-label="Evidence links">
-            <Link href="/status">Current status</Link>
-            <a href="/releases/apocrypha-living/manifest.json">Build manifest</a>
+            <Link className={sections.textLink} href="/status">Current status</Link>
+            <a className={sections.textLink} href="/releases/apocrypha-living/manifest.json">Build manifest</a>
           </nav>
         </section>
 
@@ -194,8 +196,8 @@ const Home: NextPage = () => {
               <div><p>OPTIONAL SUPPORT</p><h2 id="home-support-title">Help the work keep growing.</h2></div>
               <p>If Apocky gives you something useful and you want more of it, membership or a direct contribution funds the next careful release.</p>
               <div>
-                <Link href="/membership">See support options →</Link>
-                {koFi ? <a href={koFi.href} target="_blank" rel="noopener noreferrer">Contribute on Ko-fi ↗</a> : null}
+                <Link className={sections.textLink} href="/membership">See support options →</Link>
+                {koFi ? <a className={sections.textLink} href={koFi.href} target="_blank" rel="noopener noreferrer">Contribute on Ko-fi ↗</a> : null}
               </div>
             </aside>
           </div>
