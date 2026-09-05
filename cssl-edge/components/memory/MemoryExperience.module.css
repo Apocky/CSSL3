@@ -21,7 +21,7 @@
 .layerSection,
 .conversationSection,
 .privateSection {
-  margin-top: clamp(66px, 9vw, 112px);
+  margin-top: var(--apx-section-gap);
   padding-top: clamp(48px, 6vw, 74px);
   border-top: 1px solid var(--apx-line);
   scroll-margin-top: 110px;
@@ -59,7 +59,7 @@
   max-width: 14ch;
   margin: 0;
   font-family: var(--apx-display);
-  font-size: clamp(2rem, 5vw, 4rem);
+  font-size: var(--apx-fs-h2);
   font-weight: 620;
   letter-spacing: -0.045em;
   line-height: 1;
@@ -79,7 +79,7 @@
 
 .taskGrid > a {
   display: grid;
-  min-height: 160px;
+  min-height: 120px;
   align-content: center;
   gap: 9px;
   border: 1px solid rgba(145, 159, 255, 0.26);

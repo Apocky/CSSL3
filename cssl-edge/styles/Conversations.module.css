@@ -41,7 +41,7 @@
   max-width: 850px;
   margin: 0;
   font-family: var(--apx-display);
-  font-size: clamp(3.2rem, 8.5vw, 7.7rem);
+  font-size: var(--apx-fs-h1);
   font-weight: 610;
   letter-spacing: -0.065em;
   line-height: 0.88;
@@ -60,7 +60,7 @@
   max-width: 45ch;
   margin: 0;
   color: #c0c8eb;
-  font-size: clamp(1.04rem, 2vw, 1.22rem);
+  font-size: clamp(1rem, 1.2vw, 1.1rem);
   line-height: 1.68;
 }
 
@@ -123,7 +123,7 @@
 .cta h2 {
   margin: 0;
   font-family: var(--apx-display);
-  font-size: clamp(1.85rem, 4vw, 3.25rem);
+  font-size: var(--apx-fs-h2);
   font-weight: 620;
   letter-spacing: -0.035em;
   line-height: 1.04;
@@ -141,7 +141,7 @@
 .archiveMap,
 .explorer,
 .cta {
-  margin-top: clamp(52px, 8vw, 96px);
+  margin-top: var(--apx-section-gap);
 }
 
 .sectionHeading {
@@ -161,7 +161,7 @@
 
 .quickGrid button {
   display: flex;
-  min-height: 172px;
+  min-height: 120px;
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
@@ -227,7 +227,7 @@
   margin-top: 10px;
   color: #f8f8ff;
   font-family: var(--apx-display);
-  font-size: clamp(2.1rem, 4vw, 3.4rem);
+  font-size: var(--apx-fs-h2);
   font-weight: 620;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -484,7 +484,7 @@
 }
 
 .lensContent {
-  min-height: 166px;
+  min-height: 116px;
   border-top: 1px solid rgba(122, 138, 204, 0.18);
   padding-top: 20px;
 }
@@ -645,7 +645,7 @@
 }
 
 .corpusSection {
-  padding: clamp(30px, 6vw, 64px);
+  padding: clamp(20px, 3vw, 32px);
   border: 1px solid rgba(91, 116, 226, 0.28);
   border-radius: 24px;
   background:
@@ -817,7 +817,7 @@
   }
 
   .hero h1 {
-    font-size: clamp(3rem, 16vw, 5.2rem);
+    font-size: clamp(2.2rem, 9vw, 3rem);
   }
 
   .results {
