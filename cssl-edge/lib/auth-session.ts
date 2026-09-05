@@ -1,4 +1,5 @@
 import type { NextApiRequest } from 'next';
+import { authFenceCookieNames, freshLogoutFence } from './auth-fence';
 
 const MAX_SESSION_SECONDS = 60 * 60;
 
@@ -50,22 +51,36 @@ export function jwtLifetimeSeconds(token: string, nowMs = Date.now()): number | 
   }
 }
 
-export function sessionCookies(token: string, maxAge: number, production: boolean): string[] {
+export function sessionCookies(token: string, maxAge: number, production: boolean, sessionBinding: string): string[] {
   const secure = production ? '; Secure' : '';
   const activeName = production ? '__Host-apocky-access-token' : 'apocky-access-token';
   const alternateName = production ? 'apocky-access-token' : '__Host-apocky-access-token';
+  const bindingNames = authFenceCookieNames(production);
+  const alternateBindingName = production ? 'apocky-session-v2' : '__Host-apocky-session-v2';
   return [
     `${activeName}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; HttpOnly${secure}; SameSite=Strict`,
     `${alternateName}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`,
+    `${bindingNames.session}=${encodeURIComponent(sessionBinding)}; Path=/; Max-Age=${30 * 24 * 60 * 60}; HttpOnly${secure}; SameSite=Strict`,
+    `${alternateBindingName}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`,
     'sb-access-token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict',
     'sb-refresh-token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict',
   ];
 }
 
-export function clearedSessionCookies(): string[] {
+export function clearedSessionCookies(
+  production = process.env.NODE_ENV === 'production',
+  nextFence = freshLogoutFence(),
+): string[] {
+  const secure = production ? '; Secure' : '';
+  const fenceNames = authFenceCookieNames(production);
+  const alternateFenceName = production ? 'apocky-logout-v1' : '__Host-apocky-logout-v1';
   return [
     '__Host-apocky-access-token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict',
     'apocky-access-token=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict',
+    '__Host-apocky-session-v2=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict',
+    'apocky-session-v2=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict',
+    `${fenceNames.fence}=${encodeURIComponent(nextFence)}; Path=/; Max-Age=${180 * 24 * 60 * 60}; HttpOnly${secure}; SameSite=Strict`,
+    `${alternateFenceName}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`,
     'sb-access-token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict',
     'sb-refresh-token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict',
   ];

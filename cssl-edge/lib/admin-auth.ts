@@ -1,6 +1,7 @@
 import type { NextApiRequest } from 'next';
 
 import { getAuthClient } from './auth';
+import { authSessionBindingValid, jwtSessionClaims } from './auth-fence';
 
 export interface RequestUser {
   id: string;
@@ -122,6 +123,27 @@ export async function getRequestUser(req: NextApiRequest, timeoutMs = 5000): Pro
       failureKind,
       reason: 'Session invalid or expired · sign in again.',
     };
+  }
+
+  if (process.env.NODE_ENV === 'production' || process.env.APOCKY_AUTH_FENCE_ENFORCE === '1') {
+    const claims = jwtSessionClaims(accessToken);
+    try {
+      if (!claims || !authSessionBindingValid({ req, claims, userId: data.user.id })) {
+        return {
+          user: null,
+          authConfigured: true,
+          failureKind: 'invalid-session',
+          reason: 'Session boundary changed or expired · sign in again.',
+        };
+      }
+    } catch {
+      return {
+        user: null,
+        authConfigured: true,
+        failureKind: 'upstream-unavailable',
+        reason: 'Session boundary verification is unavailable.',
+      };
+    }
   }
 
   return {

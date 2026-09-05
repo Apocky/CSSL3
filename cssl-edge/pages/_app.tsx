@@ -7,6 +7,7 @@
 // the ErrorBoundary catches any spore-fall in any branch · the Records remember.
 
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import 'katex/dist/katex.min.css';
@@ -184,6 +185,7 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
   }, [router.events]);
 
   const bare = isBare(router.pathname);
+  const privateBrainManifest = router.pathname === '/apocrypha' || router.pathname === '/brain';
   const content = (
     <>
       <AkashicConsent />
@@ -197,8 +199,15 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
     </>
   );
   return (
-    <AkashicErrorBoundary>
-      <SiteSessionProvider>{content}</SiteSessionProvider>
-    </AkashicErrorBoundary>
+    <>
+      <Head>
+        <link key="apocky-install-manifest" rel="manifest" href={privateBrainManifest ? '/brain-manifest.json' : '/manifest.json'} />
+        <meta key="apocky-application-name" name="application-name" content={privateBrainManifest ? 'Apocrypha Mini Brain' : 'Apocky'} />
+        <meta key="apocky-apple-title" name="apple-mobile-web-app-title" content={privateBrainManifest ? 'Mini Brain' : 'Apocky'} />
+      </Head>
+      <AkashicErrorBoundary>
+        <SiteSessionProvider>{content}</SiteSessionProvider>
+      </AkashicErrorBoundary>
+    </>
   );
 }

@@ -6,6 +6,258 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let cachedClient: SupabaseClient | null = null;
 
+const AUTH_MUTATION_LOCK = 'apocky-auth-cookie-mutation-v1';
+const AUTH_CALLBACK_PROVIDER_LOCK = 'apocky-auth-callback-provider-v1';
+const AUTH_MUTATION_STATE_KEY = 'apocky.auth-cookie-mutation.v1';
+const AUTH_ATTEMPT_STORAGE_KEY = 'apocky.auth-attempt.v1';
+const AUTH_FENCE_PROTOCOL = 'apocky.auth-fence.v1';
+
+interface BrowserAuthMutationState {
+  readonly schema_version: 'apocky.auth-cookie-mutation.v1';
+  readonly generation: string;
+  readonly phase: 'active' | 'signing-out' | 'signed-out';
+}
+
+interface BrowserAuthMutationRead {
+  readonly available: boolean;
+  readonly state: BrowserAuthMutationState | null;
+}
+
+const AUTH_COOKIE_MIRROR_TIMEOUT_MS = 8_000;
+const AUTH_MUTATION_LOCK_WAIT_MS = 2_000;
+
+export type BrowserAuthAttemptMode = 'fresh' | 'refresh';
+export type AuthSessionMirrorResult =
+  | { readonly status: 'established' }
+  | { readonly status: 'not_established' }
+  | { readonly status: 'commit_uncertain' };
+
+const SESSION_ESTABLISHED: AuthSessionMirrorResult = { status: 'established' };
+const SESSION_NOT_ESTABLISHED: AuthSessionMirrorResult = { status: 'not_established' };
+const SESSION_COMMIT_UNCERTAIN: AuthSessionMirrorResult = { status: 'commit_uncertain' };
+
+interface BrowserAuthAttempt {
+  readonly schema_version: 'apocky.auth-attempt.v1';
+  readonly mode: BrowserAuthAttemptMode;
+  readonly ticket: string;
+  readonly expires_at_ms: number;
+}
+
+function freshAuthGeneration(): string {
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+}
+
+function readAuthMutationState(): BrowserAuthMutationRead {
+  try {
+    const raw = localStorage.getItem(AUTH_MUTATION_STATE_KEY);
+    if (!raw) return { available: true, state: null };
+    const parsed = JSON.parse(raw) as Partial<BrowserAuthMutationState>;
+    const state = parsed.schema_version === 'apocky.auth-cookie-mutation.v1'
+      && typeof parsed.generation === 'string'
+      && ['active', 'signing-out', 'signed-out'].includes(parsed.phase ?? '')
+      ? parsed as BrowserAuthMutationState
+      : null;
+    return state ? { available: true, state } : { available: false, state: null };
+  } catch {
+    return { available: false, state: null };
+  }
+}
+
+function writeAuthMutationState(state: BrowserAuthMutationState): boolean {
+  try {
+    localStorage.setItem(AUTH_MUTATION_STATE_KEY, JSON.stringify(state));
+    const written = readAuthMutationState();
+    return written.available
+      && written.state?.generation === state.generation
+      && written.state.phase === state.phase;
+  } catch {
+    return false;
+  }
+}
+
+interface BrowserAuthLockManager {
+  request<U>(name: string, options: { signal: AbortSignal }, callback: () => Promise<U>): Promise<U>;
+}
+
+function browserAuthLockManager(): BrowserAuthLockManager | null {
+  return (navigator as Navigator & {
+    locks?: BrowserAuthLockManager;
+  }).locks ?? null;
+}
+
+async function requestBrowserAuthMutationLock<T>(
+  lockManager: BrowserAuthLockManager,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let acquired = false;
+  const timer = window.setTimeout(() => {
+    if (!acquired) controller.abort(new DOMException('Timed out waiting for authentication lock', 'TimeoutError'));
+  }, AUTH_MUTATION_LOCK_WAIT_MS);
+  try {
+    return await lockManager.request(AUTH_MUTATION_LOCK, { signal: controller.signal }, async () => {
+      acquired = true;
+      window.clearTimeout(timer);
+      return operation();
+    });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function writeAuthAttempt(attempt: BrowserAuthAttempt): boolean {
+  try {
+    const serialized = JSON.stringify(attempt);
+    sessionStorage.setItem(AUTH_ATTEMPT_STORAGE_KEY, serialized);
+    localStorage.setItem(AUTH_ATTEMPT_STORAGE_KEY, serialized);
+    return sessionStorage.getItem(AUTH_ATTEMPT_STORAGE_KEY) === serialized;
+  } catch {
+    return false;
+  }
+}
+
+function clearAuthAttempt(): void {
+  try { sessionStorage.removeItem(AUTH_ATTEMPT_STORAGE_KEY); } catch { /* unavailable storage cannot retain a reusable ticket */ }
+  try { localStorage.removeItem(AUTH_ATTEMPT_STORAGE_KEY); } catch { /* unavailable storage cannot retain a reusable ticket */ }
+}
+
+function readAuthAttempt(mode: BrowserAuthAttemptMode): BrowserAuthAttempt | null {
+  for (const storage of [typeof sessionStorage === 'undefined' ? null : sessionStorage, typeof localStorage === 'undefined' ? null : localStorage]) {
+    if (!storage) continue;
+    try {
+      const raw = storage.getItem(AUTH_ATTEMPT_STORAGE_KEY);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Partial<BrowserAuthAttempt>;
+      if (
+        parsed.schema_version === 'apocky.auth-attempt.v1'
+        && parsed.mode === mode
+        && typeof parsed.ticket === 'string'
+        && parsed.ticket.length >= 80
+        && parsed.ticket.length <= 8_192
+        && typeof parsed.expires_at_ms === 'number'
+        && Number.isFinite(parsed.expires_at_ms)
+        && parsed.expires_at_ms > Date.now()
+      ) return parsed as BrowserAuthAttempt;
+    } catch { /* try the other browser storage */ }
+  }
+  return null;
+}
+
+function readSharedAuthAttempt(mode: BrowserAuthAttemptMode): BrowserAuthAttempt | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(AUTH_ATTEMPT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BrowserAuthAttempt>;
+    if (
+      parsed.schema_version === 'apocky.auth-attempt.v1'
+      && parsed.mode === mode
+      && typeof parsed.ticket === 'string'
+      && parsed.ticket.length >= 80
+      && parsed.ticket.length <= 8_192
+      && typeof parsed.expires_at_ms === 'number'
+      && Number.isFinite(parsed.expires_at_ms)
+      && parsed.expires_at_ms > Date.now()
+    ) return parsed as BrowserAuthAttempt;
+  } catch { /* unavailable shared storage retains fail-closed cleanup */ }
+  return null;
+}
+
+export function currentAuthenticationAttempt(mode: BrowserAuthAttemptMode): string | null {
+  return readAuthAttempt(mode)?.ticket ?? null;
+}
+
+export async function beginAuthenticationAttempt(mode: BrowserAuthAttemptMode): Promise<string | null> {
+  if (typeof fetch === 'undefined') return null;
+  const lockManager = browserAuthLockManager();
+  if (!lockManager) return null;
+  try {
+    return await requestBrowserAuthMutationLock(lockManager, async () => {
+      const mutation = readAuthMutationState();
+      if (!mutation.available || mutation.state?.phase === 'signing-out') return null;
+      if (mode === 'refresh' && mutation.state?.phase === 'signed-out') return null;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), AUTH_COOKIE_MIRROR_TIMEOUT_MS);
+      try {
+        const response = await fetch('/api/auth/attempt', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+          signal: controller.signal,
+        });
+        if (!response.ok) return null;
+        const payload = await response.json() as Record<string, unknown>;
+        const expiresAtMs = typeof payload.expires_at === 'string' ? Date.parse(payload.expires_at) : Number.NaN;
+        const providerStartDelayMs = typeof payload.provider_start_delay_ms === 'number'
+          ? payload.provider_start_delay_ms
+          : Number.NaN;
+        if (
+          payload.schema_version !== AUTH_FENCE_PROTOCOL
+          || payload.status !== 'ready'
+          || payload.mode !== mode
+          || typeof payload.ticket !== 'string'
+          || payload.ticket.length < 80
+          || payload.ticket.length > 8_192
+          || !Number.isFinite(expiresAtMs)
+          || expiresAtMs <= Date.now()
+          || !Number.isInteger(providerStartDelayMs)
+          || providerStartDelayMs < 0
+          || providerStartDelayMs > 1_000
+        ) return null;
+        const attempt: BrowserAuthAttempt = {
+          schema_version: 'apocky.auth-attempt.v1',
+          mode,
+          ticket: payload.ticket,
+          expires_at_ms: expiresAtMs,
+        };
+        if (!writeAuthAttempt(attempt)) return null;
+        if (providerStartDelayMs > 0) {
+          await new Promise<void>(resolve => window.setTimeout(resolve, providerStartDelayMs));
+        }
+        return attempt.ticket;
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function withBrowserAuthMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+  const lockManager = browserAuthLockManager();
+  if (!lockManager) throw new Error('APOCKY_AUTH_MUTATION_LOCK_UNAVAILABLE');
+  return requestBrowserAuthMutationLock(lockManager, operation);
+}
+
+export function browserAuthMutationAllowsProtectedOpen(): boolean {
+  const read = readAuthMutationState();
+  return read.available && (!read.state || read.state.phase === 'active');
+}
+
+export async function whileBrowserAuthMutationActive(operation: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await withBrowserAuthMutationLock(async () => {
+      const before = readAuthMutationState();
+      if (!before.available || (before.state && before.state.phase !== 'active')) return false;
+      const result = await operation();
+      const after = readAuthMutationState();
+      if (!after.available) return false;
+      const unchanged = before.state
+        ? after.state?.phase === 'active' && after.state.generation === before.state.generation
+        : after.state === null;
+      return result && unchanged;
+    });
+  } catch {
+    return false;
+  }
+}
+
 const DEFAULT_AUTH_ORIGIN = 'https://www.apocky.com';
 const TRUSTED_AUTH_HOSTS = new Set([
   'apocky.com',
@@ -102,20 +354,265 @@ export function getAuthClient(): SupabaseClient | null {
   return cachedClient;
 }
 
+function abortError(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException('Authentication request was cancelled', 'AbortError');
+}
+
+function authFetchBoundTo(signal: AbortSignal): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (signal.aborted) throw abortError(signal);
+    const controller = new AbortController();
+    const inheritedSignal = init?.signal
+      ?? (typeof Request !== 'undefined' && input instanceof Request ? input.signal : null);
+    const abortFromFence = (): void => controller.abort(abortError(signal));
+    const abortFromRequest = (): void => {
+      if (inheritedSignal) controller.abort(abortError(inheritedSignal));
+    };
+    signal.addEventListener('abort', abortFromFence, { once: true });
+    inheritedSignal?.addEventListener('abort', abortFromRequest, { once: true });
+    if (signal.aborted) abortFromFence();
+    else if (inheritedSignal?.aborted) abortFromRequest();
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      signal.removeEventListener('abort', abortFromFence);
+      inheritedSignal?.removeEventListener('abort', abortFromRequest);
+    }
+  }) as typeof fetch;
+}
+
+/**
+ * A callback-scoped client whose provider network work can be cancelled before
+ * auth-js persists a session. The ordinary cached client intentionally remains
+ * separate so a timed-out callback cannot keep mutating its session in the
+ * background after the UI has locked the private Brain and closed auth.
+ */
+export function getAbortableAuthCallbackClient(signal: AbortSignal): SupabaseClient | null {
+  const url = process.env.APOCKY_HUB_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.APOCKY_HUB_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return null;
+  return createClient(url, anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      flowType: 'pkce',
+      // Callback mutations share their own abortable cross-tab lock. Reusing
+      // auth-js's default storage-key lock would contend with the cached client
+      // and trigger its 5s lock-steal path; a no-op lock would let two callback
+      // tabs race writes to the same session storage.
+      lock: async <R>(_name: string, _acquireTimeout: number, operation: () => Promise<R>): Promise<R> => {
+        const lockManager = browserAuthLockManager();
+        if (!lockManager) throw new Error('APOCKY_AUTH_CALLBACK_LOCK_UNAVAILABLE');
+        return lockManager.request(AUTH_CALLBACK_PROVIDER_LOCK, { signal }, operation);
+      },
+    },
+    global: { fetch: authFetchBoundTo(signal) },
+  });
+}
+
 // Ask the same-origin server to validate the bearer and issue a short-lived,
 // HttpOnly session mirror. The refresh token never enters a cookie.
-export async function persistSessionToCookie(accessToken: string): Promise<boolean> {
-  if (typeof fetch === 'undefined') return false;
+export async function persistSessionToCookie(
+  accessToken: string,
+  options: { reauthenticated?: boolean; authAttempt?: string } = {},
+): Promise<AuthSessionMirrorResult> {
+  if (typeof fetch === 'undefined') return SESSION_NOT_ESTABLISHED;
+  const mode: BrowserAuthAttemptMode = options.reauthenticated ? 'fresh' : 'refresh';
+  const authAttempt = options.authAttempt ?? readAuthAttempt(mode)?.ticket ?? null;
+  if (!authAttempt) return SESSION_NOT_ESTABLISHED;
+  const observed = readAuthMutationState();
+  if (
+    !observed.available
+    || observed.state?.phase === 'signing-out'
+    || (!options.reauthenticated && observed.state?.phase === 'signed-out')
+  ) return SESSION_NOT_ESTABLISHED;
+  let requestDispatched = false;
   try {
-    const response = await fetch('/api/auth/session', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-      credentials: 'same-origin',
-      cache: 'no-store',
+    return await withBrowserAuthMutationLock(async () => {
+    const before = readAuthMutationState();
+    if (
+      !before.available
+      || before.state?.phase === 'signing-out'
+      || (!options.reauthenticated && before.state?.phase === 'signed-out')
+    ) return SESSION_NOT_ESTABLISHED;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), AUTH_COOKIE_MIRROR_TIMEOUT_MS);
+    try {
+      requestDispatched = true;
+      const response = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Apocky-Auth-Protocol': AUTH_FENCE_PROTOCOL,
+          'X-Apocky-Auth-Attempt': authAttempt,
+        },
+        credentials: 'same-origin',
+        cache: 'no-store',
+        body: JSON.stringify({ mode }),
+        signal: controller.signal,
+      });
+      if (!response.ok) return SESSION_NOT_ESTABLISHED;
+      const after = readAuthMutationState();
+      if (!after.available) return SESSION_COMMIT_UNCERTAIN;
+      const unchanged = before.state
+        ? after.state?.generation === before.state.generation && after.state.phase === before.state.phase
+        : after.state === null;
+      if (!unchanged) return SESSION_COMMIT_UNCERTAIN;
+      if (options.reauthenticated) {
+        return writeAuthMutationState({
+          schema_version: 'apocky.auth-cookie-mutation.v1',
+          generation: freshAuthGeneration(),
+          phase: 'active',
+        }) ? SESSION_ESTABLISHED : SESSION_COMMIT_UNCERTAIN;
+      }
+      return SESSION_ESTABLISHED;
+    } catch {
+      return requestDispatched ? SESSION_COMMIT_UNCERTAIN : SESSION_NOT_ESTABLISHED;
+    } finally {
+      window.clearTimeout(timeout);
+    }
     });
-    return response.ok;
+  } catch {
+    return requestDispatched ? SESSION_COMMIT_UNCERTAIN : SESSION_NOT_ESTABLISHED;
+  }
+}
+
+export async function withBrowserAuthSignOut<T>(
+  operation: () => Promise<T>,
+  onFenced?: () => Promise<void>,
+): Promise<T> {
+  const generation = freshAuthGeneration();
+  writeAuthMutationState({ schema_version: 'apocky.auth-cookie-mutation.v1', generation, phase: 'signing-out' });
+  clearAuthAttempt();
+  await onFenced?.();
+  const operationWithFinalState = async (): Promise<T> => {
+    try {
+      return await operation();
+    } finally {
+      const current = readAuthMutationState();
+      if (current.available && current.state?.generation === generation) {
+        writeAuthMutationState({ ...current.state, phase: 'signed-out' });
+      }
+    }
+  };
+  const lockManager = browserAuthLockManager();
+  if (!lockManager) return operationWithFinalState();
+  try {
+    return await requestBrowserAuthMutationLock(lockManager, operationWithFinalState);
+  } catch {
+    // signing-out was published before acquisition. If the lock mechanism is
+    // stalled, the abort cancels its queued callback and direct cleanup is safer
+    // than leaving the authenticated browser and server sessions alive.
+    return operationWithFinalState();
+  }
+}
+
+async function boundedAuthenticationCleanup(operation: Promise<boolean>, timeoutMs = 5_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => finish(false), timeoutMs);
+    void operation.then(finish, () => finish(false));
+  });
+}
+
+export async function closeAuthenticationAfterPrivateLockFailure(): Promise<boolean> {
+  const client = getAuthClient();
+  let browserCleared = !client;
+  let serverCleared = false;
+  try {
+    const completed = await boundedAuthenticationCleanup(withBrowserAuthSignOut(async () => {
+      [browserCleared, serverCleared] = await Promise.all([
+        client
+          ? boundedAuthenticationCleanup(client.auth.signOut({ scope: 'local' }).then(result => !result.error))
+          : Promise.resolve(true),
+        boundedAuthenticationCleanup(fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+        }).then(response => response.ok)),
+      ]);
+    }).then(() => true), 14_000);
+    if (!completed) return false;
   } catch {
     return false;
+  }
+  return browserCleared && serverCleared;
+}
+
+export type AuthenticationAttemptCloseResult<T> =
+  | { readonly status: 'closed' | 'failed'; readonly beforeCloseResult?: T }
+  | { readonly status: 'superseded' };
+
+/**
+ * Close an uncertain callback only while its original fresh-auth ticket is
+ * still the globally shared attempt. The ticket comparison, private-state
+ * invalidation, and provider/server cleanup share AUTH_MUTATION_LOCK with
+ * beginAuthenticationAttempt(), so an older callback cannot erase a newer
+ * successful sign-in from another tab.
+ */
+export async function closeAuthenticationAttemptAfterPrivateLockFailure<T>(
+  expectedFreshAttempt: string,
+  beforeClose: () => Promise<T>,
+): Promise<AuthenticationAttemptCloseResult<T>> {
+  const client = getAuthClient();
+  const operation = async (): Promise<AuthenticationAttemptCloseResult<T>> => {
+    const sharedAttempt = readSharedAuthAttempt('fresh');
+    if (sharedAttempt && sharedAttempt.ticket !== expectedFreshAttempt) {
+      return { status: 'superseded' };
+    }
+
+    const generation = freshAuthGeneration();
+    writeAuthMutationState({ schema_version: 'apocky.auth-cookie-mutation.v1', generation, phase: 'signing-out' });
+    clearAuthAttempt();
+
+    let beforeCloseResult: T | undefined;
+    try {
+      beforeCloseResult = await beforeClose();
+    } catch { /* provider/server cleanup must still run */ }
+
+    let browserCleared = !client;
+    let serverCleared = false;
+    try {
+      [browserCleared, serverCleared] = await Promise.all([
+        client
+          ? boundedAuthenticationCleanup(client.auth.signOut({ scope: 'local' }).then(result => !result.error))
+          : Promise.resolve(true),
+        boundedAuthenticationCleanup(fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+        }).then(response => response.ok)),
+      ]);
+    } finally {
+      const current = readAuthMutationState();
+      if (current.available && current.state?.generation === generation) {
+        writeAuthMutationState({ ...current.state, phase: 'signed-out' });
+      }
+    }
+    return {
+      status: browserCleared && serverCleared ? 'closed' : 'failed',
+      ...(beforeCloseResult === undefined ? {} : { beforeCloseResult }),
+    };
+  };
+
+  const lockManager = browserAuthLockManager();
+  if (!lockManager) return operation();
+  try {
+    return await requestBrowserAuthMutationLock(lockManager, operation);
+  } catch {
+    const sharedAttempt = readSharedAuthAttempt('fresh');
+    if (sharedAttempt && sharedAttempt.ticket !== expectedFreshAttempt) {
+      return { status: 'superseded' };
+    }
+    return operation();
   }
 }
 

@@ -3,12 +3,19 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AuthFrame } from '../components/hub/AuthFrame';
-import { AUTH_PROVIDERS, getAuthClient, persistSessionToCookie } from '../lib/auth';
+import { AUTH_PROVIDERS, beginAuthenticationAttempt, closeAuthenticationAfterPrivateLockFailure, getAuthClient, persistSessionToCookie } from '../lib/auth';
+import { lockMiniBrainForSignedOutSession, stageMiniBrainOwnerRebindAfterReauthentication } from '../lib/brain/mini-brain';
 import { buildAuthCallbackUrl, normalizeAuthReturnPath } from '../lib/auth-return';
 
 type Notice = {
   tone: 'info' | 'error' | 'warning';
   text: string;
+};
+
+type VerifiedSessionCandidate = {
+  accessToken: string;
+  subjectKey: string;
+  authAttempt: string;
 };
 
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -20,6 +27,8 @@ const Register: NextPage = () => {
   const [agreed, setAgreed] = useState(false);
   const [operation, setOperation] = useState<'send' | 'resend' | 'verify' | null>(null);
   const [serverSessionPending, setServerSessionPending] = useState(false);
+  const [verifiedSessionCandidate, setVerifiedSessionCandidate] = useState<VerifiedSessionCandidate | null>(null);
+  const [authAttempt, setAuthAttempt] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -67,6 +76,11 @@ const Register: NextPage = () => {
     }
 
     try {
+      const freshAttempt = await beginAuthenticationAttempt('fresh');
+      if (!freshAttempt) {
+        setNotice({ tone: 'error', text: 'The secure account boundary could not start. Retry before requesting a code.' });
+        return;
+      }
       const { error } = await client.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
@@ -81,6 +95,8 @@ const Register: NextPage = () => {
       setPendingEmail(normalizedEmail);
       setOtp('');
       setServerSessionPending(false);
+      setVerifiedSessionCandidate(null);
+      setAuthAttempt(freshAttempt);
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
       setNotice({
         tone: 'info',
@@ -114,16 +130,27 @@ const Register: NextPage = () => {
     }
 
     try {
-      let accessToken: string | null = null;
+      let verified: VerifiedSessionCandidate | null = null;
       if (serverSessionPending) {
         const { data, error } = await client.auth.getSession();
-        if (error || !data.session) {
+        if (
+          error
+          || !data.session
+          || !verifiedSessionCandidate
+          || data.session.access_token !== verifiedSessionCandidate.accessToken
+          || data.session.user.id !== verifiedSessionCandidate.subjectKey
+        ) {
           setServerSessionPending(false);
+          setVerifiedSessionCandidate(null);
           setNotice({ tone: 'error', text: 'The verified browser session is no longer available. Request a new code and try again.' });
           return;
         }
-        accessToken = data.session.access_token;
+        verified = verifiedSessionCandidate;
       } else {
+        if (!authAttempt) {
+          setNotice({ tone: 'error', text: 'The account boundary expired. Request a new code and try again.' });
+          return;
+        }
         const { data, error } = await client.auth.verifyOtp({
           email: pendingEmail,
           token: otp.trim(),
@@ -133,18 +160,48 @@ const Register: NextPage = () => {
           setNotice({ tone: 'error', text: 'That code could not be verified. It may have expired or already been used.' });
           return;
         }
-        accessToken = data.session.access_token;
+        verified = { accessToken: data.session.access_token, subjectKey: data.session.user.id, authAttempt };
+        setVerifiedSessionCandidate(verified);
       }
 
-      const mirrored = await persistSessionToCookie(accessToken);
-      if (!mirrored) {
+      const mirrored = await persistSessionToCookie(verified.accessToken, { reauthenticated: true, authAttempt: verified.authAttempt });
+      if (mirrored.status !== 'established') {
+        const lock = await lockMiniBrainForSignedOutSession();
+        if (lock.status === 'durability_unconfirmed') {
+          await closeAuthenticationAfterPrivateLockFailure();
+          setServerSessionPending(false);
+          setVerifiedSessionCandidate(null);
+          setAuthAttempt(null);
+          setOtp('');
+          setNotice({
+            tone: 'error',
+            text: 'Your identity was verified, but neither the server-session commit nor a durable private Brain lock could be confirmed. Authentication was closed where possible. Enable browser storage or clear this site\'s data, then request a new code. (AUTH_SESSION_COMMIT_AND_BRAIN_LOCK_UNCONFIRMED · MINI_BRAIN_LOCK_DURABILITY_UNCONFIRMED)',
+          });
+          return;
+        }
         setServerSessionPending(true);
         setNotice({
           tone: 'error',
-          text: 'Your code was verified, but the secure server session could not be established. Retry without requesting another code.',
+          text: mirrored.status === 'commit_uncertain'
+            ? 'Your code was verified and the server may have committed the secure session, but the browser could not verify the final handoff. The private Brain was locked. Retry without requesting another code. (AUTH_SESSION_COMMIT_UNCERTAIN)'
+            : 'Your code was verified, but the secure server session was not established. The private Brain was locked. Retry without requesting another code.',
         });
         return;
       }
+      const brainStage = await stageMiniBrainOwnerRebindAfterReauthentication(verified.subjectKey, verified.authAttempt);
+      if (brainStage.status === 'durability_unconfirmed') {
+        await closeAuthenticationAfterPrivateLockFailure();
+        setServerSessionPending(false);
+        setVerifiedSessionCandidate(null);
+        setAuthAttempt(null);
+        setOtp('');
+        setNotice({
+          tone: 'error',
+          text: 'Your identity was verified, but this browser could not confirm a durable private Brain lock. The new site session was closed where possible. Enable browser storage or clear this site\'s data, then request a new code. (MINI_BRAIN_LOCK_DURABILITY_UNCONFIRMED)',
+        });
+        return;
+      }
+      setVerifiedSessionCandidate(null);
       location.replace(currentReturnPath());
     } catch {
       setNotice({ tone: 'error', text: 'Verification could not be completed. Please try again.' });
@@ -158,6 +215,8 @@ const Register: NextPage = () => {
     setPendingEmail(null);
     setOtp('');
     setServerSessionPending(false);
+    setVerifiedSessionCandidate(null);
+    setAuthAttempt(null);
     setResendCooldown(0);
     setNotice(null);
   }
@@ -176,6 +235,12 @@ const Register: NextPage = () => {
       return;
     }
     try {
+      const freshAttempt = await beginAuthenticationAttempt('fresh');
+      if (!freshAttempt) {
+        setNotice({ tone: 'error', text: 'The secure provider handoff could not start. Please retry.' });
+        setOauthLoading(null);
+        return;
+      }
       const { data, error } = await client.auth.signInWithOAuth({
         provider: provider as 'google' | 'apple' | 'github' | 'discord',
         options: {

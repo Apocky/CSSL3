@@ -1,11 +1,10 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { useSiteSession } from '../components/hub/SiteSession';
-import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
-import { normalizeAuthReturnPath } from '../lib/auth-return';
+import { readAuthCallbackParams } from '../lib/auth-callback';
 import { apocryphaRelease } from '../lib/brain/release-manifest';
 import { SUPPORT_LINKS } from '../lib/support-links';
 
@@ -21,7 +20,7 @@ type Gateway = {
 
 const MORE_PATHS = [
   { href: '/spellcraft', title: 'Create', copy: 'Spellcraft, sigils, and a device-local spellbook.' },
-  { href: '/akashic-records', title: 'Read', copy: 'Approved writing and public-safe conversations.' },
+  { href: '/akashic-records', title: 'Akashic Records', copy: 'Approved writing and public-safe conversations.' },
   { href: '/clearing', title: 'Gather', copy: 'The public social room for messages and threads.' },
   { href: '/quests', title: 'Play', copy: 'A private-on-device path through the public worlds.' },
 ] as const;
@@ -37,33 +36,15 @@ function GatewayContents({ gateway }: { gateway: Gateway }): JSX.Element {
 }
 
 const Home: NextPage = () => {
-  const [authNotice, setAuthNotice] = useState<string | null>(null);
-  const { access, authenticated, refresh } = useSiteSession();
+  const { access, authenticated } = useSiteSession();
   const koFi = SUPPORT_LINKS.find((link) => link.name === 'Ko-fi');
   const release = apocryphaRelease.status === 'live' ? apocryphaRelease.manifest : null;
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const callbackParams = readAuthCallbackParams(location.search, location.hash);
-      if (!callbackParams.hasCallback) return;
-      const returnTo = normalizeAuthReturnPath(new URLSearchParams(location.search).get('next'), '');
-      setAuthNotice('Finishing your sign-in…');
-      const callbackResult = await consumeAuthCallbackFromLocation();
-      if (cancelled) return;
-      if (callbackResult.ok) {
-        if (returnTo) {
-          location.replace(returnTo);
-          return;
-        }
-        setAuthNotice('You are signed in.');
-        await refresh();
-      } else {
-        setAuthNotice(`Sign-in failed: ${callbackResult.reason ?? 'please try again'}`);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [refresh]);
+    const callbackParams = readAuthCallbackParams(location.search, location.hash);
+    if (!callbackParams.hasCallback) return;
+    location.replace(`/auth/callback${location.search}${location.hash}`);
+  }, []);
 
   const apocryphaGateway: Gateway = access === 'owner'
     ? {
@@ -154,7 +135,6 @@ const Home: NextPage = () => {
               Apocky connects conversation, symbolic tools, public memory, games, and cosmology without asking you to understand the whole machine first.
             </p>
             <p className="apx-home-invitation">Bring one question. Choose where it should open.</p>
-            <p className="apx-auth-message" aria-live="polite" hidden={!authNotice}>{authNotice}</p>
           </div>
 
           <div className="apx-home-mark" aria-hidden="true">

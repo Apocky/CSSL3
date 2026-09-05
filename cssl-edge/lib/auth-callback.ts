@@ -1,10 +1,16 @@
-import { getAuthClient, persistSessionToCookie } from './auth';
+import {
+  currentAuthenticationAttempt,
+  getAbortableAuthCallbackClient,
+  persistSessionToCookie,
+  type AuthSessionMirrorResult,
+} from './auth';
 
 interface AuthSessionResult {
   data?: {
     session?: {
       access_token: string;
       refresh_token?: string | null;
+      user?: { id?: unknown };
     } | null;
   };
   error?: {
@@ -23,15 +29,42 @@ export interface AuthCallbackParams {
 export interface ConsumeAuthCallbackResult {
   handled: boolean;
   ok: boolean;
+  freshSession?: {
+    accessToken: string;
+    subjectKey: string;
+    authAttempt: string;
+  };
+  mirrorStatus?: AuthSessionMirrorResult['status'];
+  providerSessionUncertain?: boolean;
+  providerSessionAuthAttempt?: string;
   stub?: boolean;
   reason?: string;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs)),
-  ]);
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let timedOut = false;
+    const finish = (callback: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback();
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      timedOut = true;
+      try {
+        onTimeout();
+      } catch {
+        finish(() => reject(new Error('timeout')));
+      }
+    }, timeoutMs);
+    void promise.then(
+      value => finish(() => timedOut ? reject(new Error('timeout')) : resolve(value)),
+      error => finish(() => reject(timedOut ? new Error('timeout') : error)),
+    );
+  });
 }
 
 export function readAuthCallbackParams(search: string, hash: string): AuthCallbackParams {
@@ -73,41 +106,87 @@ export async function consumeAuthCallbackFromLocation(): Promise<ConsumeAuthCall
 
   if (params.error) return { handled: true, ok: false, reason: `provider rejected sign-in · ${params.error}` };
 
-  const client = getAuthClient();
+  const authAttempt = currentAuthenticationAttempt('fresh');
+  if (!authAttempt) {
+    return { handled: true, ok: false, reason: 'secure authentication attempt is missing or expired' };
+  }
+  const providerController = new AbortController();
+  const client = getAbortableAuthCallbackClient(providerController.signal);
   if (!client) return { handled: true, ok: false, stub: true, reason: 'auth client is not configured' };
 
+  let providerMutationDispatched = false;
   try {
     let result: AuthSessionResult;
     if (params.code) {
-      result = await withTimeout(client.auth.exchangeCodeForSession(params.code), 10_000) as AuthSessionResult;
+      providerMutationDispatched = true;
+      result = await withTimeout(
+        client.auth.exchangeCodeForSession(params.code),
+        10_000,
+        () => providerController.abort(new DOMException('Provider handoff timed out', 'TimeoutError')),
+      ) as AuthSessionResult;
     } else if (params.accessToken && params.refreshToken) {
+      providerMutationDispatched = true;
       result = await withTimeout(
         client.auth.setSession({ access_token: params.accessToken, refresh_token: params.refreshToken }),
         10_000,
+        () => providerController.abort(new DOMException('Provider handoff timed out', 'TimeoutError')),
       ) as AuthSessionResult;
     } else {
-      result = await withTimeout(client.auth.getSession(), 5_000) as AuthSessionResult;
+      return { handled: true, ok: false, reason: 'incomplete authentication response' };
     }
 
     if (result.error || !result.data?.session) {
       return {
         handled: true,
         ok: false,
+        providerSessionUncertain: providerMutationDispatched,
+        providerSessionAuthAttempt: providerMutationDispatched ? authAttempt : undefined,
         reason: result.error?.message ?? 'no session found',
       };
     }
 
-    const mirrored = await persistSessionToCookie(result.data.session.access_token);
-    if (!mirrored) {
-      return { handled: true, ok: false, reason: 'server session boundary is unavailable' };
+    const freshSession = {
+      accessToken: result.data.session.access_token,
+      subjectKey: result.data.session.user?.id,
+      authAttempt,
+    };
+    if (typeof freshSession.subjectKey !== 'string' || freshSession.subjectKey.length === 0) {
+      return {
+        handled: true,
+        ok: false,
+        providerSessionUncertain: true,
+        providerSessionAuthAttempt: authAttempt,
+        reason: 'verified session subject is unavailable',
+      };
+    }
+    const mirrored = await persistSessionToCookie(result.data.session.access_token, {
+      reauthenticated: true,
+      authAttempt,
+    });
+    if (mirrored.status !== 'established') {
+      return {
+        handled: true,
+        ok: false,
+        freshSession: freshSession as { accessToken: string; subjectKey: string; authAttempt: string },
+        mirrorStatus: mirrored.status,
+        reason: mirrored.status === 'commit_uncertain'
+          ? 'server session commit could not be confirmed (AUTH_SESSION_COMMIT_UNCERTAIN)'
+          : 'server session boundary is unavailable',
+      };
     }
     clearAuthCallbackFromLocation();
-    return { handled: true, ok: true };
+    return {
+      handled: true,
+      ok: true,
+      freshSession: freshSession as { accessToken: string; subjectKey: string; authAttempt: string },
+    };
   } catch (err: unknown) {
     const isTimeout = err instanceof Error && err.message === 'timeout';
     return {
       handled: true,
       ok: false,
+      providerSessionUncertain: providerMutationDispatched,
+      providerSessionAuthAttempt: providerMutationDispatched ? authAttempt : undefined,
       reason: isTimeout ? 'sign-in timed out' : String(err),
     };
   }

@@ -17,8 +17,6 @@ import { isOpaqueClientRequestId, isOpaqueConversationId } from '../apocrypha/pr
 
 const DEVICE_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 const REQUEST_CLOCK_SKEW_MS = 2 * 60 * 1_000;
-const RATE_WINDOW_MS = 60 * 1_000;
-const RATE_LIMIT = 30;
 const TOKEN_RE = /^[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]{43}$/u;
 const BASE64URL_256_RE = /^[A-Za-z0-9_-]{43}$/u;
 const SHA256_RE = /^[0-9a-f]{64}$/u;
@@ -37,7 +35,6 @@ export interface VerifiedMiniBrainRequest {
   readonly request: MiniBrainSyncRequest;
   readonly ownerRef: string;
   readonly keyThumbprint: string;
-  readonly replayKind: 'new_sequence' | 'identical_retry';
 }
 
 export class MiniBrainRelayError extends Error {
@@ -49,20 +46,6 @@ export class MiniBrainRelayError extends Error {
     this.name = 'MiniBrainRelayError';
   }
 }
-
-interface ReplayState {
-  sequence: number;
-  requestDigest: string;
-  expiresAt: number;
-}
-
-interface RateState {
-  count: number;
-  resetsAt: number;
-}
-
-const replayState = new Map<string, ReplayState>();
-const rateState = new Map<string, RateState>();
 
 function base64Url(bytes: Uint8Array | Buffer): string {
   return Buffer.from(bytes).toString('base64url');
@@ -77,7 +60,7 @@ function digest(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-function ownerRef(userId: string): string {
+export function miniBrainOwnerRef(userId: string): string {
   return digest(`apocky.mini-brain.owner.v1\u0000${userId}`);
 }
 
@@ -146,7 +129,7 @@ function parseCapability(token: string, userId: string, nowMs: number): DeviceCa
     Object.keys(row).sort().join(',') !== expectedKeys.join(',')
     || row.schema_version !== MINI_BRAIN_DEVICE_SCHEMA
     || !isOpaqueConversationId(row.device_id)
-    || row.owner_ref !== ownerRef(userId)
+    || row.owner_ref !== miniBrainOwnerRef(userId)
     || typeof row.key_thumbprint !== 'string'
     || !SHA256_RE.test(row.key_thumbprint)
     || !validPublicJwk(row.public_key_jwk)
@@ -219,26 +202,6 @@ function unsignedRequest(request: MiniBrainSyncRequest): MiniBrainSyncUnsignedRe
   };
 }
 
-function enforceRate(key: string, nowMs: number): void {
-  const current = rateState.get(key);
-  if (!current || current.resetsAt <= nowMs) {
-    rateState.set(key, { count: 1, resetsAt: nowMs + RATE_WINDOW_MS });
-    return;
-  }
-  if (current.count >= RATE_LIMIT) throw new MiniBrainRelayError('BRAIN_SYNC_RATE_LIMITED', 429);
-  current.count += 1;
-}
-
-function enforceSequence(key: string, sequence: number, requestDigest: string, nowMs: number): 'new_sequence' | 'identical_retry' {
-  const current = replayState.get(key);
-  if (!current || current.expiresAt <= nowMs || sequence > current.sequence) {
-    replayState.set(key, { sequence, requestDigest, expiresAt: nowMs + DEVICE_TOKEN_TTL_MS });
-    return 'new_sequence';
-  }
-  if (sequence === current.sequence && requestDigest === current.requestDigest) return 'identical_retry';
-  throw new MiniBrainRelayError('BRAIN_SYNC_REPLAY_REJECTED', 409);
-}
-
 export function issueMiniBrainDeviceCapability(input: {
   readonly userId: string;
   readonly deviceId: string;
@@ -252,7 +215,7 @@ export function issueMiniBrainDeviceCapability(input: {
   const payload: DeviceCapability = {
     schema_version: MINI_BRAIN_DEVICE_SCHEMA,
     device_id: input.deviceId.toLowerCase(),
-    owner_ref: ownerRef(input.userId),
+    owner_ref: miniBrainOwnerRef(input.userId),
     key_thumbprint: keyThumbprint(input.publicKeyJwk),
     public_key_jwk: input.publicKeyJwk,
     issued_at: new Date(nowMs).toISOString(),
@@ -308,19 +271,14 @@ export async function verifyMiniBrainSyncRequest(input: {
     verified = false;
   }
   if (!verified) throw new MiniBrainRelayError('BRAIN_DEVICE_SIGNATURE_INVALID', 403);
-  const stateKey = `${capability.owner_ref}:${capability.device_id}`;
-  enforceRate(stateKey, nowMs);
-  const requestDigest = digest(signingPayload.toString('utf8'));
   return {
     request,
     ownerRef: capability.owner_ref,
     keyThumbprint: capability.key_thumbprint,
-    replayKind: enforceSequence(stateKey, request.sequence, requestDigest, nowMs),
   };
 }
 
 export function resetMiniBrainRelayStateForTests(): void {
-  if (process.env.NODE_ENV === 'production') return;
-  replayState.clear();
-  rateState.clear();
+  // Compatibility seam for older test callers. Replay and rate authority now
+  // live only in the durable transactional relay-state store.
 }

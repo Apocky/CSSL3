@@ -2,7 +2,7 @@
   "schema": "apocky.apocrypha-public-changelog.v1",
   "version": "2026.09.03-candidate.6",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:52:31-07:00",
+  "generated_at": "2026-09-03T22:06:33-07:00",
   "project": "Apocrypha",
   "entries": [
     {
@@ -112,6 +112,12 @@
       "kind": "graphify-native-query",
       "state": "DIFFERENTIAL_BENCHMARK_PASSED",
       "summary": "The first Trinity organ now executes a sealed CSSLv3 query policy through a bounded native runtime and emits an inspectable non-authoritative NIL trace. Exact fixed-query parity, morphology retention, policy countertests, startup latency, and rollback were measured; product integration remains open."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mobile-release-hardening",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "A pre-promotion counterpass caught a scoped request-ID mismatch and stopped the first candidate 6 build before alias assignment. The forward repair now acknowledges response-lost retries without duplicate inference, emits one route-specific install manifest, preserves configured authentication refresh origins, and gives the synchronous receipt path a route-specific execution budget."
     }
   ],
   "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."

@@ -2,7 +2,7 @@
   "schema": "apocky.apocrypha-public-plan.v1",
   "version": "2026.09.03-candidate.6",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:52:31-07:00",
+  "generated_at": "2026-09-03T22:06:33-07:00",
   "project": "Apocrypha",
   "track": "local-living",
   "summary": "Apocrypha candidate 6 keeps the repaired forward route and adds the missing owner-controlled Mneme bootstrap, an encrypted offline Mini Brain, signed replay-safe mobile synchronization, and the first measured Graphify query vertical driven by sealed CSSLv3 policy with an inspectable NIL trace. Physical-phone and phone-to-desktop acceptance remain open and are not represented as complete.",

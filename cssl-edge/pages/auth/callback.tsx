@@ -3,9 +3,16 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthFrame } from '../../components/hub/AuthFrame';
-import { getAuthClient, persistSessionToCookie } from '../../lib/auth';
+import {
+  closeAuthenticationAfterPrivateLockFailure,
+  closeAuthenticationAttemptAfterPrivateLockFailure,
+  getAuthClient,
+  persistSessionToCookie,
+  type AuthSessionMirrorResult,
+} from '../../lib/auth';
 import { normalizeAuthReturnPath } from '../../lib/auth-return';
 import { clearAuthCallbackFromLocation, consumeAuthCallbackFromLocation } from '../../lib/auth-callback';
+import { lockMiniBrainForSignedOutSession, stageMiniBrainOwnerRebindAfterReauthentication } from '../../lib/brain/mini-brain';
 
 type CallbackStatus = {
   phase: 'working' | 'success' | 'error';
@@ -22,8 +29,83 @@ const AuthCallback: NextPage = () => {
   const [returnTo, setReturnTo] = useState('/account');
   const runningRef = useRef(false);
   const redirectTimerRef = useRef<number | null>(null);
+  const freshCallbackSessionRef = useRef<{
+    accessToken: string;
+    subjectKey: string;
+    authAttempt: string;
+  } | null>(null);
 
-  const complete = useCallback((safeReturnTo: string): void => {
+  const protectMirrorFailure = useCallback(async (mirrorStatus: AuthSessionMirrorResult['status']): Promise<void> => {
+    const lock = await lockMiniBrainForSignedOutSession();
+    if (lock.status === 'durability_unconfirmed') {
+      await closeAuthenticationAfterPrivateLockFailure();
+      freshCallbackSessionRef.current = null;
+      clearAuthCallbackFromLocation();
+      setStatus({
+        phase: 'error',
+        title: 'Authentication boundary not verified',
+        message: 'The provider verified your identity, but neither the server-session commit nor a durable private Brain lock could be confirmed. Authentication was closed where possible. Enable browser storage or clear this site\'s data, then start sign-in again. (AUTH_SESSION_COMMIT_AND_BRAIN_LOCK_UNCONFIRMED · MINI_BRAIN_LOCK_DURABILITY_UNCONFIRMED)',
+      });
+      return;
+    }
+    setStatus({
+      phase: 'error',
+      title: 'Secure handoff needs a retry',
+      message: mirrorStatus === 'commit_uncertain'
+        ? 'The server may have committed your session, but the browser could not verify the final handoff. The private Brain was locked. Retry this handoff without restarting the provider sign-in. (AUTH_SESSION_COMMIT_UNCERTAIN)'
+        : 'The provider session is verified, but the secure site session was not established. The private Brain was locked. Retry this handoff.',
+    });
+  }, []);
+
+  const closeUncertainProviderSession = useCallback(async (authAttempt: string): Promise<void> => {
+    const closure = await closeAuthenticationAttemptAfterPrivateLockFailure(
+      authAttempt,
+      lockMiniBrainForSignedOutSession,
+    );
+    if (closure.status === 'superseded') {
+      freshCallbackSessionRef.current = null;
+      clearAuthCallbackFromLocation();
+      setStatus({
+        phase: 'success',
+        title: 'A newer sign-in is already active',
+        message: 'This older provider handoff was superseded by a newer secure sign-in. No session or private Brain state was changed. You can close this page. (AUTH_CALLBACK_SUPERSEDED)',
+      });
+      return;
+    }
+    const lock = closure.beforeCloseResult;
+    freshCallbackSessionRef.current = null;
+    clearAuthCallbackFromLocation();
+    setStatus(lock?.status === 'durability_unconfirmed'
+      ? {
+          phase: 'error',
+          title: 'Authentication boundary not verified',
+          message: 'The provider-session result and durable private Brain lock are both uncertain. Authentication was closed where possible. Clear this site\'s browser data, then start sign-in again. (AUTH_PROVIDER_SESSION_AND_BRAIN_LOCK_UNCONFIRMED · MINI_BRAIN_LOCK_DURABILITY_UNCONFIRMED)',
+        }
+      : {
+          phase: 'error',
+          title: 'Provider handoff did not settle',
+          message: 'The provider-session result could not be proven before the deadline. The private Brain was locked and authentication was closed where possible. Start sign-in again. (AUTH_PROVIDER_SESSION_UNCERTAIN)',
+        });
+  }, []);
+
+  const complete = useCallback(async (safeReturnTo: string): Promise<void> => {
+    if (freshCallbackSessionRef.current) {
+      const brainStage = await stageMiniBrainOwnerRebindAfterReauthentication(
+        freshCallbackSessionRef.current.subjectKey,
+        freshCallbackSessionRef.current.authAttempt,
+      );
+      freshCallbackSessionRef.current = null;
+      if (brainStage.status === 'durability_unconfirmed') {
+        await closeAuthenticationAfterPrivateLockFailure();
+        clearAuthCallbackFromLocation();
+        setStatus({
+          phase: 'error',
+          title: 'Private Brain lock not verified',
+          message: 'Your identity was verified, but this browser could not confirm a durable private Brain lock. The new site session was closed where possible. Enable browser storage or clear this site\'s data, then start sign-in again. (MINI_BRAIN_LOCK_DURABILITY_UNCONFIRMED)',
+        });
+        return;
+      }
+    }
     clearAuthCallbackFromLocation();
     setStatus({
       phase: 'success',
@@ -48,23 +130,47 @@ const AuthCallback: NextPage = () => {
       // A prior callback attempt may have created the browser session before the
       // server cookie mirror briefly failed. Retry that boundary without asking
       // Supabase to consume the same single-use code again.
-      if (retry) {
+      if (retry && freshCallbackSessionRef.current) {
+        const expected = freshCallbackSessionRef.current;
         const client = getAuthClient();
         if (client) {
           const { data, error } = await client.auth.getSession();
-          if (!error && data.session) {
-            const mirrored = await persistSessionToCookie(data.session.access_token);
-            if (mirrored) {
-              complete(safeReturnTo);
+          if (
+            !error
+            && data.session
+            && data.session.access_token === expected.accessToken
+            && data.session.user.id === expected.subjectKey
+          ) {
+            const mirrored = await persistSessionToCookie(data.session.access_token, {
+              reauthenticated: true,
+              authAttempt: expected.authAttempt,
+            });
+            if (mirrored.status === 'established') {
+              await complete(safeReturnTo);
               return;
             }
+            await protectMirrorFailure(mirrored.status);
+            return;
           }
         }
+        const expectedAttempt = freshCallbackSessionRef.current?.authAttempt;
+        if (expectedAttempt) await closeUncertainProviderSession(expectedAttempt);
+        else await closeAuthenticationAfterPrivateLockFailure();
+        return;
       }
 
       const result = await consumeAuthCallbackFromLocation();
+      freshCallbackSessionRef.current ??= result.freshSession ?? null;
       if (result.ok) {
-        complete(safeReturnTo);
+        await complete(safeReturnTo);
+        return;
+      }
+      if (result.freshSession && result.mirrorStatus) {
+        await protectMirrorFailure(result.mirrorStatus);
+        return;
+      }
+      if (result.providerSessionUncertain && result.providerSessionAuthAttempt) {
+        await closeUncertainProviderSession(result.providerSessionAuthAttempt);
         return;
       }
       setStatus({
@@ -83,7 +189,7 @@ const AuthCallback: NextPage = () => {
     } finally {
       runningRef.current = false;
     }
-  }, [complete]);
+  }, [closeUncertainProviderSession, complete, protectMirrorFailure]);
 
   useEffect(() => {
     void processCallback(false);

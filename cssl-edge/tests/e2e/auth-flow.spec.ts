@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 const TEST_EMAIL = 'person@example.test';
+const AUTH_TICKET = 'fixture-auth-attempt-'.repeat(8);
 
 async function stubSignedOutShell(page: Page): Promise<void> {
   await page.route('**/api/auth/me', (route) => route.fulfill({
@@ -20,6 +21,25 @@ async function stubEmailDelivery(page: Page): Promise<void> {
   });
 }
 
+async function stubFreshAuthAttempt(page: Page): Promise<void> {
+  await page.route('**/api/auth/attempt', async (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postDataJSON()).toEqual({ mode: 'fresh' });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema_version: 'apocky.auth-fence.v1',
+        status: 'ready',
+        mode: 'fresh',
+        ticket: AUTH_TICKET,
+        expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+        provider_start_delay_ms: 0,
+      }),
+    });
+  });
+}
+
 async function expectNoSeriousAccessibilityFindings(page: Page): Promise<void> {
   const result = await new AxeBuilder({ page }).analyze();
   const findings = result.violations.filter((entry) => entry.impact === 'serious' || entry.impact === 'critical');
@@ -34,9 +54,11 @@ async function chooseNoDiagnostics(page: Page): Promise<void> {
   }
 }
 
-test('email code sign-in preserves /chat and establishes the server mirror', async ({ page }) => {
+test('email code sign-in establishes the server mirror without trapping a valid member at owner Brain rebind', async ({ page }) => {
+  const priorLockGeneration = '88888888-8888-4888-8888-888888888888';
   await stubSignedOutShell(page);
   await stubEmailDelivery(page);
+  await stubFreshAuthAttempt(page);
 
   let verifyBody: Record<string, unknown> | null = null;
   await page.route('**/auth/v1/verify**', async (route) => {
@@ -62,29 +84,60 @@ test('email code sign-in preserves /chat and establishes the server mirror', asy
       }),
     });
   });
-  await page.route('**/api/auth/session', (route) => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true }),
-  }));
+  let mirrored = false;
+  await page.route('**/api/auth/session', async (route) => {
+    expect(route.request().headers()['x-apocky-auth-protocol']).toBe('apocky.auth-fence.v1');
+    expect(route.request().headers()['x-apocky-auth-attempt']).toBe(AUTH_TICKET);
+    expect(route.request().postDataJSON()).toEqual({ mode: 'fresh' });
+    mirrored = true;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+  let memberRebindDenied = false;
+  await page.route('**/api/brain/mobile/unlock', async (route) => {
+    const body = route.request().postDataJSON() as { lock_generation?: unknown; auth_attempt?: unknown };
+    expect(body.lock_generation).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/i));
+    expect(body.auth_attempt).toBe(AUTH_TICKET);
+    memberRebindDenied = true;
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'BRAIN_OWNER_REQUIRED' }),
+    });
+  });
   await page.route('**/auth/v1/user**', (route) => route.fulfill({ status: 401, body: '{}' }));
 
-  await page.goto('/login?next=%2Fchat');
-  await expect(page.getByText(/continue to the private page/i)).toBeVisible();
+  await page.goto('/login?next=%2Faccount');
+  await expect(page.getByText(/continue to your account/i)).toBeVisible();
+  await page.evaluate((generation) => {
+    localStorage.setItem('apocky-mini-brain-session-lock-v1', generation);
+    sessionStorage.setItem('apocky-mini-brain-rebind-candidate-v1', JSON.stringify({
+      schema_version: 'apocky.mini-brain.rebind-candidate.v1',
+      owner_ref: 'a'.repeat(64),
+      lock_generation: generation,
+      expires_at_ms: Date.now() + 60_000,
+    }));
+  }, priorLockGeneration);
   await page.getByLabel('Email address').fill(TEST_EMAIL);
   await page.getByRole('button', { name: 'Send sign-in email' }).click();
   await expect(page.getByLabel(/one-time.*code/i)).toBeVisible();
   await expect(page.getByRole('button', { name: /resend email in 30s/i })).toBeDisabled();
   await page.getByLabel(/one-time.*code/i).fill('123456');
   await page.getByRole('button', { name: 'Verify and continue' }).click();
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/account$/);
+  expect(mirrored).toBe(true);
+  expect(memberRebindDenied).toBe(true);
   expect(verifyBody).toMatchObject({ email: TEST_EMAIL, token: '123456', type: 'email' });
+  const currentLockGeneration = await page.evaluate(() => localStorage.getItem('apocky-mini-brain-session-lock-v1'));
+  expect(currentLockGeneration).toEqual(expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i));
+  expect(currentLockGeneration).not.toBe(priorLockGeneration);
+  expect(await page.evaluate(() => sessionStorage.getItem('apocky-mini-brain-rebind-candidate-v1'))).toBeNull();
 });
 
 test('registration requires explicit terms and then exposes code verification', async ({ page }) => {
   await stubSignedOutShell(page);
   await stubEmailDelivery(page);
-  await page.goto('/register?next=%2Fchat');
+  await stubFreshAuthAttempt(page);
+  await page.goto('/register?next=%2Faccount');
 
   await page.getByLabel('Email address').fill(TEST_EMAIL);
   await expect(page.getByRole('button', { name: 'Send verification email' })).toBeDisabled();
@@ -108,7 +161,7 @@ test('callback error is comprehensible, retryable, and never exposes auth fragme
   const alert = page.locator('#callback-status');
   await expect(alert).toContainText(/no sign-in response|could not be completed|missing/i);
   await expect(page.getByRole('button', { name: /retry secure sign-in/i })).toBeVisible();
-  await expect(page.getByRole('link', { name: /start again/i })).toHaveAttribute('href', '/login?next=%2Fchat');
+  await expect(page.getByRole('link', { name: /start again/i })).toHaveAttribute('href', '/login?next=%2Faccount');
   await expect(page.locator('body')).not.toContainText(/access_token|refresh_token|code=/i);
   await expectNoSeriousAccessibilityFindings(page);
 });

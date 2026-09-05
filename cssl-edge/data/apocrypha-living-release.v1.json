@@ -4,7 +4,7 @@
   "track": "local-living",
   "version": "2026.09.03-candidate.6",
   "release_state": "CANDIDATE",
-  "generated_at": "2026-09-03T21:52:31-07:00",
+  "generated_at": "2026-09-03T22:06:33-07:00",
   "source_revision": "22e73fde3b37c11ca72234798ff83f84e29d7b85",
   "summary": "Apocrypha candidate 6 keeps the repaired forward route and adds the missing owner-controlled Mneme bootstrap, an encrypted offline Mini Brain, signed replay-safe mobile synchronization, and the first measured Graphify query vertical driven by sealed CSSLv3 policy with an inspectable NIL trace. Physical-phone and phone-to-desktop acceptance remain open and are not represented as complete.",
   "plan": {
@@ -181,6 +181,12 @@
       "kind": "graphify-native-query",
       "state": "DIFFERENTIAL_BENCHMARK_PASSED",
       "summary": "The first Trinity organ now executes a sealed CSSLv3 query policy through a bounded native runtime and emits an inspectable non-authoritative NIL trace. Exact fixed-query parity, morphology retention, policy countertests, startup latency, and rollback were measured; product integration remains open."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mobile-release-hardening",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "A pre-promotion counterpass caught a scoped request-ID mismatch and stopped the first candidate 6 build before alias assignment. The forward repair now acknowledges response-lost retries without duplicate inference, emits one route-specific install manifest, preserves configured authentication refresh origins, and gives the synchronous receipt path a route-specific execution budget."
     }
   ],
   "build": {

@@ -74,8 +74,8 @@ assert(home.includes("href: authenticated ? '/apocrypha' : '/login?next=%2Fapocr
 assert(home.includes('Persistent conversation is private while the public relay remains closed'), 'home must not imply a public Apocrypha surface exists');
 assert(home.includes('<details className="apx-home-more">'), 'secondary amenities must use progressive disclosure');
 assert(home.includes('/releases/apocrypha-living/manifest.json'), 'home must link its compact release claim to public-safe evidence');
-assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
-assert(home.includes('location.replace(returnTo)'), 'home simplification must preserve the normalized post-auth return path');
+assert(!home.includes('consumeAuthCallbackFromLocation'), 'home must never consume provider credentials outside the governed callback boundary');
+assert(home.includes('location.replace(`/auth/callback${location.search}${location.hash}`)'), 'legacy provider returns must forward intact to the governed callback boundary');
 assert(membership.includes('https://chaos-tarot.com/pricing'), 'membership must expose the usable Chaos product path');
 assert(membership.includes('SUPPORT_LINKS'), 'membership must reuse canonical support links');
 assert(!membership.includes('Enrollment not open'), 'native membership must not retain the retired mock-enrollment state');

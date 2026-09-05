@@ -19,5 +19,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     email: result.user?.email,
     stub: !result.authConfigured || undefined,
     reason: result.authorized ? undefined : result.reason,
+    failureKind: result.authorized ? undefined : result.failureKind,
   });
 }

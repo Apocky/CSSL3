@@ -71,8 +71,23 @@ function retiredNotFound(): NextResponse {
   return response;
 }
 
-function makeCsp(nonce: string): string {
+function configuredAuthConnectSources(): readonly string[] {
+  // CSP governs browser connections, so it must follow the value Next exposes
+  // to the browser bundle. Server-only hub overrides are irrelevant here.
+  const configured = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.APOCKY_HUB_SUPABASE_URL;
+  if (!configured) return [];
+  try {
+    const url = new URL(configured);
+    if (url.protocol !== 'https:') return [];
+    return [url.origin, `wss://${url.host}`];
+  } catch {
+    return [];
+  }
+}
+
+function makeCsp(nonce: string, allowConfiguredAuthOrigin: boolean): string {
   const isDev = process.env.NODE_ENV === 'development';
+  const connectSources = ["'self'", ...(allowConfiguredAuthOrigin ? configuredAuthConnectSources() : [])];
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
@@ -81,7 +96,7 @@ function makeCsp(nonce: string): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src ${connectSources.join(' ')}`,
     "media-src 'self'",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
@@ -100,12 +115,13 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   const nonce = btoa(crypto.randomUUID());
+  const privateBrainPage = request.nextUrl.pathname === '/apocrypha'
+    || request.nextUrl.pathname === '/brain';
   const privateSurface = request.nextUrl.pathname.startsWith('/shawn/clinical')
-    || request.nextUrl.pathname === '/apocrypha'
-    || request.nextUrl.pathname === '/brain'
+    || privateBrainPage
     || request.nextUrl.pathname.startsWith('/brain/')
     || request.nextUrl.pathname.startsWith('/api/brain/');
-  const csp = makeCsp(nonce);
+  const csp = makeCsp(nonce, privateBrainPage);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);

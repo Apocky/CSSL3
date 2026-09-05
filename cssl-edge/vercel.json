@@ -6,6 +6,9 @@
   "installCommand": "npm install",
   "regions": ["iad1"],
   "functions": {
+    "pages/api/brain/mobile/sync.ts": {
+      "maxDuration": 180
+    },
     "pages/api/**/*.ts": {
       "maxDuration": 30
     },

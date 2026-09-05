@@ -36,6 +36,25 @@ function testClinicalHeaders(): void {
   assert((response.headers.get('x-robots-tag') ?? '').includes('noarchive'), 'clinical is noarchive');
 }
 
+function testPrivateBrainAuthRefreshHeaders(): void {
+  const previousPublic = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const previousHub = process.env.APOCKY_HUB_SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://wrong-project.supabase.co';
+  process.env.APOCKY_HUB_SUPABASE_URL = 'https://pzirbmyfmrbtkllrtcmx.supabase.co';
+  try {
+    const response = middleware(new NextRequest('https://apocky.com/apocrypha'));
+    const csp = response.headers.get('content-security-policy') ?? '';
+    assert(csp.includes('https://wrong-project.supabase.co'), 'private Brain permits the exact Supabase origin exposed to its browser client');
+    assert(csp.includes('wss://wrong-project.supabase.co'), 'private Brain permits the browser client realtime sibling');
+    assert(!csp.includes('pzirbmyfmrbtkllrtcmx.supabase.co'), 'a server-only hub override cannot widen browser connect-src');
+  } finally {
+    if (previousPublic === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = previousPublic;
+    if (previousHub === undefined) delete process.env.APOCKY_HUB_SUPABASE_URL;
+    else process.env.APOCKY_HUB_SUPABASE_URL = previousHub;
+  }
+}
+
 function testNonceRotation(): void {
   const first = middleware(new NextRequest('https://apocky.com/shawn'));
   const second = middleware(new NextRequest('https://apocky.com/shawn'));
@@ -47,6 +66,7 @@ function testNonceRotation(): void {
 
 testPublicAtlasHeaders();
 testClinicalHeaders();
+testPrivateBrainAuthRefreshHeaders();
 testNonceRotation();
 // eslint-disable-next-line no-console
 console.log('shawn/security.test : OK · nonce CSP + clinical privacy headers');

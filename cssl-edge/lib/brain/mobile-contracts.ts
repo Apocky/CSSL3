@@ -37,6 +37,7 @@ export interface MiniBrainSyncResponse {
   readonly status: 'current' | 'advanced' | 'appended' | 'idempotent_replay' | 'empty' | 'tombstoned';
   readonly session_id: string;
   readonly request_id: string;
+  readonly acknowledged_request_ids: readonly string[];
   readonly cursor: string | null;
   readonly messages: readonly Record<string, unknown>[];
   readonly tombstones: readonly MiniBrainTombstone[];
@@ -51,11 +52,80 @@ export interface MiniBrainSyncResponse {
     readonly owner_session: 'verified';
     readonly device_signature: 'verified';
     readonly replay: 'bounded_sequence_and_idempotent_request';
-    readonly rate_limit: 'relay_instance_burst';
+    readonly rate_limit: 'owner_durable_window';
     readonly partition: 'server_derived_owner';
   };
   readonly served_by: string;
   readonly ts: string;
+}
+
+const SYNC_STATUSES = new Set<MiniBrainSyncResponse['status']>([
+  'current', 'advanced', 'appended', 'idempotent_replay', 'empty', 'tombstoned',
+]);
+const SHA256 = /^[0-9a-f]{64}$/u;
+
+function record(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nullableDigest(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && SHA256.test(value));
+}
+
+export function validateMiniBrainSyncResponse(
+  value: unknown,
+  expected: Pick<MiniBrainSyncUnsignedRequest, 'operation' | 'session_id' | 'request_id'>,
+): MiniBrainSyncResponse {
+  if (!record(value)) throw new Error('MINI_BRAIN_SYNC_RESPONSE_INVALID');
+  const status = value.status as MiniBrainSyncResponse['status'];
+  const allowedStatus = expected.operation === 'append'
+    ? status === 'appended' || status === 'idempotent_replay'
+    : status === 'current' || status === 'advanced' || status === 'empty' || status === 'tombstoned';
+  const acknowledged = value.acknowledged_request_ids;
+  const messages = value.messages;
+  const tombstones = value.tombstones;
+  const provenance = value.provenance;
+  const controls = value.controls;
+  const expectedAcknowledgements = expected.operation === 'append' ? [expected.request_id] : [];
+  if (
+    value.schema_version !== MINI_BRAIN_SYNC_RESPONSE_SCHEMA
+    || !SYNC_STATUSES.has(status)
+    || !allowedStatus
+    || value.session_id !== expected.session_id
+    || value.request_id !== expected.request_id
+    || !Array.isArray(acknowledged)
+    || acknowledged.length !== expectedAcknowledgements.length
+    || !acknowledged.every((item, index) => item === expectedAcknowledgements[index])
+    || !nullableDigest(value.cursor)
+    || !Array.isArray(messages)
+    || !messages.every(message => record(message)
+      && (message.role === 'user' || message.role === 'assistant')
+      && typeof message.content === 'string'
+      && message.content.length <= 131_072
+      && typeof message.request_id === 'string'
+      && typeof message.recorded_at === 'string')
+    || !Array.isArray(tombstones)
+    || !tombstones.every(item => record(item)
+      && item.session_id === expected.session_id
+      && typeof item.observed_at === 'string'
+      && item.reason === 'REMOTE_SESSION_ABSENT')
+    || typeof value.events_truncated !== 'boolean'
+    || !record(provenance)
+    || provenance.transport !== 'owner_bound_apocv4_runtime'
+    || !nullableDigest(provenance.privacy_partition_ref)
+    || !nullableDigest(provenance.principal_ref)
+    || !nullableDigest(provenance.binding_ref)
+    || !record(controls)
+    || controls.owner_session !== 'verified'
+    || controls.device_signature !== 'verified'
+    || controls.replay !== 'bounded_sequence_and_idempotent_request'
+    || controls.rate_limit !== 'owner_durable_window'
+    || controls.partition !== 'server_derived_owner'
+    || typeof value.served_by !== 'string'
+    || value.served_by.length < 1
+    || typeof value.ts !== 'string'
+  ) throw new Error('MINI_BRAIN_SYNC_RESPONSE_INVALID');
+  return value as unknown as MiniBrainSyncResponse;
 }
 
 export function canonicalJson(value: unknown): string {

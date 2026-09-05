@@ -112,6 +112,23 @@
   background: rgba(5, 7, 21, 0.76);
 }
 
+.systemDrawer {
+  border-top: 1px solid var(--line);
+  background: rgba(5, 7, 21, 0.82);
+}
+.systemDrawer > summary {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 clamp(16px, 3vw, 42px);
+  color: var(--copy);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+}
+.systemDrawer[open] > summary { border-bottom: 1px solid var(--line); color: var(--ink); }
+
 .connector {
   display: grid;
   min-width: 0;
@@ -613,7 +630,12 @@
 }
 
 @media (max-width: 640px) {
-  .header { position: relative; min-height: 64px; grid-template-columns: 1fr auto; padding: 9px 12px; }
+  .header {
+    position: relative;
+    min-height: 64px;
+    grid-template-columns: 1fr auto;
+    padding: calc(9px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 9px calc(12px + env(safe-area-inset-left));
+  }
   .header > div { order: -1; text-align: left; }
   .brand { justify-self: end; }
   .brand strong { display: none; }
@@ -630,11 +652,20 @@
   .conversationActions label { max-width: 44vw; }
   .conversationActions select { width: 100%; }
   .messageLog article { width: calc(100% - 18px); padding-inline: 7px; }
-  .composer { grid-template-columns: 1fr; padding-inline: 9px; }
+  .composer {
+    grid-template-columns: 1fr;
+    padding-right: calc(9px + env(safe-area-inset-right));
+    padding-left: calc(9px + env(safe-area-inset-left));
+  }
   .composer > button { width: 100%; }
   .queueBar { align-items: stretch; flex-direction: column; }
   .queueBar button { width: 100%; }
   .error { align-items: stretch; flex-direction: column; }
+  .error,
+  .syncNotice {
+    margin-right: calc(12px + env(safe-area-inset-right));
+    margin-left: calc(12px + env(safe-area-inset-left));
+  }
   .error button { width: 100%; }
   .search,
   .views,
@@ -650,6 +681,10 @@
   .releaseHold,
   .releaseDownload { grid-column: 1; }
   .localMemory article { grid-template-columns: 1fr; gap: 4px; }
+  .systemDrawer > summary {
+    padding-right: calc(12px + env(safe-area-inset-right));
+    padding-left: calc(12px + env(safe-area-inset-left));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

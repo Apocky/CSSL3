@@ -2,14 +2,47 @@ import type { User } from '@supabase/supabase-js';
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
+import { lockMiniBrainForSignedOutSession } from '@/lib/brain/mini-brain';
 import { useEffect, useState } from 'react';
-import { APOCKY_CHANNELS, getAuthClient, persistSessionToCookie } from '../lib/auth';
+import { APOCKY_CHANNELS, getAuthClient, withBrowserAuthSignOut } from '../lib/auth';
 
 interface ServerAccountUser {
   email: string;
   id: string;
   provider: string;
   createdAt: string;
+}
+
+const SIGN_OUT_BOUNDARY_TIMEOUT_MS = 8_000;
+
+async function boundedBrowserSignOut(operation: Promise<{ error: unknown }>): Promise<boolean> {
+  try {
+    const result = await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => window.setTimeout(() => reject(new Error('AUTH_BROWSER_SIGNOUT_TIMEOUT')), SIGN_OUT_BOUNDARY_TIMEOUT_MS)),
+    ]);
+    return !result.error;
+  } catch {
+    return false;
+  }
+}
+
+async function boundedServerSignOut(): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), SIGN_OUT_BOUNDARY_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 interface AccountUser extends ServerAccountUser {
@@ -107,10 +140,6 @@ const Account: NextPage = () => {
             client.auth.getSession(),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
           ]) as Awaited<ReturnType<typeof client.auth.getSession>>;
-          if (sessionResult.data.session?.access_token) {
-            await persistSessionToCookie(sessionResult.data.session.access_token);
-          }
-
           const userResult = await Promise.race([
             client.auth.getUser(),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
@@ -162,19 +191,26 @@ const Account: NextPage = () => {
     setSignOutError(null);
 
     try {
-      const client = getAuthClient();
+      let localProtectionCleared = true;
       let browserCleared = true;
-      if (client) {
-        const { error } = await client.auth.signOut({ scope: 'local' });
-        browserCleared = !error;
-      }
-
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'same-origin',
-        cache: 'no-store',
+      let serverCleared = false;
+      await withBrowserAuthSignOut(async () => {
+        const client = getAuthClient();
+        const [browserOutcome, serverOutcome] = await Promise.all([
+          client ? boundedBrowserSignOut(client.auth.signOut({ scope: 'local' })) : Promise.resolve(true),
+          boundedServerSignOut(),
+        ]);
+        browserCleared = browserOutcome;
+        serverCleared = serverOutcome;
+      }, async () => {
+        try {
+          const result = await lockMiniBrainForSignedOutSession();
+          localProtectionCleared = result.status === 'locked';
+        } catch {
+          localProtectionCleared = false;
+        }
       });
-      if (!response.ok || !browserCleared) {
+      if (!serverCleared || !browserCleared || !localProtectionCleared) {
         setSignOutError('Sign-out did not clear every session surface. Retry, or clear this site\'s browser data before leaving a shared device.');
         return;
       }

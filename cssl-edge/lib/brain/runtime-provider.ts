@@ -18,6 +18,10 @@ export function ownerBrainRuntimeConfigured(): boolean {
   return process.env[APOCV4_BRAIN_RUNTIME_ENABLE_ENV] === '1';
 }
 
+export function ownerBrainRuntimeRequestId(userId: string, requestId: string): string {
+  return scopeRequestId(publicMemberPrincipalRef(userId), requestId);
+}
+
 function binding(userId: string) {
   return {
     sessionPrincipal: publicMemberPrincipalRef(userId),
@@ -41,7 +45,7 @@ export async function sendOwnerBrainTurn(input: {
   return submitOwnerBrainRuntimeChat({
     message: input.text,
     conversationId: scopeConversationId(principal, input.sessionId),
-    requestId: scopeRequestId(principal, input.requestId),
+    requestId: ownerBrainRuntimeRequestId(input.userId, input.requestId),
     sessionId: input.sessionId,
     sessionPrincipal: principal,
     privacyPartition: OWNER_PRIVACY_PARTITION,

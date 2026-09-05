@@ -9,6 +9,7 @@ import { RuntimeProxyError } from '@/lib/apocv4/runtime-proxy';
 import {
   getOwnerBrainSession,
   ownerBrainRuntimeConfigured,
+  ownerBrainRuntimeRequestId,
   sendOwnerBrainTurn,
 } from '@/lib/brain/runtime-provider';
 import {
@@ -21,6 +22,11 @@ import {
   verifyMiniBrainSyncRequest,
 } from '@/lib/brain/mobile-relay';
 import {
+  admitVerifiedMiniBrainRequest,
+  getMiniBrainRelayStateStore,
+  type MiniBrainRelayStateStore,
+} from '@/lib/brain/mobile-relay-state';
+import {
   requireBrainOwner,
   respondBrainOwnerFailure,
   setBrainPrivateHeaders,
@@ -31,12 +37,16 @@ interface SyncDependencies {
   readonly configured: () => boolean;
   readonly getSession: typeof getOwnerBrainSession;
   readonly sendTurn: typeof sendOwnerBrainTurn;
+  readonly relayState: () => MiniBrainRelayStateStore;
 }
+
+export const config = { maxDuration: 180 };
 
 const defaultDependencies: SyncDependencies = {
   configured: ownerBrainRuntimeConfigured,
   getSession: getOwnerBrainSession,
   sendTurn: sendOwnerBrainTurn,
+  relayState: getMiniBrainRelayStateStore,
 };
 
 function contentType(req: NextApiRequest): string | null {
@@ -50,25 +60,117 @@ function hasRequest(session: RuntimeSessionGetProjection, requestId: string): bo
   return session.session.messages.some(message => message.request_id === requestId);
 }
 
+interface TerminalTurnFailure {
+  readonly errorClass: string;
+  readonly errorDigest: string;
+  readonly reissueSafe: boolean;
+}
+
+function terminalTurnFailure(
+  session: RuntimeSessionGetProjection | null,
+  requestId: string,
+): TerminalTurnFailure | null {
+  if (!session || hasRequest(session, requestId)) return null;
+  const state = session.session.turn_states.find(candidate => (
+    candidate.request_id === requestId && candidate.state === 'FAILED'
+  ));
+  if (
+    !state
+    || typeof state.error_class !== 'string'
+    || typeof state.error_digest !== 'string'
+    || !/^[0-9a-f]{64}$/u.test(state.error_digest)
+  ) return null;
+  return {
+    errorClass: state.error_class,
+    errorDigest: state.error_digest,
+    reissueSafe: state.error_class === 'InterruptedChatAttempt',
+  };
+}
+
+function turnStateProjectionTruncated(session: RuntimeSessionGetProjection | null): boolean {
+  const surface = session?.session.surface_truncation.turn_states;
+  return Boolean(
+    surface
+    && typeof surface === 'object'
+    && !Array.isArray(surface)
+    && (surface as Record<string, unknown>).truncated === true,
+  );
+}
+
+function respondTerminalTurnFailure(
+  res: NextApiResponse,
+  input: {
+    readonly requestId: string;
+    readonly sessionId: string;
+    readonly cursor: string;
+    readonly failure: TerminalTurnFailure;
+  },
+): void {
+  res.status(409).json({
+    error: input.failure.reissueSafe
+      ? 'The prior desktop attempt was interrupted before any answer was retained. The encrypted turn can be reissued under a fresh identity.'
+      : 'The prior desktop attempt reached a terminal failure. Review the preserved turn before issuing a new request.',
+    code: 'BRAIN_SYNC_TERMINAL_FAILED',
+    request_id: input.requestId,
+    session_id: input.sessionId,
+    current_cursor: input.cursor,
+    error_class: input.failure.errorClass,
+    error_digest: input.failure.errorDigest,
+    reissue_safe: input.failure.reissueSafe,
+    retryable: false,
+    ...envelope(),
+  });
+}
+
+function respondUnresolvedTurnOutcome(
+  res: NextApiResponse,
+  input: { readonly requestId: string; readonly sessionId: string; readonly cursor: string },
+): void {
+  res.status(409).json({
+    error: 'The desktop request failed, but its exact terminal state has aged outside the bounded projection. The encrypted turn remains intact for explicit review; it will not be retried or duplicated automatically.',
+    code: 'BRAIN_SYNC_OUTCOME_UNRESOLVED',
+    request_id: input.requestId,
+    session_id: input.sessionId,
+    current_cursor: input.cursor,
+    error_class: 'RuntimeOutcomeOutsideProjection',
+    reissue_safe: false,
+    retryable: false,
+    ...envelope(),
+  });
+}
+
 function syncResponse(input: {
   readonly status: MiniBrainSyncResponse['status'];
   readonly sessionId: string;
   readonly requestId: string;
+  readonly runtimeRequestId?: string;
   readonly projection: RuntimeSessionGetProjection | null;
   readonly baseCursor: string | null;
+  readonly acknowledgedRequestIds?: readonly string[];
   readonly tombstones?: readonly MiniBrainTombstone[];
+  readonly fallbackMessages?: readonly Record<string, unknown>[];
 }): MiniBrainSyncResponse {
   const receipt = input.projection?.observed.receipt;
   const cursor = input.projection?.session.tip_digest ?? null;
   const unchanged = cursor !== null && cursor === input.baseCursor;
   const env = envelope();
+  const projectedMessages = [
+    ...(input.projection?.session.messages ?? []),
+    ...(input.fallbackMessages ?? []),
+  ];
+  const messages = unchanged ? [] : projectedMessages.map(message => (
+    input.runtimeRequestId && message.request_id === input.runtimeRequestId
+      ? { ...message, request_id: input.requestId }
+      : message
+  )) ?? [];
   return {
     schema_version: MINI_BRAIN_SYNC_RESPONSE_SCHEMA,
     status: input.status,
     session_id: input.sessionId,
     request_id: input.requestId,
+    acknowledged_request_ids: input.acknowledgedRequestIds ?? [],
     cursor,
-    messages: unchanged ? [] : input.projection?.session.messages ?? [],
+    messages,
     tombstones: input.tombstones ?? [],
     events_truncated: input.projection?.session.events_truncated ?? false,
     provenance: {
@@ -81,12 +183,48 @@ function syncResponse(input: {
       owner_session: 'verified',
       device_signature: 'verified',
       replay: 'bounded_sequence_and_idempotent_request',
-      rate_limit: 'relay_instance_burst',
+      rate_limit: 'owner_durable_window',
       partition: 'server_derived_owner',
     },
     served_by: env.served_by,
     ts: env.ts,
   };
+}
+
+function durableCommittedMessages(input: {
+  readonly committed: RuntimeChatProjection;
+  readonly runtimeRequestId: string;
+  readonly text: string;
+}): readonly Record<string, unknown>[] | null {
+  const { committed } = input;
+  if (
+    committed.observed.runtime['schema_version'] !== 'apocv4.chat-response.v2'
+    || committed.authority.conversation_history !== 'durable_principal_bound'
+    || committed.identity === null
+    || committed.context === null
+  ) return null;
+  const recordedAt = committed.observed.receipt.observed_at;
+  const receipt = {
+    context: {
+      frame_digest: committed.context.frame_digest,
+      provenance_spine_digest: committed.context.provenance_spine_digest,
+    },
+  };
+  return [{
+    role: 'user',
+    content: input.text,
+    request_id: input.runtimeRequestId,
+    recorded_at: recordedAt,
+    event_digest: null,
+    receipt,
+  }, {
+    role: 'assistant',
+    content: committed.model_reported.text,
+    request_id: input.runtimeRequestId,
+    recorded_at: recordedAt,
+    event_digest: null,
+    receipt,
+  }];
 }
 
 async function observedSession(
@@ -125,7 +263,8 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
     }
 
     try {
-      const verified = await verifyMiniBrainSyncRequest({ body: req.body, userId: owner.user.id });
+      const signed = await verifyMiniBrainSyncRequest({ body: req.body, userId: owner.user.id });
+      const verified = await admitVerifiedMiniBrainRequest(dependencies.relayState(), signed);
       if (!dependencies.configured()) {
         res.status(503).json({
           error: 'Desktop Apocrypha is not connected. This signed turn remains safe in the encrypted device queue.',
@@ -137,6 +276,9 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
       }
 
       const { request } = verified;
+      const runtimeRequestId = request.operation === 'append'
+        ? ownerBrainRuntimeRequestId(owner.user.id, request.request_id)
+        : null;
       const before = await observedSession(dependencies, owner.user.id, request.session_id);
       if (request.operation === 'pull') {
         if (!before) {
@@ -165,14 +307,26 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
         return;
       }
 
-      if (before && hasRequest(before, request.request_id)) {
+      if (before && runtimeRequestId && hasRequest(before, runtimeRequestId)) {
         res.status(200).json(syncResponse({
           status: 'idempotent_replay',
           sessionId: request.session_id,
           requestId: request.request_id,
+          runtimeRequestId,
           projection: before,
           baseCursor: null,
+          acknowledgedRequestIds: [request.request_id],
         }));
+        return;
+      }
+      const priorFailure = runtimeRequestId ? terminalTurnFailure(before, runtimeRequestId) : null;
+      if (before && priorFailure) {
+        respondTerminalTurnFailure(res, {
+          requestId: request.request_id,
+          sessionId: request.session_id,
+          cursor: before.session.tip_digest,
+          failure: priorFailure,
+        });
         return;
       }
       if (
@@ -196,22 +350,65 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
         return;
       }
 
-      await dependencies.sendTurn({
-        userId: owner.user.id,
-        text: request.payload!.text,
-        sessionId: request.session_id,
-        requestId: request.request_id,
-      }) as RuntimeChatProjection;
+      if (!runtimeRequestId) throw new RuntimeProxyError('runtime_request_identity_missing', 502);
+
+      let committed: RuntimeChatProjection;
+      try {
+        committed = await dependencies.sendTurn({
+          userId: owner.user.id,
+          text: request.payload!.text,
+          sessionId: request.session_id,
+          requestId: request.request_id,
+        }) as RuntimeChatProjection;
+      } catch (sendError) {
+        try {
+          const failedSession = await observedSession(dependencies, owner.user.id, request.session_id);
+          const failure = terminalTurnFailure(failedSession, runtimeRequestId);
+          if (failedSession && failure) {
+            respondTerminalTurnFailure(res, {
+              requestId: request.request_id,
+              sessionId: request.session_id,
+              cursor: failedSession.session.tip_digest,
+              failure,
+            });
+            return;
+          }
+          if (failedSession && turnStateProjectionTruncated(failedSession)) {
+            respondUnresolvedTurnOutcome(res, {
+              requestId: request.request_id,
+              sessionId: request.session_id,
+              cursor: failedSession.session.tip_digest,
+            });
+            return;
+          }
+        } catch {
+          // Preserve the original runtime failure when its receipt cannot be read back.
+        }
+        throw sendError;
+      }
+      if (committed.observed.runtime['request_id'] !== runtimeRequestId) {
+        throw new RuntimeProxyError('runtime_chat_receipt_mismatch', 502);
+      }
       const after = await observedSession(dependencies, owner.user.id, request.session_id);
-      if (!after || !hasRequest(after, request.request_id)) {
-        throw new RuntimeProxyError('runtime_session_receipt_missing', 502);
+      if (!after) throw new RuntimeProxyError('runtime_chat_session_readback_missing', 502);
+      const observedInSession = hasRequest(after, runtimeRequestId);
+      const fallbackMessages = observedInSession ? [] : durableCommittedMessages({
+        committed,
+        runtimeRequestId,
+        text: request.payload!.text,
+      });
+      if (!observedInSession && fallbackMessages === null) {
+        throw new RuntimeProxyError('runtime_chat_session_receipt_missing', 502);
       }
       res.status(200).json(syncResponse({
         status: 'appended',
         sessionId: request.session_id,
         requestId: request.request_id,
+        runtimeRequestId,
         projection: after,
         baseCursor: null,
+        acknowledgedRequestIds: [request.request_id],
+        fallbackMessages: fallbackMessages ?? [],
       }));
     } catch (error) {
       if (error instanceof MiniBrainRelayError) {

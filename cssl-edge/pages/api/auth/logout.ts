@@ -11,6 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   res.setHeader('Cache-Control', 'private, no-store, max-age=0');
   res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Vary', 'Origin, Cookie');
   if (!hasSameOrigin(req)) return res.status(403).json({ ok: false });
   res.setHeader('Set-Cookie', clearedSessionCookies());
 
