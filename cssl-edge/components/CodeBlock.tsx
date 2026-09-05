@@ -144,7 +144,7 @@ const CodeBlock = ({ children, lang = 'plain', caption }: CodeBlockProps) => {
     <div style={{ margin: '1.1rem 0' }}>
       {caption !== undefined && caption !== '' ? (
         <div style={{ fontSize: '0.7rem', color: '#7a7a8c', letterSpacing: '0.08em', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
-          § {caption}
+          {caption}
         </div>
       ) : null}
       <pre

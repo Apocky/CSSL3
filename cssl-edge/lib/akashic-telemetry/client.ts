@@ -28,8 +28,9 @@ const RING_CAP = 256;
 const FLUSH_AT = 32;
 const FLUSH_INTERVAL_MS = 10_000;
 const VERSION_PROBE_MS = 60_000; // poll /api/akashic/version every 60s
-const STORAGE_KEY = 'akashic.consent.tier.v1';
+export const CONSENT_STORAGE_KEY = 'akashic.consent.tier.v1';
 const SESSION_KEY = 'akashic.session.id.v1';
+export const CONSENT_CHANGE_EVENT = 'akashic:consent-change';
 
 // ─── Module-state · singleton ──────────────────────────────────────────────
 interface AkashicState {
@@ -51,11 +52,13 @@ interface AkashicState {
   user_cap_hash?: string;
   cap_witness?: string;
   beforeunload_attached: boolean;
+  lifecycle_generation: number;
+  request_controllers: Set<AbortController>;
 }
 
 const state: AkashicState = {
   initialized: false,
-  consent_tier: 'spore', // default-tier ¬ zero ; spore = aggregate-only
+  consent_tier: 'none',
   session_id: '',
   page_load_dpl_id: 'unknown',
   current_dpl_id: 'unknown',
@@ -70,7 +73,12 @@ const state: AkashicState = {
   endpoint_version: '/api/akashic/version',
   endpoint_purge: '/api/akashic/purge',
   beforeunload_attached: false,
+  lifecycle_generation: 0,
+  request_controllers: new Set(),
 };
+
+let lifecycle_reconciler: (() => void) | null = null;
+let runtime_forced_none = false;
 
 // ─── Tiny crypto-ish helpers (BLAKE3 unavailable in browser-stage-0) ───────
 // 16-char fnv-1a-ish hex hash. Deterministic · NOT cryptographic. Server runs
@@ -107,13 +115,42 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-// Hard privacy boundary. Capture can remain installed across a client-side
-// transition, so every effectful entry point must fail closed on this route.
-function isTelemetryBlackoutPath(): boolean {
+function beginRequest(): AbortController | null {
+  if (typeof AbortController === 'undefined') return null;
+  const controller = new AbortController();
+  state.request_controllers.add(controller);
+  return controller;
+}
+
+function finishRequest(controller: AbortController | null): void {
+  if (controller !== null) state.request_controllers.delete(controller);
+}
+
+// Hard privacy boundaries. Capture can remain installed briefly across a
+// client-side transition, so every effectful entry point fails closed here.
+export function isTelemetryBlackoutPath(rawPath?: string): boolean {
+  let path = rawPath;
+  if (path === undefined) {
+    path =
+      typeof location !== 'undefined' && typeof location.pathname === 'string'
+        ? location.pathname
+        : '';
+  }
+  try {
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(path)) {
+      path = new URL(path).pathname;
+    }
+  } catch {
+    return true;
+  }
+  const pathname = (path.split(/[?#]/, 1)[0] ?? '').replace(/\/+$/, '') || '/';
   return (
-    typeof location !== 'undefined' &&
-    typeof location.pathname === 'string' &&
-    location.pathname.startsWith('/shawn/clinical')
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname === '/auth' ||
+    pathname.startsWith('/auth/') ||
+    pathname === '/shawn/clinical' ||
+    pathname.startsWith('/shawn/clinical/')
   );
 }
 
@@ -135,11 +172,12 @@ function loadOrMakeSessionId(): string {
   return randomSessionId();
 }
 
-// Persist consent across sessions in localStorage ; revoke clears.
-function loadStoredTier(): ConsentTier {
+// A missing/invalid value means no explicit choice. Reading this key does not
+// initialize telemetry or create storage, a session, observers, or events.
+export function storedConsentTier(): ConsentTier | null {
   try {
     if (typeof localStorage !== 'undefined') {
-      const v = localStorage.getItem(STORAGE_KEY);
+      const v = localStorage.getItem(CONSENT_STORAGE_KEY);
       if (v === 'none' || v === 'spore' || v === 'mycelium' || v === 'akashic') {
         return v;
       }
@@ -147,17 +185,52 @@ function loadStoredTier(): ConsentTier {
   } catch {
     // ignore
   }
-  return 'spore';
+  return null;
 }
 
 function persistTier(tier: ConsentTier): void {
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, tier);
+      localStorage.setItem(CONSENT_STORAGE_KEY, tier);
     }
   } catch {
     // ignore
   }
+}
+
+function clearSessionId(): void {
+  try {
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function notifyLifecycleChange(): void {
+  lifecycle_reconciler?.();
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(CONSENT_CHANGE_EVENT));
+    }
+  } catch {
+    // A telemetry preference must never break the page.
+  }
+}
+
+// Internal barrel hook: keeps observer installation/removal synchronous with
+// preference changes without creating a client -> installer import cycle.
+export function _registerLifecycleReconciler(reconciler: (() => void) | null): void {
+  lifecycle_reconciler = reconciler;
+}
+
+// Reconcile a consent-key mutation made by another tab. This never writes the
+// key or emits a consent event in the observing tab.
+export function syncConsentFromStorage(): void {
+  const stored = storedConsentTier();
+  runtime_forced_none = stored === null || stored === 'none';
+  state.consent_tier = stored ?? 'none';
+  if (stored === null || stored === 'none') shutdown();
+  notifyLifecycleChange();
 }
 
 // ─── init opts ─────────────────────────────────────────────────────────────
@@ -181,10 +254,22 @@ export interface InitOpts {
 
 // Idempotent · safe to call repeatedly. Returns false if already initialized.
 export function init(opts: InitOpts = {}): boolean {
-  if (isTelemetryBlackoutPath()) return false;
+  if (isTelemetryBlackoutPath()) {
+    shutdown();
+    return false;
+  }
   if (state.initialized) return false;
+  if (runtime_forced_none) {
+    state.consent_tier = 'none';
+    return false;
+  }
+  const storedTier = storedConsentTier();
+  if (storedTier === null || storedTier === 'none') {
+    state.consent_tier = 'none';
+    return false;
+  }
   state.initialized = true;
-  state.consent_tier = loadStoredTier();
+  state.consent_tier = storedTier;
   state.session_id = loadOrMakeSessionId();
   state.page_load_dpl_id = opts.dpl_id ?? 'unknown';
   state.current_dpl_id = state.page_load_dpl_id;
@@ -228,6 +313,7 @@ export function capture(
 ): string {
   if (isTelemetryBlackoutPath()) return '';
   if (!state.initialized) return '';
+  if (state.consent_tier === 'none') return '';
   const ts = nowIso();
   const cell_id = hash16(`${ts}|${state.session_id}|${kind}|${JSON.stringify(payload)}`);
   const candidate: AkashicEvent = {
@@ -285,6 +371,7 @@ function drainRing(): AkashicEvent[] {
 export async function flush(reason: AkashicBatch['flush_reason'] = 'manual'): Promise<boolean> {
   if (isTelemetryBlackoutPath()) return false;
   if (!state.initialized) return false;
+  if (state.consent_tier === 'none') return false;
   const events = drainRing();
   if (events.length === 0) return true;
   const first = events[0];
@@ -312,37 +399,67 @@ export async function flush(reason: AkashicBatch['flush_reason'] = 'manual'): Pr
       // fall through to fetch
     }
   }
+  const generation = state.lifecycle_generation;
+  const controller = beginRequest();
   try {
     const r = await fetch(state.endpoint_batch, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(batch),
       keepalive: reason === 'unload',
+      ...(controller !== null ? { signal: controller.signal } : {}),
     });
-    return r.ok;
+    return generation === state.lifecycle_generation && r.ok;
   } catch {
     // network-fail · cells are lost (we already drained) ; better than backpressure.
     // TODO[mycelium] : optional offline-queue in IndexedDB for high-fidelity tier.
     return false;
+  } finally {
+    finishRequest(controller);
   }
 }
 
 // ─── consent updates ───────────────────────────────────────────────────────
-export function withConsent(tier: ConsentTier): void {
-  if (!state.initialized) return;
-  const prev = state.consent_tier;
-  if (prev === tier) return;
-  state.consent_tier = tier;
+export function withConsent(tier: ConsentTier): boolean {
+  const prev = currentTier();
+  const wasInitialized = state.initialized;
   persistTier(tier);
-  // Revocation = downgrade ; granted = upgrade. consent.granted/revoked always
-  // emit (gate-table allows them at all tiers).
-  capture(
-    tierRank(tier) > tierRank(prev) ? 'consent.granted' : 'consent.revoked',
-    { from: prev, to: tier }
-  );
-  // Force-flush so the consent transition itself is durable even if user
-  // closes the tab seconds after granting.
-  void flush('manual');
+  const persisted = storedConsentTier() === tier;
+
+  if (!persisted) {
+    if (tier === 'none') {
+      runtime_forced_none = true;
+      state.consent_tier = 'none';
+      shutdown();
+      state.consent_tier = 'none';
+      notifyLifecycleChange();
+    } else {
+      state.consent_tier = prev;
+    }
+    return false;
+  }
+
+  runtime_forced_none = tier === 'none';
+  state.consent_tier = tier;
+
+  // None is an immediate local stop: discard buffered telemetry, remove the
+  // tab identifier, and cancel client-owned timers/listeners before notifying
+  // observer installers. Revocation itself is not emitted.
+  if (tier === 'none') {
+    shutdown();
+    notifyLifecycleChange();
+    return persisted;
+  }
+
+  notifyLifecycleChange();
+  if (prev !== tier && state.initialized) {
+    capture(
+      tierRank(tier) > tierRank(prev) ? 'consent.granted' : 'consent.revoked',
+      { from: prev, to: tier, resumed: !wasInitialized }
+    );
+    void flush('manual');
+  }
+  return persisted;
 }
 
 function tierRank(t: ConsentTier): number {
@@ -350,7 +467,8 @@ function tierRank(t: ConsentTier): number {
 }
 
 export function currentTier(): ConsentTier {
-  return state.consent_tier;
+  if (runtime_forced_none) return 'none';
+  return state.initialized ? state.consent_tier : (storedConsentTier() ?? 'none');
 }
 
 export function currentPolicy(): ConsentPolicy {
@@ -364,8 +482,14 @@ export function currentPolicy(): ConsentPolicy {
 export async function attestVersion(): Promise<boolean> {
   if (isTelemetryBlackoutPath()) return false;
   if (!state.initialized) return false;
+  const generation = state.lifecycle_generation;
+  const controller = beginRequest();
   try {
-    const r = await fetch(state.endpoint_version, { method: 'GET' });
+    const r = await fetch(state.endpoint_version, {
+      method: 'GET',
+      ...(controller !== null ? { signal: controller.signal } : {}),
+    });
+    if (generation !== state.lifecycle_generation) return false;
     if (!r.ok) return false;
     const body = (await r.json()) as { dpl_id?: string; commit_sha?: string };
     const observed = body.dpl_id ?? 'unknown';
@@ -380,18 +504,29 @@ export async function attestVersion(): Promise<boolean> {
     return true;
   } catch {
     return false;
+  } finally {
+    finishRequest(controller);
   }
 }
 
 // ─── sovereign-purge ───────────────────────────────────────────────────────
-// User invokes from /admin/telemetry "purge all my events" UI. Deletes every
-// row in akashic_events whose user_cap_hash matches the supplied cap.
+// Deletes rows tied to a validated user-cap witness when an authorized caller
+// explicitly invokes this API.
 export async function purgeAllMine(cap_witness?: string): Promise<boolean> {
-  if (!state.initialized) return false;
+  if (isTelemetryBlackoutPath()) return false;
+  if (!state.initialized || state.consent_tier === 'none') return false;
   const witness = cap_witness ?? state.cap_witness;
   if (witness === undefined) return false;
+  const generation = state.lifecycle_generation;
   capture('consent.purge_request', { witness_hash: hash16(witness) });
   await flush('manual'); // ensure the purge-request event lands BEFORE the purge
+  if (
+    generation !== state.lifecycle_generation ||
+    !state.initialized ||
+    currentTier() === 'none' ||
+    isTelemetryBlackoutPath()
+  ) return false;
+  const controller = beginRequest();
   try {
     const r = await fetch(state.endpoint_purge, {
       method: 'DELETE',
@@ -403,10 +538,13 @@ export async function purgeAllMine(cap_witness?: string): Promise<boolean> {
         session_id: state.session_id,
         user_cap_hash: state.user_cap_hash ?? hash16(witness),
       }),
+      ...(controller !== null ? { signal: controller.signal } : {}),
     });
-    return r.ok;
+    return generation === state.lifecycle_generation && r.ok;
   } catch {
     return false;
+  } finally {
+    finishRequest(controller);
   }
 }
 
@@ -434,10 +572,18 @@ function attachUnloadFlush(): void {
   if (typeof window === 'undefined') return;
   state.beforeunload_attached = true;
   // Use 'pagehide' over 'beforeunload' for mobile Safari reliability.
-  window.addEventListener('pagehide', () => {
-    capture('page.unload', { url: location.href });
-    void flush('unload');
-  });
+  window.addEventListener('pagehide', handlePageHide);
+}
+
+function handlePageHide(): void {
+  capture('page.unload', { url: location.href });
+  void flush('unload');
+}
+
+function detachUnloadFlush(): void {
+  if (!state.beforeunload_attached) return;
+  if (typeof window !== 'undefined') window.removeEventListener('pagehide', handlePageHide);
+  state.beforeunload_attached = false;
 }
 
 function viewport(): { w: number; h: number } {
@@ -445,8 +591,12 @@ function viewport(): { w: number; h: number } {
   return { w: window.innerWidth ?? 0, h: window.innerHeight ?? 0 };
 }
 
-// ─── test-only escape hatch ────────────────────────────────────────────────
-export function _resetForTests(): void {
+// Stop all client-owned effects without changing the user's stored choice.
+// Used for auth/clinical blackout transitions as well as explicit revocation.
+export function shutdown(): void {
+  state.lifecycle_generation += 1;
+  for (const controller of state.request_controllers) controller.abort();
+  state.request_controllers.clear();
   if (state.flush_timer !== null) {
     clearTimeout(state.flush_timer);
     state.flush_timer = null;
@@ -455,12 +605,22 @@ export function _resetForTests(): void {
     clearInterval(state.version_timer);
     state.version_timer = null;
   }
+  detachUnloadFlush();
   state.initialized = false;
-  state.consent_tier = 'spore';
+  state.consent_tier = runtime_forced_none ? 'none' : (storedConsentTier() ?? 'none');
   state.session_id = '';
+  clearSessionId();
   state.ring = [];
   state.ring_idx = 0;
-  state.beforeunload_attached = false;
+  state.user_cap_hash = undefined;
+  state.cap_witness = undefined;
+}
+
+// ─── test-only escape hatch ────────────────────────────────────────────────
+export function _resetForTests(): void {
+  shutdown();
+  runtime_forced_none = false;
+  state.consent_tier = 'none';
 }
 
 // ─── inspectors (used by AkashicConsent overlay + admin/telemetry page) ───

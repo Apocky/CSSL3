@@ -98,11 +98,11 @@ function defaultFallback(err: Error, retry: () => void): React.ReactElement {
       }}
     >
       <h2 style={{ marginTop: 0, fontSize: '1.25rem' }}>
-        a spore landed in the Records
+        This page hit an error
       </h2>
       <p style={{ opacity: 0.8 }}>
-        Something glitched. The Akashic-Records caught it as a cell · the
-        substrate will learn from it. You can retry, or refresh.
+        You can retry this view or refresh the page. Diagnostics are reported
+        only when you have explicitly enabled them and this route permits it.
       </p>
       <pre
         style={{
@@ -118,6 +118,7 @@ function defaultFallback(err: Error, retry: () => void): React.ReactElement {
       </pre>
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
         <button
+          type="button"
           onClick={retry}
           style={{
             padding: '0.5rem 1rem',

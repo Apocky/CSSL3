@@ -127,11 +127,14 @@ const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProp
             className={`docs-nav-link ${activeSlug === '' ? 'is-active' : ''}`}
             style={{ fontWeight: 600, marginBottom: '0.4rem' }}
           >
-            Docs · index
+            Documentation
+          </a>
+          <a href="/words" className="docs-nav-link">
+            Words and symbols
           </a>
           {sections.map((s) => (
             <div key={s.name}>
-              <div className="docs-section-title">§ {s.name}</div>
+              <div className="docs-section-title">{s.name}</div>
               {s.pages.map((p) => {
                 const badge = statusBadge(p.status);
                 return (
@@ -140,15 +143,19 @@ const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProp
                     href={`/docs/${p.slug}`}
                     className={`docs-nav-link ${activeSlug === p.slug ? 'is-active' : ''}`}
                   >
-                    <span style={{ color: badge.color, marginRight: '0.4rem' }}>{badge.glyph}</span>
                     {p.title}
+                    <span
+                      style={{ color: badge.color, display: 'block', fontSize: '0.68rem', marginTop: '0.08rem' }}
+                    >
+                      {badge.label}
+                    </span>
                   </a>
                 );
               })}
             </div>
           ))}
           <div style={{ marginTop: '2rem', fontSize: '0.7rem', color: '#5a5a6a' }}>
-            {DOC_PAGES.length} pages · sovereign-by-default
+            {DOC_PAGES.length} pages. Technical terms are explained before use.
           </div>
         </aside>
         <article className="docs-main">{children}</article>

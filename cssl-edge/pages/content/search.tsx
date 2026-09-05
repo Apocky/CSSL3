@@ -6,7 +6,7 @@
 //   - submit-on-explicit-action (button or Enter)
 //   - debounce-free · no rate-limit-fingerprinting
 
-import type { NextPage } from 'next';
+import type { GetServerSideProps, NextPage } from 'next';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -14,7 +14,7 @@ import ContentFeed from '@/components/ContentFeed';
 import { ContentNav, ContentFooter, contentLandingCSS } from './index';
 import {
   fetchContentSearch,
-  STUB_LIST_RESPONSE,
+  EMPTY_LIST_RESPONSE,
   type ContentItem,
 } from '@/lib/content-fetch';
 
@@ -29,7 +29,7 @@ const ContentSearch: NextPage = () => {
   const [query, setQuery] = useState(queryFromUrl);
   const [tagInput, setTagInput] = useState(tagsFromUrl.join(','));
   const [results, setResults] = useState<ReadonlyArray<ContentItem>>([]);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
@@ -47,8 +47,8 @@ const ContentSearch: NextPage = () => {
     setLoading(true);
     setSearched(true);
     const res = await fetchContentSearch(q.trim(), tags);
-    setStubMode(res.stub_mode);
-    setResults(res.data?.items ?? (res.stub_mode ? STUB_LIST_RESPONSE.items : []));
+    setUnavailable(res.unavailable);
+    setResults(res.data?.items ?? EMPTY_LIST_RESPONSE.items);
     setLoading(false);
   };
 
@@ -69,10 +69,10 @@ const ContentSearch: NextPage = () => {
   return (
     <>
       <Head>
-        <title>§ Search · Content · Apocky</title>
+        <title>Search shared content · Apocky</title>
         <meta
           name="description"
-          content="Search content packages by full-text + tags · ¬ query-logging · ¬ autocomplete-typeahead · privacy-respecting"
+          content="Search available shared content by words or tags."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
@@ -83,11 +83,11 @@ const ContentSearch: NextPage = () => {
         <ContentNav active="search" />
         <header style={{ marginBottom: '2rem' }}>
           <h1 className="content-h1" style={{ fontSize: 'clamp(1.5rem, 4vw, 2.4rem)' }}>
-            § Search · privacy-respecting
+            Search shared content
           </h1>
           <p className="content-blurb">
-            Full-text + tag search · ¬ query-logging · ¬ autocomplete-typeahead ·
-            ¬ keystroke-fingerprinting · explicit-submit only.
+            Type words or comma-separated tags, then choose Search. The page sends the search only when you
+            submit the form; it does not send each keystroke for suggestions.
           </p>
         </header>
 
@@ -101,12 +101,12 @@ const ContentSearch: NextPage = () => {
                 letterSpacing: '0.1em',
               }}
             >
-              query
+              Words to search
               <input
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="title · author · description-text…"
+                placeholder="Title, author, or description"
                 spellCheck="false"
                 autoComplete="off"
                 style={{
@@ -131,7 +131,7 @@ const ContentSearch: NextPage = () => {
                 letterSpacing: '0.1em',
               }}
             >
-              tags · comma-separated
+              Tags, separated by commas
               <input
                 type="text"
                 value={tagInput}
@@ -169,22 +169,22 @@ const ContentSearch: NextPage = () => {
                 alignSelf: 'flex-start',
               }}
             >
-              {loading ? '◐ searching…' : '⌕ search'}
+              {loading ? 'Searching…' : 'Search'}
             </button>
           </div>
         </form>
 
         {searched && !loading && (
           <ContentFeed
-            heading={`§ Results · ${results.length}`}
+            heading={`Results · ${results.length}`}
             items={results}
-            stubMode={stubMode}
-            emptyMessage="○ no matches · try broader tags or different query"
+            unavailable={unavailable}
+            emptyMessage="No matches. Try fewer words or broader tags."
           />
         )}
         {!searched && (
           <p style={{ color: '#5a5a6a', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-            ⌕ enter a query above to search
+            Enter words or tags above to search.
           </p>
         )}
 
@@ -193,5 +193,7 @@ const ContentSearch: NextPage = () => {
     </>
   );
 };
+
+export const getServerSideProps: GetServerSideProps = async () => ({ notFound: true });
 
 export default ContentSearch;

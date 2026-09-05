@@ -30,9 +30,8 @@ export function testInfinityEngineComponentName(): void {
   assert(name !== undefined && name.length > 0, 'component .name must be non-empty');
 }
 
-// 3. The page source must contain the canonical brand string + key
-//    sovereignty-respecting copy. Static-string scan is a renderer-free
-//    way to validate the rebrand actually landed.
+// 3. The page must distinguish the project name from a person or finished
+//    service, and it must direct readers to plain-language definitions.
 export function testInfinityEngineSourceHasCanonicalCopy(): void {
   // Resolve the .tsx source relative to this test file. ESM-style.
   const here =
@@ -43,13 +42,12 @@ export function testInfinityEngineSourceHasCanonicalCopy(): void {
     resolve(here, '..', '..', 'pages', 'infinity-engine.tsx'),
     'utf8',
   );
-  assert(src.includes('The Infinity Engine'), 'canonical brand string must appear');
-  assert(src.includes('sovereign by default'), 'sovereignty-respecting copy must appear');
-  assert(src.includes('§'), 'CSL3 § glyph must appear in source');
-  assert(
-    src.includes('/engine'),
-    'must link to W14-M sibling /engine live-status page',
-  );
+  assert(src.includes('Infinity Engine'), 'project name must appear');
+  assert(src.includes('not a separate person'), 'must reject personhood claims for the project name');
+  assert(src.includes('not one finished program'), 'must distinguish architecture research from a release');
+  assert(src.includes('/words'), 'must link to the public words and symbols guide');
+  assert(!src.includes('sovereign by default'), 'must not make an undefined sovereignty claim');
+  assert(!src.includes('learns while you sleep'), 'must not make an unverified activity claim');
   assert(src.length > 4000, `page must be substantive (>4kB), got ${src.length}`);
 }
 

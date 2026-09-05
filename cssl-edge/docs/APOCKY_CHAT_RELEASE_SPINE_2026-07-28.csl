@@ -1,0 +1,98 @@
+§ APOCKY.CHAT.RELEASE.SPINE  ‼
+  objective := chat-first live closure
+  authority := latest.user.steering ∩ approved.renovation.package ∩ PRIME
+  reasoning.register := CSLv3
+
+§ SOURCE
+  repo := C:\Users\Apocky\source\worktrees\apocky-chat-threshold-release
+  branch := release/apocky-chat-threshold-20260728
+  base := 7a86c510fc0a9ccbcea4fad6bfaa3032d8fae867
+  recovered.from := C:\Users\Apocky\source\worktrees\cssl-edge-apocrypha-v2-release
+  recovered.delta := 95 tracked + 57 untracked cssl-edge files
+  recovery.check := 151/152 exact SHA-256 ; cssl-edge/.gitignore content-equal with line-ending-only hash drift
+  schema.source := cssl-supabase/migrations/20260728204713_clearing_community.sql
+  schema.sha256 := 9111C983397D41DF24B462F60B28E94BA473BAF3984FD97B533545325A8F79DF
+
+§ LIVE.BASELINE @ 2026-07-28T21:57:22-07:00
+  aliases := apocky.com + www.apocky.com
+  deployment := dpl_77UorAJ9HHEcSgupmALLJENCv7Zw
+  origin := apocky-8wpqc7uaa-shawn-bakers-projects-cb1c9715.vercel.app
+  build.id := TujcAxVxKv6MhazFk874h
+  rollback := promote(deployment)
+  routes.observed :=
+    /chat → 308 /apocrypha
+    /clearing → 308 /apocrypha
+    /apocrypha → 200 Clearing room
+    /api/apocrypha/presence → 200 hidden + display_authorized=false
+  data.observed := 5 public rooms + room/message/member reads reachable
+  security.observed := CSP + HSTS + nosniff + DENY + Permissions-Policy + COOP + CORP + no-referrer
+  edge.defect := Cloudflare Insights injected but rejected by CSP
+
+§ ROUTE.CONTRACT
+  /apocrypha := template.threshold
+  /apocrypha/rooms/[id] := gated.Clearing
+  /chat := compatibility.redirect(/apocrypha)
+  /admin/chat := owner.direct.Apocrypha.conversation
+  N! /chat compatibility erases /admin/chat
+  N! threshold emits embodied.presence without exact current authority
+
+§ CHAT.CLOSURE
+  order :=
+    access
+    → room.load
+    → send + reply + react + withdraw
+    → room-scoped.realtime
+    → fail-closed.presence
+    → disconnect/retry.recovery
+    → preview
+    → live.aliases
+    → stateful.live.proof
+  invariants :=
+    deny-default access
+    ∧ no auto-tracked viewer presence
+    ∧ authn on write
+    ∧ author-only withdrawal
+    ∧ bounded input + rate-limit + idempotency
+    ∧ no cross-room reaction projection
+    ∧ no security-header regression
+    ∧ rollback remains executable
+
+§ BASELINE.TEST
+  ✓ tsc --noEmit
+  ✓ apocrypha-v2-release API contract
+  ✓ apocrypha-v2-vision contract
+  ✓ auth-csp contract
+  ✗ chat-presence contract — stale owner-direct /chat expectation conflicts current redirect
+  ⊘ database write + realtime E2E
+
+§ PRE-DONE.FALSIFIERS
+  any alias ≠ intended READY deployment
+  ∨ any global security header absent
+  ∨ signed-out user reaches gated room UI
+  ∨ send|reply|react|withdraw lacks observed committed result
+  ∨ second tab misses committed realtime event
+  ∨ disconnect cannot recover through bounded retry
+  ∨ presence becomes visible without exact authority envelope
+  ⇒ N! done
+
+§ CHECKPOINT @ 2026-07-28T22:08-07:00
+  cause := latest.user.steering → underlying.Apocrypha.cognition.runtime first
+  state := paused.partial ∧ N! deploy
+  implemented.partial :=
+    components/apocrypha/Threshold.tsx
+    components/apocrypha/Threshold.module.css
+    components/apocrypha/usePublicPresence.ts
+    components/hub/SiteSession.tsx
+    pages/apocrypha.tsx
+    pages/apocrypha/rooms/[id].tsx
+    components/clearing/ClearingRoom.tsx
+    components/clearing/useClearingData.ts
+    lib/clearing/client.ts
+  unresolved :=
+    additive SQL integrity + withdrawal migration
+    ∧ typecheck(client.ts indexed-byte proof)
+    ∧ focused tests
+    ∧ local browser matrix
+    ∧ preview/live deployment
+  restart := exact worktree + this spine + git diff
+∎

@@ -1,12 +1,5 @@
 const DEFAULT_AUTH_RETURN_PATH = '/account';
 
-function normalizeLegacyPath(path: string): string {
-  if (path === '/chat') return '/admin/chat';
-  if (path.startsWith('/chat?')) return `/admin/chat${path.slice('/chat'.length)}`;
-  if (path.startsWith('/chat#')) return `/admin/chat${path.slice('/chat'.length)}`;
-  return path;
-}
-
 export function normalizeAuthReturnPath(value: unknown, fallback = DEFAULT_AUTH_RETURN_PATH): string {
   if (typeof value !== 'string') return fallback;
   const raw = value.trim();
@@ -16,7 +9,7 @@ export function normalizeAuthReturnPath(value: unknown, fallback = DEFAULT_AUTH_
 
   try {
     const url = new URL(raw, 'https://apocky.local');
-    const normalized = normalizeLegacyPath(`${url.pathname}${url.search}${url.hash}`);
+    const normalized = `${url.pathname}${url.search}${url.hash}`;
     if (normalized === '/' || normalized.startsWith('/api/')) return fallback;
     if (normalized.startsWith('/auth/callback') || normalized.startsWith('/login') || normalized.startsWith('/register')) return fallback;
     return normalized;

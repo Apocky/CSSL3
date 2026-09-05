@@ -10,10 +10,10 @@
       "maxDuration": 30
     },
     "pages/api/admin/apocrypha/chat.ts": {
-      "maxDuration": 60
+      "maxDuration": 30
     },
     "pages/api/admin/apocrypha/chat_stream.ts": {
-      "maxDuration": 120
+      "maxDuration": 30
     },
     "pages/api/cron/**/*.ts": {
       "maxDuration": 60
@@ -28,7 +28,33 @@
     { "path": "/api/cron/sigma-chain-checkpoint", "schedule": "0 */6 * * *" },
     { "path": "/api/cron/shawn-reference-audit", "schedule": "0 16 * * 1" }
   ],
+  "rewrites": [
+    { "source": "/", "destination": "/commons/index.html" },
+    { "source": "/commons", "destination": "/commons/index.html" },
+    { "source": "/atlas", "destination": "/commons/atlas.html" },
+    { "source": "/membership", "destination": "/commons/membership.html" },
+    { "source": "/principles", "destination": "/commons/principles.html" }
+  ],
   "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' https://pzirbmyfmrbtkllrtcmx.supabase.co wss://pzirbmyfmrbtkllrtcmx.supabase.co; media-src 'self'; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()"
+        },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Resource-Policy", "value": "same-origin" },
+        { "key": "X-Permitted-Cross-Domain-Policies", "value": "none" }
+      ]
+    },
     {
       "source": "/api/admin/apocrypha/:rest*",
       "headers": [
@@ -50,14 +76,28 @@
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
         { "key": "X-Served-By", "value": "apocky-com-hub" }
       ]
     },
     {
-      "source": "/:path((?:login|register|account|download|buy|docs|devblog|press))",
+      "source": "/:path((?:atlas|clearing|membership|principles))",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
+        { "key": "X-Served-By", "value": "apocky-spatial-commons" }
+      ]
+    },
+    {
+      "source": "/commons/:rest*",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
+        { "key": "X-Served-By", "value": "apocky-spatial-commons" }
+      ]
+    },
+    {
+      "source": "/:path((?:login|register|account|chat|apocrypha|download|buy|docs|devblog|press))",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0, no-transform" },
         { "key": "X-Served-By", "value": "apocky-com-hub" }
       ]
     },

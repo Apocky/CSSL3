@@ -2,7 +2,7 @@
 // W12-6 · /content/subscribed · user's subscriptions
 // Auto-pull-state visible · sovereign-unsubscribe button per item
 
-import type { NextPage } from 'next';
+import type { GetServerSideProps, NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { ContentNav, ContentFooter, contentLandingCSS } from './index';
@@ -10,23 +10,23 @@ import ContentCard from '@/components/ContentCard';
 import {
   fetchSubscribed,
   unsubscribe,
-  STUB_LIST_RESPONSE,
+  EMPTY_LIST_RESPONSE,
   type ContentItem,
 } from '@/lib/content-fetch';
 
 const ContentSubscribed: NextPage = () => {
   const [items, setItems] = useState<ReadonlyArray<ContentItem>>([]);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [autoPullEnabled, setAutoPullEnabled] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
-      // user_cap is normally read from session-cookie; W12-6 stubs as 'me'
+      // The server derives the signed-in identity; the client does not assert one.
       const res = await fetchSubscribed('me');
-      setStubMode(res.stub_mode);
-      setItems(res.data?.items ?? STUB_LIST_RESPONSE.items);
+      setUnavailable(res.unavailable);
+      setItems(res.data?.items ?? EMPTY_LIST_RESPONSE.items);
       setLoading(false);
       // Persist last-seen-state into localStorage for offline-friendly UX
       if (res.data && typeof window !== 'undefined') {
@@ -44,12 +44,12 @@ const ContentSubscribed: NextPage = () => {
 
   const handleUnsubscribe = async (slug: string) => {
     setRevoking(slug);
+    setActionError(null);
     const ok = await unsubscribe(slug);
     if (ok) {
       setItems((prev) => prev.filter((i) => i.slug !== slug));
     } else {
-      // stub-mode or API failure — still optimistically remove for UX
-      setItems((prev) => prev.filter((i) => i.slug !== slug));
+      setActionError('The subscription could not be changed. Nothing was removed.');
     }
     setRevoking(null);
   };
@@ -57,10 +57,10 @@ const ContentSubscribed: NextPage = () => {
   return (
     <>
       <Head>
-        <title>§ Subscribed · Content · Apocky</title>
+        <title>Shared-content subscriptions · Apocky</title>
         <meta
           name="description"
-          content="Your content subscriptions · auto-pull-state visible · sovereign-unsubscribe always-available"
+          content="Content packages you chose to follow, when the subscription service is available."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
@@ -71,37 +71,17 @@ const ContentSubscribed: NextPage = () => {
         <ContentNav active="subscribed" />
         <header style={{ marginBottom: '2rem' }}>
           <h1 className="content-h1" style={{ fontSize: 'clamp(1.5rem, 4vw, 2.4rem)' }}>
-            § Subscribed · {items.length}
+            Subscriptions · {items.length}
           </h1>
           <p className="content-blurb">
-            Packages you've subscribed to · sovereign-unsubscribe is one-click below
-            (NO retention period · NO email-confirm · effective immediately) · auto-pull
-            of new versions is opt-in.
+            Content packages you chose to follow. This page does not claim a change succeeded until the server
+            confirms it.
           </p>
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontSize: '0.85rem',
-              color: '#a8a8b8',
-              marginTop: '0.75rem',
-              cursor: 'pointer',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={autoPullEnabled}
-              onChange={(e) => setAutoPullEnabled(e.target.checked)}
-              style={{ accentColor: '#c084fc' }}
-            />
-            <span>
-              auto-pull new versions · {autoPullEnabled ? '✓ enabled' : '○ disabled (default)'}
-            </span>
-          </label>
         </header>
 
-        {stubMode && (
+        {actionError ? <p role="alert" style={{ color: '#ffb0b8' }}>{actionError}</p> : null}
+
+        {unavailable && (
           <div
             role="status"
             style={{
@@ -115,14 +95,13 @@ const ContentSubscribed: NextPage = () => {
               lineHeight: 1.5,
             }}
           >
-            <strong>◐ stub-mode</strong> · subscription-API (sibling W12-5/W12-8) not yet wired ·
-            placeholder rendered
+            <strong>Subscriptions are not available yet.</strong> No placeholder subscription is shown.
           </div>
         )}
 
         {loading ? (
-          <p style={{ color: '#7a7a8c', fontSize: '0.85rem' }}>◐ loading subscriptions…</p>
-        ) : items.length === 0 && !stubMode ? (
+          <p style={{ color: '#7a7a8c', fontSize: '0.85rem' }}>Loading subscriptions…</p>
+        ) : items.length === 0 && !unavailable ? (
           <div
             style={{
               padding: '3rem 1.5rem',
@@ -133,7 +112,7 @@ const ContentSubscribed: NextPage = () => {
               borderRadius: 6,
             }}
           >
-            ○ no subscriptions yet · browse the{' '}
+            No subscriptions yet. Browse the{' '}
             <a href="/content" style={{ color: '#7dd3fc' }}>
               landing page
             </a>{' '}
@@ -155,7 +134,7 @@ const ContentSubscribed: NextPage = () => {
                   disabled={revoking === item.slug}
                   onClick={() => handleUnsubscribe(item.slug)}
                   aria-label={`unsubscribe from ${item.title}`}
-                  title="sovereign-unsubscribe · effective immediately · no retention"
+                  title="Stop following this item"
                   style={{
                     position: 'absolute',
                     bottom: 12,
@@ -170,7 +149,7 @@ const ContentSubscribed: NextPage = () => {
                     cursor: revoking === item.slug ? 'wait' : 'pointer',
                   }}
                 >
-                  {revoking === item.slug ? '◐ revoking…' : '⊘ unsubscribe'}
+                  {revoking === item.slug ? 'Removing…' : 'Unsubscribe'}
                 </button>
               </div>
             ))}
@@ -182,5 +161,7 @@ const ContentSubscribed: NextPage = () => {
     </>
   );
 };
+
+export const getServerSideProps: GetServerSideProps = async () => ({ notFound: true });
 
 export default ContentSubscribed;

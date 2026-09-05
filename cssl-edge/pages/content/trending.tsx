@@ -3,27 +3,27 @@
 // "Why am I seeing this?" → ALWAYS shown on every card (sovereignty UX)
 // Cosmetic-axiom-attestation visible per-card
 
-import type { NextPage } from 'next';
+import type { GetServerSideProps, NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import ContentFeed from '@/components/ContentFeed';
 import { ContentNav, ContentFooter, contentLandingCSS } from './index';
 import {
   fetchContentList,
-  STUB_LIST_RESPONSE,
+  EMPTY_LIST_RESPONSE,
   type ContentItem,
 } from '@/lib/content-fetch';
 
 const ContentTrending: NextPage = () => {
   const [items, setItems] = useState<ReadonlyArray<ContentItem>>([]);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     void (async () => {
       const res = await fetchContentList('trending', 24);
-      setStubMode(res.stub_mode);
-      setItems(res.data?.items ?? STUB_LIST_RESPONSE.items);
+      setUnavailable(res.unavailable);
+      setItems(res.data?.items ?? EMPTY_LIST_RESPONSE.items);
       setLoading(false);
     })();
   }, []);
@@ -31,10 +31,10 @@ const ContentTrending: NextPage = () => {
   return (
     <>
       <Head>
-        <title>§ Trending · Content · Apocky</title>
+        <title>Popular shared content · Apocky</title>
         <meta
           name="description"
-          content="KAN-bias-weighted trending content · explainable rationale on every card · ¬ algorithmic black-box"
+          content="Popular shared content with a visible explanation of the ranking method."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
@@ -45,11 +45,11 @@ const ContentTrending: NextPage = () => {
         <ContentNav active="trending" />
         <header style={{ marginBottom: '2rem' }}>
           <h1 className="content-h1" style={{ fontSize: 'clamp(1.5rem, 4vw, 2.4rem)' }}>
-            § Trending · KAN-bias-weighted
+            Popular shared content
           </h1>
           <p className="content-blurb">
-            Weighted by collective-engagement-bias from Akashic-Records · ALWAYS-explainable ·
-            ¬ algorithmic-black-box · click ◐ on any card to see its rationale.
+            When the service has enough real activity, this list uses the public factors explained below.
+            Each item can also explain why it appears.
           </p>
           {/* Methodology disclosure — NEVER hide the algorithm */}
           <details
@@ -66,35 +66,36 @@ const ContentTrending: NextPage = () => {
             <summary
               style={{ cursor: 'pointer', color: '#7dd3fc', listStyle: 'none', fontWeight: 600 }}
             >
-              ◐ how is "trending" computed?
+              How is “popular” calculated?
             </summary>
             <div style={{ marginTop: '0.6rem', lineHeight: 1.6, fontSize: '0.85rem' }}>
               <p style={{ margin: '0 0 0.5rem' }}>
-                <strong style={{ color: '#c084fc' }}>signals weighted</strong> :
+                <strong style={{ color: '#c084fc' }}>Information used</strong>:
               </p>
               <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                <li>install-completions (count) · weight 0.3</li>
-                <li>positive-rating count (4-5★) · weight 0.25</li>
-                <li>remix-count (downstream descendants) · weight 0.25</li>
-                <li>recency decay (e^(-Δt/14d)) · weight 0.2</li>
+                <li>Completed installs: 30 percent of the score.</li>
+                <li>Four- and five-star ratings: 25 percent.</li>
+                <li>New versions derived from the item: 25 percent.</li>
+                <li>Publication time, with older items gradually reduced: 20 percent.</li>
               </ul>
               <p style={{ margin: '0.6rem 0 0' }}>
-                <strong style={{ color: '#c084fc' }}>signals NOT used</strong> : scroll-depth ·
-                time-on-page · click-through-rate · A/B-test bucketing · per-user
-                behavioral-inference. Sovereignty-default.
+                <strong style={{ color: '#c084fc' }}>Information not intended for this score</strong>: how far
+                you scroll, time spent on a page, click-through rate, experiment groups, or guesses about an
+                individual’s behavior. This describes the ranking design and must be checked against the running
+                service before launch.
               </p>
             </div>
           </details>
         </header>
 
         {loading ? (
-          <p style={{ color: '#7a7a8c', fontSize: '0.85rem' }}>◐ loading trending feed…</p>
+          <p style={{ color: '#7a7a8c', fontSize: '0.85rem' }}>Loading popular content…</p>
         ) : (
           <ContentFeed
             items={items}
-            stubMode={stubMode}
+            unavailable={unavailable}
             showRationale={true}
-            emptyMessage="○ trending pool empty · weights need at least 24h of data"
+            emptyMessage="There is not enough published activity to calculate this list."
           />
         )}
 
@@ -103,5 +104,7 @@ const ContentTrending: NextPage = () => {
     </>
   );
 };
+
+export const getServerSideProps: GetServerSideProps = async () => ({ notFound: true });
 
 export default ContentTrending;

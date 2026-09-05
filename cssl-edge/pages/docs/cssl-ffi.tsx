@@ -10,15 +10,21 @@ const Page: NextPage = () => {
   return (
     <DocsLayout
       activeSlug="cssl-ffi"
-      title="CSSL FFI · Apocky Docs"
-      description="The CSSL foreign-function-interface conventions — extern C, pointer + length pairs, u32 status codes, and the auto-default-link mechanism."
+      title="How CSSL calls other code · Apocky Documentation"
+      description="A plain introduction to CSSL’s foreign function interface, followed by pointer, status-code, and linking details."
     >
-      <h1 className="docs-h1">CSSL FFI</h1>
-      <p className="docs-blurb">§ extern "C" declarations · pointer + length pairs · u32 status codes · auto-default-link.</p>
+      <h1 className="docs-h1">How CSSL calls other code</h1>
+      <p className="docs-blurb">Connecting a CSSL program to functions supplied by another compiled library.</p>
 
-      <h2 className="docs-h2">§ The contract</h2>
       <p className="docs-p">
-        CSSL FFI is intentionally narrow: declare a function signature with{' '}
+        <strong>FFI</strong> means <strong>foreign function interface</strong>. It is the boundary that lets code
+        written in one programming language call a function written in another. You only need the remaining
+        details on this page when building or reviewing CSSL code.
+      </p>
+
+      <h2 className="docs-h2">The contract</h2>
+      <p className="docs-p">
+        CSSL keeps this boundary narrow. A source file declares the function it expects with{' '}
         <code className="docs-ic">extern "C" fn name(args) -&gt; T ;</code> and the auto-default-link mechanism in
         <code className="docs-ic"> csslc</code> resolves the symbol against either <code className="docs-ic">cssl-rt</code>{' '}
         (allocator + panic + exit) or one of the host-side staticlibs (<code className="docs-ic">loa-host</code>{' '}
@@ -32,7 +38,7 @@ fn main() -> i32 {
     exit_code
 }`}</CodeBlock>
 
-      <h2 className="docs-h2">§ Pointer + length convention</h2>
+      <h2 className="docs-h2">Pointer + length convention</h2>
       <p className="docs-p">
         CSSL stage-0 does not yet pass <code className="docs-ic">Vec&lt;T&gt;</code> across the FFI boundary. When a host
         symbol needs to expose a buffer, the convention is two adjacent arguments — one raw pointer and one
@@ -57,7 +63,7 @@ fn read_audit(buf_ptr: u64, buf_cap: u32) -> u32 {
         surface lands once the type system gains aliasing rules — see the language overview.
       </Callout>
 
-      <h2 className="docs-h2">§ u32 status-code pattern</h2>
+      <h2 className="docs-h2">u32 status-code pattern</h2>
       <p className="docs-p">
         Almost every host symbol returns a <code className="docs-ic">u32</code> status. Zero is success; non-zero is
         a structured error code that the caller can route to a typed error. This avoids exceptions, avoids
@@ -75,12 +81,12 @@ fn read_audit(buf_ptr: u64, buf_cap: u32) -> u32 {
         <tbody>
           <tr><td><code className="docs-ic">0</code></td><td>OK · no error · result valid</td></tr>
           <tr><td><code className="docs-ic">1..127</code></td><td>Domain-specific error · stable per host crate</td></tr>
-          <tr><td><code className="docs-ic">128..255</code></td><td>Sovereign-cap error · cap missing or revoked</td></tr>
-          <tr><td><code className="docs-ic">256..</code></td><td>Internal error · log-and-attest · should not surface to user</td></tr>
+          <tr><td><code className="docs-ic">128..255</code></td><td>Permission error in the current internal convention</td></tr>
+          <tr><td><code className="docs-ic">256..</code></td><td>Internal error that should be recorded for diagnosis</td></tr>
         </tbody>
       </table>
 
-      <h2 className="docs-h2">§ Real example · scene FFI surface</h2>
+      <h2 className="docs-h2">Real example · scene FFI surface</h2>
       <p className="docs-p">
         From <code className="docs-ic">scenes/city_central_hub.csl</code>: a complete scene surface with eleven extern
         symbols, all returning <code className="docs-ic">u32</code> status, all dispatched against <code className="docs-ic">loa-host</code>{' '}
@@ -99,7 +105,7 @@ extern "C" fn scene_apply_lod(handle: u32, player_x: i32, player_y: i32, player_
 extern "C" fn scene_audit_emit(handle: u32, event_kind: u32, payload_hash: u64) -> u32 ;
 extern "C" fn scene_tick(handle: u32, dt_micros: u32) -> u32 ;`}</CodeBlock>
 
-      <h2 className="docs-h2">§ The auto-default-link mechanism</h2>
+      <h2 className="docs-h2">The auto-default-link mechanism</h2>
       <p className="docs-p">
         When <code className="docs-ic">csslc</code> emits an object file, the linker invocation automatically prepends
         the canonical staticlibs found in <code className="docs-ic">compiler-rs/target/release/</code>:
@@ -110,12 +116,12 @@ extern "C" fn scene_tick(handle: u32, dt_micros: u32) -> u32 ;`}</CodeBlock>
       </ul>
 
       <Callout kind="coming-soon" title="Per-system staticlib auto-link">
-        ○ POD-4-D5..D8 extends auto-default-link to also discover <code className="docs-ic">cssl-host-combat-sim</code>,
+        Planned work would extend automatic linking to discover <code className="docs-ic">cssl-host-combat-sim</code>,
         <code className="docs-ic"> cssl-host-craft-graph</code>, <code className="docs-ic">cssl-host-procgen-city</code>, etc., so the
         sibling-module FFI surfaces resolve without manual <code className="docs-ic">--link</code> flags.
       </Callout>
 
-      <h2 className="docs-h2">§ Symbol-name conventions</h2>
+      <h2 className="docs-h2">Symbol-name conventions</h2>
       <ul className="docs-ul">
         <li><code className="docs-ic">__cssl_*</code> — runtime + engine symbols (cssl-rt, loa-host)</li>
         <li><code className="docs-ic">scene_*</code> — scene-orchestration symbols</li>

@@ -1,0 +1,80 @@
+{
+  "schema": "apocky.site-manifest.v1",
+  "schema_href": "/schemas/site-manifest.v1.json",
+  "name": "Apocky",
+  "canonical_url": "https://www.apocky.com/",
+  "audiences": ["people", "software_readers", "developers"],
+  "declared_release_state": "public",
+  "entry_points": [
+    {
+      "rel": "home",
+      "href": "/",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "words_and_symbols",
+      "href": "/words",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "game_download",
+      "href": "/download",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "writing",
+      "href": "https://medium.com/@noneisone.oneisall",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "external_public"
+    },
+    {
+      "rel": "language",
+      "href": "https://cssl.dev/",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "external_public"
+    },
+    {
+      "rel": "notation",
+      "href": "https://cssl.dev/CSLv3",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "external_public"
+    }
+  ],
+  "apocrypha": {
+    "claims": {
+      "public_identity_definition": "none",
+      "public_authorship": "only_when_clearly_attributed",
+      "public_conversation_service": "the_clearing",
+      "content_generation": "voluntary_not_expected"
+    }
+  },
+  "policies": {
+    "privacy": "/legal/privacy",
+    "terms": "/legal/terms",
+    "words_and_symbols": "/words",
+    "effects": "require_explicit_permission",
+    "consent": "informed_specific_withdrawable",
+    "attribution": "required_before_speaking_for_someone"
+  }
+}

@@ -1,287 +1,328 @@
-// apocky.com/register · create new account
-// Per spec/22 · same magic-link / OAuth flow as /login · just framed for new users
-
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { AUTH_PROVIDERS } from '../lib/auth';
+import { AuthFrame } from '../components/hub/AuthFrame';
+import { AUTH_PROVIDERS, getAuthClient, persistSessionToCookie } from '../lib/auth';
 import { buildAuthCallbackUrl, normalizeAuthReturnPath } from '../lib/auth-return';
+
+type Notice = {
+  tone: 'info' | 'error' | 'warning';
+  text: string;
+};
+
+const RESEND_COOLDOWN_SECONDS = 30;
 
 const Register: NextPage = () => {
   const [email, setEmail] = useState('');
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [otp, setOtp] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [stubMode, setStubMode] = useState<boolean | null>(null);
+  const [operation, setOperation] = useState<'send' | 'resend' | 'verify' | null>(null);
+  const [serverSessionPending, setServerSessionPending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [returnTo, setReturnTo] = useState('/account');
 
   useEffect(() => {
-    if (typeof location === 'undefined') return;
     const next = new URLSearchParams(location.search).get('next');
     setReturnTo(normalizeAuthReturnPath(next));
   }, []);
 
-  function callbackUrl(): string {
-    return buildAuthCallbackUrl(location.origin, returnTo);
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => {
+      setResendCooldown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
+
+  function currentReturnPath(): string {
+    if (typeof location === 'undefined') return '/account';
+    return normalizeAuthReturnPath(new URLSearchParams(location.search).get('next'));
   }
 
-  async function handleMagicLink(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email || !agreed || submitting) return;
-    setSubmitting(true);
-    setMessage(null);
-    try {
-      const res = await fetch('/api/auth/magic-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          redirectTo: callbackUrl(),
-          isRegistration: true,
-        }),
-      });
-      const json = await res.json();
-      if (json.stub) setStubMode(true);
-      setMessage(json.message ?? (json.ok ? '✓ Check your email for the verification link' : '✗ Failed'));
-    } catch (err) {
-      setMessage('✗ Network error');
-    } finally {
-      setSubmitting(false);
+  function callbackUrl(): string {
+    return buildAuthCallbackUrl(location.origin, currentReturnPath());
+  }
+
+  async function sendEmailCode(address: string, kind: 'send' | 'resend'): Promise<void> {
+    if (!agreed) {
+      setNotice({ tone: 'error', text: 'Please confirm the account terms before continuing.' });
+      return;
     }
+    if (operation) return;
+    if (kind === 'resend' && resendCooldown > 0) return;
+    const normalizedEmail = address.trim();
+    if (!normalizedEmail) return;
+    setOperation(kind);
+    setNotice(null);
+
+    const client = getAuthClient();
+    if (!client) {
+      setNotice({ tone: 'warning', text: 'Account creation is not connected in this environment. No address was submitted.' });
+      setOperation(null);
+      return;
+    }
+
+    try {
+      const { error } = await client.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: callbackUrl(),
+          shouldCreateUser: true,
+        },
+      });
+      if (error) {
+        setNotice({ tone: 'error', text: 'We could not send a verification code. Check the address, wait a moment, and try again.' });
+        return;
+      }
+      setPendingEmail(normalizedEmail);
+      setOtp('');
+      setServerSessionPending(false);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setNotice({
+        tone: 'info',
+        text: kind === 'resend'
+          ? `A new verification email was sent to ${normalizedEmail}. Enter its code if shown, or use its secure link.`
+          : `Check ${normalizedEmail}. Enter the one-time code if the email shows one, or use its secure link.`,
+      });
+    } catch {
+      setNotice({ tone: 'error', text: 'The account service could not be reached. Please try again.' });
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  async function handleEmailSubmit(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    await sendEmailCode(email, 'send');
+  }
+
+  async function handleVerifyCode(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!pendingEmail || operation) return;
+    setOperation('verify');
+    setNotice(null);
+
+    const client = getAuthClient();
+    if (!client) {
+      setNotice({ tone: 'warning', text: 'Account creation is not connected in this environment.' });
+      setOperation(null);
+      return;
+    }
+
+    try {
+      let accessToken: string | null = null;
+      if (serverSessionPending) {
+        const { data, error } = await client.auth.getSession();
+        if (error || !data.session) {
+          setServerSessionPending(false);
+          setNotice({ tone: 'error', text: 'The verified browser session is no longer available. Request a new code and try again.' });
+          return;
+        }
+        accessToken = data.session.access_token;
+      } else {
+        const { data, error } = await client.auth.verifyOtp({
+          email: pendingEmail,
+          token: otp.trim(),
+          type: 'email',
+        });
+        if (error || !data.session) {
+          setNotice({ tone: 'error', text: 'That code could not be verified. It may have expired or already been used.' });
+          return;
+        }
+        accessToken = data.session.access_token;
+      }
+
+      const mirrored = await persistSessionToCookie(accessToken);
+      if (!mirrored) {
+        setServerSessionPending(true);
+        setNotice({
+          tone: 'error',
+          text: 'Your code was verified, but the secure server session could not be established. Retry without requesting another code.',
+        });
+        return;
+      }
+      location.replace(currentReturnPath());
+    } catch {
+      setNotice({ tone: 'error', text: 'Verification could not be completed. Please try again.' });
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  function changeEmail(): void {
+    setEmail(pendingEmail ?? email);
+    setPendingEmail(null);
+    setOtp('');
+    setServerSessionPending(false);
+    setResendCooldown(0);
+    setNotice(null);
   }
 
   async function handleOAuth(provider: string) {
-    setMessage(null);
-    if (!agreed) {
-      setMessage('Please agree to the terms below first');
+    if (!agreed || oauthLoading) {
+      if (!agreed) setNotice({ tone: 'error', text: 'Please confirm the account terms before continuing.' });
+      return;
+    }
+    setNotice(null);
+    setOauthLoading(provider);
+    const client = getAuthClient();
+    if (!client) {
+      setNotice({ tone: 'warning', text: 'Provider account creation is not connected in this environment.' });
+      setOauthLoading(null);
       return;
     }
     try {
-      const res = await fetch('/api/auth/oauth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, redirectTo: callbackUrl() }),
+      const { data, error } = await client.auth.signInWithOAuth({
+        provider: provider as 'google' | 'apple' | 'github' | 'discord',
+        options: {
+          redirectTo: callbackUrl(),
+          skipBrowserRedirect: true,
+          queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
+        },
       });
-      const json = await res.json();
-      if (json.stub) {
-        setStubMode(true);
-        setMessage('Stub mode · OAuth not connected yet · pending Apocky-Hub Supabase signup');
+      if (error || !data?.url) {
+        setNotice({
+          tone: 'error',
+          text: error ? 'Provider account creation could not start. Please try again.' : 'The provider did not return a sign-in address.',
+        });
+        setOauthLoading(null);
         return;
       }
-      if (json.url) location.href = json.url;
-      else setMessage('✗ OAuth init failed');
-    } catch (err) {
-      setMessage('✗ Network error');
+      location.assign(data.url);
+    } catch {
+      setNotice({ tone: 'error', text: 'The provider could not be reached. Please try again.' });
+      setOauthLoading(null);
     }
   }
 
   return (
     <>
       <Head>
-        <title>Create account · Apocky</title>
-        <meta name="description" content="Create an account on apocky.com · single sign-on across all Apocky-projects" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>{`
-          * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; }
-          body {
-            background: radial-gradient(ellipse at top, #15151f 0%, #0a0a0f 50%, #050507 100%);
-            color: #e6e6f0;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            min-height: 100vh;
-          }
-          a { color: inherit; text-decoration: none; }
-          input { font-family: inherit; }
-        `}</style>
+        <title>Create an account · Apocky</title>
+        <meta name="description" content="Create an optional Apocky account for a feature that requires sign-in." />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="robots" content="noindex,nofollow" />
       </Head>
-      <main style={{ maxWidth: 480, margin: '0 auto', padding: '5rem 1.5rem' }}>
-        <a href="/" style={{ fontSize: '0.85rem', color: '#7a7a8c', display: 'inline-block', marginBottom: '2rem' }}>
-          ← apocky.com
-        </a>
+      <a className="apx-skip-link" href="#main-content">Skip to account creation</a>
+      <AuthFrame mode="register">
+        <div className="apx-auth-card">
+          <p className="apx-auth-context">Optional account</p>
+          <h2>Create your account</h2>
+          <p className="apx-auth-subtitle">Start with a one-time email code, the secure link in that email, or a provider. You can sign out at any time.</p>
 
-        <h1
-          style={{
-            fontSize: '2rem',
-            margin: 0,
-            fontWeight: 700,
-            backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #c084fc 60%, #7dd3fc 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}
-        >
-          Create your account
-        </h1>
-        <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.92rem' }}>
-          One identity · access to all Apocky-projects (LoA · CSSL · Σ-Chain · Mycelium · etc.) · sovereign-revocable
-        </p>
+          {!pendingEmail ? (
+            <form className="apx-auth-form" onSubmit={handleEmailSubmit}>
+              <label className="apx-label" htmlFor="register-email">Email address</label>
+              <input
+                id="register-email"
+                className="apx-input"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+              />
 
-        {/* ─── WHAT YOU GET ─── */}
-        <section
-          style={{
-            marginTop: '2rem',
-            padding: '1rem 1.25rem',
-            background: 'rgba(20, 20, 30, 0.5)',
-            border: '1px solid #1f1f2a',
-            borderRadius: 6,
-          }}
-        >
-          <h3 style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7a7a8c', margin: 0 }}>
-            § What you get
-          </h3>
-          <ul style={{ margin: '0.6rem 0 0', paddingLeft: '1.2rem', color: '#cdd6e4', fontSize: '0.85rem', lineHeight: 1.7 }}>
-            <li>Single sign-on across all Apocky-projects</li>
-            <li>Cloud-saved progress when you opt-in (TIER-2 cross-device sync)</li>
-            <li>Akashic-Records · Bazaar · Multiplayer · Mycelium when you opt-in</li>
-            <li>Cross-device entitlement-tracking (purchases follow your account)</li>
-            <li>Per-event opt-in granularity · revoke any cap at any time</li>
-            <li>Full data-export + delete-on-request (GDPR / CCPA)</li>
-          </ul>
-        </section>
+              <label className="apx-checkbox" htmlFor="register-agreement">
+                <input id="register-agreement" type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
+                <span>I agree to the <Link href="/legal/terms">Terms</Link> and <Link href="/legal/privacy">Privacy Policy</Link>, and confirm I meet the stated age requirements.</span>
+              </label>
 
-        {/* ─── EMAIL MAGIC-LINK ─── */}
-        <form onSubmit={handleMagicLink} style={{ marginTop: '2rem' }}>
-          <label
-            style={{
-              display: 'block',
-              fontSize: '0.7rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.18em',
-              color: '#7a7a8c',
-              marginBottom: '0.5rem',
-            }}
-          >
-            § Email
-          </label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            style={{
-              width: '100%',
-              padding: '0.7rem 0.9rem',
-              background: 'rgba(20, 20, 30, 0.7)',
-              border: '1px solid #2a2a3a',
-              borderRadius: 4,
-              color: '#e6e6f0',
-              fontSize: '0.95rem',
-              outline: 'none',
-            }}
-          />
+              <button className="apx-button apx-button--primary" type="submit" disabled={Boolean(operation) || !email.trim() || !agreed} style={{ width: '100%', marginTop: 20 }}>
+                {operation === 'send' ? 'Sending…' : 'Send verification email'}
+              </button>
+              <p className="apx-field-help">The email also includes a single-use link that returns you to the page you chose.</p>
+            </form>
+          ) : (
+            <form className="apx-auth-form" onSubmit={handleVerifyCode}>
+              <p className="apx-field-help" id="register-code-destination">Code sent to <strong>{pendingEmail}</strong>.</p>
+              <label className="apx-label" htmlFor="register-code">One-time verification code</label>
+              <input
+                id="register-code"
+                className="apx-input"
+                type="text"
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                pattern="[0-9]{6,8}"
+                minLength={6}
+                maxLength={8}
+                required
+                value={otp}
+                onChange={(event) => setOtp(event.target.value)}
+                aria-describedby="register-code-destination register-code-help"
+                placeholder="000000"
+                autoFocus
+              />
+              <p className="apx-field-help" id="register-code-help">Codes are single-use. Do not share this code with anyone.</p>
+              <button className="apx-button apx-button--primary" type="submit" disabled={Boolean(operation) || (!serverSessionPending && otp.trim().length < 6)} style={{ width: '100%', marginTop: 18 }}>
+                {operation === 'verify'
+                  ? 'Verifying…'
+                  : serverSessionPending
+                    ? 'Retry secure session'
+                    : 'Verify and create account'}
+              </button>
+              <div className="apx-actions" style={{ marginTop: 12 }}>
+                <button
+                  className="apx-button"
+                  type="button"
+                  onClick={() => void sendEmailCode(pendingEmail, 'resend')}
+                  disabled={Boolean(operation) || resendCooldown > 0}
+                  aria-describedby="register-resend-help"
+                >
+                  {operation === 'resend'
+                    ? 'Resending…'
+                    : resendCooldown > 0
+                      ? `Resend email in ${resendCooldown}s`
+                      : 'Resend email'}
+                </button>
+                <button className="apx-button" type="button" onClick={changeEmail} disabled={Boolean(operation)}>Change email</button>
+              </div>
+              <p className="apx-field-help" id="register-resend-help">A short resend delay helps prevent accidental duplicate emails.</p>
+            </form>
+          )}
 
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              marginTop: '1rem',
-              gap: '0.5rem',
-              fontSize: '0.82rem',
-              color: '#cdd6e4',
-              cursor: 'pointer',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              style={{ marginTop: '0.2rem', accentColor: '#c084fc' }}
-            />
-            <span>
-              I agree to the{' '}
-              <a href="/legal/terms" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
-                Terms of Service
-              </a>
-              ,{' '}
-              <a href="/legal/privacy" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
-                Privacy Policy
-              </a>
-              , and confirm I am 13 or older (18+ for paid features).
-            </span>
-          </label>
+          {!pendingEmail && (
+            <>
+              <div className="apx-divider">or use a provider</div>
+              <div className="apx-provider-grid" aria-label="Account providers">
+                {AUTH_PROVIDERS.filter((provider) => provider.enabled).map((provider) => {
+                  const loading = oauthLoading === provider.id;
+                  return (
+                    <button
+                      key={provider.id}
+                      className="apx-provider"
+                      type="button"
+                      onClick={() => void handleOAuth(provider.id)}
+                      disabled={!agreed || Boolean(oauthLoading) || Boolean(operation)}
+                    >
+                      <span>{loading ? `Opening ${provider.label}…` : provider.label}</span>
+                      <span className="apx-provider-state" aria-hidden="true">{loading ? 'Working' : 'Open'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
-          <button
-            type="submit"
-            disabled={submitting || !email || !agreed}
-            style={{
-              marginTop: '1.25rem',
-              width: '100%',
-              padding: '0.8rem 1.2rem',
-              background: 'linear-gradient(135deg, #c084fc 0%, #7dd3fc 100%)',
-              color: '#0a0a0f',
-              fontWeight: 700,
-              border: 'none',
-              borderRadius: 4,
-              cursor: submitting || !email || !agreed ? 'not-allowed' : 'pointer',
-              opacity: submitting || !email || !agreed ? 0.5 : 1,
-              fontSize: '0.95rem',
-              fontFamily: 'inherit',
-            }}
-          >
-            {submitting ? '…' : '→ Send verification link'}
-          </button>
-        </form>
-
-        {/* ─── OR ─── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '2rem 0 1rem' }}>
-          <div style={{ flex: 1, height: 1, background: '#1f1f2a' }} />
-          <span style={{ color: '#5a5a6a', fontSize: '0.75rem' }}>OR</span>
-          <div style={{ flex: 1, height: 1, background: '#1f1f2a' }} />
-        </div>
-
-        {/* ─── OAUTH ─── */}
-        <div style={{ display: 'grid', gap: '0.5rem' }}>
-          {AUTH_PROVIDERS.filter((p) => p.enabled).map((p) => (
-            <button
-              key={p.id}
-              onClick={() => handleOAuth(p.id)}
-              disabled={!agreed}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.7rem 1rem',
-                background: 'rgba(20, 20, 30, 0.7)',
-                border: '1px solid #2a2a3a',
-                borderRadius: 4,
-                color: '#e6e6f0',
-                cursor: !agreed ? 'not-allowed' : 'pointer',
-                opacity: !agreed ? 0.5 : 1,
-                fontSize: '0.92rem',
-                fontFamily: 'inherit',
-              }}
+          {notice && (
+            <div
+              className={notice.tone === 'info' ? 'apx-auth-message' : 'apx-auth-warning'}
+              role={notice.tone === 'error' ? 'alert' : 'status'}
+              aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+              aria-atomic="true"
             >
-              <span>Sign up with {p.label}</span>
-              <span style={{ color: '#5a5a6a' }}>→</span>
-            </button>
-          ))}
+              {notice.text}
+            </div>
+          )}
+          <p className="apx-auth-switch">Already have an account? <Link href={`/login?next=${encodeURIComponent(returnTo)}`}>Sign in</Link></p>
         </div>
-
-        {message && (
-          <div
-            style={{
-              marginTop: '1.5rem',
-              padding: '0.75rem 1rem',
-              background: stubMode ? 'rgba(251, 191, 36, 0.08)' : 'rgba(124, 211, 252, 0.08)',
-              border: `1px solid ${stubMode ? 'rgba(251, 191, 36, 0.3)' : 'rgba(124, 211, 252, 0.3)'}`,
-              borderRadius: 4,
-              fontSize: '0.85rem',
-              color: stubMode ? '#fbbf24' : '#cdd6e4',
-            }}
-          >
-            {stubMode && <strong style={{ display: 'block', marginBottom: '0.3rem' }}>⚠ stub-mode</strong>}
-            {message}
-          </div>
-        )}
-
-        <p style={{ marginTop: '2.5rem', fontSize: '0.85rem', color: '#7a7a8c', textAlign: 'center' }}>
-          Already have an account?{' '}
-          <a href="/login" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
-            Sign in
-          </a>
-        </p>
-      </main>
+      </AuthFrame>
     </>
   );
 };

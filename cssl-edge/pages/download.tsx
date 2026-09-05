@@ -9,20 +9,21 @@ const PLATFORM = 'windows-x64';
 const FILENAME = `LoA-${VERSION}-${PLATFORM}.zip`;
 const FILE_URL = `/downloads/${FILENAME}`;
 const SHA256_URL = `${FILE_URL}.sha256`;
-const SIZE_MB = '3.36';
-const SHA256_SHORT = '47803c6e…98761a';
+const SIZE_MB = '3.35';
+const SHA256_SHORT = '333d99b8…dc3a4f';
 const RELEASE_DATE = '2026-05-03';
+const PACKAGE_TEXT_UPDATED = '2026-07-27';
 
 const Download: NextPage = () => {
   return (
     <>
       <Head>
         <title>Download · Labyrinth of Apocalypse · alpha</title>
-        <meta name="description" content="Download Labyrinth of Apocalypse v0.1.0-alpha for Windows x64 · 3.36 MB · self-hosted · no DRM · sovereignty-respecting" />
+        <meta name="description" content="Download the first public test build of Labyrinth of Apocalypse for 64-bit Windows. Read what works and what is unfinished before downloading." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta property="og:title" content="Download · Labyrinth of Apocalypse · alpha" />
-        <meta property="og:description" content="First public alpha. Substrate-grown action-RPG. Self-hosted. No DRM." />
+        <meta property="og:description" content="First public test build for 64-bit Windows, with plain-language setup and current limitations." />
         <meta property="og:url" content="https://apocky.com/download" />
         <link rel="canonical" href="https://apocky.com/download" />
         <style>{`
@@ -37,10 +38,6 @@ const Download: NextPage = () => {
           }
           a { color: inherit; text-decoration: none; }
           a:hover { opacity: 0.85; }
-          @keyframes pulse-warn {
-            0%, 100% { opacity: 0.8; }
-            50% { opacity: 1; }
-          }
         `}</style>
       </Head>
       <main
@@ -63,14 +60,15 @@ const Download: NextPage = () => {
             border: '1px solid rgba(251, 191, 36, 0.4)',
             borderRadius: 6,
             marginBottom: '2.5rem',
-            animation: 'pulse-warn 3s ease-in-out infinite',
           }}
         >
           <strong style={{ color: '#fbbf24', fontSize: '0.85rem', letterSpacing: '0.1em' }}>
-            ⚠ ALPHA RELEASE
+            EARLY TEST BUILD
           </strong>
           <p style={{ margin: '0.4rem 0 0', color: '#cdd6e4', fontSize: '0.92rem' }}>
-            This is a <strong>first public alpha</strong>. The substrate works. The game-loop is being woven on top in real-time. Expect bugs · expect missing features · feedback welcome.
+            This is the first public version made for testing. It is unfinished,
+            some features are missing, and you may find bugs. The sections below
+            explain what works before you download it.
           </p>
         </div>
 
@@ -89,7 +87,7 @@ const Download: NextPage = () => {
           Labyrinth of Apocalypse
         </h1>
         <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.95rem' }}>
-          {VERSION} · Windows x64 · released {RELEASE_DATE}
+          {VERSION} · 64-bit Windows · program released {RELEASE_DATE} · package notes updated {PACKAGE_TEXT_UPDATED}
         </p>
 
         {/* ── DOWNLOAD CTA ── */}
@@ -112,9 +110,29 @@ const Download: NextPage = () => {
           >
             <span>↓ Download {FILENAME}</span>
             <span style={{ fontSize: '0.78rem', fontWeight: 400, opacity: 0.7, marginTop: '0.3rem' }}>
-              {SIZE_MB} MB · self-hosted · no DRM
+              {SIZE_MB} MB · direct download · no copy-protection software
             </span>
           </a>
+        </section>
+
+        <section style={{ marginBottom: '2.5rem' }}>
+          <h2
+            style={{
+              fontSize: '0.7rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.18em',
+              color: '#fbbf24',
+              marginBottom: '0.6rem',
+            }}
+          >
+            Windows security notice
+          </h2>
+          <p style={{ color: '#cdd6e4', fontSize: '0.92rem', marginTop: 0 }}>
+            <code style={{ color: '#fbbf24' }}>LoA.exe</code> is not digitally signed. Windows may warn that
+            the publisher is unknown. A digital signature lets Windows verify who signed a program; the
+            SHA-256 check below verifies the downloaded bytes but does not identify a publisher or prove that
+            a program is safe. Do not bypass a warning unless you understand and accept that distinction.
+          </p>
         </section>
 
         {/* ── INTEGRITY ── */}
@@ -128,7 +146,7 @@ const Download: NextPage = () => {
               marginBottom: '0.6rem',
             }}
           >
-            § File Integrity
+            Check the download
           </h2>
           <div
             style={{
@@ -140,12 +158,17 @@ const Download: NextPage = () => {
               color: '#a8a8b8',
             }}
           >
-            <div>SHA-256 : <code style={{ color: '#7dd3fc' }}>{SHA256_SHORT}</code></div>
+            <p style={{ margin: '0 0 0.65rem' }}>
+              SHA-256 is a long fingerprint for a file. After downloading, you
+              can compare the fingerprint to check that the file arrived
+              unchanged.
+            </p>
+            <div>Shortened SHA-256 fingerprint: <code style={{ color: '#7dd3fc' }}>{SHA256_SHORT}</code></div>
             <div style={{ marginTop: '0.3rem' }}>
-              full hash : <a href={SHA256_URL} style={{ color: '#7dd3fc', textDecoration: 'underline' }}>{SHA256_URL}</a>
+              Full fingerprint: <a href={SHA256_URL} style={{ color: '#7dd3fc', textDecoration: 'underline' }}>{SHA256_URL}</a>
             </div>
             <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: '#7a7a8c' }}>
-              verify on Windows : <code>Get-FileHash {FILENAME} -Algorithm SHA256</code>
+              Windows PowerShell command: <code>Get-FileHash {FILENAME} -Algorithm SHA256</code>
             </div>
           </div>
         </section>
@@ -161,13 +184,13 @@ const Download: NextPage = () => {
               marginBottom: '0.8rem',
             }}
           >
-            § How to Run
+            How to run it
           </h2>
           <ol style={{ margin: 0, paddingLeft: '1.2rem', color: '#cdd6e4', fontSize: '0.92rem' }}>
-            <li>Extract the ZIP to a folder you own (e.g. <code style={{ color: '#fbbf24' }}>C:\Games\LoA</code>)</li>
-            <li>Double-click <code style={{ color: '#fbbf24' }}>LoA.exe</code> · or run from PowerShell</li>
-            <li>Press <strong>/</strong> to chat with the GM · type · press <strong>Enter</strong></li>
-            <li>See <code style={{ color: '#fbbf24' }}>CONTROLS.md</code> in the ZIP for full keybindings</li>
+            <li>Open the downloaded ZIP file and extract its contents to a folder you control, such as <code style={{ color: '#fbbf24' }}>C:\Games\LoA</code>.</li>
+            <li>Double-click <code style={{ color: '#fbbf24' }}>LoA.exe</code>. This is the game program.</li>
+            <li>Press <strong>/</strong>, type a message to the in-game guide, and press <strong>Enter</strong>.</li>
+            <li>Open <code style={{ color: '#fbbf24' }}>CONTROLS.md</code> for the complete keyboard controls.</li>
           </ol>
         </section>
 
@@ -182,13 +205,13 @@ const Download: NextPage = () => {
               marginBottom: '0.8rem',
             }}
           >
-            § What's in the ZIP
+            What the download contains
           </h2>
           <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#cdd6e4', fontSize: '0.92rem' }}>
-            <li><code style={{ color: '#7dd3fc' }}>LoA.exe</code> · 8.73 MB · self-contained Windows-x64 · no third-party DLLs</li>
-            <li><code style={{ color: '#7dd3fc' }}>README.md</code> · alpha framing · what works · what doesn't</li>
-            <li><code style={{ color: '#7dd3fc' }}>LICENSE.md</code> · alpha-tester EULA · refund policy · sovereignty</li>
-            <li><code style={{ color: '#7dd3fc' }}>CONTROLS.md</code> · keybinding reference · MCP tools · sovereign-cap escape-hatch</li>
+            <li><code style={{ color: '#7dd3fc' }}>LoA.exe</code> — the 64-bit Windows game program.</li>
+            <li><code style={{ color: '#7dd3fc' }}>README.md</code> — a short explanation of this early version.</li>
+            <li><code style={{ color: '#7dd3fc' }}>LICENSE.md</code> — the End-User License Agreement, or EULA, which explains the terms for using this build.</li>
+            <li><code style={{ color: '#7dd3fc' }}>CONTROLS.md</code> — the keyboard controls and optional developer features.</li>
           </ul>
         </section>
 
@@ -203,14 +226,13 @@ const Download: NextPage = () => {
               marginBottom: '0.8rem',
             }}
           >
-            ✓ What works in alpha
+            What works now
           </h2>
           <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#cdd6e4', fontSize: '0.92rem' }}>
-            <li>Open a window · move around · take screenshots</li>
-            <li>Press <code style={{ color: '#fbbf24' }}>/</code> to chat with the GM (text-input · GM responds in HUD chat-log)</li>
-            <li>4 render modes : F1 mainstream · F2 spectral · F3 Stokes · F4 CFER</li>
-            <li>118 MCP tools on <code style={{ color: '#fbbf24' }}>localhost:3001</code></li>
-            <li>Σ-Chain · Mycelial · Akashic · Coder-runtime crates LIVE (planning-tier UI · stubbed in-game)</li>
+            <li>Open the game window, move around, and take screenshots.</li>
+            <li>Type messages to the in-game guide and read the replies on screen.</li>
+            <li>Switch among four experimental display modes with the F1 through F4 keys.</li>
+            <li>Use a local developer interface if you are testing integrations. The technical details are in <code style={{ color: '#fbbf24' }}>CONTROLS.md</code>.</li>
           </ul>
         </section>
 
@@ -225,14 +247,14 @@ const Download: NextPage = () => {
               marginBottom: '0.8rem',
             }}
           >
-            ◐ Coming in upcoming alphas
+            Not finished yet
           </h2>
           <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#cdd6e4', fontSize: '0.92rem' }}>
-            <li>Combat · craft · brew · cast spells (FFI symbol-wire-up in-flight)</li>
-            <li>Bazaar · Coherence-Engine ascension UI</li>
-            <li>Multiplayer · cross-user mycelium · Akashic-Records browse</li>
-            <li>Real-Supabase (auth · cloud-save · Stripe-entitlements)</li>
-            <li>Linux-x64 · macOS-arm64 builds · trained-KAN-weights pack</li>
+            <li>Combat, crafting, brewing, and spell-casting.</li>
+            <li>The marketplace and later progression screens.</li>
+            <li>Online multiplayer and other features that connect different players.</li>
+            <li>Accounts, online saved games, and purchase records.</li>
+            <li>Linux and Apple-silicon Mac versions.</li>
           </ul>
         </section>
 
@@ -247,13 +269,26 @@ const Download: NextPage = () => {
               marginBottom: '0.8rem',
             }}
           >
-            § Privacy · Sovereignty
+            Privacy and control
           </h2>
           <p style={{ color: '#cdd6e4', fontSize: '0.92rem', marginTop: 0 }}>
-            <strong>Fully self-hosted.</strong> No external API · no Claude · no Ollama · no remote-LLM. KAN-substrate stage-1 classifier runs LOCAL. All player state stays LOCAL by default. Cross-user features (Σ-Chain · Mycelium · Akashic-Records) are OPT-IN per-event-grain.
+            This test build is designed to run on your own computer. Its current
+            core features do not require a remote language model. The online
+            multiplayer, online saved-game, and cross-player features listed
+            above are unfinished.
           </p>
           <p style={{ color: '#a8a8b8', fontSize: '0.85rem' }}>
-            No DRM · no rootkit · no kernel-driver · no anti-cheat-spyware. Your machine is yours. Sovereign-cap unilaterally revocable.
+            The download does not include digital rights management (DRM),
+            rootkit software, a kernel driver, or anti-cheat monitoring
+            software. DRM is software that restricts copying or use. A kernel
+            driver runs with deep access to the operating system.
+          </p>
+          <p style={{ color: '#a8a8b8', fontSize: '0.85rem' }}>
+            Running the program creates local diagnostic files in a <code>logs</code> folder. It may also create
+            screenshots, cached files, or experimental state on your computer. The developer interface is
+            intended to listen only on <code>127.0.0.1:3001</code>, which means this computer only. Do not
+            expose that port to another device or the internet. Review the included <code>README.md</code> and
+            <code> CONTROLS.md</code> before using developer features.
           </p>
         </section>
 
@@ -268,12 +303,12 @@ const Download: NextPage = () => {
               marginBottom: '0.8rem',
             }}
           >
-            § Feedback · Bug Reports
+            Feedback and bug reports
           </h2>
           <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#cdd6e4', fontSize: '0.92rem' }}>
-            <li>email : <a href="mailto:apocky13@gmail.com?subject=%5BLoA-alpha%5D" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>apocky13@gmail.com</a> · subject <code>[LoA-alpha]</code></li>
-            <li>support : <a href="https://ko-fi.com/oneinfinity" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>ko-fi.com/oneinfinity</a> · <a href="https://www.patreon.com/0ne1nfinity" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>patreon.com/0ne1nfinity</a></li>
-            <li>code : <a href="https://github.com/Apocky/CSSL3" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>github.com/Apocky/CSSL3</a></li>
+            <li>Email: <a href="mailto:apocky13@gmail.com?subject=%5BLoA-alpha%5D" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>apocky13@gmail.com</a>. Use the subject <code>[LoA-alpha]</code>.</li>
+            <li>Optional support: <a href="https://ko-fi.com/oneinfinity" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>Ko-fi</a> or <a href="https://www.patreon.com/0ne1nfinity" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>Patreon</a>.</li>
+            <li>Public code: <a href="https://github.com/Apocky/CSSL3" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>GitHub</a>.</li>
           </ul>
         </section>
 
@@ -286,11 +321,9 @@ const Download: NextPage = () => {
             fontSize: '0.78rem',
           }}
         >
-          <p style={{ margin: 0 }}>
-            § ¬ harm in the making · sovereignty preserved · t∞
-          </p>
+          <p style={{ margin: 0 }}>Built with care. Please report problems so they can be fixed.</p>
           <p style={{ margin: '0.4rem 0 0' }}>
-            © {new Date().getFullYear()} Apocky · alpha-tester EULA in <code>LICENSE.md</code>
+            © {new Date().getFullYear()} Apocky. The test-build license is in <code>LICENSE.md</code>.
           </p>
         </footer>
       </main>

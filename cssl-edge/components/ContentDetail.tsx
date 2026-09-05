@@ -13,7 +13,7 @@ import { STATUS_PILL, displayAuthor, timeAgo } from '@/lib/content-fetch';
 
 interface ContentDetailProps {
   detail: ContentDetailType;
-  stubMode?: boolean;
+  unavailable?: boolean;
 }
 
 const H2 = ({ children }: { children: React.ReactNode }) => (
@@ -27,7 +27,7 @@ const Pill = ({ bg, fg, title, href, children }: { bg: string; fg: string; title
   return href ? <a href={href} title={title} style={style}>{children}</a> : <span title={title} style={style}>{children}</span>;
 };
 
-const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
+const ContentDetail = ({ detail, unavailable = false }: ContentDetailProps) => {
   const pill = STATUS_PILL[detail.status];
   const totalRatings = detail.rating_summary.total_ratings;
   const meanScore = detail.rating_summary.mean_score;
@@ -36,23 +36,23 @@ const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
 
   return (
     <article style={{ paddingBottom: '4rem' }}>
-      {stubMode && (
+      {unavailable && (
         <div role="status" style={{ padding: '0.75rem 1rem', background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 6, fontSize: '0.82rem', color: '#fbbf24', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-          <strong>◐ stub-mode</strong> · publish-detail-API (sibling W12-5) not yet wired · placeholder rendered to demonstrate layout
+          <strong>Shared content is not available yet.</strong> This item cannot be verified.
         </div>
       )}
 
       <header style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-          <Pill bg={pill.bg} fg={pill.color}>{pill.glyph} {pill.label}</Pill>
+          <Pill bg={pill.bg} fg={pill.color}>{pill.label}</Pill>
           {detail.cosmetic_axiom_attested && (
-            <Pill bg="rgba(52,211,153,0.1)" fg="#34d399" title="creator has attested cosmetic-axiom-compliance · no pay-for-power">
-              ✓ cosmetic-axiom · attested
+            <Pill bg="rgba(52,211,153,0.1)" fg="#34d399" title="Self-reported by the creator; not independently verified">
+              Creator says this does not sell power
             </Pill>
           )}
           {detail.cap_revocable && (
-            <Pill bg="rgba(192,132,252,0.1)" fg="#c084fc" title="Σ-mask : creator capability is unilaterally revocable" href="/docs/sovereign-cap">
-              ⊘ revocable · sovereign-cap
+            <Pill bg="rgba(192,132,252,0.1)" fg="#c084fc" title="The record says the creator can withdraw this item">
+              Creator may withdraw
             </Pill>
           )}
         </div>
@@ -69,17 +69,17 @@ const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
       {detail.install_url && (
         <div style={{ marginBottom: '2rem' }}>
           <a href={detail.install_url} style={{ display: 'inline-block', padding: '0.75rem 1.5rem', background: 'linear-gradient(135deg, #c084fc 0%, #7dd3fc 100%)', color: '#0a0a0f', fontWeight: 600, borderRadius: 4, fontSize: '0.95rem', textDecoration: 'none' }}>
-            ↓ install / launch →
+            Install or open
           </a>
           <span style={{ marginLeft: '1rem', fontSize: '0.78rem', color: '#7a7a8c' }}>
-            ¬ DRM · ¬ rootkit · sovereign-uninstall always-available
+            Review the source and destination before opening a download.
           </span>
         </div>
       )}
 
       {detail.screenshots.length > 0 && (
         <section style={{ marginBottom: '2.5rem' }}>
-          <H2>§ Screenshots</H2>
+          <H2>Screenshots</H2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.6rem' }}>
             {detail.screenshots.map((src, idx) => (
               <img key={src} src={src} alt={`screenshot ${idx + 1} of ${detail.title}`} loading="lazy" style={{ width: '100%', height: 'auto', borderRadius: 4, border: '1px solid #1f1f2a', background: '#14141d' }} />
@@ -89,16 +89,16 @@ const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
       )}
 
       <section style={{ marginBottom: '2.5rem' }}>
-        <H2>§ Description</H2>
+        <H2>Description</H2>
         <p style={{ color: '#cdd6e4', fontSize: '0.95rem', lineHeight: 1.7, whiteSpace: 'pre-wrap', margin: 0 }}>
           {detail.description}
         </p>
       </section>
 
       <section style={{ marginBottom: '2.5rem' }}>
-        <H2>§ Ratings · {totalRatings} total</H2>
+        <H2>Ratings · {totalRatings} total</H2>
         {totalRatings === 0 ? (
-          <p style={{ color: '#5a5a6a', fontSize: '0.85rem', margin: 0 }}>○ no ratings yet · ¬ aggregate available</p>
+          <p style={{ color: '#5a5a6a', fontSize: '0.85rem', margin: 0 }}>No ratings yet.</p>
         ) : (
           <div style={{ padding: '1rem', background: 'rgba(20, 20, 30, 0.5)', border: '1px solid #1f1f2a', borderRadius: 6 }}>
             <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#fbbf24', marginBottom: '0.6rem' }}>
@@ -125,7 +125,7 @@ const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
 
       {detail.attribution_chain.length > 1 && (
         <section style={{ marginBottom: '2.5rem' }}>
-          <H2>§ Attribution Chain · {detail.attribution_chain.length} generations</H2>
+          <H2>Attribution history · {detail.attribution_chain.length} versions</H2>
           <ol style={{ listStyle: 'none', padding: 0, margin: 0, borderLeft: '2px solid #2a2a3a', paddingLeft: '1rem' }}>
             {detail.attribution_chain.map((link: AttributionLink, idx) => (
               <li key={link.slug} style={{ marginBottom: idx === detail.attribution_chain.length - 1 ? 0 : '0.75rem', fontSize: '0.85rem', color: '#cdd6e4' }}>
@@ -140,12 +140,12 @@ const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
 
       {detail.remix_slugs.length > 0 && (
         <section style={{ marginBottom: '2.5rem' }}>
-          <H2>§ Remixes · {detail.remix_slugs.length} downstream</H2>
+          <H2>Related versions · {detail.remix_slugs.length}</H2>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
             {detail.remix_slugs.map((slug) => (
               <li key={slug}>
                 <a href={`/content/${encodeURIComponent(slug)}`} style={{ display: 'inline-block', padding: '0.3rem 0.75rem', background: 'rgba(125,211,252,0.06)', border: '1px solid rgba(125,211,252,0.2)', borderRadius: 4, fontSize: '0.78rem', color: '#7dd3fc', textDecoration: 'none' }}>
-                  ⊔ {slug}
+                  {slug}
                 </a>
               </li>
             ))}

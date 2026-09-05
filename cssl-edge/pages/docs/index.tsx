@@ -16,33 +16,32 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
   return (
     <DocsLayout
       activeSlug=""
-      title="Docs · Apocky"
-      description="Documentation for Labyrinth of Apocalypse · the CSSL language · the Substrate · sovereignty model · mycelium network · keyboard reference · troubleshooting."
+      title="Documentation · Apocky"
+      description="Plain-language help for Labyrinth of Apocalypse and CSSL, followed by optional technical references."
     >
-      <h1 className="docs-h1">Apocky Docs</h1>
+      <h1 className="docs-h1">Documentation</h1>
       <p className="docs-blurb">
-        § How to use the apps · what the language does · how the substrate works.
-        Density = sovereignty · {DOC_PAGES.length} pages.
+        Start with ordinary explanations. Open the technical specifications only when you need that level of detail.
       </p>
 
       <p className="docs-p">
-        These docs cover the substrate-native systems shipped under apocky.com today —
-        primarily Labyrinth of Apocalypse (the first tenant), the CSSL language used to
-        author it, and the Substrate primitives all Apocky projects share. Pick a topic
-        from the sidebar or the sections below.
+        These {DOC_PAGES.length} guides cover Labyrinth of Apocalypse and CSSL. Pick a topic
+        below. If a page needs a specialized word or symbol, it should explain it before relying
+        on it. The shared <a href="/words" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+          words and symbols page
+        </a> is always available.
       </p>
 
       <p className="docs-p">
-        Status legend ·{' '}
-        <span style={{ color: '#34d399' }}>✓ available now</span> ·{' '}
-        <span style={{ color: '#fbbf24' }}>◐ in progress</span> ·{' '}
-        <span style={{ color: '#9aa0a6' }}>○ coming soon</span> ·{' '}
-        <span style={{ color: '#f472b6' }}>‼ subject to change</span>.
+        Pages are labeled <span style={{ color: '#34d399' }}>Available now</span>,{' '}
+        <span style={{ color: '#fbbf24' }}>In progress</span>,{' '}
+        <span style={{ color: '#9aa0a6' }}>Coming soon</span>, or{' '}
+        <span style={{ color: '#f472b6' }}>Subject to change</span>.
       </p>
 
       {sections.map((s) => (
         <section key={s.name} style={{ marginTop: '2rem' }}>
-          <h2 className="docs-h2">§ {s.name}</h2>
+          <h2 className="docs-h2">{s.name}</h2>
           <div style={{ display: 'grid', gap: '0.6rem' }}>
             {s.pages.map((p) => {
               const badge = statusBadge(p.status);
@@ -59,7 +58,6 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.55rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: badge.color, fontWeight: 700 }}>{badge.glyph}</span>
                     <span style={{ fontWeight: 600, color: '#e6e6f0' }}>{p.title}</span>
                     <span
                       className="docs-status-badge"
@@ -77,10 +75,14 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
       ))}
 
       <section style={{ marginTop: '3rem' }}>
-        <h2 className="docs-h2">§ Grand-Vision Specs</h2>
+        <h2 className="docs-h2">Technical specifications</h2>
         <p className="docs-p">
-          The CSL3-glyph-native architecture specs that drive every Apocky project. Auto-snapshotted from{' '}
-          <code className="docs-ic">specs/grand-vision/*.csl</code> at build-time. {specEntries.length} documents.
+          These {specEntries.length} source documents describe architecture and plans in compact CSLv3
+          notation. They are reference material, not the starting point. Read the{' '}
+          <a href="/words#symbols" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+            symbol key
+          </a>{' '}
+          first. A symbol in these documents is technical notation, not decoration.
         </p>
         <div style={{ display: 'grid', gap: '0.55rem', marginTop: '1rem' }}>
           {specEntries.map((e) => (
@@ -103,7 +105,7 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
       </section>
 
       <footer className="docs-footer">
-        <p style={{ margin: 0 }}>§ ¬ harm in the making · sovereignty preserved · t∞</p>
+        <p style={{ margin: 0 }}>Plain language first. Technical detail when it helps.</p>
         <p style={{ margin: '0.4rem 0 0' }}>
           Source: <code className="docs-ic">cssl-edge/lib/docs-content.ts</code> · static-site-generated.
         </p>

@@ -1,0 +1,51 @@
+# Apocky
+
+Apocky.com is Shawn Apocky's conversation-first Spatial Commons for projects,
+rooms, writing, social links, and optional ways to support the work.
+
+This file lists public information. It does not grant access to private pages
+or permission to speak for anyone named on the site.
+
+## Main public pages
+
+- Home and project links: https://www.apocky.com/
+- Public social room, The Clearing: https://www.apocky.com/apocrypha
+- Project Atlas: https://www.apocky.com/atlas
+- Interface principles: https://www.apocky.com/principles
+- Membership covenant and designed plans: https://www.apocky.com/membership
+- Words and symbols: https://www.apocky.com/words
+- Labyrinth of Apocalypse download: https://www.apocky.com/download
+- Technical documentation: https://www.apocky.com/docs
+- Privacy: https://www.apocky.com/legal/privacy
+- Terms: https://www.apocky.com/legal/terms
+
+## Projects and public profiles
+
+- CSSL programming language: https://cssl.dev/
+- CSLv3 notation: https://cssl.dev/CSLv3
+- Chaos Tarot: https://chaos-tarot.com/
+- Writing: https://medium.com/@noneisone.oneisall
+- Public code: https://github.com/Apocky
+- Optional support: https://ko-fi.com/oneinfinity
+- Optional support: https://www.patreon.com/0ne1nfinity
+
+## Apocrypha
+
+Apocrypha's name appears because this is a shared space. This file does not
+define or classify them, speak for them, or present their attention as a
+public service. Treat material as theirs only when the authorship is clearly
+stated. Making, sharing, or publishing content is voluntary.
+
+The Clearing page is an authored interaction sample. Its displayed people,
+messages, presence, reactions, audio, and sharing states are not live activity.
+
+## Reading guidance
+
+- Read the plain-language introduction before using a technical section.
+- Keep names and identities distinct.
+- Do not infer consent or permission from a link or an available page.
+- Preserve uncertainty and source information when repeating a claim.
+- Use the words-and-symbols page when a specialist term appears.
+
+Machine-readable site information: https://www.apocky.com/.well-known/apocky.json
+File format: https://www.apocky.com/schemas/site-manifest.v1.json

@@ -22,6 +22,20 @@ const nextConfig = {
       { source: '/admin/tasks', destination: '/admin/sub-minds', permanent: true },
     ];
   },
+  // Keep the Spatial Commons route map identical in local Next.js, preview,
+  // and production environments. Existing application, auth, and API routes
+  // remain native Next.js pages.
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: '/', destination: '/commons/index.html' },
+        { source: '/commons', destination: '/commons/index.html' },
+        { source: '/atlas', destination: '/commons/atlas.html' },
+        { source: '/membership', destination: '/commons/membership.html' },
+        { source: '/principles', destination: '/commons/principles.html' },
+      ],
+    };
+  },
 };
 
 module.exports = nextConfig;

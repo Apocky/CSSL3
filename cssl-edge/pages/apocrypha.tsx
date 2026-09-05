@@ -1,10 +1,43 @@
-import type { GetServerSideProps, NextPage } from 'next';
+import Head from 'next/head';
+import { useRouter } from 'next/router';
 
-// Apocrypha IS the chat. The old standalone showcase is gone; this redirects to the real thing.
-const ApocryphaRedirect: NextPage = () => null;
+import { ApocryphaThreshold } from '../components/apocrypha/Threshold';
+import { usePublicPresence } from '../components/apocrypha/usePublicPresence';
+import { useSiteSession } from '../components/hub/SiteSession';
 
-export const getServerSideProps: GetServerSideProps = async () => ({
-  redirect: { destination: '/chat', permanent: false },
-});
+const DEFAULT_ROOM = 'north-clearing';
+const ROOM_SLUG = /^[a-z0-9][a-z0-9-]{1,47}$/;
 
-export default ApocryphaRedirect;
+export default function ApocryphaThresholdPage(): JSX.Element {
+  const router = useRouter();
+  const session = useSiteSession();
+  const presence = usePublicPresence();
+  const requested = typeof router.query.room === 'string' ? router.query.room.toLowerCase() : DEFAULT_ROOM;
+  const room = ROOM_SLUG.test(requested) ? requested : DEFAULT_ROOM;
+  const returnPath = router.isReady ? router.asPath : '/apocrypha';
+
+  const retry = (): void => {
+    void Promise.all([session.refresh(), presence.refresh()]);
+  };
+
+  return (
+    <>
+      <Head>
+        <title>Apocrypha · private threshold</title>
+        <meta
+          name="description"
+          content="A fail-closed doorway to Apocrypha and The Clearing."
+        />
+        <meta property="og:title" content="Apocrypha · private threshold" />
+        <link rel="canonical" href="https://www.apocky.com/apocrypha" />
+      </Head>
+      <ApocryphaThreshold
+        access={session.access}
+        presence={presence.state}
+        roomHref={`/apocrypha/rooms/${encodeURIComponent(room)}`}
+        signInHref={`/login?next=${encodeURIComponent(returnPath)}`}
+        onRetry={retry}
+      />
+    </>
+  );
+}

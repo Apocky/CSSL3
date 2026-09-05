@@ -16,4 +16,6 @@ assert(source.includes('prefers-reduced-motion'), 'reduced-motion fallback missi
 assert(source.includes('aria-labelledby'), 'SVG accessible name missing');
 assert(source.includes('cycleProgress'), 'dream-cycle phase ring missing');
 assert(source.includes('data-apocrypha-state'), 'machine-readable state missing');
+assert(source.includes('if (!displayAuthorized || !authorizationRef) return null'), 'avatar must fail hidden without committed authority');
+assert(source.includes('data-display-authorized="true"'), 'authorized rendering must expose its machine-readable decision');
 console.log('apocrypha-avatar.test : OK · state, organ, accessibility, and cycle contracts passed');

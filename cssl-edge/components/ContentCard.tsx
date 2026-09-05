@@ -60,7 +60,6 @@ const ContentCard = ({ item, showRationale = false, href }: ContentCardProps) =>
           fontWeight: 600,
         }}
       >
-        <span aria-hidden="true">{pill.glyph}</span>{' '}
         {pill.label}
       </div>
 
@@ -83,7 +82,7 @@ const ContentCard = ({ item, showRationale = false, href }: ContentCardProps) =>
           color: '#3a3a4a',
         }}
       >
-        {!item.thumbnail_url && '⟨ § ⟩'}
+        {!item.thumbnail_url && 'No preview'}
       </div>
 
       {/* title · clickable */}
@@ -142,7 +141,7 @@ const ContentCard = ({ item, showRationale = false, href }: ContentCardProps) =>
         </div>
       )}
 
-      {/* footer · author + revocability + rating + time */}
+      {/* footer · author + rating + time */}
       <div
         style={{
           marginTop: 'auto',
@@ -157,22 +156,7 @@ const ContentCard = ({ item, showRationale = false, href }: ContentCardProps) =>
           borderTop: '1px solid #14141d',
         }}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-          <span style={{ color: '#a0a0b0' }}>{displayAuthor(item)}</span>
-          <a
-            href="/docs/sovereign-cap"
-            aria-label="author revocable-pubkey · cap-revoke flow"
-            title="Σ-mask : author cap is revocable · click for revoke flow"
-            style={{
-              color: '#c084fc',
-              fontSize: '0.85em',
-              padding: '0 0.2rem',
-              textDecoration: 'none',
-            }}
-          >
-            ⊘
-          </a>
-        </span>
+        <span style={{ color: '#a0a0b0' }}>By {displayAuthor(item)}</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
           <span>{ratingDisplay}</span>
           <span aria-hidden="true">·</span>
@@ -198,12 +182,12 @@ const ContentCard = ({ item, showRationale = false, href }: ContentCardProps) =>
               listStyle: 'none',
             }}
           >
-            ◐ why am I seeing this?
+            Why am I seeing this?
           </summary>
           <p style={{ margin: '0.4rem 0 0', lineHeight: 1.5 }}>
-            <strong style={{ color: '#c084fc' }}>{item.rationale.kind}</strong>{' '}
+            <strong style={{ color: '#c084fc' }}>Selection method: {item.rationale.kind}</strong>{' '}
             {item.rationale.kan_axis ? (
-              <span style={{ color: '#7dd3fc' }}>· axis={item.rationale.kan_axis}</span>
+              <span style={{ color: '#7dd3fc' }}>· technical field: {item.rationale.kan_axis}</span>
             ) : null}
             <br />
             {item.rationale.explanation}

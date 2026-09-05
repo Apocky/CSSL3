@@ -1,0 +1,295 @@
+.threshold {
+  --ink: #ece6f4;
+  --muted: #a99bbd;
+  --violet: #c9a2ff;
+  --gold: #e8b86b;
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    radial-gradient(42% 34% at 29% 28%, rgba(110, 50, 180, 0.32), transparent 72%),
+    radial-gradient(36% 31% at 73% 60%, rgba(56, 30, 120, 0.42), transparent 74%),
+    radial-gradient(70% 62% at 50% 50%, #0e0620 0%, #070312 64%, #04020a 100%);
+  font-family: "IBM Plex Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.threshold::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: 0.5;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 158px, rgba(200, 170, 255, 0.045) 158px 160px),
+    repeating-linear-gradient(0deg, transparent 0 158px, rgba(200, 170, 255, 0.035) 158px 160px);
+  mask-image: linear-gradient(to bottom, transparent 8%, #000 44%, #000 100%);
+}
+
+.threshold::after {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  box-shadow: inset 0 0 220px 60px rgba(3, 1, 8, 0.86);
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  padding: 22px clamp(16px, 4vw, 40px) 28px;
+  animation: threshold-in 350ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.nav a:hover,
+.nav a:focus-visible {
+  color: #f0eaf6;
+}
+
+.navSpacer {
+  flex: 1;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  text-align: center;
+}
+
+.kicker {
+  margin-bottom: 22px;
+  color: var(--violet);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.3em;
+}
+
+.locus {
+  position: relative;
+  display: grid;
+  width: 74px;
+  height: 74px;
+  place-items: center;
+  margin-bottom: 22px;
+}
+
+.locusOuter,
+.locusInner {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.locusOuter {
+  inset: 0;
+  border: 1px solid rgba(201, 162, 255, 0.5);
+  animation: threshold-breathe 4.4s ease-in-out infinite;
+}
+
+.locusInner {
+  inset: 10px;
+  border: 1px solid rgba(201, 162, 255, 0.28);
+}
+
+.locusCore {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--violet);
+  box-shadow: 0 0 26px rgba(190, 150, 255, 0.8);
+  animation: threshold-core 4.4s ease-in-out infinite;
+}
+
+.checking .locusOuter {
+  border-color: transparent;
+  border-top-color: rgba(200, 170, 255, 0.72);
+  animation: threshold-sweep 1.6s linear infinite;
+}
+
+.checking .locusCore,
+.unavailable .locusCore {
+  width: 9px;
+  height: 9px;
+  background: #686077;
+  box-shadow: none;
+  animation: none;
+}
+
+.beta .locusOuter {
+  border-color: rgba(232, 184, 107, 0.55);
+}
+
+.beta .locusInner {
+  border-color: rgba(232, 184, 107, 0.3);
+}
+
+.beta .locusCore {
+  background: var(--gold);
+  box-shadow: 0 0 26px rgba(232, 184, 107, 0.8);
+}
+
+.owner .locusOuter {
+  border-color: rgba(201, 162, 255, 0.64);
+}
+
+.owner .locusCore {
+  background: #d9bdff;
+  box-shadow: 0 0 28px rgba(201, 162, 255, 0.9);
+}
+
+.unavailable .locusOuter {
+  border-style: dashed;
+  border-color: rgba(236, 230, 244, 0.28);
+  animation: none;
+}
+
+.title {
+  max-width: 680px;
+  margin: 0;
+  color: #f5f0fb;
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-size: clamp(1.75rem, 4.8vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+}
+
+.detail {
+  max-width: 510px;
+  margin: 14px 0 0;
+  color: #bdb0cd;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.action {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  padding: 14px 27px;
+  border: 1px solid rgba(232, 184, 107, 0.5);
+  border-radius: 999px;
+  color: #2a1508;
+  background: linear-gradient(135deg, #e8b86b, #f4d29a);
+  box-shadow: 0 8px 26px rgba(232, 184, 107, 0.24);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.owner .action {
+  border-color: rgba(201, 162, 255, 0.55);
+  color: #170b27;
+  background: linear-gradient(135deg, #c9a2ff, #e1cfff);
+  box-shadow: 0 8px 28px rgba(154, 100, 220, 0.28);
+}
+
+.unavailable .action {
+  border-color: rgba(236, 230, 244, 0.28);
+  color: var(--ink);
+  background: rgba(236, 230, 244, 0.06);
+  box-shadow: none;
+}
+
+.action:hover,
+.action:focus-visible {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+}
+
+.action:active {
+  transform: translateY(1px);
+}
+
+.action:focus-visible,
+.nav a:focus-visible {
+  outline: 2px solid #f4d29a;
+  outline-offset: 4px;
+}
+
+.presenceLine {
+  max-width: 520px;
+  margin: 30px 0 0;
+  padding: 11px 16px;
+  border: 1px solid rgba(201, 162, 255, 0.16);
+  border-radius: 14px;
+  color: #9d90ae;
+  background: rgba(14, 7, 28, 0.62);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@keyframes threshold-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes threshold-breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@keyframes threshold-core {
+  0%, 100% { opacity: 0.76; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+@keyframes threshold-sweep {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 540px) {
+  .shell { padding-inline: 18px; }
+  .main { padding-block: 32px; }
+  .detail { font-size: 13px; }
+  .presenceLine { margin-top: 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .locusOuter,
+  .locusCore {
+    animation: none;
+  }
+
+  .action:hover,
+  .action:focus-visible {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .locusOuter,
+  .locusInner,
+  .action,
+  .presenceLine {
+    border-color: CanvasText;
+  }
+}

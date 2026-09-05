@@ -17,8 +17,24 @@ const OUT_FILE = path.resolve(__dirname, '..', 'lib', 'specs-snapshot.ts');
 
 function readSpecs() {
   if (!fs.existsSync(SPECS_DIR)) {
-    console.warn(`[snapshot-specs] missing ${SPECS_DIR} · emitting empty snapshot`);
-    return [];
+    // Vercel uploads cssl-edge/ as the project root, so the canonical source
+    // directory is intentionally outside its build closure.  The generated
+    // snapshot is checked into that closure and is the hermetic fallback.
+    // Never replace a valid shipped snapshot with an empty one merely because
+    // the source-only parent directory is unavailable on the deploy host.
+    if (fs.existsSync(OUT_FILE)) {
+      const existing = fs.readFileSync(OUT_FILE, 'utf8');
+      const entryCount = (existing.match(/^\s+slug:\s/gm) ?? []).length;
+      if (entryCount > 0) {
+        console.warn(
+          `[snapshot-specs] missing ${SPECS_DIR} · preserving ${entryCount}-entry hermetic snapshot`,
+        );
+        return null;
+      }
+    }
+    throw new Error(
+      `[snapshot-specs] missing ${SPECS_DIR} and no non-empty hermetic snapshot is available`,
+    );
   }
   const entries = fs
     .readdirSync(SPECS_DIR)
@@ -71,6 +87,7 @@ function buildOutput(specs) {
 
 function main() {
   const specs = readSpecs();
+  if (specs === null) return;
   const out = buildOutput(specs);
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
   fs.writeFileSync(OUT_FILE, out, 'utf8');
