@@ -15,6 +15,11 @@ test('connection details expose only safe errors and preserve retry identity acr
   await expect(details.getByText('ACCOUNT_RESPONSE_TIMEOUT', { exact: true })).toBeVisible(); await expect(details.getByText(trace, { exact: true })).toBeVisible(); await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']); await details.getByRole('button', { name: 'Copy details' }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText()); expect(copied).toContain(trace); expect(copied).not.toContain(secret); expect(copied).not.toContain('fixture question'); expect(copied).not.toContain('member-a');
+  await page.getByRole('button', { name: 'Copy your message', exact: true }).click();
+  await expect(page.getByText('Message copied.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
+  await expect(page.getByText('Message copied.', { exact: true })).toHaveCount(0);
+  await expect(details.getByText('ACCOUNT_RESPONSE_TIMEOUT', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Retry same message' }).click(); await expect.poll(() => turns.length).toBe(2); expect(turns[0]).toEqual(turns[1]);
   await details.getByRole('button', { name: 'Check connection' }).click(); await expect(details.getByText('ACCOUNT_CONFIGURATION_UNAVAILABLE', { exact: true })).toBeVisible(); await expect(details.getByText('The account connection is not configured yet.')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
