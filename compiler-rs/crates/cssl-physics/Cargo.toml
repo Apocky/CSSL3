@@ -1,6 +1,6 @@
 [package]
 name                   = "cssl-physics"
-description            = "CSSLv3 stage0 — Rigid-body physics : BVH broadphase + narrowphase + sequential-impulse solver + symplectic-Euler integrator ; OmegaSystem-compatible"
+description            = "CSSLv3 — SDF-implicit collision + XPBD-GPU constraint solver + Morton spatial-hash broadphase + KAN body-plan priors ; legacy rigid-body retained behind feature-flag (T11-D117)"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -9,6 +9,14 @@ authors.workspace      = true
 
 [lints]
 workspace = true
+
+[features]
+# Default : SDF + XPBD canonical surface ON ; legacy rigid-body shim ALSO ON
+# for the 1-version migration window per T11-D117 dispatch.
+default = ["legacy"]
+# `legacy` re-exports the pre-D117 rigid-body API (BVH + sequential-impulse PGS
+# + symplectic-Euler) under `cssl_physics::legacy::*`. Removed at T11-D130.
+legacy  = []
 
 [dependencies]
 cssl-substrate-omega-step = { path = "../cssl-substrate-omega-step" }
