@@ -60,7 +60,7 @@ test('operator selects one account, retains uncertain operation ID and clears pr
   await page.getByRole('textbox', { name: 'Task', exact: true }).fill('Update a synthetic test fixture.');
   await page.getByRole('textbox', { name: 'Files the task may change', exact: true }).fill('tests/fixture.txt');
   await page.getByRole('button', { name: 'Run task', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('CONTROL_RESULT_UNAVAILABLE');
+  await expect(page.getByRole('alert').filter({ hasText: 'CONTROL_RESULT_UNAVAILABLE' })).toBeVisible();
   const operationId = await page.getByRole('textbox', { name: 'Operation ID', exact: true }).inputValue();
   expect(operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   await expect(page.getByRole('button', { name: 'Run task', exact: true })).toBeDisabled();
