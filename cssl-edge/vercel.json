@@ -9,6 +9,18 @@
     "pages/api/mobile/turn.ts": {
       "maxDuration": 120
     },
+    "pages/api/brain/runtime/turn.ts": {
+      "maxDuration": 120
+    },
+    "pages/api/brain/mobile/sync.ts": {
+      "maxDuration": 120
+    },
+    "pages/api/brain/control.ts": {
+      "maxDuration": 300
+    },
+    "pages/api/admin/apocrypha/inspect.ts": {
+      "maxDuration": 120
+    },
     "pages/api/**/*.ts": {
       "maxDuration": 30
     },

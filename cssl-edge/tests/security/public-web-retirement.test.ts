@@ -20,7 +20,7 @@ const retiredUrls = [
   'https://www.apocky.com/apx',
   'https://www.apocky.com/chat',
   'https://www.apocky.com/admin/apex',
-  'https://www.apocky.com/admin/apocrypha',
+  'https://www.apocky.com/admin/apocrypha/legacy',
   'https://www.apocky.com/admin/chat',
   'https://www.apocky.com/api/apocrypha/presence',
   'https://www.apocky.com/api/admin/apocrypha/chat',
@@ -83,6 +83,8 @@ async function testRetiredRoutes(): Promise<void> {
     'https://www.apocky.com/brain',
     'https://www.apocky.com/api/brain/snapshot',
     'https://www.apocky.com/api/brain/runtime/status',
+    'https://www.apocky.com/admin/apocrypha',
+    'https://www.apocky.com/api/admin/apocrypha/inspect',
   ]) {
     assert.equal(isRetiredWebRuntimeRequest(new NextRequest(url)), false, `${url} must remain outside the retirement boundary`);
     const response = middleware(new NextRequest(url));

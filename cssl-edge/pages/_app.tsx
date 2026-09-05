@@ -23,6 +23,7 @@ import {
 } from '@/lib/akashic-telemetry';
 import AkashicConsent from '@/components/AkashicConsent';
 import SiteShell from '@/components/SiteShell';
+import { FeedbackProvider } from '@/components/ui/Feedback';
 import { SiteSessionProvider } from '@/components/hub/SiteSession';
 
 // Auth, admin, and the live social room render bare (their own chrome / clean for OAuth).
@@ -211,7 +212,7 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
   );
   return (
     <AkashicErrorBoundary>
-      <SiteSessionProvider>{content}</SiteSessionProvider>
+      <SiteSessionProvider><FeedbackProvider>{content}</FeedbackProvider></SiteSessionProvider>
     </AkashicErrorBoundary>
   );
 }

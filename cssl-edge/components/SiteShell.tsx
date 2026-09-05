@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { SUPPORT_LINKS } from '../lib/support-links';
 import { useSiteSession } from './hub/SiteSession';
@@ -43,6 +44,14 @@ function isActivePath(pathname: string, href: string): boolean {
 export default function SiteShell({ children }: { children: React.ReactNode }): JSX.Element {
   const { pathname } = useRouter();
   const { access, authenticated } = useSiteSession();
+  const mobileMenu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if (mobileMenu.current) mobileMenu.current.open = false; }, [pathname]);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent): void => { if (mobileMenu.current && !mobileMenu.current.contains(event.target as Node)) mobileMenu.current.open = false; };
+    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape' && mobileMenu.current?.open) { mobileMenu.current.open = false; mobileMenu.current.querySelector('summary')?.focus(); } };
+    document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
+  }, []);
 
   const navLinks = (className = 'apx-nav-link') => NAV.map((item) => {
     const visibleLabel = className === 'apx-mobile-menu-link' ? item.label : (item.shortLabel ?? item.label);
@@ -87,7 +96,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             </Link>
           </div>
 
-          <details className="apx-mobile-menu">
+          <details ref={mobileMenu} className="apx-mobile-menu">
             <summary>Explore</summary>
             <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
               {navLinks('apx-mobile-menu-link')}

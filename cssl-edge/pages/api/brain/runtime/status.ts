@@ -36,7 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const projection = await probeOwnerBrainRuntime();
+    const projection = await probeOwnerBrainRuntime(owner.user.id);
     const receipt = projection.observed.receipt;
     const body: BrainRuntimeStatus = {
       schema_version: 'apocky.owner-brain.runtime-status.v1',

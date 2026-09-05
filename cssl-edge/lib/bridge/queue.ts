@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getMnemeClient } from '../mneme/store';
 import { ACCOUNT_UUID, CONVERSATION_UUID } from '../mobile/account-grant';
 import { BRIDGE_LEASE_MS, BridgeError, bridgeConfiguration, bridgeMac, bridgeSessionId, createBridgeRequest,
   decodeBase64, decryptBridge, encryptBridge, equalMac, exactObject, keyedUuid, retryableBridgeResult, validateBridgeRequest, validateBridgeResult,
-  type BridgeConfiguration, type BridgeEnvelope, type BridgeInput, type BridgeRequest } from './crypto';
+  type BridgeConfiguration, type BridgeEnvelope, type BridgeInput, type BridgeRequest, type BridgeHttpResult } from './crypto';
 import type { WorkerAuthentication } from './worker-auth';
 export { bridgeConfigured } from './crypto';
 
@@ -13,6 +14,20 @@ const JOB_SCHEMA = 'apocky.bridge.job-row.v1';
 const NODE_SCHEMA = 'apocky.bridge.node-state.v1';
 const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PENDING_MAX = 128;
+export function responseFromBridgeResult(input: BridgeInput, result: BridgeHttpResult): Response {
+  let body: Uint8Array = decodeBase64(result.body_base64, 2 * 1024 * 1024);
+  const headers = new Headers(result.headers);
+  const encoding = headers.get('content-encoding');
+  if (encoding && encoding !== 'identity') {
+    if (encoding !== 'gzip' || input.channel !== 'owner' || input.method !== 'GET'
+      || !input.target.startsWith('/v1/chat/history?')) throw new BridgeError('BRIDGE_RESPONSE_ENCODING_INVALID', 502);
+    try { body = gunzipSync(body, { maxOutputLength: 6 * 1024 * 1024 }); }
+    catch { throw new BridgeError('BRIDGE_HISTORY_ENCODING_INVALID', 502); }
+    headers.delete('content-encoding');
+    headers.delete('content-length');
+  }
+  return new Response([204, 205, 304].includes(result.status) ? null : new Uint8Array(body), { status: result.status, headers });
+}
 interface Pending { job_id: string; subject: string; channel: 'owner' | 'account'; created_at: string; }
 interface NodeState { schema_version: typeof NODE_SCHEMA; key_id: string; worker_id: string; revision: number; pending: Pending[]; nonces: WorkerAuthentication[]; signature: string; }
 interface JobMetadata { schema_version: typeof JOB_SCHEMA; key_id: string; worker_id: string; revision: number; request: BridgeEnvelope; response: BridgeEnvelope | null; lease_id: string | null; lease_expires_at: string | null; }
@@ -216,7 +231,7 @@ export class BridgeQueue {
       const { metadata } = this.validateJob(row, { job_id: jobId, subject: input.subject, channel: input.channel });
       if (row.status === 'done') {
         const result = validateBridgeResult(jobId, decryptBridge(this.configuration, 'response', jobId, metadata.response));
-        return new Response([204, 205, 304].includes(result.status) ? null : new Uint8Array(decodeBase64(result.body_base64, 2 * 1024 * 1024)), { status: result.status, headers: result.headers });
+        return responseFromBridgeResult(input, result);
       }
       if (this.now() >= deadline) throw new BridgeError('BRIDGE_RESULT_PENDING', 504);
       await this.wait(900, input.signal);

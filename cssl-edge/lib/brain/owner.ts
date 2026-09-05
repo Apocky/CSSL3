@@ -30,6 +30,11 @@ export function setBrainPrivateHeaders(res: NextApiResponse): void {
 export async function requireBrainOwner(req: NextApiRequest): Promise<BrainOwnerDecision> {
   const authorization = await getAdminAuthorization(req);
   if (authorization.authorized && authorization.user) {
+    if (process.env.APOCV4_RUNTIME_TRANSPORT === 'outbound-bridge'
+      && authorization.user.id !== process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID) {
+      return { ok: false, status: 403, code: 'BRAIN_OWNER_REQUIRED',
+        message: 'This Brain belongs to a different account. Authorized operators can use account inspection.' };
+    }
     return { ok: true, user: authorization.user };
   }
   if (!authorization.user) {

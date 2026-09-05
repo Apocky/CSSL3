@@ -52,8 +52,8 @@ assert.match(owner, /BRAIN_OWNER_REQUIRED/, 'non-owner identities must have a st
 assert.match(snapshot, /deriveMemberProfileId\(owner\.user\.id\)/, 'snapshot profile must be derived server-side');
 assert.doesNotMatch(snapshot, /profile_id:/, 'snapshot must not emit a profile identifier');
 assert.match(snapshot, /getMessagesByIds/, 'source references must resolve through the private store');
-assert.match(experience, /CONTEXTUAL RECALL · NO MODEL CALL/, 'contextual recall must disclose its deterministic path');
-assert.match(experience, /<p>OWNER-PRIVATE BRAIN<\/p><h1>Apocrypha<\/h1>/, 'shared experience must visibly identify Apocrypha');
+assert.match(experience, /Memory search uses saved records and does not ask a model/, 'memory help must explain the search source');
+assert.match(experience, /<h1>Apocrypha<\/h1>/, 'shared experience must visibly identify Apocrypha');
 assert.match(experience, /BrainGraph/, 'graph projection missing');
 assert.match(experience, /Timeline/, 'timeline projection missing');
 assert.match(experience, /Tunnel/, 'source tunnel missing');
@@ -75,14 +75,16 @@ assert.match(home, /href: '\/apocrypha'/, 'home must expose Apocrypha to every v
 assert.doesNotMatch(home, /OWNER-PRIVATE|public relay remains closed/, 'home must not retain the superseded owner-only promise');
 assert.match(shell, /href: '\/apocrypha', label: 'Apocrypha'/, 'public shell must reveal account chat');
 assert.match(shell, /access === 'owner'.*href="\/brain"/, 'advanced private Brain link must retain owner authorization');
-assert.match(experience, /Mini Brain · deterministic/, 'offline response must not impersonate learned Apocrypha');
+assert.doesNotMatch(experience, /Mini Brain · deterministic|Local cortex capability|useful Mini Brain|Reflect \+ queue/, 'placeholder replies and model capability marketing must be absent');
+assert.match(experience, /message\.origin !== 'local-reflection'/, 'legacy reflections stay out of the active conversation');
+assert.match(experience, /Queue message/, 'offline composition must explicitly queue for desktop delivery');
 assert.match(experience, /desktop remains authoritative/i, 'mobile topology must name desktop authority');
 assert.match(experience, /Retry on current history/, 'cursor conflict requires an explicit owner rebase');
 assert.match(experience, /Create my private memory profile/, 'missing Mneme profile needs an explicit owner action');
 assert.match(experience, /CREATE_OWNER_PRIVATE_MNEME_PROFILE/, 'profile bootstrap must carry an exact confirmation value');
 assert.match(miniBrain, /AES-GCM/, 'recent local state must be encrypted');
 assert.match(miniBrain, /extractable|false,[\s\S]*?\['sign', 'verify'\]/, 'device private signing key must be non-exportable');
-assert.match(miniBrain, /NO_VERIFIED_LOCAL_MODEL_ARTIFACT/, 'unavailable learned cortex must remain typed and truthful');
+assert.doesNotMatch(miniBrain, /deterministicMiniBrainReply|probeMiniBrainCortex/, 'queued turns cannot synthesize a placeholder assistant response');
 assert.doesNotMatch(miniBrain, /snapshot\.messages/, 'offline memory cache must not copy raw Mneme source messages');
 assert.match(miniBrain, /pendingLocalMessages/, 'a remote cursor conflict must not hide the still-queued local turn');
 assert.match(mobileRelay, /ECDSA/, 'relay must verify the device signature');
@@ -93,9 +95,9 @@ assert.match(mnemeBootstrap, /requireBrainOwner/, 'profile bootstrap must requir
 assert.match(mnemeBootstrap, /deriveMemberProfileId\(owner\.user\.id\)/, 'profile bootstrap identity must be server-derived');
 assert.match(mnemeBootstrap, /BRAIN_MNEME_PROFILE_BINDING_MISMATCH/, 'profile bootstrap must refuse an existing mismatched binding');
 assert.doesNotMatch(mnemeBootstrap, /profile_id:/, 'profile bootstrap must not return the opaque profile id');
-assert.equal(brainManifest.id, '/apocrypha', 'installed Mini Brain identity is the private primary route');
-assert.equal(brainManifest.start_url, '/apocrypha?source=installed-mini-brain', 'installed Mini Brain opens the private route');
-assert.equal(brainManifest.scope, '/', 'installed Mini Brain scope must cover its primary route and immutable assets');
+assert.equal(brainManifest.id, '/brain', 'installed Mini Brain identity is the private route');
+assert.equal(brainManifest.start_url, '/brain?source=installed-mini-brain', 'installed Mini Brain opens the private route');
+assert.equal(brainManifest.scope, '/brain', 'installed Mini Brain must not contain public account or login pages');
 assert.equal(brainManifest.display, 'standalone', 'installed Mini Brain must expose a standalone PWA display mode');
 const brainIcons = brainManifest.icons as Array<Record<string, unknown>>;
 for (const [size, purpose] of [['192x192', 'any'], ['512x512', 'any'], ['192x192', 'maskable'], ['512x512', 'maskable']] as const) {
@@ -111,7 +113,9 @@ for (const [size, purpose] of [['192x192', 'any'], ['512x512', 'any'], ['192x192
   assert.equal(bytes.readUInt32BE(20), expectedHeight, `${relativePath} height drifted`);
 }
 assert.match(brainWorker, /url\.pathname\.startsWith\('\/api\/'\)\) return/, 'service worker must never cache private API responses');
-assert.match(brainWorker, /url\.pathname === '\/apocrypha'/, 'service worker may cache only the private route shell');
+assert.match(brainWorker, /url\.pathname === '\/brain'/, 'service worker may cache only the private route shell');
+assert.doesNotMatch(brainWorker, /\/apocrypha/, 'private worker must not intercept the public account page');
+assert.match(miniBrain, /scope: '\/brain'/, 'private worker registration must exclude public pages');
 assert.doesNotMatch(brainWorker, /clients\.claim/, 'service worker must not seize the first owner page before its authenticated requests complete');
 assert(
   brainWorker.indexOf("url.pathname.startsWith('/api/')") < brainWorker.indexOf('event.respondWith'),

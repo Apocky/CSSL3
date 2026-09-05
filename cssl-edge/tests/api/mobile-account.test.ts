@@ -118,7 +118,9 @@ async function run(): Promise<void> {
   const off = createAccountHandler('status', { user, configured: () => false, call: async () => { throw new Error('must not execute'); } });
   assert.equal(((await invoke(off, { method: 'GET' })).body as Record<string, unknown>).status, 'degraded');
 
-  const names = ['NODE_ENV', 'APOCV4_ACCOUNT_RUNTIME_URL', 'APOCV4_ACCOUNT_GRANT_KEY_B64', 'APOCV4_ACCOUNT_GRANT_KEY_ID'] as const;
+  const names = ['NODE_ENV', 'APOCV4_ACCOUNT_RUNTIME_URL', 'APOCV4_ACCOUNT_GRANT_KEY_B64', 'APOCV4_ACCOUNT_GRANT_KEY_ID',
+    'APOCV4_ACCOUNT_CF_ACCESS_CLIENT_ID', 'APOCV4_ACCOUNT_CF_ACCESS_CLIENT_SECRET',
+    'APOCV4_RUNTIME_TRANSPORT', 'APOCV4_RUNTIME_URL', 'APOCRYPHA_TUNNEL_HOST', 'CF_ACCESS_CLIENT_ID', 'CF_ACCESS_CLIENT_SECRET'] as const;
   const environment: Record<string, string | undefined> = process.env;
   const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
   const realFetch = globalThis.fetch;
@@ -135,7 +137,9 @@ async function run(): Promise<void> {
     globalThis.fetch = async (url, init) => {
       fetched += 1;
       assert.equal(url, 'http://127.0.0.1:19999/v1/account/turn');
-      assert.equal(init?.redirect, 'error'); assert.equal(init?.cache, 'no-store');
+      assert.equal(init?.redirect, 'manual'); assert.equal(init?.cache, 'no-store');
+      assert.equal(new Headers(init?.headers).get('cf-access-client-id'), null);
+      assert.equal(new Headers(init?.headers).get('cf-access-client-secret'), null);
       const auth = new Headers(init?.headers).get('authorization') ?? '';
       assert(auth.startsWith('Bearer apoc-account-v1.'));
       assert(!auth.includes('USER_TOKEN_TEST_SENTINEL'));
@@ -147,6 +151,61 @@ async function run(): Promise<void> {
     };
     assert.equal((await callAccountRuntime(runtimeInput)).text, result.text);
     assert.equal(fetched, 1);
+    environment.NODE_ENV = 'production';
+    assert.equal(accountRuntimeConfigured(), false, 'production rejects a loopback account origin');
+    process.env.APOCV4_ACCOUNT_RUNTIME_URL = 'https://apocrypha.apocky.com';
+    process.env.CF_ACCESS_CLIENT_ID = 'OWNER_ID_TEST_SENTINEL';
+    process.env.CF_ACCESS_CLIENT_SECRET = 'OWNER_SECRET_TEST_SENTINEL';
+    delete process.env.APOCV4_ACCOUNT_CF_ACCESS_CLIENT_ID;
+    delete process.env.APOCV4_ACCOUNT_CF_ACCESS_CLIENT_SECRET;
+    globalThis.fetch = async () => { throw new Error('missing account credentials must stop before fetch'); };
+    assert.equal(accountRuntimeConfigured(), false, 'owner credentials cannot configure account transport');
+    await assert.rejects(callAccountRuntime(runtimeInput), (error: unknown) => error instanceof AccountRuntimeError && error.publicStatus === 503);
+    process.env.APOCV4_ACCOUNT_CF_ACCESS_CLIENT_ID = 'ACCOUNT_ID_TEST_SENTINEL';
+    assert.equal(accountRuntimeConfigured(), false, 'both dedicated account Access credentials are required');
+    process.env.APOCV4_ACCOUNT_CF_ACCESS_CLIENT_SECRET = 'ACCOUNT_SECRET_TEST_SENTINEL';
+    let accountFetches = 0;
+    globalThis.fetch = async (url, init) => {
+      accountFetches += 1;
+      assert.equal(url, 'https://apocrypha.apocky.com/v1/account/turn');
+      assert.equal(init?.redirect, 'manual'); assert.equal(init?.cache, 'no-store');
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get('cf-access-client-id'), 'ACCOUNT_ID_TEST_SENTINEL');
+      assert.equal(headers.get('cf-access-client-secret'), 'ACCOUNT_SECRET_TEST_SENTINEL');
+      assert(headers.get('authorization')?.startsWith('Bearer apoc-account-v1.'));
+      assert(!JSON.stringify([...headers]).includes('OWNER_'));
+      return json({ ...result, account_ref: accountReference(subject) });
+    };
+    for (const transport of ['direct', 'cloudflare-access', 'invalid-owner-transport']) {
+      process.env.APOCV4_RUNTIME_TRANSPORT = transport;
+      process.env.APOCV4_RUNTIME_URL = 'http://127.0.0.1:19998';
+      process.env.APOCRYPHA_TUNNEL_HOST = 'owner-only.invalid';
+      assert(accountRuntimeConfigured(), 'owner transport, URL and tunnel host cannot invalidate dedicated account configuration');
+      assert.equal((await callAccountRuntime(runtimeInput)).text, result.text);
+    }
+    assert.equal(accountFetches, 3);
+    delete process.env.APOCV4_ACCOUNT_RUNTIME_URL;
+    process.env.APOCV4_RUNTIME_URL = 'https://apocrypha.apocky.com';
+    assert.equal(accountRuntimeConfigured(), false, 'owner URL cannot substitute for missing account URL');
+    await assert.rejects(callAccountRuntime(runtimeInput), (error: unknown) => error instanceof AccountRuntimeError && error.publicStatus === 503);
+    process.env.APOCV4_ACCOUNT_RUNTIME_URL = 'https://apocrypha.apocky.com';
+    for (const credential of ['APOCV4_ACCOUNT_CF_ACCESS_CLIENT_ID', 'APOCV4_ACCOUNT_CF_ACCESS_CLIENT_SECRET'] as const) {
+      const valid = process.env[credential];
+      for (const invalid of ['', ' leading-space', 'line\r\nbreak', 'é', 'x'.repeat(4097)]) {
+        process.env[credential] = invalid;
+        assert.equal(accountRuntimeConfigured(), false, 'malformed dedicated credentials fail closed');
+        await assert.rejects(callAccountRuntime(runtimeInput), (error: unknown) => error instanceof AccountRuntimeError && error.publicStatus === 503 && !error.message.includes('SENTINEL'));
+      }
+      process.env[credential] = valid;
+    }
+    assert.equal(accountFetches, 3, 'invalid credentials never invoke the transport');
+    globalThis.fetch = async (_url, init) => {
+      assert.equal(init?.redirect, 'manual');
+      return new Response(null, { status: 302, headers: { location: 'https://owner-only.invalid/', 'content-type': 'application/json' } });
+    };
+    await assert.rejects(callAccountRuntime(runtimeInput), /ACCOUNT_UPSTREAM_UNVERIFIED/, 'redirects cannot forward account credentials');
+    environment.NODE_ENV = 'test';
+    process.env.APOCV4_ACCOUNT_RUNTIME_URL = 'http://127.0.0.1:19999';
     const historyInput = { subject, method: 'GET' as const, target: `/v1/account/sessions?session_id=${sessionId}` };
     const missing = (account: string, code = 'ACCOUNT_SESSION_NOT_FOUND') => new Response(JSON.stringify({ account_ref: accountReference(account), code }), { status: 404, headers: { 'content-type': 'application/json' } });
     globalThis.fetch = async () => missing(subject);
@@ -183,7 +242,9 @@ async function run(): Promise<void> {
     globalThis.fetch = async (_url, init) => new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
     await assert.rejects(callAccountRuntime(runtimeInput), (error: unknown) => error instanceof AccountRuntimeError && error.code === 'ACCOUNT_RESPONSE_TIMEOUT' && error.publicStatus === 504);
     globalThis.setTimeout = realTimeout;
-    for (const url of ['https://evil.test', 'https://apocrypha.apocky.com.evil.test', 'https://user:pass@apocrypha.apocky.com', 'http://127.0.0.1:99999', 'http://localhost:19999', 'http://127.0.0.1:19999/path']) {
+    for (const url of ['https://evil.test', 'https://apocrypha.apocky.com.evil.test', 'https://user:pass@apocrypha.apocky.com',
+      'https://apocrypha.apocky.com/', 'https://apocrypha.apocky.com:444', 'https://apocrypha.apocky.com?owner=1', 'https://apocrypha.apocky.com#owner',
+      'http://127.0.0.1:99999', 'http://localhost:19999', 'http://127.0.0.1:19999/path']) {
       process.env.APOCV4_ACCOUNT_RUNTIME_URL = url;
       assert.throws(() => accountRuntimeOrigin());
     }

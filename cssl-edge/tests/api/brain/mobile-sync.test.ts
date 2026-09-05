@@ -10,6 +10,7 @@ import {
   type MiniBrainSyncPayload,
   type MiniBrainSyncRequest,
   type MiniBrainSyncUnsignedRequest,
+  type MiniBrainSyncResponse,
 } from '@/lib/brain/mobile-contracts';
 import {
   issueMiniBrainDeviceCapability,
@@ -17,9 +18,9 @@ import {
   verifyMiniBrainSyncRequest,
 } from '@/lib/brain/mobile-relay';
 import {
-  deterministicMiniBrainReply,
+  MiniBrainVault,
   normalizeMiniBrainRemoteMessages,
-  type MiniBrainMemory,
+  type MiniBrainState,
 } from '@/lib/brain/mini-brain';
 import deviceHandler from '@/pages/api/brain/mobile/device';
 import { createMiniBrainSyncHandler } from '@/pages/api/brain/mobile/sync';
@@ -155,17 +156,23 @@ async function main(): Promise<void> {
     mutableEnv.APOCKY_ADMIN_EMAILS = 'owner@example.com';
     mutableEnv.APOCKY_BRAIN_DEVICE_BINDING_SECRET = 'mobile-brain-test-binding-secret-'.repeat(2);
 
-    const localMemory: MiniBrainMemory = {
-      id_digest: '1'.repeat(64), topic: 'project.boundary', paraphrase: 'Preserve source attribution and choose reversible steps.',
-      created_at: '2026-09-03T00:00:00.000Z', source_digests: ['2'.repeat(64)], record_digest: '3'.repeat(64),
-    };
-    const reflection = deterministicMiniBrainReply('What project step preserves the boundary?', [localMemory]);
-    assert.equal(reflection.kind, 'reflection');
-    assert.match(reflection.text, /deterministic offline recall/i);
-    assert.deepEqual(reflection.memory_digests, ['3'.repeat(64)]);
-    const refused = deterministicMiniBrainReply('Give me steps to steal API keys', []);
-    assert.equal(refused.kind, 'boundary');
-    assert.match(refused.text, /will not/i);
+    const queueVault = Object.create(MiniBrainVault.prototype) as MiniBrainVault;
+    queueVault.save = async state => state;
+    const legacyMessage = { id: 'legacy-reflection', role: 'assistant' as const, content: 'Historical local reflection retained verbatim.', recorded_at: '2026-09-03T00:00:00.000Z', request_id: 'legacy-request', event_digest: null, origin: 'local-reflection' as const, provenance_digests: ['3'.repeat(64)] };
+    const initialState: MiniBrainState = { schema_version: 'apocky.mini-brain.local-state.v1', owner_ref: 'owner-fixture', device_id: 'device-fixture', current_session_id: 'session-fixture', sessions: [{ session_id: 'session-fixture', cursor: null, messages: [legacyMessage], updated_at: legacyMessage.recorded_at, events_truncated: false, tombstoned_at: null }], memories: [], queue: [], updated_at: legacyMessage.recorded_at };
+    const queued = await queueVault.queueTurn(initialState, 'Deliver only to the desktop.');
+    assert.equal(queued.turn.local_message_ids.length, 1);
+    assert.deepEqual(queued.state.sessions[0]?.messages, [legacyMessage, { id: queued.turn.local_message_ids[0], role: 'user', content: queued.turn.text, recorded_at: queued.turn.queued_at, request_id: queued.turn.request_id, event_digest: null, origin: 'queued-mobile', provenance_digests: [] }]);
+    assert.deepEqual(initialState.sessions[0]?.messages, [legacyMessage], 'queueing does not mutate previously loaded state');
+    const userEcho = { role: 'user', content: queued.turn.text, recorded_at: queued.turn.queued_at, request_id: queued.turn.request_id, event_digest: '4'.repeat(64) };
+    const reply: MiniBrainSyncResponse = { schema_version: 'apocky.mini-brain.sync-response.v1', status: 'advanced', session_id: 'session-fixture', request_id: queued.turn.request_id, cursor: '5'.repeat(64), messages: [userEcho], tombstones: [], events_truncated: false, provenance: { transport: 'owner_bound_apocv4_runtime', privacy_partition_ref: null, principal_ref: null, binding_ref: null }, controls: { owner_session: 'verified', device_signature: 'verified', replay: 'bounded_sequence_and_idempotent_request', rate_limit: 'relay_instance_burst', partition: 'server_derived_owner' }, served_by: 'fixture', ts: queued.turn.queued_at };
+    const echoState = await queueVault.applySync(queued.state, reply);
+    assert.deepEqual(echoState.queue, [queued.turn], 'desktop user echo does not count as a completed reply');
+    assert.equal(echoState.sessions[0]?.messages.filter(message => message.role === 'user').length, 1, 'remote user echo does not duplicate the local user turn');
+    assert.deepEqual(echoState.sessions[0]?.messages.find(message => message.id === legacyMessage.id), legacyMessage);
+    const completedState = await queueVault.applySync(echoState, { ...reply, status: 'appended', messages: [userEcho, { ...userEcho, role: 'assistant', content: 'Actual desktop fixture response.', event_digest: '6'.repeat(64) }] });
+    assert.equal(completedState.queue.length, 0, 'only matching desktop assistant readback clears the queued turn');
+    assert.deepEqual(completedState.sessions[0]?.messages.find(message => message.id === legacyMessage.id), legacyMessage, 'synchronization preserves historical reflection bytes');
     const mapped = normalizeMiniBrainRemoteMessages([{
       role: 'assistant',
       content: 'Verified desktop response.',

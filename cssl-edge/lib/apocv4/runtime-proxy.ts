@@ -3,6 +3,8 @@
 import { createHash, createHmac } from 'node:crypto';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
+import { fetchBridge } from '../bridge/queue';
+import { ACCOUNT_UUID } from '../mobile/account-grant';
 import {
   decodeVerifiedHistoryEnvelope,
   HistoryProofCodecError,
@@ -104,7 +106,7 @@ type JsonObject = Record<string, unknown>;
 const JSON_NUMBER_TOKEN_RE = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
 const canonicalNumberSources = new WeakMap<object, Map<string, string>>();
 
-type RuntimePath = '/health' | '/v1/chat' | '/v1/chat/stream' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
+type RuntimePath = '/health' | '/v1/auth/status' | '/v1/chat' | '/v1/chat/stream' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
   | '/v1/chat/history'
   | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete'
   | '/v1/jobs/submit' | '/v1/jobs/list' | '/v1/jobs/status' | '/v1/jobs/cancel'
@@ -1469,6 +1471,12 @@ function validateOwnerBrainLivingCognition(value: unknown): boolean {
 }
 
 function canonicalRuntimeOrigin(raw: string | undefined): string {
+  if (process.env.APOCV4_RUNTIME_TRANSPORT === 'outbound-bridge') {
+    if (raw !== undefined && raw !== 'https://www.apocky.com') {
+      throw new RuntimeProxyError('runtime_configuration_invalid', 503);
+    }
+    return 'https://www.apocky.com';
+  }
   if (process.env.APOCV4_RUNTIME_TRANSPORT?.trim() === 'cloudflare-access') {
     try {
       return validateCloudflareRuntimeOrigin(raw);
@@ -1766,6 +1774,20 @@ async function runtimeRequest(
   maximumBytes: number,
   deadlineMs: number,
 ): Promise<Response> {
+  if (process.env.APOCV4_RUNTIME_TRANSPORT === 'outbound-bridge') {
+    const subject = process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID ?? '';
+    const target = new URL(url);
+    if (!ACCOUNT_UUID.test(subject) || target.origin !== 'https://www.apocky.com'
+      || target.hash || target.username || target.password
+      || (init.method !== 'GET' && init.method !== 'POST')
+      || (init.body !== undefined && typeof init.body !== 'string')) {
+      throw new RuntimeProxyError('runtime_configuration_invalid', 503);
+    }
+    return fetchBridge({ channel: 'owner', subject, method: init.method,
+      target: `${target.pathname}${target.search}`,
+      body: Buffer.from(typeof init.body === 'string' ? init.body : '', 'utf8'),
+      signal: init.signal ?? undefined });
+  }
   if (
     process.env.APOCV4_RUNTIME_TRANSPORT === 'test-fetch'
     && process.env.NODE_ENV !== 'production'
@@ -1790,6 +1812,11 @@ export function validateRuntimeUrl(raw: string): string {
 }
 
 function runtimeToken(profile: RuntimeCredentialProfile = 'owner'): string {
+  // § outbound worker injects its local credential after authenticated queue admission.
+  if (process.env.APOCV4_RUNTIME_TRANSPORT === 'outbound-bridge') {
+    if (profile !== 'owner') throw new RuntimeProxyError('runtime_credential_unavailable', 503);
+    return '';
+  }
   const token = profile === 'public'
     ? process.env.APOCV4_PUBLIC_API_TOKEN
     : process.env.APOCV4_API_TOKEN;
@@ -1966,6 +1993,7 @@ async function callRuntime(
   const token = runtimeToken(credentialProfile);
   const transportProtectedValues = runtimeTransportProtectedValues();
   const objective = path === '/v1/objectives';
+  const authenticatedStatus = path === '/v1/auth/status';
   const chat = path === '/v1/chat';
   const history = path === '/v1/chat/history';
   const historyProof = history && body === null && accessProfile === 'owner-brain';
@@ -2056,15 +2084,15 @@ async function callRuntime(
     ) {
       throw new RuntimeProxyError('runtime_session_binding_invalid', 502, response.status);
     }
-    const expectedKeys = objective || chat || history || code || rollback || session || job || vision
+    const expectedKeys = authenticatedStatus || objective || chat || history || code || rollback || session || job || vision
       ? ['schema_version', 'result']
       : ['schema_version', 'status', 'engine', 'vision'];
     if (!exactKeys(data, expectedKeys)) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
     }
     if (
-      ((objective || chat || history || code || rollback || session || job || vision) && !isObject(data.result))
-      || (!objective && !chat && !history && !code && !rollback && !session && !job && !vision
+      ((authenticatedStatus || objective || chat || history || code || rollback || session || job || vision) && !isObject(data.result))
+      || (!authenticatedStatus && !objective && !chat && !history && !code && !rollback && !session && !job && !vision
         && (data.status !== 'READY' || !isObject(data.engine) || typeof data.vision !== 'boolean'))
     ) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
@@ -2329,7 +2357,14 @@ export async function fetchRuntimeHealth(traceparent?: string): Promise<RuntimeH
 }
 
 export async function fetchOwnerBrainRuntimeHealth(traceparent?: string): Promise<RuntimeHealthProjection> {
-  const call = await callRuntime('/health', null, traceparent, 'owner', 'owner-brain');
+  const call = await callRuntime('/v1/auth/status', null, traceparent, 'owner', 'owner-brain');
+  const result = call.data.result;
+  if (!isObject(result) || result.schema_version !== 'apocv4.authenticated-status.v1'
+    || result.authenticated !== true || result.principal_ref !== call.receipt.principal_ref
+    || result.privacy_partition_ref !== call.receipt.privacy_partition_ref
+    || !validOwnerRuntimeReceipt(call.receipt, 'owner:apocky')) {
+    throw new RuntimeProxyError('runtime_principal_binding_invalid', 502, call.receipt.upstream_status);
+  }
   return {
     schema_version: APOCV4_PROXY_SCHEMA,
     kind: 'health',

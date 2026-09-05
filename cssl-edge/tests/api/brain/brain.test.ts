@@ -45,6 +45,8 @@ const previous = {
   brain: process.env.APOCKY_BRAIN_LOCAL_PROVIDER_ENABLED,
   supabase: process.env.NEXT_PUBLIC_SUPABASE_URL,
   service: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  transport: process.env.APOCV4_RUNTIME_TRANSPORT,
+  ownerId: process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID,
 };
 
 async function main(): Promise<void> {
@@ -93,6 +95,16 @@ async function main(): Promise<void> {
     assert.equal(disabledTurn.out.statusCode, 503, 'no generated turn without the explicit local provider gate');
     assert.equal((disabledTurn.out.body as Record<string, unknown>).code, 'BRAIN_LOCAL_PROVIDER_DISABLED');
 
+    mutableEnv.APOCV4_RUNTIME_TRANSPORT = 'outbound-bridge';
+    mutableEnv.APOCRYPHA_BRIDGE_OWNER_USER_ID = '11111111-1111-4111-8111-111111111111';
+    const otherOperator = request('GET', 'owner@example.com');
+    await statusHandler(otherOperator.req, otherOperator.res);
+    assert.equal(otherOperator.out.statusCode, 403, 'allowlisted operator with a different verified subject cannot alias owner chat');
+    mutableEnv.APOCRYPHA_BRIDGE_OWNER_USER_ID = 'test-admin';
+    const exactOwner = request('GET', 'owner@example.com');
+    await statusHandler(exactOwner.req, exactOwner.res);
+    assert.equal(exactOwner.out.statusCode, 200, 'matching verified owner reaches status provider');
+
     console.log('brain-api.test : OK · owner denial + private headers + no mock fallback + local-only turn gate');
   } finally {
     for (const [key, value] of Object.entries({
@@ -101,6 +113,8 @@ async function main(): Promise<void> {
       APOCKY_BRAIN_LOCAL_PROVIDER_ENABLED: previous.brain,
       NEXT_PUBLIC_SUPABASE_URL: previous.supabase,
       SUPABASE_SERVICE_ROLE_KEY: previous.service,
+      APOCV4_RUNTIME_TRANSPORT: previous.transport,
+      APOCRYPHA_BRIDGE_OWNER_USER_ID: previous.ownerId,
     })) {
       if (value === undefined) delete mutableEnv[key];
       else mutableEnv[key] = value;

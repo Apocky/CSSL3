@@ -9,15 +9,24 @@ import {
   type OwnerBrainHistoryListProjection,
   type RuntimeChatProjection,
   type RuntimeHealthProjection,
+  RuntimeProxyError,
 } from '../apocv4/runtime-proxy';
 
 const OWNER_PRIVACY_PARTITION = 'owner:apocky';
+
+function requireOwnerSubject(userId: string): void {
+  if (process.env.APOCV4_RUNTIME_TRANSPORT === 'outbound-bridge'
+    && userId !== process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID) {
+    throw new RuntimeProxyError('runtime_principal_binding_invalid', 403);
+  }
+}
 
 export function ownerBrainRuntimeConfigured(): boolean {
   return process.env[APOCV4_BRAIN_RUNTIME_ENABLE_ENV] === '1';
 }
 
 function binding(userId: string) {
+  requireOwnerSubject(userId);
   return {
     sessionPrincipal: publicMemberPrincipalRef(userId),
     privacyPartition: OWNER_PRIVACY_PARTITION,
@@ -25,7 +34,8 @@ function binding(userId: string) {
   };
 }
 
-export async function probeOwnerBrainRuntime(traceparent?: string): Promise<RuntimeHealthProjection> {
+export async function probeOwnerBrainRuntime(userId: string, traceparent?: string): Promise<RuntimeHealthProjection> {
+  requireOwnerSubject(userId);
   return fetchOwnerBrainRuntimeHealth(traceparent);
 }
 
@@ -36,6 +46,7 @@ export async function sendOwnerBrainTurn(input: {
   readonly requestId: string;
   readonly traceparent?: string;
 }): Promise<RuntimeChatProjection> {
+  requireOwnerSubject(input.userId);
   const principal = publicMemberPrincipalRef(input.userId);
   return submitOwnerBrainRuntimeChat({
     message: input.text,

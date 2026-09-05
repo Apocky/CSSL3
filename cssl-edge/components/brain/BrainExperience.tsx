@@ -9,9 +9,7 @@ import type {
 } from '@/lib/brain/contracts';
 import {
   openMiniBrain,
-  probeMiniBrainCortex,
-  warmMiniBrainOfflineShell,
-  type MiniBrainCortexProbe,
+  registerMiniBrainOfflineShell,
   type MiniBrainDeviceRegistration,
   type MiniBrainMessage,
   type MiniBrainState,
@@ -27,6 +25,8 @@ import {
 import { authFetch } from '@/lib/browser-auth';
 import { useSiteSession } from '@/components/hub/SiteSession';
 import styles from './BrainExperience.module.css';
+import BrainDiagnostics from './BrainDiagnostics';
+import { HelpTip } from '../ui/Feedback';
 
 type BrainView = 'graph' | 'timeline' | 'tunnel';
 type ServerAccess = 'owner' | 'forbidden' | 'unavailable';
@@ -180,7 +180,7 @@ async function syncMiniBrain(
 }
 
 function miniConversation(state: MiniBrainState | null): readonly MiniBrainMessage[] {
-  return state?.sessions.find(session => session.session_id === state.current_session_id)?.messages ?? [];
+  return state?.sessions.find(session => session.session_id === state.current_session_id)?.messages.filter(message => message.origin !== 'local-reflection') ?? [];
 }
 
 function miniCursor(state: MiniBrainState, sessionId: string): string | null {
@@ -244,10 +244,9 @@ function ReleaseShelf(): JSX.Element {
             </a>
           ) : (
             <div className={styles.releaseHold}>
-              <strong>No downloadable native package is attached.</strong>
-              <p>The PWA installs from a supported browser; a native binary is a separate distribution surface. {manifest.release_state === 'CANDIDATE'
-                ? `${manifest.build.missing.length} release gate${manifest.build.missing.length === 1 ? '' : 's'} remain. Candidate work is visible here without being mislabeled as released.`
-                : 'No native download is part of this release.'}</p>
+              <strong>Get Apocrypha for your phone</strong>
+              <p><Link href="/download/apocrypha">Android downloads and iPhone availability</Link></p>
+              <p>This shelf describes the browser release. The download page lists each native app and its current release status.</p>
             </div>
           )}
         </div>
@@ -422,10 +421,10 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   const [sessions, setSessions] = useState<readonly RuntimeSessionSummary[]>([]);
   const [miniState, setMiniState] = useState<MiniBrainState | null>(null);
   const [miniStatus, setMiniStatus] = useState<'initializing' | 'ready' | 'unbound' | 'unavailable'>('initializing');
-  const [cortex, setCortex] = useState<MiniBrainCortexProbe | null>(null);
   const [online, setOnline] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const [offlineShellReady, setOfflineShellReady] = useState(false);
   const [syncConflict, setSyncConflict] = useState(false);
   const [draft, setDraft] = useState('');
@@ -508,7 +507,6 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       }
       const vault = opened.vault;
       vaultRef.current = vault;
-      setCortex(probeMiniBrainCortex());
       let state = await vault.load();
       if (online && access === 'owner' && (!vault.isBound || vault.tokenExpired)) {
         try {
@@ -528,7 +526,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
           status: 'degraded', reason_code: 'BRAIN_OFFLINE', observed_at: new Date().toISOString(),
           latency_ms: null, upstream_status: null, served_by: 'device', ts: new Date().toISOString(),
         });
-        setSyncNotice(state ? 'Offline · encrypted recent history and deterministic local reflection remain available.' : 'Offline · this browser has not completed owner/device binding yet.');
+        setSyncNotice(state ? 'Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.' : 'Offline · this browser has not completed owner/device binding yet.');
         return;
       }
 
@@ -610,8 +608,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
 
   useEffect(() => {
     if (serverAccess !== 'owner' || !('serviceWorker' in navigator)) return undefined;
-    void navigator.serviceWorker.register('/brain-sw.js', { scope: '/' })
-      .then(() => warmMiniBrainOfflineShell())
+    void registerMiniBrainOfflineShell()
       .then(setOfflineShellReady)
       .catch(() => {
         setOfflineShellReady(false);
@@ -680,7 +677,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       commitState(queued.state);
       setSyncNotice(online && runtime?.status === 'live'
         ? 'Encrypted on this device · synchronizing with desktop…'
-        : 'Encrypted on this device · deterministic reflection active · desktop turn queued.');
+        : 'Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.');
       if (online && runtime?.status === 'live') {
         const synchronized = await flushQueue(vault, queued.state);
         commitState(synchronized);
@@ -750,6 +747,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   };
 
   const conversation = miniConversation(miniState);
+  const desktopConnected = online && runtime?.status === 'live';
   const sessionId = miniState?.current_session_id ?? null;
   const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/u.test(navigator.userAgent);
   const standaloneIos = typeof navigator !== 'undefined' && Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
@@ -781,10 +779,12 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     <main className={styles.brain} data-brain-state={runtime?.status ?? 'degraded'}>
       <header className={styles.header}>
         <Link href="/" className={styles.brand} aria-label="Apocky home"><span aria-hidden="true">∞</span><strong>APOCKY</strong></Link>
-        <div><p>OWNER-PRIVATE BRAIN</p><h1>Apocrypha</h1></div>
-        <nav aria-label="Private Brain navigation"><a href="#brain-releases">Releases</a><Link href="/memory-tools">Memory tools</Link><Link href="/account">Account</Link></nav>
+        <div><p>YOUR BRAIN</p><h1>Apocrypha</h1></div>
+        <nav aria-label="Private Brain navigation"><Link href="/download/apocrypha">Get the app</Link><Link href="/admin/apocrypha">Operations</Link><Link href="/account">Account</Link></nav>
       </header>
 
+      <details className={styles.connectionDetails}>
+        <summary><span data-connected={desktopConnected}>{desktopConnected ? 'Desktop connected' : 'Waiting for desktop'}</span><small>{miniState?.queue.length ? `${miniState.queue.length} waiting · ` : ''}Connection & device details</small></summary>
       <section className={styles.statusStrip} aria-label="Observed connector states">
         <Connector
           label="Mini Brain"
@@ -804,8 +804,8 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
         />
         <Connector
           label="Desktop Apocrypha"
-          state={runtime?.status ?? 'degraded'}
-          detail={runtime?.status === 'live' ? `observed HTTP ${runtime.upstream_status} · sync ready` : 'not connected · turns stay queued'}
+          state={desktopConnected ? 'live' : 'degraded'}
+          detail={desktopConnected ? 'Connected to desktop' : 'Waiting for desktop'}
         />
         <button type="button" onClick={() => { void load(); }}>Refresh evidence</button>
       </section>
@@ -813,8 +813,8 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       <section className={styles.miniBar} aria-labelledby="mini-brain-title">
         <div>
           <p>INSTALLABLE · OWNER/DEVICE BOUND</p>
-          <h2 id="mini-brain-title">A useful Mini Brain when the deep node is away.</h2>
-          <span>Recent conversation is AES-GCM encrypted in this browser profile. A non-exportable device key signs sync requests; desktop remains canonical.</span>
+          <h2 id="mini-brain-title">{desktopConnected ? 'Connected to desktop' : 'Waiting for desktop'}</h2>
+          <span>This device keeps an encrypted copy. Replies come from your desktop.</span>
         </div>
         <div className={styles.miniActions}>
           {installPrompt && !installed ? <button type="button" onClick={() => { void install(); }}>Install Mini Brain</button> : null}
@@ -823,14 +823,11 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
           <span>{offlineShellReady ? 'Offline shell ready' : 'Keep online once to seal the offline shell'}</span>
           <button type="button" className={styles.subtleButton} onClick={() => { void eraseOfflineCopy(); }} disabled={miniStatus !== 'ready'}>Erase offline copy</button>
         </div>
-        <details>
-          <summary>Local cortex capability</summary>
-          <p>{cortex?.note ?? 'Checking this browser…'}</p>
-          {cortex ? <code>{cortex.reason_code} · WASM {cortex.wasm ? 'yes' : 'no'} · WebGPU {cortex.webgpu ? 'yes' : 'no'}</code> : null}
-        </details>
       </section>
 
+      <BrainDiagnostics />
       <ReleaseShelf />
+      </details>
 
       {memoryError ? (
         <div className={styles.error} role="status">
@@ -844,34 +841,35 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       ) : null}
       {syncNotice ? <div className={styles.syncNotice} role="status">{syncNotice}</div> : null}
 
-      <div className={styles.layout}>
+      <div className={styles.layout} data-memory-open={memoryOpen}>
         <section className={styles.conversation} aria-labelledby="brain-conversation-title">
           <header className={styles.panelHead}>
-            <div><p>PERSISTENT CANVAS</p><h2 id="brain-conversation-title">Conversation</h2></div>
+            <div className={styles.conversationTitle}><h2 id="brain-conversation-title">Conversation</h2><HelpTip label="Messages are encrypted on this device and delivered to your desktop. A waiting message stays queued until its desktop reply is confirmed. Enter sends; Shift+Enter adds a line." /></div>
             <div className={styles.conversationActions}>
               {runtime?.status === 'live' && sessions.length > 0 && sessions.some(session => session.session_id === sessionId) ? (
-                <label><span>Worldline</span><select value={sessionId ?? ''} onChange={(event) => { void chooseSession(event.currentTarget.value); }}>
+                <label><span>History</span><select value={sessionId ?? ''} onChange={(event) => { void chooseSession(event.currentTarget.value); }}>
                   {sessions.map(session => <option key={session.session_id} value={session.session_id}>{short(session.title, 42)} · {session.message_count}</option>)}
                 </select></label>
               ) : null}
+              <button type="button" aria-expanded={memoryOpen} aria-controls="brain-memory-panel" onClick={() => setMemoryOpen(value => !value)}>Memory</button>
               <button type="button" onClick={() => { void newConversation(); }} disabled={miniStatus !== 'ready' || sending}>New</button>
             </div>
           </header>
 
           <div className={styles.messageLog} role="log" aria-live="polite" aria-busy={sending || runtimeLoading}>
-            {runtime?.status !== 'live' && conversation.length === 0 ? (
+            {!desktopConnected && conversation.length === 0 ? (
               <div className={styles.runtimeDegraded}>
-                <strong>Mini Brain is local; desktop depth is away.</strong>
-                <p>You can still ask. The deterministic core recalls compact memory, states its limits, and encrypts the turn for later synchronization. It does not pretend to be the learned Apocrypha cortex.</p>
+                <strong>Waiting for desktop</strong>
+                <p>Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.</p>
                 <code>{runtime?.reason_code ?? 'BRAIN_RUNTIME_STATUS_UNAVAILABLE'}</code>
               </div>
             ) : conversation.length === 0 ? (
-              <div className={styles.emptyConversation}><strong>Worldline ready.</strong><p>Ask here. The device seals the turn first; a live desktop connection then appends it to the same owner-bound history.</p></div>
+              <div className={styles.emptyConversation}><strong>What’s on your mind?</strong><p>Your conversation continues with Apocrypha on your desktop.</p></div>
             ) : conversation.map(message => (
               <article key={message.id} data-role={message.role} data-origin={message.origin}>
-                <p>{message.role === 'user' ? 'You' : message.origin === 'local-reflection' ? 'Mini Brain · deterministic' : 'Apocrypha'}<time dateTime={message.recorded_at}>{formattedDate(message.recorded_at)}</time></p>
+                <p>{message.role === 'user' ? 'You' : 'Apocrypha'}<time dateTime={message.recorded_at}>{formattedDate(message.recorded_at)}</time></p>
                 <div>{message.content}</div>
-                {message.origin !== 'desktop' ? <small>{message.origin === 'queued-mobile' ? 'encrypted queue · not yet committed on desktop' : 'local reflection · no model call'}</small> : null}
+                {message.origin === 'queued-mobile' ? <small>encrypted queue · not yet committed on desktop</small> : null}
                 {message.provenance_digests.length > 0 ? <small>{message.provenance_digests.length} provenance digest{message.provenance_digests.length === 1 ? '' : 's'} retained</small> : null}
               </article>
             ))}
@@ -887,24 +885,25 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
           ) : null}
 
           <form className={styles.composer} onSubmit={(event) => { void send(event); }}>
-            <label htmlFor="brain-message">Message Apocrypha / Mini Brain</label>
+            <label htmlFor="brain-message">Message Apocrypha</label>
             <textarea
               id="brain-message"
               value={draft}
               onChange={(event) => setDraft(event.currentTarget.value)}
-              placeholder={runtime?.status === 'live' ? 'Ask, connect, compare, or continue…' : 'Ask offline; the deterministic core will reflect and queue the turn…'}
+              onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (draft.trim() && miniStatus === 'ready' && !sending) event.currentTarget.form?.requestSubmit(); } }}
+              placeholder={desktopConnected ? 'Message Apocrypha…' : 'Write a message to deliver when your desktop connects…'}
               disabled={miniStatus !== 'ready' || sending}
               maxLength={16_384}
-              rows={3}
+              rows={2}
             />
-            <button type="submit" disabled={miniStatus !== 'ready' || sending || !draft.trim()}>{sending ? 'Sealing…' : runtime?.status === 'live' ? 'Send + sync' : 'Reflect + queue'}</button>
-            <p>Effect authority: none · training consent: off · server-derived owner partition · local cache encrypted · desktop remains authoritative</p>
+            <button type="submit" disabled={miniStatus !== 'ready' || sending || !draft.trim()}>{sending ? 'Saving…' : desktopConnected ? 'Send' : 'Queue message'}</button>
+            <p>Messages stay encrypted on this device; desktop remains authoritative.</p>
           </form>
         </section>
 
-        <section className={styles.explorer} aria-labelledby="brain-explorer-title">
+        <section id="brain-memory-panel" className={styles.explorer} aria-labelledby="brain-explorer-title" hidden={!memoryOpen}>
           <header className={styles.panelHead}>
-            <div><p>CONTEXTUAL RECALL · NO MODEL CALL</p><h2 id="brain-explorer-title">Explore the memory field</h2></div>
+            <div className={styles.conversationTitle}><h2 id="brain-explorer-title">Memory</h2><HelpTip label="Memory search uses saved records and does not ask a model. Open a record to inspect its source links." /></div><Link href="/memory-tools">Memory tools</Link>
           </header>
           {snapshot ? (
             <>

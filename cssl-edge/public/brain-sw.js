@@ -1,7 +1,7 @@
 /* Apocrypha Mini Brain shell only. Private API responses and user payloads are never cached here. */
 'use strict';
 
-const CACHE = 'apocky-mini-brain-shell-v1';
+const CACHE = 'apocky-mini-brain-shell-v2';
 const STATIC = [
   '/brain-manifest.json',
   '/icons/apocky-v3-192.png',
@@ -17,7 +17,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key.startsWith('apocky-mini-brain-shell-') && key !== CACHE).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => key === 'apocky-mini-brain-shell-v1').map(key => caches.delete(key))))
   );
 });
 
@@ -27,17 +27,24 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  if (request.mode === 'navigate' && url.pathname === '/apocrypha') {
+  if (request.mode === 'navigate' && url.pathname === '/brain') {
     event.respondWith(
       fetch(request)
-        .then(response => {
-          if (response.ok && response.type === 'basic') {
-            const copy = response.clone();
-            void caches.open(CACHE).then(cache => cache.put('/apocrypha', copy));
+        .then(async response => {
+          if (
+            response.ok && response.type === 'basic' && !response.redirected
+            && new URL(response.url).origin === self.location.origin
+            && new URL(response.url).pathname === '/brain'
+            && response.headers.get('content-type')?.includes('text/html')
+          ) {
+            const html = await response.clone().text();
+            if (html.includes('"serverAccess":"owner"')) {
+              await caches.open(CACHE).then(cache => cache.put('/brain', response.clone())).catch(() => {});
+            }
           }
           return response;
         })
-        .catch(async () => (await caches.match('/apocrypha')) ?? Response.error()),
+        .catch(async () => (await caches.match('/brain')) ?? Response.error()),
     );
     return;
   }

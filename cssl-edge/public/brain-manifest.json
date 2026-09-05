@@ -2,9 +2,9 @@
   "name": "Apocrypha Mini Brain",
   "short_name": "Mini Brain",
   "description": "Owner-private, encrypted recent conversation and deterministic offline reflection with signed desktop synchronization.",
-  "id": "/apocrypha",
-  "start_url": "/apocrypha?source=installed-mini-brain",
-  "scope": "/",
+  "id": "/brain",
+  "start_url": "/brain?source=installed-mini-brain",
+  "scope": "/brain",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
@@ -21,13 +21,13 @@
     {
       "name": "Open current worldline",
       "short_name": "Worldline",
-      "url": "/apocrypha#brain-conversation-title",
+      "url": "/brain#brain-conversation-title",
       "icons": [{ "src": "/icons/apocky-v3-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Private memory field",
       "short_name": "Memory",
-      "url": "/apocrypha#brain-explorer-title",
+      "url": "/brain#brain-explorer-title",
       "icons": [{ "src": "/icons/shortcut-memory-v2-96.png", "sizes": "96x96", "type": "image/png" }]
     }
   ],

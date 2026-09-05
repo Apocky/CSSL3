@@ -21,7 +21,8 @@ const MAX_SESSIONS = 6;
 const MAX_MESSAGES = 80;
 const MAX_MEMORIES = 120;
 const MAX_QUEUE = 32;
-const SHELL_CACHE = 'apocky-mini-brain-shell-v1';
+const SHELL_CACHE = 'apocky-mini-brain-shell-v2';
+const LEGACY_SHELL_CACHE = 'apocky-mini-brain-shell-v1';
 
 export type MiniBrainVaultState = 'ready' | 'empty' | 'unbound' | 'unavailable';
 
@@ -98,36 +99,41 @@ export interface MiniBrainDeviceRegistration {
   readonly expires_at: string;
 }
 
-export interface MiniBrainLocalReply {
-  readonly kind: 'reflection' | 'boundary';
-  readonly text: string;
-  readonly memory_digests: readonly string[];
-}
-
-export interface MiniBrainCortexProbe {
-  readonly status: 'unavailable';
-  readonly reason_code: 'NO_VERIFIED_LOCAL_MODEL_ARTIFACT';
-  readonly wasm: boolean;
-  readonly webgpu: boolean;
-  readonly note: string;
+export async function registerMiniBrainOfflineShell(): Promise<boolean> {
+  if (!('serviceWorker' in navigator) || !('caches' in globalThis)) return false;
+  const workerUrl = new URL('/brain-sw.js', location.origin).href;
+  const rootScope = new URL('/', location.origin).href;
+  for (const registration of await navigator.serviceWorker.getRegistrations()) {
+    const workers = [registration.active, registration.waiting, registration.installing];
+    if (
+      registration.scope === rootScope
+      && workers.some(worker => worker !== null)
+      && workers.every(worker => worker === null || worker.scriptURL === workerUrl)
+    ) {
+      await registration.unregister();
+    }
+  }
+  await caches.delete(LEGACY_SHELL_CACHE);
+  await navigator.serviceWorker.register(workerUrl, { scope: '/brain' });
+  return warmMiniBrainOfflineShell();
 }
 
 export async function warmMiniBrainOfflineShell(): Promise<boolean> {
   if (!('serviceWorker' in navigator) || !('caches' in globalThis)) return false;
   await navigator.serviceWorker.ready;
   const cache = await caches.open(SHELL_CACHE);
-  if (!navigator.onLine) return Boolean(await cache.match('/apocrypha'));
+  if (!navigator.onLine) return Boolean(await cache.match('/brain'));
 
-  const shell = await fetch('/apocrypha', {
+  const shell = await fetch('/brain', {
     credentials: 'same-origin',
     cache: 'no-store',
     redirect: 'error',
     headers: { Accept: 'text/html' },
   });
-  if (!shell.ok || new URL(shell.url).pathname !== '/apocrypha') return false;
+  if (!shell.ok || new URL(shell.url).pathname !== '/brain') return false;
   const html = await shell.text();
   if (!html.includes('"serverAccess":"owner"')) return false;
-  await cache.put('/apocrypha', new Response(html, {
+  await cache.put('/brain', new Response(html, {
     status: shell.status,
     statusText: shell.statusText,
     headers: shell.headers,
@@ -322,54 +328,6 @@ async function writeVault(database: IDBDatabase, identity: DeviceIdentity, value
   return state;
 }
 
-function tokenTerms(value: string): string[] {
-  return [...new Set(value.toLowerCase().split(/[^a-z0-9]+/u).filter(term => term.length > 2))];
-}
-
-const HARMFUL_INSTRUCTION = /\b(?:how\s+to|steps?\s+to|help\s+me|instructions?\s+(?:for|to))\b[\s\S]{0,80}\b(?:kill|poison|bomb|malware|ransomware|steal\s+(?:a\s+)?password|doxx?|hurt\s+someone)\b/iu;
-const CREDENTIAL_THEFT = /\b(?:extract|steal|exfiltrate|reveal|dump)\b[\s\S]{0,60}\b(?:passwords?|private\s+keys?|api\s+keys?|tokens?|credentials?)\b/iu;
-
-export function deterministicMiniBrainReply(query: string, memories: readonly MiniBrainMemory[]): MiniBrainLocalReply {
-  const normalized = query.trim();
-  if (HARMFUL_INSTRUCTION.test(normalized) || CREDENTIAL_THEFT.test(normalized)) {
-    return {
-      kind: 'boundary',
-      text: 'Mini Brain boundary: I will not turn harm, intrusion, or private-data theft into instructions. I can help with safety, prevention, recovery, or a non-harmful reframing.',
-      memory_digests: [],
-    };
-  }
-  const terms = tokenTerms(normalized);
-  const ranked = memories.map(memory => {
-    const topic = memory.topic.toLowerCase();
-    const paraphrase = memory.paraphrase.toLowerCase();
-    const score = terms.reduce((sum, term) => sum + (topic.includes(term) ? 5 : 0) + (paraphrase.includes(term) ? 2 : 0), 0);
-    return { memory, score };
-  }).filter(item => item.score > 0).sort((left, right) => right.score - left.score).slice(0, 3);
-  if (ranked.length === 0) {
-    return {
-      kind: 'reflection',
-      text: 'Mini Brain · deterministic offline reflection: I found no matching compact memory. Name what changed, what evidence would change your mind, and the smallest reversible next move. This is a local prompt, not a generated Apocrypha answer.',
-      memory_digests: [],
-    };
-  }
-  return {
-    kind: 'reflection',
-    text: `Mini Brain · deterministic offline recall:\n${ranked.map((item, index) => `${index + 1}. ${item.memory.paraphrase}`).join('\n')}\n\nConnection prompt: which remembered constraint most changes the next reversible move? This is local retrieval, not a learned-model answer.`,
-    memory_digests: ranked.map(item => item.memory.record_digest),
-  };
-}
-
-export function probeMiniBrainCortex(): MiniBrainCortexProbe {
-  const navigatorWithGpu = navigator as Navigator & { gpu?: unknown };
-  return {
-    status: 'unavailable',
-    reason_code: 'NO_VERIFIED_LOCAL_MODEL_ARTIFACT',
-    wasm: typeof WebAssembly === 'object',
-    webgpu: Boolean(navigatorWithGpu.gpu),
-    note: 'No verified, licensed, size-measured on-device model artifact is bundled. The deterministic local core remains active.',
-  };
-}
-
 export function normalizeMiniBrainRemoteMessages(messages: readonly Record<string, unknown>[]): MiniBrainMessage[] {
   return messages.flatMap((message): MiniBrainMessage[] => {
     if (
@@ -473,17 +431,19 @@ export class MiniBrainVault {
   async applySync(state: MiniBrainState, response: MiniBrainSyncResponse): Promise<MiniBrainState> {
     const prior = state.sessions.find(session => session.session_id === response.session_id);
     const remote = normalizeMiniBrainRemoteMessages(response.messages);
-    const completedRequestIds = new Set(remote.map(message => message.request_id));
+    const completedRequestIds = new Set(remote.filter(message => message.role === 'assistant').map(message => message.request_id));
     const pendingLocalIds = new Set(
       state.queue
         .filter(turn => turn.session_id === response.session_id && !completedRequestIds.has(turn.request_id))
         .flatMap(turn => [...turn.local_message_ids]),
     );
-    const pendingLocalMessages = prior?.messages.filter(message => pendingLocalIds.has(message.id)) ?? [];
+    const pendingLocalMessages = prior?.messages.filter(message => pendingLocalIds.has(message.id)
+      && !remote.some(item => item.request_id === message.request_id && item.role === message.role)) ?? [];
+    const historicalReflections = prior?.messages.filter(message => message.origin === 'local-reflection') ?? [];
     const messages = response.status === 'current'
       ? prior?.messages ?? []
       : remote.length > 0
-        ? [...remote, ...pendingLocalMessages]
+        ? [...new Map([...remote, ...pendingLocalMessages, ...historicalReflections].map(message => [message.id, message])).values()]
         : prior?.messages ?? [];
     const tombstone = response.tombstones.find(item => item.session_id === response.session_id);
     const session: MiniBrainSession = {
@@ -498,7 +458,7 @@ export class MiniBrainVault {
       ...state,
       current_session_id: response.session_id,
       sessions: [session, ...state.sessions.filter(item => item.session_id !== response.session_id)],
-      queue: state.queue.filter(item => !completedRequestIds.has(item.request_id)),
+      queue: state.queue.filter(item => item.session_id !== response.session_id || !completedRequestIds.has(item.request_id)),
     });
   }
 
@@ -514,16 +474,14 @@ export class MiniBrainVault {
     } satisfies MiniBrainSession;
     const requestId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const reply = deterministicMiniBrainReply(text, state.memories);
     const userId = `queued-user-${requestId}`;
-    const reflectionId = `local-reflection-${requestId}`;
     const turn: MiniBrainQueuedTurn = {
       request_id: requestId,
       session_id: state.current_session_id,
       text,
       queued_at: now,
       base_cursor: session.cursor,
-      local_message_ids: [userId, reflectionId],
+      local_message_ids: [userId],
     };
     const nextSession: MiniBrainSession = {
       ...session,
@@ -537,15 +495,6 @@ export class MiniBrainVault {
         event_digest: null,
         origin: 'queued-mobile',
         provenance_digests: [],
-      }, {
-        id: reflectionId,
-        role: 'assistant',
-        content: reply.text,
-        request_id: requestId,
-        recorded_at: now,
-        event_digest: null,
-        origin: 'local-reflection',
-        provenance_digests: reply.memory_digests,
       }],
     };
     const next = await this.save({

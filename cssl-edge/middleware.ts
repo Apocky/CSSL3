@@ -7,7 +7,6 @@ const RETIRED_EXACT_PATHS = new Set([
   '/apx',
   '/chat',
   '/admin/apex',
-  '/admin/apocrypha',
   '/admin/chat',
   '/admin/coder',
   '/admin/cognition',
@@ -50,9 +49,10 @@ function requestHost(request: NextRequest): string {
 
 export function isRetiredWebRuntimeRequest(request: NextRequest): boolean {
   const pathname = request.nextUrl.pathname;
+  const operatorInspection = pathname === '/api/admin/apocrypha/inspect';
   return requestHost(request) === RETIRED_HOST
     || RETIRED_EXACT_PATHS.has(pathname)
-    || RETIRED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    || (!operatorInspection && RETIRED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix)));
 }
 
 export function isUnbrokeredPrivateRuntimeRequest(request: NextRequest): boolean {
@@ -101,11 +101,13 @@ export function middleware(request: NextRequest): NextResponse {
 
   const nonce = btoa(crypto.randomUUID());
   const privateSurface = request.nextUrl.pathname.startsWith('/shawn/clinical')
+    || request.nextUrl.pathname === '/admin/apocrypha'
+    || request.nextUrl.pathname === '/api/admin/apocrypha/inspect'
     || request.nextUrl.pathname === '/apocrypha'
     || request.nextUrl.pathname === '/brain'
     || request.nextUrl.pathname.startsWith('/brain/')
     || request.nextUrl.pathname.startsWith('/api/brain/');
-  const csp = makeCsp(nonce, request.nextUrl.pathname === '/apocrypha');
+  const csp = makeCsp(nonce, ['/apocrypha', '/admin/apocrypha'].includes(request.nextUrl.pathname));
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);

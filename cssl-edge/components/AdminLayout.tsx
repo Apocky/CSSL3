@@ -6,6 +6,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { loginHrefForReturnPath } from '../lib/auth-return';
 import { authFetch } from '../lib/browser-auth';
+import { getAuthClient } from '../lib/auth';
 
 interface AdminLayoutProps {
   title: string;
@@ -39,6 +40,8 @@ const NAV: ReadonlyArray<NavItem> = [
     tip: 'Owner-only local developer bridge' },
   { href: '/admin/logs', label: 'Observatory', glyph: '◫', mobile: true,
     tip: 'Consented visitors · creation ledger · operational events' },
+  { href: '/admin/apocrypha', label: 'Apocrypha', glyph: '∞', mobile: true,
+    tip: 'Account inspection · desktop actions · diagnostics' },
 ];
 
 const MOBILE_NAV = NAV.filter((item) => item.mobile);
@@ -55,24 +58,38 @@ export default function AdminLayout({
   const loginHref = loginHrefForReturnPath(router.asPath || router.pathname || '/admin');
 
   useEffect(() => {
-    authFetch('/api/admin/check', { cache: 'no-store' })
+    let active = true;
+    let revision = 0;
+    const refresh = () => {
+      const current = ++revision;
+      setCheck(null);
+      void authFetch('/api/admin/check', { cache: 'no-store' })
       .then((r) => r.json())
       .then((j: AdminCheck) => {
+        if (!active || current !== revision) return;
         setCheck(j);
         onAdminCheck?.(j);
       })
       .catch(() => {
+        if (!active || current !== revision) return;
         const denied = { authorized: false, reason: 'network error' };
         setCheck(denied);
         onAdminCheck?.(denied);
       });
+    };
+    refresh();
+    const subscription = getAuthClient()?.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') { ++revision; setCheck({ authorized: false, reason: 'Signed out.' }); }
+      else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') refresh();
+    }).data.subscription;
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   return (
     <>
       <Head>
         <title>{`${title} · Apocky admin`}</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#000000" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

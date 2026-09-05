@@ -1,0 +1,23 @@
+import { expect, test } from '@playwright/test';
+
+test('connection details expose only safe errors and preserve retry identity across account changes', async ({ page, context }) => {
+  const trace = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; const secret = 'PRIVATE_PROMPT_TOKEN_STACK_SENTINEL';
+  let member = 'member-a'; const turns: Record<string, string>[] = [];
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: member, email: `${member}@example.test` } } }));
+  await page.route('**/api/admin/check', route => route.fulfill({ status: 403, json: { authorized: false } }));
+  await page.route('**/api/mobile/sessions**', route => route.fulfill({ json: { schema_version: 'apocky.mobile.sessions.v1', status: 'live', sessions: [], count: 0, discovery_scope: 'account_conversations' } }));
+  await page.route('**/api/mobile/turn', route => { turns.push(route.request().postDataJSON()); return route.fulfill({ status: 504, headers: { 'x-apocky-trace-id': trace }, json: { code: 'ACCOUNT_RESPONSE_TIMEOUT', error: secret, diagnostic: { code: 'ACCOUNT_RESPONSE_TIMEOUT', time: '2026-09-04T12:00:00.000Z', duration_ms: 115000, trace_id: trace, private: secret } } }); });
+  await page.route('**/api/mobile/status', route => { expect(route.request().method()).toBe('GET'); return route.fulfill({ headers: { 'x-apocky-trace-id': trace }, json: { schema_version: 'apocky.mobile.status.v1', status: 'degraded', code: 'ACCOUNT_CONFIGURATION_UNAVAILABLE', private: secret } }); });
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/apocrypha');
+  const input = page.getByRole('textbox', { name: 'Message Apocrypha', exact: true }); await expect(input).toBeEnabled(); await input.fill('A diagnostic fixture question.'); await page.getByRole('button', { name: 'Send', exact: false }).click();
+  const details = page.locator('details').filter({ has: page.getByText('Connection details', { exact: true }) });
+  await expect(details).not.toHaveAttribute('open', ''); await page.getByText('Connection details', { exact: true }).click();
+  await expect(details.getByText('ACCOUNT_RESPONSE_TIMEOUT', { exact: true })).toBeVisible(); await expect(details.getByText(trace, { exact: true })).toBeVisible(); await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']); await details.getByRole('button', { name: 'Copy details' }).click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText()); expect(copied).toContain(trace); expect(copied).not.toContain(secret); expect(copied).not.toContain('fixture question'); expect(copied).not.toContain('member-a');
+  await page.getByRole('button', { name: 'Retry same message' }).click(); await expect.poll(() => turns.length).toBe(2); expect(turns[0]).toEqual(turns[1]);
+  await details.getByRole('button', { name: 'Check connection' }).click(); await expect(details.getByText('ACCOUNT_CONFIGURATION_UNAVAILABLE', { exact: true })).toBeVisible(); await expect(details.getByText('The account connection is not configured yet.')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  member = 'member-b'; await page.reload(); await expect(input).toBeEnabled();
+  await page.getByText('Connection details', { exact: true }).click(); await expect(details.getByText(trace, { exact: true })).toHaveCount(0); await expect(details.getByRole('button', { name: 'Copy details' })).toHaveCount(0); await expect(page.getByText('A diagnostic fixture question.', { exact: true })).toHaveCount(0);
+});

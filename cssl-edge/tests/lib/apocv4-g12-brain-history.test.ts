@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 
 import {
   RuntimeProxyError,
+  fetchOwnerBrainRuntimeHealth,
   getOwnerBrainRuntimeSession,
   listOwnerBrainRuntimeSessions,
   publicMemberPrincipalRef,
@@ -279,6 +280,28 @@ async function main(): Promise<void> {
     process.env.APOCV4_RUNTIME_DIRECT_IP = '198.51.100.42';
     process.env.APOCV4_RUNTIME_DIRECT_PORT = '31234';
     process.env.APOCKY_BRAIN_LOCAL_PROVIDER_ENABLED = '1';
+
+    const authenticatedStatus = runtimeEnvelope({});
+    const identity = {
+      schema_version: 'apocv4.authenticated-status.v1', authenticated: true,
+      principal_ref: authenticatedStatus.headers.get('X-Apocv4-Principal-Ref'),
+      privacy_partition_ref: authenticatedStatus.headers.get('X-Apocv4-Privacy-Partition-Ref'),
+      service_profile: 'CONVERSATION_ONLY', effect_authority: 'NONE',
+    };
+    globalThis.fetch = async (input, init) => {
+      assert.equal(String(input), `${ORIGIN}/v1/auth/status`);
+      assert.equal(init?.method, 'GET');
+      return runtimeEnvelope(identity);
+    };
+    assert.equal((await fetchOwnerBrainRuntimeHealth()).kind, 'health');
+    globalThis.fetch = async () => {
+      const degraded = runtimeEnvelope(identity);
+      degraded.headers.set('X-Apocv4-Auth-Mode', 'DEGRADED_LOCAL_SINGLE_TOKEN');
+      return degraded;
+    };
+    await rejectsCode(() => fetchOwnerBrainRuntimeHealth(), 'runtime_principal_binding_invalid');
+    globalThis.fetch = async () => runtimeEnvelope({ ...identity, principal_ref: digest('f') });
+    await rejectsCode(() => fetchOwnerBrainRuntimeHealth(), 'runtime_principal_binding_invalid');
 
     let capturedUrl = '';
     let capturedInit: RequestInit | undefined;

@@ -7,7 +7,6 @@ const RETIRED_AUTH_RETURN_EXACT = new Set([
   '/apx',
   '/chat',
   '/admin/apex',
-  '/admin/apocrypha',
   '/admin/chat',
   '/admin/coder',
   '/admin/cognition',

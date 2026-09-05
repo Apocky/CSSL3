@@ -77,13 +77,15 @@ async function run() {
   const mismatched = createOperatorInspectionHandler({ authorize: authorized, audit: async () => true, call: async () => ({ ...history, session: { ...history.session, session_id: actor } }) });
   assert.equal((await invoke(mismatched, { body: { action: 'session', subject, session_id: session, purpose: 'research' } })).status, 502);
 
-  const previous = { flag: process.env.APOCV4_MOBILE_OWNER_BRIDGE, emails: process.env.APOCKY_ADMIN_EMAILS };
+  const previous = { flag: process.env.APOCV4_MOBILE_OWNER_BRIDGE, emails: process.env.APOCKY_ADMIN_EMAILS, ownerId: process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID };
   try {
     process.env.APOCKY_ADMIN_EMAILS = owner.email;
+    process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID = owner.id;
     delete process.env.APOCV4_MOBILE_OWNER_BRIDGE;
     assert.equal(usesOwnerRuntime(owner), false);
     process.env.APOCV4_MOBILE_OWNER_BRIDGE = 'true'; assert.equal(usesOwnerRuntime(owner), false);
     process.env.APOCV4_MOBILE_OWNER_BRIDGE = '1'; assert.equal(usesOwnerRuntime(owner), true); assert.equal(usesOwnerRuntime({ ...owner, email: owner.email.toUpperCase() }), true);
+    assert.equal(usesOwnerRuntime({ ...owner, id: subject }), false, 'another allowlisted operator is not silently mapped into owner chat');
     assert.equal(usesOwnerRuntime(member), false);
     await assert.rejects(callOwnerMobileRuntime({ user: member, surface: 'status' }), /ACCOUNT_RESPONSE_SCOPE_MISMATCH/);
     let accountCalls = 0;
@@ -92,6 +94,7 @@ async function run() {
   } finally {
     if (previous.flag === undefined) delete process.env.APOCV4_MOBILE_OWNER_BRIDGE; else process.env.APOCV4_MOBILE_OWNER_BRIDGE = previous.flag;
     if (previous.emails === undefined) delete process.env.APOCKY_ADMIN_EMAILS; else process.env.APOCKY_ADMIN_EMAILS = previous.emails;
+    if (previous.ownerId === undefined) delete process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID; else process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID = previous.ownerId;
   }
   process.stdout.write('Operator inspection authorization, audited selection, privacy projection and owner routing checks passed.\n');
 }

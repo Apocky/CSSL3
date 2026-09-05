@@ -1,7 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { randomUUID } from 'node:crypto';
 import { getRequestUser, type RequestUserResult } from '../admin-auth';
 import { ACCOUNT_UUID, CONVERSATION_UUID } from './account-grant';
 import { accountRuntimeConfigured, AccountRuntimeError, callAccountRuntime } from './account-runtime';
+import { usesOwnerRuntime, callOwnerMobileRuntime, ownerMobileRuntimeConfigured } from './owner-runtime';
+import { accountDiagnostic, accountDiagnosticCode, accountDiagnosticReason, type AccountDiagnostic, type AccountDiagnosticCode } from './diagnostics';
 
 type Surface = 'turn' | 'sessions' | 'status';
 type Dict = Record<string, unknown>;
@@ -26,7 +29,7 @@ function verifiedSummary(value: unknown): Dict {
   return { session_id: value.session_id, title: value.title, updated_at: value.updated_at, message_count: value.message_count };
 }
 
-function verifiedHistory(value: Dict, sessionId?: string): Dict {
+export function verifiedHistory(value: Dict, sessionId?: string): Dict {
   if (value.status !== 'live') throw new AccountRuntimeError('ACCOUNT_HISTORY_UNVERIFIED');
   if (!sessionId) {
     if (value.schema_version !== 'apocky.mobile.sessions.v1' || !Array.isArray(value.sessions) || value.sessions.length > 100
@@ -63,19 +66,35 @@ export function createAccountHandler(surface: Surface, dependencies: {
   user?: (req: NextApiRequest) => Promise<RequestUserResult>;
   configured?: () => boolean;
   call?: typeof callAccountRuntime;
+  log?: (diagnostic: AccountDiagnostic) => void;
 } = {}) {
   return async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
+    const started = Date.now(); const traceId = randomUUID();
+    res.setHeader('X-Apocky-Trace-Id', traceId);
     res.setHeader('Cache-Control', 'private, no-store, max-age=0');
     res.setHeader('Vary', 'Authorization, Cookie, Origin');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     const method = surface === 'turn' ? 'POST' : 'GET';
     res.setHeader('Allow', method);
-    const fail = (status: number, code: string, error: string) => { res.status(status).json({ code, error }); };
+    const finish = (status: number, code: AccountDiagnosticCode, body: Dict, includeDiagnostic = false) => {
+      const diagnostic = accountDiagnostic({ operation: surface, status, code, time: new Date().toISOString(), duration_ms: Math.max(0, Date.now() - started), trace_id: traceId });
+      try { if (dependencies.log) dependencies.log(diagnostic); else console.info(JSON.stringify(diagnostic)); } catch { /* ○ logging.unavailable ; response.preserved */ }
+      res.status(status).json({ ...body, ...(includeDiagnostic ? { code: diagnostic.code, stage: diagnostic.stage, diagnostic } : {}) });
+    };
+    const fail = (status: number, code: unknown, _message?: string) => {
+      const known = accountDiagnosticCode(code); const safe = known === 'ACCOUNT_OK' ? 'ACCOUNT_SERVICE_UNAVAILABLE' : known; const diagnostic = accountDiagnostic({ operation: surface, status, code: safe });
+      finish(status, safe, { error: accountDiagnosticReason(diagnostic) }, true);
+    };
+    const degraded = (code: unknown) => {
+      const known = accountDiagnosticCode(code); const safe = known === 'ACCOUNT_OK' ? 'ACCOUNT_STATUS_UNVERIFIED' : known; const diagnostic = accountDiagnostic({ operation: surface, status: 200, code: safe });
+      finish(200, safe, { schema_version: 'apocky.mobile.status.v1', status: 'degraded', message: accountDiagnosticReason(diagnostic) }, true);
+    };
     if (req.method !== method) { fail(405, 'ACCOUNT_METHOD_DENIED', 'This request method is unavailable.'); return; }
     if (method === 'POST') {
       const localOrigin = process.env.NODE_ENV !== 'production' && typeof req.headers.origin === 'string'
         && /^http:\/\/(localhost|127\.0\.0\.1):[0-9]{1,5}$/.test(req.headers.origin)
+        && Number(req.headers.origin.split(':').at(-1)) <= 65535
         && new URL(req.headers.origin).host === req.headers.host;
       if (req.headers.origin !== 'https://www.apocky.com' && !localOrigin) {
         fail(403, 'ACCOUNT_ORIGIN_DENIED', 'Open Apocrypha from apocky.com or its official app.'); return;
@@ -107,26 +126,32 @@ export function createAccountHandler(surface: Surface, dependencies: {
       || typeof req.body.request_id !== 'string' || !CONVERSATION_UUID.test(req.body.request_id))) {
       fail(400, 'ACCOUNT_TURN_INVALID', 'Enter a message and start a valid conversation.'); return;
     }
-    if (!(dependencies.configured ?? accountRuntimeConfigured)()) {
-      if (surface === 'status') { res.status(200).json({ schema_version: 'apocky.mobile.status.v1', status: 'degraded', message: 'Apocrypha is reconnecting. Please try again shortly.' }); }
-      else fail(503, 'ACCOUNT_SERVICE_UNAVAILABLE', 'Apocrypha is reconnecting. Please try again shortly.');
+    const ownerRoute = usesOwnerRuntime(session.user);
+    let configured = false;
+    try { configured = (dependencies.configured ?? (ownerRoute ? ownerMobileRuntimeConfigured : accountRuntimeConfigured))(); } catch { /* ○ configuration.unavailable */ }
+    if (!configured) {
+      if (surface === 'status') degraded('ACCOUNT_CONFIGURATION_UNAVAILABLE');
+      else fail(503, 'ACCOUNT_CONFIGURATION_UNAVAILABLE');
       return;
     }
     try {
-      const value = await (dependencies.call ?? callAccountRuntime)({ subject: session.user.id, method,
+      const value = ownerRoute && !dependencies.call
+        ? await callOwnerMobileRuntime({ user: session.user, surface, sessionId,
+          ...(surface === 'turn' ? { body: req.body as Record<string, string> } : {}) })
+        : await (dependencies.call ?? callAccountRuntime)({ subject: session.user.id, method,
         target: `/v1/account/${surface}${sessionId ? `?session_id=${sessionId}` : ''}`,
         ...(surface === 'turn' ? { body: req.body as Record<string, string> } : {}) });
-      if (surface === 'turn') res.status(200).json(verifiedTurn(value, req.body as Dict));
-      else if (surface === 'sessions') res.status(200).json(verifiedHistory(value, sessionId));
+      if (surface === 'turn') finish(200, 'ACCOUNT_OK', verifiedTurn(value, req.body as Dict));
+      else if (surface === 'sessions') finish(200, 'ACCOUNT_OK', verifiedHistory(value, sessionId));
       else {
         if (value.schema_version !== 'apocky.mobile.status.v1' || typeof value.status !== 'string'
           || !['live', 'degraded'].includes(value.status)) throw new AccountRuntimeError('ACCOUNT_STATUS_UNVERIFIED');
-        res.status(200).json({ schema_version: value.schema_version, status: value.status,
-          ...(value.status === 'degraded' ? { message: 'Apocrypha is reconnecting. Please try again shortly.' } : {}) });
+        if (value.status === 'degraded') degraded('ACCOUNT_FACULTY_UNREADY');
+        else finish(200, 'ACCOUNT_OK', { schema_version: value.schema_version, status: 'live' });
       }
     } catch (error) {
       // ∀ post-admission failure → 5xx ; clients retain uncertain request identity.
-      if (surface === 'status') res.status(200).json({ schema_version: 'apocky.mobile.status.v1', status: 'degraded', message: 'Apocrypha is reconnecting. Please try again shortly.' });
+      if (surface === 'status') degraded(error instanceof AccountRuntimeError ? error.code : 'ACCOUNT_SERVICE_UNAVAILABLE');
       else fail(error instanceof AccountRuntimeError ? error.publicStatus : 502,
         error instanceof AccountRuntimeError ? error.code : 'ACCOUNT_SERVICE_UNAVAILABLE',
         surface === 'turn' ? 'A completed reply could not be verified. Refresh this conversation before sending again.' : 'This conversation could not be loaded. Please retry.');

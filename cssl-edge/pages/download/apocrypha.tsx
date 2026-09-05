@@ -77,13 +77,13 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
         </div>
       </main>
       <style jsx>{`
-        .mobile-download { color: var(--apx-ink); background: radial-gradient(ellipse at 50% 0, rgba(109,93,252,.13), transparent 55%); padding: 64px 24px 72px; }
+        .mobile-download { color: var(--apx-ink); background: radial-gradient(ellipse at 50% 0, rgba(109,93,252,.13), transparent 55%); padding: 36px 24px 48px; }
         .mobile-wrap { max-width: 1060px; margin: 0 auto; }
-        .mobile-hero { max-width: 760px; margin: 0 auto 48px; text-align: center; }
-        .mobile-identity { width: 68px; height: 68px; display: grid; place-items: center; margin: 0 auto 28px; border: 1px solid var(--apx-line); border-radius: 20px; background: rgba(185,152,255,.07); }
+        .mobile-hero { max-width: 760px; margin: 0 auto 28px; text-align: center; }
+        .mobile-identity { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 16px; border: 1px solid var(--apx-line); border-radius: 16px; background: rgba(185,152,255,.07); }
         .mobile-identity :global(.apx-brand-mark) { width: 36px; height: 36px; }
         .eyebrow { color: var(--apx-violet); font: 600 11px/1.5 var(--apx-mono); letter-spacing: .16em; }
-        h1 { margin: 18px 0 24px; font-size: clamp(44px, 7vw, 76px); line-height: 1.04; letter-spacing: -.055em; }
+        h1 { margin: 12px 0 16px; font-size: clamp(36px, 5.5vw, 60px); line-height: 1.04; letter-spacing: -.055em; }
         h1 em { color: #c7b3ff; font-family: var(--apx-display); font-weight: 400; }
         .lead { max-width: 590px; margin: 0 auto; font-size: 18px; line-height: 1.7; color: var(--apx-copy); }
         .access-note { display: flex; gap: 14px; align-items: flex-start; text-align: left; margin: 28px auto 0; max-width: 620px; padding: 16px 20px; border: 1px solid var(--apx-line); border-radius: 14px; color: var(--apx-muted); }
@@ -91,8 +91,8 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
         .access-note p { margin: 0; font-size: 13px; line-height: 1.7; } .access-note strong { color: var(--apx-ink); }
         .access-note :global(a) { color: var(--apx-mint); text-underline-offset: 3px; }
         .platforms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-        .platform { background: linear-gradient(155deg, rgba(20,24,50,.83), rgba(7,9,21,.96)); border: 1px solid var(--apx-line); padding: 32px; border-radius: 24px; display: flex; flex-direction: column; }
-        .platform-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+        .platform { background: linear-gradient(155deg, rgba(20,24,50,.83), rgba(7,9,21,.96)); border: 1px solid var(--apx-line); padding: 24px; border-radius: 18px; display: flex; flex-direction: column; }
+        .platform-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
         .platform-icon { font-size: 30px; color: var(--apx-mint); }
         .iphone .platform-icon { color: var(--apx-violet); }
         .badge { font: 500 11px/1.3 var(--apx-mono); color: var(--apx-copy); border: 1px solid var(--apx-line); border-radius: 20px; padding: 7px 11px; }
