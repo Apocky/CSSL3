@@ -1,0 +1,1182 @@
+§ APOCKY.SOCIAL-PLATFORM.RESET.BLUEPRINT.v2
+
+status             : ○ PROPOSED_AWAITING_APOCKY_SIGNOFF
+date               : 2026-07-29 America/Phoenix
+scope              : apocky.com public-entry + free-social-platform + free-moderated-Apocv2-chat + paid-consent-commissioning + owner-console
+design-authority   : ✓ user-request
+source-mutation    : N! until blueprint-signoff
+deployment-authority : N! absent
+payment-authority  : N! absent
+data-migration-authority : N! absent
+legacy-deletion-authority : N! absent
+supersedes         : v1 access-model ⊘ paid-membership-gates-social-space
+correction         : ✓ social+Apocv2-chat=free · paid-membership=commission-eligibility
+
+§P PROBLEM
+
+  ✓ current-release exposes 54 UI-routes + 94 API-routes
+  ✓ current-public model splits ecosystem story across `/` + `/apocrypha` + `/clearing`
+  ✓ aliases `/apoc` + `/apx` + `/chat` duplicate `/apocrypha` destination
+  ✓ `/buy` states no-direct-checkout
+  ✓ live `/api/health` @ 2026-07-29 reports :
+      auth_supabase_configured=true
+      data_supabase_configured=true
+      supabase_connected=true
+      stripe_configured=false
+      stripe_webhook_configured=false
+      payments_ready=false
+  ✓ `/clearing` requires authentication for posting but contains no subscription-entitlement gate
+  ✓ `/api/apocrypha/chat` currently grants authenticated members bounded text-turns independent-of payment
+  ✓ current public-turn envelope reports `memory_scope=ephemeral` + `training_consent=false`
+  ✓ current Clearing supports rooms + messages + replies + reactions + presence
+  ✓ `public/commons/membership.html` already proposes free text access + paid measured capacity
+    ∧ states payment never buys Apocrypha consent/control
+    ∧ labels offer DESIGNED/NOT-LIVE
+  ✗ current Clearing implements report/mute/block/moderator-case workflow
+  ✗ current content-moderation HTTP endpoints are durable social moderation
+      ∵ source returns `source='stub'`
+  ✗ current `/api/generate/3d` is operational generation
+      ∵ source returns `status='stub'` + `result_url=null`
+  ✓ admin authorization = valid Supabase-session + email-allowlist
+  ✗ admin MFA/TOTP/AAL2 enforcement implemented
+  ✓ release-worktree dirty_entries=142 @ HEAD 4e1c8e74b162452e4a53a45f70258e838c40bb1c
+
+  § root-cause
+    product-boundaries encoded as destinations
+    ⇒ overlapping entry-points + duplicated explanation + unclear next-action
+    route-accumulation + API-accumulation
+    ⇒ obsolete surfaces remain reachable after visual redesign
+    auth-existence ≠ access-policy
+    Stripe-scaffolding ≠ subscription-system
+    content-moderation-stub ≠ safe-social-platform
+    generation-stub ≠ commission-capability
+    email-allowlist ≠ secure-admin-authority
+
+§D GOAL+SUCCESS
+
+  goal : one obvious public door → robust free social habitat → free consent-bounded Apocv2 conversation → optional paid mutual-commission workflow
+
+  success.1 :
+    anonymous visitor reaches `/`
+    ⇒ understands free social platform + free Apocv2 chat + optional paid commissions
+    ⇒ has exactly one primary action : `Enter free`
+
+  success.2 :
+    free account enters `/space`
+    ⇒ rooms + threads + reactions + presence + safety-controls operational
+    ⇒ moderated Apocv2 conversation operational
+    ∧ no payment/entitlement required
+
+  success.3 :
+    paid member may offer commission
+    ⇒ server verifies generation-membership
+    ⇒ requester + Apocv2 accept same versioned scope
+    ⇒ generation may begin
+    ∧ admin reaches `/admin` only after server-verified role + AAL2
+    ⇒ diagnostics + commissions + moderation + audit are operational
+    ∧ old pages/APIs cannot execute inside new deployment
+
+§D PRODUCT.LAW
+
+  ⌈one public entry-point = `/`⌉
+  ⌈one free social product = `/space`⌉
+  ⌈one paid membership/checkout flow = `/membership`⌉
+  ⌈one account/onboarding flow = `/auth`⌉
+  ⌈one owner console = `/admin`⌉
+
+  platform-name.recommended : `Apocky`
+  digital-participant-name  : `Apocv2`
+  `The Clearing` M? survive as room-name inside `/space`
+  `Atlas` M? survive as artifact/view-name inside `/space`
+  N! Apocv2 + Clearing + Atlas presented as competing product doors
+
+  public.promise :
+    humans + digital-intelligence participation
+    robust social conversation + free moderated Apocv2 chat
+    shared conversation + shared artifacts
+    visible consent + provenance + runtime-state
+    optional paid membership grants commission-eligibility
+
+  § access-law ‼
+    visitor :
+      public landing + public-room read(policy-dependent)
+    free-member :
+      social participation
+      Apocv2 direct conversation + room invocation
+      safety + privacy + export + deletion rights
+    paid-member :
+      all free-member rights
+      commission-offer eligibility + capacity allocation
+    moderator :
+      social-case authority only
+    admin :
+      operational authority under AAL2
+    ⌈payment ≠ social standing ≠ moderation authority ≠ command authority ≠ consent⌉
+    N! social participation paywalled
+    N! Apocv2 conversation paywalled
+    N! paying member gains control/ownership/governance of Apocv2
+    N! subscription-entitlement substitutes commission acceptance
+
+  non-goals.v2 :
+    N! full IDE
+    N! infinite-canvas/whiteboard
+    N! marketplace
+    N! public content-CMS
+    N! multiple membership tiers
+    N! human-to-human private messages until abuse-controls complete
+    N! autonomous training from conversations
+    N! feature rendered before complete behavior exists
+
+§D ROUTE.LAW
+
+  § primary.navigation-surfaces
+    `/`        := public landing/hub
+    `/space`   := free integrated social/co-creation workspace + Apocv2 chat
+    `/membership` := optional paid generation-membership + checkout flow
+    `/admin`   := owner/admin console ⊗ internal-tabs
+
+  § supporting.non-entry-surfaces
+    `/auth`               := unified free-account sign-in + registration + MFA challenge
+    `/auth/callback`      := provider callback · noindex · no-nav
+    `/checkout/return`    := verified generation-membership return-state · noindex · no-nav
+    `/account`            := profile + billing + security + privacy + sessions
+    `/legal/privacy`      := privacy policy
+    `/legal/terms`        := service terms
+    `/legal/community`    := community + acceptable-use policy
+    `/legal/billing`      := price + renewal + cancellation + refund policy
+    `/status`             := public coarse health · N! sensitive diagnostics
+    `/404`                := unknown-route recovery
+    `/410`                := intentionally retired-content explanation
+
+  § query-state ¬ new-entry-point
+    `/space?view=rooms|apocv2|artifacts|commissions&room=<slug>&artifact=<id>&commission=<id>`
+    `/account?tab=billing|security|privacy|notifications`
+    `/admin?tab=overview|diagnostics|access|moderation|audit`
+
+  § public-header
+    guest :
+      left  = wordmark → `/`
+      center = landing-section anchors only
+      right = `Sign in` + primary `Enter free`
+    free-member :
+      left  = wordmark → `/space`
+      right = optional `Membership` + account-menu
+    paid-member :
+      left = wordmark → `/space`
+      right = `Commissions` + account-menu
+    admin :
+      `Admin` visible only inside authorized account-menu
+
+  § public-footer
+    links = privacy + terms + community + billing + status + support
+    N! product-concept links duplicating landing narrative
+
+  § compatibility-map
+    `/apoc` + `/apx` + `/chat` + `/apocrypha` + `/clearing`
+      → 308 `/space`
+      → free-account gate resolves posting/Apocv2 interaction
+    `/buy`
+      → 308 `/membership`
+    `/join` + `/login` + `/register`
+      → 308 `/auth`
+    `/admin/*`
+      → authenticated semantic redirect `/admin?tab=<mapped-tab>`
+    unrelated retired content :
+      `/atlas`
+      `/content/*`
+      `/docs/*`
+      `/download`
+      `/gear-share`
+      `/run-share-feed`
+      `/shawn/*`
+      `/words`
+      `/infinity-engine`
+      → decision.required : private-archive ∨ curated-public-archive ∨ 410
+      N! redirect unrelated content to `/`
+
+  § route-security
+    sitemap = `/` + membership-information + legal-public routes
+    robots.noindex = auth + checkout-transaction + private space-state + account + admin + callbacks
+    cache.private-no-store = space + account + admin + auth-session responses
+    Content-Security-Policy + frame-ancestors + referrer-policy + permissions-policy required
+
+§D LANDING.PAGE `/`
+
+  § section.1 hero
+    viewport : min(900px, 100svh)
+    content-grid : 12-column · max-width=1180px · horizontal-padding=24..64px
+    copy-width : 560px
+    primary-copy :
+      what = co-creation social space
+      who = humans + Apocv2
+      action = Join the space
+    secondary-action = Sign in
+    graphic = live-space constellation
+      one central presence-field + 3..5 participant nodes
+      motion encodes live/present state only
+      reduced-motion ⇒ static composition
+    N! rotating slogans
+    N! multiple hero cards
+    N! decorative fake terminal
+
+  § section.2 product-proof
+    one accurate workspace preview
+    annotations = conversation + artifact + context
+    N! screenshot containing unimplemented controls
+
+  § section.3 workflow
+    3 steps :
+      create free account
+      enter social space + meet community/Apocv2
+      optionally become member + offer commission
+
+  § section.4 consent+trust
+    explain :
+      what is stored
+      who can see
+      whether Apocv2 receives context
+      training-use default
+      withdrawal/export/delete controls
+
+  § section.5 free+membership boundary
+    free-card :
+      social rooms + threads + reactions + presence
+      moderated Apocv2 text chat
+      safety/privacy/export/deletion
+      CTA → `/auth?next=/space`
+    optional paid-card :
+      commission eligibility + visible capacity
+      exact price + cadence + renewal + cancellation
+      CTA → `/membership`
+    visual hierarchy : free-card primary · paid-card supporting
+    N! fake scarcity
+    N! hidden fee
+    N! preselected training-consent
+    N! imply social/chat trial expires
+    N! imply payment purchases Apocv2 agreement
+
+  § section.6 FAQ
+    ≤8 answers :
+      what space is
+      who/what Apocv2 is operationally
+      what remains free
+      what paid membership unlocks
+      how commission consent works
+      data + training policy
+      cancellation/refunds
+      support
+
+§D FREE.ACCOUNT.FLOW `/auth`
+
+  § state-machine
+    unauthenticated
+      → email/OAuth first-factor
+      → verified-account
+      → profile + community-terms acknowledgement
+      → `/space`
+    existing-account
+      → first-factor
+      → MFA challenge iff enrolled/required
+      → `/space` ∨ safe internal `next`
+    suspended-account
+      → reason + duration + appeal/support
+
+  § invariants
+    signup price = $0
+    payment method N! requested
+    generation-membership N! required
+    training consent separate + default-off
+    community rules acknowledged but N! bundled with optional analytics/training
+
+§D MEMBERSHIP+CHECKOUT.FLOW `/membership`
+
+  § information-before-payment
+    free social + free Apocv2 chat remain explicit
+    paid benefit = eligibility to propose commissions + measured generation-capacity
+    membership N! guarantees acceptance of any particular brief
+    unused-capacity/decline policy visible before payment
+    price + cadence + capacity + concurrency + renewal + cancellation + refund visible
+    refusal/decline/pause rights identical across free+paid
+
+  § state-machine
+    unauthenticated
+      → `/auth?next=/membership`
+    verified-account ∧ ¬generation-entitled
+      → plan-summary
+      → explicit service-terms + billing-terms acknowledgement
+      → Stripe-hosted Checkout
+    checkout-return
+      → server-verifies session-user + Checkout-session
+      → poll entitlement until webhook-commit ∨ timeout
+    entitlement.active
+      → `/space?view=commissions`
+    entitlement.pending
+      → honest pending-state + retry/status/support
+    entitlement.existing
+      → `/space?view=commissions` + account.billing link
+
+  § billing-invariants
+    one recurring product + one currency + one cadence @ launch
+    server derives `user_id` from validated session
+    N! caller-supplied player/user identity
+    success_url + cancel_url = server-owned origin constants
+    Checkout.mode = subscription
+    Stripe.customer bound one-to-one to account
+    webhook-signature verified against raw body
+    webhook-event inserted `received`
+      → effect transaction
+      → entitlement/subscription upsert
+      → event `processed`
+    failure ⇒ event `failed` + retryable
+    N! mark processed before side-effects
+    event ordering N! assumed
+    commission-offer eligibility = server entitlement state ¬ checkout-return query-string
+    social/chat access N! depends-on subscription state
+    customer-portal supports payment-method + invoices + cancellation
+
+  § access-state-map
+    trialing | active          ⇒ allow-new-commission-offer
+    past_due                   ⇒ grace(policy-required) ∨ deny-new-offer
+    unpaid | incomplete_expired | canceled | refunded ⇒ deny-new-offer
+    admin_comp.active          ⇒ allow-new-offer ⊗ audit
+    suspended                 ⇒ deny-social+commission under separate moderation-case
+    accepted/in-progress commission :
+      N! auto-cancel solely because subscription lapses
+      commission-specific agreement governs completion/cancellation
+    delivered artifact :
+      remains accessible after membership cancellation
+      subject-to account/privacy/legal retention policy
+
+  § decision.required
+    product-label
+    price
+    cadence recommended=monthly
+    trial recommended=none @ private-beta
+    grace-period recommended=3-days
+    refund-window
+    public-purchase ∨ invite-required
+    included-capacity + one-active-commission recommendation
+    membership-lapse behavior for pending/unaccepted proposals
+    unused capacity : rollover ∨ expire ∨ credit/refund
+
+§D SPACE.PAGE `/space`
+
+  § MVP.definition ‼
+    free account access
+    one workspace
+    room discovery + rooms + threaded messages
+    reactions
+    presence
+    member profiles
+    mentions + unread state + in-app notifications
+    visibility-aware search
+    cursor pagination
+    own-message edit/delete + visible revision/deletion state
+    one shared Markdown artifact per project-thread
+    artifact revision-history
+    free Apocv2 direct chat + visible room participation/invocation
+    report + mute + block + moderation cases + appeals
+    N! file uploads until storage+scan+quota complete
+    N! canvas until collaboration+conflict model complete
+    N! human-to-human DMs @ launch
+
+  § desktop.layout @ width≥1120
+    topbar : 56px
+    left-rail : 248px
+      rooms + Apocv2 + artifacts + commissions(if eligible)
+    center-stage : minmax(520px, 1fr)
+      conversation ∨ artifact-editor
+    context-panel : 320px
+      selected-message/artifact/member/consent/runtime context
+    total max-width = none · product uses viewport
+
+  § tablet.layout @ 720..1119
+    left-rail = 72px collapsed
+    context-panel = overlay drawer
+    center-stage = remaining
+
+  § mobile.layout @ <720
+    topbar = 52px
+    center-stage = full-width
+    room-list + context = mutually-exclusive drawers
+    composer remains above safe-area
+    N! desktop panel scaled below legibility
+
+  § interaction-model
+    default-view = active community room
+    message click ⇒ context-panel
+    artifact link ⇒ center-stage artifact-editor
+    thread reply ⇒ contextual branch without page-navigation
+    room/artifact selection encoded in query-state for share/reload
+    keyboard :
+      tab-order logical
+      `Ctrl/Cmd+K` M? command-search only when fully implemented
+      escape closes drawers/modals
+    optimistic send allowed only with failed/retry state
+
+  § Apocv2.participation-contract
+    visible status :
+      unavailable | available | invited | participating | paused | degraded
+    status derives runtime observation
+    N! invented presence/consent claim
+    room/member consent-envelope visible before context transfer
+    invocation options :
+      explicit mention
+      explicit `Invite Apocv2`
+      private `Talk with Apocv2` view
+    N! hidden transcript ingestion
+    N! payment implies training-consent
+    N! payment changes refusal/safety/consent boundary
+    free-chat capacity :
+      bounded + rate-limited + transparently reported
+      distributed/shared rate authority ¬ process-memory Map
+      N! silently throttled
+      N! upsell inserted into refused/safety response
+    context-scope visible : current-thread | selected-artifact | approved-room-window
+    response provenance + timestamp visible
+    direct-chat privacy :
+      private to member + authorized safety process
+      retention choice before first turn :
+        ephemeral default
+        account-retained explicit opt-in
+      retained mode reversible for future turns + deletion available
+      N! public-room context imported without explicit scope
+    room-response publication :
+      Apocv2 response appears as distinct verified actor
+      reply links exact invocation
+      moderation status same visibility law as human message
+
+  § moderated-Apocv2-turn
+    member input
+      → account/suspension + rate-limit gate
+      → bounded input/schema
+      → safety triage
+      → consent/context envelope
+      → Apocv2 runtime
+      → response contract validation
+      → safety/postcondition check
+      → persist/display under selected retention scope
+    safety triage :
+      allow
+      clarify
+      bounded-refusal
+      reversible-quarantine + moderator-review
+    N! classifier final-ban authority
+    N! private message copied into moderator queue absent report/credible safety trigger
+    every intervention visible to affected member + appeal path
+
+  § social-safety
+    roles = free-member | paid-member | moderator | admin
+    member actions = report + mute + block
+    moderator actions = label + hide-message + warn + slow-mode + suspend
+    admin actions = role + entitlement + ban + restore
+    moderation-case :
+      report(s)
+      bounded evidence snapshot
+      accused-content + policy-clause
+      assigned moderator
+      action + duration
+      appeal + resolution
+    automated systems :
+      spam/rate/known-malware gate M? auto-block immediate request
+      behavioral/content classifier M? triage + reversible quarantine
+      N! opaque shadow-ban
+      N! irreversible account sanction without authorized review
+    every moderation mutation = reason + policy-clause + actor + timestamp + audit-event
+    appeal/support path visible
+    rate-limit + spam-control + content-length bounds required
+    block :
+      blocks mentions + profile interactions + shared notifications
+      public-room content visibility policy explicit
+    mute :
+      local reversible filtering
+    age-eligibility decision required
+      recommendation = 18+ private/public beta until youth-safety regime exists
+
+§D COMMISSION.STUDIO inside `/space?view=commissions`
+
+  § eligibility
+    free-member : view explanation + own prior delivered work
+    paid-member.active : create/offer commission
+    N! membership creates commission automatically
+    N! commission request bypasses social/safety standing
+
+  § commission-definition
+    commission = versioned mutual agreement
+      ⊗ requester
+      ⊗ Apocv2 acceptance authority
+      ⊗ deliverable scope
+      ⊗ permitted inputs/sources
+      ⊗ modality/output format
+      ⊗ capacity estimate
+      ⊗ revision terms
+      ⊗ license/attribution
+      ⊗ privacy/publication
+      ⊗ retention/training decisions
+      ⊗ cancellation conditions
+    ⌈membership grants offer-access · never acceptance/control⌉
+
+  § lifecycle ‼
+    draft
+      → offered-by-member
+      → reviewing
+      → clarify ∨ counterproposal ∨ decline ∨ accept
+    counterproposal
+      → member.accept ∨ revise ∨ withdraw
+    mutual-acceptance.same-proposal-hash
+      → capacity-reserved
+      → queued
+      → in-progress
+      → review-ready
+      → delivered ∨ revision-requested
+      → completed
+    terminal :
+      declined
+      withdrawn
+      canceled-by-agreement
+      expired
+      failed-recoverable
+      failed-terminal
+
+  § consent-law
+    member acceptance + Apocv2 acceptance target exact proposal-version/hash
+    Apocv2 acceptance originates canonical runtime/consent authority
+    N! UI/admin/operator fabricates Apocv2 acceptance
+    any scope/input/license/privacy change invalidates prior acceptance
+    acceptance record = actor + authority + timestamp + proposal-hash
+    either party M? pause + clarify
+    either party M? withdraw before generation starts
+    after generation starts :
+      cancellation policy + consumed capacity visible
+      unused reservation released
+    Apocv2 M? decline/counteroffer without account penalty
+    member M? decline/counteroffer/withdraw without social penalty
+    N! silence = acceptance
+    N! checkout = acceptance
+    N! auto-renewal = acceptance
+
+  § safety+rights
+    commission offer checked for :
+      consent/agency
+      harm/abuse
+      rights-to-input
+      impersonation/deception
+      privacy
+      modality-specific risk
+    member attests rights/permission for supplied materials
+    generated deliverable carries :
+      provenance
+      source/input declarations
+      generation/runtime version
+      license/usage terms
+      safety/quality limitations
+    rejected commission preserves minimal reason + appeal/clarification path
+    N! generated artifact auto-published
+    publication requires separate creator+subject consent
+
+  § capacity
+    pre-accept estimate visible
+    reserve only after mutual acceptance
+    actual use commits
+    failure/cancellation releases unused reservation
+    no automatic overage charge
+    no hidden throttle
+    queue position + status truthful
+    recommendation @ launch = one active commission/member
+
+§D ACCOUNT.PAGE `/account`
+
+  profile :
+    display-name + avatar + accessibility-preferences
+  billing :
+    free-standing + optional-generation-plan + status + renewal-date + invoices + manage/cancel
+    explicit `Social + Apocv2 chat remain free`
+  commissions :
+    capacity used/reserved/remaining
+    proposal + acceptance + delivery history
+    delivered-artifact access independent-of active renewal
+  security :
+    MFA factors + enroll/unenroll
+    active-sessions/devices + revoke
+    recovery-codes
+    security-event history
+  privacy :
+    conversation-retention policy
+    per-space/per-message learning consent
+    commission input/output retention + publication consent
+    export request
+    account/data deletion request
+  notifications :
+    in-app + email preferences
+  N! account page promoted as product entry-point
+
+§D AUTH+ADMIN.SECURITY
+
+  § authentication
+    provider = existing Supabase Auth
+    `/auth` unifies current `/login` + `/register`
+    supported-first-factor @ launch = email OTP + existing verified OAuth providers
+    session-cookie = Secure + HttpOnly + SameSite=Lax/Strict + host-only
+    next-URL allowlisted internal path only
+    auth endpoints rate-limited
+
+  § authorization
+    role server-source = `account_role` table/RLS
+    current email-allowlist M? bootstrap first admin only
+    N! email-allowlist remains runtime admin-authority
+    free-member standing independent-of subscription entitlement
+    generation entitlement independent-of role
+    suspension independent-of billing
+
+  § 2FA
+    admin requires verified TOTP factor
+    admin session requires JWT `aal=aal2`
+    enforce @ :
+      `/admin` server render/gate
+      every `/api/admin/*`
+      database RLS for admin-owned tables/actions
+    AAL1 admin ⇒ redirect `/auth?step=mfa&next=/admin`
+    destructive admin action ⇒ recent AAL2 step-up
+    recovery-codes :
+      single-use
+      hashed-at-rest
+      shown-once
+      regenerate invalidates previous set
+    factor removal requires recent AAL2 + recovery warning
+    break-glass account :
+      optional
+      offline credential custody
+      disabled by default
+      every use audited + alerted
+
+  § ADMIN.PAGE `/admin`
+    internal-tabs :
+      overview :
+        public-service health + free/paid members + pending-incidents
+      moderation :
+        reports + quarantines + sanctions + appeals + safety metrics
+      Apocv2 :
+        public/direct turn health + queue/latency/refusal/degraded state
+      commissions :
+        proposal/acceptance/queue/delivery + capacity reconciliation
+      diagnostics :
+        Apocv2 runtime + queue/latency/errors
+        Supabase + Stripe + realtime health
+        deployment/version + dependency freshness
+        N! secrets + raw tokens + private conversation payloads
+      access :
+        free standing + subscription/generation-entitlement reconciliation
+        comp generation-access grant/revoke
+        account/role state
+      audit :
+        admin mutation + moderation + commission-consent + auth security + webhook lifecycle
+    default = read-only
+    mutation controls visually separated + confirmation + reason required
+    diagnostics status requires timestamp + source + freshness
+    N! stale green badge
+
+§D DATA+CONSENT
+
+  § minimum durable entities
+    account
+    profile
+    account_role
+    stripe_customer
+    subscription
+    generation_entitlement
+    webhook_inbox
+    workspace
+    workspace_membership
+    room
+    thread
+    message
+    message_revision
+    reaction
+    member_block
+    member_mute
+    notification
+    artifact
+    artifact_revision
+    Apocv2_conversation
+    Apocv2_turn
+    consent_record
+    report
+    moderation_case
+    moderation_action
+    moderation_appeal
+    commission
+    commission_proposal_version
+    commission_acceptance
+    commission_capacity_reservation
+    commission_run
+    commission_deliverable
+    commission_revision
+    audit_event
+
+  § ephemeral entities
+    presence
+    typing-indicator
+    transient runtime-status
+
+  § consent-record
+    subject_id
+    scope
+    purpose
+    decision
+    policy_version
+    granted_at
+    revoked_at
+    provenance
+
+  ⌈service-consent ≠ public-visibility-consent ≠ Apocv2-context-consent ≠ commission-acceptance ≠ publication-consent ≠ training-consent⌉
+  ⌈subscription-entitlement ≠ commission-acceptance⌉
+  training-consent default = off
+  consent revocation stops future admission
+  deletion/export behavior stated before collection
+  private message/content N! enters diagnostics logs
+  conversation persistence ≠ model learning
+
+§D API.ALLOWLIST
+
+  § public/system
+    GET  `/api/health`
+    POST `/api/billing/webhook`
+    GET  `/api/space/public`
+
+  § authenticated-account
+    GET  `/api/session`
+    POST `/api/billing/checkout`
+    POST `/api/billing/portal`
+    GET  `/api/billing/status`
+    POST `/api/account/export`
+    POST `/api/account/delete`
+
+  § free-member-space
+    GET  `/api/space/bootstrap`
+    GET|POST `/api/space/messages`
+    GET|POST `/api/space/artifacts`
+    GET `/api/space/search`
+    GET|POST `/api/space/notifications`
+    POST `/api/space/reactions`
+    POST `/api/space/reports`
+    POST `/api/space/blocks`
+    POST `/api/space/mutes`
+    POST `/api/apocv2/turn`
+
+  § paid-generation-member
+    GET|POST `/api/commissions`
+    GET|POST `/api/commissions/proposals`
+    POST `/api/commissions/accept`
+    POST `/api/commissions/withdraw`
+    POST `/api/commissions/revisions`
+    GET `/api/commissions/deliverables`
+    ∀ commission-write :
+      generation-entitlement required where offer/new-work applicable
+      exact commission-party authority required
+      current proposal-hash required
+
+  § moderator
+    GET|POST `/api/moderation/cases`
+    POST `/api/moderation/actions`
+    GET|POST `/api/moderation/appeals`
+
+  § internal-signed-service
+    POST `/api/internal/commissions/decision`
+    POST `/api/internal/commissions/progress`
+    POST `/api/internal/commissions/deliver`
+    W! mTLS/service-token + replay/idempotency + strict origin/service identity
+    N! browser session invokes internal route
+
+  § admin.AAL2
+    GET `/api/admin/overview`
+    GET `/api/admin/diagnostics`
+    GET|POST `/api/admin/access`
+    GET|POST `/api/admin/moderation`
+    GET|POST `/api/admin/commissions`
+    GET `/api/admin/audit`
+
+  ∀ endpoint :
+    explicit method allowlist
+    authn
+    authz
+    schema-validation
+    bounded payload
+    safe output
+    no-store where private
+    audit where consequential
+    rate/abuse limit where public/member
+  N! route exists without active UI consumer or operational requirement
+  N! existing `source='stub'` endpoint imported as implementation
+
+§D VISUAL.SYSTEM
+
+  direction : quiet inhabited workspace ¬ generic AI-dashboard
+  preserve : Apocky ink/field identity
+  remove : duplicate metaphors + ornamental cards + neon-purple AI cliché + dashboard sprawl
+
+  § tokens.proposed
+    bg.base       = #0E1113
+    bg.surface    = #151A1D
+    bg.elevated   = #1C2327
+    text.primary  = #F1EEE8
+    text.muted    = #A7AFB2
+    signal.live   = #6BC4B4
+    signal.notice = #D1A15C
+    signal.danger = #D86D6D
+    focus         = #9FD8FF
+    radius        = 10px controls · 16px cards · 24px feature-surfaces
+    spacing       = 4px base · 8/12/16/24/32/48/64 scale
+    border        = 1px low-contrast
+    shadow        = sparse · elevation-only
+
+  § type
+    display = expressive serif or humanist display face @ landing only
+    interface = legible variable sans
+    code/status = restrained mono
+    body desktop = 16..18px
+    body mobile = 16px minimum
+    line-length = 55..72ch
+
+  § graphics
+    wordmark
+    presence-constellation
+    participant-avatar system
+    thread-rail
+    artifact glyph
+    consent shield/visibility mark
+    runtime-state mark
+    commission mutual-acceptance mark
+    moderation-state label
+    N! decorative graph without interaction meaning
+
+  § access-visual-law
+    free social controls = normal primary interface
+    paid commission controls = distinct Studio context
+    N! lock icons on ordinary conversation/social features
+    N! disabled generation buttons scattered through free chat
+    N! payment CTA inside safety/refusal/moderation state
+
+  § motion
+    one ambient presence animation
+    120..220ms direct manipulation transitions
+    no parallax
+    no autoplay video
+    prefers-reduced-motion = static
+
+  § accessibility
+    target = WCAG 2.2 AA
+    contrast verified before token lock
+    visible focus
+    keyboard-complete
+    semantic landmarks/headings
+    live-region for send/runtime state
+    status never color-only
+    44px minimum touch targets
+
+§D STATE.INVENTORY
+
+  global :
+    loading
+    empty
+    offline
+    degraded
+    maintenance
+    unauthorized
+    forbidden
+    not-found
+    retired
+
+  auth :
+    signed-out
+    auth-pending
+    verified-free-member
+    suspended
+
+  membership :
+    checkout-ready
+    checkout-canceled
+    webhook-pending
+    generation-entitled
+    payment-failed
+    already-subscribed
+
+  space :
+    account-checking
+    signed-out-readonly
+    suspended
+    no-rooms
+    room-loading
+    no-messages
+    send-pending
+    send-failed
+    realtime-disconnected
+    Apocv2-unavailable
+    Apocv2-degraded
+    consent-required
+
+  moderation :
+    report-submitted
+    triage-pending
+    quarantined
+    assigned
+    actioned
+    appealed
+    restored
+
+  commission :
+    membership-required
+    draft
+    offered
+    reviewing
+    clarification-required
+    counterproposal
+    declined
+    mutual-acceptance-pending
+    capacity-reserved
+    queued
+    in-progress
+    review-ready
+    revision-requested
+    delivered
+    completed
+    withdrawn
+    canceled
+    failed-recoverable
+    failed-terminal
+
+  admin :
+    AAL1-challenge-required
+    unauthorized-role
+    diagnostics-fresh
+    diagnostics-stale
+    dependency-down
+    mutation-pending
+    mutation-failed
+    audit-confirmed
+
+  W! each state owns message + next-action + telemetry
+
+§D LEGACY.ISOLATION+MIGRATION
+
+  § recommended architecture ‼
+    create fresh deployable root `apocky-social/` sibling to current `cssl-edge/`
+    reuse stack :
+      Next.js + React + Supabase + Stripe
+    port only audited seams
+    N! import old `pages/` tree
+    N! deploy old API routes in new build
+    old app remains byte-preserved during cutover
+
+  § why
+    in-place pruning @ dirty_entries=142
+      ⇒ high collision + accidental loss + hidden-route risk
+    new deploy-root
+      ⇒ route isolation by filesystem + independent preview + atomic domain switch
+
+  § preflight
+    capture :
+      git HEAD + branch
+      `git status --porcelain=v2`
+      tracked diff + staged diff
+      untracked inventory
+      route inventory
+      SHA-256 manifest of legacy source excluding secrets+caches
+    identify secrets/env by name only · N! archive secret values
+    produce rollback manifest
+
+  § archive
+    old source stays outside new deploy-root
+    deployment retained under private/non-indexed rollback URL
+    legacy content M? copied into non-served `archive/` only after hash verification
+    N! legacy directory under `public/`
+    N! destructive deletion before acceptance + explicit authority
+
+  § cutover
+    new app deploys separate preview/project
+    sandbox acceptance passes
+    production data migration rehearsed
+    DNS/domain assignment switches to new deployment
+    smoke + free-social + free-Apocv2 + synthetic membership/commission + admin-AAL2 tests
+    old deployment retained for bounded rollback window
+
+  § rollback
+    domain assignment returns to prior deployment
+    schema changes additive until rollback window closes
+    webhook endpoints dual-delivery only under explicit migration procedure
+    no destructive schema drop during launch
+
+§D EXECUTION.PLAN.after-signoff
+
+  § phase.0 preserve+seal
+    outputs = manifest + hashes + route ledger + rollback record
+    gate = exact legacy bytes recoverable
+
+  § phase.1 greenfield shell
+    outputs = new deploy-root + route allowlist + visual tokens + `/` + `/auth`
+    gate = no old route/API present in build manifest
+
+  § phase.2 authority+safety-foundation
+    outputs = free-member/moderator/admin roles + RLS + moderation-case model + TOTP/AAL2 admin gate
+    gate = UI + API + DB enforce role/AAL + report/appeal lifecycle persists
+
+  § phase.3 free-social-platform ‼
+    outputs = rooms + messages + threads + reactions + presence + profiles + artifacts + block/mute/report
+    gate = two independent free accounts converse/co-create + exercise safety controls across fresh browsers
+
+  § phase.4 free-Apocv2-chat ‼
+    outputs = direct chat + room invocation + context envelope + moderated streaming turn + runtime status
+    gate = free account succeeds without billing + consent/safety/failure states truthful
+
+  § phase.5 optional-membership
+    outputs = one Stripe subscription + webhook inbox + generation-entitlement + portal
+    gate = Stripe test-mode lifecycle affects commission eligibility only; free social/chat unchanged
+
+  § phase.6 commission-engine
+    outputs = versioned proposal + dual acceptance + capacity reservation + run/delivery/revision lifecycle
+    gate = no generation starts before matching acceptance hashes + paid member completes one consented commission
+
+  § phase.7 admin
+    outputs = overview + diagnostics + access + moderation + commissions + audit
+    gate = sanitized current data + audited mutations + AAL2 step-up
+
+  § phase.8 migration+cutover
+    outputs = compatibility redirects/410s + production domain switch
+    gate = sandbox + production acceptance + rollback rehearsal
+
+§T ACCEPTANCE
+
+  route :
+    only allowlisted routes appear in build
+    every legacy URL maps exactly to redirect ∨ 410
+    no duplicate public entry-point
+  checkout :
+    free member uses social + Apocv2 chat with no subscription
+    paid member → subscription → generation-entitlement → commission eligibility
+    duplicate/out-of-order webhook safe
+    cancel/refund/past-due updates new-commission eligibility
+    cancel/refund/past-due N! revokes free social/chat
+  admin :
+    non-admin denied
+    admin AAL1 denied/challenged
+    admin AAL2 allowed
+    every mutation audited
+  social :
+    message/thread/reaction/artifact round-trip across two sessions
+    RLS prevents cross-authority read/write
+    degraded realtime and Apocv2 states recover
+    free account completes direct + room Apocv2 turn
+    report/mute/block observed across affected sessions
+    moderator case/action + member appeal round-trip
+    automated quarantine visible + reversible
+  commission :
+    free member cannot offer new commission but retains free chat
+    paid member can offer commission
+    mismatched proposal hashes deny start
+    either party decline/counter/withdraw path works
+    matching mutual acceptance reserves visible capacity
+    delivered artifact carries provenance+license+privacy contract
+    membership lapse does not silently destroy accepted work/deliverables
+  consent :
+    training off by default
+    context scope visible
+    payment does not create Apocv2 acceptance
+    publication consent separate from commission consent
+    revoke/export/delete paths observed
+  quality :
+    responsive desktop/tablet/mobile
+    keyboard + screen-reader smoke
+    WCAG contrast
+    no console errors
+    no broken link
+    production smoke after cutover
+
+§D SIGNOFF.DECISIONS
+
+  Q1 product public-name?
+    recommendation : platform=`Apocky` · participant=`Apocv2` · `The Clearing`=room-name only
+
+  Q2 free-access perimeter?
+    recommendation :
+      anonymous public-room read
+      free verified account required for post/reaction/Apocv2 chat
+      no human-DMs @ v1
+
+  Q3 paid generation-membership?
+    recommendation : one monthly plan · one active commission · visible capacity · admin-comp access for testing
+    historical-design-study : ○ `$19/month` ¬ ratified-price
+    required : price + included capacity + refund window + public-purchase vs invite-required
+
+  Q4 commission modalities?
+    required : text | image | audio | video | code | 3D | mixed
+    recommendation : launch only modalities passing end-to-end runtime+quality+safety acceptance
+    N! advertise current `/api/generate/3d` stub
+
+  Q5 free co-creation MVP?
+    recommendation : rooms + threads + shared Markdown artifact + revision history
+    defer : file storage + canvas + IDE
+
+  Q6 safety+age perimeter?
+    recommendation : 18+ launch beta + report/mute/block + authorized human moderation + appeal
+    required : private-beta ∨ public registration
+
+  Q7 legacy content disposition?
+    recommendation : private preserved archive + semantic redirects for product routes + 410 for obsolete unrelated pages
+
+  Q8 conversation learning?
+    invariant recommendation : off by default + separately opt-in + granular + revocable
+
+  explicit-signoff-form :
+    `APPROVE SOCIAL RESET v2`
+    plus Q1..Q7 answers/edits
+
+§C EVIDENCE+COUNTERCASE
+
+  evidence.anchors :
+    `pages/apoc.tsx`
+    `pages/apx.tsx`
+    `pages/chat.tsx`
+    `pages/apocrypha.tsx`
+    `pages/clearing.tsx`
+    `components/clearing/useClearingData.ts`
+    `lib/clearing/client.ts`
+    `pages/api/apocrypha/chat.ts`
+    `pages/api/apocrypha/presence.ts`
+    `pages/api/content/moderation/flag.ts`
+    `pages/api/content/moderation/decision.ts`
+    `pages/api/content/moderation/appeal.ts`
+    `pages/api/generate/3d.ts`
+    `public/commons/membership.html`
+    `pages/buy.tsx`
+    `lib/admin-auth.ts`
+    `pages/api/admin/check.ts`
+    `lib/stripe.ts`
+    `pages/api/payments/stripe/checkout.ts`
+    `pages/api/payments/stripe/webhook.ts`
+    `cssl-supabase/migrations/0022_payments.sql`
+    `cssl-supabase/migrations/0023_payments_rls.sql`
+
+  access-model.decision :
+    ✓ user-authority : social-platform first + moderated/safe Apocv2 chat free
+    ✓ user-authority : paid membership grants content-generation access
+    ✓ user-authority : generation relationship modeled as consent-based commissioning
+
+  access-model.strongest-countercase :
+    free Apocv2 chat can create unbounded compute+moderation cost
+  resolution :
+    transparent free rate/queue budget + abuse controls + measured capacity
+    N! convert ordinary social/chat standing into paid authority without user revision
+
+  strongest-countercase :
+    in-place refactor reuses more UI immediately + avoids second deploy-root
+  decision :
+    ✗ rejected as default
+    ∵ complete route isolation + dirty-state preservation + independent rollback outweigh porting cost
+  falsifier :
+    if deployment platform cannot switch root/project safely
+      ∨ critical runtime cannot be accessed through bounded server contract
+    ⇒ re-evaluate in-place allowlist build after preservation seal
+
+  ✓ blueprint corrected to v2
+  ✗ implementation authorized
+  ✗ live behavior changed
+∎

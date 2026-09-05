@@ -4,14 +4,14 @@
 // Auto-refresh : 60s polling toggle (default off)
 // Phone-first responsive
 
-import type { NextPage } from 'next';
+import type { GetServerSideProps, NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useRef, useState } from 'react';
 import ContentFeed from '@/components/ContentFeed';
 import { ContentNav, ContentFooter, contentLandingCSS } from './index';
 import {
   fetchContentList,
-  STUB_LIST_RESPONSE,
+  EMPTY_LIST_RESPONSE,
   type ContentItem,
 } from '@/lib/content-fetch';
 
@@ -21,7 +21,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 const ContentFeedPage: NextPage = () => {
   const [items, setItems] = useState<ReadonlyArray<ContentItem>>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -30,8 +30,8 @@ const ContentFeedPage: NextPage = () => {
   const loadInitial = async () => {
     setLoading(true);
     const res = await fetchContentList('new', PAGE_SIZE);
-    setStubMode(res.stub_mode);
-    setItems(res.data?.items ?? STUB_LIST_RESPONSE.items);
+    setUnavailable(res.unavailable);
+    setItems(res.data?.items ?? EMPTY_LIST_RESPONSE.items);
     setCursor(res.data?.next_cursor);
     setHasMore(Boolean(res.data?.next_cursor));
     setLoading(false);
@@ -67,7 +67,7 @@ const ContentFeedPage: NextPage = () => {
         const res = await fetchContentList('new', PAGE_SIZE);
         if (res.data) {
           setItems(res.data.items);
-          setStubMode(res.stub_mode);
+          setUnavailable(res.unavailable);
           setCursor(res.data.next_cursor);
         }
       })();
@@ -83,8 +83,8 @@ const ContentFeedPage: NextPage = () => {
   return (
     <>
       <Head>
-        <title>§ Feed · Content · Apocky</title>
-        <meta name="description" content="Chronological feed of all UGC content packages · reverse-time order" />
+        <title>Newest shared content · Apocky</title>
+        <meta name="description" content="Shared content listed by publication time, newest first." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0a0a0f" />
         <link rel="canonical" href="https://apocky.com/content/feed" />
@@ -94,11 +94,10 @@ const ContentFeedPage: NextPage = () => {
         <ContentNav active="feed" />
         <header style={{ marginBottom: '2rem' }}>
           <h1 className="content-h1" style={{ fontSize: 'clamp(1.5rem, 4vw, 2.4rem)' }}>
-            § Chronological Feed
+            Newest shared content
           </h1>
           <p className="content-blurb">
-            Every published package · reverse-time · ¬ algorithmic-curation · ¬ engagement-tracking.
-            Auto-refresh is opt-in below.
+            Published items are listed newest first. Automatic refresh is off unless you turn it on.
           </p>
           <label
             style={{
@@ -117,16 +116,16 @@ const ContentFeedPage: NextPage = () => {
               onChange={(e) => setAutoRefresh(e.target.checked)}
               style={{ accentColor: '#c084fc' }}
             />
-            <span>auto-refresh every 60s · explicit opt-in</span>
+            <span>Refresh this list every 60 seconds</span>
           </label>
         </header>
 
         <ContentFeed
           items={items}
-          stubMode={stubMode}
+          unavailable={unavailable}
           onLoadMore={hasMore ? loadMore : undefined}
           loading={loading}
-          emptyMessage="○ no published packages yet · check back soon"
+          emptyMessage="No published packages are available."
         />
 
         <ContentFooter />
@@ -134,5 +133,7 @@ const ContentFeedPage: NextPage = () => {
     </>
   );
 };
+
+export const getServerSideProps: GetServerSideProps = async () => ({ notFound: true });
 
 export default ContentFeedPage;

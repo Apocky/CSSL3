@@ -5,7 +5,6 @@
 import type { GetServerSideProps, NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
-import { RUN_SHARE_CAP_RECEIVE } from '@/lib/cap';
 
 interface RunShareFeedItem {
   receipt_id: string;
@@ -43,10 +42,10 @@ const RunShareFeed: NextPage<RunShareFeedProps> = ({
   return (
     <>
       <Head>
-        <title>Run-Share Feed · cssl-edge</title>
+        <title>Shared game runs · Apocky</title>
         <meta
           name="description"
-          content="LoA-v13 run-share feed · gift-economy · friend run-replays · no leaderboards"
+          content="An experimental page for Labyrinth of Apocalypse runs that people deliberately share."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
@@ -67,12 +66,11 @@ const RunShareFeed: NextPage<RunShareFeedProps> = ({
             ← back
           </Link>
           <h1 style={{ fontSize: '1.75rem', marginTop: '0.5rem', marginBottom: '0.25rem' }}>
-            Run-Share Feed
+            Shared game runs
           </h1>
           <p style={{ color: '#9aa0a6', marginTop: 0 }}>
-            player_id : {player_id} · {total} run{total === 1 ? '' : 's'}
-            {friend_list ? ` · friends : ${friend_list}` : ''}
-            {fetch_failed ? ' · upstream fetch failed' : ''}
+            Player: {player_id} · {total} run{total === 1 ? '' : 's'}
+            {friend_list ? ` · selected friends: ${friend_list}` : ''}
           </p>
         </header>
 
@@ -87,12 +85,17 @@ const RunShareFeed: NextPage<RunShareFeedProps> = ({
             fontSize: '0.9rem',
           }}
         >
-          <strong style={{ color: '#fbbf24' }}>Gift-economy framing.</strong>{' '}
-          Friends share runs as gifts. You can attempt their seed; you are{' '}
-          <em>not scored against</em> them. Completing a friend's seed sends them
-          an echo-back bonus — the only multiplayer reward in the game. There are
-          no leaderboards · no PvP · no rank.
+          <strong style={{ color: '#fbbf24' }}>Optional sharing, not competition.</strong>{' '}
+          This design lets friends share a game seed and a run record. A seed is a value used to reproduce a
+          generated starting point. The proposed “echo-back bonus” is an in-game thank-you for completing a
+          friend’s seed; it is not a leaderboard, player-versus-player score, rank, or payment.
         </section>
+
+        {fetch_failed ? (
+          <p role="status" style={{ color: '#fbbf24' }}>
+            The run-sharing service could not be reached, so no current run is being claimed.
+          </p>
+        ) : null}
 
         {empty ? (
           <section
@@ -105,8 +108,7 @@ const RunShareFeed: NextPage<RunShareFeedProps> = ({
             }}
           >
             <p style={{ fontSize: '1rem', margin: 0 }}>
-              No friend runs in this feed yet. Add friends + their runs will
-              appear here when they share.
+              No shared runs are available for this selection.
             </p>
           </section>
         ) : (
@@ -175,54 +177,12 @@ const RunShareFeed: NextPage<RunShareFeedProps> = ({
   );
 };
 
-function originFromReq(reqHeaders: Record<string, string | string[] | undefined>): string {
-  if (process.env['VERCEL_URL']) return `https://${process.env['VERCEL_URL']}`;
-  const host = reqHeaders['host'];
-  const h = Array.isArray(host) ? host[0] : host;
-  return h ? `http://${h}` : 'http://localhost:3000';
-}
-
-export const getServerSideProps: GetServerSideProps<RunShareFeedProps> = async (
-  ctx
-) => {
-  const playerRaw = ctx.query['player_id'];
-  const friendsRaw = ctx.query['friend_list'];
-  const player_id = (Array.isArray(playerRaw) ? playerRaw[0] : playerRaw) ?? 'anonymous';
-  const friend_list = (Array.isArray(friendsRaw) ? friendsRaw[0] : friendsRaw) ?? '';
-
-  const origin = originFromReq(ctx.req.headers as Record<string, string | string[] | undefined>);
-  const params = new URLSearchParams();
-  params.set('cap', String(RUN_SHARE_CAP_RECEIVE));
-  params.set('player_id', player_id);
-  if (friend_list.length > 0) params.set('friend_list', friend_list);
-  params.set('limit', '40');
-
-  let feed: RunShareFeedItem[] = [];
-  let total = 0;
-  let fetch_failed = false;
-  try {
-    const r = await fetch(`${origin}/api/run-share/feed?${params.toString()}`);
-    if (r.ok) {
-      const j = (await r.json()) as { feed?: RunShareFeedItem[]; total?: number };
-      feed = Array.isArray(j.feed) ? j.feed : [];
-      total = typeof j.total === 'number' ? j.total : feed.length;
-    } else {
-      fetch_failed = true;
-    }
-  } catch {
-    fetch_failed = true;
-  }
-
-  return {
-    props: {
-      feed,
-      total,
-      player_id,
-      friend_list,
-      fetch_failed,
-    },
-  };
-};
+// The backing endpoint currently returns demonstration records rather than
+// retained, attributable shares. Keep this page absent until real records,
+// ownership, withdrawal, and authorization are connected.
+export const getServerSideProps: GetServerSideProps<RunShareFeedProps> = async () => ({
+  notFound: true,
+});
 
 // ─── Inline test : page export is function ─────────────────────────────────
 export function _testPageExportsAndFraming(): boolean {

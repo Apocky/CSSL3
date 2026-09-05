@@ -16,7 +16,7 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
     <>
       <Head>
         <title>{spec.title} · Apocky docs</title>
-        <meta name="description" content={`${spec.slug} · CSL3-glyph spec rendered as plain text.`} />
+        <meta name="description" content={`${spec.slug}: a technical architecture specification written in CSLv3 notation.`} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0a0a0f" />
         <link rel="canonical" href={`https://apocky.com/docs/${spec.slug}`} />
@@ -77,6 +77,25 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
           {spec.title}
         </h1>
 
+        <div
+          style={{
+            marginTop: '1.5rem',
+            padding: '1rem 1.1rem',
+            border: '1px solid rgba(125, 211, 252, 0.25)',
+            borderLeft: '3px solid #7dd3fc',
+            borderRadius: 6,
+            color: '#cdd6e4',
+            background: 'rgba(125, 211, 252, 0.05)',
+          }}
+        >
+          This is a technical specification written in CSLv3, a compact notation system.
+          It is not the starting point for learning about the project. Read the{' '}
+          <a href="/words#symbols" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+            words and symbols key
+          </a>{' '}
+          first. Symbols below are technical notation, not decoration.
+        </div>
+
         <pre className="csl-spec" style={{ marginTop: '2rem' }}>
           {renderCslWithGlyphs(spec.body)}
         </pre>
@@ -107,7 +126,7 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
             fontSize: '0.78rem',
           }}
         >
-          <p style={{ margin: 0 }}>§ ¬ harm in the making · sovereignty preserved · t∞</p>
+          <p style={{ margin: 0 }}>Technical source material. Return to the documentation index for plain-language guides.</p>
         </footer>
       </main>
     </>

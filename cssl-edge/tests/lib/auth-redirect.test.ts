@@ -65,8 +65,8 @@ export function testAuthCallbackParamParsing(): void {
 
 export function testAuthReturnPathNormalization(): void {
   assertEqual('admin return preserved', normalizeAuthReturnPath('/admin/chat'), '/admin/chat');
-  assertEqual('legacy chat normalized', normalizeAuthReturnPath('/chat'), '/admin/chat');
-  assertEqual('legacy chat query normalized', normalizeAuthReturnPath('/chat?x=1'), '/admin/chat?x=1');
+  assertEqual('public chat return preserved', normalizeAuthReturnPath('/chat'), '/chat');
+  assertEqual('public chat query preserved', normalizeAuthReturnPath('/chat?x=1'), '/chat?x=1');
   assertEqual('external return rejected', normalizeAuthReturnPath('https://evil.example/admin/chat'), '/account');
   assertEqual('callback loop rejected', normalizeAuthReturnPath('/auth/callback?next=/admin/chat'), '/account');
   assertEqual('login href includes next', loginHrefForReturnPath('/admin/chat'), '/login?next=%2Fadmin%2Fchat');

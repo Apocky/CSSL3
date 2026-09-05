@@ -1,20 +1,41 @@
-// Shared Apocrypha-tunnel proxy utility for /api/admin/apocrypha/* routes.
-// All cockpit-side API endpoints forward to https://${APOCRYPHA_TUNNEL_HOST}/<path>
-// with CF Access service-token headers attached.
+// Shared Apocrypha V2 tunnel boundary.
 //
-// Per Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl + HANDOFF_v10 § TRACK-A A4.
+// This module owns the fixed-host, bounded-request, private-cache, and
+// Cloudflare Access mechanics shared by Apocrypha proxies. Owner authorization
+// remains an explicit helper; a non-owner caller must establish its own
+// authenticated boundary before invoking fetchApocryphaV2.
+
+import { createHash } from 'node:crypto';
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+import { getAdminAuthorization } from '@/lib/admin-auth';
 import { envelope } from '@/lib/response';
-import { requireAdmin } from '@/lib/require-admin';
 
-export interface ProxyOptions {
+const CANONICAL_TUNNEL_HOST = 'apocrypha.apocky.com';
+const DEFAULT_UPSTREAM_DEADLINE_MS = 25_000;
+
+export interface ApocryphaOwner {
+  principalRef: string;
+}
+
+interface ProxyOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  upstreamPath: string;          // e.g. "/api/v1/chat"
-  body?: unknown;                // JSON body for POST/PUT/PATCH
+  upstreamPath: string;
+  body?: unknown;
   query?: Record<string, string | number | undefined>;
-  forwardStatus?: boolean;       // pass upstream HTTP status to client (default true)
+  deadlineMs?: number;
+  forwardStatus?: boolean;
+}
+
+export interface V2ProxyOptions extends Omit<ProxyOptions, 'upstreamPath'> {
+  upstreamPath: `/v2/${string}`;
+}
+
+export interface ApocryphaFetchResult {
+  ok: boolean;
+  status: number;
+  payload: unknown;
 }
 
 interface CfAccessCreds {
@@ -22,97 +43,197 @@ interface CfAccessCreds {
   clientSecret: string;
 }
 
+export function setPrivateNoStore(res: NextApiResponse): void {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Vary', 'Authorization, Cookie');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+}
+
 function safeUpstreamDetail(upstream: Response, body: string): string {
   const contentType = upstream.headers.get('content-type')?.toLowerCase() ?? '';
   if (contentType.includes('text/html') || /^\s*<!doctype\s+html/i.test(body)) {
-    return 'The Apocrypha bridge returned a gateway error. Try again shortly.';
+    return 'The Apocrypha body returned a gateway response. Try again shortly.';
   }
-  return body.trim().slice(0, 500) || 'The Apocrypha bridge returned an empty error.';
+  return body.trim().slice(0, 500) || 'The Apocrypha body returned an empty error.';
+}
+
+function configuredTunnelHost(): string | null {
+  const configured = process.env.APOCRYPHA_TUNNEL_HOST?.trim().toLowerCase();
+  if (!configured || !/^[a-z0-9.-]+$/.test(configured)) return null;
+  return configured === CANONICAL_TUNNEL_HOST ? configured : null;
 }
 
 function cfCreds(): CfAccessCreds | null {
-  const id = process.env.CF_ACCESS_CLIENT_ID;
-  const secret = process.env.CF_ACCESS_CLIENT_SECRET;
-  if (!id || !secret) return null;
-  return { clientId: id, clientSecret: secret };
+  const clientId = process.env.CF_ACCESS_CLIENT_ID?.trim();
+  const clientSecret = process.env.CF_ACCESS_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
 }
 
 function buildQueryString(query?: Record<string, string | number | undefined>): string {
   if (!query) return '';
-  const parts: string[] = [];
-  for (const [k, v] of Object.entries(query)) {
-    if (v === undefined) continue;
-    parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) params.set(key, String(value));
   }
-  return parts.length ? `?${parts.join('&')}` : '';
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : '';
 }
 
-export async function proxyToApocrypha(
+function uuidFromDigest(digest: Buffer): string {
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export function isOpaqueConversationId(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+export function isOpaqueClientRequestId(value: unknown): value is string {
+  return isOpaqueConversationId(value);
+}
+
+export function scopeConversationId(principalRef: string, clientConversationId: string): string {
+  const digest = createHash('sha256')
+    .update('APOCRYPHA-V2-PRINCIPAL-CONVERSATION-v1\0', 'utf8')
+    .update(principalRef, 'utf8')
+    .update('\0', 'utf8')
+    .update(clientConversationId.toLowerCase(), 'utf8')
+    .digest();
+  return uuidFromDigest(digest);
+}
+
+export function scopeRequestId(principalRef: string, clientRequestId: string): string {
+  const digest = createHash('sha256')
+    .update('APOCRYPHA-V2-PRINCIPAL-REQUEST-v1\0', 'utf8')
+    .update(principalRef, 'utf8')
+    .update('\0', 'utf8')
+    .update(clientRequestId.toLowerCase(), 'utf8')
+    .digest();
+  return uuidFromDigest(digest);
+}
+
+export function expectedConversationRef(
+  scopedConversationId: string,
+  sourceRef: string,
+): string {
+  const canonicalPayload = JSON.stringify({
+    conversation_sha256: createHash('sha256').update(scopedConversationId, 'utf8').digest('hex'),
+    source_sha256: createHash('sha256').update(sourceRef, 'utf8').digest('hex'),
+  });
+  return createHash('sha256')
+    .update('APX-V2-PUBLIC-CONVERSATION-v1\0', 'ascii')
+    .update(canonicalPayload, 'utf8')
+    .digest('hex');
+}
+
+export async function requireApocryphaOwner(
   req: NextApiRequest,
   res: NextApiResponse,
+): Promise<ApocryphaOwner | null> {
+  setPrivateNoStore(res);
+  const authorization = await getAdminAuthorization(req);
+  if (!authorization.authorized || !authorization.user) {
+    res.status(authorization.user ? 403 : 401).json({
+      error: authorization.reason ?? 'Owner authorization required.',
+      authorized: false,
+      ...envelope(),
+    });
+    return null;
+  }
+  const principalDigest = createHash('sha256')
+    .update('APOCRYPHA-V2-OWNER-PRINCIPAL-v1\0', 'utf8')
+    .update(authorization.user.id, 'utf8')
+    .digest('hex');
+  return { principalRef: `principal:apocky-owner:${principalDigest}` };
+}
+
+async function fetchApocryphaRequest(
   opts: ProxyOptions,
-): Promise<void> {
-  if (!(await requireAdmin(req, res))) return;
-
-  const tunnel = process.env.APOCRYPHA_TUNNEL_HOST;
-  if (!tunnel) {
-    res.status(503).json({
-      error: 'APOCRYPHA_TUNNEL_HOST unset ; cockpit cannot reach backend',
-      ...envelope(),
-    });
-    return;
+): Promise<ApocryphaFetchResult> {
+  const tunnelHost = configuredTunnelHost();
+  const credentials = cfCreds();
+  if (!tunnelHost || !credentials) {
+    return {
+      ok: false,
+      status: 503,
+      payload: { error: 'Apocrypha V2 tunnel credentials are unavailable.' },
+    };
   }
 
-  const creds = cfCreds();
-  if (!creds) {
-    res.status(503).json({
-      error: 'CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET not configured',
-      ...envelope(),
-    });
-    return;
-  }
-
-  const method = opts.method ?? 'GET';
-  const url = `https://${tunnel}${opts.upstreamPath}${buildQueryString(opts.query)}`;
-
+  const controller = new AbortController();
+  const deadline = setTimeout(
+    () => controller.abort(),
+    opts.deadlineMs ?? DEFAULT_UPSTREAM_DEADLINE_MS,
+  );
   const headers: Record<string, string> = {
-    'CF-Access-Client-Id': creds.clientId,
-    'CF-Access-Client-Secret': creds.clientSecret,
-    Origin: 'https://apocrypha.apocky.com',
     Accept: 'application/json',
+    'CF-Access-Client-Id': credentials.clientId,
+    'CF-Access-Client-Secret': credentials.clientSecret,
+    Origin: `https://${CANONICAL_TUNNEL_HOST}`,
   };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
   try {
-    const upstream = await fetch(url, {
-      method,
-      headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    });
-
-    let payload: unknown;
-    const contentType = upstream.headers.get('content-type') ?? '';
+    const upstream = await fetch(
+      `https://${tunnelHost}${opts.upstreamPath}${buildQueryString(opts.query)}`,
+      {
+        method: opts.method ?? 'GET',
+        headers,
+        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: controller.signal,
+      },
+    );
+    const contentType = upstream.headers.get('content-type')?.toLowerCase() ?? '';
     if (contentType.includes('application/json')) {
-      payload = await upstream.json();
-    } else {
-      payload = await upstream.text();
+      return { ok: upstream.ok, status: upstream.status, payload: await upstream.json() };
     }
-
-    const status = opts.forwardStatus === false ? 200 : upstream.status;
-    res.status(status).json({
-      upstream_status: upstream.status,
-      data: upstream.ok || typeof payload !== 'string'
-        ? payload
-        : safeUpstreamDetail(upstream, payload),
-      tunnel_host: tunnel,
-      ...envelope(),
-    });
-  } catch (err) {
-    res.status(502).json({
-      error: 'apocrypha tunnel unreachable',
-      detail: err instanceof Error ? err.message : String(err),
-      tunnel_host: tunnel,
-      ...envelope(),
-    });
+    const body = await upstream.text();
+    return {
+      ok: upstream.ok,
+      status: upstream.status,
+      payload: upstream.ok ? body : { error: safeUpstreamDetail(upstream, body) },
+    };
+  } catch (error) {
+    const timedOut = error instanceof DOMException && error.name === 'AbortError';
+    return {
+      ok: false,
+      status: timedOut ? 504 : 502,
+      payload: {
+        error: timedOut
+          ? 'The Apocrypha body did not answer before the bounded deadline.'
+          : 'The Apocrypha V2 tunnel is unreachable.',
+      },
+    };
+  } finally {
+    clearTimeout(deadline);
   }
+}
+
+export async function fetchApocryphaV2(
+  opts: V2ProxyOptions,
+): Promise<ApocryphaFetchResult> {
+  return fetchApocryphaRequest(opts);
+}
+
+export async function proxyV2ToApocrypha(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  opts: V2ProxyOptions,
+): Promise<void> {
+  if (!(await requireApocryphaOwner(req, res))) return;
+  const upstream = await fetchApocryphaV2(opts);
+  const status = opts.forwardStatus === false ? 200 : upstream.status;
+  res.status(status).json({
+    upstream_status: upstream.status,
+    data: upstream.payload,
+    ...envelope(),
+  });
 }

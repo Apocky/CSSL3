@@ -1,24 +1,20 @@
 // § Akashic-Webpage-Records · AkashicConsent.tsx
-// First-visit non-blocking banner · sovereign-revocable cap-grant.
-// Three tiers : Spore / Mycelium / Akashic + None toggle. Sovereignty-respecting
-// copy ; NO dark-pattern. User picks · user changes · user revokes.
-//
-// Renders only when localStorage has no prior choice. After grant, sets the
-// stored tier and dismisses. /admin/telemetry surfaces the same controls
-// post-first-visit.
+// First-visit default-deny choice + persistent, sovereign-revocable control.
 
 import * as React from 'react';
 import { useRouter } from 'next/router';
-import { withConsent, currentTier } from '@/lib/akashic-telemetry';
+import {
+  CONSENT_CHANGE_EVENT,
+  isTelemetryBlackoutPath,
+  storedConsentTier,
+  withConsent,
+} from '@/lib/akashic-telemetry';
 import type { ConsentTier } from '@/lib/akashic-telemetry';
 
-const STORAGE_KEY = 'akashic.consent.shown.v1';
-const AUTH_FLOW_PATHS = new Set(['/login', '/register', '/auth/callback']);
-const NON_BLOCKING_APP_PATHS = ['/admin', '/chat'];
+const NON_BLOCKING_APP_PATHS = ['/admin', '/chat', '/apocrypha', '/clearing'];
 
 interface TierOpt {
   tier: ConsentTier;
-  glyph: string;
   title: string;
   short: string;
   detail: string;
@@ -27,220 +23,357 @@ interface TierOpt {
 const TIERS: TierOpt[] = [
   {
     tier: 'none',
-    glyph: '',
-    title: 'silence',
-    short: 'no Records · no telemetry',
+    title: 'Off',
+    short: 'Share nothing',
     detail:
-      'Nothing leaves your browser. The site keeps working ; we just lose the signal that helps us see when something breaks.',
+      'The site stores only the fact that you chose Off in this browser. It does not start the optional reporting system or send diagnostic events. The site still works.',
   },
   {
     tier: 'spore',
-    glyph: 'spore',
-    title: 'Spore',
-    short: 'aggregate counts only · k-anon ≥ 10',
+    title: 'Basic',
+    short: 'Page and speed problems',
     detail:
-      'Page-views + Web Vitals + error-counts. NO stack traces. NO content. Server requires k≥10 users before any pattern is retained. Ephemeral session-id ; never your identity.',
+      'Shares the page address, the previous page address, browser-window size, page-speed measurements, missing files, network failures, and basic error details with apocky.com. Some records may be stored. The site obscures common patterns that look like email addresses, access tokens, or long numbers before sending, but that filter may miss sensitive text.',
   },
   {
     tier: 'mycelium',
-    glyph: 'mycelium',
-    title: 'Mycelium',
-    short: '+ stack traces · k-anon ≥ 5',
+    title: 'Error details',
+    short: 'More information about failures',
     detail:
-      'Everything in Spore + redacted stack-traces when errors happen. Cluster-signatures help us heal recurring bugs faster. k≥5 still required.',
+      'Includes Basic sharing plus extra application-error details, shortened error messages, and the list of code locations involved. These details may contain sensitive text even after filtering.',
   },
   {
     tier: 'akashic',
-    glyph: 'akashic',
-    title: 'Akashic',
-    short: 'full-fidelity · always-purgeable',
+    title: 'Full diagnostics',
+    short: 'Browser errors and named site steps',
     detail:
-      'Everything in Mycelium + console.error/.warn + per-page navigation breadcrumbs. Highest signal · longest reach. You can purge all your events any time from /admin/telemetry.',
+      'Includes Error details plus messages written to the browser error console and named steps in site flows. These messages are filtered for common sensitive patterns but can still contain sensitive text.',
   },
 ];
+
+function tierTitle(tier: ConsentTier | null): string {
+  return TIERS.find((option) => option.tier === tier)?.title ?? 'Off';
+}
 
 export function AkashicConsent(): React.ReactElement | null {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [chosen, setChosen] = React.useState<ConsentTier>('spore');
-  const hiddenForAuthFlow = AUTH_FLOW_PATHS.has(router.pathname);
-  const hiddenForAppSurface = NON_BLOCKING_APP_PATHS.some((prefix) =>
+  const [chosen, setChosen] = React.useState<ConsentTier>('none');
+  const [saved, setSaved] = React.useState<ConsentTier | null>(null);
+  const [saveError, setSaveError] = React.useState('');
+  const [tierDetailOpen, setTierDetailOpen] = React.useState(false);
+  const openerRef = React.useRef<HTMLButtonElement>(null);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const blackout = isTelemetryBlackoutPath(router.pathname);
+  const compactSurface = NON_BLOCKING_APP_PATHS.some((prefix) =>
     router.pathname === prefix || router.pathname.startsWith(`${prefix}/`),
   );
+  const selectedTier = TIERS.find((option) => option.tier === chosen) ?? TIERS[0];
 
   React.useEffect(() => {
-    try {
-      if (typeof localStorage === 'undefined') return;
-      if (hiddenForAuthFlow || hiddenForAppSurface) {
-        setOpen(false);
-        return;
-      }
-      const shown = localStorage.getItem(STORAGE_KEY);
-      if (shown !== '1') {
-        setOpen(true);
-        setChosen(currentTier());
-      }
-    } catch {
-      // storage unavailable · skip overlay (privacy-mode)
-    }
-  }, [hiddenForAuthFlow, hiddenForAppSurface]);
+    const sync = (): void => {
+      const stored = storedConsentTier();
+      setSaved(stored);
+      setChosen(stored ?? 'none');
+      setOpen((wasOpen) => {
+        if (blackout || compactSurface) return false;
+        // Optional reporting is default-off. Keep its explicit opener visible,
+        // but never cover the public experience before a visitor asks to see it.
+        return wasOpen;
+      });
+    };
+    sync();
+    window.addEventListener(CONSENT_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(CONSENT_CHANGE_EVENT, sync);
+  }, [blackout, compactSurface]);
+
+  React.useEffect(() => {
+    if (open) dialogRef.current?.focus();
+  }, [open]);
+
+  React.useEffect(() => {
+    setTierDetailOpen(chosen !== 'none');
+  }, [chosen]);
+
+  // Immersive room surfaces own their bottom dock. The fixed diagnostics opener
+  // would occlude the composer/send affordance; room Consent remains the explicit
+  // route into these choices.
+  if (compactSurface) return null;
+
+  const closePanel = React.useCallback((): void => {
+    setOpen(false);
+    window.setTimeout(() => openerRef.current?.focus(), 0);
+  }, []);
 
   const handleGrant = React.useCallback(
     (tier: ConsentTier): void => {
-      withConsent(tier);
-      try {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(STORAGE_KEY, '1');
-        }
-      } catch {
-        // ignore
+      const persisted = withConsent(tier);
+      const actual = storedConsentTier();
+      setSaved(actual);
+      setChosen(actual ?? 'none');
+      if (!persisted || actual !== tier) {
+        setSaveError(
+          tier === 'none'
+            ? 'Optional reporting is off in this tab, but the browser could not remember that choice. Check this control again after reloading.'
+            : 'The browser could not save that choice. Your previous setting remains in effect.',
+        );
+        setOpen(true);
+        return;
       }
-      setOpen(false);
+      setSaveError('');
+      closePanel();
     },
-    []
+    [closePanel]
   );
 
-  if (!open || hiddenForAuthFlow || hiddenForAppSurface) return null;
+  if (!open) {
+    const label = blackout
+      ? saved === null
+        ? 'Optional data sharing is off on this page'
+        : `Optional data sharing is off here. Saved choice: ${tierTitle(saved)}`
+      : saved === null
+        ? 'Optional data sharing: off'
+        : `Optional data sharing: ${tierTitle(saved)}`;
+    return (
+      <button
+        className="apx-diagnostics-opener"
+        ref={openerRef}
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-label={`${label}. Open optional data-sharing choices.`}
+        style={{
+          position: 'fixed',
+          right: '0.75rem',
+          bottom: '0.75rem',
+          zIndex: 2_147_483_646,
+          minHeight: '44px',
+          padding: '0.5rem 0.8rem',
+          borderRadius: '999px',
+          border: '1px solid rgba(168, 216, 192, 0.24)',
+          backgroundColor: 'rgba(9, 14, 11, 0.94)',
+          color: '#eee7d8',
+          cursor: 'pointer',
+          font: '600 0.72rem system-ui, sans-serif',
+        }}
+      >
+        <span className="apx-diagnostics-opener-label">{label}</span>
+      </button>
+    );
+  }
 
   return (
     <div
-      role="region"
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="false"
       aria-labelledby="akashic-consent-title"
+      aria-describedby="akashic-consent-description"
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') closePanel();
+      }}
       style={{
         position: 'fixed',
-        right: '1rem',
-        bottom: '1rem',
-        zIndex: 10_000,
-        maxWidth: 'min(34rem, calc(100vw - 2rem))',
+        right: '0.5rem',
+        bottom: '3.5rem',
+        zIndex: 2_147_483_646,
+        width: 'min(28rem, calc(100vw - 1rem))',
+        maxWidth: 'calc(100vw - 1rem)',
         fontFamily: 'system-ui, sans-serif',
-        color: '#e6e6f0',
+        color: '#eee7d8',
       }}
     >
       <div
         style={{
-          backgroundColor: '#15151f',
-          border: '1px solid #303040',
-          borderRadius: '0.5rem',
-          padding: '1rem',
+          backgroundColor: '#0b100d',
+          border: '1px solid #2a352e',
+          borderRadius: '0.65rem',
           width: '100%',
-          maxHeight: 'min(74vh, 34rem)',
-          overflowY: 'auto',
+          maxHeight: 'min(32rem, calc(100vh - 4rem), calc(100dvh - 4rem))',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
           boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
         }}
       >
-        <h2
-          id="akashic-consent-title"
+        <div
           style={{
-            marginTop: 0,
-            fontSize: '1rem',
-            fontWeight: 600,
-            letterSpacing: '0.01em',
+            minHeight: 0,
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            padding: '0.85rem 0.85rem 0.7rem',
           }}
         >
-          Akashic diagnostics
-        </h2>
-        <p style={{ opacity: 0.85, lineHeight: 1.45, fontSize: '0.8rem' }}>
-          apocky.com runs a substrate-native diagnostic layer · every page-event
-          becomes a cell in the ω-field. Cells are Σ-mask-gated for sovereignty
-          · k-anonymous before any pattern is retained · purgeable at any time
-          from <code style={{ background: '#0a0a0f', padding: '0.1em 0.3em' }}>/admin/telemetry</code>.
-          Pick what you want to share. You can change or revoke any time.
-        </p>
+          <h2
+            id="akashic-consent-title"
+            style={{
+              margin: 0,
+              fontSize: '1rem',
+              fontWeight: 650,
+              letterSpacing: '0.01em',
+            }}
+          >
+            Optional site data
+          </h2>
+          <p
+            id="akashic-consent-description"
+            style={{ opacity: 0.82, lineHeight: 1.4, fontSize: '0.76rem', margin: '0.4rem 0 0' }}
+          >
+            The site works with this off. Nothing from this optional reporting
+            system is sent until you choose a level and save it.
+          </p>
+          {blackout && (
+            <p role="status" style={{ lineHeight: 1.4, fontSize: '0.72rem', color: '#a8d8c0', margin: '0.5rem 0 0' }}>
+              This page never uses optional reporting. A saved choice applies
+              only after you leave this page.
+            </p>
+          )}
+          {saveError !== '' && (
+            <p role="alert" style={{ lineHeight: 1.4, fontSize: '0.72rem', color: '#e6aaa0', margin: '0.5rem 0 0' }}>
+              {saveError}
+            </p>
+          )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.4rem', marginTop: '0.75rem' }}>
-          {TIERS.map((opt) => (
-            <button
-              key={opt.tier}
-              onClick={() => setChosen(opt.tier)}
-              aria-pressed={chosen === opt.tier}
-              style={{
-                textAlign: 'left',
-                padding: '0.55rem 0.65rem',
-                backgroundColor: chosen === opt.tier ? '#1f1f33' : '#0e0e18',
-                border: chosen === opt.tier ? '1px solid #5a4cff' : '1px solid #2a2a3a',
-                borderRadius: '0.35rem',
-                color: '#e6e6f0',
-                cursor: 'pointer',
-                display: 'flex',
-                gap: '0.45rem',
-                alignItems: 'flex-start',
-                fontFamily: 'inherit',
-              }}
-            >
-              <span style={{ fontSize: '0.72rem', marginTop: '0.05rem', color: '#8a7dff', fontWeight: 600 }}>
-                {opt.glyph !== '' ? opt.glyph : '·'}
-              </span>
-              <span style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>
+          <div
+            role="radiogroup"
+            aria-label="How much optional site data to share"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: '0.45rem',
+              marginTop: '0.7rem',
+            }}
+          >
+            {TIERS.map((opt) => (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={chosen === opt.tier}
+                key={opt.tier}
+                onClick={() => setChosen(opt.tier)}
+                style={{
+                  minHeight: '52px',
+                  textAlign: 'left',
+                  padding: '0.5rem 0.65rem',
+                  backgroundColor: chosen === opt.tier ? '#17211b' : '#090d0b',
+                  border: chosen === opt.tier ? '2px solid #72d7bd' : '1px solid #304036',
+                  borderRadius: '0.45rem',
+                  color: '#eee7d8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  gap: '0.1rem',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span style={{ fontWeight: 650, fontSize: '0.8rem' }}>
                   {opt.title}
                 </span>
-                <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>
+                <span style={{ fontSize: '0.68rem', opacity: 0.76 }}>
                   {opt.short}
                 </span>
-                <span style={{ fontSize: '0.65rem', opacity: 0.7, marginTop: '0.1rem' }}>
-                  {opt.detail}
-                </span>
-              </span>
-            </button>
-          ))}
+              </button>
+            ))}
+          </div>
+
+          <details
+            key={selectedTier?.tier}
+            open={tierDetailOpen}
+            onToggle={(event) => setTierDetailOpen(event.currentTarget.open)}
+            style={{ marginTop: '0.55rem', borderTop: '1px solid #2a352e' }}
+          >
+            <summary
+              style={{
+                minHeight: '44px',
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                fontSize: '0.73rem',
+                fontWeight: 600,
+              }}
+            >
+              What is shared
+            </summary>
+            <p style={{ fontSize: '0.7rem', lineHeight: 1.45, opacity: 0.78, margin: '0 0 0.65rem' }}>
+              {selectedTier?.detail}
+            </p>
+          </details>
+
+          <details style={{ borderTop: '1px solid #2a352e' }}>
+            <summary
+              style={{
+                minHeight: '44px',
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                fontSize: '0.73rem',
+                fontWeight: 600,
+              }}
+            >
+              How this browser remembers your choice
+            </summary>
+            <p style={{ fontSize: '0.68rem', lineHeight: 1.45, opacity: 0.72, margin: '0 0 0.35rem' }}>
+              The choice is saved in this browser. Any choice other than Off
+              creates a random identifier for this browser tab and sends the
+              selected reports to apocky.com. Individual reports may be stored.
+              A text filter hides some common patterns that resemble secrets,
+              but it cannot guarantee that every piece of sensitive text is
+              removed.
+            </p>
+          </details>
         </div>
 
         <div
           style={{
+            flex: '0 0 auto',
             display: 'flex',
             gap: '0.5rem',
-            marginTop: '0.85rem',
             flexWrap: 'wrap',
+            padding: '0.7rem 0.85rem',
+            borderTop: '1px solid #2a352e',
+            backgroundColor: '#0b100d',
           }}
         >
           <button
+            type="button"
             onClick={() => handleGrant(chosen)}
             style={{
+              minHeight: '44px',
               padding: '0.55rem 0.85rem',
-              backgroundColor: '#5a4cff',
-              color: 'white',
+              backgroundColor: '#d6b170',
+              color: '#10130f',
               border: 'none',
               borderRadius: '0.4rem',
               cursor: 'pointer',
               fontWeight: 600,
               fontSize: '0.82rem',
-              flex: '1 1 auto',
+              flex: '1 1 10rem',
               minWidth: '10rem',
             }}
           >
-            grant {chosen}
+            Save choice: {selectedTier?.title}
           </button>
           <button
-            onClick={() => handleGrant('none')}
+            type="button"
+            onClick={() => saved !== null && saved !== 'none' ? handleGrant('none') : closePanel()}
             style={{
+              minHeight: '44px',
               padding: '0.55rem 0.85rem',
               backgroundColor: 'transparent',
-              color: '#e6e6f0',
-              border: '1px solid #404050',
+              color: '#eee7d8',
+              border: '1px solid #405044',
               borderRadius: '0.4rem',
               cursor: 'pointer',
               fontSize: '0.82rem',
-              flex: '0 0 auto',
+              flex: '1 1 auto',
             }}
           >
-            silence
+            {saved !== null && saved !== 'none' ? 'Turn off now' : saved === null ? 'Not now' : 'Close'}
           </button>
         </div>
-
-        <p
-          style={{
-            fontSize: '0.65rem',
-            opacity: 0.55,
-            marginTop: '1rem',
-            marginBottom: 0,
-            lineHeight: 1.5,
-          }}
-        >
-          No third-party tracking. No advertising IDs. No cookies for telemetry.
-          Session-id is ephemeral random · resets on tab-close. Server only
-          retains aggregated patterns when k ≥ tier-threshold ; single events
-          purgeable on demand.
-        </p>
       </div>
     </div>
   );

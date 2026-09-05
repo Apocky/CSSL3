@@ -5,6 +5,8 @@ node_modules
 
 # testing
 coverage
+test-results/
+playwright-report/
 
 # next.js
 .next/
@@ -36,3 +38,5 @@ yarn-error.log*
 # editors
 .idea
 .vscode
+
+.vercel

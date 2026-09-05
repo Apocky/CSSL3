@@ -11,58 +11,59 @@ const Page: NextPage = () => {
     <DocsLayout
       activeSlug="chat-panel"
       title="Chat Panel · Apocky Docs"
-      description="How to use Labyrinth of Apocalypse's in-game chat panel — focus with /, submit with Enter, browse history with arrow keys, and dispatch typed intents to the live engine."
+      description="How to type a request in Labyrinth of Apocalypse and see what the current test build understood."
     >
       <h1 className="docs-h1">Chat Panel</h1>
-      <p className="docs-blurb">§ The text-line interface to the Game-Master + intent dispatcher.</p>
+      <p className="docs-blurb">Type a request and see what the current game build understood.</p>
 
-      <h2 className="docs-h2">§ What it is</h2>
+      <h2 className="docs-h2">What it is</h2>
       <p className="docs-p">
-        The chat panel is the bottom-of-screen text line where you type free-form requests and the engine
-        executes them. It is wired into the same intent-router that the MCP <code className="docs-ic">intent.translate</code>{' '}
-        and <code className="docs-ic">intent.recent</code> tools use, which means whatever you can say in chat,
-        any external tool talking to the engine can say programmatically.
+        The panel is a text line at the bottom of the game window. You type a request, and the current game
+        compares it with a small list of recognized phrases. The technical name for a recognized request is an
+        <strong> intent</strong>. This is a command interface for the game, not a conversation with Apocrypha.
       </p>
 
-      <Callout kind="note" title="Three back-end stages">
-        Stage-0 (deterministic keyword classifier · ~30 phrase rules · zero-dep · shipping today) is what answers
-        you. Stage-1 (KAN classifier) and Stage-2 (LLM-driven intent extraction) drop in by replacing one function
-        without changing the chat UI. See <a href="/docs/intents" style={{ color: '#7dd3fc' }}>/docs/intents</a>.
+      <Callout kind="note" title="What works now">
+        The current method uses fixed keyword and phrase rules. Source documents discuss two possible later
+        methods: a compact mathematical classifier and an outside language model. Those are plans, not part of
+        the basic instructions on this page. See <a href="/docs/intents" style={{ color: '#7dd3fc' }}>
+          How the game reads requests
+        </a>.
       </Callout>
 
-      <h2 className="docs-h2">§ Basic flow</h2>
+      <h2 className="docs-h2">Basic flow</h2>
       <ol className="docs-ol">
-        <li>Press <span className="docs-kbd">/</span> · the chat-line gains focus and movement is suspended.</li>
+        <li>Press <span className="docs-kbd">/</span>. The text line becomes active and movement is suspended.</li>
         <li>Type your request in plain language.</li>
-        <li>Press <span className="docs-kbd">Enter</span> · the classifier runs, the dispatcher fires, focus releases.</li>
-        <li>Press <span className="docs-kbd">Esc</span> at any point to cancel without dispatching.</li>
+        <li>Press <span className="docs-kbd">Enter</span>. The game checks the request, tries the matching action, and returns control to movement.</li>
+        <li>Press <span className="docs-kbd">Esc</span> at any point to cancel without running an action.</li>
       </ol>
 
       <CodeBlock lang="plain" caption="Example session">{`/                          ← focuses the panel
 > spawn cube at 5 5 5      ← enter
-✓ Intent::SpawnAt { kind: 0, pos: [5.0, 5.0, 5.0] }
-  → render.spawn_stress · ok
+Recognized: SpawnAt { kind: 0, pos: [5.0, 5.0, 5.0] }
+Action: render.spawn_stress · completed
 
 /
 > illuminant d65
-✓ Intent::SetIlluminant { name: "D65" }
-  → render.set_illuminant · ok
+Recognized: SetIlluminant { name: "D65" }
+Action: render.set_illuminant · completed
 
 /
 > snapshot
-✓ Intent::Snapshot
-  → render.snapshot_png · saved snapshots/snap_142_1714123412.png`}</CodeBlock>
+Recognized: Snapshot
+Action: render.snapshot_png · saved snapshots/snap_142_1714123412.png`}</CodeBlock>
 
-      <h2 className="docs-h2">§ History</h2>
+      <h2 className="docs-h2">History</h2>
       <p className="docs-p">
         While the chat-line is focused, <span className="docs-kbd">↑</span> and <span className="docs-kbd">↓</span>{' '}
-        cycle through your last 16 submissions. The history is the same recent-ring exposed by the{' '}
+        cycle through your last 16 submissions. The game keeps that fixed-length recent list for the{' '}
         <code className="docs-ic">intent.recent</code> MCP tool — capacity is the
         <code className="docs-ic"> RECENT_INTENT_CAP</code> constant in{' '}
         <code className="docs-ic">loa-host/src/intent_router.rs</code>.
       </p>
 
-      <h2 className="docs-h2">§ Sample intents to try</h2>
+      <h2 className="docs-h2">Sample intents to try</h2>
       <CodeBlock lang="plain" caption="Calibration + camera">{`snapshot
 burst 30
 tour walls
@@ -80,9 +81,9 @@ floor sw checker
 material on plinth 3 brass
 set illuminant d65`}</CodeBlock>
 
-      <h2 className="docs-h2">§ When the classifier doesn't understand</h2>
+      <h2 className="docs-h2">When the classifier doesn't understand</h2>
       <p className="docs-p">
-        Stage-0 falls through to <code className="docs-ic">Intent::Unknown</code> when no rule matches. The chat
+        The current rule list returns <code className="docs-ic">Intent::Unknown</code> when no rule matches. The text line
         echoes the normalized input back so you can see what the classifier saw. A typical fix is one of:
       </p>
       <ul className="docs-ul">
@@ -91,20 +92,21 @@ set illuminant d65`}</CodeBlock>
         <li>Swap word order · the classifier accepts several phrasings per intent.</li>
       </ul>
 
-      <Callout kind="warn" title="No off-machine relay">
-        The chat panel does not call any external service. Every keystroke stays in-process. Stage-2 (LLM-driven
-        intent extraction) will only activate if you grant a sovereign-cap to bridge to a model — the cap is
-        revocable and is off by default.
+      <Callout kind="warn" title="Current release boundary">
+        The current panel is documented as a local rule-based game control. A future connection to an outside
+        language model would be a separate network feature and would require a clear, specific permission
+        before use. It is not implied by typing into the current panel.
       </Callout>
 
-      <h2 className="docs-h2">§ Programmatic access</h2>
+      <h2 className="docs-h2">Programmatic access</h2>
       <p className="docs-p">
-        The chat panel is one of three entry points into the same router. The other two are MCP tools you can
-        invoke from the host or from a connected agent:
+        The chat panel is one way to use the same request handler. Advanced testers can also use
+        <strong> Model Context Protocol (MCP)</strong>, a technical format that lets another local program call
+        named developer functions. Do not expose the local developer port to another computer or the internet.
       </p>
       <CodeBlock lang="cssl" caption="Equivalent MCP calls">{`// Tool · intent.translate
 { "text": "spawn cube at 5 5 5" }
-// → returns the typed Intent JSON · without dispatching.
+// → returns the typed Intent JSON · without running it.
 
 // Tool · intent.recent
 // → returns the last 16 dispatches + per-kind counters.`}</CodeBlock>
