@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { SUPPORT_LINKS } from '../lib/support-links';
+import { ConsentFooterControl } from './AkashicConsent';
 import { useSiteSession } from './hub/SiteSession';
 import CommandPalette from './site/CommandPalette';
 import ContextualSynapses from './site/ContextualSynapses';
@@ -153,6 +154,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
         <div className="apx-footer-bottom">
           <span>© {new Date().getFullYear()} Apocky</span>
           <span>Every claim typed. Every connection earned.</span>
+          <ConsentFooterControl />
         </div>
       </footer>
     </div>

@@ -55,6 +55,33 @@ function tierTitle(tier: ConsentTier | null): string {
   return TIERS.find((option) => option.tier === tier)?.title ?? 'Off';
 }
 
+// Any shell surface (today: the site footer) can ask this dialog to open without
+// owning it. The dialog returns focus to whichever control asked.
+export const CONSENT_OPEN_EVENT = 'apocky:consent-open';
+
+export function ConsentFooterControl(): React.ReactElement {
+  const [saved, setSaved] = React.useState<ConsentTier | null>(null);
+  React.useEffect(() => {
+    const sync = (): void => setSaved(storedConsentTier());
+    sync();
+    window.addEventListener(CONSENT_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(CONSENT_CHANGE_EVENT, sync);
+  }, []);
+  const title = tierTitle(saved);
+  return (
+    <button
+      type="button"
+      className="apx-footer-consent"
+      data-tier={saved && saved !== 'none' ? 'on' : 'off'}
+      aria-haspopup="dialog"
+      aria-label={`Optional data sharing: ${title}. Open optional data-sharing choices.`}
+      onClick={() => window.dispatchEvent(new CustomEvent(CONSENT_OPEN_EVENT))}
+    >
+      Optional data sharing: {title}
+    </button>
+  );
+}
+
 export function AkashicConsent(): React.ReactElement | null {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -63,6 +90,7 @@ export function AkashicConsent(): React.ReactElement | null {
   const [saveError, setSaveError] = React.useState('');
   const [tierDetailOpen, setTierDetailOpen] = React.useState(false);
   const openerRef = React.useRef<HTMLButtonElement>(null);
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const blackout = isTelemetryBlackoutPath(router.pathname);
   const compactSurface = NON_BLOCKING_APP_PATHS.some((prefix) =>
@@ -92,12 +120,30 @@ export function AkashicConsent(): React.ReactElement | null {
   }, [open]);
 
   React.useEffect(() => {
+    if (blackout || compactSurface) return undefined;
+    const openFromShell = (): void => {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setOpen(true);
+    };
+    window.addEventListener(CONSENT_OPEN_EVENT, openFromShell);
+    return () => window.removeEventListener(CONSENT_OPEN_EVENT, openFromShell);
+  }, [blackout, compactSurface]);
+
+  React.useEffect(() => {
     setTierDetailOpen(chosen !== 'none');
   }, [chosen]);
 
   const closePanel = React.useCallback((): void => {
     setOpen(false);
-    window.setTimeout(() => openerRef.current?.focus(), 0);
+    window.setTimeout(() => {
+      const shellControl = returnFocusRef.current;
+      returnFocusRef.current = null;
+      if (shellControl && shellControl.isConnected && shellControl.offsetParent !== null) {
+        shellControl.focus();
+        return;
+      }
+      openerRef.current?.focus();
+    }, 0);
   }, []);
 
   const handleGrant = React.useCallback(
@@ -139,7 +185,7 @@ export function AkashicConsent(): React.ReactElement | null {
         className="apx-diagnostics-opener"
         ref={openerRef}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => { returnFocusRef.current = null; setOpen(true); }}
         aria-haspopup="dialog"
         aria-label={`${label}. Open optional data-sharing choices.`}
         style={{

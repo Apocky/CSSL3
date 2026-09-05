@@ -1,9 +1,11 @@
 .toastRegion { position: fixed; z-index: 1000; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 24px)); pointer-events: none; }
-.toast { display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 16px; border: 1px solid #5662a1; border-radius: 14px; color: #f3f2ff; background: #111426; box-shadow: 0 12px 40px #0008; font: 400 .875rem/1.45 system-ui, sans-serif; pointer-events: auto; overflow-wrap: anywhere; }
+.toast { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; border: 1px solid rgba(147, 162, 255, 0.44); border-radius: 14px; color: #f3f2ff; background: #0d1024; box-shadow: 0 12px 40px #0008; font: 400 .875rem/1.45 var(--apx-sans, system-ui, sans-serif); pointer-events: auto; overflow-wrap: anywhere; animation: apxToastIn 180ms ease-out; }
+@keyframes apxToastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 .toast span { flex: 1; }
 .toast button { flex: 0 0 44px; width: 44px; height: 44px; border: 0; border-radius: 9px; background: transparent; color: #bbc3ef; cursor: pointer; font: 24px system-ui, sans-serif; }
 .toast button:hover { background: #252b48; color: #fff; }
-.help { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #86ceff; cursor: help; font: 600 .8rem/1 system-ui, sans-serif; }
-.help:hover { background: #889aff14; }
-.tooltip { position: fixed; z-index: 1100; width: min(280px, calc(100vw - 24px)); max-height: 160px; overflow: auto; padding: 12px 14px; border: 1px solid #57639d; border-radius: 10px; background: #101326; color: #e4e8fa; box-shadow: 0 12px 36px #0009; font: 400 .8rem/1.5 system-ui, sans-serif; overflow-wrap: anywhere; }
+.help { display: inline-grid; place-items: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 1px solid rgba(147, 162, 255, 0.46); border-radius: 50%; background: rgba(10, 12, 34, 0.96); color: #9ee8ff; cursor: help; font: 800 .82rem/1 var(--apx-mono, ui-monospace, monospace); }
+.help:hover, .help[aria-describedby] { border-color: #9ee8ff; box-shadow: 0 0 0 3px rgba(107, 141, 255, 0.24), 0 0 30px rgba(77, 135, 255, 0.2); }
+.tooltip { position: fixed; z-index: 1100; width: min(280px, calc(100vw - 24px)); max-height: 160px; overflow: auto; padding: 12px 14px; border: 1px solid rgba(147, 162, 255, 0.44); border-radius: 12px; background: #0a0a1a; color: #e5e5f5; box-shadow: 0 18px 54px rgba(0, 0, 0, 0.62); font: 500 .82rem/1.55 var(--apx-sans, system-ui, sans-serif); overflow-wrap: anywhere; }
 .help:focus-visible, .toast button:focus-visible { outline: 2px solid #86ceff; outline-offset: 2px; }
