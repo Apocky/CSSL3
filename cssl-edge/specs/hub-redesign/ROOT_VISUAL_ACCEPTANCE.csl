@@ -1,0 +1,41 @@
+§ ROOT.VISUAL.ACCEPTANCE @2026-09-05
+§P
+  authority := user.full-panels ∧ user.publish ∧ user.commit+push.
+  latest.delta := home.all34 non-home destinations → same full DestinationPanel;
+    first := Codex Apockalypsis | Apocrypha | Atlas | Chaos Tarot.
+  N! More-of-Apocky disclosure | hidden destinations | compact directory rows.
+§T
+  surface := actual CUA browser @localhost:8891; observations recorded thread images+AX.
+  home.current := ✓390x844 | ✓320x740 | ✓768x1024 | ✓1440x1000.
+  observed := readable panels; mobile singlecolumn; tablet+desktop twocolumn;
+    named headings+descriptions+direct actions; all34 present unfiltered;
+    Codex openingchapter directlink; story search→Codex; clear→34;
+    Tools+Words+Thoughts+Codex visible mobile navigation.
+  home.previous := superseded smallcards+directory; N! accepted finaldesign.
+  earlier.flow.evidence :=
+    search.Codex→library; mobile.menu+Escape; search.viewport containment;
+    Words.metaphor→definition+example→copy notification; empty→reset;
+    Spellcraft.Boundaries→intention→named save→sigil→Spellbook persisted entry;
+    Atlas.Codex→reading; Thoughts.soul→matching piece;
+    Essays.Casual-Musings→preserved source;
+    Codex.openingchapter→Paper+Large reading controls;
+    Omnoid.entry→story+definition links;
+    login+register.formfirst+retainednext+consentcheckbox;
+    Clearing.unavailable→mainnotice+recovery links;
+    Quests.11 activities; Docs.mobileclosedBrowse-guides→contentfirst;
+    Android.download→explicitpreview scope;404→recovery routes.
+  longreader := ✓390px title+paragraphs+blockquote+longsourceURL wrap;
+    sample := /akashic-records/on-the-topology-of-compactified-exclusion-zones-in-quintessential-flow-systems-b8362839d054.
+  exact.production.build := ✓localhost:8892 @390x844;
+    observed := same full Codex panel+opening action; Words+Omnoid+Theory full panels;
+    keyboard focus visible; footer links+optional-sharing control contained.
+    manifest.sha256 := 566871ba389c7c3fcf45bd9cafa370cd5c9bc2913f628e8307de808a2a60da4a.
+§C
+  evidence.boundary := template+representative flow visual checks ≠ every concrete URL visually inspected.
+  no-effects := no email sent | no account created | no community post | no payment.
+  implementation.a11y := duplicate main IDs removed; reducedmotion respected;
+    searchfocus visible; docs scopedstyles+improved codecomments contrast.
+  pending := exact frozen build → scopedGit+push+remoteverify → candidate visual+HTTP
+    → authorized promotion → actual live homepage+reader+tools acceptance.
+  live.acceptance W! separate receipt; local proof N! production proof.
+∎

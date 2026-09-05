@@ -208,10 +208,10 @@ const Register: NextPage = () => {
         <meta name="robots" content="noindex,nofollow" />
       </Head>
       <a className="apx-skip-link" href="#main-content">Skip to account creation</a>
-      <AuthFrame mode="register">
+      <AuthFrame mode="register" formFirst>
         <div className="apx-auth-card">
           <p className="apx-auth-context">Optional account</p>
-          <h2>Create your account</h2>
+          <h1>Create your account</h1>
           <p className="apx-auth-subtitle">Start with a one-time email code, the secure link in that email, or a provider. You can sign out at any time.</p>
 
           {!pendingEmail ? (

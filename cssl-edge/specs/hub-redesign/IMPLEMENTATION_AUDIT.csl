@@ -1,0 +1,271 @@
+§P Apocky.hub + route-wide.product-redesign @ 2026-09-05
+  lane := deployment_discovery ; integration := root
+  latest.steering := «People don't need or want all the technical shit they want tools and definitions and thoughts they can USE!»
+  outcome := useful.action visible → direct.entry → coherent.return ; every.public.destination discoverable
+  W! user-facing := Tools + Words + Thoughts + Stories ; familiar.labels + concise.instructions
+  N! build/version/architecture vocabulary dominates public.hub
+  scope.this-lane := source.audit + implementation.boundaries ; UI.mutations0
+  runtime.visual.audit.owner := root
+  source := C:/Users/Apocky/source/worktrees/codex-apockalypsis-20260905/cssl-edge
+  baseline := 551775a + additive.Codex.publication
+  ✓ Graphify.query := «SiteShell homepage MORE_PATHS HomeVisual navigation public routes mobile» ; scoped208nodes
+  ✓ load-bearing.edges verified against source
+  N! source.observation ⇒ visual.acceptance | working.service.claim
+
+§T discovery.failure
+  F01 ✓ pages/index.tsx:24+180
+    Codex.card ∈ MORE_PATHS → rendered inside closed <details className="apx-home-more">
+    primary.gateways := Apocrypha + Atlas + Chaos-Tarot
+    effect ◐ := reader.must notice generic.More + expand before discovering.Codex
+    fix.proposal := visible.Codex.story.feature + visible.Tools/Words/Thoughts/Stories sections
+    N! primary.destination inside collapsed.disclosure
+  F02 ✓ components/SiteShell.tsx:12+20
+    primary.NAV := Apocrypha + Atlas + Create + Clearing + Chaos
+    footer.EXPLORE := Atlas + Create + Conversations + Archive + Clearing
+    Codex ∉ primary.NAV ∪ footer.EXPLORE
+    effect ◐ := publication.visible only via homepage.disclosure/direct.URL
+  F03 ✓ lib/public-surface-graph.ts + CommandPalette.tsx + ConstellationAtlas.tsx
+    graph.nodes30 ; Codex + Conversations + Apocrypha.account.entry + app.download ∉ graph
+    CommandPalette.results := filterPublicSurfaceNodes(query).slice(0,14)
+    Atlas + search + related.links derive same.registry
+    effect ✓ source := missing.registry.entry ⇒ missing.search/Atlas/result
+    fix.proposal := one.public.destination.catalog drives visible.hub + global.navigation + search + Atlas + sitemap.discovery
+  F04 ✓ pages/index.tsx:166 ; apocky-system.css:716
+    SITE/BUILD/VERSION + build.manifest before secondary.destination.disclosure
+    fix.proposal := status + build.details remain /status and download.details ; remove evidence.strip from main.hub
+  F05 ✓ source.vocabulary
+    CommandPalette := «NEURAL INDEX» + «Find any public signal»
+    ContextualSynapses := «CONTEXTUAL SYNAPSES»
+    /start := «Orientation protocol» + «Pick the signal»
+    /spellcraft := «Owner-authorized Haloic lineage · deterministic core» + parser/graph lead
+    /memory-tools := identity.chain + rails + guarded.synapses
+    fix.proposal := Search Apocky ; You might also like ; Choose something to do ; Make a spell ; Find a saved item
+    W! retain precise.technical.definition where reader explicitly chooses technical.guide
+  F06 ✓ duplicate.orientation.routes
+    home → Atlas | Start | Now | Memory-tools | Labs each introduces more categories/relationships
+    fix.proposal := homepage opens actual.tool/text ; optional.All-pages directory/Atlas remains secondary
+    N! visitors.required navigate map → another.directory → usable.action
+  F07 ✓ lib/public-surface-graph.ts:686+
+    edges claim.home.features(Showcase/Divination/Oracle/Omnoid/Game/CSSL/Labs/Memory-tools)
+    current.home.rendered.links omit many claimed.direct.edges
+    fix.proposal := derive relationship/navigation claims from catalog+rendered.coverage ; distinguish related.subject from direct.link
+
+§T shared.architecture
+  pages/_app.tsx → SiteSessionProvider + FeedbackProvider + AkashicConsent + conditional.SiteShell
+  SiteShell → global.nav + CommandPalette + ContextualSynapses + footer
+  cssl-edge/styles/apocky-system.css → global.tokens + shell + homepage + auth/account + shared.controls
+  styles/NeuralPages.module.css → many.guide/support/cosmology/lab pages
+  specialized.families :=
+    SymbolicStudio.module.css → spellcraft/sigils/spellbook
+    AkashicRecords.module.css + Conversations.module.css + ConversationReader.module.css → archives/readers
+    ConstellationAtlas.module.css → map/index/matrix/dictionary
+    OmnoidSingularity.module.css → cosmology
+    Showcase.module.css → video/presentation
+    AccountChat.module.css + BrainExperience.module.css → conversation.shells
+    Clearing.module.css → social.room
+    MemoryExperience.module.css → memory.tool
+    AdminApex.module.css + shawn/Atlas.module.css → restricted.specialized.surfaces
+  standalone.publication := public/codex-apockalypsis/** ; no React.SiteShell injection
+  publication.generator := specs/codex-apockalypsis/build.mjs + codex.css + codex.js
+  N! global.CSS.patch alone ⇒ all-site.redesign.complete
+
+§T mobile.source.findings
+  ✓ apocky-system.css:591 → desktop.intro+decorative.mark row before3.gateway.cards
+  ✓ HomeVisual.module.css → max.width460 ; compact.mark108 below940 ; 88 below660
+  ✓ homepage.mobile → intro + three.stacked.cards + evidence.strip + closed.More
+  ✓ mobile.description.0.69rem + action.0.7rem @ width≤660
+  ✓ words.tsx → top.padding72 + paragraph.margin24 + first.definition.section.margin70
+  ✓ NeuralPages.wrap → top.padding36–56 before hero/lead/actions
+  ✓ global.nav hides5.destination.links @ width≤1080 ; Explore.menu uses same.incomplete.NAV
+  ✓ width≤660 → sign-in.action hidden while Join persists ; search.label hidden
+  ◐ likely.cost := too.much.introduction/decoration per actionable.link ; tiny.copy compensates instead.of prioritizing
+  W! root.measure actual.mobile.before/after ∵ latest.Git.UI newer than live
+  proposal.geometry :=
+    header.height56–64 ; 44px.minimum.hit-target ; 16px.mobile.side-padding
+    intro ≤ concise.heading + 1 short.sentence ; useful.link/form visible first.viewport @390×844
+    body16px + line.height≥1.45 ; secondary14px ; no.essential.copy at11px
+    useful.sections.start within24px ; cards.title+1line.benefit+explicit.action
+    mobile.single.column for detailed.tools ; compact2-column category.links only if readable
+    no.fixed.chat/global.nav overlapping.software.keyboard/composer ; safe-area.padding preserved
+    compact.visual ≤72px onmobile or integrated.background ; no mandatory decorative.row
+    headings/labels wrap ; 320px no horizontal.page.overflow ; reduced.motion respected
+
+§S proposed.product.hierarchy
+  root.live.audit.report :=
+    ○ /sigils := raw«ka-sol-el» + «validated symbolic program» entry ; Generate works ;64char.SHA/AST prose before download
+    ○ /spellcraft := compile works ; compiler.verdict +98%lexical.confidence + morphemes/immutable.graph dominate output
+    W! tool.redesign = interaction.hierarchy change ; not copy.substitution.only
+    proposal := plain.meaning/preset choices + worked.example → Create/Make.sigil → reflection/art → Save/Download
+    optional.details := How it works → source/parse/hash/graph ; preserve technical.inspection after useful.result
+  home.hero := «Make something. Find a word. Follow a thought.»
+  hero.support := one concise.line naming usable.tools + writing ; no system.explainer
+  top.navigation := Tools→/#tools ; Words→/words ; Thoughts→/#thoughts ; Stories→/codex-apockalypsis
+  utilities := Search + account.context ; Community + About/help + Support accessible.secondary
+  home.sections :=
+    tools : Make a sigil→/sigils ; Write a spell→/spellcraft ; Open your spellbook→/spellbook ; Ask Apocrypha→/apocrypha ; Get a reading→verified.Chaos-Tarot.free-reading
+    words : visible.search/input → /words ; term.preview + plain.definition + example ; symbol.key secondary
+    thoughts : curated.public.essay/cosmology entries → actual.reading.page ; archive.search secondary
+    stories : Codex.Apockalypsis.feature + direct.Begin.reading + paired.Codex ; other.public.stories/game links
+    explore.everything : visible.grouped.directory sourced from catalog ; no hidden.More wrapper
+  Codex.primary.feature := title + brief.premise + work-in-progress.label + Read.the.first.chapter + Browse.the.library
+  W! card.names recognize products ; action.copy explains immediate.result
+  W! present.available.content accurately : novel.opening + paired.Codex ; no complete12-volume.claim
+  W! Thoughts distinguished from historical.fact where materially relevant ; keep source.notes available within.text
+  W! tool.help adjacent to field/output ; advanced.parse/graph/receipt behind clearly.labeled optional.Details
+  N! generic.«Explore» repeated as universal.action
+  N! auto.personalization/account-gate for public.directory
+
+§S complete.route-family.assignment
+  definition := routable.public.destination ≠ every.page.filename ; dynamic.readers remain children.of.discoverable.collection
+  ✓ source.inventory := 79 TSX.page.modules excludingAPI ; 77 afterframework._app/_document ; includes.private/error/dynamic.routes
+  W! catalog.disposition ∀ route := active.public | public.entry.private.content | public.child | redirect | intentionally.closed | restricted | framework/error
+  W! actual.HTTP/current.guard verifies disposition before first-class.public.promotion
+
+  family.tools :=
+    /spellcraft + /sigils + /spellbook → direct usable.form/workspace first ; small.help/result/save controls
+    /memory-tools → find saved/public entries first ; advanced.identity/diagnostics secondary
+    /divination → practical comparison + direct reading.links ; explanatory.reference retained
+    /oracle → existing permanent Chaos-Tarot.redirect ; expose destination honestly ; no revive.retired.local.oracle
+    /apocrypha → public sign-in.entry; account/private.conversation remains protected
+    /download/apocrypha → download/platform.availability ; Android.preview/iPhone.status accurately retained
+  family.words :=
+    /words → searchable.definition.index + useful.examples + stable.term.anchors
+    /docs + /docs/[slug] + named.docs.children → task.help/technical.guides ; preserve previous/next + TOC
+    /docs/cssl-language + /words#symbols → clearly distinct CSSL vs CSLv3
+  family.thoughts :=
+    /akashic-records + /akashic-records/[slug] → searchable.approved.writing + readable.article
+    /conversations + /conversations/[slug] → public-safe.dialogue.collection ; preserve publication.gates
+    /omnoid-singularity + /theory-of-everything → accessible.thought/essay entry + optional deeper.references
+    /principles → concise principle + practical.example + optional explanation
+    /infinity-engine + /labs → existing.design-study/experimental status preserved ; not mislabeled working.tool
+  family.stories+play :=
+    /codex-apockalypsis + /codex-apockalypsis/library/:slug → visible.author-work + reader.controls + paired.edition links
+    /showcase → captioned.video + transcript + direct.destinations ; no autoplay
+    /download → Labyrinth.game page ; download.info/platform/state close.to.action
+    /quests → self-directed.activities ; local.progress existing.behavior
+  family.community+account :=
+    /clearing → public.reading + sign-in.to.contribute ; room/history/composer remains functional
+    /account + /login + /register + /auth/callback → short.forms + clear.return.destination ; preserve.callback/security logic
+  family.orientation+support :=
+    / + /start + /atlas + /now → shared.catalog ; direct.tasks ; distinct purpose ; avoid redundant introductory funnel
+    /membership + /buy → optional.support after value ; existing prices/terms/provider destinations preserved
+    /status → technical.runtime/build.evidence remains here ; meaningful unavailable/recovery states
+    /legal/privacy + /legal/terms + /legal/eula → readable.prose+TOC ; styling change only; no legal.text rewrite in UI.slice
+  family.closed/restricted :=
+    ✓ /content + /content/feed + /content/trending + /content/search + /content/subscribed currently notFound.server-side
+    ✓ /gear-share + /run-share-feed currently notFound.server-side
+    ✓ /content/[slug] conditional.server.fetch+notFound ; no public.activation inferred
+    ✓ /shawn + /shawn/reference/[slug] publication.gated ; /shawn/clinical access.controlled
+    ✓ /brain owner.gated ; /admin/** separate.private.functions
+    W! preserve guards ; no public.search index of private records ; redesign.shell only with correct.context
+  family.errors := /404 + /500 → simple.message + Search + Home + reachable.links
+  family.static.discovery := /commons/* + sitemap.xml + llms.txt + .well-known/apocky.json
+    W! preserve current.redirects/legacy.contracts ; synchronize approved.links ; no whole.static.Commons overwrite
+
+§D dependency-safe.implementation.boundaries
+  R0 root.integration := design.system contract + canonical.catalog/schema + route.disposition + acceptance oracle + source/live.reconciliation
+  A navigation+hub lane owns := pages/index.tsx + components/SiteShell.tsx + components/site/{CommandPalette,ContextualSynapses}.tsx + components/home/**
+    depends R0.catalog+tokens ; remove.closed.primary.directory ; retain sign-in.callback logic
+  B product.pages lane owns := pages/{spellcraft,sigils,spellbook,words,memory-tools,divination}.tsx + components/spellcraft/** + relevant.module.styles
+    depends R0.tokens/catalog ; tool.data/schema/compiler/storage API unchanged
+  C reading+guides lane owns := archive/reader layout + DocsLayout + LegalDocument + thought/guide/support page.presentations + Codex.generator.navigation
+    depends R0.tokens/catalog ; publication.documents/PDFs/archive preserved unless explicit.content.change
+  root.shared.integration owns := styles/apocky-system.css + lib/public-surface-graph.ts + lib/public-glossary.ts + shared.feedback/accessibility primitives
+    no concurrent same-file ownership ; specialized lanes use CSS.modules after token.contract
+  next.ready.lanes := Atlas.index-first presentation ; Clearing.presentation ; account/auth.presentation ; specialized.private.shell review ; discovery.manifests+tests
+  W! refill lanes with exact.route-family/file ownership ; no idle.finished lane while ready-work exists
+  N! simultaneous mutation of public.registry/shared.CSS/_app by multiple.lanes
+
+§D catalog.contract.proposal
+  reuse := lib/public-surface-graph.ts ; extend projected.consumer.metadata rather than add independent duplicated registry
+  public.entry.fields := id + title + shortLabel + href + category + summary + action + availability + external + searchTerms + primaryRank
+  internal.fields := source/evidence + route.disposition + firstPublished + parent + access.kind + legacy.alias
+  access.labels := Free ; Sign in to use ; Saved on this device ; Preview ; Read now ; External site
+  N! schema/internal.provenance labels dumped into cards
+  generate/project := homepage.directory + desktop/mobile menu + search + Atlas.index + related.content + sitemap/llms approved.destinations
+  Codex.search.aliases := Codex Apockalypsis + Good Book + Bible + Lilith + novel + stories
+  search.result.limit14 ⇒ visible.View-all(query) + keyboard.support ; no false«anything» claim from partial.catalog
+  W! Atlas.visual.graph remains optional representation ; default/readable.index supports direct.action
+  W! aliases/redirects resolve to canonical.destination ; no duplicate cards for same.Oracle.handoff
+
+§C acceptance.oracles
+  discoverability :=
+    homepage.Codex.card visible without disclosure ; firstchapter opens directly ; back.to.hub works
+    global.desktop+mobile.Stories opensCodex ; Search(Good Book|Lilith|Codex) returnscorrectdestination
+    every active.public.top-level catalog.entry reachable from visible.hub.directory and global.Search
+    every public.child reachable from collection ; no restricted/closed.record accidentally indexed
+    Tools primary.entries open actual usable.form/view in1navigation
+    Words search yields plain.definition + example; no mandatoryAtlas detour
+  useful.copy :=
+    no SITE/BUILD/VERSION strip inmain.hub ; no protocol/graph/parser jargon preceding primary.tool controls
+    names + output + action intelligible without reading /words
+  responsive :=
+    screenshots at1440×900 +768×1024 +390×844 +320×568
+    inspect actual firstviewport, scrolled forms, footer, opened menu/search, text200%, keyboard/composer
+    no page.horizontal.overflow ; essential.targets44px ; visible.focus + Esc close + focus.return
+    readability not achieved by shrinking essential text ; no clipped important labels
+  functional.preservation :=
+    local.spellbook entries+export unchanged ; quests.progress unchanged
+    chat pending/history/owner-vs-account controller unchanged ; no forced new conversation to prove UI
+    authentication return path/session preserved ; consent controls/blackout policy unchanged
+    clearing room/composer/error/reconnect controls preserved ; no test message sent without scope.authorization
+    PDFs/Word/ZIP + all19reader pages remain reachable ; original publications unchanged
+  test.reuse :=
+    tests/e2e/compact-shell.spec.ts + ui-density.spec.ts → expand route.disposition-aware matrix
+    tests/e2e/symbolic-workbench.spec.ts + auth-flow.spec.ts + akashic-records.spec.ts + memory-experience.spec.ts + omnoid-singularity.spec.ts + public-flow.spec.ts
+    tests/pages/public-discovery.test.ts → review stale.source assertions before replacing; current source now supports signed-in.AccountChat
+    N! obsolete.retired-service regex alone overrides current.guard/user.intent
+    test current behaviors/coverage ; no snapshot of bad hierarchy as requirement
+  root.visual.signoff required ; source inventory alone cannot establish visual.usability
+
+§C source/runtime.drift + release
+  ✓ publication.live717 refs vs parent551775a := 615identical +33existing.different +69new.publication.files
+  ✓ source551775a includes newer.HomeVisual/compact.styles absent prior.live.base
+  W! root.capture newest.production alias+source refs before broad.release
+  W! reconcile both.current.live.conversation.recovery + newer.git.UI changes ; no deploy.old.wip.df39bfa
+  W! commit+push publication independently before broad.redesign if root.commit frontier ready
+  W! redesign.preview+full.route.review before live.promotion ; preserve immediate.prior.production rollback
+  N! writing.plan ⇒ user.approved.additional.security/persistence changes
+  rollback := isolated.commit.revert + prior.Vercel.production.promotion ; preserve publications/user.state
+  lane.result := source.audit.complete ; live.visual.audit pending.root ; UI.implementation pending.integration.assignment
+∎
+
+§T tools.implementation.receipt @2026-09-05
+  lane := /root/deployment_discovery ; integration := /root only
+  ✓ source.delta :=
+    pages/{atlas,words,spellcraft,sigils,spellbook}.tsx
+    components/atlas/{ConstellationAtlas.tsx,ConstellationAtlas.module.css,Words.module.css}
+    components/spellcraft/{intent-presets.ts,IntentPicker.tsx,SpellComposer.tsx,SigilStudio.tsx,SpellbookPanel.tsx,ConversionBridge.tsx}
+    styles/SymbolicStudio.module.css
+    tests/{lib/intent-presets.test.ts,pages/symbolic-public-pages.test.ts,e2e/symbolic-workbench.spec.ts}
+  ✓ tools.flow := 6 plain presets +5actions×21existing.meanings → exact existing engine → reflection/art → explicit local save ∨ SVG download
+  ✓ custom.builder := namespace-qualified roots; no free-text translation; select meanings → explicit Use this combination
+  ✓ detail.boundary := raw words + confidence + AST + hashes + engine nested How it works
+  ✓ errors := invalid source → actionable recovery; unavailable storage → no false empty collection;
+    failed import write → failure remains + previous collection preserved
+  ✓ Words := 7creative terms +20preserved original definitions; practical examples+related uses;
+    12useful defaults; remainder optional+searchable; symbolkey optional; copy confirmation+fallback;
+    query+fragment supported; singular result grammar + no empty symbols disclosure
+  ✓ Atlas := Directory default; search first; Map+Compare+Definitions optional;
+    Codex direct destination; raw coordinates omitted directory; filters preserved URL-backed
+  ✓ invariants := lib/spellcraft/* + lib/spellbook-local.ts unchanged;
+    storage key/schema/import validation unchanged; explicit save only;
+    no new network calls/auth/privacy/runtime changes; no commit/push/deploy lane
+  ✓ checks.executed :=
+    npx tsc --noEmit --incremental false → PASS
+    node --import tsx tests/lib/intent-presets.test.ts → PASS111 choices + source/art/serialization
+    node --import tsx tests/lib/spellcraft-engine.test.ts → PASS
+    node --import tsx tests/lib/spellbook-local.test.ts → PASS
+    node --import tsx tests/pages/symbolic-public-pages.test.ts → PASS
+    git diff --check → PASS
+  ○ parent.reported.visual := Words390×844 + metaphor exactexample/link;
+    Spellcraft Boundaries → named save → inline sigil → persisted Spellbook entry
+  ○ prepared.browser.matrix := 12 tests; parent execution required;
+    useful reflection + optional detail;6presets+custom;invalid recovery;inline SVG download;
+    shape repeatability+download+save;explicit save/delete;failed import preservation;
+    unavailable storage;Atlas/Codex search+Compare URL;Words search/empty;
+    sixroute reflow+axe +390×844 primary controls;clipboard payload+confirmation
+  N! source checks ⇒ browser/production acceptance
+  rollback := root scoped revert to publication5fb59aba; preserve foreign edits + user.localStorage
+  next := root build + shared preview visual/browser tests + integration; lane read-only remaining-family audit
+∎

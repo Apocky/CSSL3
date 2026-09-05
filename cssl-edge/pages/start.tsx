@@ -20,19 +20,30 @@ const Start: NextPage = () => (
 
     <main className={styles.page}>
       <div className={styles.wrap}>
-        <p className={styles.eyebrow}>Orientation protocol</p>
-        <h1 className={styles.title}>Pick the signal you want. <em>The system will meet you there.</em></h1>
+        <p className={styles.eyebrow}>Start here</p>
+        <h1 className={styles.title}>What would you <em>like to do?</em></h1>
         <p className={styles.lead}>
-          You do not need to understand the whole constellation before entering it. Choose what you want
-          right now; every path offers a route onward when you are ready.
+          Make something, find a meaning, or lose yourself in a story. Choose what brings you here.
         </p>
 
         <section className={styles.section} aria-labelledby="choose-title">
           <div className={styles.sectionHead}>
             <h2 id="choose-title">What brought you here?</h2>
-            <p>Five useful beginnings. No quiz gate, no email wall, no invented recommendation engine.</p>
+            <p>A story to read, a tool to try, or a thought to keep.</p>
           </div>
           <div className={styles.grid2}>
+            <article className={`${styles.card} ${styles.tierFeatured}`}>
+              <span className={styles.tag}>I want a story</span>
+              <h3>Codex Apockalypsis</h3>
+              <p>Dark fantasy, dark comedy, and the Good Book. Begin with creation, then explore the world and its sources.</p>
+              <Link className={styles.cardLink} href="/codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked">Begin the story →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>I want a meaning</span>
+              <h3>Find the word for it.</h3>
+              <p>Look up a word or symbol, see an example, and use it in your own writing.</p>
+              <Link className={styles.cardLink} href="/words">Find a definition →</Link>
+            </article>
             <article className={`${styles.card} ${styles.tierFeatured}`}>
               <span className={styles.tag}>I want an experience</span>
               <h3>Read the pattern in front of you.</h3>
@@ -49,14 +60,14 @@ const Start: NextPage = () => (
             </article>
             <article className={styles.card}>
               <span className={styles.tag}>I want the ideas</span>
-              <h3>Read the source material.</h3>
+              <h3>Find a thought to keep.</h3>
               <p>Explore the Akashic Records, the Omnoid Singularity cosmology, and the words and symbols that hold the system together.</p>
-              <Link className={styles.cardLink} href="/akashic-records">Search the archive →</Link>
+              <Link className={styles.cardLink} href="/akashic-records">Read essays →</Link>
             </article>
             <article className={styles.card}>
               <span className={styles.tag}>I want to participate</span>
-              <h3>Move from audience to signal.</h3>
-              <p>Enter The Clearing for public conversation, take a self-directed quest, or join the sustaining layer.</p>
+              <h3>Join a conversation.</h3>
+              <p>Read The Clearing, join a public conversation, or choose a short discovery quest.</p>
               <div className={styles.actions}>
                 <Link className={styles.cardLink} href="/clearing">Enter the Clearing →</Link>
                 <Link className={styles.cardLink} href="/quests">Choose a quest →</Link>
@@ -64,17 +75,18 @@ const Start: NextPage = () => (
             </article>
             <article className={styles.card}>
               <span className={styles.tag}>I want to make something</span>
-              <h3>Turn an intention into inspectable form.</h3>
-              <p>Ask a quick Yes / No question, compose with the symbolic language engine, generate a sigil, and save only what you choose.</p>
+              <h3>Make a symbol of your own.</h3>
+              <p>Compose a symbolic phrase, turn it into a sigil, and save what you want to keep.</p>
               <div className={styles.actions}>
-                <Link className={styles.cardLink} href="/oracle">Ask the Oracle →</Link>
+                <Link className={styles.cardLink} href="/sigils">Make a sigil →</Link>
                 <Link className={styles.cardLink} href="/spellcraft">Open Spellcraft →</Link>
               </div>
             </article>
           </div>
         </section>
 
-        <section className={styles.section} aria-labelledby="route-title">
+        <details className={styles.section}>
+          <summary>How these paths connect</summary>
           <div className={styles.sectionHead}>
             <h2 id="route-title">A route, not a funnel-shaped dead end.</h2>
             <p>
@@ -110,12 +122,12 @@ const Start: NextPage = () => (
               ))}
             </svg>
           </div>
-        </section>
+        </details>
 
         <section className={styles.section} aria-labelledby="next-title">
           <div className={styles.sectionHead}>
             <h2 id="next-title">Ready to move?</h2>
-            <p>Chaos Tarot is the most complete interactive doorway. The Atlas is the best doorway if you want to understand the whole.</p>
+            <p>Choose the tool, story, or idea that interests you. You can always come back for another.</p>
           </div>
           <div className={styles.actions}>
             <a className={styles.primary} href="https://chaos-tarot.com/free-reading?source=apocky-start-end" target="_blank" rel="noopener noreferrer">

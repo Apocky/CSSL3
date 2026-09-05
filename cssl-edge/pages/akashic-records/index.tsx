@@ -35,7 +35,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
   const [source, setSource] = useState(ALL);
   const [topic, setTopic] = useState(ALL);
   const [year, setYear] = useState(ALL);
-  const [type, setType] = useState(ALL);
+  const [type, setType] = useState('Medium post');
 
   const archiveEntries = useMemo(() => {
     const primaryConversationRecords = new Map<string, AkashicRecordSummary>();
@@ -78,7 +78,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
     });
   }, [archiveEntries, query, source, topic, type, year]);
 
-  const activeFilters = query.trim().length > 0 || [source, topic, year, type].some((value) => value !== ALL);
+  const activeFilters = query.trim().length > 0 || [source, topic, year].some((value) => value !== ALL) || type !== 'Medium post';
   const yearRange = years.length > 0
     ? years.length === 1
       ? String(years[0])
@@ -90,7 +90,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
     setSource(ALL);
     setTopic(ALL);
     setYear(ALL);
-    setType(ALL);
+    setType('Medium post');
   };
 
   return (
@@ -115,41 +115,18 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
       <main className={styles.root}>
         <section className={styles.hero} aria-labelledby="akashic-title">
           <div className={styles.heroCopy}>
-            <p className={styles.eyebrow}>Public archive · Shawn Apocky</p>
-            <h1 id="akashic-title">Akashic Records</h1>
+            <p className={styles.eyebrow}>Akashic Records · Shawn Apocky</p>
+            <h1 id="akashic-title">Essays &amp; writing.</h1>
             <p className={styles.lede}>
-              Read, search, compare, and follow recurring ideas across my approved
-              public works and conversations. Each source enters through an explicit
-              public-approval gate and a reproducible, hash-sealed projection.
+              Explore my writing on myth, meaning, ordinary life, and the strange things between. Find something that stays with you.
             </p>
-            <p className={styles.publicationNote}>
-              Medium works are approved non-draft publications. Codex conversations are
-              approved, public-safe transcript projections; redactions are counted and
-              their projection fingerprints are published. For verification, view the{' '}
-              <a href="/akashic-records/manifest.json">hash-sealed public catalog</a>.
-            </p>
+            <nav className={styles.readingLinks} aria-label="More reading">
+              <Link href="/codex-apockalypsis">Read Codex Apockalypsis →</Link>
+              <Link href="/conversations">Explore conversation ideas →</Link>
+            </nav>
           </div>
 
-          <dl className={styles.metrics} aria-label="Archive overview">
-            <div>
-              <dt>Works</dt>
-              <dd>{workCount}</dd>
-            </div>
-            <div>
-              <dt>Conversations</dt>
-              <dd>{conversationCount}</dd>
-            </div>
-            <div>
-              <dt>Years</dt>
-              <dd>{yearRange}</dd>
-            </div>
-            {topics.length > 0 ? (
-              <div>
-                <dt>Topics</dt>
-                <dd>{topics.length}</dd>
-              </div>
-            ) : null}
-          </dl>
+
         </section>
 
         <section className={styles.explorer} aria-labelledby="explore-records-title">
@@ -157,7 +134,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
             <div className={styles.filterHeading}>
               <div>
                 <p className={styles.eyebrow}>Explore the archive</p>
-                <h2 id="explore-records-title">Find a record</h2>
+                <h2 id="explore-records-title">Find something to read</h2>
               </div>
               <button
                 className={styles.clearButton}
@@ -181,6 +158,13 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
               />
             </label>
 
+            <div className={styles.readingKinds} role="group" aria-label="What to read">
+              {([['Medium post', 'Essays'], ['Conversation transcript', 'Conversations'], [ALL, 'All writing']] as const).map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={type === value} onClick={() => setType(value)}>{label}</button>
+              ))}
+            </div>
+            <details className={styles.moreFilters}>
+              <summary>More filters</summary>
             <div className={styles.filterGrid}>
               {sources.length > 1 ? (
                 <label className={styles.field}>
@@ -220,6 +204,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
                 </label>
               ) : null}
             </div>
+            </details>
           </form>
 
           <div className={styles.results}>
@@ -258,7 +243,7 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
                     <Link className={styles.readLink} href={`/akashic-records/${record.slug}`}>
                       {record.publicationState === 'withheld'
                         ? 'View withheld record'
-                        : record.type === 'Conversation transcript' ? 'Read transcript' : 'Read this work'}{' '}
+                        : record.type === 'Conversation transcript' ? 'Read transcript' : 'Read essay'}{' '}
                       <span aria-hidden="true">→</span>
                     </Link>
                   </article>
@@ -268,11 +253,40 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
               <div id="akashic-record-list" className={styles.emptyState}>
                 <h3>No records match these filters.</h3>
                 <p>Try a broader search, or clear the filters to see the whole archive.</p>
-                <button type="button" onClick={clearFilters}>Show all records</button>
+                <button type="button" onClick={clearFilters}>Reset to essays</button>
               </div>
             )}
           </div>
         </section>
+        <details className={styles.archiveAbout}>
+          <summary>About this archive and its sources</summary>
+            <p className={styles.publicationNote}>
+              Medium works are approved non-draft publications. Codex conversations are
+              approved, public-safe transcript projections; redactions are counted and
+              their projection fingerprints are published. For verification, view the{' '}
+              <a href="/akashic-records/manifest.json">hash-sealed public catalog</a>.
+            </p>
+          <dl className={styles.metrics} aria-label="Archive overview">
+            <div>
+              <dt>Works</dt>
+              <dd>{workCount}</dd>
+            </div>
+            <div>
+              <dt>Conversations</dt>
+              <dd>{conversationCount}</dd>
+            </div>
+            <div>
+              <dt>Years</dt>
+              <dd>{yearRange}</dd>
+            </div>
+            {topics.length > 0 ? (
+              <div>
+                <dt>Topics</dt>
+                <dd>{topics.length}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </details>
       </main>
     </>
   );

@@ -26,12 +26,11 @@ const Membership: NextPage = () => {
 
       <main className={styles.page}>
         <div className={styles.wrap}>
-          <p className={styles.eyebrow}>The sustaining layer</p>
-          <h1 className={styles.title}>Don’t just visit the frontier. <em>Help power it.</em></h1>
+          <p className={styles.eyebrow}>Optional support</p>
+          <h1 className={styles.title}>Like the work? <em>Help it grow.</em></h1>
           <p className={styles.lead}>
-            Apocky already contains years of tools, writing, games, visual systems, and living experiments.
-            Membership turns attention into runway: more time to connect the pieces, publish what is ready,
-            and keep independent work independent.
+            Support helps Shawn make more writing, tools, games, and strange things worth exploring.
+            Choose a contribution that suits you, or keep enjoying the free public work.
           </p>
           <div className={styles.actions} aria-label="Primary membership actions">
             {patreon ? (
@@ -41,16 +40,16 @@ const Membership: NextPage = () => {
             ) : null}
             {koFi ? (
               <a className={styles.secondary} href={koFi.href} target="_blank" rel="noopener noreferrer">
-                Fuel it on Ko-fi <span aria-hidden="true">↗</span>
+                Contribute on Ko-fi <span aria-hidden="true">↗</span>
               </a>
             ) : null}
             <a className={styles.secondary} href="https://chaos-tarot.com/pricing" target="_blank" rel="noopener noreferrer">
-              Unlock Chaos Tarot <span aria-hidden="true">↗</span>
+              See Chaos Tarot plans <span aria-hidden="true">↗</span>
             </a>
           </div>
 
           <p className={styles.truth}>
-            <strong>Truth first.</strong>
+            <strong>Before you pay.</strong>
             <span>
               Patreon, Ko-fi, and Chaos Tarot handle their own checkout and publish the current price,
               benefits, renewal, and cancellation terms. Apocky does not invent a countdown, hide a free
@@ -60,18 +59,17 @@ const Membership: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="paths-title">
             <div className={styles.sectionHead}>
-              <h2 id="paths-title">Choose how you enter the sustaining circuit.</h2>
+              <h2 id="paths-title">Choose how to support.</h2>
               <p>
-                Each path does something different. Use the living product, become a recurring patron,
-                or send a direct pulse of support. All three feed the same independent creative ecosystem.
+                Make a one-time contribution, become a recurring patron, or choose a Chaos Tarot plan.
               </p>
             </div>
 
             <div className={styles.grid3}>
               <article className={`${styles.tier} ${styles.tierFeatured}`}>
-                <span className={styles.tag}>Living product</span>
+                <span className={styles.tag}>Reading plans</span>
                 <h3>Chaos Tarot</h3>
-                <p>Use the deepest active experience: readings, divination systems, study tools, journals, patterns, and progression.</p>
+                <p>Explore symbolic readings and the features listed in the current Chaos Tarot plans.</p>
                 <ul>
                   <li>Start free before choosing a paid plan</li>
                   <li>Support a product you can actually use</li>
@@ -109,7 +107,7 @@ const Membership: NextPage = () => {
                 </ul>
                 {koFi ? (
                   <a className={styles.cardLink} href={koFi.href} target="_blank" rel="noopener noreferrer">
-                    Send a signal on Ko-fi <span aria-hidden="true">↗</span>
+                    Contribute on Ko-fi <span aria-hidden="true">↗</span>
                   </a>
                 ) : null}
               </article>
@@ -118,7 +116,7 @@ const Membership: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="free-title">
             <div className={styles.sectionHead}>
-              <h2 id="free-title">The public commons remains a real place.</h2>
+              <h2 id="free-title">Keep exploring for free.</h2>
               <p>
                 Support buys sustainability, not ownership of another person or authority over the work.
                 These public paths remain available whether or not you pay.
@@ -126,14 +124,14 @@ const Membership: NextPage = () => {
             </div>
             <div className={styles.grid3}>
               <article className={styles.card}>
-                <h3>Map the system</h3>
-                <p>Navigate projects, concepts, and relationships in the Constellation Atlas.</p>
+                <h3>Find something useful</h3>
+                <p>Browse tools, writing, and ideas in the Atlas.</p>
                 <Link className={styles.cardLink} href="/atlas">Open the Atlas →</Link>
               </article>
               <article className={styles.card}>
-                <h3>Read the record</h3>
-                <p>Search the approved, public-safe Akashic archive.</p>
-                <Link className={styles.cardLink} href="/akashic-records">Enter the archive →</Link>
+                <h3>Find a thought to keep</h3>
+                <p>Read essays about life, imagination, and how we understand the world.</p>
+                <Link className={styles.cardLink} href="/akashic-records">Read essays →</Link>
               </article>
               <article className={styles.card}>
                 <h3>Join the room</h3>
@@ -146,19 +144,20 @@ const Membership: NextPage = () => {
                 <Link className={styles.cardLink} href="/words">Open the dictionary →</Link>
               </article>
               <article className={styles.card}>
-                <h3>Ask one question</h3>
-                <p>Use the private Yes / No Oracle and keep your own judgment in charge.</p>
-                <Link className={styles.cardLink} href="/oracle">Reveal a signal →</Link>
+                <h3>Begin the story</h3>
+                <p>Enter the dark fantasy of Codex Apockalypsis with the opening chapter.</p>
+                <a className={styles.cardLink} href="/codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked">Read the opening →</a>
               </article>
               <article className={styles.card}>
-                <h3>Craft a working</h3>
-                <p>Compile symbolic language, render a sigil, and save it locally without an account.</p>
-                <Link className={styles.cardLink} href="/spellcraft">Open Spellcraft →</Link>
+                <h3>Make a symbolic phrase</h3>
+                <p>Combine meaningful words, make a sigil, and save it on this device without an account.</p>
+                <Link className={styles.cardLink} href="/spellcraft">Try Spellcraft →</Link>
               </article>
             </div>
           </section>
 
-          <section className={styles.section} aria-labelledby="loop-title">
+          <details className={styles.section}>
+            <summary>How support helps the work</summary>
             <div className={styles.sectionHead}>
               <h2 id="loop-title">Attention becomes a creative flywheel.</h2>
               <p>
@@ -197,7 +196,7 @@ const Membership: NextPage = () => {
                 <text x="380" y="198" fill="#9ca6cc" fontFamily="ui-monospace, monospace" fontSize="10" textAnchor="middle">LIVING SYSTEM</text>
               </svg>
             </div>
-          </section>
+          </details>
         </div>
       </main>
     </>

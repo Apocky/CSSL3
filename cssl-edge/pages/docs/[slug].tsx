@@ -31,21 +31,20 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
         <meta name="theme-color" content="#000000" />
         <link rel="canonical" href={canonicalUrl} />
         <style>{`
-          * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; }
-          body {
+          .csl-reference, .csl-reference * { box-sizing: border-box; }
+          .csl-reference {
             background: radial-gradient(ellipse at top, #15151f 0%, #0a0a0f 50%, #050507 100%);
             color: #e6e6f0;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
             min-height: 100vh;
             -webkit-font-smoothing: antialiased;
           }
-          a { color: inherit; text-decoration: none; }
-          a:hover { opacity: 0.85; }
-          pre.csl-spec {
+          .csl-reference a { color: inherit; text-decoration: none; }
+          .csl-reference a:hover { opacity: 0.85; }
+          .csl-reference pre.csl-spec {
             background: rgba(15, 15, 25, 0.6);
             border: 1px solid #1f1f2a;
-            border-radius: 8;
+            border-radius: 8px;
             padding: 1.25rem 1.5rem;
             font-size: 0.82rem;
             line-height: 1.55;
@@ -54,22 +53,23 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
             overflow-x: auto;
             tab-size: 2;
           }
-          pre.csl-spec span.glyph { color: #a78bfa; font-weight: 600; }
-          pre.csl-spec span.modal { color: #fbbf24; }
-          pre.csl-spec span.evidence { color: #34d399; }
-          pre.csl-spec span.heading { color: #c084fc; font-weight: 600; }
+          .csl-reference pre.csl-spec span.glyph { color: #a78bfa; font-weight: 600; }
+          .csl-reference pre.csl-spec span.modal { color: #fbbf24; }
+          .csl-reference pre.csl-spec span.evidence { color: #34d399; }
+          .csl-reference pre.csl-spec span.heading { color: #c084fc; font-weight: 600; }
         `}</style>
       </Head>
       <main
+        className="csl-reference"
         style={{
           maxWidth: 920,
           margin: '0 auto',
-          padding: '4rem 1.5rem 6rem',
+          padding: '2rem 1.5rem 4rem',
           lineHeight: 1.65,
         }}
       >
-        <a href="/docs" style={{ fontSize: '0.85rem', color: '#7a7a8c', display: 'inline-block', marginBottom: '2rem' }}>
-          ← /docs
+        <a href="/docs" style={{ fontSize: '0.85rem', color: '#a8a8b8', display: 'inline-flex', alignItems: 'center', minHeight: 44, marginBottom: '1rem' }}>
+          ← Guides & answers
         </a>
 
         {isLegacyAkashicSpecification ? (
@@ -118,12 +118,10 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
             background: 'rgba(125, 211, 252, 0.05)',
           }}
         >
-          This is a technical specification written in CSLv3, a compact notation system.
-          It is not the starting point for learning about the project. Read the{' '}
+          Technical reference in CSLv3, a compact notation system. Keep the{' '}
           <a href="/words#symbols" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
             words and symbols key
-          </a>{' '}
-          first. Symbols below are technical notation, not decoration.
+          </a>{' '}nearby, or return to the <a href="/docs" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>practical guides</a>.
         </div>
 
         <pre className="csl-spec" style={{ marginTop: '2rem' }}>
@@ -152,7 +150,7 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
             marginTop: '4rem',
             paddingTop: '2.5rem',
             borderTop: '1px solid #1f1f2a',
-            color: '#5a5a6a',
+            color: '#a8a2b3',
             fontSize: '0.78rem',
           }}
         >

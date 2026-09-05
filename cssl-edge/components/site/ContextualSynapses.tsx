@@ -8,7 +8,7 @@ import {
   type PublicSurfaceRelation,
 } from '../../lib/public-surface-graph';
 
-const PRIORITY = ['chaos-tarot', 'spellcraft', 'sigils', 'atlas', 'membership', 'quests', 'akashic-records', 'clearing', 'status'] as const;
+const PRIORITY = ['codex-apockalypsis', 'words', 'conversations', 'sigils', 'spellcraft', 'akashic-records', 'clearing', 'quests', 'chaos-tarot'] as const;
 
 function rank(relation: PublicSurfaceRelation): number {
   const index = PRIORITY.indexOf(relation.neighbor.id as typeof PRIORITY[number]);
@@ -32,10 +32,10 @@ export default function ContextualSynapses({ pathname }: { pathname: string }): 
     <aside className="apx-synapses" aria-labelledby="apx-synapses-title">
       <div className="apx-synapses-head">
         <div>
-          <p>CONTEXTUAL SYNAPSES</p>
-          <h2 id="apx-synapses-title">From {current.shortTitle}, continue through…</h2>
+          <p>Keep exploring</p>
+          <h2 id="apx-synapses-title">You might like these.</h2>
         </div>
-        <Link href="/atlas">Open the full map →</Link>
+        <Link href="/atlas">Browse everything →</Link>
       </div>
       <nav className="apx-synapse-list" aria-label={`Destinations connected to ${current.title}`}>
         {relations.map((relation) => {
@@ -43,7 +43,7 @@ export default function ContextualSynapses({ pathname }: { pathname: string }): 
           const contents = (
             <>
               <span className="apx-synapse-dot" aria-hidden="true" />
-              <span><strong>{item.shortTitle}</strong><small>{relation.statement}</small></span>
+              <span><strong>{item.shortTitle}</strong><small>{item.summary}</small></span>
               <i aria-hidden="true">{item.external ? '↗' : '→'}</i>
             </>
           );

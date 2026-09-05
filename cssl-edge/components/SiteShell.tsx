@@ -10,19 +10,21 @@ import ContextualSynapses from './site/ContextualSynapses';
 type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean; accent?: boolean };
 
 const NAV: ReadonlyArray<NavItem> = [
+  { href: '/tools', label: 'Tools' },
+  { href: '/words', label: 'Words' },
+  { href: '/conversations', label: 'Thoughts' },
+  { href: '/codex-apockalypsis', label: 'Codex' },
   { href: '/apocrypha', label: 'Apocrypha' },
-  { href: '/atlas', label: 'Atlas' },
-  { href: '/spellcraft', label: 'Create' },
-  { href: '/clearing', label: 'Clearing' },
-  { href: 'https://chaos-tarot.com/free-reading?source=apocky-nav', label: 'Chaos Tarot', shortLabel: 'Chaos', ext: true, accent: true },
 ];
 
 const EXPLORE: ReadonlyArray<NavItem> = [
-  { href: '/atlas', label: 'Atlas' },
-  { href: '/spellcraft', label: 'Create' },
-  { href: '/conversations', label: 'Conversations' },
-  { href: '/akashic-records', label: 'Archive' },
-  { href: '/clearing', label: 'Clearing' },
+  { href: '/tools', label: 'Tools to try' },
+  { href: '/words', label: 'Words & meanings' },
+  { href: '/conversations', label: 'Thoughts & conversations' },
+  { href: '/akashic-records', label: 'Essays & writing' },
+  { href: '/codex-apockalypsis', label: 'Codex Apockalypsis' },
+  { href: '/atlas', label: 'Browse everything' },
+  { href: '/clearing', label: 'Community' },
 ];
 
 const LEGAL: ReadonlyArray<NavItem> = [
@@ -44,7 +46,7 @@ function isActivePath(pathname: string, href: string): boolean {
 
 export default function SiteShell({ children }: { children: React.ReactNode }): JSX.Element {
   const { pathname } = useRouter();
-  const { access, authenticated } = useSiteSession();
+  const { authenticated } = useSiteSession();
   const mobileMenu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (mobileMenu.current) mobileMenu.current.open = false; }, [pathname]);
   useEffect(() => {
@@ -87,19 +89,21 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
 
           <div className="apx-nav-actions">
             <CommandPalette />
-            <Link href="/membership" className="apx-nav-action apx-nav-action--primary">Join</Link>
             <Link
               href={authenticated ? '/account' : '/login?next=%2Faccount'}
-              className="apx-nav-action"
+              className="apx-nav-action apx-nav-action--primary"
             >
               {authenticated ? 'Account' : 'Sign in'}
             </Link>
           </div>
 
           <details ref={mobileMenu} className="apx-mobile-menu">
-            <summary>Explore</summary>
+            <summary>Menu</summary>
             <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
               {navLinks('apx-mobile-menu-link')}
+              <Link href="/akashic-records" className="apx-mobile-menu-link">Essays &amp; writing</Link>
+              <Link href="/clearing" className="apx-mobile-menu-link">Community</Link>
+              <Link href="/atlas" className="apx-mobile-menu-link">Browse everything</Link>
               <Link href="/membership" className="apx-mobile-menu-link apx-nav-link--support">Membership &amp; support</Link>
               <Link
                 href={authenticated ? '/account' : '/login?next=%2Faccount'}
@@ -109,6 +113,9 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
               </Link>
             </div>
           </details>
+        </nav>
+        <nav className="apx-quick-nav" aria-label="Quick navigation">
+          {NAV.slice(0, 4).map(item => <Link key={item.href} href={item.href} aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}>{item.label}</Link>)}
         </nav>
       </header>
 
@@ -123,8 +130,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
               <span>APOCKY</span>
             </Link>
             <p className="apx-footer-copy">
-              An interconnected creative system for divination, games, software,
-              language, cosmology, public memory, and shared discovery.
+              Tools to try. Words to understand. Thoughts and stories to get lost in.
             </p>
           </div>
           <div>
@@ -148,12 +154,14 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             <h2 className="apx-footer-title">Legal</h2>
             <div className="apx-footer-links">
               {LEGAL.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
+              <Link href="/docs" className="apx-footer-link">Guides</Link>
+              <Link href="/status" className="apx-footer-link">Service status</Link>
             </div>
           </div>
         </div>
         <div className="apx-footer-bottom">
           <span>© {new Date().getFullYear()} Apocky</span>
-          <span>Every claim typed. Every connection earned.</span>
+          <span>Made by Shawn Apocky.</span>
           <ConsentFooterControl />
         </div>
       </footer>

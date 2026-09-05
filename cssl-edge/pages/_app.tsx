@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import 'katex/dist/katex.min.css';
 import '@/styles/apocky-system.css';
+import '@/styles/apocky-redesign.css';
 import {
   akashicInstall,
   akashicDisable,

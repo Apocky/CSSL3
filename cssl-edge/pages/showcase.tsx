@@ -78,11 +78,11 @@ const Showcase: NextPage = () => {
             </div>
             <div>
               <p className={styles.lead}>
-                One doorway maps interconnected ideas. The other turns a question into a symbolic reflection.
-                Watch the passage, then choose what earns your attention.
+                Discover tools, writing, and symbolic readings in this short introduction.
+                Watch, then choose something to try.
               </p>
               <div className={styles.actions}>
-                <Link className={styles.primary} href="/atlas">Explore the Atlas →</Link>
+                <Link className={styles.primary} href="/atlas">Find a tool or idea →</Link>
                 <a className={styles.secondary} href="https://chaos-tarot.com/free-reading?source=apocky-showcase" target="_blank" rel="noopener noreferrer">Begin a free reading ↗</a>
               </div>
             </div>
@@ -92,7 +92,7 @@ const Showcase: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="art-boundary-title">
             <div className={styles.truthPanel} id="showcase-art-disclosure">
-              <strong className={styles.truthLabel} id="art-boundary-title">Visual truth boundary</strong>
+              <strong className={styles.truthLabel} id="art-boundary-title">About the artwork</strong>
               <p>
                 <strong>Illustrative concept art, not product photography.</strong> The cards, spaces, and doorway
                 visualize a relationship between two live sites; they do not depict a physical deck or promise a
@@ -103,21 +103,21 @@ const Showcase: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="choose-title">
             <div className={styles.sectionHeader}>
-              <h2 id="choose-title">Choose the next signal.</h2>
-              <p>Every route begins with something usable. Payment and membership remain optional, explicit choices.</p>
+              <h2 id="choose-title">What would you like to try?</h2>
+              <p>Read, make something, or explore a question.</p>
             </div>
             <div className={styles.cardGrid}>
               <article className={styles.card}>
                 <span className={styles.cardTag}>MAP</span>
                 <h3>Explore the Atlas</h3>
-                <p>Move through the public work as a visual map, access matrix, index, or dictionary.</p>
-                <Link className={styles.cardLink} href="/atlas">Open the multidimensional Atlas →</Link>
+                <p>Find tools, stories, and ideas by what you want to do.</p>
+                <Link className={styles.cardLink} href="/atlas">Browse the Atlas →</Link>
               </article>
               <article className={styles.card}>
                 <span className={styles.cardTag}>ASK</span>
-                <h3>Use the Yes / No Oracle</h3>
-                <p>Ask one bounded question and receive a private, device-local symbolic signal with a counterweight.</p>
-                <Link className={styles.cardLink} href="/oracle">Ask one clear question →</Link>
+                <h3>Explore a Yes / No question</h3>
+                <p>A symbolic reading on Chaos Tarot. This currently requires a separate sign-in.</p>
+                <a className={styles.cardLink} href="https://chaos-tarot.com/yes-no" target="_blank" rel="noopener noreferrer">Open Chaos Tarot ↗</a>
               </article>
               <article className={styles.card}>
                 <span className={styles.cardTag}>DRAW</span>

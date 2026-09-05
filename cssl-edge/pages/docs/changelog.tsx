@@ -114,8 +114,8 @@ const Page: NextPage = () => {
       <h2 className="docs-h2">Where to follow along</h2>
       <ul className="docs-ul">
         <li><a href="https://github.com/Apocky" style={{ color: '#7dd3fc' }}>github.com/Apocky</a> — release tags, source, issues</li>
-        <li><a href="/devblog" style={{ color: '#7dd3fc' }}>/devblog</a> — long-form context for major slices</li>
-        <li><a href="/press" style={{ color: '#7dd3fc' }}>/press</a> — high-level project state for outsiders</li>
+        <li><a href="/now" style={{ color: '#7dd3fc' }}>New & worth exploring</a> — current writing, tools, and work in progress</li>
+        <li><a href="/showcase" style={{ color: '#7dd3fc' }}>Project showcase</a> — an introduction to the work</li>
       </ul>
 
       <PrevNextNav slug="changelog" />

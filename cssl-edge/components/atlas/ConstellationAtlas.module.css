@@ -1179,3 +1179,53 @@
     color: CanvasText;
   }
 }
+
+/* The directory is the default; spatial and comparative views stay available on request. */
+.root { --atlas-bg: #121116; --atlas-panel: #1b1921; --atlas-copy: #d0c7bc; --atlas-muted: #bfb7b1; --atlas-ink: #eee8de; --atlas-cyan: #a0d9dd; --atlas-blue: #c8b6e2; --atlas-line: rgba(226,212,200,.18); background: var(--atlas-bg); }
+.root::before { display: none; }
+.directoryHeader { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding: 30px 0 0; }
+.directoryEyebrow { color: #c4b6e4; font-size: .875rem; margin: 0 0 10px; }
+.directoryHeader h1 { margin: 0; font-family: var(--apx-display, Georgia, serif); font-size: clamp(2rem,4vw,3rem); font-weight: 500; line-height: 1.1; letter-spacing: -.025em; }
+.directoryHeader > p:last-child { color: #c0bab5; font-size: 1rem; line-height: 1.55; margin: 12px 0 0; }
+.explorer { width: min(1120px, calc(100% - 48px)); padding: 24px 0 48px; }
+.directorySearch { margin: 0; }
+.directorySearch .searchField { font-size: .95rem; font-weight: 600; letter-spacing: 0; color: #eee8de; gap: 8px; }
+.directorySearch input { min-height: 50px; padding: 12px 14px; font-size: 1rem; background: #1b1921; border-color: #71667d; }
+.additionalFilters { margin-top: 8px; border-bottom: 1px solid var(--atlas-line); }
+.additionalFilters summary { cursor: pointer; min-height: 44px; padding: 12px 0; color: #d0bee6; font-size: .875rem; line-height: 1.45; }
+.additionalFilters > p { color: #c0bab5; font-size: .875rem; line-height: 1.6; }
+.filterGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; padding: 0 0 16px; }
+.filterGrid label { font-size: .875rem; font-weight: 500; letter-spacing: 0; }
+.filterGrid select { font-size: 1rem; background: #1b1921; border-color: #62566e; }
+.directoryToolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0; }
+.viewSwitch { display: flex; flex-wrap: wrap; margin: 0; padding: 0; gap: 6px; border: 0; background: none; }
+.viewSwitch button { min-height: 44px; padding-inline: 13px; font-weight: 500; font-size: .875rem; background: transparent; border: 1px solid #4b4354; }
+.viewSwitch button[aria-pressed='true'], .viewSwitch button:hover { background: #302737; border-color: #b6a0ca; }
+.filterFooter { flex-wrap: wrap; border: 0; padding: 0; gap: 12px; flex-direction: row; align-items: center; }
+.resultStatus { font-family: inherit; font-size: .875rem; }
+.resetButton { font-size: .875rem; color: #d5c1e8; border-color: #655774; min-width: 44px; }
+.indexGrid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.indexCard { display: flex; flex-direction: column; gap: 12px; padding: 20px; box-shadow: none; border-radius: 12px; }
+.cardHeading { flex-direction: column; align-items: flex-start; gap: 6px; }
+.indexCard h2 { font-family: var(--apx-display,Georgia,serif); font-size: 1.5rem; line-height: 1.18; font-weight: 500; margin: 0; }
+.indexCard > p { margin: 0; font-size: .9375rem; line-height: 1.55; flex: 1; }
+.kind { border: 0; background: transparent; padding: 0; color: #c5b2dc; font-family: inherit; font-size: .875rem; font-weight: 400; }
+.availability { max-width: 100%; width: fit-content; white-space: normal; font-family: inherit; font-size: .8125rem; line-height: 1.5; color: #dacbed; border-color: #5c4c6a; background: #302635; }
+.cardLink { margin-top: 0; justify-content: flex-start; background: none; border: 0; border-radius: 0; border-top: 1px solid var(--atlas-line); padding: 10px 0 0; color: #d7c7ec; font-weight: 600; font-size: .875rem; }
+.cardLink:hover { background: none; color: #f4e5ff; }
+.emptyDirectory { padding: 28px; border: 1px solid var(--atlas-line); border-radius: 12px; background: var(--atlas-panel); }
+.emptyDirectory h2 { font-family: var(--apx-display,Georgia,serif); font-size: 1.5rem; font-weight: 500; margin-top: 0; }
+.emptyDirectory p { color: var(--atlas-copy); line-height: 1.6; }
+@media(max-width: 900px) { .indexGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width: 600px) {
+  .directoryHeader, .explorer { width: calc(100% - 32px); }
+  .directoryHeader { padding-top: 22px; }
+  .explorer { padding-top: 20px; }
+  .indexGrid, .filterGrid { grid-template-columns: 1fr; }
+  .directoryToolbar { gap: 10px; }
+  .viewSwitch { gap: 5px; }
+  .viewSwitch button { padding-inline: 10px; }
+  .filterFooter { width: 100%; justify-content: space-between; }
+  .filterFooter .resetButton { width: auto; }
+  .indexCard { padding: 18px; }
+}

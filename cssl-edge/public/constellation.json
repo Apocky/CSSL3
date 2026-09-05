@@ -5,9 +5,109 @@
   "generated_from": "lib/public-surface-graph.ts",
   "nodes": [
     {
+      "id": "tools",
+      "title": "Tools to try",
+      "summary": "Choose a tool to make a sigil, build an intention, get a reading, or find a meaning.",
+      "href": "/tools",
+      "external": false,
+      "availability": "public",
+      "kind": "creative_project",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Choose a tool",
+        "Meaning": "Choose a tool to make a sigil, build an intention, get a reading, or find a meaning.",
+        "Visibility": "Public",
+        "Time": "Available to explore"
+      }
+    },
+    {
+      "id": "codex-apockalypsis",
+      "title": "Codex Apockalypsis · The Good Book",
+      "summary": "Read The Good Book as dark fantasy and dark comedy. Explore the Omnoid, Lilith, characters, maps, and companion Codex.",
+      "href": "/codex-apockalypsis",
+      "external": false,
+      "availability": "public",
+      "kind": "archive",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Begin reading",
+        "Meaning": "Read The Good Book as dark fantasy and dark comedy. Explore the Omnoid, Lilith, characters, maps, and companion Codex.",
+        "Visibility": "Public",
+        "Time": "Opening available; the series is being written"
+      }
+    },
+    {
+      "id": "conversations",
+      "title": "Thoughts & conversations",
+      "summary": "Read short pieces about myth, meaning, creativity, consciousness, and being human.",
+      "href": "/conversations",
+      "external": false,
+      "availability": "public",
+      "kind": "archive",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Explore the ideas",
+        "Meaning": "Read short pieces about myth, meaning, creativity, consciousness, and being human.",
+        "Visibility": "Public",
+        "Time": "Available to explore"
+      }
+    },
+    {
+      "id": "apocrypha",
+      "title": "Talk with Apocrypha",
+      "summary": "Sign in to ask a question and keep your conversations together.",
+      "href": "/apocrypha",
+      "external": false,
+      "availability": "account_required",
+      "kind": "community",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Talk with Apocrypha",
+        "Meaning": "Sign in to ask a question and keep your conversations together.",
+        "Visibility": "Sign-in required",
+        "Time": "Available to explore"
+      }
+    },
+    {
+      "id": "apps",
+      "title": "Get the Apocrypha app",
+      "summary": "Find the available app download and installation instructions.",
+      "href": "/download/apocrypha",
+      "external": false,
+      "availability": "public",
+      "kind": "reference",
+      "axes": [
+        "People",
+        "Meaning",
+        "Time"
+      ],
+      "coordinates": {
+        "People": "Get the app",
+        "Meaning": "Find the available app download and installation instructions.",
+        "Visibility": "Public",
+        "Time": "Available to explore"
+      }
+    },
+    {
       "id": "home",
       "title": "Apocky",
-      "summary": "The public starting point for Shawn Apocky’s projects, writing, software, and shared spaces.",
+      "summary": "Tools to try, words to understand, and thoughts and stories from Shawn Apocky.",
       "href": "/",
       "external": false,
       "availability": "public",
@@ -25,8 +125,8 @@
     },
     {
       "id": "atlas",
-      "title": "Constellation Atlas",
-      "summary": "A visual map, complete index, and plain-language dictionary for the public Apocky constellation.",
+      "title": "Browse Apocky",
+      "summary": "Find every tool, reading, and project in one searchable directory.",
       "href": "/atlas",
       "external": false,
       "availability": "public",
@@ -68,7 +168,7 @@
     {
       "id": "start",
       "title": "Start here",
-      "summary": "A clear launch point for choosing an experience, the big picture, source material, participation, or support.",
+      "summary": "Pick something to make, read, or explore.",
       "href": "/start",
       "external": false,
       "availability": "public",
@@ -87,8 +187,8 @@
     },
     {
       "id": "quests",
-      "title": "Public quests",
-      "summary": "Eleven self-directed missions through public projects, with progress kept only in the current browser.",
+      "title": "Things to try",
+      "summary": "Follow a small challenge through the tools and ideas here. Keep your progress in this browser.",
       "href": "/quests",
       "external": false,
       "availability": "public",
@@ -107,8 +207,8 @@
     },
     {
       "id": "status",
-      "title": "System status",
-      "summary": "A privacy-bounded view of public core, identity, archive, relay, and support-route availability.",
+      "title": "Service status",
+      "summary": "Check whether a service is available and find help if something is not working.",
       "href": "/status",
       "external": false,
       "availability": "public",
@@ -147,10 +247,10 @@
     {
       "id": "oracle",
       "title": "Yes / No Oracle",
-      "summary": "A private, device-local yes or no reflection with a reproducible receipt and a counter-question.",
-      "href": "/oracle",
-      "external": false,
-      "availability": "public",
+      "summary": "Ask a yes-or-no question on Chaos Tarot. Sign-in is required.",
+      "href": "https://chaos-tarot.com/yes-no",
+      "external": true,
+      "availability": "account_required",
       "kind": "game",
       "axes": [
         "People",
@@ -161,14 +261,14 @@
       "coordinates": {
         "People": "You ask; the generated signal does not take decision authority",
         "Meaning": "Yes or no as reflective friction, not guaranteed prediction",
-        "Visibility": "Question and result remain in the current browser tab",
-        "Time": "Fresh 128-bit seed with a reproducible versioned receipt"
+        "Visibility": "Opens Chaos Tarot, which requires its own sign-in",
+        "Time": "Use a reading as a prompt to consider your next choice"
       }
     },
     {
       "id": "spellcraft",
-      "title": "Symbolic Spellcraft Engine",
-      "summary": "Compose, validate, compile, and inspect bounded symbolic intentions through a deterministic language engine.",
+      "title": "Build an intention",
+      "summary": "Choose words for growth, protection, change, and more. Create an intention and turn it into a sigil.",
       "href": "/spellcraft",
       "external": false,
       "availability": "public",
@@ -188,8 +288,8 @@
     },
     {
       "id": "sigils",
-      "title": "Deterministic Sigil Studio",
-      "summary": "Transform a validated symbolic program into bounded, deterministic SVG geometry with its construction logic disclosed.",
+      "title": "Make a sigil",
+      "summary": "Choose a meaning, create your symbol, and download the image.",
       "href": "/sigils",
       "external": false,
       "availability": "public",
@@ -209,8 +309,8 @@
     },
     {
       "id": "spellbook",
-      "title": "Local Spellbook",
-      "summary": "Explicitly save, inspect, export, import, and delete validated symbolic artifacts in this browser.",
+      "title": "Your spellbook",
+      "summary": "Keep and revisit the symbols and intentions you saved in this browser.",
       "href": "/spellbook",
       "external": false,
       "availability": "public",
@@ -231,7 +331,7 @@
     {
       "id": "theory-of-everything",
       "title": "The Theory of Everything question",
-      "summary": "An evidence-typed introduction to the Omnoid’s unification-sized ambition, established mathematics, open bridges, and falsifiers.",
+      "summary": "Explore a question about how everything might fit together, with examples and ideas to consider.",
       "href": "/theory-of-everything",
       "external": false,
       "availability": "public",
@@ -251,7 +351,7 @@
     {
       "id": "clearing",
       "title": "The Clearing",
-      "summary": "A public community room: reading is open, while posting and reacting require sign-in.",
+      "summary": "Read the community conversation. Sign in when you want to join in.",
       "href": "/clearing",
       "external": false,
       "availability": "public_read_account_write",
@@ -270,8 +370,8 @@
     },
     {
       "id": "akashic-records",
-      "title": "Akashic Records",
-      "summary": "Approved public writing and public-safe conversation transcripts with stable reader pages and provenance.",
+      "title": "Essays & writing",
+      "summary": "Search the published essays and writing by Shawn Apocky, or browse the conversation archive.",
       "href": "/akashic-records",
       "external": false,
       "availability": "public",
@@ -290,8 +390,8 @@
     },
     {
       "id": "words",
-      "title": "Words and symbols",
-      "summary": "Definitions for specialist words, abbreviations, and symbols used across public Apocky pages.",
+      "title": "Words & meanings",
+      "summary": "Look up a word or symbol and get a plain-language definition.",
       "href": "/words",
       "external": false,
       "availability": "public",
@@ -310,7 +410,7 @@
     {
       "id": "omnoid",
       "title": "Omnoid Singularity",
-      "summary": "An evolving cosmology presented with explicit boundaries between authored ideas, mathematical motifs, and open hypotheses.",
+      "summary": "Explore Shawn’s Omnoid cosmology through stories, concepts, and illustrations.",
       "href": "/omnoid-singularity",
       "external": false,
       "availability": "public",
@@ -329,7 +429,7 @@
     {
       "id": "labyrinth",
       "title": "Labyrinth of Apocalypse",
-      "summary": "A game shaped by procedural history, persistent consequences, strange systems, and discovery.",
+      "summary": "Explore Labyrinth of Apocalypse and the available game download.",
       "href": "/download",
       "external": false,
       "availability": "public",
@@ -348,8 +448,8 @@
     },
     {
       "id": "support",
-      "title": "Download or support",
-      "summary": "The public explanation of downloads, optional support, external providers, and what a contribution does not purchase.",
+      "title": "Downloads & support",
+      "summary": "Find the game download and ways to support its development.",
       "href": "/buy",
       "external": false,
       "availability": "public",
@@ -368,7 +468,7 @@
     {
       "id": "membership",
       "title": "Membership and support",
-      "summary": "A public guide to the active Patreon, Ko-fi, and Chaos Tarot paths that help sustain independent work.",
+      "summary": "Help fund new writing, art, tools, and experiments.",
       "href": "/membership",
       "external": false,
       "availability": "public",
@@ -389,7 +489,7 @@
     {
       "id": "principles",
       "title": "Interface principles",
-      "summary": "Consent, sovereignty, truthful appearance, and complete stillness beneath the public spatial interface.",
+      "summary": "Read the principles behind the site and the choices you can make here.",
       "href": "/principles",
       "external": false,
       "availability": "public",
@@ -409,8 +509,8 @@
     },
     {
       "id": "now",
-      "title": "What is alive now",
-      "summary": "A candid map of usable public work, experiments, and connections that remain deliberately unwired.",
+      "title": "What’s new",
+      "summary": "See what is ready to try and what Shawn is working on.",
       "href": "/now",
       "external": false,
       "availability": "public",
@@ -430,8 +530,8 @@
     },
     {
       "id": "labs",
-      "title": "Public labs and experiments",
-      "summary": "An indexed launch surface for inspectable experiments, each carrying a maturity and dependency boundary.",
+      "title": "Experiments",
+      "summary": "Find small creative experiments and tools you can try.",
       "href": "/labs",
       "external": false,
       "availability": "public",
@@ -451,8 +551,8 @@
     },
     {
       "id": "memory-tools",
-      "title": "Memory banks and tools",
-      "summary": "A task-first guide to public records, device-local saves, and genuinely user-bound private memory controls.",
+      "title": "Find your saved work",
+      "summary": "Find your saved creations, conversations, and reading.",
       "href": "/memory-tools",
       "external": false,
       "availability": "public",
@@ -472,8 +572,8 @@
     },
     {
       "id": "documentation",
-      "title": "Documentation",
-      "summary": "Guides for Labyrinth of Apocalypse, CSSL, the shared architecture, and deeper technical specifications.",
+      "title": "Guides",
+      "summary": "Find explanations and guides for the projects and tools here.",
       "href": "/docs",
       "external": false,
       "availability": "public",
@@ -493,7 +593,7 @@
     {
       "id": "infinity-engine",
       "title": "Infinity Engine research",
-      "summary": "Research into reusable architecture across projects, separated into source, tests, experiments, specifications, and releases.",
+      "summary": "Read about an experimental approach to connecting worlds and creative projects.",
       "href": "/infinity-engine",
       "external": false,
       "availability": "design_study",
@@ -513,8 +613,8 @@
     {
       "id": "chaos-tarot",
       "title": "Chaos Tarot",
-      "summary": "An evolving symbolic-art and tarot project built around atmosphere, reflection, and authored interpretation.",
-      "href": "https://chaos-tarot.com",
+      "summary": "Get a free tarot reading, explore the cards, or find a new way to reflect on a question.",
+      "href": "https://chaos-tarot.com/free-reading?source=apocky-directory",
       "external": true,
       "availability": "external_public",
       "kind": "creative_project",
@@ -533,7 +633,7 @@
     {
       "id": "cssl",
       "title": "CSSL",
-      "summary": "A plain introduction to the CSSL programming language, with technical examples and current status.",
+      "summary": "A guide to the CSSL programming language, for readers who want to explore its technical details.",
       "href": "/docs/cssl-language",
       "external": false,
       "availability": "public",
@@ -552,7 +652,7 @@
     {
       "id": "cslv3",
       "title": "CSLv3",
-      "summary": "Definitions for the relationships, evidence marks, uncertainty symbols, and rules used in CSLv3 notation.",
+      "summary": "Look up the symbols used in Shawn’s compact notation.",
       "href": "/words#symbols",
       "external": false,
       "availability": "public",
@@ -611,6 +711,78 @@
   "edges": [
     {
       "source": "home",
+      "target": "tools",
+      "relation": "opens",
+      "statement": "The home page links to Tools."
+    },
+    {
+      "source": "atlas",
+      "target": "tools",
+      "relation": "indexes",
+      "statement": "The directory lists Tools."
+    },
+    {
+      "source": "home",
+      "target": "codex-apockalypsis",
+      "relation": "opens",
+      "statement": "The home page links to Codex Apockalypsis."
+    },
+    {
+      "source": "atlas",
+      "target": "codex-apockalypsis",
+      "relation": "indexes",
+      "statement": "The directory lists Codex Apockalypsis."
+    },
+    {
+      "source": "home",
+      "target": "conversations",
+      "relation": "opens",
+      "statement": "The home page links to Thoughts."
+    },
+    {
+      "source": "atlas",
+      "target": "conversations",
+      "relation": "indexes",
+      "statement": "The directory lists Thoughts."
+    },
+    {
+      "source": "home",
+      "target": "apocrypha",
+      "relation": "opens",
+      "statement": "The home page links to Apocrypha."
+    },
+    {
+      "source": "atlas",
+      "target": "apocrypha",
+      "relation": "indexes",
+      "statement": "The directory lists Apocrypha."
+    },
+    {
+      "source": "home",
+      "target": "apps",
+      "relation": "opens",
+      "statement": "The home page links to Apocrypha app."
+    },
+    {
+      "source": "atlas",
+      "target": "apps",
+      "relation": "indexes",
+      "statement": "The directory lists Apocrypha app."
+    },
+    {
+      "source": "codex-apockalypsis",
+      "target": "omnoid",
+      "relation": "opens",
+      "statement": "The Codex offers a story set in the Omnoid."
+    },
+    {
+      "source": "conversations",
+      "target": "akashic-records",
+      "relation": "opens",
+      "statement": "The ideas page links to Shawn’s published writing."
+    },
+    {
+      "source": "home",
       "target": "start",
       "relation": "opens",
       "statement": "The public home opens Start here as a guided orientation route."
@@ -649,7 +821,7 @@
       "source": "home",
       "target": "oracle",
       "relation": "features",
-      "statement": "The public home features the private Yes / No Oracle as a fast interactive doorway."
+      "statement": "The home directory links to the Yes / No Oracle on Chaos Tarot."
     },
     {
       "source": "home",
@@ -739,7 +911,7 @@
       "source": "start",
       "target": "oracle",
       "relation": "opens",
-      "statement": "Start here opens the fast private Yes / No Oracle."
+      "statement": "Start here links to the Yes / No Oracle on Chaos Tarot."
     },
     {
       "source": "start",

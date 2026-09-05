@@ -72,29 +72,29 @@ const Divination: NextPage = () => {
 
       <main className={styles.page}>
         <div className={styles.wrap}>
-          <p className={styles.eyebrow}>Symbolic systems · practical boundary</p>
-          <h1 className={styles.title}>Chaos makes possibility. <em>Divination gives it a surface.</em></h1>
+          <p className={styles.eyebrow}>Tarot & symbolic reflection</p>
+          <h1 className={styles.title}>Look at your question <em>from another angle.</em></h1>
           <p className={styles.lead}>
             Tarot and other divination systems can interrupt a rehearsed story, reveal a neglected angle,
             and give intuition something concrete to work against. Their value does not require pretending
             that a random draw is a guaranteed command from the future.
           </p>
           <div className={styles.actions}>
-            <Link className={styles.primary} href="/oracle">
-              Ask a quick Yes / No →
-            </Link>
+            <a className={styles.secondary} href="https://chaos-tarot.com/yes-no" target="_blank" rel="noopener noreferrer">
+              Yes / No · Chaos Tarot sign-in <span aria-hidden="true">↗</span>
+            </a>
             <a className={styles.primary} href="https://chaos-tarot.com/free-reading?source=apocky-divination" target="_blank" rel="noopener noreferrer">
               Try a free reading <span aria-hidden="true">↗</span>
             </a>
             <a className={styles.secondary} href="https://chaos-tarot.com/system-quiz?source=apocky-divination" target="_blank" rel="noopener noreferrer">
               Find your system <span aria-hidden="true">↗</span>
             </a>
-            <Link className={styles.secondary} href="/spellcraft">Compose a symbolic working →</Link>
+            <Link className={styles.secondary} href="/spellcraft">Compose a symbolic phrase →</Link>
           </div>
 
           <section className={styles.section} aria-labelledby="systems-title">
             <div className={styles.sectionHead}>
-              <h2 id="systems-title">Seven traditions. One cross-system lens.</h2>
+              <h2 id="systems-title">Choose a way to explore.</h2>
               <p>Each symbolic grammar keeps its own identity. Cross-system synthesis compares patterns; it does not flatten differences.</p>
             </div>
             <div className={styles.grid4}>
@@ -110,8 +110,8 @@ const Divination: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="process-title">
             <div className={styles.sectionHead}>
-              <h2 id="process-title">A reading is a loop, not a verdict.</h2>
-              <p>The useful sequence keeps interpretation active and agency intact.</p>
+              <h2 id="process-title">Put a reading to use.</h2>
+              <p>Ask a clear question. Notice what a symbol brings to mind. Choose one response you can actually try, then reflect on what happened.</p>
             </div>
             <div className={styles.diagram}>
               <svg viewBox="0 0 760 350" role="img" aria-labelledby="div-loop-title div-loop-desc">
@@ -136,14 +136,14 @@ const Divination: NextPage = () => {
               </svg>
             </div>
             <p className={styles.truth}>
-              <strong>Epistemic boundary.</strong>
+              <strong>Keep your judgment.</strong>
               <span>A symbolic reading can generate perspective. It cannot establish a medical diagnosis, legal conclusion, financial guarantee, another person’s hidden thoughts, or an unavoidable future.</span>
             </p>
           </section>
 
           <section className={styles.section} aria-labelledby="faq-title">
             <div className={styles.sectionHead}>
-              <h2 id="faq-title">Questions before certainty.</h2>
+              <h2 id="faq-title">Common questions.</h2>
               <p>Direct answers, with room to go deeper.</p>
             </div>
             <div className={styles.grid3}>
@@ -155,14 +155,14 @@ const Divination: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="continue-title">
             <div className={styles.sectionHead}>
-              <h2 id="continue-title">Use it, study it, or trace its place in the wider system.</h2>
-              <p>Chaos Tarot is the active practice. Apocky is the map around it.</p>
+              <h2 id="continue-title">Try a reading or learn a symbol.</h2>
+              <p>Readings open on Chaos Tarot. You can also create a phrase or sigil here.</p>
             </div>
             <div className={styles.actions}>
               <a className={styles.primary} href="https://chaos-tarot.com/free-reading?source=apocky-divination-end" target="_blank" rel="noopener noreferrer">Begin free <span aria-hidden="true">↗</span></a>
               <a className={styles.secondary} href="https://chaos-tarot.com/glossary?source=apocky-divination" target="_blank" rel="noopener noreferrer">Open the divination glossary <span aria-hidden="true">↗</span></a>
-              <Link className={styles.secondary} href="/atlas">Trace the wider constellation →</Link>
-              <Link className={styles.secondary} href="/sigils">Craft a deterministic sigil →</Link>
+              <Link className={styles.secondary} href="/atlas">Find another tool →</Link>
+              <Link className={styles.secondary} href="/sigils">Make a sigil →</Link>
             </div>
           </section>
         </div>

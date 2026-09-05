@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 
 import type { ClearingMember, ClearingMessage, ClearingReaction, ClearingRoom, ClearingLiveState } from '../../lib/clearing/client';
 import styles from './Clearing.module.css';
@@ -71,12 +72,13 @@ export function ClearingRoom(props: ClearingRoomProps): JSX.Element {
       <div className={styles.world} aria-hidden="true"><span className={styles.orbit} /><span className={styles.glow} /></div>
       <div className={styles.frame}>
         <header className={styles.header}>
-          <div className={styles.brand}><span className={styles.brandMark}>◇</span><span>THE CLEARING</span><span className={styles.liveDot} data-state={props.liveState} /></div>
+          <Link href="/" className={styles.brand} aria-label="Return to Apocky home"><span className={styles.brandMark}>◇</span><span>Home</span><span className={styles.liveDot} data-state={props.liveState} /></Link>
           <div className={styles.headerRoom}><span>{activeRoom?.glyph ?? '◇'}</span><strong>{activeRoom?.title ?? 'North Clearing'}</strong><small>{props.presenceCount > 0 ? `${props.presenceCount} here now` : 'a public room'}</small></div>
           <nav className={styles.headerActions} aria-label="Room actions">
             <button type="button" onClick={props.onInvite}>Invite</button>
             <button type="button" onClick={props.onPrivacy}>Privacy</button>
           </nav>
+          <nav className={styles.returnLinks} aria-label="Explore Apocky"><Link href="/tools">Tools</Link><Link href="/words">Words</Link><Link href="/conversations">Thoughts</Link><Link href="/codex-apockalypsis">Codex</Link></nav>
         </header>
 
         <div className={styles.layout}>
@@ -89,7 +91,7 @@ export function ClearingRoom(props: ClearingRoomProps): JSX.Element {
                 </button>
               ))}
             </div>
-            <div className={styles.shelfFooter}><span className={styles.statusPip} data-state={props.liveState} /> {liveLabel}<small>{props.error || 'public projection'}</small></div>
+            <div className={styles.shelfFooter}><span className={styles.statusPip} data-state={props.liveState} /> {liveLabel}<small>Public community room</small></div>
           </aside>
 
           <section className={styles.stage} aria-label="Context stage">
@@ -109,9 +111,12 @@ export function ClearingRoom(props: ClearingRoomProps): JSX.Element {
           </section>
 
           <section className={styles.chat} aria-label="Conversation">
+            <div>
             <div className={styles.chatHead}><div><span className={styles.eyebrow}>CURRENT THREAD</span><h1>{activeRoom?.title ?? 'The Clearing'}</h1></div><span className={styles.chatState} data-state={props.liveState}>{liveLabel}</span></div>
+            {props.error ? <div className={styles.roomNotice} role="status" aria-live="polite">{props.liveState === 'unavailable' ? <><p>The room could not be loaded. Try refreshing this page.</p><details><summary>More details</summary><p>{props.error}</p></details></> : <p>{props.error}</p>}</div> : null}
+            </div>
             <div className={styles.stream} aria-live="polite">
-              {props.messages.length === 0 && <div className={styles.emptyStream}><span>◇</span><p>No messages yet.</p><small>Leave the first trace in this room.</small></div>}
+              {props.messages.length === 0 && <div className={styles.emptyStream}><span aria-hidden="true">◇</span><p>{props.liveState === 'loading' ? 'Opening the room…' : props.liveState === 'unavailable' || props.liveState === 'reconnecting' ? 'Waiting for the room to reconnect.' : 'No messages yet.'}</p><small>{props.liveState === 'live' ? 'Start a conversation when you’re ready.' : 'Messages will appear here when the room is ready.'}</small></div>}
               {props.messages.map((message) => (
                 <article key={message.id} className={`${styles.message} ${selected?.id === message.id ? styles.messageSelected : ''} ${message.reply_to_id ? styles.messageReply : ''}`}>
                   <button type="button" className={styles.messageBody} onClick={() => { props.onSelectMessage(message.id); props.onOpenContext(message.id); }} aria-label={`Open Context for ${message.author_label}'s message`}>
@@ -129,7 +134,7 @@ export function ClearingRoom(props: ClearingRoomProps): JSX.Element {
               {props.session === 'signed-in' ? (
                 <>
                   {localReply && <div className={styles.replyNotice}>Replying in thread <button type="button" onClick={() => setLocalReply(null)}>cancel</button></div>}
-                  <textarea value={props.draft} onChange={(event) => props.onDraftChange(event.target.value)} placeholder="Leave a trace…" aria-label="Message the Clearing" maxLength={2000} />
+                  <textarea value={props.draft} onChange={(event) => props.onDraftChange(event.target.value)} placeholder="Write a message…" aria-label="Message the Clearing" maxLength={2000} />
                   <div className={styles.composerTools}><button className={styles.send} type="submit" disabled={props.sending || !props.draft.trim()} aria-label="Send message">↑</button></div>
                 </>
               ) : (

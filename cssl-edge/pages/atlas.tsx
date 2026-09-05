@@ -22,10 +22,10 @@ const AtlasPage: NextPage = () => {
   return (
     <>
       <Head>
-        <title>Constellation Atlas — Explore Apocky</title>
+        <title>Find a tool, story, or idea · Apocky</title>
         <meta
           name="description"
-          content="Explore Apocky through an interactive visual map, complete project index, and plain-language dictionary."
+          content="Search the tools, stories, writing, and useful ideas on Apocky. Find a page and get straight to it."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta property="og:title" content="Constellation Atlas — Explore Apocky" />

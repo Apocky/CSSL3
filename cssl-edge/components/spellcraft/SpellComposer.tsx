@@ -1,156 +1,79 @@
 import Link from 'next/link';
-import { FormEvent, useMemo, useRef, useState } from 'react';
-
+import { type FormEvent, useMemo, useRef, useState } from 'react';
 import { addLocalSpellbookEntry } from '../../lib/spellbook-local';
-import {
-  analyzeSpell,
-  createSpellbookEntry,
-  DEFAULT_SPELL_LIMITS,
-  HALOIC_VOCAB,
-  type SpellAnalysis,
-  type VocabularyNamespace,
-} from '../../lib/spellcraft';
+import { analyzeSpell, createSigil, createSpellbookEntry, HALOIC_VOCAB, type SigilArtifact, type SpellAnalysis, type VocabularyNamespace } from '../../lib/spellcraft';
+import IntentPicker from './IntentPicker';
+import { INTENT_PRESETS, selectedIntent } from './intent-presets';
 import styles from '../../styles/SymbolicStudio.module.css';
-
-const EXAMPLES = [
-  ['Illuminate', 'ka-sol-el'],
-  ['Hold a boundary', 'nau zur'],
-  ['Conditional', 'ki shan root:rad, ya sol um verb:alg'],
-] as const;
 
 const NAMESPACES: readonly VocabularyNamespace[] = ['prefix', 'root', 'suffix', 'verb', 'particle', 'power'];
 
 export default function SpellComposer(): JSX.Element {
-  const [input, setInput] = useState('ka-sol-el');
+  const [input, setInput] = useState<string>(INTENT_PRESETS[0].source);
   const [analysis, setAnalysis] = useState<SpellAnalysis | null>(null);
+  const [artifact, setArtifact] = useState<SigilArtifact | null>(null);
   const [namespace, setNamespace] = useState<VocabularyNamespace>('root');
   const [label, setLabel] = useState('');
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'failed'>('idle');
   const resultRef = useRef<HTMLElement>(null);
-
-  const visibleVocabulary = useMemo(
-    () => HALOIC_VOCAB.filter((entry) => entry.namespace === namespace),
-    [namespace],
-  );
-
+  const visibleVocabulary = useMemo(() => HALOIC_VOCAB.filter(entry => entry.namespace === namespace), [namespace]);
+  const intent = selectedIntent(input);
+  const changeInput = (source: string): void => { setInput(source); setAnalysis(null); setArtifact(null); setSaveState('idle'); };
   const compile = (event?: FormEvent): void => {
     event?.preventDefault();
-    const next = analyzeSpell(input);
-    setAnalysis(next);
-    setSaveState('idle');
-    window.requestAnimationFrame(() => resultRef.current?.focus());
+    setAnalysis(analyzeSpell(input)); setArtifact(null); setSaveState('idle');
+    window.requestAnimationFrame(() => { resultRef.current?.focus(); resultRef.current?.scrollIntoView({ block: 'start' }); });
   };
-
-  const insert = (value: string): void => {
-    setInput((current) => `${current.trim()}${current.trim() ? ' ' : ''}${value}`);
-    setAnalysis(null);
-    setSaveState('idle');
-  };
-
   const save = (): void => {
     if (!analysis || analysis.status !== 'valid') return;
-    const entry = createSpellbookEntry(analysis, {
-      label: label || analysis.interpretation.text.slice(0, 72),
-      savedAt: new Date().toISOString(),
-    });
-    const result = addLocalSpellbookEntry(window.localStorage, entry);
-    setSaveState(result.status === 'ready' ? 'saved' : 'failed');
+    const entry = createSpellbookEntry(analysis, { label: label.trim() || intent?.label || analysis.interpretation.text.slice(0, 72), savedAt: new Date().toISOString() });
+    try { setSaveState(addLocalSpellbookEntry(window.localStorage, entry).status === 'ready' ? 'saved' : 'failed'); } catch { setSaveState('failed'); }
   };
-
-  return (
-    <div className={styles.composerLayout}>
-      <form className={styles.workbench} onSubmit={compile}>
-        <div className={styles.panelHeader}><span className={styles.statusDot} aria-hidden="true" /><span>ENGINE 1.0 · SYMBOLIC ONLY</span></div>
-        <label className={styles.label} htmlFor="spell-source">Compose a symbolic intention</label>
-        <textarea
-          id="spell-source"
-          className={styles.textarea}
-          value={input}
-          maxLength={DEFAULT_SPELL_LIMITS.maxInputChars}
-          onChange={(event) => { setInput(event.target.value); setAnalysis(null); setSaveState('idle'); }}
-          rows={5}
-          spellCheck={false}
-        />
-        <div className={styles.inputMeta}><span>{input.length} / {DEFAULT_SPELL_LIMITS.maxInputChars}</span><span>Compile writes nothing</span></div>
-        <div className={styles.exampleRow} aria-label="Example spells">
-          {EXAMPLES.map(([name, value]) => <button key={value} type="button" onClick={() => { setInput(value); setAnalysis(null); }}>{name}</button>)}
+  const downloadArt = (): void => {
+    if (!artifact) return;
+    const href = URL.createObjectURL(new Blob([artifact.svg], { type: 'image/svg+xml;charset=utf-8' }));
+    const anchor = document.createElement('a'); anchor.href = href; anchor.download = `apocky-sigil-${artifact.seedHash.slice(0, 12)}.svg`; anchor.click(); URL.revokeObjectURL(href);
+  };
+  return <div className={styles.composerLayout}>
+    <form className={styles.workbench} onSubmit={compile}>
+      <IntentPicker input={input} onChange={changeInput} id="spell" />
+      <button className={styles.primaryButton} type="submit">Create my spell <span aria-hidden="true">→</span></button>
+      <p className={styles.smallNote}>A creative prompt for reflection. Saved only when you choose.</p>
+      <details className={styles.customize}>
+        <summary>Browse the symbolic vocabulary</summary><p>Choose a word to add it to the symbolic editor.</p>
+        <div className={styles.namespaceTabs} role="group" aria-label="Vocabulary category">{NAMESPACES.map(item => <button key={item} type="button" aria-pressed={namespace === item} onClick={() => setNamespace(item)}>{item}</button>)}</div>
+        <ul className={styles.morphemeGrid}>{visibleVocabulary.map(entry => {
+          const ambiguous = HALOIC_VOCAB.filter(candidate => candidate.lexeme === entry.lexeme).length > 1;
+          const insertion = ambiguous ? `${entry.namespace}:${entry.lexeme}` : entry.lexeme;
+          return <li key={entry.id}><button type="button" onClick={() => changeInput(`${input.trim()}${input.trim() ? ' ' : ''}${insertion}`)}><b>{insertion}</b><span>{entry.meaning}</span></button></li>;
+        })}</ul>
+      </details>
+    </form>
+    <section ref={resultRef} className={styles.analysisPanel} tabIndex={-1} aria-label="Your spell" aria-live="polite">
+      {!analysis ? <div className={styles.emptyResult}><span aria-hidden="true">✧</span><h2>A few words to carry with you.</h2><p>Choose a focus, then create a reflection. You can keep it in your spellbook or turn it into a sigil.</p></div> : analysis.status === 'valid' ? <>
+        <p className={styles.resultKicker}>Your reflection</p><h2 className={styles.resultTitle}>{intent?.label ?? 'Your chosen intention'}</h2>
+        <blockquote className={styles.reflection}>{analysis.interpretation.text.charAt(0).toUpperCase() + analysis.interpretation.text.slice(1)}</blockquote>
+        {intent ? <p className={styles.reflectionPrompt}>{intent.prompt}</p> : null}
+        <div className={styles.savePanel}>
+          <label htmlFor="spell-label">Give it a name <span>optional</span></label><input id="spell-label" className={styles.textInput} value={label} maxLength={80} onChange={event => setLabel(event.target.value)} placeholder={intent?.label ?? 'My reflection'} />
+          <button type="button" onClick={save}>Save to spellbook</button>
+          {saveState !== 'idle' ? <p role="status">{saveState === 'saved' ? 'Saved in this browser.' : 'This browser could not save it. Your reflection is still here.'}</p> : null}
         </div>
-        <button className={styles.primaryButton} type="submit">Compile and interpret</button>
-
-        <section className={styles.vocabulary} aria-labelledby="vocabulary-title">
-          <div className={styles.vocabularyHeading}>
-            <h2 id="vocabulary-title">Vocabulary deck</h2>
-            <span>{HALOIC_VOCAB.length} versioned forms</span>
-          </div>
-          <div className={styles.namespaceTabs} role="group" aria-label="Vocabulary category">
-            {NAMESPACES.map((item) => <button key={item} type="button" aria-pressed={namespace === item} onClick={() => setNamespace(item)}>{item}</button>)}
-          </div>
-          <ul className={styles.morphemeGrid}>
-            {visibleVocabulary.map((entry) => {
-              const ambiguous = HALOIC_VOCAB.filter((candidate) => candidate.lexeme === entry.lexeme).length > 1;
-              const insertion = ambiguous ? `${entry.namespace}:${entry.lexeme}` : entry.lexeme;
-              return (
-                <li key={entry.id}>
-                  <button type="button" onClick={() => insert(insertion)}>
-                    <b>{insertion}</b><span>{entry.meaning}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      </form>
-
-      <section ref={resultRef} className={styles.analysisPanel} tabIndex={-1} aria-live="polite">
-        {!analysis ? (
-          <div className={styles.emptyResult}><span aria-hidden="true">⌘</span><h2>Readable machinery.</h2><p>Compile to see the parse, English interpretation, immutable symbolic graph, uncertainty, and provenance. Unknown or ambiguous forms stop before compilation.</p></div>
-        ) : (
-          <>
-            <div className={styles.analysisHeader}>
-              <div><p className={styles.resultKicker}>COMPILER VERDICT</p><h2>{analysis.status}</h2></div>
-              <span data-status={analysis.status}>{Math.round(analysis.confidence * 100)}% lexical confidence</span>
-            </div>
-
-            {analysis.issues.length > 0 ? (
-              <ul className={styles.issueList} aria-label="Compiler messages">
-                {analysis.issues.map((issue, index) => <li key={`${issue.code}-${index}`} data-severity={issue.severity}><code>{issue.code}</code><span>{issue.message}</span></li>)}
-              </ul>
-            ) : null}
-
-            {analysis.status === 'valid' ? (
-              <>
-                <div className={styles.interpretation}><span>Plain-language reflection</span><p>{analysis.interpretation.text}</p><small>{analysis.interpretation.disclaimer}</small></div>
-                <section className={styles.trace} aria-labelledby="trace-title">
-                  <h3 id="trace-title">Morpheme trace</h3>
-                  <ol>{analysis.interpretation.trace.map((item, index) => <li key={`${item.term}-${index}`}><b>{item.term}</b><span>{item.gloss}</span><em>{Math.round(item.confidence * 100)}%</em></li>)}</ol>
-                </section>
-                <section className={styles.graphPreview} aria-labelledby="graph-title">
-                  <div><h3 id="graph-title">Symbolic graph</h3><span>{analysis.compiled.operations.length} immutable nodes · executable: no</span></div>
-                  <ol>{analysis.compiled.operations.map((node) => <li key={node.id}><code>{node.id}</code><b>{node.operation.replace('symbolic.', '')}</b><span>{node.label}</span></li>)}</ol>
-                </section>
-                <details className={styles.receiptDetails}><summary>Provenance receipt</summary><dl><div><dt>Engine</dt><dd>{analysis.receipt.engineVersion}</dd></div><div><dt>Vocabulary</dt><dd>{analysis.receipt.vocabularyVersion}</dd></div><div><dt>Program hash</dt><dd><code>{analysis.receipt.programHash}</code></dd></div><div><dt>Authority</dt><dd>{analysis.receipt.authority}</dd></div></dl></details>
-
-                <div className={styles.savePanel}>
-                  <label htmlFor="spell-label">Spellbook label <span>optional</span></label>
-                  <input id="spell-label" className={styles.textInput} value={label} maxLength={80} onChange={(event) => setLabel(event.target.value)} placeholder="Name this working" />
-                  <button type="button" onClick={save}>{saveState === 'saved' ? 'Saved to this browser' : saveState === 'failed' ? 'Local save unavailable' : 'Save explicitly'}</button>
-                </div>
-                <div className={styles.buttonRow}>
-                  <Link href="/sigils">Render a sigil →</Link>
-                  <Link href="/spellbook">Open Spellbook →</Link>
-                  <a href="https://chaos-tarot.com/free-reading?source=apocky-spellcraft-result" target="_blank" rel="noopener noreferrer">Ask Chaos Tarot ↗</a>
-                </div>
-              </>
-            ) : (
-              <div className={styles.blockedResult}>
-                <h3>{analysis.status === 'quarantined' ? 'Meaning remains unresolved.' : 'Compilation stopped safely.'}</h3>
-                <p>{analysis.status === 'quarantined' ? 'Qualify an ambiguous term as namespace:lexeme or replace an unknown form. Nothing was compiled or saved.' : 'Correct the marked input. No symbolic plan, sigil, storage write, or external action occurred.'}</p>
-                <code>{analysis.status === 'quarantined' ? 'SYMBOLIC_UNKNOWN_QUARANTINED' : 'SYMBOLIC_COMPILE_BLOCKED'}</code>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-    </div>
-  );
+        <div className={styles.buttonRow}><button type="button" onClick={() => setArtifact(createSigil(analysis, { variant: 0 }))}>Make a sigil</button><Link href="/spellbook">Open spellbook →</Link></div>
+        {artifact ? <div className={styles.inlineArtwork}><img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(artifact.svg)}`} alt="A geometric sigil made from your reflection" width={512} height={512} /><button className={styles.quietButton} type="button" onClick={downloadArt}>Download image</button></div> : null}
+        <details className={styles.customize}>
+          <summary>How it works</summary><p>{analysis.interpretation.disclaimer}</p><p><strong>Symbolic words:</strong> <code>{analysis.input}</code></p>
+          <p>Lexical confidence: {Math.round(analysis.confidence * 100)}%. This measures recognition of vocabulary, not the likelihood of an outcome.</p>
+          <h3>Word meanings</h3><ol className={styles.technicalList}>{analysis.interpretation.trace.map((item, index) => <li key={`${item.term}-${index}`}><code>{item.term}</code> — {item.gloss}</li>)}</ol>
+          <h3>Symbolic graph</h3><p>{analysis.compiled.operations.length} nodes · executable: no</p><ol className={styles.technicalList}>{analysis.compiled.operations.map(node => <li key={node.id}><code>{node.operation}</code> — {node.label}</li>)}</ol>
+          <dl className={styles.technicalData}><div><dt>Engine</dt><dd>{analysis.receipt.engineVersion}</dd></div><div><dt>Vocabulary</dt><dd>{analysis.receipt.vocabularyVersion}</dd></div><div><dt>Program hash</dt><dd><code>{analysis.receipt.programHash}</code></dd></div></dl>
+        </details>
+      </> : <div className={styles.blockedResult}>
+        <h2>Let’s adjust those words.</h2><p>One or more symbolic words could not be understood. Try a starting point, or edit the words below “Edit symbolic words.”</p>
+        <ul>{analysis.issues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}</li>)}</ul>
+        <button className={styles.quietButton} type="button" onClick={() => changeInput(INTENT_PRESETS[0].source)}>Start with Clarity</button>
+        <details className={styles.customize}><summary>Technical details</summary><code>{analysis.status === 'quarantined' ? 'SYMBOLIC_UNKNOWN_QUARANTINED' : 'SYMBOLIC_COMPILE_BLOCKED'}</code></details>
+      </div>}
+    </section>
+  </div>;
 }

@@ -1,0 +1,140 @@
+§ REMAINING.FAMILIES.REVIEW v1 @2026-09-05
+§P
+  authority := /root → read-only route review → explicit UI-only implementation assignment
+  scope := /quests | /clearing | /login | /register | /account | /apocrypha
+  exclusions := runtime/controllers/auth handlers/backend/session journal/private state/message sends
+  lookup := Graphify existing graph query →627 nodes, 1400-token bounded output;
+    noisy generic matches ⇒ verify exact files/imports/current source; no graph rebuild
+  evidence := current worktree sources + focused executed checks;
+    root CUA observations reported separately; no competing browser launched
+§D initial.findings
+  F1.Clearing
+    source := pages/_app.tsx:isBare + components/clearing/ClearingRoom.tsx + Clearing.module.css
+    ✓ own chrome; shared SiteShell omitted; brand div noninteractive; no Home link
+    ✓ error only shelfFooter; @max700 shelfFooter display:none
+    ✓ messages.length0 rendered No messages yet regardless loading/unavailable
+    ✓ data.reload hook exists; no new API/reload/post lifecycle authorized
+    decision := direct Home +4public paths; main visible notice; distinguish empty from unavailable
+  F2.authentication
+    source := components/hub/AuthFrame.tsx + styles/apocky-system.css:811-950
+    ✓ story before workspace; @max940 single-column; story.main padding60px;
+      @max660 heading14vw ⇒ form displacement inferred before root visual review
+    decision := optional formFirst actual DOM order; dedicated scoped CSS; callback default unchanged
+    N! CSS visual reorder alone leaves old keyboard/reading order
+  F3.Quests
+    source := pages/quests.tsx
+    ✓11 persistent IDs vs text8 missions; outdated compiler/hash activities;
+      Oracle private/local implication despite external sign-in destination
+    decision := retain11 IDs+storage shape+toggle/reset; task-language + accurate destination
+§S implemented.delta
+  own.files :=
+    components/clearing/{ClearingRoom.tsx,Clearing.module.css}
+    components/hub/AuthFrame.tsx
+    styles/AuthEntry.module.css
+    pages/{login,register,quests}.tsx
+    tests/e2e/useful-entry-flows.spec.ts
+  Clearing := Home +Tools/Words/Thoughts/Codex;
+    notice role=status+polite visible in conversation region, technical cause optional;
+    loading/unavailable/reconnecting distinguished from live empty room;
+    message input Write a message; no room/membership/reaction/send changes
+  Auth := formFirst defaultfalse; Login/Register opt in; first heading h1;
+    Home above form; story follows workspace in DOM; small responsive form styles;
+    callback original story-first order+markup preserved; no submission executed
+  Quests := 11activities; generic practical tasks; external Oracle sign-in label;
+    known stored IDs retained; no compiler/receipt/storage-key prose in primary reading
+  final.followup := Atlas1place singular; Clearing4public-return paths incl Thoughts
+§T preservation
+  ✓ git diff pages/login.tsx+register.tsx := only AuthFrame formFirst + h2→h1
+  ✓ unchanged := auth-return normalization, OTP send/verify, resend cooldown,
+    terms agreement, shouldCreateUser, cookie mirror, provider redirects, callback handlers
+  ✓ unchanged := pages/clearing.tsx, useClearingData.ts, clearing/client.ts;
+    post lifecycle + membership + RLS + subscriptions + room selection preserved
+  ✓ unchanged := Quests STORAGE_KEY,11IDs, read/filter/toggle/reset/effects
+  ✓ unchanged := pages/account.tsx + pages/apocrypha.tsx + AccountChat.tsx + AccountChat.module.css
+  ✓ executed :=
+    npx tsc --noEmit --incremental false → PASS
+    node --import tsx tests/pages/auth-account.test.ts → PASS
+    node --import tsx tests/pages/auth-csp.test.ts → PASS
+    scoped git diff --check → PASS
+  ○ prepared.browser := tests/e2e/useful-entry-flows.spec.ts3tests:
+    login/register email+primary action within390×844 +320×740, DOM formfirst, Home;
+    Clearing unavailable fixture+mobile notice+4return paths, no falseempty;
+    11quest cards + preserved compose-working ID afterreload + reset + Oracle external label
+  ○ root.CUA.report := Login/Register formfirst confirmed; next=%2Faccount preserved;
+    no submission; Clearing unavailable notice+Home/Tools/Words/Codex visible+usable;
+    Thoughts link added after observation; final build lane informed
+§C remaining.stable-or-review
+  Account
+    source := pages/account.tsx + apocky-system.css:899-908 + root shared shell
+    ✓ own Home+global nav present; sign-out action real; browser/server identity mismatch explicit;
+      privacy request email real; export/delete unavailable truthfully described; no fake controls
+    retain := runtime/account verification + signout + privacy request semantics
+    ○ optional UI polish := email+signout first; UUID/dates under Account details;
+      ordinary label Your account vs Identity and boundaries; body/data text >=16px
+    risk := 12.5px data/value inherited styles; root rendered review needed before claiming unreadable
+    N! substitute invented self-service export/delete; requires separate functional contract
+  Apocrypha
+    source := pages/apocrypha.tsx + components/apocrypha/AccountChat.tsx:160-175 + styles/AccountChat.module.css
+    ✓ signed-out meaningful sign-in/create-account actions; headerbrand href=/;
+      history/new/send/retry/copy exist; connection details optional already;
+      owner/account selection protects pending journal; no controller rewrite warranted
+    ○ optional UI polish := explicit Home aria-label on brand; mobile body14px→16px,
+      history/nav labels11-13px→readable; compact signed-out welcome90px top spacing
+    strongest.countercase := existing dedicated chat chrome keeps focus; connection metadata already hidden;
+      any viewport sizing change must preserve keyboard/composer/pending-retry state
+    verification.boundary := UI source inspection != live reply/shared recall/native delivery;
+      do not start/replace conversations or probe owner private state to prove typography
+§A integration
+  source.freeze := final7file hashes supplied /root/public_review; no further source mutations planned
+  root owns := visual acceptance + build + live-base reconciliation + Git commit/push + deployment
+  rollback := scoped UI revert; persistence/auth/private controller remain byte-preserved
+  N! account/Apocrypha source review = signed-in flow acceptance
+∎
+
+§ FINAL.ACCESSIBILITY.SOURCE.REVIEW @2026-09-05
+  request := /root bounded full-site changed-UI review; no browser/server
+  candidate := publication/staging/redesign-build-20260905T230713Z/app
+  ✓ candidate.executed :=
+    tsc --noEmit --incremental false --pretty false → PASS
+    tests/pages/docs.test.ts → PASS3
+    tests/pages/auth-csp.test.ts → PASS
+    tests/security/public-web-retirement.test.ts → PASS
+  ✓ review.stable :=
+    DocsLayout mobile native details closes by default; duplicated nav fragments contain no duplicate IDs;
+    exactly1 main via DocsLayout beneath SiteShell div; sidebar hidden below900;
+    shared search labeled dialog+aria-modal+querylabel; Escape/Tab trap/trigger focus return present;
+    menu Escape closes+returns summaryfocus; route navigation closes menu;
+    direct tool result focus + labels retained; global/module reduced-motion CSS present
+  ✓ defects.corrected after explicit /root assignment :=
+    pages/404.tsx +500.tsx child main-content IDs removed; SiteShell target preserved
+    components/site/CommandPalette.tsx result plural conditional
+    styles/apocky-redesign.css input:focus-visible narrow outline restores keyboard focus
+    pages/conversations.tsx quick-path explicit smooth consults reduced-motion media;
+      corpus result +load-more +turn counts singular conditional
+  ✓ final.worktree.executed := tsc noEmit/noincremental +conversation-corpus publication boundary +scoped diffcheck →PASS
+  ✓ final5file SHA256 supplied build lane /root/public_review; no other source changed
+  root.concurrent := SiteDirectory count +fullpanel user revision; no overlapping file writes
+  distinct.remaining.concern :=
+    pages/docs/[slug].tsx inline style body/html/a globally overrides shared chrome typography;
+      source legacy spec footer color#5a5a6a over#050507 contrast≈3.01:1
+    components/CodeBlock.tsx comments#5a5a6a over estimated composited#0f1018 contrast≈2.80:1
+    classification := preexisting consumer behavior on changed documentation family;
+      measured color arithmetic; exact composite inferred; no rendered contrast claim
+    proposed bounded correction := scope legacy stylesheet to own mainclass;
+      readable muted foreground for technical comments/footer; preserve source text+routes
+    authority := reported to /root; no unassigned edits
+  N! these checks prove rendered whole-site acceptance; root retains browser+deployment responsibility
+∎
+
+§A legacy.docs.concern.closed @2026-09-05
+  authority := /root explicit scoped presentation fix
+  ✓ pages/docs/[slug].tsx := global body/html/a selectors replaced .csl-reference scope;
+    main class added; invalid8 border radius→8px; footer#5a5a6a→#a8a2b3
+  ✓ components/CodeBlock.tsx := comment color only #5a5a6a→#9b96a8
+  ✓ source preservation := lib/specs-snapshot.ts unchanged;
+    source render/highlighter/getStaticProps/link/role/privacy logic untouched
+  ✓ verification := docs3tests PASS before+after; final tsc noEmit/noincremental PASS; scoped diffcheck PASS
+  ◐ contrast arithmetic := footer8.23:1 over#050507; codecomment6.61:1 over estimated#0f1018
+  ✓ final2hashes sent build lane; no additional unresolved concern from this bounded source review
+  N! source review + arithmetic = rendered whole-site acceptance
+∎

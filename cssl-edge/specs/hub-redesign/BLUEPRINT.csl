@@ -1,0 +1,96 @@
+§ APOCKY.HUB.REDESIGN v2 @2026-09-05
+§P
+  authority := user.«Redesign everything EVERYTHING» + «tools and definitions and thoughts they can USE»
+    + latest.user.«ALL destinations» → equal full visible homepage panels.
+  defect.observed := Codex buried closed disclosure ∧ absent menu/search; mobile search clipped;
+    Atlas hero+stats displace controls; creative tools foreground parser/hash;
+    writing libraries foreground corpus bookkeeping.
+  objective := every existing first-party user-facing route participates coherent useful product.
+  N! denominator collapses homepage-only | colors-only | link-only.
+§D
+  hierarchy := Use tools | Find a definition | Explore thoughts | Read stories.
+  shell := Home + Tools + Words + Thoughts + Codex + Search + optional account/menu.
+  home := brief welcome + ∀ public.destination\{home} → equal full visible panel.
+  home.denominator := current.public.registry35 − home1 =34 destinations;
+    registry additions → automatic inclusion; N! silent exclusion.
+  home.order := Codex Apockalypsis → Apocrypha → Atlas → Chaos Tarot → remaining groups.
+  home.panel := same DestinationPanel renderer ∀ destinations;
+    visible title + plain useful description + direct destination action;
+    Codex additionally → opening chapter direct action.
+  home.default := every panel rendered + visible; groups organize without collapsing.
+  home.search := user query filters panels; clear query → all destinations restored.
+  N! More of Apocky | destination disclosure | compact rows | secondary hidden directory
+    | featured-only coverage | exclusion.(CSSLv3|Ko-fi|Patreon).
+  equal := complete panel treatment + comparable space + direct action;
+    M? distinct color accents; N! remaining destinations reduced into links-only rows.
+  tool.flow := plain choice/preset → create → useful result → save/download/retry.
+  words.flow := search term → ordinary meaning + existing example → related use.
+  reading.flow := topic/search → published work → reading controls → next reading/home.
+  codex.flow := home/menu/search → novel|companion → chapter → next/reference/download.
+  optional.depth := How it works | Sources | About this project.
+  N! primary copy := neural-index | substrate | provenance receipt | hash | build/version
+    | compiler verdict | operational gate | implementation description.
+  W! facts needed userdecision remain clear: sign-in needed, local storage, external destination,
+    work in progress, unavailable result, paid option, source attribution.
+§S
+  design := ink background + warm white typography + restrained violet/cyan accent;
+    readable body >=16px; prose width<=72ch; mixed-case task labels;
+    compact purposeful headers; variation between reading/tool/directory layouts.
+  mobile := 390x844 +320x740; controls before explanatory bulk;
+    menu/search fit visibleviewport; tap targets>=44px; no horizontalpageoverflow.
+  desktop := 1440x1000; meaningful columns; no stretched prose or empty hero.
+  tablet := 768x1024; responsive columns and nav.
+  access := semantic landmarks + clear names + keyboard focus/trap/escape
+    + reduced motion + high contrast + no color-only state.
+  registry := public routes+aliases+plain summaries feed home/search/Atlas/related links.
+  N! stale availability claim from registry supersedes observed route.
+  existing shared runtime/auth/privacy/publication approval gates preserved.
+  route retirement preserved; external tools clearly handed off.
+§T
+  lanes.root := shell+home+search+registry+global CSS+Codex+integration+live visual audit.
+  lane.tools := Atlas+Words+Spellcraft+Sigils+Spellbook + boundedstyles/tests.
+  lane.reading := reading/info page families + boundedstyles/tests+route coverage.
+  lane.governance := prior authorized instruction/identity/goal/Prime amendments.
+  root alone := Git index+commit+push+remoteverify+deployment.
+  verify := source route inventory → local type/build/focused behavior → browser flows
+    → desktop/tablet/mobile screenshots → accessibility/reflow → privateboundary regression
+    → scopedcommit → push → remoteSHA → deployment → live route+flow acceptance.
+  N! screenshot of singlepage proves everyroute.
+  W! report per-route states observed | source-only | blocked; unknown N! complete.
+  home.contract := registry\{home} = default.search = actual.rendered.panel.ids;
+    ∀ id → exactly1 full panel + heading + description + registered href + action;
+    first4 ordered; external handoffs named; retired/private paths absent.
+  home.proof := SSR verifies coverage+semantic structure; browser verifies visible full panels
+    @desktop+tablet+mobile; N! SSR alone ⇒ CSS visibility|interaction acceptance.
+§C
+  invariants := existing usercontent/credentials/history/consent/publicationrights preserved;
+    auth callback + routing + message persistence + source attributions unchanged.
+  rollback := Git5fb59aba9a9e63292d6b25ceaf12afceac5d73e6 + published dpl_2ZHuztZ6UNVozb61U9qGhFz9ExLv.
+  publication.old := ✓ committed+pushed+remoteSHA @5fb59aba9a9e63292d6b25ceaf12afceac5d73e6.
+  redesign := active; no broad completion claim before matrix closure.
+§T final.panel+tools.receipt @2026-09-05
+  ✓ actual.SiteDirectory.SSR := 34/34 default panels; unique ids + same full presentation
+    + heading/description/direct href/action + first4 order + external handoff notices.
+  ✓ focused.groups := public-discovery + neural-public-pages + symbolic-studio
+    + conversation-corpus + akashic-records + showcase + docs-page + omnoid-singularity-page
+    + infinity-engine-page + buy-page + auth-redirect + public-web-retirement + intent-presets.
+  ✓ intent.choices111; approved.archive.records233; private.review.hold1386 preserved;
+    typecheck --noEmit --incremental false; scoped whitespace check.
+  stale.tests3 := literal home hrefs/four-path labels + exact unfinished-research phrase;
+    corrected → actual shared-component SSR + equivalent explicit release boundary.
+  ✓ browser := localhost8891 existing server; isolated contexts; desktop1440x900 + mobile390x844;
+    symbolic12 + entry3 =15 scenarios ×2 =30 cases.
+  initial := 26pass +4fail; cause := exact label query included option text
+    + duplicate symbolic text.(hidden editor|visible result).
+  correction := accessible combobox role+name + result-scoped text;
+    failed.matrix.rerun4/4pass; runtime.delta0.
+  ✓ flows := six presets + custom combination + reflection/result focus + invalid-word recovery
+    + SVG download + deterministic variation + explicit local save/delete
+    + denied import preserves collection + unavailable storage truthful
+    + Atlas search/comparison + Words everyday/technical/empty/copy
+    + serious/critical axe0 across6 tool views + first-viewport controls
+    + mobile auth form-first + Clearing unavailable/nav + quest progress/reload/reset.
+  browser.effects := anonymous reads + isolated local storage + temporary local browser mocks
+    + generated local downloads; auth.submit0 + chat.send0 + post0 + payment0.
+  N! local acceptance ⇒ candidate/live proof; root owns final deployment acceptance.
+∎

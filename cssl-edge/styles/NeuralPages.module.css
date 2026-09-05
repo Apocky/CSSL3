@@ -32,18 +32,18 @@
 .eyebrow {
   margin: 0 0 14px;
   color: var(--apx-neon);
-  font-family: var(--apx-mono);
-  font-size: 0.72rem;
-  font-weight: 760;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--apx-sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .title {
   max-width: 24ch;
   margin: 0;
   font-family: var(--apx-display);
-  font-size: clamp(2.2rem, 4.2vw, 3.6rem);
+  font-size: clamp(2rem, 3.3vw, 3rem);
   font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.02;
@@ -371,7 +371,7 @@
 }
 
 @media (max-width: 660px) {
-  .wrap { width: min(100% - 32px, 1180px); padding-top: 32px; }
+  .wrap { width: min(100% - 32px, 1180px); padding-top: 26px; }
   .title { max-width: none; }
   .grid2,
   .grid3,
@@ -411,3 +411,11 @@
   .tierFeatured,
   .quest[data-complete="true"] { border-width: 2px; }
 }
+
+/* § shared useful-page rhythm */
+.page{background:var(--apx-bg)}
+.page::before{display:none}
+.title em{color:var(--apx-violet);background:none;-webkit-text-fill-color:currentColor}
+.sectionHead h2{font-family:var(--apx-display)}
+.card,.tier,.quest{border-radius:12px;background:var(--apx-panel)}
+@media(max-width:660px){.section{margin-top:30px}.title{font-size:2.1rem}.lead{font-size:.97rem;line-height:1.6}.actions{margin-top:18px}.eyebrow{margin-bottom:10px}}

@@ -211,10 +211,10 @@ const Login: NextPage = () => {
         <meta name="robots" content="noindex,nofollow" />
       </Head>
       <a className="apx-skip-link" href="#main-content">Skip to sign in</a>
-      <AuthFrame mode="sign-in">
+      <AuthFrame mode="sign-in" formFirst>
         <div className="apx-auth-card">
           <p className="apx-auth-context">Continue to {destination}</p>
-          <h2>Sign in to Apocky</h2>
+          <h1>Sign in to Apocky</h1>
           <p className="apx-auth-subtitle">Use a one-time email code, the secure link in that email, or a provider you already trust. No password required.</p>
 
           {localhostCallback && (

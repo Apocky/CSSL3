@@ -172,7 +172,8 @@ const Conversations: NextPage = () => {
     setProvider('All');
     setTheme(path.theme);
     setLens(path.lens);
-    document.getElementById('conversation-explorer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('conversation-explorer')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
   };
 
   const clear = (): void => {
@@ -204,7 +205,7 @@ const Conversations: NextPage = () => {
     <>
       <Head>
         <title>Conversation Constellations · Shawn Apocky with ChatGPT, Claude, and Codex</title>
-        <meta name="description" content="Explore privacy-safe human–AI conversation constellations, source-linked paraphrases, original Apocky lore, and an honest map of the 1,386-record local review queue." />
+        <meta name="description" content="Explore short readings on soul, myth, creativity, and sovereignty. Search ideas, compare voices, and follow their sources." />
         <meta name="keywords" content="Shawn Apocky conversations, AI conversations, ChatGPT spirituality, Claude philosophy, consciousness, mythology, divination, allegory, human AI dialogue" />
         <meta name="robots" content="index,follow,max-image-preview:large" />
         <meta name="theme-color" content="#000000" />
@@ -222,35 +223,109 @@ const Conversations: NextPage = () => {
         <div className={styles.wrap}>
           <header className={styles.hero}>
             <div>
-              <p className={styles.eyebrow}>Human ↔ AI · public reading room</p>
-              <h1>Conversation <em>Constellations.</em></h1>
+              <p className={styles.eyebrow}>Conversations · Shawn Apocky</p>
+              <h1>Ideas worth <em>thinking with.</em></h1>
             </div>
             <div className={styles.heroCopy}>
               <p>
-                Enter through hand-read paraphrases, original Apocky lore, and the connections that make the archive
-                behave like a mind. The complete export is indexed locally; full bodies stay private until each record
-                passes explicit privacy and publication-rights review.
+                Short readings drawn from conversations about soul, myth, creativity, and the difficult art of being yourself.
               </p>
               <div className={styles.heroActions}>
-                <a className={styles.primary} href="#full-corpus">See the review state ↓</a>
-                <Link className={styles.secondary} href="/akashic-records">Search the source archive →</Link>
+                <Link className={styles.readingLink} href="/codex-apockalypsis">Codex Apockalypsis →</Link>
+                <Link className={styles.readingLink} href="/akashic-records">Essays →</Link>
               </div>
             </div>
           </header>
 
-          <section className={styles.truthPanel} aria-labelledby="truth-title">
-            <div>
-              <p className={styles.eyebrow}>What changed</p>
-              <h2 id="truth-title">The whole corpus is counted. Publication remains chosen.</h2>
-            </div>
-            <p>
-              The earlier Akashic snapshot published {CONVERSATION_ARCHIVE_FACTS.publicMediumWorks} authored works and only{' '}
-              {CONVERSATION_ARCHIVE_FACTS.publicCodexConversations} selected Codex conversations across{' '}
-              {CONVERSATION_ARCHIVE_FACTS.publicCodexTranscriptChunks} transcript records. The local index now counts all{' '}
-              {CONVERSATION_ARCHIVE_FACTS.localChatGptConversations.toLocaleString('en-US')} ChatGPT and{' '}
-              {CONVERSATION_ARCHIVE_FACTS.localClaudeConversations} Claude conversation records without converting
-              automated redaction into consent. Selection decides what is featured; explicit review decides what may be public.
+          <section className={styles.explorer} id="conversation-explorer" aria-label="Find an idea">
+            <form className={styles.controls} onSubmit={(event) => event.preventDefault()}>
+              <label className={styles.searchField}>
+                <span>Search ideas</span>
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Try soul, myth, ordinary, reality…"
+                  autoComplete="off"
+                  aria-controls="conversation-results"
+                />
+              </label>
+              <label>
+                <span>Theme</span>
+                <select value={theme} onChange={(event) => setTheme(event.target.value as ThemeFilter)}>
+                  {THEMES.map((value) => <option key={value}>{value}</option>)}
+                </select>
+              </label>
+              <button type="button" onClick={clear} disabled={query.length === 0 && provider === 'All' && theme === 'All'}>Clear</button>
+            </form>
+
+            <details className={styles.readingOptions}>
+              <summary>Voices &amp; reading styles</summary>
+              <label>
+                <span>Provider</span>
+                <select value={provider} onChange={(event) => setProvider(event.target.value as ProviderFilter)}>
+                  {PROVIDERS.map((value) => <option key={value}>{value}</option>)}
+                </select>
+              </label>
+            <fieldset className={styles.lensSwitch}>
+              <legend>Reading lens</legend>
+              <div>
+                {LENSES.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={lens === option.id}
+                    onClick={() => setLens(option.id)}
+                    title={option.help}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p>{LENSES.find((option) => option.id === lens)?.help}</p>
+            </fieldset>
+            </details>
+
+            <p className={styles.resultCount} role="status" aria-live="polite">
+              {filtered.length} of {CONVERSATION_CONSTELLATIONS.length} ideas
             </p>
+
+            {filtered.length > 0 ? (
+              <div className={styles.results} id="conversation-results">
+                {filtered.map((record) => (
+                  <article className={styles.conversationCard} id={record.id} key={record.id}>
+                    <div className={styles.cardMeta}>
+                      <span data-provider={record.provider.toLowerCase()}>{record.provider}</span>
+                      <time dateTime={record.recordedAt}>{formatDate(record.recordedAt)}</time>
+                      <span>{record.tone}</span>
+                    </div>
+                    <h3>{record.title}</h3>
+                    <div className={styles.lensContent} data-lens={lens}>
+                      {lensContent(record, lens)}
+                    </div>
+                    <ul className={styles.themeList} aria-label="Themes">
+                      {record.themes.map((value) => <li key={value}>{value}</li>)}
+                    </ul>
+                    <details className={styles.provenance}>
+                      <summary>Sources and attribution</summary>
+                      <dl>
+                        <div><dt>Provider</dt><dd>{record.provider}</dd></div>
+                        <div><dt>Source reference</dt><dd><code>{record.sourceReference}</code></dd></div>
+                        <div><dt>Archive fingerprint</dt><dd><code>{record.sourceFingerprint}</code></dd></div>
+                        <div><dt>Public form</dt><dd>Faithful editorial paraphrase · no raw private transcript</dd></div>
+                      </dl>
+                      {record.sourceHref ? <Link href={record.sourceHref}>Read the approved public transcript →</Link> : null}
+                    </details>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.emptyState} id="conversation-results">
+                <h3>No ideas match yet.</h3>
+                <p>Clear the filters or try a broader theme.</p>
+                <button type="button" onClick={clear}>Show every idea</button>
+              </div>
+            )}
           </section>
 
           <section className={styles.quickSection} aria-labelledby="quick-title">
@@ -270,6 +345,24 @@ const Conversations: NextPage = () => {
                 </button>
               ))}
             </div>
+          </section>
+
+          <details className={styles.archiveDetails}>
+            <summary>About the conversations and their sources</summary>
+            <p>The complete export is indexed locally; full bodies stay private until each record passes explicit privacy and publication-rights review.</p>
+          <section className={styles.truthPanel} aria-labelledby="truth-title">
+            <div>
+              <p className={styles.eyebrow}>What changed</p>
+              <h2 id="truth-title">The whole corpus is counted. Publication remains chosen.</h2>
+            </div>
+            <p>
+              The earlier Akashic snapshot published {CONVERSATION_ARCHIVE_FACTS.publicMediumWorks} authored works and only{' '}
+              {CONVERSATION_ARCHIVE_FACTS.publicCodexConversations} selected Codex conversations across{' '}
+              {CONVERSATION_ARCHIVE_FACTS.publicCodexTranscriptChunks} transcript records. The local index now counts all{' '}
+              {CONVERSATION_ARCHIVE_FACTS.localChatGptConversations.toLocaleString('en-US')} ChatGPT and{' '}
+              {CONVERSATION_ARCHIVE_FACTS.localClaudeConversations} Claude conversation records without converting
+              automated redaction into consent. Selection decides what is featured; explicit review decides what may be public.
+            </p>
           </section>
 
           <section className={styles.archiveMap} aria-labelledby="map-title">
@@ -346,8 +439,8 @@ const Conversations: NextPage = () => {
               <div className={styles.reviewHold} role="status">
                 <p className={styles.eyebrow}>Privacy + rights boundary</p>
                 <h3>The body library is deliberately closed today.</h3>
-                <p>Automated screening found useful candidates, but it cannot grant consent or publication rights. Records will appear here only after human review; the twelve editorial constellations below are available now.</p>
-                <a href="#conversation-explorer">Read the curated constellations ↓</a>
+                <p>Automated screening found useful candidates, but it cannot grant consent or publication rights. Records will appear here only after human review; the twelve ideas above are available now.</p>
+                <a href="#conversation-explorer">Return to the ideas ↑</a>
               </div>
             ) : <form className={styles.corpusControls} onSubmit={(event) => event.preventDefault()}>
               <label className={styles.searchField}><span>Search title, signal, or idea</span><input type="search" value={corpusQuery} onChange={(event) => setCorpusQuery(event.target.value)} placeholder="Try consciousness, ritual, code, relationship…" autoComplete="off" /></label>
@@ -361,11 +454,11 @@ const Conversations: NextPage = () => {
             {!corpus && !corpusError ? <div className={styles.corpusLoading} role="status">Connecting the archive…</div> : null}
             {corpus && corpus.records.length > 0 ? (
               <>
-                <p className={styles.resultCount} role="status" aria-live="polite">{corpusFiltered.length.toLocaleString('en-US')} matching records · showing {Math.min(corpusVisible, corpusFiltered.length).toLocaleString('en-US')}</p>
+                <p className={styles.resultCount} role="status" aria-live="polite">{corpusFiltered.length.toLocaleString('en-US')} matching {corpusFiltered.length === 1 ? 'record' : 'records'} · showing {Math.min(corpusVisible, corpusFiltered.length).toLocaleString('en-US')}</p>
                 <div className={styles.corpusGrid}>
                   {corpusFiltered.slice(0, corpusVisible).map((record: ConversationCorpusBrowseRecord) => (
                     <article className={styles.corpusCard} key={record.id}>
-                      <div className={styles.cardMeta}><span data-provider={record.provider.toLowerCase()}>{record.provider}</span><time dateTime={record.createdAt}>{formatDate(record.createdAt)}</time><span>{record.messageCount} turns</span></div>
+                      <div className={styles.cardMeta}><span data-provider={record.provider.toLowerCase()}>{record.provider}</span><time dateTime={record.createdAt}>{formatDate(record.createdAt)}</time><span>{record.messageCount} {record.messageCount === 1 ? 'turn' : 'turns'}</span></div>
                       <p className={styles.corpusRealm}>{record.loreRealm} · {record.loreArtifact}</p>
                       <h3><Link href={record.href}>{record.title}</Link></h3>
                       <p>{record.excerpt || 'No visible dialogue body was present in this export record.'}</p>
@@ -374,114 +467,19 @@ const Conversations: NextPage = () => {
                     </article>
                   ))}
                 </div>
-                {corpusVisible < corpusFiltered.length ? <button className={styles.loadMore} type="button" onClick={() => setCorpusVisible((value) => value + 30)}>Show {Math.min(30, corpusFiltered.length - corpusVisible)} more conversations</button> : null}
+                {corpusVisible < corpusFiltered.length ? <button className={styles.loadMore} type="button" onClick={() => setCorpusVisible((value) => value + 30)}>Show {Math.min(30, corpusFiltered.length - corpusVisible)} more {corpusFiltered.length - corpusVisible === 1 ? 'conversation' : 'conversations'}</button> : null}
               </>
             ) : null}
           </section>
 
-          <section className={styles.explorer} id="conversation-explorer" aria-labelledby="explorer-title">
-            <div className={styles.sectionHeading}>
-              <div>
-                <p className={styles.eyebrow}>Editorial doorway · 12 hand-read lenses</p>
-                <h2 id="explorer-title">Change the lens. Keep the lineage.</h2>
-              </div>
-              <p>Every card separates Shawn’s contribution, the AI response, and the editor’s evidence boundary.</p>
-            </div>
-
-            <form className={styles.controls} onSubmit={(event) => event.preventDefault()}>
-              <label className={styles.searchField}>
-                <span>Search ideas</span>
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Try soul, myth, ordinary, reality…"
-                  autoComplete="off"
-                  aria-controls="conversation-results"
-                />
-              </label>
-              <label>
-                <span>Provider</span>
-                <select value={provider} onChange={(event) => setProvider(event.target.value as ProviderFilter)}>
-                  {PROVIDERS.map((value) => <option key={value}>{value}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Theme</span>
-                <select value={theme} onChange={(event) => setTheme(event.target.value as ThemeFilter)}>
-                  {THEMES.map((value) => <option key={value}>{value}</option>)}
-                </select>
-              </label>
-              <button type="button" onClick={clear} disabled={query.length === 0 && provider === 'All' && theme === 'All'}>Clear filters</button>
-            </form>
-
-            <fieldset className={styles.lensSwitch}>
-              <legend>Reading lens</legend>
-              <div>
-                {LENSES.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={lens === option.id}
-                    onClick={() => setLens(option.id)}
-                    title={option.help}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <p>{LENSES.find((option) => option.id === lens)?.help}</p>
-            </fieldset>
-
-            <p className={styles.resultCount} role="status" aria-live="polite">
-              {filtered.length} of {CONVERSATION_CONSTELLATIONS.length} constellations
-            </p>
-
-            {filtered.length > 0 ? (
-              <div className={styles.results} id="conversation-results">
-                {filtered.map((record) => (
-                  <article className={styles.conversationCard} id={record.id} key={record.id}>
-                    <div className={styles.cardMeta}>
-                      <span data-provider={record.provider.toLowerCase()}>{record.provider}</span>
-                      <time dateTime={record.recordedAt}>{formatDate(record.recordedAt)}</time>
-                      <span>{record.tone}</span>
-                    </div>
-                    <h3>{record.title}</h3>
-                    <ul className={styles.themeList} aria-label="Themes">
-                      {record.themes.map((value) => <li key={value}>{value}</li>)}
-                    </ul>
-                    <div className={styles.lensContent} data-lens={lens}>
-                      {lensContent(record, lens)}
-                    </div>
-                    <details className={styles.provenance}>
-                      <summary>Source and editorial provenance</summary>
-                      <dl>
-                        <div><dt>Provider</dt><dd>{record.provider}</dd></div>
-                        <div><dt>Source reference</dt><dd><code>{record.sourceReference}</code></dd></div>
-                        <div><dt>Archive fingerprint</dt><dd><code>{record.sourceFingerprint}</code></dd></div>
-                        <div><dt>Public form</dt><dd>Faithful editorial paraphrase · no raw private transcript</dd></div>
-                      </dl>
-                      {record.sourceHref ? <Link href={record.sourceHref}>Read the approved public transcript →</Link> : null}
-                    </details>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className={styles.emptyState} id="conversation-results">
-                <h3>No constellation matches that path.</h3>
-                <p>Clear the filters or try a broader theme.</p>
-                <button type="button" onClick={clear}>Show every conversation</button>
-              </div>
-            )}
-          </section>
+          </details>
 
           <section className={styles.cta} aria-labelledby="cta-title">
             <div>
-              <p className={styles.eyebrow}>If this is the archive you wanted</p>
-              <h2 id="cta-title">Help turn the rest of the hoard into a living library.</h2>
+              <p className={styles.eyebrow}>More to read</p>
+              <h2 id="cta-title">Keep exploring.</h2>
               <p>
-                Curation is the work: reading, protecting, connecting, translating, and building interfaces
-                that let ordinary humans enter without flattening the strange parts.
+                Read an essay, begin the Good Book, or support the writing if it gives you something useful.
               </p>
             </div>
             <div className={styles.ctaActions}>

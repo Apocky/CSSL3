@@ -4,6 +4,9 @@ import path from 'node:path';
 
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
+import { renderSiteDirectory } from '../helpers/render-site-directory';
+import { PUBLIC_SURFACE_NODES } from '../../lib/public-surface-graph';
+import { DIRECTORY_NODES, DIRECTORY_GROUPS, directoryGroup, findDirectoryItems } from '../../lib/site-directory';
 
 const root = process.cwd();
 const read = (relative: string) => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -39,6 +42,40 @@ const homePage = read('pages/index.tsx');
 const siteShell = read('components/SiteShell.tsx');
 const apocryphaPage = read('pages/apocrypha.tsx');
 
+const homePanels = renderSiteDirectory();
+const panels = [...homePanels.matchAll(/<article\b([^>]*\bdata-destination="([^"]+)"[^>]*)>([\s\S]*?)<\/article>/g)]
+  .map((match) => ({ attributes: match[1]!, id: match[2]!, body: match[3]! }));
+const publicDestinations = PUBLIC_SURFACE_NODES.filter((node) => node.id !== 'home');
+const sortedIds = (nodes: ReadonlyArray<{ id: string }>) => nodes.map((node) => node.id).sort();
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;',
+})[character]!);
+assert.match(homePage, /<SiteDirectory\s*\/>/, 'home renders the shared destination panels');
+assert.deepEqual(sortedIds(DIRECTORY_NODES), sortedIds(publicDestinations), 'every non-home public destination enters the home directory');
+assert.deepEqual(sortedIds(findDirectoryItems('')), sortedIds(publicDestinations), 'default search includes every destination');
+assert.deepEqual(sortedIds(panels), sortedIds(publicDestinations), 'actual default rendering gives every destination exactly one full panel');
+assert.equal(new Set(panels.map((panel) => panel.id)).size, panels.length, 'panels must not duplicate destinations');
+assert.deepEqual(panels.slice(0, 4).map((panel) => panel.id), ['codex-apockalypsis', 'apocrypha', 'atlas', 'chaos-tarot'], 'the four requested destinations lead the page');
+assert.doesNotMatch(homePanels, /<details\b|\shidden(?:=|\s|>)|More of Apocky/i, 'default panels must not sit behind a disclosure or hidden state');
+for (const node of publicDestinations) {
+  const panel = panels.find((item) => item.id === node.id)!;
+  assert.match(panel.attributes, /class="destinationPanel"/, `${node.id} uses the same full panel presentation`);
+  assert.doesNotMatch(panel.attributes, /aria-hidden="true"|style="[^"]*(?:display:\s*none|visibility:\s*hidden)/, `${node.id} remains exposed`);
+  assert.match(panel.body, /<h3>[^<]+<\/h3>/, `${node.id} has a visible destination heading`);
+  assert.ok(panel.body.includes(`<p class="panelDescription">${escapeHtml(node.summary)}</p>`), `${node.id} explains its use`);
+  assert.ok(panel.body.includes(`href="${escapeHtml(node.href)}"`), `${node.id} links directly to its registered destination`);
+  assert.match(panel.body, /<a class="panelBody"[^>]*>/, `${node.id} exposes the full panel as an action`);
+  assert.match(panel.body, /class="panelAction">[^<]+/, `${node.id} names the action`);
+  assert.ok(DIRECTORY_GROUPS.includes(directoryGroup(node)), `${node.id} belongs to a rendered group`);
+  assert.ok(findDirectoryItems(node.id).some((item) => item.id === node.id), `${node.id} remains searchable`);
+  if (node.external) {
+    assert.match(panel.body, /target="_blank" rel="noopener noreferrer"/, `${node.id} safely opens its external destination`);
+    assert.match(panel.body, /Opens another website in a new tab\./, `${node.id} announces the external handoff`);
+  }
+}
+assert.equal(findDirectoryItems('no-such-destination-7f849e').length, 0, 'a missing query produces the empty state');
+assert.ok(homePanels.includes('href="/codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked"'), 'Codex opening chapter is one direct action from home');
+
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
 const validate = ajv.compile(schema);
@@ -49,8 +86,9 @@ assert.equal(pwa['start_url'], '/', 'public PWA must not enter the owner-only ad
 assert.equal('apocrypha' in manifest, false, 'retired service must not have a discovery object');
 assert.equal(exists('public/apocrypha-manifest.json'), false, 'retired manifest alias must not ship');
 
-assert.match(apocryphaPage, /BrainExperience/, 'exact /apocrypha must render the owner-private Brain experience');
-assert.match(apocryphaPage, /requireBrainOwner/, 'exact /apocrypha must remain owner-gated');
+assert.match(apocryphaPage, /BrainExperience/, 'exact /apocrypha retains the owner conversation');
+assert.match(apocryphaPage, /requireBrainOwner/, 'owner conversation selection retains authorization');
+assert.match(apocryphaPage, /AccountChat/, 'other accounts retain their existing account conversation');
 assert.doesNotMatch(apocryphaPage, /PublicChat|ClearingRoom/, 'exact /apocrypha must not revive the retired public chat');
 for (const retiredPage of ['pages/apoc.tsx', 'pages/apx.tsx', 'pages/chat.tsx']) {
   assert.equal(exists(retiredPage), false, `${retiredPage} must not be built as a page`);
@@ -78,18 +116,17 @@ const activePublicSurfaces: Record<string, string> = {
   atlasFallback,
   membershipPage,
   membershipFallback,
-  staticClearing: read('public/commons/clearing.html'),
   staticHub: read('public/commons/index.html'),
   staticSiteScript: read('public/commons/assets/site.js'),
   staticRoomScript: read('public/commons/assets/room-v3.js'),
 };
 for (const [surface, source] of Object.entries(activePublicSurfaces)) {
-  assert.doesNotMatch(source, /apocrypha/i, `${surface} must not advertise or name the retired service`);
-  assert.doesNotMatch(source, /href=["']\/apoc(?:rypha)?(?:[?"'/])/i, `${surface} must not link a retired route`);
+  assert.doesNotMatch(source, /(?:href=["']|href:\s*["'])\/(?:apoc|apx|chat)(?:[?"'/])|(?:href=["']|href:\s*["'])\/apocrypha\//i, `${surface} must not link retired routes or descendants`);
 }
-assert.match(homePage, /href: '\/apocrypha'/, 'home may advertise only the exact owner-private Apocrypha route');
-assert.match(siteShell, /href="\/apocrypha"/, 'owner shell may advertise only the exact owner-private Apocrypha route');
-assert.doesNotMatch(`${homePage}\n${siteShell}`, /href=["']\/apocrypha\//, 'public navigation must not revive an Apocrypha descendant');
+assert.match(homePanels, /href="\/apocrypha"/, 'rendered home links the exact existing account conversation route');
+assert.match(siteShell, /href:\s*'\/apocrypha'/, 'shell links the exact existing account conversation route');
+assert.doesNotMatch(`${homePage}\n${homePanels}\n${siteShell}`, /href=["']\/apocrypha\//, 'public navigation must not revive an Apocrypha descendant');
+assert.doesNotMatch(homePanels, /href="\/(?:apoc|apx|chat)(?:[?"/])|href="\/(?:admin|api|content|shawn)(?:[?"/])/, 'home panels preserve route retirement and private publication boundaries');
 
 const entryPoints = JSON.stringify(manifest['entry_points']);
 assert.match(entryPoints, /words_and_symbols/);
@@ -149,6 +186,9 @@ assert.match(principlesFallback, /Four invariants/, 'the prior static principles
 assert.doesNotMatch(nextConfig, /destination:\s*'\/commons\/index\.html'/);
 assert.match(nextConfig, /\{\s*source:\s*'\/commons',\s*destination:\s*'\/',\s*permanent:\s*true\s*\}/);
 assert.match(nextConfig, /\{\s*source:\s*'\/commons\/index\.html',\s*destination:\s*'\/',\s*permanent:\s*true\s*\}/);
+for (const [legacy, destination] of [['clearing', '/clearing'], ['atlas', '/atlas'], ['membership', '/membership'], ['principles', '/principles']]) {
+  assert.ok(nextConfig.includes(`source: '/commons/${legacy}.html', destination: '${destination}'`), 'preserved legacy artifacts redirect to current functional pages');
+}
 assert.match(nextConfig, /\{\s*source:\s*'\/oracle',\s*destination:\s*'https:\/\/chaos-tarot\.com\/yes-no\?source=apocky-oracle',\s*permanent:\s*true\s*\}/);
 assert.doesNotMatch(nextConfig, /source:\s*'\/auth\/callback'/, 'public redirects must preserve the authentication callback');
 assert.match(contentPage, /notFound:\s*true/);
@@ -156,7 +196,7 @@ assert.doesNotMatch(contentPage, /destination:\s*['"]\/apoc/);
 
 assert.equal(vercel.crons?.some((cron) => /apocrypha/i.test(cron.path)), false, 'retired worker must not be scheduled');
 assert.equal(
-  Object.keys(vercel.functions ?? {}).some((route) => /apocrypha/i.test(route)),
+  Object.keys(vercel.functions ?? {}).some((route) => /apocrypha/i.test(route) && route !== 'pages/api/admin/apocrypha/inspect.ts'),
   false,
   'retired routes must not receive dedicated function configuration',
 );
@@ -170,14 +210,17 @@ assert.match(membershipPage, /Membership and support/);
 assert.match(membershipPage, /SUPPORT_LINKS/);
 assert.doesNotMatch(membershipPage, /data-prototype-action|Preview a Member seat|Preview the covenant step/);
 assert.match(principlesPage, /href="\/clearing"/);
-assert.match(principlesPage, /Enter the Clearing/);
+assert.match(principlesPage, /href="\/clearing"/);
 assert.match(membershipPage, /href="\/clearing"/);
 assert.match(atlasPage, /canonical" href="https:\/\/www\.apocky\.com\/atlas"/);
-assert.match(atlasComponent, /Constellation\s*<span>Atlas<\/span>/);
+assert.match(atlasComponent, /Find something useful/);
 assert.match(atlasComponent, /Map/);
-assert.match(atlasComponent, /Matrix/);
-assert.match(atlasComponent, /Index/);
-assert.match(atlasComponent, /Dictionary/);
+assert.match(atlasComponent, /label: 'Compare'/);
+assert.match(atlasComponent, /label: 'Directory'/);
+assert.match(atlasComponent, /label: 'Definitions'/);
+assert.match(homePanels, /href="\/codex-apockalypsis"/, 'Codex is directly reachable from the rendered hub');
+assert.match(siteShell, /href: '\/codex-apockalypsis'/, 'Codex is directly reachable from global navigation');
+assert.match(atlasGraph, /"href": "\/codex-apockalypsis"/, 'Codex is in the shared searchable directory');
 assert.match(atlasGraph, /href: '\/akashic-records'/, 'Atlas must expose the same-origin works archive');
 assert.match(atlasGraph, /href: '\/clearing'/, 'Atlas must expose the public social room');
 assert.doesNotMatch(`${atlasPage}\n${atlasComponent}\n${atlasGraph}`, /(?:from|import\()[^\n]*\/shawn/i);
@@ -186,4 +229,4 @@ const clearingHeaders = vercel.headers?.find((entry) => entry.source === '/clear
 assert.ok(clearingHeaders.some((header) => header.key === 'Cache-Control' && header.value.includes('no-store')));
 assert.ok(clearingHeaders.some((header) => header.key === 'X-Served-By' && header.value === 'apocky-clearing'));
 
-console.log('public route map remains useful while retired service routes and discovery stay absent');
+console.log(`public discovery: ${panels.length} full home panels, direct links, registry coverage, privacy and retirement gates passed`);

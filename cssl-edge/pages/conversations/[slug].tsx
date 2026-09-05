@@ -139,7 +139,7 @@ const ConversationReader: NextPage<ConversationReaderProps> = ({ summary }) => {
       <main className={styles.page}>
         <div className={styles.wrap}>
           <nav className={styles.crumbs} aria-label="Breadcrumb">
-            <Link href="/conversations">Conversation Constellations</Link><span aria-hidden="true">/</span><span>{summary.provider}</span>
+            <Link href="/conversations">Conversation ideas</Link><span aria-hidden="true">/</span><span>{summary.provider}</span>
           </nav>
 
           <header className={styles.hero}>
@@ -157,7 +157,8 @@ const ConversationReader: NextPage<ConversationReaderProps> = ({ summary }) => {
             </ul>
           </header>
 
-          <section className={styles.truthStrip} aria-label="Publication state">
+          <details className={styles.truthStrip}>
+            <summary>Sources and publication details</summary>
             <p><strong>Complete means complete visible dialogue.</strong> Hidden model reasoning, tools, system prompts, private attachments, credentials, contact data, payment data, and likely third-party copyrighted payloads are not conversation bodies and are excluded or redacted.</p>
             <details>
               <summary>Inspect lineage</summary>
@@ -169,23 +170,23 @@ const ConversationReader: NextPage<ConversationReaderProps> = ({ summary }) => {
                 <div><dt>Redactions</dt><dd>{summary.redactionCount}</dd></div>
               </dl>
             </details>
-          </section>
+          </details>
 
-          <div className={styles.lensBar} role="tablist" aria-label="Conversation reading mode">
+          <div className={styles.lensBar} role="group" aria-label="Conversation reading mode">
             {([
               ['dialogue', 'Full dialogue'],
-              ['signals', 'Distillation'],
+              ['signals', 'Key ideas'],
               ['lore', 'Lore fragment'],
               ['connections', 'Connections'],
             ] as const).map(([value, label]) => (
-              <button key={value} type="button" role="tab" aria-selected={lens === value} onClick={() => setLens(value)}>{label}</button>
+              <button key={value} type="button" aria-pressed={lens === value} onClick={() => setLens(value)}>{label}</button>
             ))}
           </div>
 
           {lens === 'dialogue' ? (
             <section className={styles.panel} aria-labelledby="dialogue-title">
               <div className={styles.panelHeading}>
-                <div><p className={styles.eyebrow}>Approved public projection</p><h2 id="dialogue-title">The reviewed conversation</h2></div>
+                <div><p className={styles.eyebrow}>Read the conversation</p><h2 id="dialogue-title">The reviewed conversation</h2></div>
                 {acknowledged ? <a href={summary.bodyHref} download>Download JSON ↓</a> : null}
               </div>
 
@@ -195,14 +196,14 @@ const ConversationReader: NextPage<ConversationReaderProps> = ({ summary }) => {
                   <h3>Choose before opening this record.</h3>
                   <p>This privacy- and rights-reviewed dialogue carries: {summary.contentWarnings.join(', ')}. The notice prevents accidental exposure; it is not a claim that difficult experiences should be hidden.</p>
                   <button type="button" onClick={() => setAcknowledged(true)}>I understand · load the dialogue</button>
-                  <Link href="/conversations">Return to the corpus</Link>
+                  <Link href="/conversations">Return to conversation ideas</Link>
                 </div>
               ) : record === null && loadError.length === 0 ? (
-                <div className={styles.loading} role="status">Opening the sealed projection…</div>
+                <div className={styles.loading} role="status">Opening the conversation…</div>
               ) : loadError.length > 0 ? (
-                <div className={styles.error} role="alert"><strong>The body did not load.</strong><span>{loadError}</span><button type="button" onClick={() => { setLoadError(''); setAcknowledged(false); }}>Try again</button></div>
+                <div className={styles.error} role="alert"><strong>The conversation did not load.</strong><span>{loadError}</span><button type="button" onClick={() => { setLoadError(''); setAcknowledged(false); }}>Try again</button></div>
               ) : record?.bodyState === 'absent-in-export' ? (
-                <div className={styles.empty}><h3>No visible body was present.</h3><p>The conversation record remains in the denominator so completeness is not manufactured by silently dropping empty exports.</p></div>
+                <div className={styles.empty}><h3>No readable messages are available.</h3><p>This record has no readable messages. Return to the ideas to keep exploring.</p></div>
               ) : (
                 <>
                   <form className={styles.filters} onSubmit={(event) => event.preventDefault()}>
@@ -232,7 +233,7 @@ const ConversationReader: NextPage<ConversationReaderProps> = ({ summary }) => {
 
           {lens === 'signals' ? (
             <section className={styles.panel} aria-labelledby="signals-title">
-              <div className={styles.panelHeading}><div><p className={styles.eyebrow}>Navigation layer</p><h2 id="signals-title">What the system detected</h2></div><span className={styles.score}>{summary.qualityScore}/100 feature score</span></div>
+              <div className={styles.panelHeading}><div><p className={styles.eyebrow}>Navigation layer</p><h2 id="signals-title">Ideas from the exchange</h2></div><span className={styles.score}>{summary.qualityScore}/100 feature score</span></div>
               <p className={styles.boundary}>{summary.distillation.evidenceBoundary}</p>
               <div className={styles.signalGrid}>
                 <article><span>Human signal</span><p>{summary.humanSignal || 'No human text body was present.'}</p></article>

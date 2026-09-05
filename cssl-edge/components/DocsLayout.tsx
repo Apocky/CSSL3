@@ -20,6 +20,46 @@ interface DocsLayoutProps {
 const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProps) => {
   const sections = getDocSections();
   const canonicalPath = activeSlug === '' ? '/docs' : `/docs/${activeSlug}`;
+  const navigation = <>
+
+          <a href="/" className="docs-back">
+            ← apocky.com
+          </a>
+          <a
+            href="/docs"
+            className={`docs-nav-link ${activeSlug === '' ? 'is-active' : ''}`}
+            style={{ fontWeight: 600 }}
+          >
+            Documentation
+          </a>
+          <a href="/words" className="docs-nav-link">
+            Words and symbols
+          </a>
+          {sections.map((s) => (
+            <div key={s.name}>
+              <div className="docs-section-title">{s.name}</div>
+              {s.pages.map((p) => {
+                const badge = statusBadge(p.status);
+                return (
+                  <a
+                    key={p.slug}
+                    href={`/docs/${p.slug}`}
+                    className={`docs-nav-link ${activeSlug === p.slug ? 'is-active' : ''}`}
+                  >
+                    {p.title}
+                    <span className="docs-nav-status" style={{ color: badge.color }}>
+                      {badge.label}
+                    </span>
+                  </a>
+                );
+              })}
+            </div>
+          ))}
+          <div className="docs-sidebar-foot">
+            {DOC_PAGES.length} pages. Technical terms are explained before use.
+          </div>
+
+  </>;
   return (
     <>
       <Head>
@@ -134,48 +174,14 @@ const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProp
           .docs-spec-link:hover { border-color: var(--apx-line-strong, rgba(124, 143, 255, 0.58)); }
           .docs-spec-slug { color: var(--apx-dim, #7580aa); font: 600 0.7rem/1.3 var(--apx-mono, ui-monospace, monospace); letter-spacing: 0.08em; }
           .docs-spec-title { margin-top: 0.15rem; color: var(--apx-copy, #d8dcf4); font-size: 0.9rem; line-height: 1.4; }
+          .docs-mobile-navigation { display:none; }
+          @media(max-width:900px) { .docs-sidebar { display:none; } .docs-mobile-navigation { display:block; border-bottom:1px solid var(--apx-line); padding-bottom:12px; } .docs-mobile-navigation summary { min-height:44px; display:flex; align-items:center; cursor:pointer; color:var(--apx-violet); } .docs-mobile-navigation summary::after{content:" +";margin-left:auto} .docs-mobile-navigation[open] summary::after{content:" −"} .docs-mobile-navigation nav{padding:12px} }
           .docs-footer { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17)); color: var(--apx-dim, #7580aa); font-size: 0.8rem; }
         `}</style>
       </Head>
       <main className="docs-shell">
-        <aside className="docs-sidebar" aria-label="Docs navigation">
-          <a href="/" className="docs-back">
-            ← apocky.com
-          </a>
-          <a
-            href="/docs"
-            className={`docs-nav-link ${activeSlug === '' ? 'is-active' : ''}`}
-            style={{ fontWeight: 600 }}
-          >
-            Documentation
-          </a>
-          <a href="/words" className="docs-nav-link">
-            Words and symbols
-          </a>
-          {sections.map((s) => (
-            <div key={s.name}>
-              <div className="docs-section-title">{s.name}</div>
-              {s.pages.map((p) => {
-                const badge = statusBadge(p.status);
-                return (
-                  <a
-                    key={p.slug}
-                    href={`/docs/${p.slug}`}
-                    className={`docs-nav-link ${activeSlug === p.slug ? 'is-active' : ''}`}
-                  >
-                    {p.title}
-                    <span className="docs-nav-status" style={{ color: badge.color }}>
-                      {badge.label}
-                    </span>
-                  </a>
-                );
-              })}
-            </div>
-          ))}
-          <div className="docs-sidebar-foot">
-            {DOC_PAGES.length} pages. Technical terms are explained before use.
-          </div>
-        </aside>
+        <details className="docs-mobile-navigation"><summary>Browse guides</summary><nav aria-label="Choose a guide">{navigation}</nav></details>
+        <aside className="docs-sidebar" aria-label="Docs navigation">{navigation}</aside>
         <article className="docs-main">{children}</article>
       </main>
     </>

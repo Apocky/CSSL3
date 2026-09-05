@@ -216,3 +216,8 @@
   .connectionGrid a:hover { transform: none; }
 }
 
+
+/* Keep attribution accessible without blocking the conversation. */
+.truthStrip > summary { cursor: pointer; color: var(--apx-ink); font-weight: 650; min-height: 44px; display: list-item; padding-block: 10px; }
+.truthStrip > summary:focus-visible { outline: 2px solid var(--apx-sky); outline-offset: 4px; }
+.lensBar button[aria-pressed="true"] { border-color: var(--apx-sky); color: var(--apx-ink); background: var(--apx-panel); }

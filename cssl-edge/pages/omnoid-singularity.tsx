@@ -494,21 +494,21 @@ const OmnoidSingularity: NextPage = () => (
     <main className={styles.page} aria-labelledby="omnoid-title">
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Authored cosmology · source-faithful public synthesis</p>
+          <p className={styles.eyebrow}>Shawn Apocky’s cosmology</p>
           <h1 id="omnoid-title">Apocky’s <span>Omnoid Singularity</span></h1>
           <p className={styles.lede}>
             A cosmology of recursive totality, distinct centers, shared structure, freedom,
-            True Neutral, singularity, and return.
+            True Neutral, singularity, and return. An evolving authored model.
           </p>
           <div className={styles.heroActions}>
-            <a href="#summary" className={styles.primaryAction}>Read the concise map</a>
-            <a href="/omnoid-singularity.csl" download className={styles.secondaryAction}>Download the CSLv3 encoding</a>
-            <a href="#math-map" className={styles.secondaryAction}>See the math boundary</a>
+            <a href="#summary" className={styles.primaryAction}>Read the idea</a>
+            <a href="/codex-apockalypsis" className={styles.secondaryAction}>Enter the story</a>
+            <a href="/words" className={styles.secondaryAction}>Look up a term</a>
           </div>
         </div>
 
-        <aside className={styles.safetyBoundary} aria-label="Interpretation and safety boundary">
-          <span className={styles.boundaryMark} aria-hidden="true">⌈ ⌉</span>
+        <details className={styles.safetyBoundary}>
+          <summary>About this model</summary>
           <div>
             <h2>What kind of document this is</h2>
             <p>
@@ -517,10 +517,11 @@ const OmnoidSingularity: NextPage = () => (
               cannot validate it; rest and ordinary safety do not invalidate it.
             </p>
           </div>
-        </aside>
+        </details>
       </section>
 
-      <section className={styles.legendSection} aria-labelledby="legend-title">
+      <details className={styles.legendSection}>
+        <summary>Ideas, interpretation, mathematics, and open questions</summary>
         <div className={styles.sectionHeadingCompact}>
           <p className={styles.kicker}>How to read the page</p>
           <h2 id="legend-title">Four layers stay visibly separate.</h2>
@@ -536,12 +537,13 @@ const OmnoidSingularity: NextPage = () => (
             </article>
           ))}
         </div>
-      </section>
+        <p><a href="/omnoid-singularity.csl" download>Download the CSLv3 reference</a>{' · '}<a href="#math-map">Read the mathematical boundaries</a></p>
+      </details>
 
       <section id="summary" className={styles.section} aria-labelledby="summary-title">
         <div className={styles.sectionHeading}>
           <div>
-            <p className={styles.kicker}>The shortest complete reading</p>
+            <p className={styles.kicker}>Begin here</p>
             <h2 id="summary-title">The Omnoid in one paragraph.</h2>
           </div>
           <div className={styles.badgeRow}>

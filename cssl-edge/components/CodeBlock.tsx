@@ -40,7 +40,7 @@ const COLORS = {
   glyph: '#fbbf24',
   number: '#f472b6',
   string: '#a7f3d0',
-  comment: '#5a5a6a',
+  comment: '#9b96a8',
   ident: '#cdd6e4',
   punct: '#7a7a8c',
 };

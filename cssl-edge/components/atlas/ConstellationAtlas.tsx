@@ -3,15 +3,11 @@ import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import RecoveryPanel from '../RecoveryPanel';
-import HelpTip from '../ui/HelpTip';
 import {
   filterPublicGlossary,
-  PUBLIC_GLOSSARY_SYMBOLS,
-  PUBLIC_GLOSSARY_TERMS,
 } from '../../lib/public-glossary';
 import {
   filterPublicSurfaceNodes,
-  getExternalRelayNodes,
   getPublicSurfaceNode,
   getPublicSurfaceRelations,
   PUBLIC_SURFACE_AVAILABILITY_LABELS,
@@ -34,10 +30,10 @@ type KindFilter = PublicSurfaceKind | 'all';
 type AvailabilityFilter = PublicSurfaceAvailability | 'all';
 
 const VIEWS: readonly { readonly id: AtlasView; readonly label: string; readonly description: string }[] = [
-  { id: 'map', label: 'Map', description: 'Trace visible relationships between public destinations.' },
-  { id: 'matrix', label: 'Matrix', description: 'Cross kind with access state and inspect every populated coordinate.' },
-  { id: 'index', label: 'Index', description: 'Scan every matching destination as a readable list.' },
-  { id: 'dictionary', label: 'Dictionary', description: 'Look up words and symbols used across Apocky.' },
+  { id: 'index', label: 'Directory', description: 'Find a tool, a story, or an idea to use.' },
+  { id: 'map', label: 'Map', description: 'See how the pages connect.' },
+  { id: 'matrix', label: 'Compare', description: 'Compare the kinds of pages and how to use them.' },
+  { id: 'dictionary', label: 'Definitions', description: 'Look up a word or symbol.' },
 ];
 
 const KIND_OPTIONS = (Object.entries(PUBLIC_SURFACE_KIND_LABELS) as [PublicSurfaceKind, string][])
@@ -295,24 +291,24 @@ function MapView({
 }
 
 function IndexView({ nodes }: { nodes: readonly PublicSurfaceNode[] }): JSX.Element {
+  const priority: readonly string[] = ['sigils', 'spellcraft', 'apocrypha', 'codex-apockalypsis', 'words', 'akashic-records', 'spellbook', 'conversations', 'chaos-tarot'];
+  const ordered = [...nodes].sort((left, right) => {
+    const rank = (id: string): number => priority.includes(id) ? priority.indexOf(id) : priority.length;
+    return rank(left.id) - rank(right.id) || left.title.localeCompare(right.title);
+  });
   return (
     <ul className={styles.indexGrid} aria-label="Matching public destinations">
-      {nodes.map((node) => (
+      {ordered.map((node) => (
         <li key={node.id}>
           <article className={styles.indexCard} data-testid={`atlas-index-node-${node.id}`}>
             <div className={styles.cardHeading}>
               <div>
-                <p className={styles.eyebrow}>{node.eyebrow}</p>
                 <h2>{node.title}</h2>
               </div>
               <span className={styles.kind}>{PUBLIC_SURFACE_KIND_LABELS[node.kind]}</span>
             </div>
-            <AvailabilityBadge node={node} />
             <p>{node.summary}</p>
-            <CoordinateList node={node} compact />
-            {node.external ? (
-              <p className={styles.externalNotice}>External handoff. The destination is contacted only after you follow the link.</p>
-            ) : null}
+            {node.availability !== 'public' ? <AvailabilityBadge node={node} /> : null}
             <DestinationLink node={node} className={styles.cardLink} />
           </article>
         </li>
@@ -328,7 +324,7 @@ function MatrixView({ nodes }: { nodes: readonly PublicSurfaceNode[] }): JSX.Ele
   return (
     <div className={styles.matrixWrap}>
       <table className={styles.matrix} aria-label="Public destinations by kind and access state">
-        <caption>Each cell is one coordinate: content kind × access state. The active filters also constrain People, Meaning, Visibility, and Time.</caption>
+        <caption>Compare kinds of pages and how you can use them.</caption>
         <thead>
           <tr>
             <th scope="col">Kind ↓ / access →</th>
@@ -423,36 +419,9 @@ function DictionaryView({ query, onReset }: { query: string; onReset: () => void
   );
 }
 
-function RelayCards(): JSX.Element {
-  const relays = getExternalRelayNodes();
-  return (
-    <section className={styles.relaySection} aria-labelledby="relay-title">
-      <div className={styles.sectionHeading}>
-        <div>
-          <p className={styles.eyebrow}>Cross-site relays</p>
-          <h2 id="relay-title">Continue when a project calls to you.</h2>
-        </div>
-        <p>You stay on apocky.com until you deliberately follow one of these direct links.</p>
-      </div>
-      <ul className={styles.relayGrid}>
-        {relays.map((node) => (
-          <li key={node.id}>
-            <article className={styles.relayCard} data-relay={node.id}>
-              <p>{node.eyebrow}</p>
-              <h3>{node.title}</h3>
-              <p>{node.summary}</p>
-              <DestinationLink node={node} className={styles.relayLink} />
-            </article>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 export default function ConstellationAtlas(): JSX.Element {
   const router = useRouter();
-  const [view, setView] = useState<AtlasView>('map');
+  const [view, setView] = useState<AtlasView>('index');
   const [query, setQuery] = useState('');
   const [axis, setAxis] = useState<AxisFilter>('all');
   const [kind, setKind] = useState<KindFilter>('all');
@@ -471,7 +440,7 @@ export default function ConstellationAtlas(): JSX.Element {
     // The URL is the shareable source of truth. Missing or invalid values
     // restore the documented defaults instead of leaving state behind from a
     // previous shallow navigation to this same page.
-    setView(isView(urlView) ? urlView : 'map');
+    setView(isView(urlView) ? urlView : 'index');
     setQuery(typeof urlQuery === 'string' ? urlQuery : '');
     setAxis(isAxis(urlAxis) ? urlAxis : 'all');
     setKind(isKind(urlKind) ? urlKind : 'all');
@@ -496,7 +465,7 @@ export default function ConstellationAtlas(): JSX.Element {
     const nextSelectedId = next.selectedId ?? selectedId;
     const urlQuery: Record<string, string> = {};
 
-    if (nextView !== 'map') urlQuery.view = nextView;
+    if (nextView !== 'index') urlQuery.view = nextView;
     if (nextQuery.trim()) urlQuery.q = nextQuery.trim();
     if (nextAxis !== 'all') urlQuery.axis = nextAxis;
     if (nextKind !== 'all') urlQuery.kind = nextKind;
@@ -529,169 +498,33 @@ export default function ConstellationAtlas(): JSX.Element {
   }, [replaceUrl]);
 
   const showEmptyGraph = view !== 'dictionary' && graphResultCount === 0;
-  const totalDefinitions = PUBLIC_GLOSSARY_TERMS.length + PUBLIC_GLOSSARY_SYMBOLS.length;
 
   return (
     <main className={styles.root}>
-      <nav className={styles.breadcrumbs} aria-label="Breadcrumb">
-        <ol>
-          <li><Link href="/">Home</Link></li>
-          <li aria-current="page">Atlas</li>
-        </ol>
-      </nav>
-      <section className={styles.hero} aria-labelledby="atlas-title">
-        <div>
-          <p className={styles.kicker}>Interactive orientation · public routes only</p>
-          <h1 id="atlas-title">Constellation <span>Atlas</span></h1>
-          <p className={styles.lede}>
-            Navigate Apocky as a field of connected work. Trace explicit relationships, scan the complete index,
-            or translate specialist language without pretending that visual proximity proves a deeper claim.
-          </p>
-        </div>
-        <dl className={styles.overview} aria-label="Atlas overview">
-          <div><dt>Destinations</dt><dd>{PUBLIC_SURFACE_NODES.length}</dd></div>
-          <div><dt>Visible links</dt><dd>{PUBLIC_SURFACE_EDGES.length}</dd></div>
-          <div><dt>Definitions</dt><dd>{totalDefinitions}</dd></div>
-        </dl>
-      </section>
-
-      <section className={styles.quickPaths} aria-labelledby="atlas-quick-paths-title">
-        <div className={styles.quickPathsHeading}>
-          <div>
-            <p className={styles.eyebrow}>What brought you here?</p>
-            <h2 id="atlas-quick-paths-title">Take a useful path first.</h2>
-          </div>
-          <HelpTip label="How the Atlas works">The same public destinations can appear as a visual map, comparison matrix, readable index, or dictionary. Filters are copied into the URL so you can share a view.</HelpTip>
-        </div>
-        <div className={styles.quickPathGrid}>
-          <Link href="/conversations"><span>FOLLOW IDEAS</span><strong>Read human–AI conversations</strong><small>Roles, paraphrases, allegories, and sources stay labeled.</small></Link>
-          <Link href="/akashic-records"><span>SEARCH MEMORY</span><strong>Explore published writing</strong><small>Approved public records with provenance.</small></Link>
-          <Link href="/atlas?view=dictionary"><span>TRANSLATE</span><strong>Explain a word or symbol</strong><small>Plain-language definitions before technical depth.</small></Link>
-          <Link href="/memory-tools"><span>MANAGE MEMORY</span><strong>See public, local, and private layers</strong><small>Know what persists and who can reach it.</small></Link>
-        </div>
-      </section>
-
-      <section className={styles.explorer} aria-labelledby="explorer-title">
-        <div className={styles.explorerHeading}>
-          <div>
-            <p className={styles.eyebrow}>Choose your projection</p>
-            <h2 id="explorer-title">Choose the view that helps.</h2>
-          </div>
-          <p>One field. Four readable views. {VIEWS.find((item) => item.id === view)?.description}</p>
-        </div>
-
-        <div className={styles.viewSwitch} role="group" aria-label="Atlas view">
-          {VIEWS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={view === item.id}
-              onClick={() => {
-                setView(item.id);
-                replaceUrl({ view: item.id });
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <form className={styles.filters} onSubmit={(event) => event.preventDefault()} aria-label="Filter the Atlas">
-          <label className={styles.searchField}>
-            <span>{view === 'dictionary' ? 'Search the dictionary' : 'Search public destinations'}</span>
-            <input
-              type="search"
-              value={query}
-              placeholder={view === 'dictionary' ? 'A word, symbol, or meaning…' : 'A project, purpose, or coordinate…'}
-              onChange={(event) => {
-                const nextQuery = event.currentTarget.value;
-                setQuery(nextQuery);
-                replaceUrl({ query: nextQuery });
-              }}
-            />
-          </label>
-
-          {view !== 'dictionary' ? (
-            <div className={styles.filterGrid}>
-              <label>
-                <span>Dimension</span>
-                <select
-                  value={axis}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value as AxisFilter;
-                    setAxis(value);
-                    replaceUrl({ axis: value });
-                  }}
-                >
-                  <option value="all">All dimensions</option>
-                  {PUBLIC_SURFACE_AXES.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Kind</span>
-                <select
-                  value={kind}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value as KindFilter;
-                    setKind(value);
-                    replaceUrl({ kind: value });
-                  }}
-                >
-                  <option value="all">All kinds</option>
-                  {KIND_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Access state</span>
-                <select
-                  value={availability}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value as AvailabilityFilter;
-                    setAvailability(value);
-                    replaceUrl({ availability: value });
-                  }}
-                >
-                  <option value="all">Every public state</option>
-                  {AVAILABILITY_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </label>
-            </div>
-          ) : null}
-
-          <div className={styles.filterFooter}>
-            <p className={styles.resultStatus} role="status" aria-live="polite" aria-atomic="true">
-              {view === 'dictionary'
-                ? `${dictionaryResultCount} ${dictionaryResultCount === 1 ? 'definition' : 'definitions'} match`
-                : `${graphResultCount} ${graphResultCount === 1 ? 'destination' : 'destinations'} match`}
-            </p>
-            <button type="button" className={styles.resetButton} onClick={resetFilters}>Reset filters</button>
-          </div>
+      <header className={styles.directoryHeader}><p className={styles.directoryEyebrow}>All of Apocky</p><h1>Find something useful.</h1><p>Tools to try, words to understand, and ideas worth following.</p></header>
+      <section className={styles.explorer} aria-label="Find a page">
+        <form className={styles.directorySearch} onSubmit={event => event.preventDefault()} aria-label="Filter the Atlas">
+          <label className={styles.searchField}><span>{view === 'dictionary' ? 'Search definitions' : 'What are you looking for?'}</span><input type="search" value={query} placeholder={view === 'dictionary' ? 'A word or its meaning…' : 'Try sigils, stories, memory…'} onChange={event => { const nextQuery = event.currentTarget.value; setQuery(nextQuery); replaceUrl({ query: nextQuery }); }} /></label>
+          {view !== 'dictionary' ? <details className={styles.additionalFilters}><summary>More filters</summary><div className={styles.filterGrid}>
+            <label><span>Kind of page</span><select value={kind} onChange={event => { const value = event.currentTarget.value as KindFilter; setKind(value); replaceUrl({ kind: value }); }}><option value="all">Everything</option>{KIND_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label><span>How you can use it</span><select value={availability} onChange={event => { const value = event.currentTarget.value as AvailabilityFilter; setAvailability(value); replaceUrl({ availability: value }); }}><option value="all">Any</option>{AVAILABILITY_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label><span>Related to</span><select value={axis} onChange={event => { const value = event.currentTarget.value as AxisFilter; setAxis(value); replaceUrl({ axis: value }); }}><option value="all">Any subject</option>{PUBLIC_SURFACE_AXES.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
+          </div></details> : null}
         </form>
-
-        <noscript>
-          <p className={styles.noScript}>Interactive filters require JavaScript. The map key still contains ordinary links to every public destination, and the complete dictionary remains available on the Words page.</p>
-        </noscript>
-
+        <div className={styles.directoryToolbar}>
+          <div className={styles.viewSwitch} role="group" aria-label="Atlas view">{VIEWS.map(item => <button key={item.id} type="button" aria-pressed={view === item.id} onClick={() => { setView(item.id); replaceUrl({ view: item.id }); }}>{item.label}</button>)}</div>
+          <div className={styles.filterFooter}><p className={styles.resultStatus} role="status" aria-live="polite" aria-atomic="true">{view === 'dictionary' ? dictionaryResultCount + (dictionaryResultCount === 1 ? ' definition' : ' definitions') : graphResultCount + (graphResultCount === 1 ? ' place to go' : ' places to go')}</p>{query || axis !== 'all' || kind !== 'all' || availability !== 'all' ? <button type="button" className={styles.resetButton} onClick={resetFilters}>Clear filters</button> : null}</div>
+        </div>
+        <noscript><p className={styles.noScript}>You can follow every directory link without JavaScript. Turn it on to search and change views.</p></noscript>
         <div className={styles.viewPanel} data-view={view}>
-          {showEmptyGraph ? (
-            <RecoveryPanel state={ATLAS_EMPTY_STATE} onReset={resetFilters} className={styles.recovery} />
-          ) : null}
-          {!showEmptyGraph && view === 'map' && selectedNode ? (
-            <MapView nodes={filteredNodes} selected={selectedNode} onSelect={selectNode} />
-          ) : null}
+          {showEmptyGraph ? <div className={styles.emptyDirectory} role="status"><h2>No pages found.</h2><p>Try a shorter word or clear the filters to see everything.</p><button type="button" className={styles.resetButton} onClick={resetFilters}>Clear filters</button></div> : null}
+          {!showEmptyGraph && view === 'map' && selectedNode ? <MapView nodes={filteredNodes} selected={selectedNode} onSelect={selectNode} /> : null}
           {!showEmptyGraph && view === 'matrix' ? <MatrixView nodes={filteredNodes} /> : null}
           {!showEmptyGraph && view === 'index' ? <IndexView nodes={filteredNodes} /> : null}
           {view === 'dictionary' ? <DictionaryView query={query} onReset={resetFilters} /> : null}
         </div>
+        {view === 'map' ? <details className={styles.additionalFilters}><summary>About this map</summary><p>Lines show links between published pages. A connection here does not mean two ideas are equivalent or that one causes the other.</p></details> : null}
       </section>
-
-      <RelayCards />
-
-      <aside className={styles.truthNote} aria-labelledby="atlas-boundary-title">
-        <p className={styles.eyebrow}>Map boundary</p>
-        <h2 id="atlas-boundary-title">A visible link is a navigation fact—not proof of causation, equivalence, or endorsement.</h2>
-        <p>The Atlas contains only published destinations and explicit route relationships. Archive-topic connections will wait for reviewed public topic data.</p>
-      </aside>
     </main>
   );
 }

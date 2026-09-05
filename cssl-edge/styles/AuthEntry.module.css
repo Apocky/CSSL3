@@ -1,0 +1,30 @@
+.formFirst { grid-template-columns: minmax(0, 1fr) minmax(0, .8fr); background: #141117; }
+.formFirst :global(.apx-auth-workspace) { align-items: flex-start; padding: clamp(24px, 4vw, 56px); }
+.formWrap { width: min(500px, 100%); min-width: 0; }
+.returnHome { display: inline-flex; align-items: center; min-height: 44px; margin-bottom: 20px; color: #dbc7ef; font-size: .95rem; text-decoration: none; }
+.returnHome:focus-visible { outline: 2px solid #a0d9dd; outline-offset: 3px; }
+.formFirst :global(.apx-auth-card) h1 { font-family: var(--apx-display, Georgia, serif); font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 500; line-height: 1.12; letter-spacing: -.025em; margin: 0; color: #eee8de; }
+.formFirst :global(.apx-auth-story) { border-right: 0; border-left: 1px solid var(--apx-line); min-height: 0; padding: clamp(28px, 4vw, 56px); }
+.formFirst :global(.apx-auth-story-main) { padding: 20px 0; }
+.formFirst :global(.apx-auth-story) h2 { font-family: var(--apx-display, Georgia, serif); font-size: clamp(1.7rem, 3vw, 2.2rem); font-weight: 500; line-height: 1.15; max-width: 18ch; margin: 0; }
+.formFirst :global(.apx-auth-context) { font-family: inherit; font-size: .875rem; text-transform: none; letter-spacing: 0; }
+.formFirst :global(.apx-auth-form) { margin-top: 20px; }
+.formFirst :global(.apx-label) { font-size: .95rem; }
+.formFirst :global(.apx-input) { font-size: 1rem; background: #1c1822; }
+.formFirst :global(.apx-field-help), .formFirst :global(.apx-checkbox), .formFirst :global(.apx-auth-switch) { font-size: .875rem; }
+.formFirst :global(.apx-auth-warning), .formFirst :global(.apx-auth-message) { font-size: .9375rem; }
+.formFirst :global(.apx-provider-state) { display: none; }
+.formFirst :global(.apx-provider) { font-size: 1rem; }
+@media(max-width: 940px) {
+  .formFirst { grid-template-columns: minmax(0, 1fr); }
+  .formFirst :global(.apx-auth-workspace) { padding: 16px 24px 28px; }
+  .formFirst :global(.apx-auth-story) { border-left: 0; border-top: 1px solid var(--apx-line); border-bottom: 0; padding: 24px; }
+  .formFirst :global(.apx-auth-story) > :global(.apx-brand) { display: none; }
+  .formFirst :global(.apx-auth-story-main) { margin: 0; padding: 0; }
+  .returnHome { margin-bottom: 12px; }
+}
+@media(max-width: 660px) {
+  .formFirst :global(.apx-provider-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .formFirst :global(.apx-auth-subtitle) { font-size: 1rem; line-height: 1.5; }
+  .formFirst :global(.apx-auth-workspace) { padding-inline: 18px; }
+}

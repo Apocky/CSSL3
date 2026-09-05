@@ -10,100 +10,99 @@ const Labs: NextPage = () => (
       <title>Public labs and experiments · Apocky</title>
       <meta
         name="description"
-        content="Use Apocky’s public experiments: knowledge maps, local quests, system diagnostics, comparative divination, visual cosmology, and architecture studies."
+        content="Try a creative tool, follow a small challenge, explore symbolic readings, or discover an idea in development."
       />
       <meta property="og:title" content="Public labs and experiments · Apocky" />
-      <meta property="og:description" content="Interfaces you can test, inspect, and traverse—with maturity labels attached." />
+      <meta property="og:description" content="Tools to try and ideas to explore, with a clear explanation of what is available." />
       <meta property="og:url" content="https://www.apocky.com/labs" />
       <link rel="canonical" href="https://www.apocky.com/labs" />
     </Head>
 
     <main className={styles.page}>
       <div className={styles.wrap}>
-        <p className={styles.eyebrow}>Public experiment deck</p>
-        <h1 className={styles.title}>Touch the machinery. <em>Keep the labels attached.</em></h1>
+        <p className={styles.eyebrow}>Tools &amp; experiments</p>
+        <h1 className={styles.title}>Try something. <em>See what it opens.</em></h1>
         <p className={styles.lead}>
-          The lab is not a coming-soon graveyard. Every card below reaches an inspectable public surface.
-          Maturity labels distinguish a dependable public route from a design study or a service-backed
-          experiment that may truthfully report no data.
+          Make a symbol, take a small quest, compare readings, or explore an idea.
+          Research pages are marked so you can choose a tool you can use today.
         </p>
 
         <section className={styles.section} aria-labelledby="lab-title">
           <div className={styles.sectionHead}>
-            <h2 id="lab-title">Twelve connected public surfaces</h2>
-            <p>Start anywhere; the contextual synapses beneath each mapped page provide a route onward.</p>
+            <h2 id="lab-title">Things to try</h2>
+            <p>Choose an activity or browse an idea.</p>
           </div>
           <div className={styles.grid2}>
             <article className={`${styles.card} ${styles.tierFeatured}`}>
-              <span className={styles.tag}>PUBLIC · INTERACTIVE</span>
+              <span className={styles.tag}>FIND SOMETHING</span>
               <h3>Constellation Atlas</h3>
               <p>Switch between an explorable relationship map, sortable index, and shared dictionary.</p>
-              <Link className={styles.cardLink} href="/atlas">Operate the Atlas →</Link>
+              <Link className={styles.cardLink} href="/atlas">Find a tool or idea →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC · DEVICE-LOCAL</span>
-              <h3>Quest engine</h3>
+              <span className={styles.tag}>TRY A CHALLENGE</span>
+              <h3>Discovery quests</h3>
               <p>Complete a forgiving eight-node expedition. Progress is saved only in the current browser and can be reset.</p>
               <Link className={styles.cardLink} href="/quests">Take a quest →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC · LIVE PROBE</span>
-              <h3>Status observatory</h3>
-              <p>Ask the same-origin health endpoint what it can currently prove, then use a typed fallback if it cannot answer.</p>
-              <Link className={styles.cardLink} href="/status">Run the probe →</Link>
+              <span className={styles.tag}>HELP</span>
+              <h3>Service status</h3>
+              <p>Check whether the site is responding and find help if something fails.</p>
+              <Link className={styles.cardLink} href="/status">Check availability →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC · STATUS-LABELED</span>
+              <span className={styles.tag}>LEARN</span>
               <h3>Documentation library</h3>
               <p>Move from ordinary-language guides into technical specifications only when that level of detail is useful.</p>
               <Link className={styles.cardLink} href="/docs">Read the documentation →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC · COMPARATIVE LENS</span>
+              <span className={styles.tag}>REFLECT</span>
               <h3>Divination systems</h3>
               <p>Compare seven symbolic traditions and keep reflective use separate from empirical or predictive claims.</p>
-              <Link className={styles.cardLink} href="/divination">Rotate the lens →</Link>
+              <Link className={styles.cardLink} href="/divination">Compare readings →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC · EVIDENCE-TYPED</span>
-              <h3>Omnoid visual model</h3>
-              <p>Traverse an authored cosmology while its claims, mathematical motifs, hypotheses, and falsifiers remain visibly distinct.</p>
+              <span className={styles.tag}>COSMOLOGY</span>
+              <h3>The Omnoid cosmology</h3>
+              <p>Explore Shawn’s ideas about selves, freedom, and a connected universe. This is an authored cosmology.</p>
               <Link className={styles.cardLink} href="/omnoid-singularity">Enter the model →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>DESIGN STUDY</span>
+              <span className={styles.tag}>IN DEVELOPMENT</span>
               <h3>Infinity Engine research</h3>
-              <p>Follow the source, test, experiment, specification, and release distinction behind shared architecture research.</p>
+              <p>Read an unfinished research idea about how projects can share useful capabilities.</p>
               <Link className={styles.cardLink} href="/infinity-engine">Read the study →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>INDEPENDENT LIVE PRODUCT</span>
+              <span className={styles.tag}>ON CHAOS TAROT</span>
               <h3>Chaos Tarot</h3>
               <p>Use the constellation’s independent live reading and study system. It keeps its own account, data, and payment boundary.</p>
               <a className={styles.cardLink} href="https://chaos-tarot.com/free-reading?source=apocky-labs" target="_blank" rel="noopener noreferrer">Begin a free reading ↗</a>
             </article>
             <article className={`${styles.card} ${styles.tierFeatured}`}>
-              <span className={styles.tag}>PUBLIC · DEVICE-LOCAL</span>
-              <h3>Yes / No Oracle</h3>
-              <p>Ask one bounded question and use a reproducible symbolic signal to inspect your own reaction.</p>
-              <Link className={styles.cardLink} href="/oracle">Reveal a signal →</Link>
+              <span className={styles.tag}>ON CHAOS TAROT</span>
+              <h3>Yes / No reading</h3>
+              <p>Ask a focused question on Chaos Tarot. Its yes/no reading currently requires a separate sign-in.</p>
+              <a className={styles.cardLink} href="https://chaos-tarot.com/yes-no" target="_blank" rel="noopener noreferrer">Open Chaos Tarot ↗</a>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC · DETERMINISTIC</span>
-              <h3>Spellcraft engine</h3>
-              <p>Compile Haloic-derived language into an inspectable, authority-none symbolic graph and interpretation.</p>
-              <Link className={styles.cardLink} href="/spellcraft">Open the compiler →</Link>
+              <span className={styles.tag}>MAKE SOMETHING</span>
+              <h3>Compose a symbolic phrase</h3>
+              <p>Combine symbolic words, see an interpretation, and turn your phrase into a sigil.</p>
+              <Link className={styles.cardLink} href="/spellcraft">Write a phrase →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC · EXPORTABLE SVG</span>
+              <span className={styles.tag}>MAKE A SYMBOL</span>
               <h3>Sigil studio</h3>
-              <p>Render a validated working as visible, bounded geometry and download the reproducible artifact.</p>
+              <p>Turn a symbolic phrase into a visible design, adjust it, and download the image.</p>
               <Link className={styles.cardLink} href="/sigils">Generate a sigil →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>PUBLIC ROUTE · PRIVATE DATA</span>
+              <span className={styles.tag}>SAVED ON THIS DEVICE</span>
               <h3>Local Spellbook</h3>
-              <p>Explicitly save, verify, export, import, and delete private workings in the current browser.</p>
+              <p>Return to your saved phrases and symbols, download a copy, or bring a saved collection back into this browser.</p>
               <Link className={styles.cardLink} href="/spellbook">Open the shelf →</Link>
             </article>
           </div>
@@ -119,8 +118,8 @@ const Labs: NextPage = () => (
         </p>
 
         <div className={styles.actions}>
-          <Link className={styles.primary} href="/atlas?kind=study">Map the studies →</Link>
-          <Link className={styles.secondary} href="/memory-tools">Connect memory and tools →</Link>
+          <Link className={styles.primary} href="/atlas?kind=study">Explore more ideas →</Link>
+          <Link className={styles.secondary} href="/memory-tools">Find your notes &amp; saved work →</Link>
         </div>
       </div>
     </main>

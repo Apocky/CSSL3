@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -79,40 +80,41 @@ export default function CommandPalette(): JSX.Element {
         ref={triggerRef}
         className="apx-command-trigger"
         type="button"
-        aria-label="Find anything in the Apocky neural index"
+        aria-label="Search Apocky"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen(true)}
       >
         <span aria-hidden="true">⌕</span>
-        <span className="apx-command-trigger-label">Find anything</span>
+        <span className="apx-command-trigger-label">Search</span>
         <kbd>⌘K</kbd>
       </button>
 
-      {open ? (
+      {open ? createPortal((
         <div className="apx-command-backdrop" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) close();
         }}>
           <section ref={dialogRef} className="apx-command" role="dialog" aria-modal="true" aria-labelledby="apx-command-title">
             <header className="apx-command-head">
               <div>
-                <p>NEURAL INDEX</p>
-                <h2 id="apx-command-title">Find any public signal</h2>
+                <p>What are you looking for?</p>
+                <h2 id="apx-command-title">Find something useful.</h2>
               </div>
-              <button type="button" onClick={close} aria-label="Close neural index">Esc</button>
+              <button type="button" onClick={close} aria-label="Close search">Close</button>
             </header>
             <label className="apx-command-search">
-              <span className="sr-only">Search projects, concepts, and destinations</span>
+              <span className="sr-only">Search tools, words, thoughts, and stories</span>
               <span aria-hidden="true">⌕</span>
               <input
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search projects, concepts, states…"
+                placeholder="Try sigil, meaning, or Codex…"
                 autoComplete="off"
               />
             </label>
-            <div className="apx-command-results" role="list" aria-label={`${results.length} matching destinations`}>
+            <p className="sr-only" role="status">{results.length} {results.length === 1 ? 'result' : 'results'}</p>
+            <div className="apx-command-results" role="region" aria-label="Search results">
               {results.map((node) => {
                 const contents = (
                   <>
@@ -126,24 +128,24 @@ export default function CommandPalette(): JSX.Element {
                   </>
                 );
                 return node.external ? (
-                  <a key={node.id} className="apx-command-result" role="listitem" href={node.href} target="_blank" rel="noopener noreferrer" onClick={close}>{contents}</a>
+                  <a key={node.id} className="apx-command-result" href={node.href} target="_blank" rel="noopener noreferrer" onClick={close}>{contents}</a>
                 ) : (
-                  <Link key={node.id} className="apx-command-result" role="listitem" href={node.href} onClick={close}>{contents}</Link>
+                  <Link key={node.id} className="apx-command-result" href={node.href} onClick={close}>{contents}</Link>
                 );
               })}
               {results.length === 0 ? (
                 <div className="apx-command-empty" role="status">
-                  <strong>No mapped signal found.</strong>
-                  <span>Try a project name, “support,” “community,” “meaning,” or “time.”</span>
+                  <strong>No matches yet.</strong>
+                  <span>Try “sigil”, “story”, “tarot”, or “meaning”.</span>
                 </div>
               ) : null}
             </div>
             <footer className="apx-command-foot">
-              <span><kbd>/</kbd> open</span><span><kbd>Esc</kbd> close</span><Link href="/atlas" onClick={close}>Full Atlas →</Link>
+              <span><kbd>Esc</kbd> close</span><Link href="/atlas" onClick={close}>Browse everything →</Link>
             </footer>
           </section>
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }

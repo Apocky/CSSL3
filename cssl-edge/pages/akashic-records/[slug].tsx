@@ -190,7 +190,7 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({
       <main className={`${styles.root} ${styles.detailRoot}`}>
         <article className={styles.reader}>
           <Link className={styles.backLink} href="/akashic-records">
-            <span aria-hidden="true">←</span> All Akashic Records
+            <span aria-hidden="true">←</span> Essays & thoughts
           </Link>
 
           <header className={styles.readerHeader}>
@@ -198,6 +198,37 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({
             <h1>{record.title}</h1>
             <p className={styles.readerExcerpt}>{record.excerpt}</p>
 
+            <p className={styles.readerByline}>{isConversation ? `Conversation with ${record.source}` : 'Shawn Apocky'} · <time dateTime={recordDate}>{formatDate(recordDate)}</time></p>
+
+            {record.contentNotice !== undefined ? (
+              <aside className={styles.contentNotice} aria-label="Transcript content notice">
+                <strong>Before you read</strong>
+                <p>{record.contentNotice}</p>
+              </aside>
+            ) : null}
+          </header>
+
+          {isConversation && conversationParts.length > 1 ? (
+            <nav className={styles.partNavigation} aria-label="Conversation transcript parts">
+              <span>Transcript parts</span>
+              <ol>
+                {conversationParts.map((candidate) => (
+                  <li key={candidate.slug}>
+                    {candidate.slug === record.slug
+                      ? <strong aria-current="page">Part {candidate.part}</strong>
+                      : <Link href={`/akashic-records/${candidate.slug}`}>Part {candidate.part}</Link>}
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          ) : null}
+
+          <div className={styles.readerBody}>
+            {record.blocks.map(renderRecordBlock)}
+          </div>
+
+          <details className={styles.provenance}>
+            <summary id="record-provenance-title">Sources and details about this copy</summary>
             <dl className={styles.readerMeta}>
               <div>
                 <dt>{isConversation ? 'Recorded' : 'Published'}</dt>
@@ -228,36 +259,7 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({
               </div>
             ) : null}
 
-            {record.contentNotice !== undefined ? (
-              <aside className={styles.contentNotice} aria-label="Transcript content notice">
-                <strong>Public transcript note</strong>
-                <p>{record.contentNotice}</p>
-              </aside>
-            ) : null}
-          </header>
 
-          {isConversation && conversationParts.length > 1 ? (
-            <nav className={styles.partNavigation} aria-label="Conversation transcript parts">
-              <span>Transcript parts</span>
-              <ol>
-                {conversationParts.map((candidate) => (
-                  <li key={candidate.slug}>
-                    {candidate.slug === record.slug
-                      ? <strong aria-current="page">Part {candidate.part}</strong>
-                      : <Link href={`/akashic-records/${candidate.slug}`}>Part {candidate.part}</Link>}
-                  </li>
-                ))}
-              </ol>
-            </nav>
-          ) : null}
-
-          <div className={styles.readerBody}>
-            {record.blocks.map(renderRecordBlock)}
-          </div>
-
-          <aside className={styles.provenance} aria-labelledby="record-provenance-title">
-            <p className={styles.eyebrow}>Provenance</p>
-            <h2 id="record-provenance-title">About this archive copy</h2>
             <dl>
               <div>
                 <dt>Publication state</dt>
@@ -328,7 +330,7 @@ const AkashicRecordPage: NextPage<AkashicRecordPageProps> = ({
                 <dd><a href={localUrl}>{localUrl}</a></dd>
               </div>
             </dl>
-          </aside>
+          </details>
 
           <nav className={styles.adjacent} aria-label="Nearby archive records">
             {previous !== null ? (

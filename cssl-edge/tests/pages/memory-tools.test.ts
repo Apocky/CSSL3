@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { PUBLIC_SURFACE_NODES } from '@/lib/public-surface-graph';
 
 const read = (file: string): string => readFileSync(resolve(process.cwd(), file), 'utf8');
 
@@ -8,6 +9,7 @@ const page = read('pages/memory-tools.tsx');
 const experience = read('components/memory/MemoryExperience.tsx');
 const help = read('components/ui/HelpTip.tsx');
 const atlas = read('components/atlas/ConstellationAtlas.tsx');
+const shell = read('components/SiteShell.tsx');
 const middleware = read('middleware.ts');
 
 assert.match(page, /<MemoryExperience \/>/, 'memory page must render the task-first experience');
@@ -35,10 +37,12 @@ assert.match(help, /aria-controls=\{id\}/, 'help trigger must own the tooltip');
 assert.match(help, /event\.key === 'Escape'/, 'help must close from the keyboard');
 assert.match(help, /role="tooltip"/, 'help text must have tooltip semantics');
 
-assert.match(atlas, /What brought you here\?/, 'Atlas must lead with task-first paths');
-assert.match(atlas, /href="\/memory-tools"/, 'Atlas must route into the memory contract');
-assert.match(atlas, /href="\/conversations"/, 'Atlas must route into curated conversation views');
-assert.match(atlas, /aria-label="Breadcrumb"/, 'Atlas must provide breadcrumbs');
+assert.match(atlas, /What are you looking for\?/, 'Atlas must lead with a task-first search');
+assert.match(atlas, /filterPublicSurfaceNodes/, 'Atlas must show the shared destination catalogue');
+assert.match(atlas, /<DestinationLink node=\{node\}/, 'directory results must offer direct destination links');
+assert.ok(PUBLIC_SURFACE_NODES.some(node => node.href === '/memory-tools'), 'Atlas catalogue must route into the memory contract');
+assert.ok(PUBLIC_SURFACE_NODES.some(node => node.href === '/conversations'), 'Atlas catalogue must route into curated conversation views');
+assert.match(shell, /aria-label="Apocky home"/, 'the shared navigation must provide a named return home');
 
 assert.match(middleware, /BROKERED_MEMBER_MEMORY_PATH/, 'middleware must name the member memory allowlist');
 assert.match(middleware, /health\|list\|remember\|recall\|forget\|export/, 'only reviewed member operations may pass');

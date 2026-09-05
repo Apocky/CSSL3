@@ -87,7 +87,7 @@ const Download: NextPage = () => {
           Labyrinth of Apocalypse
         </h1>
         <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.95rem' }}>
-          {VERSION} · 64-bit Windows · program released {RELEASE_DATE} · package notes updated {PACKAGE_TEXT_UPDATED}
+          An unfinished game for 64-bit Windows · {VERSION}
         </p>
 
         {/* ── DOWNLOAD CTA ── */}
@@ -136,18 +136,19 @@ const Download: NextPage = () => {
         </section>
 
         {/* ── INTEGRITY ── */}
-        <section style={{ marginBottom: '2.5rem' }}>
-          <h2
+        <details style={{ marginBottom: '2.5rem' }}>
+          <summary
             style={{
               fontSize: '0.7rem',
               textTransform: 'uppercase',
               letterSpacing: '0.18em',
-              color: '#7a7a8c',
+              color: '#a8a8b8',
               marginBottom: '0.6rem',
             }}
           >
             Check the download
-          </h2>
+          </summary>
+          <p style={{ color: '#a8a8b8' }}>Program released {RELEASE_DATE} · package notes updated {PACKAGE_TEXT_UPDATED}</p>
           <div
             style={{
               padding: '0.9rem 1.1rem',
@@ -171,7 +172,7 @@ const Download: NextPage = () => {
               Windows PowerShell command: <code>Get-FileHash {FILENAME} -Algorithm SHA256</code>
             </div>
           </div>
-        </section>
+        </details>
 
         {/* ── HOW TO RUN ── */}
         <section style={{ marginBottom: '2.5rem' }}>

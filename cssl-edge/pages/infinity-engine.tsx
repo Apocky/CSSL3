@@ -34,19 +34,23 @@ const InfinityEngine: NextPage = () => (
       `}</style>
     </Head>
     <main className="ie-page">
-      <p className="apx-eyebrow">Architecture research</p>
+      <p className="apx-eyebrow">An idea in development</p>
       <h1>Infinity Engine</h1>
       <p className="ie-lead">
-        “Infinity Engine” is a project name for research into code and ideas that several Apocky projects may
-        share. It is not a separate person, not a claim of consciousness, and not one finished program that is
-        always running.
+        What if a game, a simulation, and a creative tool could share useful building blocks?
+        Infinity Engine explores that question. The research is unfinished; the links below lead to things
+        you can try or read today.
       </p>
 
-      <div className="ie-note">
+      <details className="ie-note">
+        <summary>What the name means, and what is available</summary>
+        <p>“Infinity Engine” is a project name for shared code and ideas. It is not a separate person,
+          a claim of consciousness, or one finished program that is always running.</p>
+        <p>
         Older copy blended plans, metaphors, and product claims. This page now separates them. The current
         evidence is a mixture of source code, tests, experiments, and architecture documents; each must be
-        evaluated on its own.
-      </div>
+        evaluated on its own.</p>
+      </details>
 
       <section>
         <h2>What the research is trying to do</h2>
@@ -57,8 +61,8 @@ const InfinityEngine: NextPage = () => (
         </p>
       </section>
 
-      <section>
-        <h2>Current forms of evidence</h2>
+      <details>
+        <summary>Research, tests, and releases</summary>
         <ul>
           <li><strong>Source code:</strong> files and libraries that can be inspected and tested.</li>
           <li><strong>Tests:</strong> checks of particular behavior under stated conditions.</li>
@@ -70,7 +74,7 @@ const InfinityEngine: NextPage = () => (
           One form does not automatically prove another. A specification is not a deployment, and a source
           module is not proof that a complete product is available.
         </p>
-      </section>
+      </details>
 
       <section>
         <h2>Projects connected to the research</h2>

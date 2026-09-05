@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { findDirectoryItems } from '../../lib/site-directory';
 
 import { filterPublicGlossary, PUBLIC_GLOSSARY_SYMBOLS, PUBLIC_GLOSSARY_TERMS } from '../../lib/public-glossary';
 import {
@@ -13,7 +14,7 @@ import {
   type PublicSurfaceId,
 } from '../../lib/public-surface-graph';
 
-assert.equal(PUBLIC_SURFACE_NODES.length, 30, 'the public graph must project every ratified top-level capability');
+assert.equal(PUBLIC_SURFACE_NODES.length, 35, 'the directory includes tools, Codex, thoughts, account chat, and app availability');
 assert.equal(PUBLIC_SURFACE_AXES.length, 4);
 
 const ids = PUBLIC_SURFACE_NODES.map((node) => node.id);
@@ -40,7 +41,7 @@ assert.equal(
 
 const allowedExternalHosts = new Set(['chaos-tarot.com', 'cssl.dev', 'ko-fi.com', 'www.patreon.com']);
 for (const relay of getExternalRelayNodes()) {
-  assert.equal(relay.availability, 'external_public');
+  assert.ok(['external_public', 'account_required'].includes(relay.availability));
   assert.ok(allowedExternalHosts.has(new URL(relay.href).hostname), `${relay.href} is not an approved external relay`);
 }
 
@@ -62,12 +63,19 @@ assert.equal(getPublicSurfaceNode('cssl')?.href, '/docs/cssl-language');
 assert.equal(getPublicSurfaceNode('cssl')?.external, false);
 assert.equal(getPublicSurfaceNode('cslv3')?.href, '/words#symbols');
 assert.equal(getPublicSurfaceNode('cslv3')?.external, false);
-assert.deepEqual(getExternalRelayNodes().map((node) => node.id), ['chaos-tarot', 'ko-fi', 'patreon']);
+assert.deepEqual(getExternalRelayNodes().map((node) => node.id).sort(), ['chaos-tarot', 'oracle', 'ko-fi', 'patreon'].sort());
+assert.equal(getPublicSurfaceNode('oracle')?.availability, 'account_required');
+assert.equal(getPublicSurfaceNode('apocrypha')?.availability, 'account_required');
+assert.equal(getPublicSurfaceNode('codex-apockalypsis')?.href, '/codex-apockalypsis');
 assert.equal(findPublicSurfaceNodeForPath('/akashic-records/example-record?view=reader')?.id, 'akashic-records');
 assert.equal(findPublicSurfaceNodeForPath('/atlas?axis=Meaning')?.id, 'atlas');
 assert.equal(findPublicSurfaceNodeForPath('/shawn'), undefined);
 
-assert.deepEqual(filterPublicSurfaceNodes({ query: 'atmosphere' }).map((node) => node.id), ['chaos-tarot']);
+assert.deepEqual(filterPublicSurfaceNodes({ query: 'Codex Apockalypsis' }).map((node) => node.id), ['codex-apockalypsis']);
+for (const query of ['story', 'stories', 'novel', 'novels', 'Good Book', 'Lilith']) {
+  assert.ok(filterPublicSurfaceNodes({ query }).some(node => node.id === 'codex-apockalypsis'), `global search finds Codex by ${query}`);
+  assert.ok(findDirectoryItems(query).some(node => node.id === 'codex-apockalypsis'), `hub directory finds Codex by ${query}`);
+}
 assert.ok(filterPublicSurfaceNodes({ axis: 'Time' }).every((node) => node.axes.includes('Time')));
 assert.ok(filterPublicSurfaceNodes({ availability: 'design_study' }).every((node) => node.availability === 'design_study'));
 

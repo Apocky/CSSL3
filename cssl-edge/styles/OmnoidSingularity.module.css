@@ -119,15 +119,26 @@
 }
 
 .safetyBoundary {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 16px;
+  display: block;
   border: 1px solid rgba(228, 182, 109, 0.35);
   border-radius: var(--apx-radius);
   background: linear-gradient(145deg, rgba(228, 182, 109, 0.09), rgba(10, 16, 13, 0.88));
   box-shadow: var(--apx-shadow);
   padding: 22px;
 }
+
+.safetyBoundary summary,
+.legendSection > summary {
+  min-height: 44px;
+  padding: 10px 0;
+  cursor: pointer;
+  color: var(--apx-copy);
+  font-weight: 650;
+}
+
+.safetyBoundary[open] > div { margin-top: 14px; }
+
+.legendSection:not([open]) { padding-bottom: 0; }
 
 .boundaryMark {
   color: var(--apx-warm);

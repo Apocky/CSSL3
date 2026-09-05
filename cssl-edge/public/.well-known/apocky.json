@@ -7,6 +7,24 @@
   "declared_release_state": "public",
   "entry_points": [
     {
+      "rel": "tools",
+      "href": "/tools",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
+      "rel": "codex_apockalypsis",
+      "href": "/codex-apockalypsis",
+      "method": "GET",
+      "media_type": "text/html",
+      "authn": "none",
+      "authorization": "public",
+      "availability": "public"
+    },
+    {
       "rel": "home",
       "href": "/",
       "method": "GET",
@@ -35,12 +53,12 @@
     },
     {
       "rel": "yes_no_oracle",
-      "href": "/oracle",
+      "href": "https://chaos-tarot.com/yes-no?source=apocky-oracle",
       "method": "GET",
       "media_type": "text/html",
-      "authn": "none",
-      "authorization": "public_device_local_reflection",
-      "availability": "public"
+      "authn": "external_account",
+      "authorization": "external_service",
+      "availability": "sign_in_required"
     },
     {
       "rel": "symbolic_spellcraft",

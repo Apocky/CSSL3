@@ -57,19 +57,21 @@ const TheoryOfEverything: NextPage = () => {
 
       <main className={styles.page}>
         <div className={styles.wrap}>
-          <p className={styles.eyebrow}>Cosmology · evidence before grandeur</p>
-          <h1 className={styles.title}>A Theory of Everything must connect everything <em>without confusing its types.</em></h1>
+          <p className={styles.eyebrow}>Shawn Apocky’s cosmology</p>
+          <h1 className={styles.title}>How does <em>everything connect?</em></h1>
           <p className={styles.lead}>
             The Omnoid Singularity is Shawn Apocky’s attempt to reason about totality, distinct selves,
             recursion, time, freedom, geometry, and return inside one conceptual architecture. That is a
-            Theory-of-Everything-sized ambition. It is not yet a proven physical theory—and the difference matters.
+            Theory-of-Everything-sized ambition, offered as an evolving model rather than a proven physical theory.
           </p>
           <div className={styles.actions}>
-            <Link className={styles.primary} href="/omnoid-singularity">Read the full Omnoid synthesis →</Link>
-            <Link className={styles.secondary} href="/atlas?q=omnoid">Map its connections →</Link>
+            <Link className={styles.primary} href="/omnoid-singularity#summary">Read the Omnoid idea →</Link>
+            <a className={styles.secondary} href="/codex-apockalypsis">Enter the story →</a>
+            <Link className={styles.secondary} href="/words">Look up a term →</Link>
           </div>
 
-          <section className={styles.section} aria-labelledby="layers-title">
+          <details className={styles.section}>
+            <summary>How the ideas, mathematics, and hypotheses differ</summary>
             <div className={styles.sectionHead}>
               <h2 id="layers-title">One ambition. Four different layers of claim.</h2>
               <p>A serious unification project must label where a statement comes from and what kind of support it has.</p>
@@ -96,11 +98,11 @@ const TheoryOfEverything: NextPage = () => {
                 <p>Claims connecting the ontology to quantum physics, consciousness, continuity, or measurable dynamics remain hypotheses until tested.</p>
               </article>
             </div>
-          </section>
+          </details>
 
           <section className={styles.section} aria-labelledby="map-title">
             <div className={styles.sectionHead}>
-              <h2 id="map-title">What the model is trying to hold together.</h2>
+              <h2 id="map-title">From lived experience to the whole.</h2>
               <p>The center is not a shortcut. Every ring needs its own definitions, relations, and evidence.</p>
             </div>
             <div className={styles.diagram}>
@@ -134,7 +136,7 @@ const TheoryOfEverything: NextPage = () => {
 
           <section className={styles.section} aria-labelledby="test-title">
             <div className={styles.sectionHead}>
-              <h2 id="test-title">The path from cosmology to theory runs through a falsifier.</h2>
+              <h2 id="test-title">What would make this testable?</h2>
               <p>Scale of ambition cannot substitute for measurement. These are the missing bridges that matter most.</p>
             </div>
             <div className={styles.grid3}>

@@ -5,6 +5,7 @@ import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 
 import { PUBLIC_SURFACE_EDGES, PUBLIC_SURFACE_NODES } from '@/lib/public-surface-graph';
+import { renderSiteDirectory } from '../helpers/render-site-directory';
 
 function read(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -15,6 +16,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const home = read('pages/index.tsx');
+const homePanels = renderSiteDirectory();
 const start = read('pages/start.tsx');
 const membership = read('pages/membership.tsx');
 const quests = read('pages/quests.tsx');
@@ -57,23 +59,24 @@ for (const [name, source, canonical] of [
   assert(source.includes(`rel="canonical" href="${canonical}"`), `${name} must self-canonicalize on the www origin`);
 }
 
-for (const route of ['/start', '/divination', '/oracle', '/spellcraft', '/sigils', '/spellbook', '/theory-of-everything', '/principles', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/infinity-engine']) {
+for (const route of ['/tools', '/codex-apockalypsis', '/start', '/divination', '/spellcraft', '/sigils', '/spellbook', '/theory-of-everything', '/principles', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/infinity-engine']) {
   assert(sitemap.includes(`<loc>https://www.apocky.com${route}</loc>`), `sitemap missing ${route}`);
   assert(llms.includes(`https://www.apocky.com${route}`), `llms.txt missing ${route}`);
 }
+assert(llms.includes('https://chaos-tarot.com/yes-no') && llms.includes('external sign-in required'), 'discovery text must disclose the actual Oracle destination and sign-in requirement');
 
-assert(home.includes('chaos-tarot.com/free-reading?source=apocky-home'), 'home must hand off directly to a measurable free Chaos reading');
-assert((home.match(/https:\/\/chaos-tarot\.com/g) ?? []).length === 1, 'home content must expose one clear Chaos funnel');
-assert(!home.includes("href=\"/oracle\"") && !home.includes("href: '/oracle'"), 'home must not host or advertise the local Yes / No route');
+assert(homePanels.includes('href="https://chaos-tarot.com/free-reading?source=apocky-directory"'), 'home must hand off directly to the registered free Chaos reading');
+assert(homePanels.includes('href="https://chaos-tarot.com/yes-no"'), 'the Oracle panel must use its actual external destination');
+assert(!homePanels.includes('href="/oracle"'), 'home must not host or advertise the local Yes / No route');
 assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the complete project index beneath its primary paths');
-for (const path of ['Talk to Apocrypha', 'Explore Atlas', 'Enter Chaos Tarot']) {
-  assert(home.includes(path), `home must expose the primary ${path} path`);
+for (const node of PUBLIC_SURFACE_NODES.filter(node => node.id !== 'home')) {
+  assert(homePanels.includes(`data-destination="${node.id}"`), `home must expose a complete panel for ${node.id}`);
 }
-assert(home.includes("href: '/apocrypha'"), 'every visitor must have a direct Apocrypha entry');
+assert(homePanels.includes('href="/apocrypha"'), 'every visitor must have a direct Apocrypha entry');
 assert(!home.includes("access === 'owner'"), 'account chat entry must not be restricted to the owner');
 assert(!home.includes('public relay remains closed'), 'home must not retain the superseded owner-only copy');
-assert(home.includes('<details className="apx-home-more">'), 'secondary amenities must use progressive disclosure');
-assert(home.includes('/releases/apocrypha-living/manifest.json'), 'home must link its compact release claim to public-safe evidence');
+assert(home.includes('<SiteDirectory />'), 'home must render the complete public destination collection');
+assert(!home.includes('runtime ready') && !home.includes('release verified'), 'home must not make unsupported runtime or release claims');
 assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
 assert(home.includes('location.replace(returnTo)'), 'home simplification must preserve the normalized post-auth return path');
 assert(membership.includes('https://chaos-tarot.com/pricing'), 'membership must expose the usable Chaos product path');
@@ -90,11 +93,11 @@ assert(status.includes('health API version'), 'status page must label the health
 assert(!status.includes('public version'), 'status page must not present the health contract version as a product release');
 assert(status.includes('Configuration flags mean a connection is present; they do not prove every user flow succeeds'), 'status page must state its evidence boundary');
 
-assert(command.includes('aria-label="Find anything in the Apocky neural index"'), 'mobile command trigger must retain an accessible name');
+assert(command.includes('aria-label="Search Apocky"'), 'mobile command trigger must retain an accessible name');
 assert(shell.includes('<ContextualSynapses pathname={pathname} />'), 'global shell must expose contextual graph edges');
 const primaryNav = shell.match(/const NAV:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
 assert((primaryNav.match(/href:/g) ?? []).length === 5, 'global shell must expose no more than five primary destinations');
-for (const label of ['Apocrypha', 'Atlas', 'Create', 'Clearing', 'Chaos']) {
+for (const label of ['Tools', 'Words', 'Thoughts', 'Codex', 'Apocrypha']) {
   assert(primaryNav.includes(label), `primary navigation missing ${label}`);
 }
 assert(!primaryNav.includes('/start'), 'home now owns orientation; Start must not remain a primary destination');
@@ -111,16 +114,16 @@ assert(!shell.includes('https://cssl.dev'), 'global shell must not send visitors
 assert(errorBoundary.includes('publicErrorCode'), 'render failures must derive a stable public error code');
 assert(!errorBoundary.includes('{err.message}'), 'default public fallback must not render raw exception messages');
 
-assert(divination.includes('Seven traditions. One cross-system lens.'), 'divination guide must use the reconciled system model');
+assert(divination.includes('Cross-system synthesis') && divination.includes('without pretending they are interchangeable'), 'divination guide must preserve the distinctions between symbolic traditions');
 assert(divination.includes('FAQPage'), 'divination guide must include structured FAQ data');
-assert(theory.includes('not yet a proven physical theory'), 'Theory of Everything guide must preserve the evidence boundary');
+assert(theory.includes('rather than a proven physical theory'), 'Theory of Everything guide must preserve the evidence boundary');
 assert(theory.includes('FAQPage'), 'Theory of Everything guide must include structured FAQ data');
-assert(principles.includes('Four invariants'), 'principles must preserve the four-invariant structure');
+assert(principles.includes('Four commitments') && (principles.match(/title: '/g) ?? []).length === 4, 'principles must preserve all four commitments');
 assert(principles.includes('Equivalent interface views'), 'principles must expose the graph-equivalence visual aid');
 assert(now.includes('Still unwired.'), 'current-state ledger must name capabilities that are not connected yet');
-assert(labs.includes('Keep the labels attached.'), 'labs must make maturity labels part of the interface promise');
+assert(labs.includes('“Experimental” can mean missing data, changing behavior, or an unavailable dependency'), 'labs must explain the limits of experimental availability');
 assert(memoryTools.includes('Private stays private.'), 'memory directory must preserve the private memory boundary');
-assert(memoryTools.includes('device-local'), 'memory directory must name local persistence semantics');
+assert(memoryTools.includes('Saved work in this browser stays on this device'), 'memory directory must name local persistence semantics');
 assert(!memoryTools.includes('/api/mneme/'), 'public memory directory must not expose an unbrokered Mneme endpoint');
 
 const manifest = JSON.parse(read('public/.well-known/apocky.json')) as Record<string, unknown>;
@@ -131,7 +134,7 @@ const validate = ajv.compile(manifestSchema);
 assert(validate(manifest), `site manifest must validate: ${ajv.errorsText(validate.errors)}`);
 
 const entryPoints = manifest.entry_points as Array<{ href?: string }>;
-for (const href of ['/start', '/divination', '/oracle', '/spellcraft', '/sigils', '/spellbook', '/theory-of-everything', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/docs', '/infinity-engine', 'https://chaos-tarot.com/']) {
+for (const href of ['/tools', '/codex-apockalypsis', '/start', '/divination', 'https://chaos-tarot.com/yes-no?source=apocky-oracle', '/spellcraft', '/sigils', '/spellbook', '/theory-of-everything', '/membership', '/quests', '/status', '/now', '/labs', '/memory-tools', '/docs', '/infinity-engine', 'https://chaos-tarot.com/']) {
   assert(entryPoints.some((entry) => entry.href === href), `site manifest missing ${href}`);
 }
 assert(!entryPoints.some((entry) => entry.href?.startsWith('https://cssl.dev')), 'site manifest must use the local CSSL recovery rail while cssl.dev is unavailable');

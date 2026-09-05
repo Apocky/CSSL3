@@ -101,7 +101,7 @@ assert.doesNotMatch(publicGeneratorSource, /APOCKY_CHATGPT_EXPORT_DIR|APOCKY_CLA
 assert.match(reviewBuilderSource, /must be outside the repository/u, 'raw review builder cannot target public or tracked paths');
 assert.match(reviewBuilderSource, /implementation-only and cannot write public assets/u, 'ambiguous legacy entry point fails closed');
 assert.match(reviewEntrySource, /buildReviewCorpus/u, 'raw review work has a separately named entry point');
-assert.match(shellSource, /href: '\/conversations', label: 'Conversations'/u, 'footer Explore navigation exposes the reading room');
+assert.match(shellSource, /href: '\/conversations', label: 'Thoughts & conversations'/u, 'footer Explore navigation exposes the reading room');
 assert.match(middlewareSource, /'\/conversation-corpus\/records\/'/u, 'legacy static bodies are blocked at the edge');
 assert.match(vercelIgnore, /public\/conversation-corpus\/records\//u, 'legacy local bodies are excluded from dirty-root deployment');
 assert.match(vercelIgnore, /public\/conversation-corpus\/index\.v1\.json/u, 'legacy local index is excluded from dirty-root deployment');

@@ -34,16 +34,16 @@ const Principles: NextPage = () => (
     </Head>
     <main className={styles.page}>
       <div className={styles.wrap}>
-        <p className={styles.eyebrow}>Interface invariants</p>
-        <h1 className={styles.title}>The visual field may shimmer. <em>Its truth boundaries do not.</em></h1>
-        <p className={styles.lead}>Geometry explains relationships; it never creates authority or consent. These laws remain visible in ordinary text, keyboard order, forced colors, reduced motion, and the complete path index.</p>
+        <p className={styles.eyebrow}>What you can expect</p>
+        <h1 className={styles.title}>Clear choices. <em>Your control.</em></h1>
+        <p className={styles.lead}>You should know what an action does, what stays private, and how to say no. These principles guide the tools and pages here.</p>
 
         <section className={styles.section} aria-labelledby="invariants-title">
-          <div className={styles.sectionHead}><h2 id="invariants-title">Four invariants. No hidden edge.</h2><p>The interface can become more vivid, responsive, and persuasive without becoming manipulative or false.</p></div>
+          <div className={styles.sectionHead}><h2 id="invariants-title">Four commitments.</h2><p>A useful, expressive site should respect your choices and describe its features honestly.</p></div>
           <div className={styles.grid4}>
             {PRINCIPLES.map((principle, index) => (
               <article className={styles.card} key={principle.title}>
-                <span className={styles.tag}>{String(index + 1).padStart(2, '0')} · invariant</span>
+                <span className={styles.tag}>{String(index + 1).padStart(2, '0')}</span>
                 <h3>{principle.title}</h3>
                 <p>{principle.copy}</p>
               </article>
@@ -51,7 +51,8 @@ const Principles: NextPage = () => (
           </div>
         </section>
 
-        <section className={styles.section} aria-labelledby="views-title">
+        <details className={styles.section}>
+          <summary>How these principles guide the interface</summary>
           <div className={styles.sectionHead}><h2 id="views-title">Every view must preserve the same truth.</h2><p>The map, index, dictionary, command palette, and contextual synapses are different projections of one typed public graph.</p></div>
           <div className={styles.diagram}>
             <svg viewBox="0 0 760 360" role="img" aria-labelledby="principle-map-title principle-map-desc">
@@ -68,12 +69,12 @@ const Principles: NextPage = () => (
             </svg>
           </div>
           <p className={styles.truth}><strong>Readable equivalent.</strong><span>If the visual projection fails, filters to zero, or motion is disabled, the complete semantic list and direct destination links remain usable.</span></p>
-        </section>
+        </details>
 
         <section className={styles.section} aria-labelledby="follow-title">
-          <div className={styles.sectionHead}><h2 id="follow-title">Follow a relationship.</h2><p>See the principles operating in the public map, the community room, and the honest support layer.</p></div>
+          <div className={styles.sectionHead}><h2 id="follow-title">Explore at your own pace.</h2><p>Find a tool, visit the community, or learn how optional support works.</p></div>
           <div className={styles.actions}>
-            <Link className={styles.primary} href="/atlas">Test them in the Atlas →</Link>
+            <Link className={styles.primary} href="/atlas">Find a tool →</Link>
             <Link className={styles.secondary} href="/clearing">Enter the Clearing →</Link>
             <Link className={styles.secondary} href="/membership">Read the support terms →</Link>
           </div>

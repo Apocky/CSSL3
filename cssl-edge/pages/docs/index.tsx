@@ -4,7 +4,7 @@
 
 import type { NextPage, GetStaticProps } from 'next';
 import DocsLayout from '@/components/DocsLayout';
-import { DOC_PAGES, getDocSections, statusBadge } from '@/lib/docs-content';
+import { getDocSections, statusBadge } from '@/lib/docs-content';
 import { SPECS } from '@/lib/specs-snapshot';
 
 interface DocsIndexProps {
@@ -19,25 +19,27 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
       title="Documentation · Apocky"
       description="Plain-language help for Labyrinth of Apocalypse and CSSL, followed by optional technical references."
     >
-      <h1 className="docs-h1">Documentation</h1>
+      <h1 className="docs-h1">Guides & answers</h1>
       <p className="docs-blurb">
-        Start with ordinary explanations. Open the technical specifications only when you need that level of detail.
+        Get started with the game, understand a term, or explore how the tools work.
       </p>
 
       <p className="docs-p">
-        These {DOC_PAGES.length} guides cover Labyrinth of Apocalypse and CSSL. Pick a topic
-        below. If a page needs a specialized word or symbol, it should explain it before relying
-        on it. The shared <a href="/words" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
-          words and symbols page
-        </a> is always available.
+        <a href="/docs/getting-started">Start playing</a>{' · '}
+        <a href="/docs/keyboard-shortcuts">Game controls</a>{' · '}
+        <a href="/words">Look up a word or symbol</a>{' · '}
+        <a href="/docs/troubleshooting">Fix a problem</a>
       </p>
 
-      <p className="docs-p">
+      <details className="docs-section">
+        <summary>What the availability labels mean</summary>
+        <p className="docs-p">
         Pages are labeled <span style={{ color: '#34d399' }}>Available now</span>,{' '}
         <span style={{ color: '#fbbf24' }}>In progress</span>,{' '}
         <span style={{ color: '#9aa0a6' }}>Coming soon</span>, or{' '}
         <span style={{ color: '#f472b6' }}>Subject to change</span>.
-      </p>
+        </p>
+      </details>
 
       {sections.map((s) => (
         <section key={s.name} style={{ marginTop: '2rem' }}>
@@ -74,8 +76,8 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
         </section>
       ))}
 
-      <section className="docs-section">
-        <h2 className="docs-h2">Technical specifications</h2>
+      <details className="docs-section">
+        <summary className="docs-h2">Technical specifications</summary>
         <p className="docs-p">
           These {specEntries.length} source documents describe architecture and plans in compact CSLv3
           notation. They are reference material, not the starting point. Read the{' '}
@@ -92,13 +94,10 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
             </a>
           ))}
         </div>
-      </section>
+      </details>
 
       <footer className="docs-footer">
         <p style={{ margin: 0 }}>Plain language first. Technical detail when it helps.</p>
-        <p style={{ margin: '0.4rem 0 0' }}>
-          Source: <code className="docs-ic">cssl-edge/lib/docs-content.ts</code> · static-site-generated.
-        </p>
       </footer>
     </DocsLayout>
   );

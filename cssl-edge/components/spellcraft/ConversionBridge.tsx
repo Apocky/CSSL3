@@ -8,14 +8,12 @@ export default function ConversionBridge({ source }: { source: 'spellcraft' | 's
   return (
     <aside className={styles.conversionBridge} aria-labelledby={`${source}-support-title`}>
       <div>
-        <p className={styles.resultKicker}>KEEP THE ENGINE EVOLVING</p>
-        <h2 id={`${source}-support-title`}>You received the complete tool. Fund the next dimension if it earned it.</h2>
-        <p>Support sustains new vocabularies, deeper visual maps, accessibility work, and independent experiments. It never changes the meaning of your result.</p>
+        <h2 id={`${source}-support-title`}>Enjoying the tools?</h2>
+        <p>They’re free to use. If you’d like to help make more, you can support the work.</p>
       </div>
       <div className={styles.conversionActions}>
         <a href={`${koFi.href}?source=apocky-${source}`} target="_blank" rel="noopener noreferrer">{koFi.label} ↗</a>
-        <Link href="/membership">Compare support paths →</Link>
-        <a href={`https://chaos-tarot.com/free-reading?source=apocky-${source}`} target="_blank" rel="noopener noreferrer">Go deeper with Chaos Tarot ↗</a>
+        <Link href="/membership">Ways to help →</Link>
       </div>
     </aside>
   );

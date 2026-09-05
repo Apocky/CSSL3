@@ -989,3 +989,30 @@
     border-color: CanvasText;
   }
 }
+
+/* Essays and search are the primary reading surface. */
+.hero { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: clamp(24px, 4vw, 44px) 0 24px; }
+.hero h1 { font-size: clamp(2.2rem, 4.5vw, 3.8rem); }
+.readingLinks { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 14px; }
+.readingLinks a { color: var(--apx-warm); font-weight: 650; padding-block: 10px; }
+.explorer { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 20px; }
+.filters { position: static; width: 100%; }
+.filterHeading h2 { font-size: 1.3rem; }
+.readingKinds { display: flex; flex-wrap: wrap; gap: 8px; }
+.readingKinds button { min-height: 44px; border: 1px solid var(--apx-line); border-radius: 999px; background: transparent; color: var(--apx-copy); padding: 9px 16px; cursor: pointer; font: inherit; font-weight: 650; }
+.readingKinds button[aria-pressed="true"] { background: var(--apx-warm); border-color: var(--apx-warm); color: #16120c; }
+.moreFilters > summary, .archiveAbout > summary, .provenance > summary { min-height: 44px; padding-block: 10px; cursor: pointer; color: var(--apx-ink); font-weight: 650; line-height: 1.5; }
+.moreFilters .filterGrid { margin-top: 14px; }
+.archiveAbout { width: min(1180px, calc(100% - clamp(32px, 6vw, 80px))); margin: 0 auto; padding: 20px 0 40px; border-top: 1px solid var(--apx-line); }
+.archiveAbout .metrics { max-width: 440px; margin-top: 20px; }
+.readerHeader h1 { font-size: clamp(2rem, 4vw, 3.3rem); line-height: 1.1; }
+.readerByline { color: var(--apx-muted); font-size: .88rem; line-height: 1.6; margin: 14px 0 0; }
+.provenance .readerMeta { margin-top: 20px; }
+.readerExcerpt { max-width: 62ch; }
+.readingKinds button:focus-visible, .moreFilters > summary:focus-visible, .archiveAbout > summary:focus-visible, .provenance > summary:focus-visible { outline: 2px solid var(--apx-sky); outline-offset: 4px; }
+@media (max-width: 640px) {
+  .hero { padding-top: 24px; }
+  .readingLinks { gap: 0 16px; font-size: .9rem; }
+  .recordCard { padding: 20px; }
+  .readerHeader { padding-top: 20px; }
+}

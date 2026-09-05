@@ -9,10 +9,12 @@ or permission to speak for anyone named on the site.
 ## Main public pages
 
 - Home and project links: https://www.apocky.com/
+- Tools to try: https://www.apocky.com/tools
+- Codex Apockalypsis, the Good Book novel and its companion library: https://www.apocky.com/codex-apockalypsis
 - Guided starting paths: https://www.apocky.com/start
 - Connected-worlds video showcase with captions, transcript, and concept-art disclosure: https://www.apocky.com/showcase
 - Grounded guide to Chaos Tarot and divination systems: https://www.apocky.com/divination
-- Private, seeded Yes / No reflection tool: https://www.apocky.com/oracle
+- Yes / No questions on Chaos Tarot (external sign-in required): https://chaos-tarot.com/yes-no
 - Deterministic, owner-authorized Haloic-derived symbolic compiler and interpreter: https://www.apocky.com/spellcraft
 - Downloadable deterministic sigil studio: https://www.apocky.com/sigils
 - Explicit browser-local symbolic Spellbook: https://www.apocky.com/spellbook

@@ -44,7 +44,7 @@ export function testInfinityEngineSourceHasCanonicalCopy(): void {
   );
   assert(src.includes('Infinity Engine'), 'project name must appear');
   assert(src.includes('not a separate person'), 'must reject personhood claims for the project name');
-  assert(src.includes('not one finished program'), 'must distinguish architecture research from a release');
+  assert(src.includes('The research is unfinished') && src.includes('module is not proof that a complete product is available'), 'must distinguish unfinished research and source code from a released product');
   assert(src.includes('/words'), 'must link to the public words and symbols guide');
   assert(!src.includes('sovereign by default'), 'must not make an undefined sovereignty claim');
   assert(!src.includes('learns while you sleep'), 'must not make an unverified activity claim');

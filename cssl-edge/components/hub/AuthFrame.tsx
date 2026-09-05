@@ -1,11 +1,13 @@
 import Link from 'next/link';
+import styles from '../../styles/AuthEntry.module.css';
 
 interface AuthFrameProps {
   children: React.ReactNode;
   mode: 'sign-in' | 'register' | 'callback';
+  formFirst?: boolean;
 }
 
-export function AuthFrame({ children, mode }: AuthFrameProps): JSX.Element {
+export function AuthFrame({ children, mode, formFirst = false }: AuthFrameProps): JSX.Element {
   const story = mode === 'register'
     ? {
         eyebrow: 'A relationship you control',
@@ -24,16 +26,14 @@ export function AuthFrame({ children, mode }: AuthFrameProps): JSX.Element {
           copy: 'Use a one-time code, email link, or supported sign-in provider. Public project links do not require an account.',
         };
 
-  return (
-    <main id="main-content" className="apx-auth-page">
-      <section className="apx-auth-story" aria-labelledby="auth-story-title">
+  const storySection = <section className="apx-auth-story" aria-labelledby="auth-story-title">
         <Link href="/" className="apx-brand" aria-label="Return to Apocky home">
           <span className="apx-brand-mark" aria-hidden="true" />
           <span>APOCKY</span>
         </Link>
         <div className="apx-auth-story-main">
           <p className="apx-kicker">{story.eyebrow}</p>
-          <h1 id="auth-story-title">{story.title}</h1>
+          {formFirst ? <h2 id="auth-story-title">{story.title}</h2> : <h1 id="auth-story-title">{story.title}</h1>}
           <p>{story.copy}</p>
           <div className="apx-auth-points" role="list" aria-label="Account principles">
             <div className="apx-auth-point" role="listitem"><span>01</span><span>This page does not ask you to create a password.</span></div>
@@ -42,10 +42,13 @@ export function AuthFrame({ children, mode }: AuthFrameProps): JSX.Element {
           </div>
         </div>
         <p className="apx-auth-fine">Optional account · clear purpose · no data sale</p>
-      </section>
-      <section className="apx-auth-workspace" aria-label="Account access">
-        {children}
-      </section>
+      </section>;
+  const workspace = <section className="apx-auth-workspace" aria-label="Account access">
+    {formFirst ? <div className={styles.formWrap}><Link className={styles.returnHome} href="/">← Home</Link>{children}</div> : children}
+  </section>;
+  return (
+    <main id="main-content" className={`apx-auth-page${formFirst ? ` ${styles.formFirst}` : ''}`}>
+      {formFirst ? <>{workspace}{storySection}</> : <>{storySection}{workspace}</>}
     </main>
   );
 }

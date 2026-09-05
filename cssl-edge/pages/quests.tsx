@@ -10,101 +10,101 @@ const STORAGE_KEY = 'apocky.public-quests.v1';
 const QUESTS = [
   {
     id: 'read-signal',
-    rank: '01 · EXPERIENCE',
-    title: 'Read a signal',
-    copy: 'Begin a free Chaos Tarot reading and see how the active divination system feels in use.',
+    rank: '01 · Reflect',
+    title: 'Take a moment to reflect',
+    copy: 'Try a free Chaos Tarot reading. Notice which part gives you something to think about.',
     href: 'https://chaos-tarot.com/free-reading?source=apocky-quests',
     action: 'Begin a reading',
     external: true,
   },
   {
     id: 'map-constellation',
-    rank: '02 · ORIENTATION',
-    title: 'Map the constellation',
-    copy: 'Use the Atlas map, index, and dictionary to find three connected parts of Apocky.',
+    rank: '02 · Explore',
+    title: 'Find your next stop',
+    copy: 'Search the directory and find three tools, stories, or ideas you want to try.',
     href: '/atlas',
-    action: 'Open the Atlas',
+    action: 'Browse the directory',
     external: false,
   },
   {
     id: 'open-record',
-    rank: '03 · ARCHIVE',
-    title: 'Open a record',
-    copy: 'Search the approved public archive and read one source all the way through.',
+    rank: '03 · Read',
+    title: 'Read something through',
+    copy: 'Choose a published thought or story and read it all the way through. Keep one idea that stays with you.',
     href: '/akashic-records',
-    action: 'Search the records',
+    action: 'Find something to read',
     external: false,
   },
   {
     id: 'learn-language',
-    rank: '04 · LANGUAGE',
-    title: 'Learn a symbol',
-    copy: 'Choose one recurring word or CSLv3 glyph and learn what it means in this system.',
+    rank: '04 · Learn',
+    title: 'Find a word you can use',
+    copy: 'Look up a word, read its example, and try using it in a sentence of your own.',
     href: '/words',
-    action: 'Open the dictionary',
+    action: 'Find a definition',
     external: false,
   },
   {
     id: 'enter-omnoid',
-    rank: '05 · COSMOLOGY',
-    title: 'Enter the Omnoid',
-    copy: 'Follow one claim through its authored, collaborative, mathematical, and open-hypothesis boundaries.',
+    rank: '05 · Imagine',
+    title: 'Explore an unfamiliar idea',
+    copy: 'Read about the Omnoid, Shawn’s evolving cosmology. Find an idea you want to question or explore.',
     href: '/omnoid-singularity',
     action: 'Read the cosmology',
     external: false,
   },
   {
     id: 'scout-labyrinth',
-    rank: '06 · GAME',
-    title: 'Scout the Labyrinth',
-    copy: 'Inspect the current public test build, its checksum, and its known limitations before deciding whether to download.',
+    rank: '06 · Play',
+    title: 'Try the Labyrinth',
+    copy: 'See what the game offers and which devices it supports before you decide to download it.',
     href: '/download',
-    action: 'Inspect the build',
+    action: 'See the game',
     external: false,
   },
   {
     id: 'join-clearing',
-    rank: '07 · COMMUNITY',
-    title: 'Enter the Clearing',
-    copy: 'Read the public room. Sign in only if and when you want to add your own signal.',
+    rank: '07 · Connect',
+    title: 'Visit the community',
+    copy: 'Read a conversation in the Clearing. Sign in if you want to join in.',
     href: '/clearing',
     action: 'Visit the room',
     external: false,
   },
   {
     id: 'sustain-system',
-    rank: '08 · SUSTAIN',
-    title: 'Choose what should continue',
-    copy: 'Review the live support paths and decide whether the work has earned your backing. Payment is never required to complete this quest.',
+    rank: '08 · Support',
+    title: 'Choose what you want to support',
+    copy: 'Look at the ways to support the work. Deciding to keep reading is a valid choice too; this activity never requires payment.',
     href: '/membership',
-    action: 'Review membership',
+    action: 'See support options',
     external: false,
   },
   {
     id: 'ask-oracle',
-    rank: '09 · DECIDE',
-    title: 'Ask one clean question',
-    copy: 'Use the private Yes / No Oracle, notice your reaction, and keep the generated signal in its reflective boundary.',
-    href: '/oracle',
-    action: 'Ask the Oracle',
-    external: false,
+    rank: '09 · Ask',
+    title: 'Ask a question, notice your reaction',
+    copy: 'Sign in on Chaos Tarot for a yes-or-no reading. Treat the answer as a prompt and notice what you think about it.',
+    href: 'https://chaos-tarot.com/yes-no?source=apocky-quests',
+    action: 'Open Oracle · sign-in required',
+    external: true,
   },
   {
     id: 'compose-working',
-    rank: '10 · COMPOSE',
-    title: 'Compile a symbolic working',
-    copy: 'Build a valid Haloic-derived form and inspect its vocabulary, interpretation, graph, confidence, and authority-none receipt.',
+    rank: '10 · Make',
+    title: 'Make a spell of your own',
+    copy: 'Choose something to focus on, create a reflection, and save the words you want to keep.',
     href: '/spellcraft',
-    action: 'Open Spellcraft',
+    action: 'Create a spell',
     external: false,
   },
   {
     id: 'craft-sigil',
-    rank: '11 · CREATE',
-    title: 'Craft visible geometry',
-    copy: 'Turn a validated symbolic program into a deterministic sigil and download one deliberate variant.',
+    rank: '11 · Draw',
+    title: 'Make a mark that matters to you',
+    copy: 'Choose a meaning, make a sigil, and try a few shapes. Download the one you like.',
     href: '/sigils',
-    action: 'Enter the Sigil Studio',
+    action: 'Make a sigil',
     external: false,
   },
 ] as const;
@@ -157,21 +157,20 @@ const Quests: NextPage = () => {
   return (
     <>
       <Head>
-        <title>Public quests · Apocky</title>
-        <meta name="description" content="Eleven self-directed quests through Apocky’s tools, archive, cosmology, community, symbolic studio, game, and Chaos Tarot." />
-        <meta property="og:title" content="Public quests · Apocky" />
-        <meta property="og:description" content="Turn passive browsing into an eight-part expedition through the Apocky constellation." />
+        <title>Things to try · Apocky</title>
+        <meta name="description" content="Small activities for making, thinking, reading, and connecting on Apocky." />
+        <meta property="og:title" content="Things to try · Apocky" />
+        <meta property="og:description" content="Choose something to make, read, or explore. Keep your progress in this browser." />
         <meta property="og:url" content="https://www.apocky.com/quests" />
         <link rel="canonical" href="https://www.apocky.com/quests" />
       </Head>
 
       <main className={styles.page}>
         <div className={styles.wrap}>
-          <p className={styles.eyebrow}>Public expedition · device-local</p>
-          <h1 className={styles.title}>Stop scrolling. <em>Take the constellation personally.</em></h1>
+          <p className={styles.eyebrow}>Things to try</p>
+          <h1 className={styles.title}>Choose a small adventure.</h1>
           <p className={styles.lead}>
-            Eight small missions turn the site into a route you can finish. Progress stays in this browser;
-            there is no leaderboard, account score, surveillance profile, or claim that clicking proves understanding.
+            Make something, read an idea, or meet the community. Pick any activity and mark it complete when it feels done. Your progress stays in this browser.
           </p>
 
           <section className={styles.progressPanel} aria-label="Quest progress" aria-live="polite">
@@ -179,16 +178,16 @@ const Quests: NextPage = () => {
               <span>{percentage}%</span>
             </div>
             <div>
-              <h2>{completed.size} of {QUESTS.length} signals completed</h2>
-              <p>{completed.size === QUESTS.length ? 'Constellation traversed. Pick a path to revisit—or support what should grow next.' : 'Mark each quest when you decide you have completed it.'}</p>
+              <h2>{completed.size} of {QUESTS.length} activities complete</h2>
+              <p>{completed.size === QUESTS.length ? 'You’ve tried them all. Revisit a favorite whenever you like.' : 'Mark each activity when you decide you have completed it.'}</p>
             </div>
             <button className={styles.reset} type="button" onClick={reset} disabled={completed.size === 0}>Reset progress</button>
           </section>
 
           <section className={styles.section} aria-labelledby="quest-list-title">
             <div className={styles.sectionHead}>
-              <h2 id="quest-list-title">Eleven nodes. One traversal.</h2>
-              <p>Do them in order for a guided path, or start wherever the signal is strongest.</p>
+              <h2 id="quest-list-title">Pick something to try.</h2>
+              <p>Start anywhere. There is no required order.</p>
             </div>
             <div className={styles.grid2}>
               {QUESTS.map((quest) => {
@@ -218,10 +217,9 @@ const Quests: NextPage = () => {
           </section>
 
           <p className={styles.truth}>
-            <strong>Local state.</strong>
+            <strong>Your progress.</strong>
             <span>
-              Quest progress is stored only in this browser under <code>{STORAGE_KEY}</code>. Clearing site data removes it.
-              It is not sent to Apocky, Chaos Tarot, Ko-fi, or Patreon.
+              Completed activities are saved only in this browser. Clearing site data removes them.
             </span>
           </p>
         </div>

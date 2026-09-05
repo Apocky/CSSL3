@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { renderSiteDirectory } from '../helpers/render-site-directory';
 
 import {
   findAkashicRecord,
@@ -116,7 +117,8 @@ async function run(): Promise<void> {
   assert.match(detailSource, /aria-label=\{`\$\{block\.role\} message`\}/, 'transcript turns must retain role semantics');
   assert.match(detailSource, /availability unverified|may be unavailable/, 'original links must disclose uncertainty');
   assert.match(shellSource, /href: '\/akashic-records'/, 'global navigation must expose the archive');
-  assert.match(homeSource, /href: '\/akashic-records'/, 'homepage must expose the archive route');
+  assert.match(homeSource, /<SiteDirectory\s*\/>/, 'homepage renders the shared destination panels');
+  assert.match(renderSiteDirectory(), /href="\/akashic-records"/, 'rendered homepage must expose a direct archive link');
   assert.match(docsDetailSource, /spec\.slug === '18_AKASHIC_RECORDS'/, 'legacy qualifier must target only the existing technical document');
   assert.match(
     docsDetailSource,

@@ -34,8 +34,9 @@ const Page: NextPage = () => {
       <p className="docs-p">
         The design goal is to make permission boundaries easier to express directly in program code. The
         proposed Σ-mask type checks are not yet a complete available language feature, so they are described
-        below as planned. Read the longer design argument at{' '}
-        <a href="/devblog/why-cssl" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>/devblog/why-cssl</a>.
+        below as planned. The{' '}
+        <a href="/docs/sovereignty" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>permissions and data sharing guide</a>{' '}
+        explains the related design goals.
       </p>
 
       <h2 className="docs-h2">Sample · the smallest LoA program</h2>
@@ -112,7 +113,7 @@ fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
         <li><a href="/docs/cssl-modules" style={{ color: '#7dd3fc' }}>Module system</a></li>
         <li><a href="/docs/cssl-ffi" style={{ color: '#7dd3fc' }}>FFI conventions</a></li>
         <li><a href="/docs/substrate" style={{ color: '#7dd3fc' }}>Substrate primitives the language wraps</a></li>
-        <li><a href="/devblog/why-cssl" style={{ color: '#7dd3fc' }}>Why CSSL · long-form devblog post</a></li>
+        <li><a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>Permissions and data sharing</a></li>
       </ul>
 
       <PrevNextNav slug="cssl-language" />

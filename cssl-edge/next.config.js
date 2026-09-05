@@ -34,6 +34,9 @@ const nextConfig = {
       { source: '/commons', destination: '/', permanent: true },
       { source: '/commons/index.html', destination: '/', permanent: true },
       { source: '/commons/clearing.html', destination: '/clearing', permanent: true },
+      { source: '/commons/atlas.html', destination: '/atlas', permanent: true },
+      { source: '/commons/membership.html', destination: '/membership', permanent: true },
+      { source: '/commons/principles.html', destination: '/principles', permanent: true },
     ];
   },
 };
