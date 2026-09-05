@@ -33,7 +33,11 @@ async function run() {
   assert.equal(result.status, 200); assert.equal(result.body.result.sessions[0].title, 'A private fixture');
   assert.deepEqual(events, ['audit:sessions', 'runtime']);
   const aggregateEvents: string[] = [];
-  const telemetryRows = [{ id: '1', ts: stamp, severity: 'info', outcome: 'accepted', plane: 'runtime', message: 'SECRET_SENTINEL', payload: { email: 'PRIVATE_EMAIL_SENTINEL', message: 'SECRET_SENTINEL' } }, { id: '2', ts: stamp, severity: 'error', outcome: 'failed', plane: 'edge', message: 'SECRET_SENTINEL', payload: { subject } }] as AdminTelemetryRow[];
+  const telemetryBase: AdminTelemetryRow = { id: '1', ts: stamp, eventId: actor, traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), parentSpanId: null,
+    source: 'fixture', plane: 'runtime', severity: 'info', kind: 'fixture.observed', outcome: 'accepted', route: null, status: null, durationMs: null,
+    message: 'SECRET_SENTINEL', fingerprint: 'a'.repeat(64), clusterSignature: null, deploymentId: 'fixture', effectClass: null, authority: null,
+    receiptRef: null, privacyTier: 'private', sessionRef: subject, payload: { email: 'PRIVATE_EMAIL_SENTINEL', message: 'SECRET_SENTINEL' } };
+  const telemetryRows: AdminTelemetryRow[] = [telemetryBase, { ...telemetryBase, id: '2', severity: 'error', outcome: 'failed', plane: 'edge', payload: { subject } }];
   const aggregate = createOperatorInspectionHandler({ authorize: authorized, audit: async (_req, who, query) => { assert.equal(who, actor); assert.equal(query.action, 'aggregate'); aggregateEvents.push('audit'); return true; },
     users: async page => { assert.equal(page, 1); aggregateEvents.push('directory'); return { total_accounts: 87, users: [{ email: 'PRIVATE_EMAIL_SENTINEL' }] }; },
     telemetry: async limit => { assert.equal(limit, 500); aggregateEvents.push('telemetry'); return { source: 'supabase', rows: telemetryRows, cursor: '2', hasMore: true }; } });
