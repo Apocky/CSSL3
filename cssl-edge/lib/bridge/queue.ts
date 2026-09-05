@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getMnemeClient } from '../mneme/store';
 import { ACCOUNT_UUID, CONVERSATION_UUID } from '../mobile/account-grant';
 import { BRIDGE_LEASE_MS, BridgeError, bridgeConfiguration, bridgeMac, bridgeSessionId, createBridgeRequest,
-  decodeBase64, decryptBridge, encryptBridge, equalMac, exactObject, keyedUuid, validateBridgeRequest, validateBridgeResult,
+  decodeBase64, decryptBridge, encryptBridge, equalMac, exactObject, keyedUuid, retryableBridgeResult, validateBridgeRequest, validateBridgeResult,
   type BridgeConfiguration, type BridgeEnvelope, type BridgeInput, type BridgeRequest } from './crypto';
 import type { WorkerAuthentication } from './worker-auth';
 export { bridgeConfigured } from './crypto';
@@ -13,7 +13,7 @@ const JOB_SCHEMA = 'apocky.bridge.job-row.v1';
 const NODE_SCHEMA = 'apocky.bridge.node-state.v1';
 const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PENDING_MAX = 128;
-interface Pending { job_id: string; subject: string; channel: 'owner' | 'account'; }
+interface Pending { job_id: string; subject: string; channel: 'owner' | 'account'; created_at: string; }
 interface NodeState { schema_version: typeof NODE_SCHEMA; key_id: string; worker_id: string; revision: number; pending: Pending[]; nonces: WorkerAuthentication[]; signature: string; }
 interface JobMetadata { schema_version: typeof JOB_SCHEMA; key_id: string; worker_id: string; revision: number; request: BridgeEnvelope; response: BridgeEnvelope | null; lease_id: string | null; lease_expires_at: string | null; }
 export interface BridgeSessionRow { id: string; user_id: string; title: string; metadata: unknown; }
@@ -46,7 +46,7 @@ export function supabaseBridgePersistence(client: SupabaseClient): BridgePersist
 }
 function stateText(state: Omit<NodeState, 'signature'>): string {
   return JSON.stringify({ schema_version: state.schema_version, key_id: state.key_id, worker_id: state.worker_id, revision: state.revision,
-    pending: state.pending.map(item => ({ job_id: item.job_id, subject: item.subject, channel: item.channel })),
+    pending: state.pending.map(item => ({ job_id: item.job_id, subject: item.subject, channel: item.channel, created_at: item.created_at })),
     nonces: state.nonces.map(item => ({ nonce: item.nonce, time: item.time })) });
 }
 function sleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -69,7 +69,8 @@ export class BridgeQueue {
       || state.schema_version !== NODE_SCHEMA || state.key_id !== this.configuration.keyId || state.worker_id !== this.configuration.workerId
       || typeof state.revision !== 'number' || !Number.isSafeInteger(state.revision) || state.revision < 0
       || !Array.isArray(state.pending) || state.pending.length > PENDING_MAX || !Array.isArray(state.nonces) || state.nonces.length > 512 || typeof state.signature !== 'string') throw new BridgeError('BRIDGE_NODE_INTEGRITY_FAILED');
-    if (!state.pending.every(item => exactObject(item, ['job_id', 'subject', 'channel']) && typeof item.job_id === 'string' && JOB_ID.test(item.job_id)
+    if (!state.pending.every(item => exactObject(item, ['job_id', 'subject', 'channel', 'created_at']) && typeof item.job_id === 'string' && JOB_ID.test(item.job_id)
+      && typeof item.created_at === 'string' && Number.isFinite(Date.parse(item.created_at))
       && typeof item.subject === 'string' && ACCOUNT_UUID.test(item.subject) && (item.channel === 'account' || (item.channel === 'owner' && item.subject === this.configuration.ownerSubject)))
       || new Set(state.pending.map(item => item.job_id)).size !== state.pending.length
       || !state.nonces.every(item => exactObject(item, ['nonce', 'time']) && typeof item.nonce === 'string' && CONVERSATION_UUID.test(item.nonce) && typeof item.time === 'number' && Number.isSafeInteger(item.time))) throw new BridgeError('BRIDGE_NODE_INTEGRITY_FAILED');
@@ -116,7 +117,7 @@ export class BridgeQueue {
     if (!row || row.id !== id || row.user_id !== subject || row.title !== 'Apocrypha encrypted bridge'
       || !exactObject(row.metadata, Object.keys(metadata)) || Object.entries(metadata).some(([key, value]) => (row!.metadata as Record<string, unknown>)[key] !== value)) throw new BridgeError('BRIDGE_SESSION_INTEGRITY_FAILED');
   }
-  private validateJob(row: BridgeJobRow, expected?: Pending): { request: BridgeRequest; metadata: JobMetadata } {
+  private validateJob(row: BridgeJobRow, expected?: Omit<Pending, 'created_at'> & { created_at?: string }): { request: BridgeRequest; metadata: JobMetadata } {
     const meta = row.metadata;
     if (row.prompt !== PROMPT || row.response !== '' || !JOB_ID.test(row.id) || !ACCOUNT_UUID.test(row.user_id)
       || row.session_id !== bridgeSessionId(this.configuration, row.user_id) || !['queued', 'leased', 'done'].includes(row.status)
@@ -124,16 +125,16 @@ export class BridgeQueue {
       || meta.schema_version !== JOB_SCHEMA || meta.key_id !== this.configuration.keyId || meta.worker_id !== this.configuration.workerId
       || typeof meta.revision !== 'number' || !Number.isSafeInteger(meta.revision) || meta.revision < 0) throw new BridgeError('BRIDGE_JOB_INTEGRITY_FAILED');
     const request = validateBridgeRequest(this.configuration, decryptBridge(this.configuration, 'request', row.id, meta.request));
-    if (request.subject !== row.user_id || (expected && (expected.job_id !== row.id || expected.subject !== row.user_id || expected.channel !== request.channel))) throw new BridgeError('BRIDGE_JOB_INTEGRITY_FAILED');
+    if (request.subject !== row.user_id || (expected && (expected.job_id !== row.id || expected.subject !== row.user_id || expected.channel !== request.channel || (expected.created_at !== undefined && expected.created_at !== request.created_at)))) throw new BridgeError('BRIDGE_JOB_INTEGRITY_FAILED');
     if (row.status === 'queued' ? (meta.lease_id !== null || meta.lease_expires_at !== null || row.leased_by !== null || meta.response !== null)
       : (typeof meta.lease_id !== 'string' || !CONVERSATION_UUID.test(meta.lease_id) || typeof meta.lease_expires_at !== 'string' || !Number.isFinite(Date.parse(meta.lease_expires_at)) || row.leased_by !== this.configuration.workerId || (row.status === 'leased' && meta.response !== null))) throw new BridgeError('BRIDGE_JOB_INTEGRITY_FAILED');
     if (row.status === 'done') validateBridgeResult(row.id, decryptBridge(this.configuration, 'response', row.id, meta.response));
     return { request, metadata: meta as unknown as JobMetadata };
   }
-  private async removePending(id: string): Promise<void> { await this.changeNode(state => ({ ...state, pending: state.pending.filter(item => item.job_id !== id) })); }
+  private async removePending(id: string, createdAt: string): Promise<void> { await this.changeNode(state => ({ ...state, pending: state.pending.filter(item => item.job_id !== id || item.created_at !== createdAt) })); }
   async admit(input: BridgeInput): Promise<string> {
     if (input.signal?.aborted) throw new BridgeError('BRIDGE_WAIT_ABORTED', 504);
-    const request = createBridgeRequest(this.configuration, input, this.now());
+    let request = createBridgeRequest(this.configuration, input, this.now());
     await this.ensureUserSession(request.subject);
     const fresh = (): BridgeJobRow => ({ id: request.job_id, user_id: request.subject, session_id: bridgeSessionId(this.configuration, request.subject), prompt: PROMPT, response: '', status: 'queued', leased_by: null, leased_at: null, finished_at: null,
       metadata: { schema_version: JOB_SCHEMA, key_id: this.configuration.keyId, worker_id: this.configuration.workerId, revision: 0, request: encryptBridge(this.configuration, 'request', request.job_id, request), response: null, lease_id: null, lease_expires_at: null } satisfies JobMetadata });
@@ -146,16 +147,22 @@ export class BridgeQueue {
     if (!row) throw new BridgeError('BRIDGE_STORAGE_UNAVAILABLE');
     const existing = this.validateJob(row, { job_id: request.job_id, subject: request.subject, channel: request.channel });
     if (existing.request.method !== request.method || existing.request.target !== request.target || existing.request.body_base64 !== request.body_base64) throw new BridgeError('BRIDGE_JOB_INTEGRITY_FAILED');
-    if (row.status === 'done') return row.id;
+    const retryable = row.status === 'done' && request.method === 'POST'
+      && retryableBridgeResult(validateBridgeResult(row.id, decryptBridge(this.configuration, 'response', row.id, existing.metadata.response)));
+    if (row.status === 'done' && !retryable) return row.id;
+    let admittedAt = existing.request.created_at;
     // § retry: only exact durable operation identity; an active lease is never cancelled.
-    if (Date.parse(existing.request.expires_at) <= this.now() && (row.status === 'queued' || Date.parse(existing.metadata.lease_expires_at!) <= this.now())) {
+    if (retryable || (Date.parse(existing.request.expires_at) <= this.now() && (row.status === 'queued' || Date.parse(existing.metadata.lease_expires_at!) <= this.now()))) {
+      request = createBridgeRequest(this.configuration, input, Math.max(this.now(), Date.parse(existing.request.created_at) + 1), request.nonce);
+      admittedAt = request.created_at;
       const next = fresh(); (next.metadata as JobMetadata).revision = existing.metadata.revision + 1;
       if (!await this.persistence.casJob(row, next, existing.metadata.revision)) throw new BridgeError('BRIDGE_STORAGE_BUSY');
     }
     await this.changeNode(state => {
-      if (state.pending.some(item => item.job_id === request.job_id)) return state;
+      const previous = state.pending.find(item => item.job_id === request.job_id);
+      if (previous) { if (Date.parse(previous.created_at) < Date.parse(admittedAt)) previous.created_at = admittedAt; return state; }
       if (state.pending.length >= PENDING_MAX || state.pending.filter(item => item.subject === request.subject).length >= 8) throw new BridgeError('BRIDGE_QUEUE_FULL', 429);
-      state.pending.push({ job_id: request.job_id, subject: request.subject, channel: request.channel }); return state;
+      state.pending.push({ job_id: request.job_id, subject: request.subject, channel: request.channel, created_at: admittedAt }); return state;
     });
     return request.job_id;
   }
@@ -165,17 +172,17 @@ export class BridgeQueue {
       const row = await this.persistence.getJob(item.job_id);
       // § account deletion: RLS permits deleting the user's session, which cascades its jobs.
       // Missing or invalid rows lose admission; no client-controlled row reaches the worker.
-      if (!row) { await this.removePending(item.job_id); continue; }
+      if (!row) { await this.removePending(item.job_id, item.created_at); continue; }
       let verified: ReturnType<BridgeQueue['validateJob']>;
       try { verified = this.validateJob(row, item); }
       catch (error) {
         if (!(error instanceof BridgeError)) throw error;
-        await this.removePending(item.job_id); continue;
+        await this.removePending(item.job_id, item.created_at); continue;
       }
       const { request, metadata } = verified;
-      if (row.status === 'done') { await this.removePending(row.id); continue; }
+      if (row.status === 'done') { await this.removePending(row.id, request.created_at); continue; }
       if (row.status === 'leased' && Date.parse(metadata.lease_expires_at!) > this.now()) continue;
-      if (Date.parse(request.expires_at) <= this.now()) { await this.removePending(row.id); continue; }
+      if (Date.parse(request.expires_at) <= this.now()) { await this.removePending(row.id, request.created_at); continue; }
       const leaseId = randomUUID(); const expires = new Date(this.now() + BRIDGE_LEASE_MS).toISOString();
       const next = { ...row, status: 'leased', leased_by: this.configuration.workerId, leased_at: new Date(this.now()).toISOString(),
         metadata: { ...metadata, revision: metadata.revision + 1, lease_id: leaseId, lease_expires_at: expires } };
@@ -188,7 +195,7 @@ export class BridgeQueue {
     validateBridgeResult(jobId, decryptBridge(this.configuration, 'response', jobId, response));
     const row = await this.persistence.getJob(jobId);
     if (!row) throw new BridgeError('BRIDGE_COMPLETION_CONFLICT', 409);
-    const { metadata } = this.validateJob(row);
+    const { metadata, request } = this.validateJob(row);
     if (metadata.lease_id !== leaseId || row.leased_by !== this.configuration.workerId) throw new BridgeError('BRIDGE_COMPLETION_CONFLICT', 409);
     if (row.status === 'done') {
       // JSONB may reorder envelope keys; compare the authenticated field values.
@@ -198,7 +205,7 @@ export class BridgeQueue {
     if (row.status !== 'leased' || Date.parse(metadata.lease_expires_at!) <= this.now()) throw new BridgeError('BRIDGE_COMPLETION_CONFLICT', 409);
     const next = { ...row, status: 'done', finished_at: new Date(this.now()).toISOString(), metadata: { ...metadata, revision: metadata.revision + 1, response: response as BridgeEnvelope } };
     if (!await this.persistence.casJob(row, next, metadata.revision)) throw new BridgeError('BRIDGE_COMPLETION_CONFLICT', 409);
-    await this.removePending(jobId);
+    await this.removePending(jobId, request.created_at);
   }
   async fetch(input: BridgeInput): Promise<Response> {
     const jobId = await this.admit(input); const deadline = this.now() + 330_000;

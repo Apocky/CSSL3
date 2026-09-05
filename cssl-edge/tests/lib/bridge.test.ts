@@ -128,6 +128,35 @@ async function run() {
   now += 601_000;
   await recycleQueue.admit(input); const renewed = await recycleQueue.poll(); assert(renewed); assert.equal(renewed.job_id, id);
 
+  now = initial;
+  const recoveryStore = new MemoryPersistence(); const recoveryQueue = new BridgeQueue(cfg, recoveryStore, () => now);
+  await recoveryQueue.admit(input); const firstAttempt = await recoveryQueue.poll(); assert(firstAttempt);
+  const transient = { ...response(id), status: 503, body_base64: Buffer.from(JSON.stringify({ schema_version: 'apocky.bridge.error.v1', code: 'BRIDGE_INDETERMINATE' })).toString('base64') };
+  let releaseCleanup!: () => void; let cleanupStarted!: () => void;
+  const cleanupGate = new Promise<void>(resolve => { releaseCleanup = resolve; });
+  const cleanupReached = new Promise<void>(resolve => { cleanupStarted = resolve; });
+  const originalSessionCas = recoveryStore.casSession.bind(recoveryStore); let pauseCleanup = true;
+  recoveryStore.casSession = async (previous, next, revision) => {
+    if (pauseCleanup && (next.metadata as { pending: unknown[] }).pending.length === 0) { pauseCleanup = false; cleanupStarted(); await cleanupGate; }
+    return originalSessionCas(previous, next, revision);
+  };
+  const firstCompletion = recoveryQueue.complete(id, firstAttempt.lease_id, encryptBridge(cfg, 'response', id, transient));
+  await cleanupReached;
+  assert.equal(await recoveryQueue.admit(input), id, 'explicit retry retains the durable runtime request ID');
+  releaseCleanup(); await firstCompletion;
+  const secondAttempt = await recoveryQueue.poll(); assert(secondAttempt, 'old completion cleanup cannot remove the new retry admission');
+  const retriedRequest = validateBridgeRequest(cfg, decryptBridge(cfg, 'request', id, secondAttempt.request));
+  assert.equal(Date.parse(retriedRequest.created_at), initial + 1, 'explicit retry has a strictly newer authenticated admission time even in the same millisecond');
+  assert.equal(retriedRequest.body_base64, fixture.request.body_base64);
+  assert.notEqual(secondAttempt.lease_id, firstAttempt.lease_id);
+  await assert.rejects(recoveryQueue.complete(id, firstAttempt.lease_id, encryptBridge(cfg, 'response', id, transient)), coded('BRIDGE_COMPLETION_CONFLICT'));
+  await recoveryQueue.complete(id, secondAttempt.lease_id, encrypted);
+  await recoveryQueue.admit(input); assert.equal(await recoveryQueue.poll(), null, 'a final runtime outcome remains cached');
+  const runtimeFailureStore = new MemoryPersistence(); const runtimeFailureQueue = new BridgeQueue(cfg, runtimeFailureStore, () => now);
+  await runtimeFailureQueue.admit(input); const runtimeFailed = await runtimeFailureQueue.poll(); assert(runtimeFailed);
+  await runtimeFailureQueue.complete(id, runtimeFailed.lease_id, encryptBridge(cfg, 'response', id, { ...transient, body_base64: Buffer.from('{"schema_version":"apocv4.runtime.error.v1","code":"failed"}').toString('base64') }));
+  await runtimeFailureQueue.admit(input); assert.equal(await runtimeFailureQueue.poll(), null, 'a runtime503 is not mistaken for a bridge transport failure');
+
   const apiStore = new MemoryPersistence(); now = initial;
   const factory = () => new BridgeQueue(config(), apiStore, () => now);
   await factory().admit(input);

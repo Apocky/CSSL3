@@ -204,3 +204,11 @@ export function validateBridgeResult(jobId: string, value: unknown): BridgeHttpR
   }
   return value as unknown as BridgeHttpResult;
 }
+export function retryableBridgeResult(value: BridgeHttpResult): boolean {
+  if (![502, 503].includes(value.status) || value.headers['content-type'] !== 'application/json') return false;
+  try {
+    const body: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(decodeBase64(value.body_base64, 2048)));
+    return exactObject(body, ['schema_version', 'code']) && body.schema_version === 'apocky.bridge.error.v1' && typeof body.code === 'string'
+      && ['BRIDGE_INDETERMINATE', 'BRIDGE_JOB_EXPIRED', 'BRIDGE_LOCAL_CREDENTIAL_UNAVAILABLE', 'BRIDGE_LOCAL_UNAVAILABLE', 'BRIDGE_LOCAL_TIMEOUT', 'BRIDGE_HTTP_UNAVAILABLE'].includes(body.code);
+  } catch { return false; }
+}
