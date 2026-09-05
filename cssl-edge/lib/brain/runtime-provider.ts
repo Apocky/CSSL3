@@ -61,8 +61,9 @@ export async function sendOwnerBrainTurn(input: {
 export async function listOwnerBrainSessions(
   userId: string,
   traceparent?: string,
+  page: { readonly cursor?: string | null; readonly limit?: number } = {},
 ): Promise<OwnerBrainHistoryListProjection> {
-  return listOwnerBrainRuntimeSessions({ ...binding(userId), limit: 24 }, traceparent);
+  return listOwnerBrainRuntimeSessions({ ...binding(userId), limit: page.limit ?? 24, cursor: page.cursor ?? null }, traceparent);
 }
 
 export async function getOwnerBrainSession(

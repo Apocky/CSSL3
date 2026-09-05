@@ -135,6 +135,24 @@ export function validBridgeTarget(channel: string, method: string, target: strin
     }
     return canonical.toString() === target.slice(target.indexOf('?') + 1);
   }
+  if (target.startsWith('/v1/chat/conversations?')) {
+    const query = new URLSearchParams(target.slice(target.indexOf('?') + 1));
+    const keys = [...query.keys()];
+    const cursor = query.get('cursor');
+    const limit = query.get('limit');
+    const cursorParts = cursor?.split(':');
+    if (new Set(keys).size !== keys.length
+      || keys.some((key) => !['privacy_partition', 'cursor', 'limit'].includes(key))
+      || query.get('privacy_partition') !== 'owner:apocky'
+      || limit === null || !/^([1-9]|[12][0-9]|3[0-2])$/.test(limit)
+      || (cursor !== null && (!cursorParts || cursor.length !== 77 || cursorParts.length !== 3
+        || cursorParts[0] !== 'cs1'
+        || cursorParts.slice(1).some((id) => !CONVERSATION_UUID.test(id) && !JOB_ID.test(id))))) return false;
+    const canonical = new URLSearchParams({ privacy_partition: 'owner:apocky' });
+    if (cursor !== null) canonical.set('cursor', cursor);
+    canonical.set('limit', limit);
+    return canonical.toString() === target.slice(target.indexOf('?') + 1);
+  }
   const match = /^\/v1\/chat\/history\?privacy_partition=owner%3Aapocky(?:&conversation_id=([^&]+))?(?:&cursor=([^&]+))?&limit=([1-9]|[12][0-9]|3[0-2])$/.exec(target);
   const historyId = (value: string) => CONVERSATION_UUID.test(value) || JOB_ID.test(value);
   return Boolean(match && (!match[1] || historyId(match[1])) && (!match[2] || (match[1] && historyId(match[2]))));
@@ -209,6 +227,7 @@ export function retryableBridgeResult(value: BridgeHttpResult): boolean {
   try {
     const body: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(decodeBase64(value.body_base64, 2048)));
     return exactObject(body, ['schema_version', 'code']) && body.schema_version === 'apocky.bridge.error.v1' && typeof body.code === 'string'
-      && ['BRIDGE_INDETERMINATE', 'BRIDGE_JOB_EXPIRED', 'BRIDGE_LOCAL_CREDENTIAL_UNAVAILABLE', 'BRIDGE_LOCAL_UNAVAILABLE', 'BRIDGE_LOCAL_TIMEOUT', 'BRIDGE_HTTP_UNAVAILABLE'].includes(body.code);
+      && (body.code === 'BRIDGE_APEX_ADMISSION_PENDING' ? value.status === 503
+        : ['BRIDGE_INDETERMINATE', 'BRIDGE_JOB_EXPIRED', 'BRIDGE_LOCAL_CREDENTIAL_UNAVAILABLE', 'BRIDGE_LOCAL_UNAVAILABLE', 'BRIDGE_LOCAL_TIMEOUT', 'BRIDGE_HTTP_UNAVAILABLE'].includes(body.code));
   } catch { return false; }
 }

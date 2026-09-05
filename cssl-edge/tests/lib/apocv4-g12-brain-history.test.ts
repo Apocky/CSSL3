@@ -216,6 +216,18 @@ function runtimeEnvelope(
   });
 }
 
+function conversationSummary(sessionId: string, failed = 0): JsonObject {
+  return { schema_version: 'apocv4.chat-conversation-summary.v1', session_id: sessionId,
+    title: 'Preserved conversation', created_at: '2026-09-05T01:00:00Z', updated_at: '2026-09-05T02:00:00Z',
+    message_count: 4 - failed, failed_turn_count: failed, tip_digest: digest('d'), history_surface: 'g12_chat_history' };
+}
+
+function conversationPage(sessions: JsonObject[], nextCursor: string | null = null): JsonObject {
+  const core = { schema_version: 'apocv4.chat-conversations-page.v1', sessions, count: sessions.length,
+    next_cursor: nextCursor, has_more: nextCursor !== null, persistence: 'DURABLE_PRINCIPAL_BOUND', effect_authority: 'NONE' };
+  return { ...core, page_digest: digestJson(core) };
+}
+
 function proofResponse(rawBody: string): Response {
   const result = runtimeEnvelope({}, rawBody);
   result.headers.set('X-Apocv4-History-Codec', 'v2');
@@ -328,6 +340,60 @@ async function main(): Promise<void> {
     assert(!Object.hasOwn(body, 'session_binding_mac'), 'G12 uses credential-registry binding rather than legacy body HMAC');
     assert.equal(chat.authority.conversation_history, 'session_bounded');
 
+    const noLookupReply = response(SESSION_ID, REQUEST_A, 'Hello from the governed runtime.');
+    const noLookupContext = noLookupReply.context as JsonObject;
+    noLookupContext.retrieval = {
+      status: 'skipped', count: 0, refs: [], reason: 'MEMORY_LOOKUP_SKIPPED_NO_SEARCHABLE_TERMS',
+    };
+    noLookupContext.memory = {
+      provider: 'native-no-lookup-admission', status: 'skipped', records_used: 0,
+      receipt_digest: digest('7'), refs: [], memory_lookup_performed: false,
+    };
+    const sendGreeting = () => sendOwnerBrainTurn({
+      userId: 'owner-user', text: 'hi', sessionId: SESSION_ID, requestId: REQUEST_A,
+    });
+    let greetingRequest: JsonObject | null = null;
+    globalThis.fetch = async (_input, init) => {
+      greetingRequest = JSON.parse(String(init?.body)) as JsonObject;
+      return runtimeEnvelope(noLookupReply);
+    };
+    const greeting = await sendGreeting();
+    assert.equal(greeting.model_reported.text, noLookupReply.text, 'explicit no-lookup greeting preserves the acknowledged reply');
+    assert.equal((greetingRequest as JsonObject | null)?.request_id, REQUEST_A, 'no-lookup admission retains retry identity');
+    assert.equal((greetingRequest as JsonObject | null)?.conversation_id, SESSION_ID);
+    const baseSkipped = response(SESSION_ID, REQUEST_A);
+    const baseSkippedContext = baseSkipped.context as JsonObject;
+    (baseSkippedContext.retrieval as JsonObject).status = 'skipped';
+    (baseSkippedContext.memory as JsonObject).status = 'skipped';
+    globalThis.fetch = async () => runtimeEnvelope(baseSkipped);
+    assert.equal((await sendGreeting()).model_reported.text, baseSkipped.text,
+      'legacy base-shape skipped statuses remain valid without reserved native no-lookup claims');
+    for (const mutation of [
+      (context: JsonObject) => { delete (context.retrieval as JsonObject).reason; },
+      (context: JsonObject) => { (context.retrieval as JsonObject).reason = 'UNKNOWN_SKIP'; },
+      (context: JsonObject) => { (context.retrieval as JsonObject).status = 'OK'; },
+      (context: JsonObject) => { (context.retrieval as JsonObject).count = 1; },
+      (context: JsonObject) => { (context.retrieval as JsonObject).refs = ['invented-ref']; },
+      (context: JsonObject) => { (context.retrieval as JsonObject).unknown = true; },
+      (context: JsonObject) => { delete (context.memory as JsonObject).memory_lookup_performed; },
+      (context: JsonObject) => { (context.memory as JsonObject).memory_lookup_performed = true; },
+      (context: JsonObject) => { (context.memory as JsonObject).provider = 'owner'; },
+      (context: JsonObject) => { (context.memory as JsonObject).status = 'OK'; },
+      (context: JsonObject) => { (context.memory as JsonObject).records_used = 1; },
+      (context: JsonObject) => { (context.memory as JsonObject).refs = ['invented-ref']; },
+      (context: JsonObject) => { (context.memory as JsonObject).receipt_digest = null; },
+      (context: JsonObject) => { (context.memory as JsonObject).unknown = true; },
+      (context: JsonObject) => {
+        delete (context.retrieval as JsonObject).reason;
+        delete (context.memory as JsonObject).memory_lookup_performed;
+      },
+    ]) {
+      const malformed = structuredClone(noLookupReply);
+      mutation(malformed.context as JsonObject);
+      globalThis.fetch = async () => runtimeEnvelope(malformed);
+      await rejectsCode(sendGreeting, 'runtime_response_invalid');
+    }
+
     const first = completedTurn(SESSION_ID, REQUEST_A);
     const second = failedTurn(SESSION_ID, REQUEST_B);
     const seenUrls: string[] = [];
@@ -346,23 +412,80 @@ async function main(): Promise<void> {
       privacyPartition: PARTITION,
       credentialProfile: 'owner' as const,
     };
-    const listing = await listOwnerBrainRuntimeSessions({ ...binding, limit: 24 });
-    assert.equal(listing.discovery_scope, 'latest_conversation_only');
-    assert.equal(listing.count, 1);
-    assert.equal(listing.sessions[0]?.session_id, SESSION_ID, 'latest G12 worldline remains browser-addressable');
-    assert.equal(listing.sessions[0]?.message_count, 3, 'failed turns retain the user message without inventing an assistant reply');
+    const thirdSession = '44444444-4444-5444-8444-444444444444';
+    const secondSession = '55555555-5555-4555-8555-555555555555';
+    const cursor = 'cs1:' + REQUEST_B + ':' + REQUEST_A;
+    globalThis.fetch = async (input, init) => {
+      const parsed = new URL(String(input));
+      seenUrls.push(String(input));
+      assert.equal(init?.method, 'GET');
+      assert.equal(parsed.pathname, '/v1/chat/conversations');
+      assert.equal(parsed.searchParams.get('privacy_partition'), PARTITION);
+      assert.equal(parsed.searchParams.get('limit'), '2');
+      assert.equal(new Headers(init?.headers).get('accept'), 'application/json');
+      return runtimeEnvelope(parsed.searchParams.get('cursor') === cursor
+        ? conversationPage([conversationSummary(thirdSession)])
+        : conversationPage([conversationSummary(SESSION_ID, 1), conversationSummary(secondSession)], cursor));
+    };
+    const listing = await listOwnerBrainRuntimeSessions({ ...binding, limit: 2 });
+    assert.equal(listing.discovery_scope, 'owner_conversations_page');
+    assert.equal(listing.count, 2);
+    assert.equal(listing.sessions[0]?.message_count, 3, 'failed turns preserve only their user message');
     assert.equal(listing.sessions[0]?.failed_turn_count, 1);
-    assert.equal(listing.observed.page_count, 2);
-    assert.equal(new URL(seenUrls[0]!).searchParams.has('conversation_id'), false, 'list asks G12 for its latest principal-bound conversation');
-    assert.equal(new URL(seenUrls[1]!).searchParams.get('conversation_id'), SESSION_ID);
+    assert.equal(listing.next_cursor, cursor);
+    assert.equal(listing.observed.page_count, 1);
+    const older = await listOwnerBrainRuntimeSessions({ ...binding, limit: 2, cursor: listing.next_cursor });
+    assert.deepEqual([...listing.sessions, ...older.sessions].map(row => row.session_id), [SESSION_ID, secondSession, thirdSession]);
+    assert.equal(older.has_more, false);
+    assert.equal(older.next_cursor, null);
+    assert.equal(new URL(seenUrls[1]!).searchParams.get('cursor'), cursor);
+    for (const [mutationIndex, mutate] of [
+      (page: JsonObject) => { page.page_digest = digest('f'); },
+      (page: JsonObject) => { page.sessions = [conversationSummary(SESSION_ID), conversationSummary(SESSION_ID)]; page.count = 2; },
+      (page: JsonObject) => { page.effect_authority = 'EXECUTE'; },
+      (page: JsonObject) => { page.next_cursor = 'cs1:' + REQUEST_A + ':' + REQUEST_B; page.has_more = true; },
+      (page: JsonObject) => { (page.sessions as JsonObject[])[0]!.private_metadata = 'forbidden'; },
+    ].entries()) {
+      const bad = conversationPage([conversationSummary(SESSION_ID)]);
+      mutate(bad);
+      if (mutationIndex > 0) {
+        const core = { ...bad };
+        delete core.page_digest;
+        bad.page_digest = digestJson(core);
+      }
+      globalThis.fetch = async () => runtimeEnvelope(bad);
+      await rejectsCode(() => listOwnerBrainRuntimeSessions({ ...binding, limit: 2, cursor }), 'runtime_response_invalid');
+    }
+    let malformedCursorCalls = 0;
+    globalThis.fetch = async () => { malformedCursorCalls++; return runtimeEnvelope(conversationPage([])); };
+    await rejectsCode(() => listOwnerBrainRuntimeSessions({ ...binding, cursor: 'cs1:tampered' }), 'session_request_invalid');
+    assert.equal(malformedCursorCalls, 0);
+    globalThis.fetch = async () => {
+      const result = runtimeEnvelope(conversationPage([]));
+      result.headers.set('X-Apocv4-Binding-Ref', digest('f'));
+      return result;
+    };
+    await rejectsCode(() => listOwnerBrainRuntimeSessions(binding), 'runtime_history_binding_invalid');
 
     seenUrls.length = 0;
+    globalThis.fetch = async (input) => {
+      const parsed = new URL(String(input));
+      seenUrls.push(String(input));
+      assert.equal(parsed.pathname, '/v1/chat/history');
+      if (parsed.searchParams.get('cursor') === REQUEST_A) return runtimeEnvelope(page(SESSION_ID, [second]));
+      return runtimeEnvelope(page(SESSION_ID, [first], true));
+    };
     const loaded = await getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID });
     assert.equal(loaded.kind, 'owner_brain_history_get');
     assert.equal(loaded.session.history_surface, 'g12_chat_history');
     assert.equal(loaded.session.session_id, SESSION_ID);
     assert.equal(loaded.session.events_truncated, false);
     assert.equal(loaded.session.failed_turn_count, 1);
+    assert.deepEqual(loaded.session.messages.find(message => message.request_id === REQUEST_B)?.terminal_failure, {
+      code: 'chat_prompt_capacity_exceeded',
+      error_digest: (second.public_error as JsonObject).error_digest,
+      receipt_digest: second.terminal_receipt_digest,
+    }, 'failed user message exposes only its verified terminal failure proof');
     assert.match(loaded.session.tip_digest ?? '', /^[0-9a-f]{64}$/u);
     assert.deepEqual(
       loaded.session.messages.map(message => [message.role, message.request_id]),
@@ -372,6 +495,30 @@ async function main(): Promise<void> {
     const assistant = loaded.session.messages[1] as JsonObject;
     assert.equal((assistant.receipt as JsonObject).conversation_history, 'session_bounded');
     assert.equal(new URL(seenUrls[0]!).searchParams.get('conversation_id'), SESSION_ID);
+
+    globalThis.fetch = async input => {
+      assert.equal(new URL(String(input)).searchParams.get('conversation_id'), thirdSession);
+      return runtimeEnvelope(page(thirdSession, [completedTurn(thirdSession, REQUEST_A)]));
+    };
+    const legacyHistory = await getOwnerBrainRuntimeSession({ ...binding, sessionId: thirdSession });
+    assert.equal(legacyHistory.session.session_id, thirdSession, 'owner history preserves an existing UUIDv5 session');
+    assert.equal(legacyHistory.session.messages.length, 2);
+
+    const engineFailure = failedTurn(SESSION_ID, REQUEST_B);
+    engineFailure.error_class = 'NativeContextError';
+    engineFailure.public_error = { schema_version: 'apocv4.chat-public-failure.v1',
+      http_status: 500, error: 'engine_failure', error_digest: digest('b') };
+    const engineFailureCore = { ...engineFailure };
+    delete engineFailureCore.turn_digest;
+    engineFailure.turn_digest = digestJson(engineFailureCore);
+    globalThis.fetch = async () => runtimeEnvelope(page(SESSION_ID, [engineFailure]));
+    const failedHistory = await getOwnerBrainRuntimeSession({ ...binding, sessionId: SESSION_ID });
+    assert.equal(failedHistory.session.messages.length, 1, 'verified engine failure retains exactly the original user message');
+    assert.equal(failedHistory.session.messages[0]?.content, engineFailure.user_message);
+    assert.equal(failedHistory.session.messages[0]?.request_id, REQUEST_B);
+    assert.deepEqual(failedHistory.session.messages[0]?.terminal_failure, {
+      code: 'engine_failure', error_digest: digest('b'), receipt_digest: engineFailure.terminal_receipt_digest,
+    });
 
     const corrupted = page(SESSION_ID, [first]);
     corrupted.page_digest = digest('f');

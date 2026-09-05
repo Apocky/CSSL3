@@ -4,6 +4,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import {
   publicMemberPrincipalRef,
+  RuntimeProxyError,
   type RuntimeChatProjection,
   type RuntimeSessionGetProjection,
 } from '@/lib/apocv4/runtime-proxy';
@@ -378,6 +379,57 @@ async function runtimeReconciliationTest(): Promise<void> {
   assert.equal(store.runtimeFailures.length, 0);
 }
 
+async function retiredRuntimeConfigurationTest(): Promise<void> {
+  const config = configuration();
+  const store = new FakeStore();
+  const job = claimedJob(config);
+  const preservedJob = { ...job };
+  store.jobs.push(job);
+  let submitCalls = 0;
+  let reconciliationCalls = 0;
+  let providerCalls = 0;
+  const result = await runSmsWorkerOnce('retired-runtime-worker', {
+    store: store.asStore(),
+    config,
+    provider: {
+      async send() {
+        providerCalls += 1;
+        return { sid: OUTBOUND_SID, status: 'queued' };
+      },
+    },
+    runtime: {
+      async submit(input) {
+        submitCalls += 1;
+        const principal = publicMemberPrincipalRef(OWNER_ID);
+        assert.equal(input.requestId, scopeRequestId(principal, REQUEST_ID));
+        assert.equal(input.conversationId, scopeConversationId(principal, SESSION_ID));
+        assert.equal(input.privacyPartition, 'public:apocrypha');
+        assert.equal(input.credentialProfile, 'public');
+        throw new RuntimeProxyError('web_runtime_retired', 404);
+      },
+      async getSession() {
+        reconciliationCalls += 1;
+        throw new Error('retired_runtime_must_not_reconcile');
+      },
+    },
+  });
+  assert.deepEqual(result, {
+    state: 'failed', processed: 1, messageId: MESSAGE_ID, errorCode: 'web_runtime_retired',
+  });
+  assert.deepEqual(store.runtimeFailures, [{
+    messageId: MESSAGE_ID, leaseToken: LEASE_TOKEN, errorCode: 'web_runtime_retired',
+  }]);
+  assert.equal(submitCalls, 1);
+  assert.equal(reconciliationCalls, 0);
+  assert.equal(providerCalls, 0);
+  assert.deepEqual(job, preservedJob, 'failure preserves request identity and encrypted inbound message');
+  assert.deepEqual(store.readyInputs, []);
+  assert.deepEqual(store.sends, []);
+  assert.deepEqual(store.authorizations, []);
+  assert.deepEqual(store.sent, []);
+  assert.deepEqual(store.sendFailures, []);
+}
+
 async function freshAmbiguousRuntimeTest(): Promise<void> {
   const config = configuration();
   const store = new FakeStore();
@@ -708,6 +760,7 @@ async function main(): Promise<void> {
   await directTurnTest();
   await readyFirstTest();
   await runtimeReconciliationTest();
+  await retiredRuntimeConfigurationTest();
   await freshAmbiguousRuntimeTest();
   await staleReconciliationSuccessTest();
   await staleReconciliationMissTest();
@@ -716,7 +769,7 @@ async function main(): Promise<void> {
   await consentBudgetGateTest();
   await providerUncertaintyTest();
   await cronBoundaryTest();
-  console.log('apocrypha-sms-worker.test : OK · 11 contracts passed');
+  console.log('apocrypha-sms-worker.test : OK · 12 contracts passed');
 }
 
 main().catch((error) => {

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ConversationMessageContent from '@/components/apocrypha/ConversationMessageContent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
@@ -38,6 +39,12 @@ interface RuntimeSessionSummary {
   readonly message_count: number;
 }
 
+interface RuntimeSessionPage {
+  readonly sessions: RuntimeSessionSummary[];
+  readonly next_cursor: string | null;
+  readonly has_more: boolean;
+}
+
 interface ApiError {
   readonly error?: string;
   readonly code?: string;
@@ -62,7 +69,7 @@ class BrainApiError extends Error {
 }
 
 const SESSION_STORAGE_KEY = 'apocky.owner-brain.session.v1';
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const OWNER_CONVERSATION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[45][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function randomSessionId(): string {
   return crypto.randomUUID();
@@ -132,7 +139,7 @@ function sessionSummaries(value: unknown): RuntimeSessionSummary[] {
     const row = entry as Record<string, unknown>;
     if (
       typeof row.session_id !== 'string'
-      || !UUID_V4.test(row.session_id)
+      || !OWNER_CONVERSATION_UUID.test(row.session_id)
       || typeof row.title !== 'string'
       || typeof row.updated_at !== 'string'
       || typeof row.message_count !== 'number'
@@ -146,6 +153,24 @@ function sessionSummaries(value: unknown): RuntimeSessionSummary[] {
   });
 }
 
+function sessionListing(value: unknown): RuntimeSessionPage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Conversation history response is invalid.');
+  const row = value as Record<string, unknown>;
+  const sessions = sessionSummaries(value);
+  const cursor = row.next_cursor;
+  const cursorParts = typeof cursor === 'string' ? cursor.split(':') : [];
+  const cursorId = /^[0-9a-f]{8}-[0-9a-f]{4}-[45][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  if (row.schema_version !== 'apocky.owner-brain.sessions.v1' || row.status !== 'live'
+    || row.discovery_scope !== 'owner_conversations_page' || row.history_surface !== 'g12_chat_history'
+    || !Array.isArray(row.sessions) || sessions.length !== row.sessions.length || sessions.length > 32
+    || row.count !== sessions.length || new Set(sessions.map(session => session.session_id)).size !== sessions.length
+    || typeof row.has_more !== 'boolean'
+    || (row.has_more ? sessions.length === 0 || typeof cursor !== 'string' || cursor.length !== 77
+      || cursorParts.length !== 3 || cursorParts[0] !== 'cs1' || !cursorParts.slice(1).every(id => cursorId.test(id))
+      : cursor !== null)) throw new Error('Conversation history response is invalid.');
+  return { sessions, next_cursor: cursor as string | null, has_more: row.has_more };
+}
+
 async function bindMiniBrainDevice(vault: MiniBrainVault): Promise<MiniBrainState> {
   const registration = await jsonRequest<MiniBrainDeviceRegistration>('/api/brain/mobile/device', {
     method: 'POST',
@@ -157,26 +182,28 @@ async function bindMiniBrainDevice(vault: MiniBrainVault): Promise<MiniBrainStat
 
 async function syncMiniBrain(
   vault: MiniBrainVault,
+  state: MiniBrainState,
   input: {
     readonly operation: 'pull' | 'append';
     readonly sessionId: string;
     readonly requestId: string;
     readonly baseCursor: string | null;
     readonly text?: string;
+    readonly signal?: AbortSignal;
   },
-): Promise<MiniBrainSyncResponse> {
-  const request = await vault.signedRequest({
+): Promise<MiniBrainState> {
+  return vault.deliverSync(state, {
     operation: input.operation,
     sessionId: input.sessionId,
     requestId: input.requestId,
     baseCursor: input.baseCursor,
     payload: input.operation === 'append' ? { text: input.text ?? '' } : null,
-  });
-  return jsonRequest<MiniBrainSyncResponse>('/api/brain/mobile/sync', {
+  }, (request, signal) => jsonRequest<MiniBrainSyncResponse>('/api/brain/mobile/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
-  });
+    signal,
+  }), { signal: input.signal });
 }
 
 function miniConversation(state: MiniBrainState | null): readonly MiniBrainMessage[] {
@@ -419,6 +446,10 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   const [loading, setLoading] = useState(serverAccess === 'owner');
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [sessions, setSessions] = useState<readonly RuntimeSessionSummary[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyReadRef = useRef<Promise<RuntimeSessionSummary[]> | null>(null);
+  const historyAbortRef = useRef<AbortController | null>(null);
   const [miniState, setMiniState] = useState<MiniBrainState | null>(null);
   const [miniStatus, setMiniStatus] = useState<'initializing' | 'ready' | 'unbound' | 'unavailable'>('initializing');
   const [online, setOnline] = useState(true);
@@ -430,50 +461,93 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const vaultRef = useRef<MiniBrainVault | null>(null);
+  const [observedVault, setObservedVault] = useState<MiniBrainVault | null>(null);
   const stateRef = useRef<MiniBrainState | null>(null);
+  const sendFlightRef = useRef(false);
+  const queueFlightRef = useRef<{ vault: MiniBrainVault; promise: Promise<MiniBrainState> } | null>(null);
 
   const commitState = useCallback((state: MiniBrainState): MiniBrainState => {
+    setMiniStatus('ready');
+    const current = stateRef.current;
+    if (current && current.owner_ref === state.owner_ref && current.device_id === state.device_id
+      && (state.revision ?? 0) <= (current.revision ?? 0)) return current;
     stateRef.current = state;
     setMiniState(state);
-    setMiniStatus('ready');
     return state;
   }, []);
+
+  const loadSessionPage = useCallback(async (cursor: string | null = null, signal?: AbortSignal): Promise<RuntimeSessionSummary[]> => {
+    if (historyReadRef.current) return historyReadRef.current;
+    const controller = new AbortController();
+    historyAbortRef.current = controller;
+    const cancel = (): void => controller.abort();
+    if (signal?.aborted) controller.abort();
+    signal?.addEventListener('abort', cancel, { once: true });
+    const timer = setTimeout(cancel, 45_000);
+    setHistoryLoading(true);
+    const read = (async (): Promise<RuntimeSessionSummary[]> => {
+      const query = new URLSearchParams();
+      if (cursor !== null) query.set('cursor', cursor);
+      query.set('limit', '24');
+      const page = sessionListing(await jsonRequest<unknown>('/api/brain/runtime/sessions?' + query.toString(), { signal: controller.signal }));
+      if (controller.signal.aborted) throw new Error('Conversation history refresh was cancelled.');
+      setSessions(current => {
+        const ordered = cursor === null ? [...page.sessions, ...current] : [...current, ...page.sessions];
+        const seen = new Set<string>();
+        return ordered.filter(session => !seen.has(session.session_id) && Boolean(seen.add(session.session_id)));
+      });
+      setHistoryCursor(page.next_cursor);
+      return page.sessions;
+    })();
+    historyReadRef.current = read;
+    try { return await read; }
+    finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
+      historyReadRef.current = null;
+      historyAbortRef.current = null;
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => () => historyAbortRef.current?.abort(), []);
 
   const pullSession = useCallback(async (
     vault: MiniBrainVault,
     state: MiniBrainState,
     sessionId: string,
+    signal?: AbortSignal,
   ): Promise<MiniBrainState> => {
-    const response = await syncMiniBrain(vault, {
+    return syncMiniBrain(vault, state, {
       operation: 'pull',
       sessionId,
+      signal,
       requestId: randomSessionId(),
       baseCursor: miniCursor(state, sessionId),
     });
-    const selected = state.current_session_id === sessionId
-      ? state
-      : await vault.save({ ...state, current_session_id: sessionId });
-    try { sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId); } catch { /* private mode can deny storage */ }
-    return vault.applySync(selected, response);
   }, []);
 
-  const flushQueue = useCallback(async (
+  const flushQueue = useCallback((
     vault: MiniBrainVault,
     initial: MiniBrainState,
     rebase = false,
+    signal?: AbortSignal,
   ): Promise<MiniBrainState> => {
-    let state = initial;
+    const active = queueFlightRef.current;
+    if (active?.vault === vault) return active.promise;
+    const run = (async () => {
+    let state = await vault.load() ?? initial;
     setSyncConflict(false);
     for (const turn of [...state.queue]) {
       try {
-        const response = await syncMiniBrain(vault, {
+        state = await syncMiniBrain(vault, state, {
           operation: 'append',
           sessionId: turn.session_id,
           requestId: turn.request_id,
           baseCursor: rebase ? miniCursor(state, turn.session_id) : turn.base_cursor,
           text: turn.text,
+          signal,
         });
-        state = await vault.applySync(state, response);
         commitState(state);
       } catch (error) {
         if (error instanceof BrainApiError && (error.code === 'BRAIN_SYNC_CONFLICT' || error.code === 'BRAIN_SYNC_REMOTE_ABSENT')) {
@@ -489,8 +563,18 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
         return state;
       }
     }
-    setSyncNotice(state.queue.length === 0 ? 'Device queue and desktop worldline are current.' : `${state.queue.length} encrypted turn${state.queue.length === 1 ? '' : 's'} remain queued.`);
+    const failed = state.sessions.some(session => session.messages.some(message => message.terminal_failure));
+    setSyncNotice(state.queue.length === 0
+      ? failed ? 'History is synchronized. Messages without replies are marked in their conversations.'
+        : 'Device queue and desktop worldline are current.'
+      : `${state.queue.length} encrypted turn${state.queue.length === 1 ? '' : 's'} remain queued.`);
     return state;
+    })();
+    const promise = run.finally(() => {
+      if (queueFlightRef.current?.promise === promise) queueFlightRef.current = null;
+    });
+    queueFlightRef.current = { vault, promise };
+    return promise;
   }, [commitState, pullSession]);
 
   const load = useCallback(async (): Promise<void> => {
@@ -507,6 +591,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       }
       const vault = opened.vault;
       vaultRef.current = vault;
+      setObservedVault(vault);
       let state = await vault.load();
       if (online && access === 'owner' && (!vault.isBound || vault.tokenExpired)) {
         try {
@@ -560,16 +645,19 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       if (runtimePayload.status === 'live' && state && vault.isBound) {
         setRuntimeLoading(true);
         try {
-          const listing = await jsonRequest<{ sessions?: unknown }>('/api/brain/runtime/sessions');
-          const remoteSessions = sessionSummaries(listing);
-          setSessions(remoteSessions);
+          const remoteSessions = await loadSessionPage().catch(error => {
+            setSyncNotice(error instanceof Error ? error.message : 'Conversation history is unavailable.');
+            return [];
+          });
           let saved = '';
           try { saved = sessionStorage.getItem(SESSION_STORAGE_KEY) ?? ''; } catch { saved = ''; }
           const chosen = remoteSessions.find(item => item.session_id === saved)?.session_id
             ?? remoteSessions.find(item => item.session_id === state?.current_session_id)?.session_id
             ?? remoteSessions[0]?.session_id
             ?? state.current_session_id;
-          state = await pullSession(vault, state, chosen);
+          state = await vault.adoptDiscoveredSession(state, chosen);
+          commitState(state);
+          state = await pullSession(vault, state, state.current_session_id);
           commitState(state);
           state = await flushQueue(vault, state);
           commitState(state);
@@ -583,7 +671,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     } finally {
       setLoading(false);
     }
-  }, [access, commitState, flushQueue, online, pullSession]);
+  }, [access, commitState, flushQueue, loadSessionPage, online, pullSession]);
 
   useEffect(() => {
     if (serverAccess !== 'owner' || (online && access === 'checking')) return;
@@ -593,6 +681,98 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     }
     void load();
   }, [access, load, online, serverAccess]);
+
+  useEffect(() => {
+    if (!observedVault || serverAccess !== 'owner' || (online && access !== 'owner')) return;
+    let disposed = false;
+    let localRead: Promise<MiniBrainState | null> | null = null;
+    let readAgain = false;
+    let remoteRead = false;
+    let activeAbort: AbortController | null = null;
+    const readLocal = (): Promise<MiniBrainState | null> => {
+      if (localRead) { readAgain = true; return localRead; }
+      localRead = observedVault.load().then(state => {
+        if (!disposed && state) commitState(state);
+        return state;
+      }).catch(error => {
+        if (!disposed) setSyncNotice(error instanceof Error ? error.message : 'Saved messages could not refresh.');
+        return null;
+      }).finally(() => {
+        localRead = null;
+        if (readAgain && !disposed) { readAgain = false; void readLocal(); }
+      });
+      return localRead;
+    };
+    const refreshVisible = async (): Promise<void> => {
+      if (disposed || document.visibilityState === 'hidden' || remoteRead) return;
+      remoteRead = true;
+      const abort = new AbortController();
+      activeAbort = abort;
+      const timer = setTimeout(() => abort.abort(new Error('Connection refresh timed out.')), 120_000);
+      try {
+        const state = await readLocal();
+        if (!state || !online || access !== 'owner' || disposed) return;
+        const status = await jsonRequest<BrainRuntimeStatus>('/api/brain/runtime/status', { signal: abort.signal });
+        if (!disposed) setRuntime(status);
+        if (status.status === 'live' && !disposed) {
+          const [listing, conversation] = await Promise.allSettled([
+            loadSessionPage(null, abort.signal),
+            pullSession(observedVault, state, state.current_session_id, abort.signal),
+          ]);
+          if (conversation.status === 'rejected') throw conversation.reason;
+          if (!disposed) {
+            commitState(conversation.value);
+            if (!syncConflict && conversation.value.queue.length > 0) {
+              const synchronized = await flushQueue(observedVault, conversation.value, false, abort.signal);
+              if (!disposed && !abort.signal.aborted) commitState(synchronized);
+            }
+            if (listing.status === 'rejected' && !abort.signal.aborted) {
+              setSyncNotice(listing.reason instanceof Error ? listing.reason.message : 'Conversation history is unavailable.');
+            }
+          }
+        }
+      } catch (error) {
+        if (!disposed && !abort.signal.aborted) setSyncNotice(error instanceof Error ? error.message : 'The conversation could not refresh.');
+      } finally { clearTimeout(timer); activeAbort = null; remoteRead = false; }
+    };
+    // Broadcasts only reread the committed vault; they never pull, write or rebroadcast.
+    const unsubscribe = observedVault.subscribe(() => { void readLocal(); });
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const stopPolling = (): void => {
+      if (pollTimer !== null) clearInterval(pollTimer);
+      pollTimer = null;
+    };
+    const startPolling = (): void => {
+      stopPolling();
+      if (!online || access !== 'owner' || document.visibilityState === 'hidden') return;
+      pollTimer = setInterval(() => {
+        const state = stateRef.current;
+        const session = state?.sessions.find(item => item.session_id === state.current_session_id);
+        if (state?.queue.length || (session && (session.cursor || session.messages.length > 0))) void refreshVisible();
+      }, 30_000);
+    };
+    const onVisible = (): void => {
+      if (document.visibilityState === 'hidden') {
+        stopPolling();
+        activeAbort?.abort();
+        return;
+      }
+      startPolling();
+      void refreshVisible();
+    };
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    startPolling();
+    void readLocal();
+    return () => {
+      disposed = true;
+      stopPolling();
+      activeAbort?.abort();
+      unsubscribe();
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [access, commitState, flushQueue, loadSessionPage, observedVault, online, pullSession, serverAccess, syncConflict]);
 
   useEffect(() => {
     setOnline(navigator.onLine);
@@ -642,7 +822,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     const current = stateRef.current;
     if (!vault || !current) return;
     const next = randomSessionId();
-    const state = await vault.save({ ...current, current_session_id: next });
+    const state = await vault.selectSession(current, next);
     commitState(state);
     setDraft('');
     try { sessionStorage.setItem(SESSION_STORAGE_KEY, next); } catch { /* private mode can deny storage */ }
@@ -654,10 +834,12 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     if (!vault || !current) return;
     setRuntimeLoading(true);
     try {
-      const state = online && runtime?.status === 'live'
-        ? await pullSession(vault, current, sessionId)
-        : await vault.save({ ...current, current_session_id: sessionId });
-      commitState(state);
+      const selected = await vault.selectSession(current, sessionId);
+      commitState(selected);
+      try { sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId); } catch { /* private mode can deny storage */ }
+      if (online && runtime?.status === 'live') {
+        commitState(await pullSession(vault, selected, sessionId));
+      }
     } catch (error) {
       setSyncNotice(error instanceof Error ? error.message : 'This worldline could not open.');
     } finally { setRuntimeLoading(false); }
@@ -668,7 +850,8 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     const text = draft.trim();
     const vault = vaultRef.current;
     const current = stateRef.current;
-    if (!text || !vault || !current || sending) return;
+    if (!text || !vault || !current || sending || sendFlightRef.current) return;
+    sendFlightRef.current = true;
     setSending(true);
     setSyncNotice('');
     setDraft('');
@@ -686,6 +869,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       setDraft(text);
       setSyncNotice(sendError instanceof Error ? sendError.message : 'The local turn could not be encrypted.');
     } finally {
+      sendFlightRef.current = false;
       setSending(false);
     }
   };
@@ -844,10 +1028,20 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       <div className={styles.layout} data-memory-open={memoryOpen}>
         <section className={styles.conversation} aria-labelledby="brain-conversation-title">
           <header className={styles.panelHead}>
-            <div className={styles.conversationTitle}><h2 id="brain-conversation-title">Conversation</h2><HelpTip label="Messages are encrypted on this device and delivered to your desktop. A waiting message stays queued until its desktop reply is confirmed. Enter sends; Shift+Enter adds a line." /></div>
+            <div className={styles.conversationTitle}><h2 id="brain-conversation-title">Conversation</h2><HelpTip label="Messages are encrypted on this device and delivered to your desktop. A waiting message stays queued until the desktop confirms a reply or reports a failure. Enter sends; Shift+Enter adds a line." /></div>
             <div className={styles.conversationActions}>
-              {runtime?.status === 'live' && sessions.length > 0 && sessions.some(session => session.session_id === sessionId) ? (
-                <label><span>History</span><select value={sessionId ?? ''} onChange={(event) => { void chooseSession(event.currentTarget.value); }}>
+              {runtime?.status === 'live' && sessions.length > 0 ? (
+                <label><span>History</span><select value={sessionId ?? ''} disabled={runtimeLoading || sending}
+                  onFocus={() => { void loadSessionPage().catch(error => setSyncNotice(error instanceof Error ? error.message : 'Conversation history is unavailable.')); }}
+                  onChange={(event) => { void chooseSession(event.currentTarget.value); }}>
+                  {!sessions.some(session => session.session_id === sessionId) ? (
+                    <option value={sessionId ?? ''}>{miniState && miniCursor(miniState, sessionId ?? '') ? 'Current conversation' : 'Current local draft'}</option>
+                  ) : null}
+              {runtime?.status === 'live' && historyCursor !== null ? (
+                <button type="button" disabled={historyLoading} onClick={() => {
+                  void loadSessionPage(historyCursor).catch(error => setSyncNotice(error instanceof Error ? error.message : 'Older conversations could not load.'));
+                }}>{historyLoading ? 'Loading conversations…' : 'Load older conversations'}</button>
+              ) : null}
                   {sessions.map(session => <option key={session.session_id} value={session.session_id}>{short(session.title, 42)} · {session.message_count}</option>)}
                 </select></label>
               ) : null}
@@ -868,8 +1062,15 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
             ) : conversation.map(message => (
               <article key={message.id} data-role={message.role} data-origin={message.origin}>
                 <p>{message.role === 'user' ? 'You' : 'Apocrypha'}<time dateTime={message.recorded_at}>{formattedDate(message.recorded_at)}</time></p>
-                <div>{message.content}</div>
+                <ConversationMessageContent content={message.content} assistant={message.role === 'assistant'} />
                 {message.origin === 'queued-mobile' ? <small>encrypted queue · not yet committed on desktop</small> : null}
+                {message.terminal_failure ? <div>
+                  <small>{message.terminal_failure.code === 'chat_prompt_capacity_exceeded'
+                    ? 'This message exceeded the conversation capacity. Its text is preserved.'
+                    : 'Apocrypha could not reply to this message. Its text is preserved.'}</small>
+                  <button type="button" disabled={sending || Boolean(draft.trim())}
+                    onClick={() => { setDraft(message.content); setSyncNotice('Review and send to retry. The earlier failed message stays in history.'); }}>Retry message</button>
+                </div> : null}
                 {message.provenance_digests.length > 0 ? <small>{message.provenance_digests.length} provenance digest{message.provenance_digests.length === 1 ? '' : 's'} retained</small> : null}
               </article>
             ))}

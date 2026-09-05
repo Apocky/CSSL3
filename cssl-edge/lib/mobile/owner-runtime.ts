@@ -3,7 +3,7 @@ import { getAdminAllowlist } from '../admin-auth';
 import { getOwnerBrainSession, listOwnerBrainSessions, ownerBrainRuntimeConfigured,
   probeOwnerBrainRuntime, sendOwnerBrainTurn } from '../brain/runtime-provider';
 import { RuntimeProxyError } from '../apocv4/runtime-proxy';
-import { AccountRuntimeError } from './account-runtime';
+import { AccountAdmissionPending, AccountRuntimeError } from './account-runtime';
 
 export function usesOwnerRuntime(user: RequestUser): boolean {
   return process.env.APOCV4_MOBILE_OWNER_BRIDGE === '1'
@@ -40,6 +40,10 @@ export async function callOwnerMobileRuntime(input: {
   } catch (error) {
     if (error instanceof AccountRuntimeError) throw error;
     if (error instanceof RuntimeProxyError) {
+      if (input.surface === 'turn' && input.body && typeof input.body.session_id === 'string' && typeof input.body.request_id === 'string' && error.code === 'apex_admission_pending'
+        && error.publicStatus === 503 && error.upstreamStatus === 503) {
+        throw new AccountAdmissionPending(input.body.session_id, input.body.request_id);
+      }
       if (error.publicStatus === 404) throw new AccountRuntimeError('ACCOUNT_SESSION_NOT_FOUND', 404);
       if (error.publicStatus === 504) throw new AccountRuntimeError('ACCOUNT_RESPONSE_TIMEOUT', 504);
     }

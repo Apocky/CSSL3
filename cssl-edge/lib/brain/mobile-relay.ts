@@ -22,6 +22,7 @@ const RATE_LIMIT = 30;
 const TOKEN_RE = /^[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]{43}$/u;
 const BASE64URL_256_RE = /^[A-Za-z0-9_-]{43}$/u;
 const SHA256_RE = /^[0-9a-f]{64}$/u;
+const OWNER_CONVERSATION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[45][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 interface DeviceCapability {
   readonly schema_version: typeof MINI_BRAIN_DEVICE_SCHEMA;
@@ -185,7 +186,7 @@ function exactSyncRequest(value: unknown): value is MiniBrainSyncRequest {
     || Number(row.sequence) < 1
     || Number(row.sequence) > Number.MAX_SAFE_INTEGER
     || typeof row.issued_at !== 'string'
-    || !isOpaqueConversationId(row.session_id)
+    || typeof row.session_id !== 'string' || !OWNER_CONVERSATION_UUID_RE.test(row.session_id)
     || !isOpaqueClientRequestId(row.request_id)
     || (row.base_cursor !== null && (typeof row.base_cursor !== 'string' || !SHA256_RE.test(row.base_cursor)))
     || typeof row.payload_digest !== 'string'

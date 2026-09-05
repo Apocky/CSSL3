@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { isOpaqueConversationId } from '@/lib/apocrypha/proxy';
-import { RuntimeProxyError } from '@/lib/apocv4/runtime-proxy';
+import { isOwnerBrainConversationId, isOwnerBrainHistoryCursor, RuntimeProxyError } from '@/lib/apocv4/runtime-proxy';
 import { requireBrainOwner, respondBrainOwnerFailure, setBrainPrivateHeaders } from '@/lib/brain/owner';
 import {
   getOwnerBrainSession,
@@ -27,20 +26,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
   const queryKeys = Object.keys(req.query);
-  const sessionId = queryKeys.length === 0
-    ? null
-    : queryKeys.length === 1 && queryKeys[0] === 'session_id' && isOpaqueConversationId(req.query.session_id)
-      ? String(req.query.session_id).toLowerCase()
-      : undefined;
-  if (sessionId === undefined) {
-    res.status(400).json({ error: 'Only one opaque session_id may be requested.', code: 'BRAIN_SESSION_INVALID', ...envelope() });
+  const getOne = queryKeys.includes('session_id');
+  const sessionId = getOne && queryKeys.length === 1 && isOwnerBrainConversationId(req.query.session_id)
+    ? String(req.query.session_id).toLowerCase() : null;
+  const cursor = req.query.cursor === undefined ? null : req.query.cursor;
+  const rawLimit = req.query.limit === undefined ? '24' : req.query.limit;
+  const limit = typeof rawLimit === 'string' && /^(?:[1-9]|[12][0-9]|3[0-2])$/.test(rawLimit) ? Number(rawLimit) : null;
+  if (getOne ? sessionId === null : queryKeys.some(key => !['cursor', 'limit'].includes(key))
+    || (cursor !== null && !isOwnerBrainHistoryCursor(cursor)) || limit === null) {
+    res.status(400).json({ error: 'Request one conversation, or a valid conversation history page.', code: 'BRAIN_SESSION_INVALID', ...envelope() });
     return;
   }
 
   try {
     const projection = sessionId
       ? await getOwnerBrainSession(owner.user.id, sessionId)
-      : await listOwnerBrainSessions(owner.user.id);
+      : await listOwnerBrainSessions(owner.user.id, undefined, { cursor: cursor as string | null, limit: limit ?? 24 });
     res.status(200).json({
       schema_version: sessionId ? 'apocky.owner-brain.session.v1' : 'apocky.owner-brain.sessions.v1',
       status: 'live',
@@ -51,6 +52,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sessions: projection.sessions,
           count: projection.count,
           discovery_scope: projection.discovery_scope,
+          next_cursor: projection.next_cursor,
+          has_more: projection.has_more,
         }),
       ...envelope(),
     });

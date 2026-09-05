@@ -9,6 +9,12 @@ export class AccountRuntimeError extends Error {
   constructor(readonly code: string, readonly publicStatus: 404 | 502 | 503 | 504 = 502) { super(code); }
 }
 
+export class AccountAdmissionPending extends AccountRuntimeError {
+  constructor(readonly sessionId: string, readonly requestId: string) {
+    super('ACCOUNT_ADMISSION_PENDING', 503);
+  }
+}
+
 export function accountRuntimeOrigin(): string {
   if (typeof window !== 'undefined') throw new AccountRuntimeError('ACCOUNT_CONFIGURATION_INVALID', 503);
   const raw = process.env.APOCV4_ACCOUNT_RUNTIME_URL;

@@ -9,6 +9,7 @@ interface SiteSessionValue {
   access: SiteAccessState;
   authenticated: boolean;
   subjectKey: string | null;
+  ownerConversation?: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -17,6 +18,7 @@ const SiteSessionContext = createContext<SiteSessionValue | null>(null);
 interface ResolvedSiteSession {
   access: SiteAccessState;
   subjectKey: string | null;
+  ownerConversation?: boolean;
 }
 
 async function resolveSiteAccess(): Promise<ResolvedSiteSession> {
@@ -34,11 +36,13 @@ async function resolveSiteAccess(): Promise<ResolvedSiteSession> {
 
   let serverAuthenticated = false;
   let subjectKey: string | null = null;
+  let ownerConversation = false;
   try {
     const response = await authFetch('/api/auth/me', { cache: 'no-store' });
     if (!response.ok) return { access: browserAuthenticated ? 'unavailable' : 'signed-out', subjectKey: null };
-    const payload = await response.json() as { user?: unknown };
+    const payload = await response.json() as { user?: unknown; owner_conversation?: unknown };
     serverAuthenticated = Boolean(payload.user);
+    ownerConversation = serverAuthenticated && payload.owner_conversation === true;
     if (payload.user && typeof payload.user === 'object' && !Array.isArray(payload.user)) {
       const candidate = (payload.user as Record<string, unknown>).id;
       subjectKey = typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
@@ -53,7 +57,7 @@ async function resolveSiteAccess(): Promise<ResolvedSiteSession> {
     const response = await authFetch('/api/admin/check', { cache: 'no-store' });
     if (!response.ok) return { access: 'member', subjectKey };
     const payload = await response.json() as { authorized?: unknown };
-    return { access: payload.authorized === true ? 'owner' : 'member', subjectKey };
+    return { access: payload.authorized === true ? 'owner' : 'member', subjectKey, ownerConversation: payload.authorized === true && ownerConversation };
   } catch {
     return { access: 'member', subjectKey };
   }
@@ -85,6 +89,7 @@ export function SiteSessionProvider({ children }: { children: React.ReactNode })
     access: session.access,
     authenticated: session.access === 'member' || session.access === 'owner',
     subjectKey: session.subjectKey,
+    ownerConversation: session.ownerConversation === true,
     refresh,
   }), [refresh, session]);
 

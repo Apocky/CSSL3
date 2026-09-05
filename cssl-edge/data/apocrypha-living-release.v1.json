@@ -4,7 +4,7 @@
   "track": "local-living",
   "version": "1.0.0",
   "release_state": "RELEASED",
-  "generated_at": "2026-09-04T12:38:56-07:00",
+  "generated_at": "2026-09-05T18:52:00.650Z",
   "source_revision": "daadaf30a22c4dc00ce46eb178fbb40a3048cd69",
   "summary": "Apocrypha 1.0 is the browser-delivered web/PWA release for responsive desktop, iOS, and Android surfaces. The exact candidate passed local automated desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks covering owner access, manifest identity, service-worker scope, offline encrypted continuity, no private API caching, accessibility, safe areas, and overflow. No downloadable native binary is part of this release, and this record does not claim App Store or Play Store packaging, physical-device verification, phone-to-desktop live acceptance, or production deployment.",
   "plan": {
@@ -193,6 +193,18 @@
       "kind": "web-pwa-1.0-release",
       "state": "RELEASED_PWA_METADATA_SEALED",
       "summary": "The 1.0.0 browser-delivered web/PWA release has one route-aware install manifest, iOS safe-area activation, an unobscured telemetry-blackout surface, strict private-response no-store behavior, no private API entries in service-worker caches, offline encrypted restart coverage, serious and critical accessibility checks, and narrow-screen overflow checks across local automated desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit. Native binaries, physical-device verification, and production deployment are not claimed."
+    },
+    {
+      "at": "2026-09-05",
+      "kind": "conversation-recovery",
+      "state": "RECOVERY_CHECKS_PASSED",
+      "summary": "Saved messages remain encrypted on the device while a delayed reply is pending. Retry preserves the original message, reconnecting resumes its delivery, and changing accounts cannot send another account’s pending text. Conversation history is retained across the service restart."
+    },
+    {
+      "at": "2026-09-05",
+      "kind": "conversation-formatting",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "Assistant replies display readable headings, lists, emphasis and code through an escaped renderer. The saved message text, copy actions, history and pending delivery are preserved."
     }
   ],
   "build": {

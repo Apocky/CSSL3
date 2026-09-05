@@ -218,6 +218,7 @@ const DEFINITIVE_RUNTIME_SUBMIT_ERRORS = new Set([
   'runtime_credential_unavailable',
   'runtime_session_binding_unavailable',
   'session_binding_invalid',
+  'web_runtime_retired',
 ]);
 
 function ambiguousRuntimeSubmit(error: unknown): boolean {

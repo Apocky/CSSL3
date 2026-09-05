@@ -158,12 +158,40 @@ async function main(): Promise<void> {
 
     const queueVault = Object.create(MiniBrainVault.prototype) as MiniBrainVault;
     queueVault.save = async state => state;
+    Object.assign(queueVault, { load: async () => null, saveUnlocked: (state: MiniBrainState) => queueVault.save(state) });
     const legacyMessage = { id: 'legacy-reflection', role: 'assistant' as const, content: 'Historical local reflection retained verbatim.', recorded_at: '2026-09-03T00:00:00.000Z', request_id: 'legacy-request', event_digest: null, origin: 'local-reflection' as const, provenance_digests: ['3'.repeat(64)] };
     const initialState: MiniBrainState = { schema_version: 'apocky.mini-brain.local-state.v1', owner_ref: 'owner-fixture', device_id: 'device-fixture', current_session_id: 'session-fixture', sessions: [{ session_id: 'session-fixture', cursor: null, messages: [legacyMessage], updated_at: legacyMessage.recorded_at, events_truncated: false, tombstoned_at: null }], memories: [], queue: [], updated_at: legacyMessage.recorded_at };
     const queued = await queueVault.queueTurn(initialState, 'Deliver only to the desktop.');
     assert.equal(queued.turn.local_message_ids.length, 1);
     assert.deepEqual(queued.state.sessions[0]?.messages, [legacyMessage, { id: queued.turn.local_message_ids[0], role: 'user', content: queued.turn.text, recorded_at: queued.turn.queued_at, request_id: queued.turn.request_id, event_digest: null, origin: 'queued-mobile', provenance_digests: [] }]);
     assert.deepEqual(initialState.sessions[0]?.messages, [legacyMessage], 'queueing does not mutate previously loaded state');
+    const pendingIdentity = { session_id: 'adopted-session', request_id: '22222222-2222-4222-8222-222222222222' };
+    let adoptionSaves = 0;
+    queueVault.save = async state => { adoptionSaves += 1; return state; };
+    const adopted = await queueVault.queueTurn(initialState, 'Existing pending text.', pendingIdentity);
+    assert.equal(adopted.turn.request_id, pendingIdentity.request_id, 'adoption preserves the original request identity');
+    assert.equal(adopted.turn.session_id, pendingIdentity.session_id, 'adoption targets the original conversation');
+    assert.equal(adopted.state.current_session_id, initialState.current_session_id, 'adoption does not switch the selected conversation');
+    assert.deepEqual(adopted.state.sessions.find(item => item.session_id === initialState.current_session_id), initialState.sessions[0]);
+    const restoredAdoption = JSON.parse(JSON.stringify(adopted.state)) as MiniBrainState;
+    const repeated = await queueVault.queueTurn(restoredAdoption, adopted.turn.text, pendingIdentity);
+    assert.equal(repeated.state, restoredAdoption, 'replay returns the loaded state without writing or duplicating a message');
+    assert.equal(repeated.state.queue.length, 1);
+    assert.equal(adoptionSaves, 1);
+    await assert.rejects(queueVault.queueTurn(adopted.state, 'Conflicting text.', pendingIdentity), /MINI_BRAIN_REQUEST_IDENTITY_CONFLICT/);
+    await assert.rejects(queueVault.queueTurn(adopted.state, adopted.turn.text, { ...pendingIdentity, session_id: 'different-session' }), /MINI_BRAIN_REQUEST_IDENTITY_CONFLICT/);
+    assert.equal(adoptionSaves, 1, 'identity conflicts leave the saved state untouched');
+    const fullQueue = { ...adopted.state, queue: [...adopted.state.queue, ...Array.from({ length: 31 }, (_, index) => ({ ...adopted.turn, request_id: `other-${index}` }))] };
+    assert.equal((await queueVault.queueTurn(fullQueue, adopted.turn.text, pendingIdentity)).state, fullQueue, 'an existing request can be recovered even when the queue is full');
+    await assert.rejects(queueVault.queueTurn(fullQueue, 'New message.'), /MINI_BRAIN_QUEUE_FULL/);
+    const ordinary = await queueVault.queueTurn(adopted.state, 'A new message.');
+    assert.notEqual(ordinary.turn.request_id, adopted.turn.request_id, 'ordinary queueing still creates a new request');
+    assert.equal(ordinary.turn.session_id, initialState.current_session_id);
+    const historyOnly = { ...adopted.state, queue: [] };
+    const adoptedHistory = await queueVault.queueTurn(historyOnly, adopted.turn.text, pendingIdentity);
+    assert.equal(adoptedHistory.state.sessions[0]?.messages.length, 1, 'adopting an existing user echo does not create another user message');
+    await assert.rejects(queueVault.queueTurn(historyOnly, 'Changed historical text.', pendingIdentity), /MINI_BRAIN_REQUEST_IDENTITY_CONFLICT/);
+    queueVault.save = async state => state;
     const userEcho = { role: 'user', content: queued.turn.text, recorded_at: queued.turn.queued_at, request_id: queued.turn.request_id, event_digest: '4'.repeat(64) };
     const reply: MiniBrainSyncResponse = { schema_version: 'apocky.mini-brain.sync-response.v1', status: 'advanced', session_id: 'session-fixture', request_id: queued.turn.request_id, cursor: '5'.repeat(64), messages: [userEcho], tombstones: [], events_truncated: false, provenance: { transport: 'owner_bound_apocv4_runtime', privacy_partition_ref: null, principal_ref: null, binding_ref: null }, controls: { owner_session: 'verified', device_signature: 'verified', replay: 'bounded_sequence_and_idempotent_request', rate_limit: 'relay_instance_burst', partition: 'server_derived_owner' }, served_by: 'fixture', ts: queued.turn.queued_at };
     const echoState = await queueVault.applySync(queued.state, reply);
@@ -172,6 +200,14 @@ async function main(): Promise<void> {
     assert.deepEqual(echoState.sessions[0]?.messages.find(message => message.id === legacyMessage.id), legacyMessage);
     const completedState = await queueVault.applySync(echoState, { ...reply, status: 'appended', messages: [userEcho, { ...userEcho, role: 'assistant', content: 'Actual desktop fixture response.', event_digest: '6'.repeat(64) }] });
     assert.equal(completedState.queue.length, 0, 'only matching desktop assistant readback clears the queued turn');
+    await assert.rejects(queueVault.queueTurn(completedState, queued.turn.text, { session_id: queued.turn.session_id, request_id: queued.turn.request_id }), /MINI_BRAIN_REQUEST_ALREADY_COMPLETED/, 'a confirmed reply cannot be re-adopted as pending');
+    const staleCompletedQueue = { ...completedState, queue: [queued.turn] };
+    let completedReplaySaves = 0;
+    queueVault.save = async state => { completedReplaySaves += 1; return state; };
+    await assert.rejects(queueVault.queueTurn(staleCompletedQueue, queued.turn.text, { session_id: queued.turn.session_id, request_id: queued.turn.request_id }), /MINI_BRAIN_REQUEST_ALREADY_COMPLETED/, 'a stale queued entry cannot override a confirmed desktop assistant reply');
+    assert.equal(completedReplaySaves, 0, 'known completion rejects without saving or deleting the stale queue');
+    assert.deepEqual(staleCompletedQueue.queue, [queued.turn]);
+    queueVault.save = async state => state;
     assert.deepEqual(completedState.sessions[0]?.messages.find(message => message.id === legacyMessage.id), legacyMessage, 'synchronization preserves historical reflection bytes');
     const mapped = normalizeMiniBrainRemoteMessages([{
       role: 'assistant',
@@ -208,6 +244,19 @@ async function main(): Promise<void> {
     const tampered = { ...first, base_cursor: 'f'.repeat(64) };
     await assert.rejects(() => verifyMiniBrainSyncRequest({ body: tampered, userId: 'test-admin' }), /BRAIN_DEVICE_SIGNATURE_INVALID/);
     await assert.rejects(() => verifyMiniBrainSyncRequest({ body: first, userId: 'different-owner' }), /BRAIN_DEVICE_TOKEN_INVALID/);
+
+    const legacySessionId = '44444444-4444-5444-8444-444444444444';
+    const legacySession = await signedRequest({ device: bound, sequence: 2, sessionId: legacySessionId });
+    assert.equal((await verifyMiniBrainSyncRequest({ body: legacySession, userId: 'test-admin' })).request.session_id, legacySessionId,
+      'a signed owner request preserves its existing UUIDv5 conversation');
+    for (const invalid of [
+      { ...legacySession, device_id: legacySessionId },
+      { ...legacySession, request_id: legacySessionId },
+      { ...legacySession, session_id: '44444444-4444-1444-8444-444444444444' },
+    ]) {
+      await assert.rejects(() => verifyMiniBrainSyncRequest({ body: invalid, userId: 'test-admin' }), /BRAIN_SYNC_REQUEST_INVALID/,
+        'legacy conversation support does not broaden device, request, or other UUID versions');
+    }
 
     resetMiniBrainRelayStateForTests();
     for (let sequence = 1; sequence <= 30; sequence += 1) {

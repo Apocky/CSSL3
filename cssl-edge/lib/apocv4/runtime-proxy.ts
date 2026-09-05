@@ -107,7 +107,7 @@ const JSON_NUMBER_TOKEN_RE = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]
 const canonicalNumberSources = new WeakMap<object, Map<string, string>>();
 
 type RuntimePath = '/health' | '/v1/auth/status' | '/v1/chat' | '/v1/chat/stream' | '/v1/code' | '/v1/code/rollback' | '/v1/objectives'
-  | '/v1/chat/history'
+  | '/v1/chat/history' | '/v1/chat/conversations'
   | '/v1/sessions/list' | '/v1/sessions/get' | '/v1/sessions/delete'
   | '/v1/jobs/submit' | '/v1/jobs/list' | '/v1/jobs/status' | '/v1/jobs/cancel'
   | '/v1/vision';
@@ -231,6 +231,20 @@ export interface RuntimeSessionBindingInput {
 
 export interface RuntimeSessionListInput extends RuntimeSessionBindingInput {
   limit?: number;
+}
+
+export interface OwnerBrainSessionListInput extends RuntimeSessionListInput {
+  cursor?: string | null;
+}
+
+export function isOwnerBrainConversationId(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value.toLowerCase());
+}
+
+export function isOwnerBrainHistoryCursor(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length !== 77) return false;
+  const parts = value.split(':');
+  return parts.length === 3 && parts[0] === 'cs1' && parts.slice(1).every(id => UUID_RE.test(id));
 }
 
 export interface RuntimeSessionGetInput extends RuntimeSessionBindingInput {
@@ -375,7 +389,7 @@ export interface OwnerBrainHistorySessionSnapshot extends JsonObject {
 interface OwnerBrainHistoryObservation {
   evidence_lane: 'observed_runtime_http_and_principal_bound_history';
   receipt: RuntimeReceipt;
-  request_contract: 'latest_conversation' | 'conversation_id';
+  request_contract: 'latest_conversation' | 'conversation_id' | 'owner_conversations_page';
   page_count: number;
 }
 
@@ -383,9 +397,11 @@ export interface OwnerBrainHistoryListProjection {
   schema_version: typeof APOCV4_PROXY_SCHEMA;
   kind: 'owner_brain_history_list';
   observed: OwnerBrainHistoryObservation;
-  discovery_scope: 'latest_conversation_only';
+  discovery_scope: 'owner_conversations_page';
   sessions: OwnerBrainHistorySessionSummary[];
   count: number;
+  next_cursor: string | null;
+  has_more: boolean;
 }
 
 export interface OwnerBrainHistoryGetProjection {
@@ -1402,6 +1418,21 @@ function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
     'project_id', 'queries', 'owner_profile_status', 'owner_profile_record_digests',
   ];
   const ownerMemory = isObject(memory) && exactKeys(memory, ownerMemoryKeys);
+  // § native no-lookup := paired exact evidence; no retrieval/completeness claim.
+  const noLookup = isObject(retrieval)
+    && exactKeys(retrieval, ['status', 'count', 'refs', 'reason'])
+    && retrieval.status === 'skipped'
+    && retrieval.reason === 'MEMORY_LOOKUP_SKIPPED_NO_SEARCHABLE_TERMS'
+    && retrieval.count === 0
+    && Array.isArray(retrieval.refs) && retrieval.refs.length === 0
+    && isObject(memory)
+    && exactKeys(memory, [...baseMemoryKeys, 'memory_lookup_performed'])
+    && memory.provider === 'native-no-lookup-admission'
+    && memory.status === 'skipped'
+    && memory.records_used === 0
+    && typeof memory.receipt_digest === 'string' && SHA256_RE.test(memory.receipt_digest)
+    && Array.isArray(memory.refs) && memory.refs.length === 0
+    && memory.memory_lookup_performed === false;
   return boundedCanonicalString(value.frame_id, 256)
     && value.frame_id.startsWith('acf-')
     && typeof value.frame_digest === 'string'
@@ -1409,7 +1440,7 @@ function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
     && typeof value.provenance_spine_digest === 'string'
     && SHA256_RE.test(value.provenance_spine_digest)
     && isObject(retrieval)
-    && exactKeys(retrieval, ['status', 'count', 'refs'])
+    && (noLookup || exactKeys(retrieval, ['status', 'count', 'refs']))
     && boundedCanonicalString(retrieval.status, 128)
     && Number.isInteger(retrieval.count)
     && Number(retrieval.count) >= 0
@@ -1418,7 +1449,8 @@ function validateV2ChatContext(value: unknown): value is RuntimeChatContext {
     && retrieval.refs.length <= 128
     && boundedJsonValue(retrieval.refs, 64 * 1024)
     && isObject(memory)
-    && (exactKeys(memory, baseMemoryKeys) || ownerMemory)
+    && (noLookup || ((exactKeys(memory, baseMemoryKeys) || ownerMemory)
+      && memory.provider !== 'native-no-lookup-admission'))
     && boundedCanonicalString(memory.provider, 128)
     && boundedCanonicalString(memory.status, 128)
     && Number.isInteger(memory.records_used)
@@ -1848,11 +1880,27 @@ function boundedMode(headers: Headers): string | null {
   return value && /^[A-Z_]{1,64}$/.test(value) ? value : null;
 }
 
+// § bridge failure evidence stays separate from completed runtime results.
+function isRetryableBridgeFailure(value: unknown, wire: string, status: number): value is JsonObject {
+  if ((status !== 502 && status !== 503) || !isObject(value)
+    || !exactKeys(value, ['schema_version', 'code'])
+    || value.schema_version !== 'apocky.bridge.error.v1' || typeof value.code !== 'string') return false;
+  // The wire has exactly two string pairs; duplicate keys cannot collapse during JSON.parse.
+  const string = '"(?:[^"\\\\]|\\\\.)*"';
+  if (!new RegExp('^\\s*\\{\\s*' + string + '\\s*:\\s*' + string + '\\s*,\\s*'
+    + string + '\\s*:\\s*' + string + '\\s*\\}\\s*$').test(wire)) return false;
+  return value.code === 'BRIDGE_APEX_ADMISSION_PENDING' ? status === 503
+    : ['BRIDGE_INDETERMINATE', 'BRIDGE_JOB_EXPIRED', 'BRIDGE_LOCAL_CREDENTIAL_UNAVAILABLE',
+      'BRIDGE_LOCAL_UNAVAILABLE', 'BRIDGE_LOCAL_TIMEOUT', 'BRIDGE_HTTP_UNAVAILABLE'].includes(value.code);
+}
+
 async function readBoundedJson(
   response: Response,
   maximumBytes: number,
   protectedValues: readonly string[],
   historyProofAllowed = false,
+  bridgeAdmissionPendingAllowed = false,
+  bridgeFailureAllowed = false,
 ): Promise<JsonObject> {
   const historyCodec = response.headers.get('x-apocv4-history-codec');
   if (historyCodec !== null && (!historyProofAllowed || historyCodec !== 'v2' || !response.ok)) {
@@ -1968,6 +2016,10 @@ async function readBoundedJson(
     if (error instanceof RuntimeProxyError) throw error;
     throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
   }
+  if ((bridgeAdmissionPendingAllowed || bridgeFailureAllowed)
+    && isRetryableBridgeFailure(parsed, text, response.status)
+    && (parsed.code === 'BRIDGE_APEX_ADMISSION_PENDING'
+      ? bridgeAdmissionPendingAllowed : bridgeFailureAllowed)) return parsed;
   if (!isObject(parsed) || parsed.schema_version !== RUNTIME_SCHEMA) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
   }
@@ -1986,7 +2038,7 @@ async function callRuntime(
   query: URLSearchParams | null = null,
 ): Promise<RuntimeCall> {
   requireRuntimeAccess(accessProfile);
-  if (query !== null && (path !== '/v1/chat/history' || body !== null)) {
+  if (query !== null && ((!['/v1/chat/history', '/v1/chat/conversations'].includes(path)) || body !== null)) {
     throw new RuntimeProxyError('runtime_request_invalid', 500);
   }
   const origin = canonicalRuntimeOrigin(process.env.APOCV4_RUNTIME_URL);
@@ -1996,6 +2048,7 @@ async function callRuntime(
   const authenticatedStatus = path === '/v1/auth/status';
   const chat = path === '/v1/chat';
   const history = path === '/v1/chat/history';
+  const conversations = path === '/v1/chat/conversations';
   const historyProof = history && body === null && accessProfile === 'owner-brain';
   const code = path === '/v1/code';
   const rollback = path === '/v1/code/rollback';
@@ -2010,7 +2063,7 @@ async function callRuntime(
         ? RUNPOD_SYNC_DEADLINE_MS
         : chat
           ? CHAT_DEADLINE_MS
-          : history || session
+          : history || conversations || session
             ? SESSION_DEADLINE_MS
             : job
               ? JOB_DEADLINE_MS
@@ -2025,7 +2078,7 @@ async function callRuntime(
         ? OBJECTIVE_RESPONSE_LIMIT
         : chat
           ? CHAT_RESPONSE_LIMIT
-          : history || session
+          : history || conversations || session
             ? historyProof ? HISTORY_PROOF_WIRE_LIMIT : SESSION_RESPONSE_LIMIT
             : job
               ? JOB_RESPONSE_LIMIT
@@ -2067,8 +2120,17 @@ async function callRuntime(
         ? [token, ...transportProtectedValues]
         : [token, bindingMac, bindingSecret ?? '', ...transportProtectedValues],
       historyProof,
+      process.env.APOCV4_RUNTIME_TRANSPORT === 'outbound-bridge'
+        && accessProfile === 'owner-brain' && credentialProfile === 'owner'
+        && chat && transmittedBody !== null,
+      process.env.APOCV4_RUNTIME_TRANSPORT === 'outbound-bridge'
+        && accessProfile === 'owner-brain' && credentialProfile === 'owner',
     );
     if (!response.ok) {
+      if (response.status === 503 && data.schema_version === 'apocky.bridge.error.v1'
+        && exactKeys(data, ['schema_version', 'code']) && data.code === 'BRIDGE_APEX_ADMISSION_PENDING') {
+        throw new RuntimeProxyError('apex_admission_pending', 503, response.status);
+      }
       if (
         response.status === 404
         && exactKeys(data, ['schema_version', 'error'])
@@ -2084,15 +2146,15 @@ async function callRuntime(
     ) {
       throw new RuntimeProxyError('runtime_session_binding_invalid', 502, response.status);
     }
-    const expectedKeys = authenticatedStatus || objective || chat || history || code || rollback || session || job || vision
+    const expectedKeys = authenticatedStatus || objective || chat || history || conversations || code || rollback || session || job || vision
       ? ['schema_version', 'result']
       : ['schema_version', 'status', 'engine', 'vision'];
     if (!exactKeys(data, expectedKeys)) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
     }
     if (
-      ((authenticatedStatus || objective || chat || history || code || rollback || session || job || vision) && !isObject(data.result))
-      || (!authenticatedStatus && !objective && !chat && !history && !code && !rollback && !session && !job && !vision
+      ((authenticatedStatus || objective || chat || history || conversations || code || rollback || session || job || vision) && !isObject(data.result))
+      || (!authenticatedStatus && !objective && !chat && !history && !conversations && !code && !rollback && !session && !job && !vision
         && (data.status !== 'READY' || !isObject(data.engine) || typeof data.vision !== 'boolean'))
     ) {
       throw new RuntimeProxyError('runtime_response_invalid', 502, response.status);
@@ -3006,7 +3068,7 @@ async function readOwnerBrainHistory(
   traceparent?: string,
 ): Promise<OwnerBrainHistoryRead> {
   validateSessionBinding(input);
-  if (input.conversationId !== null && !CLIENT_SESSION_UUID_RE.test(input.conversationId)) {
+  if (input.conversationId !== null && !UUID_RE.test(input.conversationId)) {
     throw new RuntimeProxyError('session_request_invalid', 400);
   }
   const credentialProfile = input.credentialProfile ?? 'owner';
@@ -3075,7 +3137,7 @@ function projectOwnerBrainHistorySession(
   requestedSessionId?: string,
 ): OwnerBrainHistorySessionSnapshot {
   const sessionId = read.conversationId ?? requestedSessionId;
-  if (!sessionId || !CLIENT_SESSION_UUID_RE.test(sessionId)) {
+  if (!sessionId || !UUID_RE.test(sessionId)) {
     throw new RuntimeProxyError('runtime_response_invalid', 502, read.receipt.upstream_status);
   }
   const messages = read.turns.flatMap((turn): JsonObject[] => {
@@ -3089,7 +3151,14 @@ function projectOwnerBrainHistorySession(
       recorded_at: recordedAt,
       event_digest: historyMessageDigest(turnDigest, 'user'),
     };
-    if (turn.state !== 'COMPLETED') return [userMessage];
+    if (turn.state !== 'COMPLETED') return [{
+      ...userMessage,
+      terminal_failure: {
+        code: (turn.public_error as JsonObject).error,
+        error_digest: (turn.public_error as JsonObject).error_digest,
+        receipt_digest: turn.terminal_receipt_digest,
+      },
+    }];
     const response = turn.response as JsonObject;
     const receipt = projectSessionTurnReceipt(response, 'owner', 'session_bounded');
     if (!receipt) {
@@ -3194,47 +3263,67 @@ export async function listRuntimeSessions(
 }
 
 export async function listOwnerBrainRuntimeSessions(
-  input: RuntimeSessionListInput,
+  input: OwnerBrainSessionListInput,
   traceparent?: string,
 ): Promise<OwnerBrainHistoryListProjection> {
   validateSessionBinding(input);
   const limit = input.limit ?? 24;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 128) {
+  const cursor = input.cursor ?? null;
+  if ((input.credentialProfile ?? 'owner') !== 'owner'
+    || !Number.isInteger(limit) || limit < 1 || limit > 32
+    || (cursor !== null && !isOwnerBrainHistoryCursor(cursor))) {
     throw new RuntimeProxyError('session_request_invalid', 400);
   }
-  const read = await readOwnerBrainHistory({ ...input, conversationId: null }, traceparent);
-  if (read.conversationId === null) {
-    return {
-      schema_version: APOCV4_PROXY_SCHEMA,
-      kind: 'owner_brain_history_list',
-      observed: ownerBrainHistoryObservation(read, 'latest_conversation'),
-      discovery_scope: 'latest_conversation_only',
-      sessions: [],
-      count: 0,
-    };
+  const query = new URLSearchParams({ privacy_partition: input.privacyPartition });
+  if (cursor !== null) query.set('cursor', cursor);
+  query.set('limit', String(limit));
+  const call = await callRuntime('/v1/chat/conversations', null, traceparent, 'owner', 'owner-brain', query);
+  if (!validOwnerRuntimeReceipt(call.receipt, input.privacyPartition)) {
+    throw new RuntimeProxyError('runtime_history_binding_invalid', 502, call.receipt.upstream_status);
   }
-  const session = projectOwnerBrainHistorySession(read);
-  if (session.tip_digest === null) {
-    throw new RuntimeProxyError('runtime_response_invalid', 502, read.receipt.upstream_status);
+  const page = call.data.result;
+  if (!isObject(page) || !exactKeys(page, ['schema_version', 'sessions', 'count', 'next_cursor',
+    'has_more', 'persistence', 'effect_authority', 'page_digest'])
+    || page.schema_version !== 'apocv4.chat-conversations-page.v1'
+    || page.persistence !== 'DURABLE_PRINCIPAL_BOUND' || page.effect_authority !== 'NONE'
+    || !Array.isArray(page.sessions) || page.sessions.length > limit
+    || page.count !== page.sessions.length || typeof page.has_more !== 'boolean'
+    || typeof page.page_digest !== 'string' || !SHA256_RE.test(page.page_digest)
+    || !boundedJsonValue(page, SESSION_PROJECTION_LIMIT)) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
   }
-  const summary: OwnerBrainHistorySessionSummary = {
-    schema_version: 'apocky.owner-brain.history-summary.v1',
-    session_id: session.session_id,
-    title: session.title,
-    created_at: session.created_at,
-    updated_at: session.updated_at,
-    message_count: session.event_count * 2 - session.failed_turn_count,
-    failed_turn_count: session.failed_turn_count,
-    tip_digest: session.tip_digest,
-    history_surface: 'g12_chat_history',
-  };
+  const sessions = page.sessions.map((row): OwnerBrainHistorySessionSummary => {
+    if (!isObject(row) || !exactKeys(row, ['schema_version', 'session_id', 'title', 'created_at', 'updated_at',
+      'message_count', 'failed_turn_count', 'tip_digest', 'history_surface'])
+      || row.schema_version !== 'apocv4.chat-conversation-summary.v1'
+      || typeof row.session_id !== 'string' || !UUID_RE.test(row.session_id)
+      || !boundedCanonicalUtf8(row.title, 640) || !canonicalTimestamp(row.created_at) || !canonicalTimestamp(row.updated_at)
+      || !boundedNonnegativeInteger(row.message_count) || Number(row.message_count) < 1
+      || !boundedNonnegativeInteger(row.failed_turn_count) || Number(row.failed_turn_count) > Number(row.message_count)
+      || (Number(row.message_count) + Number(row.failed_turn_count)) % 2 !== 0
+      || typeof row.tip_digest !== 'string' || !SHA256_RE.test(row.tip_digest)
+      || row.history_surface !== 'g12_chat_history') {
+      throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+    }
+    return { ...row, schema_version: 'apocky.owner-brain.history-summary.v1' } as OwnerBrainHistorySessionSummary;
+  });
+  if (new Set(sessions.map(row => row.session_id)).size !== sessions.length
+    || (page.has_more ? (sessions.length !== limit || !isOwnerBrainHistoryCursor(page.next_cursor)
+      || page.next_cursor === cursor || (cursor !== null && page.next_cursor.split(':')[1] !== cursor.split(':')[1]))
+      : page.next_cursor !== null)) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
+  const core = { ...page };
+  delete core.page_digest;
+  if (page.page_digest !== digestJson(core)) {
+    throw new RuntimeProxyError('runtime_response_invalid', 502, call.receipt.upstream_status);
+  }
   return {
-    schema_version: APOCV4_PROXY_SCHEMA,
-    kind: 'owner_brain_history_list',
-    observed: ownerBrainHistoryObservation(read, 'latest_conversation'),
-    discovery_scope: 'latest_conversation_only',
-    sessions: [summary],
-    count: 1,
+    schema_version: APOCV4_PROXY_SCHEMA, kind: 'owner_brain_history_list',
+    observed: { evidence_lane: 'observed_runtime_http_and_principal_bound_history', receipt: call.receipt,
+      request_contract: 'owner_conversations_page', page_count: 1 },
+    discovery_scope: 'owner_conversations_page', sessions, count: sessions.length,
+    next_cursor: page.next_cursor as string | null, has_more: page.has_more,
   };
 }
 

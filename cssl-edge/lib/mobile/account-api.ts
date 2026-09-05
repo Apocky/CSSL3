@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { randomUUID } from 'node:crypto';
 import { getRequestUser, type RequestUserResult } from '../admin-auth';
 import { ACCOUNT_UUID, CONVERSATION_UUID } from './account-grant';
-import { accountRuntimeConfigured, AccountRuntimeError, callAccountRuntime } from './account-runtime';
+import { accountRuntimeConfigured, AccountAdmissionPending, AccountRuntimeError, callAccountRuntime } from './account-runtime';
 import { usesOwnerRuntime, callOwnerMobileRuntime, ownerMobileRuntimeConfigured } from './owner-runtime';
 import { accountDiagnostic, accountDiagnosticCode, accountDiagnosticReason, type AccountDiagnostic, type AccountDiagnosticCode } from './diagnostics';
 
@@ -150,7 +150,18 @@ export function createAccountHandler(surface: Surface, dependencies: {
         else finish(200, 'ACCOUNT_OK', { schema_version: value.schema_version, status: 'live' });
       }
     } catch (error) {
-      // ∀ post-admission failure → 5xx ; clients retain uncertain request identity.
+      // ∀ retry authority → exact authenticated owner + same validated turn identity.
+      if (error instanceof AccountAdmissionPending) {
+        if (ownerRoute && surface === 'turn' && error.publicStatus === 503 && error.code === 'ACCOUNT_ADMISSION_PENDING'
+          && error.sessionId === req.body.session_id && error.requestId === req.body.request_id) {
+          res.setHeader('Retry-After', '1');
+          finish(503, 'ACCOUNT_ADMISSION_PENDING', { schema_version: 'apocky.mobile.turn-pending.v1', status: 'pending',
+            error: 'Your message is saved and waiting for Apocrypha. Retrying the same request.',
+            session_id: error.sessionId, request_id: error.requestId, retry_after_ms: 1000 }, true);
+        } else fail(502, 'ACCOUNT_TURN_UNVERIFIED');
+        return;
+      }
+      // ∀ other failure → existing semantics ; pending identity remains unresolved.
       if (surface === 'status') degraded(error instanceof AccountRuntimeError ? error.code : 'ACCOUNT_SERVICE_UNAVAILABLE');
       else fail(error instanceof AccountRuntimeError ? error.publicStatus : 502,
         error instanceof AccountRuntimeError ? error.code : 'ACCOUNT_SERVICE_UNAVAILABLE',

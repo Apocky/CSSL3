@@ -4,6 +4,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { _resetMnemeClientForTests } from '@/lib/mneme/store';
 import snapshotHandler from '@/pages/api/brain/snapshot';
 import statusHandler from '@/pages/api/brain/runtime/status';
+import sessionsHandler from '@/pages/api/brain/runtime/sessions';
 import turnHandler from '@/pages/api/brain/runtime/turn';
 
 interface Output {
@@ -75,6 +76,27 @@ async function main(): Promise<void> {
     assert.equal((status.out.body as Record<string, unknown>).reason_code, 'BRAIN_LOCAL_PROVIDER_DISABLED');
     assert.match(status.out.headers['cache-control'] ?? '', /private.*no-store/);
     assert.match(status.out.headers['x-robots-tag'] ?? '', /noindex/);
+
+    const anonymousHistory = request('GET');
+    await sessionsHandler(anonymousHistory.req, anonymousHistory.res);
+    assert.equal(anonymousHistory.out.statusCode, 401);
+    const memberHistory = request('GET', 'member@example.com');
+    await sessionsHandler(memberHistory.req, memberHistory.res);
+    assert.equal(memberHistory.out.statusCode, 403);
+    mutableEnv.APOCKY_BRAIN_LOCAL_PROVIDER_ENABLED = '1';
+    for (const query of [
+      { cursor: 'bad-cursor' }, { limit: '33' }, { limit: ['1', '2'] },
+      { session_id: '11111111-1111-4111-8111-111111111111', cursor: 'bad-cursor' },
+      { privacy_partition: 'another-owner' },
+    ]) {
+      const invalidHistory = request('GET', 'owner@example.com');
+      invalidHistory.req.query = query;
+      await sessionsHandler(invalidHistory.req, invalidHistory.res);
+      assert.equal(invalidHistory.out.statusCode, 400, 'invalid pagination refused before runtime access');
+      assert.equal((invalidHistory.out.body as Record<string, unknown>).code, 'BRAIN_SESSION_INVALID');
+      assert.match(invalidHistory.out.headers['cache-control'] ?? '', /private.*no-store/);
+    }
+    delete mutableEnv.APOCKY_BRAIN_LOCAL_PROVIDER_ENABLED;
 
     const snapshot = request('GET', 'owner@example.com');
     await snapshotHandler(snapshot.req, snapshot.res);

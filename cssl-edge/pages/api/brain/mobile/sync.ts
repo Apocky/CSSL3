@@ -47,7 +47,8 @@ function contentType(req: NextApiRequest): string | null {
 }
 
 function hasRequest(session: OwnerBrainHistoryGetProjection, requestId: string): boolean {
-  return session.session.messages.some(message => message.request_id === requestId);
+  return session.session.messages.some(message => message.request_id === requestId
+    && (message.role === 'assistant' || Boolean(message.terminal_failure)));
 }
 
 function syncResponse(input: {
@@ -124,6 +125,7 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
       return;
     }
 
+    let pendingRequest: { requestId: string; sessionId: string } | null = null;
     try {
       const verified = await verifyMiniBrainSyncRequest({ body: req.body, userId: owner.user.id });
       if (!dependencies.configured()) {
@@ -165,7 +167,11 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
         return;
       }
 
-      if (before && hasRequest(before, request.request_id)) {
+      const priorRequest = before?.session.messages.filter(message => message.request_id === request.request_id) ?? [];
+      if (priorRequest.length > 0 && !priorRequest.some(message => message.role === 'user' && message.content === request.payload!.text)) {
+        throw new MiniBrainRelayError('BRAIN_SYNC_REQUEST_CONFLICT', 409);
+      }
+      if (before && priorRequest.some(message => message.role === 'assistant' || message.terminal_failure)) {
         res.status(200).json(syncResponse({
           status: 'idempotent_replay',
           sessionId: request.session_id,
@@ -176,8 +182,8 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
         return;
       }
       if (
-        (before && before.session.tip_digest !== request.base_cursor)
-        || (!before && request.base_cursor !== null)
+        priorRequest.length === 0 && ((before && before.session.tip_digest !== request.base_cursor)
+        || (!before && request.base_cursor !== null))
       ) {
         res.status(409).json({
           error: before?.session.tip_digest
@@ -196,6 +202,7 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
         return;
       }
 
+      pendingRequest = { requestId: request.request_id, sessionId: request.session_id };
       await dependencies.sendTurn({
         userId: owner.user.id,
         text: request.payload!.text,
@@ -214,6 +221,19 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
         baseCursor: null,
       }));
     } catch (error) {
+      if (pendingRequest && error instanceof RuntimeProxyError
+        && error.code === 'apex_admission_pending' && error.publicStatus === 503) {
+        res.setHeader('Retry-After', '1');
+        res.status(503).json({
+          error: 'Your message is saved and waiting for Apocrypha.',
+          code: 'BRAIN_APEX_ADMISSION_PENDING',
+          request_id: pendingRequest.requestId,
+          session_id: pendingRequest.sessionId,
+          retry_after_ms: 1000,
+          ...envelope(),
+        });
+        return;
+      }
       if (error instanceof MiniBrainRelayError) {
         if (error.publicStatus === 429) res.setHeader('Retry-After', '60');
         res.status(error.publicStatus).json({

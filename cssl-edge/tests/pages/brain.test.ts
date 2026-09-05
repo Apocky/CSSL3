@@ -56,6 +56,12 @@ assert.doesNotMatch(snapshot, /profile_id:/, 'snapshot must not emit a profile i
 assert.match(snapshot, /getMessagesByIds/, 'source references must resolve through the private store');
 assert.match(experience, /Memory search uses saved records and does not ask a model/, 'memory help must explain the search source');
 assert.match(experience, /<h1>Apocrypha<\/h1>/, 'shared experience must visibly identify Apocrypha');
+assert.match(experience, /observedVault\.subscribe\(\(\) => \{ void readLocal\(\); \}\)/, 'sibling vault notifications must reread without triggering network synchronization');
+assert.match(experience, /removeEventListener\('focus', onVisible\)/, 'focus refresh listener must clean up on unmount');
+assert.match(experience, /removeEventListener\('visibilitychange', onVisible\)/, 'visibility refresh listener must clean up on unmount');
+assert.match(experience, /session\.cursor \|\| session\.messages\.length > 0/, 'visible remote polling requires an actual selected conversation');
+assert.match(experience, /\}, 30_000\)/, 'visible remote updates use bounded polling');
+assert.match(experience, /clearInterval\(pollTimer\)/, 'remote polling must stop on hidden or unmount');
 assert.match(experience, /BrainGraph/, 'graph projection missing');
 assert.match(experience, /Timeline/, 'timeline projection missing');
 assert.match(experience, /Tunnel/, 'source tunnel missing');

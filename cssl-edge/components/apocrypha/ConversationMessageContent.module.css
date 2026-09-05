@@ -1,0 +1,11 @@
+.plain.plain { white-space: pre-wrap; overflow-wrap: anywhere; }
+.markdown.markdown { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
+.markdown.markdown > :first-child { margin-top: 0; }
+.markdown.markdown > :last-child { margin-bottom: 0; }
+.markdown.markdown p { margin: 0.6em 0; }
+.markdown.markdown h1, .markdown.markdown h2, .markdown.markdown h3 { margin: 1em 0 0.45em; font-size: 1.08em; line-height: 1.4; }
+.markdown.markdown ul, .markdown.markdown ol { margin: 0.6em 0; padding-left: 1.4em; }
+.markdown.markdown li + li { margin-top: 0.25em; }
+.markdown.markdown pre { max-width: 100%; overflow-x: auto; padding: 0.8em; border-radius: 0.5em; background: rgba(0, 0, 0, 0.22); white-space: pre; }
+.markdown.markdown code { font: 0.9em/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.markdown.markdown a { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
