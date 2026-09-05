@@ -62,7 +62,7 @@ use cssl_hir::{
     HirTypeKind, Interner, Symbol,
 };
 
-use crate::body_lower::lower_fn_body;
+use crate::body_lower::{lower_fn_body, lower_fn_body_with_struct_mangle};
 use crate::func::MirFunc;
 use crate::lower::{lower_function_signature, LowerCtx};
 use crate::value::{FloatWidth, IntWidth, MirType};
@@ -525,8 +525,20 @@ pub fn specialize_generic_impl(
     hir_impl: &HirImpl,
     subst: &TypeSubst,
 ) -> Vec<MirFunc> {
-    // Mangle component for the self-type post-substitution.
+    // Mangle component for the self-type post-substitution (e.g., "Vec_i32").
     let self_mangle = mangle_self_ty(&hir_impl.self_ty, interner, subst);
+    // Build struct-name → mangled-name table for body lowering.
+    // For `impl<T> Vec<T>`, base_struct = "Vec", self_mangle = "Vec_i32".
+    // Threaded into body lowering so struct literals inside methods emit
+    // MirType::Struct("Vec_i32", …) instead of Opaque.
+    let base_struct = match &hir_impl.self_ty.kind {
+        HirTypeKind::Path { path, .. } => path
+            .last()
+            .map_or_else(|| self_mangle.clone(), |s| interner.resolve(*s)),
+        _ => self_mangle.clone(),
+    };
+    let struct_mangle: std::collections::HashMap<String, String> =
+        std::collections::HashMap::from([(base_struct, self_mangle.clone())]);
     let mut out = Vec::with_capacity(hir_impl.fns.len());
     for f in &hir_impl.fns {
         // Clone the fn + apply the outer-impl's subst to signature.
@@ -542,7 +554,13 @@ pub fn specialize_generic_impl(
         let mut mir_fn = lower_function_signature(&lower_ctx, &specialized_fn);
         let fn_name = interner.resolve(f.name);
         mir_fn.name = format!("{self_mangle}__{fn_name}");
-        lower_fn_body(interner, source, &specialized_fn, &mut mir_fn);
+        lower_fn_body_with_struct_mangle(
+            interner,
+            source,
+            &specialized_fn,
+            &mut mir_fn,
+            struct_mangle.clone(),
+        );
         out.push(mir_fn);
     }
     out

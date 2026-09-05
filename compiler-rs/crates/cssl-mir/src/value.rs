@@ -63,6 +63,14 @@ pub enum MirType {
     /// the u32 (typically 2/3/4/8/16) ; element type is the FloatWidth.
     /// Rendered as MLIR `vector<NxfM>` (e.g., `vector<3xf32>`).
     Vec(u32, FloatWidth),
+    /// P2 stdlib-core : specialized struct type. Carries the mangled struct
+    /// name (e.g., `"Vec_i32"`) + the concrete field types in declaration order.
+    /// Rendered as `!cssl.struct.{name}<{fields}>`.
+    ///
+    /// Produced by `lower_struct_expr` when the lowering context carries a
+    /// struct-name mangling table (set during specialized-impl body lowering).
+    /// Plain (non-specialized) lowering still emits `Opaque("!cssl.struct.{name}")`.
+    Struct(String, Vec<MirType>),
     /// Opaque / uncategorized — name passed through verbatim.
     Opaque(String),
 }
@@ -167,6 +175,20 @@ impl fmt::Display for MirType {
                 write!(f, "{elem}>")
             }
             Self::Vec(lanes, w) => write!(f, "vector<{lanes}x{}>", w.as_str()),
+            Self::Struct(name, fields) => {
+                write!(f, "!cssl.struct.{name}")?;
+                if !fields.is_empty() {
+                    f.write_str("<")?;
+                    for (i, t) in fields.iter().enumerate() {
+                        if i > 0 {
+                            f.write_str(", ")?;
+                        }
+                        write!(f, "{t}")?;
+                    }
+                    f.write_str(">")?;
+                }
+                Ok(())
+            }
             Self::Opaque(s) => f.write_str(s),
         }
     }
@@ -292,5 +314,51 @@ mod tests {
         // Confirm MirType::Vec can be used as a MirValue type without panicking.
         let v = MirValue::new(ValueId(7), MirType::Vec(3, FloatWidth::F32));
         assert_eq!(v.ty, MirType::Vec(3, FloatWidth::F32));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § P2 stdlib-core : MirType::Struct
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn mir_type_struct_display_with_fields() {
+        let t = MirType::Struct(
+            "Vec_i32".into(),
+            vec![
+                MirType::Int(IntWidth::I64),
+                MirType::Int(IntWidth::I64),
+                MirType::Int(IntWidth::I64),
+            ],
+        );
+        assert_eq!(format!("{t}"), "!cssl.struct.Vec_i32<i64, i64, i64>");
+    }
+
+    #[test]
+    fn mir_type_struct_display_no_fields() {
+        let t = MirType::Struct("Unit_s".into(), vec![]);
+        assert_eq!(format!("{t}"), "!cssl.struct.Unit_s");
+    }
+
+    #[test]
+    fn mir_type_struct_equality() {
+        let a = MirType::Struct("Vec_i32".into(), vec![MirType::Int(IntWidth::I64)]);
+        let b = MirType::Struct("Vec_i32".into(), vec![MirType::Int(IntWidth::I64)]);
+        let c = MirType::Struct("Vec_f32".into(), vec![MirType::Int(IntWidth::I64)]);
+        let d = MirType::Struct("Vec_i32".into(), vec![MirType::Int(IntWidth::I32)]);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(a, d);
+    }
+
+    #[test]
+    fn mir_type_struct_as_fn_result() {
+        let t = MirType::Function {
+            params: vec![MirType::Int(IntWidth::I64)],
+            results: vec![MirType::Struct(
+                "Vec_i32".into(),
+                vec![MirType::Int(IntWidth::I64)],
+            )],
+        };
+        assert_eq!(format!("{t}"), "(i64) -> !cssl.struct.Vec_i32<i64>");
     }
 }

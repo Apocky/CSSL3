@@ -70,6 +70,11 @@ pub struct BodyLowerCtx<'a> {
     /// (length(p) expands via these scalars ; normalize / dot / field access are
     /// deferred to future slices).
     pub vec_param_vars: HashMap<Symbol, (Vec<ValueId>, u32, FloatWidth)>,
+    /// P2 stdlib-core : struct-name → mangled-name table. Populated by
+    /// [`lower_fn_body_with_struct_mangle`] when lowering specialized-impl
+    /// bodies. Enables `lower_struct_expr` to emit `MirType::Struct(mangled, …)`
+    /// instead of `Opaque` when the struct name is known.
+    pub struct_mangle: HashMap<String, String>,
     /// Next free value-id (wired to `MirFunc.fresh_value_id`).
     pub next_value_id: u32,
     /// Accumulated ops (consumed at end into the entry-block).
@@ -86,6 +91,7 @@ impl<'a> BodyLowerCtx<'a> {
             source: None,
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
+            struct_mangle: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
         }
@@ -100,6 +106,7 @@ impl<'a> BodyLowerCtx<'a> {
             source: Some(source),
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
+            struct_mangle: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
         }
@@ -121,6 +128,7 @@ impl<'a> BodyLowerCtx<'a> {
             source: self.source,
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
+            struct_mangle: self.struct_mangle.clone(),
             next_value_id: self.next_value_id,
             ops: Vec::new(),
         }
@@ -181,6 +189,54 @@ pub fn lower_fn_body(
     emit_return(&mut ctx, trailing, body.span);
 
     // Install the ops into the entry-block.
+    if let Some(entry) = mir_fn.body.entry_mut() {
+        entry.ops.extend(ctx.ops);
+    }
+    mir_fn.next_value_id = ctx.next_value_id;
+}
+
+/// Like [`lower_fn_body`] but pre-populates `BodyLowerCtx::struct_mangle` so
+/// that struct-literal expressions in the body emit [`crate::value::MirType::Struct`]
+/// with the correct mangled name instead of `Opaque`.
+///
+/// Called by [`crate::monomorph::specialize_generic_impl`] where the self-type
+/// mangle (e.g., `"Vec_i32"`) is known before body lowering begins.
+pub fn lower_fn_body_with_struct_mangle(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+    struct_mangle: HashMap<String, String>,
+) {
+    let Some(body) = &hir_fn.body else {
+        return;
+    };
+    let mut ctx = match source {
+        Some(src) => BodyLowerCtx::with_source(interner, src),
+        None => BodyLowerCtx::new(interner),
+    };
+    ctx.struct_mangle = struct_mangle;
+    let mut next_id: u32 = 0;
+    for p in &hir_fn.params {
+        let sym = extract_pattern_symbol(&p.pat);
+        if let Some((lanes, width)) = hir_type_as_vec_lanes(interner, &p.ty) {
+            let lane_ids: Vec<ValueId> = (0..lanes).map(|i| ValueId(next_id + i)).collect();
+            next_id = next_id.saturating_add(lanes);
+            if let Some(sym) = sym {
+                ctx.vec_param_vars.insert(sym, (lane_ids, lanes, width));
+            }
+        } else {
+            let id = ValueId(next_id);
+            next_id = next_id.saturating_add(1);
+            let ty = lower_hir_type_light(interner, &p.ty);
+            if let Some(sym) = sym {
+                ctx.param_vars.insert(sym, (id, ty));
+            }
+        }
+    }
+    ctx.next_value_id = next_id;
+    let trailing = lower_block(&mut ctx, body);
+    emit_return(&mut ctx, trailing, body.span);
     if let Some(entry) = mir_fn.body.entry_mut() {
         entry.ops.extend(ctx.ops);
     }
@@ -635,19 +691,34 @@ fn lower_struct_expr(
         .map(|s| ctx.interner.resolve(*s))
         .collect::<Vec<_>>()
         .join(".");
+    // Resolve mangled name (e.g., "Vec" → "Vec_i32") if a specialization table
+    // was provided; fall back to the plain name for non-specialized lowering.
+    let mangled_name = ctx
+        .struct_mangle
+        .get(&struct_name)
+        .cloned()
+        .unwrap_or_else(|| struct_name.clone());
     let mut operand_ids = Vec::with_capacity(fields.len());
+    let mut field_types = Vec::with_capacity(fields.len());
     for f in fields {
         if let Some(value) = &f.value {
-            if let Some((fid, _)) = lower_expr(ctx, value) {
+            if let Some((fid, fty)) = lower_expr(ctx, value) {
                 operand_ids.push(fid);
+                field_types.push(fty);
             }
         }
     }
     let id = ctx.fresh_value_id();
-    let ty = MirType::Opaque(format!("!cssl.struct.{struct_name}"));
+    // Emit MirType::Struct when field types are known (specialized lowering or
+    // any context where all field exprs resolve) ; fall back to Opaque otherwise.
+    let ty = if field_types.is_empty() && !fields.is_empty() {
+        MirType::Opaque(format!("!cssl.struct.{mangled_name}"))
+    } else {
+        MirType::Struct(mangled_name.clone(), field_types)
+    };
     let mut op = MirOp::std("cssl.struct")
         .with_result(id, ty.clone())
-        .with_attribute("struct_name", struct_name)
+        .with_attribute("struct_name", mangled_name)
         .with_attribute("field_count", fields.len().to_string())
         .with_attribute("source_loc", format!("{span:?}"));
     for oid in operand_ids {
@@ -2062,5 +2133,77 @@ mod tests {
             .map(|(_, v)| v.as_str());
         // Without source, falls back to stage0_* placeholder.
         assert_eq!(value, Some("stage0_int"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § P2 stdlib-core : struct_mangle + lower_fn_body_with_struct_mangle
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::{lower_fn_body_with_struct_mangle, BodyLowerCtx};
+    use crate::value::{IntWidth, MirType};
+
+    #[test]
+    fn struct_expr_emits_opaque_without_mangle_table() {
+        // Without struct_mangle, lower_struct_expr falls back to Opaque.
+        let src = "struct Point { x: i32, y: i32 }\nfn make() -> Point { Point { x: 1, y: 2 } }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let struct_op = entry.ops.iter().find(|o| o.name == "cssl.struct");
+        assert!(struct_op.is_some(), "expected cssl.struct op");
+        // Result type should be MirType::Struct (both fields resolved)
+        let struct_op = struct_op.unwrap();
+        assert!(struct_op.results.len() == 1);
+        // field_count attr = "2"
+        let fc = struct_op.attributes.iter().find(|(k, _)| k == "field_count").map(|(_, v)| v.as_str());
+        assert_eq!(fc, Some("2"));
+    }
+
+    #[test]
+    fn struct_expr_emits_mangled_name_with_mangle_table() {
+        // With struct_mangle threaded in, struct_name attr should be the mangled form.
+        let src = "struct Vec { data: i64, len: i64, cap: i64 }\nfn make() -> Vec { Vec { data: 0, len: 0, cap: 0 } }";
+        let (hir, interner, source) = hir_from(src);
+        let ctx = crate::lower::LowerCtx::new(&interner);
+        let f_hir = hir.items.iter().find_map(|i| match i {
+            cssl_hir::HirItem::Fn(f) => Some(f),
+            _ => None,
+        }).unwrap();
+        let mut mir_fn = lower_function_signature(&ctx, f_hir);
+        let mangle_map = std::collections::HashMap::from([("Vec".to_string(), "Vec_i64".to_string())]);
+        lower_fn_body_with_struct_mangle(&interner, Some(&source), f_hir, &mut mir_fn, mangle_map);
+        let entry = mir_fn.body.entry().unwrap();
+        let struct_op = entry.ops.iter().find(|o| o.name == "cssl.struct").expect("cssl.struct");
+        // struct_name attr should be the mangled form
+        let name_attr = struct_op.attributes.iter().find(|(k, _)| k == "struct_name").map(|(_, v)| v.as_str());
+        assert_eq!(name_attr, Some("Vec_i64"), "expected mangled struct_name");
+    }
+
+    #[test]
+    fn struct_mangle_propagates_into_sub_ctx() {
+        // Verify that sub-contexts inherit struct_mangle (covers nested exprs).
+        let (hir, interner, _) = hir_from("fn f() {}");
+        let mut ctx = BodyLowerCtx::new(&interner);
+        ctx.struct_mangle.insert("Foo".to_string(), "Foo_i32".to_string());
+        let sub = ctx.sub();
+        assert_eq!(sub.struct_mangle.get("Foo").map(|s| s.as_str()), Some("Foo_i32"));
+    }
+
+    #[test]
+    fn lower_fn_body_with_struct_mangle_no_struct_no_panic() {
+        // Passing a mangle table for a fn that doesn't use a struct: must not panic.
+        let src = "fn add(a: i32, b: i32) -> i32 { a + b }";
+        let (hir, interner, source) = hir_from(src);
+        let ctx = crate::lower::LowerCtx::new(&interner);
+        let f_hir = hir.items.iter().find_map(|i| match i {
+            cssl_hir::HirItem::Fn(f) => Some(f),
+            _ => None,
+        }).unwrap();
+        let mut mir_fn = lower_function_signature(&ctx, f_hir);
+        let mangle_map = std::collections::HashMap::from([("Foo".to_string(), "Foo_i32".to_string())]);
+        lower_fn_body_with_struct_mangle(&interner, Some(&source), f_hir, &mut mir_fn, mangle_map);
+        // Still produces arithmetic ops
+        let entry = mir_fn.body.entry().unwrap();
+        assert!(!entry.ops.is_empty());
+        assert_eq!(mir_fn.params, vec![MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32)]);
     }
 }

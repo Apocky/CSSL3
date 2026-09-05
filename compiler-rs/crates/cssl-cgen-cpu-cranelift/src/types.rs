@@ -86,6 +86,8 @@ pub fn clif_type_for(mir: &MirType) -> Option<ClifType> {
         // Cranelift has vector types (e.g., f32x4) but stage-0.5 JIT lowers
         // scalar-only ; vec3 ops are scalarized at a later stage.
         MirType::Vec(_, _) => None,
+        // Struct types are not JIT-scalar ; fields must be individually lowered.
+        MirType::Struct(_, _) => None,
         MirType::Opaque(_) => None,
     }
 }
