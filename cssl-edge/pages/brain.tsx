@@ -31,8 +31,8 @@ export const getServerSideProps: GetServerSideProps<BrainPageProps> = async ({ r
 const BrainPage: NextPage<BrainPageProps> = ({ serverAccess }) => (
   <>
     <Head>
-      <title>Private Brain · Apocky</title>
-      <meta name="description" content="Owner-private conversation, contextual recall, and source-linked memory exploration." />
+      <title>Apocrypha · Apocky</title>
+      <meta name="description" content="Your Apocrypha conversation, with encrypted message recovery and contextual memory." />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
       <meta name="referrer" content="no-referrer" />

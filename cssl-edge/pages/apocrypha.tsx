@@ -1,13 +1,20 @@
 import Head from 'next/head';
-import type { GetServerSideProps } from 'next';
+import type { GetServerSideProps, NextApiRequest } from 'next';
 import AccountChat from '@/components/apocrypha/AccountChat';
+import BrainExperience from '@/components/brain/BrainExperience';
+import { requireBrainOwner } from '@/lib/brain/owner';
+import { usesOwnerRuntime } from '@/lib/mobile/owner-runtime';
 
-export const getServerSideProps: GetServerSideProps = async ({ res }) => {
+interface ApocryphaPageProps { readonly ownerConversation: boolean }
+
+export const getServerSideProps: GetServerSideProps<ApocryphaPageProps> = async ({ req, res }) => {
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
-  return { props: {} };
+  res.setHeader('Vary', 'Cookie, Authorization');
+  const owner = await requireBrainOwner(req as NextApiRequest);
+  return { props: { ownerConversation: owner.ok && usesOwnerRuntime(owner.user) } };
 };
 
-export default function ApocryphaPage(): JSX.Element {
+export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps): JSX.Element {
   return <>
     <Head>
       <title>Apocrypha · Apocky</title>
@@ -17,6 +24,6 @@ export default function ApocryphaPage(): JSX.Element {
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>
-    <AccountChat />
+    {ownerConversation ? <BrainExperience serverAccess="owner" /> : <AccountChat />}
   </>;
 }

@@ -756,7 +756,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   if (!allowOfflineVault && (serverAccess === 'unavailable' || access === 'unavailable')) {
     return (
       <main className={styles.gate}>
-        <p>PRIVATE BRAIN · DEGRADED</p><h1>Owner verification is unavailable.</h1>
+        <p>APOCRYPHA</p><h1>Account verification is unavailable.</h1>
         <span>No memory, source, or conversation payload was loaded.</span>
         <button type="button" onClick={() => { void refresh(); }}>Retry verification</button>
       </main>
@@ -765,22 +765,22 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   if (serverAccess === 'forbidden' || (!allowOfflineVault && access !== 'checking' && access !== 'owner')) {
     return (
       <main className={styles.gate}>
-        <p>PRIVATE BRAIN · OWNER ONLY</p><h1>This boundary did not open.</h1>
+        <p>APOCRYPHA</p><h1>This conversation belongs to another account.</h1>
         <span>The server did not authorize this identity as the owner.</span>
         <div><Link href="/account">Review account</Link><Link href="/">Return home</Link></div>
       </main>
     );
   }
   if (loading || (!allowOfflineVault && access === 'checking')) {
-    return <main className={styles.gate} aria-busy="true"><p>PRIVATE BRAIN</p><h1>Verifying synapses…</h1><span role="status">No private payload renders before both owner checks complete.</span></main>;
+    return <main className={styles.gate} aria-busy="true"><p>APOCRYPHA</p><h1>Opening your conversation…</h1><span role="status">Verifying your account before loading messages.</span></main>;
   }
 
   return (
     <main className={styles.brain} data-brain-state={runtime?.status ?? 'degraded'}>
       <header className={styles.header}>
         <Link href="/" className={styles.brand} aria-label="Apocky home"><span aria-hidden="true">∞</span><strong>APOCKY</strong></Link>
-        <div><p>YOUR BRAIN</p><h1>Apocrypha</h1></div>
-        <nav aria-label="Private Brain navigation"><Link href="/download/apocrypha">Get the app</Link><Link href="/admin/apocrypha">Operations</Link><Link href="/account">Account</Link></nav>
+        <div><p>CONVERSATION</p><h1>Apocrypha</h1></div>
+        <nav aria-label="Apocrypha navigation"><Link href="/download/apocrypha">Get the app</Link><Link href="/account">Account</Link></nav>
       </header>
 
       <details className={styles.connectionDetails}>

@@ -38,7 +38,9 @@ assert.match(page, /noindex,nofollow,noarchive,nosnippet/, 'Brain page must be c
 assert.match(page, /viewport-fit=cover/, 'Brain page must expose iOS safe areas to its installed layout');
 assert.match(apocryphaPage, /<AccountChat \/>/, 'primary Apocrypha page must expose the account conversation surface');
 assert.match(apocryphaPage, /getServerSideProps/, 'account shell must receive the request nonce instead of static scripts blocked by CSP');
-assert.doesNotMatch(apocryphaPage, /requireBrainOwner|BrainExperience/, 'public account entry must not render the private Brain surface');
+assert.match(apocryphaPage, /owner\.ok && usesOwnerRuntime\(owner\.user\)/, 'owner conversation requires server authorization and the exact configured owner binding');
+assert.match(apocryphaPage, /ownerConversation \? <BrainExperience serverAccess="owner" \/> : <AccountChat \/>/, 'both owner routes must share the existing encrypted conversation controller while members keep account chat');
+assert.doesNotMatch(accountChat, /href="\/brain"/, 'account conversation must not advertise a competing chat');
 assert.match(apocryphaPage, /<title>Apocrypha · Apocky<\/title>/, 'primary route must carry Apocrypha branding');
 assert.match(apocryphaPage, /Sign in to your Apocky account/, 'primary route must describe account access honestly');
 assert.match(apocryphaPage, /noindex,nofollow,noarchive,nosnippet/, 'primary Apocrypha page must be crawler-dark');
@@ -74,7 +76,7 @@ assert.doesNotMatch(document, /rel="manifest"/, 'the fixed document head must no
 assert.match(home, /href: '\/apocrypha'/, 'home must expose Apocrypha to every visitor');
 assert.doesNotMatch(home, /OWNER-PRIVATE|public relay remains closed/, 'home must not retain the superseded owner-only promise');
 assert.match(shell, /href: '\/apocrypha', label: 'Apocrypha'/, 'public shell must reveal account chat');
-assert.match(shell, /access === 'owner'.*href="\/brain"/, 'advanced private Brain link must retain owner authorization');
+assert.doesNotMatch(shell, /href="\/brain"/, 'public navigation must lead to the canonical conversation rather than a competing owner chat');
 assert.doesNotMatch(experience, /Mini Brain · deterministic|Local cortex capability|useful Mini Brain|Reflect \+ queue/, 'placeholder replies and model capability marketing must be absent');
 assert.match(experience, /message\.origin !== 'local-reflection'/, 'legacy reflections stay out of the active conversation');
 assert.match(experience, /Queue message/, 'offline composition must explicitly queue for desktop delivery');
