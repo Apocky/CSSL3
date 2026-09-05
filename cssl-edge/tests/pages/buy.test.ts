@@ -18,7 +18,10 @@ export function testProductCatalogShape(): void {
   for (const p of PRODUCT_CATALOG) {
     assert(!ids.has(p.id), `duplicate product_id : ${p.id}`);
     ids.add(p.id);
-    assert(['alpha-free', 'cosmetic', 'subscription'].includes(p.tier), `tier value : ${p.tier}`);
+    assert(
+      ['alpha-free', 'cosmetic', 'subscription', 'continuation', 'developer-tool', 'lifetime'].includes(p.tier),
+      `tier value : ${p.tier}`,
+    );
     assert(p.price_cents >= 0, `price non-negative : ${p.id}`);
     assert(p.currency === 'usd', `currency usd : ${p.id}`);
     assert(typeof p.stripe_price_env === 'string' && p.stripe_price_env.startsWith('STRIPE_PRICE_'), 'env-var prefix');

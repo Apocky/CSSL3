@@ -6,11 +6,11 @@ import { useEffect, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 
 interface HealthData {
-  status: string;
-  commit?: string;
-  uptime_s?: number;
+  ok?: boolean;
   stripe_configured?: boolean;
-  supabase_configured?: boolean;
+  supabase_connected?: boolean;
+  payments_ready?: boolean;
+  containment_active?: boolean;
 }
 
 interface SystemCard {
@@ -29,7 +29,7 @@ const Dashboard: NextPage = () => {
     fetch('/api/health')
       .then((r) => r.json())
       .then((j) => setHealth(j))
-      .catch(() => setHealth({ status: 'unknown' }));
+      .catch(() => setHealth({}));
     setNow(new Date().toLocaleString());
     const t = setInterval(() => setNow(new Date().toLocaleString()), 1000);
     return () => clearInterval(t);
@@ -38,23 +38,29 @@ const Dashboard: NextPage = () => {
   const cards: SystemCard[] = [
     {
       label: 'apocky.com',
-      value: health?.status === 'ok' ? '✓ live' : '◐ checking',
+      value: health?.ok === true ? '✓ live' : '◐ checking',
       glyph: '⊑',
       accent: '#34d399',
       href: '/',
     },
     {
       label: 'Stripe',
-      value: health?.stripe_configured ? '✓ configured' : '◐ stub-mode',
+      value: health?.payments_ready === true
+        ? '✓ ready'
+        : health?.containment_active === true
+          ? '⊘ contained'
+          : health?.stripe_configured
+            ? '◐ configured'
+            : '○ unconfigured',
       glyph: '$',
-      accent: health?.stripe_configured ? '#34d399' : '#fbbf24',
+      accent: health?.payments_ready === true ? '#34d399' : '#fbbf24',
       href: '/admin/payments',
     },
     {
       label: 'Supabase',
-      value: health?.supabase_configured ? '✓ live' : '◐ stub-mode',
+      value: health?.supabase_connected ? '✓ configured' : '○ unconfigured',
       glyph: '◇',
-      accent: health?.supabase_configured ? '#34d399' : '#fbbf24',
+      accent: health?.supabase_connected ? '#34d399' : '#fbbf24',
     },
     {
       label: 'LoA-alpha',

@@ -1,29 +1,24 @@
-// cssl-edge · tests/api/stripe-refund.test.ts
-// Drives inline tests in pages/api/payments/stripe/refund-request.ts.
+import type { NextApiRequest, NextApiResponse } from 'next';
+import handler from '@/pages/api/payments/stripe/refund-request';
+import type { ContainmentResponse } from '@/lib/containment';
 
-import {
-  testRefundMissingFields,
-  testRefundStubMode,
-} from '@/pages/api/payments/stripe/refund-request';
+const out: { status: number; body: ContainmentResponse | null; headers: Record<string, string> } = {
+  status: 0, body: null, headers: {},
+};
+const req = {
+  method: 'POST',
+  headers: { authorization: 'Bearer attacker-controlled' },
+  body: { payment_intent_id: 'attacker-controlled' },
+} as unknown as NextApiRequest;
+const res = {
+  status(code: number) { out.status = code; return this; },
+  json(body: ContainmentResponse) { out.body = body; return this; },
+  setHeader(name: string, value: string) { out.headers[name.toLowerCase()] = value; return this; },
+} as unknown as NextApiResponse<ContainmentResponse>;
 
-declare const require: { main?: unknown } | undefined;
-declare const module: { id?: string } | undefined;
-const isMain =
-  typeof require !== 'undefined' &&
-  typeof module !== 'undefined' &&
-  require.main === module;
-
-async function runAll(): Promise<void> {
-  await testRefundMissingFields();
-  await testRefundStubMode();
-  // eslint-disable-next-line no-console
-  console.log('stripe-refund.test : OK · 2 tests passed');
+handler(req, res);
+if (out.status !== 410 || out.body?.reason_code !== 'temporary_security_containment') {
+  throw new Error(`refund must fail closed with typed 410; got ${out.status}`);
 }
-
-if (isMain) {
-  runAll().catch((err: unknown) => {
-    // eslint-disable-next-line no-console
-    console.error(err);
-    process.exit(1);
-  });
-}
+if (!out.headers['cache-control']?.includes('no-store')) throw new Error('refund 410 must be no-store');
+console.log('stripe-refund.test : OK · refund endpoint is retired');

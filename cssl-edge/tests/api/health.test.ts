@@ -70,6 +70,7 @@ export function testHealthShape(): void {
     'data_supabase_configured',
     'cron_configured',
     'supabase_connected',
+    'containment_active',
     'payments_ready',
   ];
   for (const k of requiredKeys) {

@@ -2,17 +2,13 @@
 // W12-6 · UGC-Discover-Browse · /content landing
 // 4 sections : Featured · Trending · New · Tagged-by-you
 // Phone-first responsive · CSLv3-§-headers
-// SSR + client-side fetch (stub-mode-aware)
+// SSR + client-side fetch with a fail-closed unavailable state.
 
 import type { GetServerSideProps, NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import ContentFeed from '@/components/ContentFeed';
-import {
-  fetchContentList,
-  STUB_LIST_RESPONSE,
-  type ContentItem,
-} from '@/lib/content-fetch';
+import { fetchContentList, type ContentItem } from '@/lib/content-fetch';
 
 interface ContentLandingProps {
   /** SSR-fetched items per bucket. Empty arrays → client may retry. */
@@ -20,7 +16,7 @@ interface ContentLandingProps {
   trending: ReadonlyArray<ContentItem>;
   fresh: ReadonlyArray<ContentItem>;
   tagged: ReadonlyArray<ContentItem>;
-  initial_stub_mode: boolean;
+  initial_unavailable: boolean;
 }
 
 const ContentLanding: NextPage<ContentLandingProps> = ({
@@ -28,14 +24,15 @@ const ContentLanding: NextPage<ContentLandingProps> = ({
   trending,
   fresh,
   tagged,
-  initial_stub_mode,
+  initial_unavailable,
 }) => {
-  const [stubMode, setStubMode] = useState(initial_stub_mode);
+  const [unavailable, setUnavailable] = useState(initial_unavailable);
   const [items, setItems] = useState({ featured, trending, fresh, tagged });
 
-  // client-side retry · in case SSR ran during stub-mode but API is now live
+  // Client-side retry allows a future deliberately promoted content API to
+  // recover without presenting synthetic data.
   useEffect(() => {
-    if (!initial_stub_mode) return;
+    if (!initial_unavailable) return;
     let cancelled = false;
     (async () => {
       const [f, t, n, g] = await Promise.all([
@@ -45,19 +42,19 @@ const ContentLanding: NextPage<ContentLandingProps> = ({
         fetchContentList('tagged', 8),
       ]);
       if (cancelled) return;
-      const stillStub = f.stub_mode || t.stub_mode || n.stub_mode || g.stub_mode;
-      setStubMode(stillStub);
+      const stillUnavailable = f.unavailable || t.unavailable || n.unavailable || g.unavailable;
+      setUnavailable(stillUnavailable);
       setItems({
-        featured: f.data?.items ?? STUB_LIST_RESPONSE.items,
-        trending: t.data?.items ?? STUB_LIST_RESPONSE.items,
-        fresh: n.data?.items ?? STUB_LIST_RESPONSE.items,
-        tagged: g.data?.items ?? STUB_LIST_RESPONSE.items,
+        featured: f.data?.items ?? [],
+        trending: t.data?.items ?? [],
+        fresh: n.data?.items ?? [],
+        tagged: g.data?.items ?? [],
       });
     })();
     return () => {
       cancelled = true;
     };
-  }, [initial_stub_mode]);
+  }, [initial_unavailable]);
 
   return (
     <>
@@ -100,7 +97,7 @@ const ContentLanding: NextPage<ContentLandingProps> = ({
           heading="§ Featured · curator picks"
           subtitle="hand-picked by Apocky · cosmetic-axiom-pre-attested · gift-economy emphasized"
           items={items.featured}
-          stubMode={stubMode}
+          unavailable={unavailable}
         />
 
         <ContentFeed
@@ -108,21 +105,21 @@ const ContentLanding: NextPage<ContentLandingProps> = ({
           subtitle="weighted by collective-engagement-bias from Akashic-Records · click ◐ on any card to see why"
           items={items.trending}
           showRationale={true}
-          stubMode={stubMode}
+          unavailable={unavailable}
         />
 
         <ContentFeed
           heading="§ New · published this week"
           subtitle="freshly-attested packages · sorted reverse-chronological"
           items={items.fresh}
-          stubMode={stubMode}
+          unavailable={unavailable}
         />
 
         <ContentFeed
           heading="§ Tagged-by-you · matches your declared interests"
           subtitle="based on your own tag-subscriptions · ¬ tracking-derived · ¬ behavioral-inference"
           items={items.tagged}
-          stubMode={stubMode}
+          unavailable={unavailable}
         />
 
         <ContentFooter />
@@ -249,20 +246,19 @@ export const contentLandingCSS = `
 `;
 
 export const getServerSideProps: GetServerSideProps<ContentLandingProps> = async () => {
-  // SSR-fetch all 4 buckets in parallel · stub-fallback on any 404
+  // SSR-fetch all 4 buckets in parallel; unavailable responses stay empty.
   const baseURL = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
-  const fetchBucket = async (bucket: string): Promise<{ items: ContentItem[]; stub: boolean }> => {
-    if (!baseURL) return { items: [...STUB_LIST_RESPONSE.items], stub: true };
+  const fetchBucket = async (bucket: string): Promise<{ items: ContentItem[]; unavailable: boolean }> => {
+    if (!baseURL) return { items: [], unavailable: true };
     try {
       const res = await fetch(`${baseURL}/api/content/list?bucket=${bucket}&limit=8`, {
         headers: { Accept: 'application/json' },
       });
-      if (res.status === 404) return { items: [...STUB_LIST_RESPONSE.items], stub: true };
-      if (!res.ok) return { items: [...STUB_LIST_RESPONSE.items], stub: true };
+      if (!res.ok) return { items: [], unavailable: true };
       const json = await res.json();
-      return { items: json.items ?? [], stub: false };
+      return { items: json.items ?? [], unavailable: false };
     } catch {
-      return { items: [...STUB_LIST_RESPONSE.items], stub: true };
+      return { items: [], unavailable: true };
     }
   };
   const [f, t, n, g] = await Promise.all([
@@ -277,7 +273,7 @@ export const getServerSideProps: GetServerSideProps<ContentLandingProps> = async
       trending: t.items,
       fresh: n.items,
       tagged: g.items,
-      initial_stub_mode: f.stub || t.stub || n.stub || g.stub,
+      initial_unavailable: f.unavailable || t.unavailable || n.unavailable || g.unavailable,
     },
   };
 };

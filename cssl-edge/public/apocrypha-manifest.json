@@ -80,13 +80,12 @@
     "operator_surfaces": [
       { "rel": "capabilities", "href": "/api/admin/apocrypha/capabilities", "method": "GET", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only" },
       { "rel": "diagnostics", "href": "/api/admin/apocrypha/diagnostics", "method": "GET", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only" },
-      { "rel": "telemetry", "href": "/api/admin/apocrypha/telemetry", "method": "GET", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only" },
-      { "rel": "vision_session", "href": "/api/admin/apocrypha/vision/session", "method": "POST", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only", "consent": "explicit_per_session" }
+      { "rel": "telemetry", "href": "/api/admin/apocrypha/telemetry", "method": "GET", "media_type": "application/json", "authn": "account", "authorization": "owner", "availability": "owner_only" }
     ],
     "claims": {
       "persistent_state": "declared_by_current_release",
       "conversation": "owner_private_beta",
-      "vision": "owner_only_and_explicit_consent",
+      "vision": "temporarily_retired_for_security_containment",
       "diagnostics": "owner_only",
       "borrowed_cognition": "not_claimed_by_this_static_manifest"
     }

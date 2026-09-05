@@ -1,9 +1,6 @@
-// /api/admin/logs · stub audit log · activates when admin-bridge wires
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { retireApiEndpoint, type ContainmentResponse } from '@/lib/containment';
 
-export default function handler(_req: NextApiRequest, res: NextApiResponse) {
-  return res.status(200).json({
-    stub: true,
-    rows: [],
-  });
+export default function handler(_req: NextApiRequest, res: NextApiResponse<ContainmentResponse>): void {
+  retireApiEndpoint(res, '/api/admin/logs');
 }

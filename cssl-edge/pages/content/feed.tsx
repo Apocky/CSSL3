@@ -9,11 +9,7 @@ import Head from 'next/head';
 import { useEffect, useRef, useState } from 'react';
 import ContentFeed from '@/components/ContentFeed';
 import { ContentNav, ContentFooter, contentLandingCSS } from './index';
-import {
-  fetchContentList,
-  STUB_LIST_RESPONSE,
-  type ContentItem,
-} from '@/lib/content-fetch';
+import { fetchContentList, type ContentItem } from '@/lib/content-fetch';
 
 const PAGE_SIZE = 12;
 const REFRESH_INTERVAL_MS = 60_000;
@@ -21,7 +17,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 const ContentFeedPage: NextPage = () => {
   const [items, setItems] = useState<ReadonlyArray<ContentItem>>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -30,8 +26,8 @@ const ContentFeedPage: NextPage = () => {
   const loadInitial = async () => {
     setLoading(true);
     const res = await fetchContentList('new', PAGE_SIZE);
-    setStubMode(res.stub_mode);
-    setItems(res.data?.items ?? STUB_LIST_RESPONSE.items);
+    setUnavailable(res.unavailable);
+    setItems(res.data?.items ?? []);
     setCursor(res.data?.next_cursor);
     setHasMore(Boolean(res.data?.next_cursor));
     setLoading(false);
@@ -67,7 +63,7 @@ const ContentFeedPage: NextPage = () => {
         const res = await fetchContentList('new', PAGE_SIZE);
         if (res.data) {
           setItems(res.data.items);
-          setStubMode(res.stub_mode);
+          setUnavailable(res.unavailable);
           setCursor(res.data.next_cursor);
         }
       })();
@@ -114,17 +110,18 @@ const ContentFeedPage: NextPage = () => {
             <input
               type="checkbox"
               checked={autoRefresh}
+              disabled={unavailable}
               onChange={(e) => setAutoRefresh(e.target.checked)}
               style={{ accentColor: '#c084fc' }}
             />
-            <span>auto-refresh every 60s · explicit opt-in</span>
+            <span>auto-refresh every 60s · {unavailable ? 'temporarily unavailable' : 'explicit opt-in'}</span>
           </label>
         </header>
 
         <ContentFeed
           items={items}
-          stubMode={stubMode}
-          onLoadMore={hasMore ? loadMore : undefined}
+          unavailable={unavailable}
+          onLoadMore={!unavailable && hasMore ? loadMore : undefined}
           loading={loading}
           emptyMessage="○ no published packages yet · check back soon"
         />

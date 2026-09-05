@@ -13,7 +13,6 @@ import { STATUS_PILL, displayAuthor, timeAgo } from '@/lib/content-fetch';
 
 interface ContentDetailProps {
   detail: ContentDetailType;
-  stubMode?: boolean;
 }
 
 const H2 = ({ children }: { children: React.ReactNode }) => (
@@ -27,7 +26,7 @@ const Pill = ({ bg, fg, title, href, children }: { bg: string; fg: string; title
   return href ? <a href={href} title={title} style={style}>{children}</a> : <span title={title} style={style}>{children}</span>;
 };
 
-const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
+const ContentDetail = ({ detail }: ContentDetailProps) => {
   const pill = STATUS_PILL[detail.status];
   const totalRatings = detail.rating_summary.total_ratings;
   const meanScore = detail.rating_summary.mean_score;
@@ -36,12 +35,6 @@ const ContentDetail = ({ detail, stubMode = false }: ContentDetailProps) => {
 
   return (
     <article style={{ paddingBottom: '4rem' }}>
-      {stubMode && (
-        <div role="status" style={{ padding: '0.75rem 1rem', background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 6, fontSize: '0.82rem', color: '#fbbf24', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-          <strong>◐ stub-mode</strong> · publish-detail-API (sibling W12-5) not yet wired · placeholder rendered to demonstrate layout
-        </div>
-      )}
-
       <header style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
           <Pill bg={pill.bg} fg={pill.color}>{pill.glyph} {pill.label}</Pill>

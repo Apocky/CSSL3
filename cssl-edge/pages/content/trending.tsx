@@ -8,22 +8,18 @@ import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import ContentFeed from '@/components/ContentFeed';
 import { ContentNav, ContentFooter, contentLandingCSS } from './index';
-import {
-  fetchContentList,
-  STUB_LIST_RESPONSE,
-  type ContentItem,
-} from '@/lib/content-fetch';
+import { fetchContentList, type ContentItem } from '@/lib/content-fetch';
 
 const ContentTrending: NextPage = () => {
   const [items, setItems] = useState<ReadonlyArray<ContentItem>>([]);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     void (async () => {
       const res = await fetchContentList('trending', 24);
-      setStubMode(res.stub_mode);
-      setItems(res.data?.items ?? STUB_LIST_RESPONSE.items);
+      setUnavailable(res.unavailable);
+      setItems(res.data?.items ?? []);
       setLoading(false);
     })();
   }, []);
@@ -92,7 +88,7 @@ const ContentTrending: NextPage = () => {
         ) : (
           <ContentFeed
             items={items}
-            stubMode={stubMode}
+            unavailable={unavailable}
             showRationale={true}
             emptyMessage="○ trending pool empty · weights need at least 24h of data"
           />

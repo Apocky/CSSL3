@@ -1,9 +1,7 @@
 // cssl-edge · /api/health
 // Liveness ping. Always returns 200. Carries commit SHA + integration-config
-// booleans so deploys are auditable AND admins can verify Stripe/Supabase env
-// is wired without leaking secrets.
-//
-// W9-bumped : added stripe_configured · supabase_connected · payments_ready.
+// booleans so deploys are auditable without leaking secrets. Configuration is
+// reported separately from effect readiness: containment keeps payments off.
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { commitSha, envelope, logHit } from '@/lib/response';
@@ -21,7 +19,9 @@ export interface HealthResponse {
   data_supabase_configured: boolean;
   cron_configured: boolean;
   supabase_connected: boolean;
-  // Composite readiness flag — convenience for status-page polls.
+  containment_active: true;
+  // Effect readiness remains false until the retired payment surface is
+  // replaced by server-verifiable authorization and deliberately promoted.
   payments_ready: boolean;
 }
 
@@ -59,7 +59,8 @@ export default function handler(
     data_supabase_configured: dataSupabaseConfigured,
     cron_configured: cronConfigured,
     supabase_connected: supabaseConnected,
-    payments_ready: stripeConfigured && webhookConfigured && supabaseConnected,
+    containment_active: true,
+    payments_ready: false,
   };
 
   res.status(200).json(body);
@@ -99,13 +100,14 @@ export function testHealthCarriesW9Keys(): void {
     'data_supabase_configured',
     'cron_configured',
     'supabase_connected',
+    'containment_active',
     'payments_ready',
   ]) {
     assert(typeof body[k] === 'boolean', `${k} must be boolean`);
   }
 }
 
-// 2. payments_ready is true iff all three integration env-vars are set.
+// 2. Secret presence must never override the containment gate.
 //
 // NOTE : we MUST set env-vars via dynamic-key indirection here. Next.js +
 // Webpack inline `process.env.NEXT_PUBLIC_*` literals at build-time, so a
@@ -125,7 +127,8 @@ export function testHealthPaymentsReadyComposite(): void {
     if (prev[k] === undefined) delete process.env[k];
     else process.env[k] = prev[k] as string;
   }
-  assert(body.payments_ready === true, 'all-env-set → payments_ready true');
+  assert(body.containment_active === true, 'containment is explicit');
+  assert(body.payments_ready === false, 'all-env-set cannot bypass containment');
 }
 
 declare const require: { main?: unknown } | undefined;

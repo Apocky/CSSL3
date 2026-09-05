@@ -10,23 +10,21 @@ import ContentCard from '@/components/ContentCard';
 import {
   fetchSubscribed,
   unsubscribe,
-  STUB_LIST_RESPONSE,
   type ContentItem,
 } from '@/lib/content-fetch';
 
 const ContentSubscribed: NextPage = () => {
   const [items, setItems] = useState<ReadonlyArray<ContentItem>>([]);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [autoPullEnabled, setAutoPullEnabled] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
-      // user_cap is normally read from session-cookie; W12-6 stubs as 'me'
       const res = await fetchSubscribed('me');
-      setStubMode(res.stub_mode);
-      setItems(res.data?.items ?? STUB_LIST_RESPONSE.items);
+      setUnavailable(res.unavailable);
+      setItems(res.data?.items ?? []);
       setLoading(false);
       // Persist last-seen-state into localStorage for offline-friendly UX
       if (res.data && typeof window !== 'undefined') {
@@ -46,9 +44,6 @@ const ContentSubscribed: NextPage = () => {
     setRevoking(slug);
     const ok = await unsubscribe(slug);
     if (ok) {
-      setItems((prev) => prev.filter((i) => i.slug !== slug));
-    } else {
-      // stub-mode or API failure — still optimistically remove for UX
       setItems((prev) => prev.filter((i) => i.slug !== slug));
     }
     setRevoking(null);
@@ -92,16 +87,21 @@ const ContentSubscribed: NextPage = () => {
             <input
               type="checkbox"
               checked={autoPullEnabled}
+              disabled={unavailable}
               onChange={(e) => setAutoPullEnabled(e.target.checked)}
               style={{ accentColor: '#c084fc' }}
             />
             <span>
-              auto-pull new versions · {autoPullEnabled ? '✓ enabled' : '○ disabled (default)'}
+              auto-pull new versions · {unavailable
+                ? 'temporarily unavailable'
+                : autoPullEnabled
+                  ? '✓ enabled'
+                  : '○ disabled (default)'}
             </span>
           </label>
         </header>
 
-        {stubMode && (
+        {unavailable && (
           <div
             role="status"
             style={{
@@ -115,14 +115,14 @@ const ContentSubscribed: NextPage = () => {
               lineHeight: 1.5,
             }}
           >
-            <strong>◐ stub-mode</strong> · subscription-API (sibling W12-5/W12-8) not yet wired ·
-            placeholder rendered
+            <strong>Subscriptions are temporarily unavailable.</strong> · subscription and
+            revocation authority are retired while server authentication is rebuilt.
           </div>
         )}
 
         {loading ? (
           <p style={{ color: '#7a7a8c', fontSize: '0.85rem' }}>◐ loading subscriptions…</p>
-        ) : items.length === 0 && !stubMode ? (
+        ) : unavailable ? null : items.length === 0 ? (
           <div
             style={{
               padding: '3rem 1.5rem',

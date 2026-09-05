@@ -12,11 +12,7 @@ import Head from 'next/head';
 import { useEffect, useState, type FormEvent } from 'react';
 import ContentFeed from '@/components/ContentFeed';
 import { ContentNav, ContentFooter, contentLandingCSS } from './index';
-import {
-  fetchContentSearch,
-  STUB_LIST_RESPONSE,
-  type ContentItem,
-} from '@/lib/content-fetch';
+import { fetchContentSearch, type ContentItem } from '@/lib/content-fetch';
 
 const ContentSearch: NextPage = () => {
   const router = useRouter();
@@ -29,7 +25,7 @@ const ContentSearch: NextPage = () => {
   const [query, setQuery] = useState(queryFromUrl);
   const [tagInput, setTagInput] = useState(tagsFromUrl.join(','));
   const [results, setResults] = useState<ReadonlyArray<ContentItem>>([]);
-  const [stubMode, setStubMode] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
@@ -47,8 +43,8 @@ const ContentSearch: NextPage = () => {
     setLoading(true);
     setSearched(true);
     const res = await fetchContentSearch(q.trim(), tags);
-    setStubMode(res.stub_mode);
-    setResults(res.data?.items ?? (res.stub_mode ? STUB_LIST_RESPONSE.items : []));
+    setUnavailable(res.unavailable);
+    setResults(res.data?.items ?? []);
     setLoading(false);
   };
 
@@ -178,7 +174,7 @@ const ContentSearch: NextPage = () => {
           <ContentFeed
             heading={`§ Results · ${results.length}`}
             items={results}
-            stubMode={stubMode}
+            unavailable={unavailable}
             emptyMessage="○ no matches · try broader tags or different query"
           />
         )}

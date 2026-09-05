@@ -24,12 +24,12 @@ interface ContentFeedProps {
   subtitle?: string;
   /** Empty-state message override. */
   emptyMessage?: string;
-  /** When set, triggers infinite-scroll loadMore. Stub-mode-aware. */
+  /** When set, triggers explicit load-more retrieval. */
   onLoadMore?: () => void;
   /** Loading indicator state. */
   loading?: boolean;
-  /** Stub-mode banner trigger. */
-  stubMode?: boolean;
+  /** Fail-closed content availability boundary. */
+  unavailable?: boolean;
 }
 
 /** Pre-allocated grid template tokens for breakpoint-cache. */
@@ -44,7 +44,7 @@ const ContentFeed = ({
   emptyMessage,
   onLoadMore,
   loading = false,
-  stubMode = false,
+  unavailable = false,
 }: ContentFeedProps) => {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -90,8 +90,8 @@ const ContentFeed = ({
         </header>
       )}
 
-      {/* stub-mode banner */}
-      {stubMode && (
+      {/* Fail-closed availability boundary. Synthetic cards stay hidden. */}
+      {unavailable && (
         <div
           role="status"
           style={{
@@ -105,12 +105,13 @@ const ContentFeed = ({
             lineHeight: 1.5,
           }}
         >
-          <strong>◐ stub-mode</strong> · publish-pipeline (sibling W12-5) not yet wired ·
-          zero-state cards rendered · UI structure stable
+          <strong>Content is temporarily unavailable.</strong> · publishing, discovery,
+          moderation, and subscriptions are retired while authenticated authority controls
+          are rebuilt.
         </div>
       )}
 
-      {items.length === 0 && !stubMode ? (
+      {unavailable ? null : items.length === 0 ? (
         <div
           style={{
             padding: '3rem 1.5rem',

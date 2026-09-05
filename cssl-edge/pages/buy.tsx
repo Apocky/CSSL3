@@ -1,64 +1,29 @@
-// apocky.com/buy · product list + Stripe-Checkout initiator
-// SSG-friendly · client-side fetch only on Buy-button click
-// Stub-mode-aware : if STRIPE_SECRET_KEY missing, renders "alpha free / coming soon" pill.
+// apocky.com/buy · product catalog. Paid checkout is fail-closed during the
+// temporary security containment; the free alpha download remains available.
 
 import type { NextPage, GetStaticProps } from 'next';
 import Head from 'next/head';
 import { useState } from 'react';
 import { PRODUCT_CATALOG, COSMETIC_LAUNCH_PAUSED, type ProductDescriptor } from '@/lib/stripe';
-import { STRIPE_CHECKOUT_INIT } from '@/lib/cap';
 
 interface BuyProps {
   products: ReadonlyArray<ProductDescriptor>;
-  stripe_configured: boolean;
+  payments_available: false;
   cosmetic_launch_paused: boolean;
 }
 
-interface CheckoutResponseShape {
-  ok?: boolean;
-  url?: string;
-  stub?: boolean;
-  error?: string;
-}
-
-const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_paused }) => {
+const Buy: NextPage<BuyProps> = ({ products, payments_available, cosmetic_launch_paused }) => {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function onBuy(p: ProductDescriptor): Promise<void> {
     setErrorMsg(null);
-    setPendingId(p.id);
-    try {
-      if (p.tier === 'alpha-free') {
-        window.location.href = '/download';
-        return;
-      }
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://apocky.com';
-      const res = await fetch('/api/payments/stripe/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: p.id,
-          success_url: `${origin}/account?paid=${p.id}`,
-          cancel_url: `${origin}/buy?cancelled=${p.id}`,
-          cap: STRIPE_CHECKOUT_INIT,
-        }),
-      });
-      const data = (await res.json()) as CheckoutResponseShape;
-      if (data.stub === true) {
-        setErrorMsg('Stripe is in stub-mode on this deploy. Check back soon · alpha is free at /download in the meantime.');
-        return;
-      }
-      if (data.ok === true && typeof data.url === 'string' && data.url.length > 0) {
-        window.location.href = data.url;
-        return;
-      }
-      setErrorMsg(data.error ?? 'unknown error');
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'network error');
-    } finally {
-      setPendingId(null);
+    if (p.tier === 'alpha-free') {
+      setPendingId(p.id);
+      window.location.href = '/download';
+      return;
     }
+    setErrorMsg('Paid checkout is temporarily unavailable while its authorization boundary is rebuilt.');
   }
 
   return (
@@ -132,7 +97,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
           </div>
         ) : null}
 
-        {!stripe_configured ? (
+        {!payments_available ? (
           <div
             style={{
               marginTop: '1.5rem',
@@ -144,7 +109,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
               color: '#fbbf24',
             }}
           >
-            ⚠ Stripe is in <strong>stub-mode</strong> on this deploy — clicking Buy will not charge. The alpha download is{' '}
+            Paid checkout is <strong>temporarily unavailable</strong> during security containment. No charge can be initiated. The alpha download is{' '}
             <a href="/download" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>free</a> in the meantime.
           </div>
         ) : null}
@@ -217,7 +182,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
                 <button
                   type="button"
                   onClick={() => { void onBuy(p); }}
-                  disabled={pendingId !== null}
+                  disabled={pendingId !== null || (!free && !payments_available)}
                   style={{
                     marginTop: '1.1rem',
                     padding: '0.7rem 1.1rem',
@@ -232,7 +197,13 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
                     cursor: 'pointer',
                   }}
                 >
-                  {pendingId === p.id ? 'Redirecting …' : free ? 'Download alpha →' : 'Buy →'}
+                  {pendingId === p.id
+                    ? 'Redirecting …'
+                    : free
+                      ? 'Download alpha →'
+                      : payments_available
+                        ? 'Buy →'
+                        : 'Temporarily unavailable'}
                 </button>
               </div>
             );
@@ -283,7 +254,7 @@ export const getStaticProps: GetStaticProps<BuyProps> = async () => {
   return {
     props: {
       products: PRODUCT_CATALOG.filter((p) => p.visible),
-      stripe_configured: typeof process.env['STRIPE_SECRET_KEY'] === 'string' && process.env['STRIPE_SECRET_KEY'].length > 0,
+      payments_available: false,
       cosmetic_launch_paused: COSMETIC_LAUNCH_PAUSED,
     },
   };

@@ -2,26 +2,48 @@
 // W12-6 · UGC-Discover-Browse smoke tests
 //
 // Verifies:
-//   - lib/content-fetch types + helpers (truncatePubkey · timeAgo · STUB shapes)
+//   - lib/content-fetch types + helpers (truncatePubkey · timeAgo)
 //   - STATUS_PILL LUT covers all enum members
-//   - STUB_ITEMS/STUB_DETAIL conform to declared shape
-//   - getServerSideProps for /content (landing) returns expected props
-//   - getServerSideProps for /content/[slug] handles stub-fallback
+//   - content containment never requires synthetic production data
 //   - sovereignty-UX attestation : NO engagement-tracking fields exist
 
 import {
   STATUS_PILL,
-  STUB_ITEMS,
-  STUB_LIST_RESPONSE,
-  STUB_DETAIL,
   truncatePubkey,
   timeAgo,
   displayAuthor,
-  validateStubShape,
   type ContentItem,
   type ContentDetail,
   type ContentStatus,
 } from '@/lib/content-fetch';
+
+const TEST_ITEM: ContentItem = {
+  slug: 'test-package',
+  title: 'Test package',
+  author_pubkey: '0xabcdef0123456789abcdef0123456789abcdef01',
+  author_display: 'Test author',
+  published_at: new Date(0).toISOString(),
+  tags: ['test'],
+  rating_summary: { total_ratings: 0, mean_score: 0, distribution: [0, 0, 0, 0, 0] },
+  status: 'draft',
+  blurb: 'Test-only fixture.',
+  rationale: { kind: 'curator-pick', explanation: 'Test-only rationale.' },
+};
+
+const TEST_DETAIL: ContentDetail = {
+  ...TEST_ITEM,
+  description: 'Test-only detail.',
+  screenshots: [],
+  cosmetic_axiom_attested: true,
+  attribution_chain: [{
+    slug: TEST_ITEM.slug,
+    title: TEST_ITEM.title,
+    author_pubkey: TEST_ITEM.author_pubkey,
+    generation: 0,
+  }],
+  remix_slugs: [],
+  cap_revocable: true,
+};
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`assert failed : ${msg}`);
@@ -39,14 +61,11 @@ export function testStatusPillCoversAllEnumMembers(): void {
   }
 }
 
-export function testStubShape(): void {
-  validateStubShape(); // throws on violation
-  assert(STUB_ITEMS.length > 0, 'STUB_ITEMS must be non-empty');
-  assert(STUB_LIST_RESPONSE.items.length > 0, 'STUB_LIST_RESPONSE.items must be non-empty');
-  assert(STUB_DETAIL.slug === STUB_ITEMS[0]!.slug, 'STUB_DETAIL must reference STUB_ITEMS[0]');
-  assert(STUB_DETAIL.cosmetic_axiom_attested === true, 'STUB_DETAIL must attest cosmetic-axiom');
-  assert(STUB_DETAIL.cap_revocable === true, 'STUB_DETAIL must mark cap_revocable');
-  assert(Array.isArray(STUB_DETAIL.attribution_chain), 'attribution_chain must be array');
+export function testFixtureShape(): void {
+  assert(TEST_DETAIL.slug === TEST_ITEM.slug, 'detail fixture references item fixture');
+  assert(TEST_DETAIL.cosmetic_axiom_attested === true, 'detail fixture attests cosmetic axiom');
+  assert(TEST_DETAIL.cap_revocable === true, 'detail fixture marks capability revocable');
+  assert(Array.isArray(TEST_DETAIL.attribution_chain), 'attribution_chain is an array');
 }
 
 export function testTruncatePubkey(): void {
@@ -85,7 +104,7 @@ export function testNoEngagementTrackingFields(): void {
   // Sovereignty assertion : ContentItem shape MUST NOT include scroll-depth,
   // time-on-page, click-through-rate, or per-user behavioral fields.
   // We verify the runtime stub shape doesn't accidentally include them.
-  const allItems: ReadonlyArray<ContentItem> = [...STUB_ITEMS];
+  const allItems: ReadonlyArray<ContentItem> = [TEST_ITEM];
   for (const item of allItems) {
     const keys = Object.keys(item);
     const forbidden = [
@@ -113,7 +132,7 @@ export function testRationaleShape(): void {
     'new',
     'remix-of-yours',
   ];
-  for (const item of STUB_ITEMS) {
+  for (const item of [TEST_ITEM]) {
     if (item.rationale) {
       assert(
         allowedKinds.includes(item.rationale.kind),
@@ -128,7 +147,7 @@ export function testRationaleShape(): void {
 }
 
 export function testAttributionChainShape(): void {
-  const chain = STUB_DETAIL.attribution_chain;
+  const chain = TEST_DETAIL.attribution_chain;
   assert(chain.length > 0, 'attribution_chain must have at least 1 entry (self)');
   for (const link of chain) {
     assert(typeof link.slug === 'string', 'link.slug shape');
@@ -148,7 +167,7 @@ const isMain =
 if (isMain) {
   try {
     testStatusPillCoversAllEnumMembers();
-    testStubShape();
+    testFixtureShape();
     testTruncatePubkey();
     testTimeAgo();
     testDisplayAuthor();

@@ -1,9 +1,8 @@
 // cssl-edge · lib/content-fetch.ts
 // W12-6 · UGC-Discover-Browse · client-side fetch helpers + types
 //
-// Consumes sibling W12-5 publish-API (when wired). Stub-mode-aware:
-// every fetch helper distinguishes 404/network-error from real errors,
-// so the UI can degrade gracefully.
+// Consumes the content API. A 404, network failure, or deliberate 410
+// containment response produces a non-interactive unavailable state.
 //
 // Sovereignty:
 //   - NO engagement-tracking fields collected
@@ -16,7 +15,7 @@ export type ContentStatus = 'draft' | 'playtested' | 'published' | 'remixable';
 export interface ContentRatingSummary {
   /** Aggregate rating count [0, ∞). NEVER per-user · privacy-default. */
   total_ratings: number;
-  /** Mean score [0, 5]. Stub-default = 0. */
+  /** Mean score [0, 5]. */
   mean_score: number;
   /** Distribution buckets count[1..5]. */
   distribution: ReadonlyArray<number>; // [c1, c2, c3, c4, c5]
@@ -41,7 +40,7 @@ export interface ContentItem {
   status: ContentStatus;
   /** Short blurb (≤140 chars · feed-card display). */
   blurb: string;
-  /** Optional thumbnail URL · stub-mode → undefined. */
+  /** Optional thumbnail URL. */
   thumbnail_url?: string;
   /** Why-am-I-seeing-this rationale for trending feed. */
   rationale?: ContentRationale;
@@ -56,9 +55,9 @@ export interface ContentRationale {
 }
 
 export interface ContentDetail extends ContentItem {
-  /** Full description · markdown-flavoured but rendered as plain text in stub. */
+  /** Full description · markdown-flavoured but rendered as plain text. */
   description: string;
-  /** Screenshot URL list · stub-mode → []. */
+  /** Screenshot URL list. */
   screenshots: ReadonlyArray<string>;
   /** Install button target (deep-link or download URL). */
   install_url?: string;
@@ -84,14 +83,14 @@ export interface ContentListResponse {
   items: ReadonlyArray<ContentItem>;
   /** Cursor for next-page (undefined if no more). */
   next_cursor?: string;
-  /** Total count if backend supports it (stub: undefined). */
+  /** Total count if the backend supplies it. */
   total?: number;
 }
 
 export interface ContentFetchResult<T> {
   data: T | null;
-  /** True when API returned 404 (stub-mode trigger). */
-  stub_mode: boolean;
+  /** True when content data is unavailable and no synthetic data may be shown. */
+  unavailable: boolean;
   /** Network/parse error messaging (UI may render). */
   error?: string;
 }
@@ -99,10 +98,9 @@ export interface ContentFetchResult<T> {
 const API_TIMEOUT_MS = 8000;
 
 /**
- * Generic fetch wrapper · 404 → stub_mode=true (NOT error).
- * Distinguishes "endpoint not yet wired" from "real failure".
+ * Generic fetch wrapper · unavailable/contained → unavailable=true.
  */
-async function fetchWithStub<T>(
+async function fetchWithAvailability<T>(
   url: string,
   init?: RequestInit,
 ): Promise<ContentFetchResult<T>> {
@@ -119,19 +117,19 @@ async function fetchWithStub<T>(
       headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
     });
     if (timeoutId !== undefined) clearTimeout(timeoutId);
-    if (res.status === 404) {
-      return { data: null, stub_mode: true };
+    if (res.status === 404 || res.status === 410) {
+      return { data: null, unavailable: true };
     }
     if (!res.ok) {
-      return { data: null, stub_mode: false, error: `http ${res.status}` };
+      return { data: null, unavailable: false, error: `http ${res.status}` };
     }
     const json = (await res.json()) as T;
-    return { data: json, stub_mode: false };
+    return { data: json, unavailable: false };
   } catch (err) {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
     const msg = err instanceof Error ? err.message : 'unknown';
-    // Network errors are treated as stub-mode (publish-API may be offline)
-    return { data: null, stub_mode: true, error: msg };
+    // Network errors fail closed as unavailable.
+    return { data: null, unavailable: true, error: msg };
   }
 }
 
@@ -144,13 +142,13 @@ export async function fetchContentList(
 ): Promise<ContentFetchResult<ContentListResponse>> {
   const params = new URLSearchParams({ bucket, limit: String(limit) });
   if (cursor) params.set('cursor', cursor);
-  return fetchWithStub<ContentListResponse>(`/api/content/list?${params.toString()}`);
+  return fetchWithAvailability<ContentListResponse>(`/api/content/list?${params.toString()}`);
 }
 
 export async function fetchContentDetail(
   slug: string,
 ): Promise<ContentFetchResult<ContentDetail>> {
-  return fetchWithStub<ContentDetail>(`/api/content/detail/${encodeURIComponent(slug)}`);
+  return fetchWithAvailability<ContentDetail>(`/api/content/detail/${encodeURIComponent(slug)}`);
 }
 
 export async function fetchContentSearch(
@@ -159,22 +157,22 @@ export async function fetchContentSearch(
 ): Promise<ContentFetchResult<ContentListResponse>> {
   const params = new URLSearchParams({ q: query });
   if (tags && tags.length > 0) params.set('tags', tags.join(','));
-  return fetchWithStub<ContentListResponse>(`/api/content/search?${params.toString()}`);
+  return fetchWithAvailability<ContentListResponse>(`/api/content/search?${params.toString()}`);
 }
 
 export async function fetchSubscribed(
   userCap: string,
 ): Promise<ContentFetchResult<ContentListResponse>> {
   const params = new URLSearchParams({ user_cap: userCap });
-  return fetchWithStub<ContentListResponse>(`/api/content/subscribed?${params.toString()}`);
+  return fetchWithAvailability<ContentListResponse>(`/api/content/subscribed?${params.toString()}`);
 }
 
 /**
  * Sovereign-unsubscribe · POSTs to revoke endpoint.
- * Stub-mode aware. Returns true if revoked, false if API not wired.
+ * Returns true only after a real acknowledged revocation.
  */
 export async function unsubscribe(slug: string): Promise<boolean> {
-  const result = await fetchWithStub<{ ok: boolean }>(
+  const result = await fetchWithAvailability<{ ok: boolean }>(
     `/api/content/unsubscribe`,
     { method: 'POST', body: JSON.stringify({ slug }) },
   );
@@ -233,68 +231,4 @@ export function timeAgo(iso: string): string {
   if (mo < 12) return `${mo}mo`;
   const yr = Math.floor(mo / 12);
   return `${yr}y`;
-}
-
-/**
- * Static stub-data · rendered when publish-API returns 404.
- * Demonstrates expected shape so UI never breaks.
- */
-export const STUB_ITEMS: ReadonlyArray<ContentItem> = [
-  {
-    slug: 'stub-zero-state-example',
-    title: '⟨ publish-pipeline not yet wired ⟩',
-    author_pubkey: '0x0000000000000000000000000000000000000000',
-    author_display: 'sibling-W12-5',
-    published_at: new Date().toISOString(),
-    tags: ['stub', 'placeholder', 'sovereign'],
-    rating_summary: { total_ratings: 0, mean_score: 0, distribution: [0, 0, 0, 0, 0] },
-    status: 'draft',
-    blurb: 'When sibling W12-5 lands the publish-API, real items will appear here. This is a graceful zero-state placeholder.',
-    rationale: {
-      kind: 'curator-pick',
-      explanation: 'Stub-mode placeholder · API endpoint not yet returning 200',
-    },
-  },
-];
-
-export const STUB_LIST_RESPONSE: ContentListResponse = {
-  items: STUB_ITEMS,
-};
-
-// Helper assertion : STUB_ITEMS[0] is non-undefined by construction · TS strict-mode requires explicit narrowing
-const _stubFirst = STUB_ITEMS[0]!;
-
-export const STUB_DETAIL: ContentDetail = {
-  ..._stubFirst,
-  description: 'This page surfaces a single content-package detail when the publish-API returns it. In stub-mode (API 404), this placeholder demonstrates the expected layout.',
-  screenshots: [],
-  cosmetic_axiom_attested: true,
-  attribution_chain: [
-    {
-      slug: _stubFirst.slug,
-      title: _stubFirst.title,
-      author_pubkey: _stubFirst.author_pubkey,
-      generation: 0,
-    },
-  ],
-  remix_slugs: [],
-  cap_revocable: true,
-};
-
-/**
- * Build-time-validable : ensures STUB_ITEMS shape conforms to ContentItem.
- * Test harness imports + invokes this.
- */
-export function validateStubShape(): void {
-  for (const item of STUB_ITEMS) {
-    if (!item.slug || !item.title || !item.author_pubkey) {
-      throw new Error(`STUB_ITEMS shape violation : ${JSON.stringify(item)}`);
-    }
-    if (!Array.isArray(item.tags)) {
-      throw new Error(`tags must be array : ${item.slug}`);
-    }
-    if (!item.rating_summary || typeof item.rating_summary.mean_score !== 'number') {
-      throw new Error(`rating_summary shape : ${item.slug}`);
-    }
-  }
 }

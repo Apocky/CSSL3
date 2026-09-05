@@ -1,6 +1,6 @@
 // cssl-edge · tests/api/mneme/mneme.test.ts
-// MNEME — single-file smoke suite covering every pipeline stage + every
-// HTTP route surface. Stubs all external calls; runs without env config.
+// MNEME — pure-pipeline regression coverage plus fail-closed HTTP containment.
+// Runs without external services or environment configuration.
 //
 // Run via   npm run test:mneme
 
@@ -469,81 +469,69 @@ export function testTemporalFacts(): void {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// 12. HTTP route tests (stub-mode, no env)
+// 12. HTTP route tests (temporary fail-closed containment)
 // ══════════════════════════════════════════════════════════════════════
 
-export function testHealthRoute200(): void {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
-    healthHandler(req, res);
-    assert(out.statusCode === 200, `health 200, got ${out.statusCode}`);
+type MnemeHandler = (
+    req: NextApiRequest,
+    res: NextApiResponse,
+) => void | Promise<void>;
+
+async function assertRouteRetired(handler: MnemeHandler): Promise<void> {
+    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' }, {
+        cap: Number.MAX_SAFE_INTEGER,
+        sovereign: true,
+    });
+    req.headers['x-loa-cap'] = String(Number.MAX_SAFE_INTEGER);
+    req.headers['x-apocky-sovereign'] = 'true';
+    req.headers.authorization = 'Bearer attacker-controlled';
+    await handler(req, res);
+    assert(out.statusCode === 410, `route is retired, got ${out.statusCode}`);
     const body = out.body as Record<string, unknown>;
-    assert(body['ok'] === true, 'ok');
-    assert(typeof body['anthropic_configured'] === 'boolean', 'anthropic flag');
+    assert(body['ok'] === false, 'typed ok:false');
+    assert(body['reason_code'] === 'temporary_security_containment', 'stable containment reason');
+    assert(body['surface'] === '/api/mneme/:profile/*', 'canonical MNEME surface');
+    assert(out.headers['Cache-Control']?.includes('no-store') === true, 'no-store response');
 }
 
-export function testHealthRoute422OnBadProfile(): void {
-    const { req, res, out } = mockReqRes('GET', { profile: 'BAD!' });
-    healthHandler(req, res);
-    assert(out.statusCode === 422, '422 on bad profile');
+export async function testHealthRoute200(): Promise<void> {
+    await assertRouteRetired(healthHandler);
+}
+
+export async function testHealthRoute422OnBadProfile(): Promise<void> {
+    await assertRouteRetired(healthHandler);
 }
 
 export async function testSmokeRoute(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
-    await smokeHandler(req, res);
-    assert(out.statusCode === 200, `smoke 200, got ${out.statusCode}`);
-    const body = out.body as Record<string, unknown>;
-    assert(body['ok'] === true, 'ok');
-    assert(typeof body['ingest'] === 'object', 'ingest block');
-    assert(typeof body['retrieve'] === 'object', 'retrieve block');
+    await assertRouteRetired(smokeHandler);
 }
 
 export async function testIngestRoute405OnGet(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
-    await ingestHandler(req, res);
-    assert(out.statusCode === 405, '405 on GET');
+    await assertRouteRetired(ingestHandler);
 }
 
 export async function testIngestRoute400OnBadBody(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' }, 'not-json');
-    await ingestHandler(req, res);
-    assert(out.statusCode === 400, '400 on bad body');
+    await assertRouteRetired(ingestHandler);
 }
 
 export async function testRecallRoute400EmptyQuery(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' }, { query: '' });
-    await recallHandler(req, res);
-    assert(out.statusCode === 400, '400 empty query');
+    await assertRouteRetired(recallHandler);
 }
 
 export async function testRememberRoute400EmptyCsl(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' }, { csl: '' });
-    await rememberHandler(req, res);
-    assert(out.statusCode === 400, '400 empty csl');
+    await assertRouteRetired(rememberHandler);
 }
 
 export async function testListRoute200StubMode(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
-    await listHandler(req, res);
-    assert(out.statusCode === 200, '200 stub list');
-    const body = out.body as Record<string, unknown>;
-    assert(Array.isArray(body['memories']), 'memories array');
+    await assertRouteRetired(listHandler);
 }
 
 export async function testForgetRoute400OnBadUuid(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' },
-        { memory_id: 'not-a-uuid', reason: 'test' });
-    await forgetHandler(req, res);
-    assert(out.statusCode === 400, '400 bad uuid');
+    await assertRouteRetired(forgetHandler);
 }
 
 export async function testExportRoute200StubMode(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
-    await exportHandler(req, res);
-    assert(out.statusCode === 200, '200 stub export');
-    const body = out.body as Record<string, unknown>;
-    assert(typeof body['profile'] === 'object', 'profile block');
-    assert(Array.isArray(body['memories']), 'memories array');
-    assert(Array.isArray(body['messages']), 'messages array');
+    await assertRouteRetired(exportHandler);
 }
 
 // ── Run all (when invoked as a script) ─────────────────────────────────

@@ -4,7 +4,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authFetch } from '../../lib/browser-auth';
-import { VisionPanel } from './VisionPanel';
 
 type MessageRole = 'user' | 'apocrypha';
 
@@ -217,6 +216,7 @@ export function ChatThread() {
           Learned field · {learnedField === LEARNED_FIELD_ABSENT ? 'absent' : learnedField}
         </span>
         <span data-capability-audio={audioLabel}>Audio · {audioLabel}</span>
+        <span data-capability-vision="contained">Vision · temporarily retired</span>
         <span data-capability-retry-dedupe="blocked">Retry dedupe · blocked at body contract</span>
       </div>
 
@@ -225,8 +225,6 @@ export function ChatThread() {
         <span>Body reference · {conversationRef ? conversationRef.slice(0, 12) : 'not established'}</span>
         <span>History · native V2 projection not yet available</span>
       </div>
-
-      <VisionPanel />
 
       <div className="v2-messages" aria-live="polite" aria-busy={waiting}>
         {messages.length === 0 && (
@@ -275,7 +273,7 @@ export function ChatThread() {
       </form>
 
       <style jsx>{`
-        .v2-chat { display:grid; grid-template-rows:auto auto auto auto minmax(0,1fr) auto; height:100%; min-height:0; color:#ececf5; background:#080810; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+        .v2-chat { display:grid; grid-template-rows:auto auto auto minmax(0,1fr) auto; height:100%; min-height:0; color:#ececf5; background:#080810; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
         .v2-chat-header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px clamp(16px,3vw,32px); border-bottom:1px solid #20202c; }
         .v2-eyebrow { margin:0 0 4px; color:#9e8cff; font:700 .68rem/1 ui-monospace,monospace; letter-spacing:.18em; }
         h1 { margin:0; font-size:clamp(1rem,2vw,1.3rem); font-weight:650; }
