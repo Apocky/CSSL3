@@ -22,38 +22,40 @@ export default function LegalDocument({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <style>{`
           .apx-legal {
-            width: min(780px, calc(100% - 36px));
+            width: min(760px, calc(100% - 36px));
             margin: 0 auto;
-            padding: clamp(54px, 8vw, 90px) 0 100px;
-            color: #d6dfdd;
-            line-height: 1.7;
+            padding: clamp(28px, 4vw, 44px) 0 clamp(40px, 5vw, 64px);
+            color: var(--apx-copy, #d8dcf4);
+            line-height: 1.65;
           }
           .apx-legal h1 {
             margin: 0;
-            color: #f5f8f7;
-            font-size: clamp(2.25rem, 6vw, 4.8rem);
-            line-height: 1;
-            letter-spacing: -0.055em;
+            color: var(--apx-ink, #f5f3ff);
+            font-family: var(--apx-display, Georgia, serif);
+            font-size: var(--apx-fs-h1, clamp(2rem, 3.6vw, 3.1rem));
+            line-height: 1.05;
+            letter-spacing: -0.03em;
           }
-          .apx-legal-updated { margin: 14px 0 34px; color: #758783; font-size: 0.82rem; }
+          .apx-legal-updated { margin: 10px 0 22px; color: var(--apx-muted, #9ca6cc); font: 600 var(--apx-fs-micro, 0.72rem)/1.4 var(--apx-mono, ui-monospace, monospace); letter-spacing: 0.04em; }
           .apx-legal-note {
-            margin: 0 0 30px;
-            border: 1px solid rgba(255, 196, 125, 0.3);
+            margin: 0 0 24px;
+            border: 1px solid rgba(185, 152, 255, 0.32);
             border-radius: 12px;
-            background: rgba(255, 196, 125, 0.06);
-            padding: 16px 18px;
-            color: #e9d0b1;
-            font-size: 0.88rem;
+            background: rgba(109, 93, 252, 0.09);
+            padding: 12px 14px;
+            color: var(--apx-copy, #d8dcf4);
+            font-size: 0.875rem;
+            line-height: 1.55;
           }
-          .apx-legal h2 { margin: 38px 0 10px; color: #adffef; font-size: 1.18rem; letter-spacing: -0.01em; }
-          .apx-legal h3 { margin: 26px 0 8px; color: #d6dfdd; font-size: 1rem; }
-          .apx-legal p, .apx-legal li { color: #bdc9c7; font-size: 0.94rem; }
-          .apx-legal ul, .apx-legal ol { padding-left: 1.35rem; }
-          .apx-legal li { margin: 7px 0; }
-          .apx-legal a { color: #8ddcff; }
-          .apx-legal code { border-radius: 4px; background: rgba(141, 220, 255, 0.08); padding: 0.1rem 0.3rem; color: #b9eaff; }
-          .apx-legal footer { margin-top: 54px; border-top: 1px solid rgba(153, 204, 194, 0.14); padding-top: 22px; color: #758783; }
-          .apx-legal footer p { color: #758783; font-size: 0.8rem; }
+          .apx-legal h2 { margin: 30px 0 8px; color: var(--apx-sky, #7ddcff); font-size: 1.15rem; font-weight: 650; letter-spacing: -0.01em; }
+          .apx-legal h3 { margin: 20px 0 6px; color: var(--apx-ink, #f5f3ff); font-size: 1rem; font-weight: 650; }
+          .apx-legal p, .apx-legal li { color: var(--apx-copy, #d8dcf4); font-size: 0.95rem; }
+          .apx-legal ul, .apx-legal ol { padding-left: 1.3rem; }
+          .apx-legal li { margin: 6px 0; }
+          .apx-legal a { color: var(--apx-mint, #64d8ff); text-underline-offset: 0.18em; }
+          .apx-legal code { border-radius: 4px; background: rgba(125, 220, 255, 0.1); padding: 0.08rem 0.32rem; color: var(--apx-sky, #7ddcff); font: 0.88em var(--apx-mono, ui-monospace, monospace); }
+          .apx-legal footer { margin-top: 36px; border-top: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17)); padding-top: 16px; color: var(--apx-muted, #9ca6cc); }
+          .apx-legal footer p { color: var(--apx-muted, #9ca6cc); font-size: 0.8rem; }
         `}</style>
       </Head>
       <article className="apx-legal">
