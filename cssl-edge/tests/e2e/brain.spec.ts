@@ -25,6 +25,14 @@ const memories = [
 ];
 
 test('owner-private Brain exposes truthful multidimensional memory without a fake conversation', async ({ page }, testInfo) => {
+  let observationRequests = 0;
+  await page.route('**/api/brain/observe?*', route => {
+    observationRequests += 1;
+    return route.fulfill({ json: {
+      schema_version: 'apocky.brain.observation.v1', view: 'status', observed_at: '2026-09-04T00:00:00.000Z',
+      trace_id: '44444444-4444-4444-8444-444444444444', data: { state: 'ACTIVE', event_count: 7, error_count: 2, ring_size: 7, ring_capacity: 100 },
+    } });
+  });
   await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
   await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'owner-test' } }) }));
   await page.route('**/api/admin/check', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authorized: true }) }));
@@ -66,22 +74,28 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await page.goto('/');
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.json');
-  await page.getByRole('link', { name: /Open private conversation/i }).click();
-  await expect(page).toHaveURL(/\/apocrypha$/);
+  await page.goto('/brain');
+  await expect(page).toHaveURL(/\/brain$/);
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/brain-manifest.json');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
   await expect(page.locator('.apx-diagnostics-opener')).toHaveCount(0);
-  await expect(page.getByText('Mneme storage')).toBeVisible();
-  await expect(page.getByText('not connected · turns stay queued')).toBeVisible();
-  const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
+  const connectionDetails = page.locator('summary').filter({ hasText: 'Connection & device details' });
+  await expect(connectionDetails).toBeVisible();
+  await expect(page.getByText('Mneme storage')).not.toBeVisible();
+  await expect(page.getByLabel('Find a memory, topic, or phrase')).not.toBeVisible();
+  expect(observationRequests).toBe(0);
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
   await expect(composer).toBeEnabled();
-  await expect(page.getByText(/deterministic core recalls compact memory/i)).toBeVisible();
+  await expect(page.getByText('Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.')).toBeVisible();
   await composer.fill('How do I preserve the source boundary?');
-  await page.getByRole('button', { name: 'Reflect + queue' }).click();
-  await expect(page.getByText(/Mini Brain · deterministic offline recall/i)).toBeVisible();
+  await page.getByRole('button', { name: 'Queue message' }).click();
+  await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
   await expect(page.getByText(/encrypted queue · not yet committed/i)).toBeVisible();
+  await connectionDetails.click();
+  await expect(page.getByText('Mneme storage')).toBeVisible();
   const releaseShelf = page.locator('#brain-releases');
   await expect(releaseShelf.locator('em[data-release-state="RELEASED"]')).toHaveText('Released');
   await expect(releaseShelf.locator('summary').getByText('1.0.0 · integrity-linked evidence')).toBeVisible();
@@ -90,8 +104,22 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await expect(releaseShelf.getByRole('link', { name: /Changelog/i })).toHaveAttribute('href', '/releases/apocrypha-living/changelog.json');
   await expect(releaseShelf.getByRole('link', { name: /Build manifest/i })).toHaveAttribute('href', '/releases/apocrypha-living/manifest.json');
   await expect(releaseShelf.locator('a[href^="/downloads/"]')).toHaveCount(0);
-  await expect(releaseShelf.getByText('No downloadable native package is attached.')).toBeVisible();
+  await expect(releaseShelf.getByRole('link', { name: 'Android downloads and iPhone availability' })).toHaveAttribute('href', '/download/apocrypha');
+  await releaseShelf.locator('summary').click();
+  const diagnostics = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: /^Desktop diagnostics$/ }) }).last();
+  await diagnostics.locator('summary').first().click();
+  expect(observationRequests).toBe(0);
+  await diagnostics.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(diagnostics.getByText('Recorded events', { exact: true })).toBeVisible();
+  await expect(diagnostics.locator('dd').first()).toHaveText('7');
+  expect(observationRequests).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath('brain-diagnostics.png'), fullPage: true });
+  await diagnostics.locator('summary').first().click();
+  await connectionDetails.click();
+  await page.screenshot({ path: testInfo.outputPath('brain-conversation.png'), fullPage: true });
 
+  await page.getByRole('button', { name: 'Memory', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Memory', exact: true })).toHaveAttribute('aria-expanded', 'true');
   await page.getByLabel('Find a memory, topic, or phrase').fill('source boundary');
   await expect(page.getByText('2 of 3 loaded records match')).toBeVisible();
   const firstNode = page.locator('button').filter({ hasText: 'project.brain.boundary' }).first();
@@ -102,6 +130,7 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
 
   await page.getByRole('button', { name: 'timeline' }).click();
   await expect(page.getByText('The personal Brain remains owner-private and crawler-dark.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Mneme storage')).not.toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   const a11y = await new AxeBuilder({ page }).analyze();
@@ -109,7 +138,7 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await page.screenshot({ path: testInfo.outputPath('brain.png'), fullPage: true });
 });
 
-test('live G12 history and an idempotent queued turn map identically across browser engines', async ({ page }) => {
+test('offline user-only queue receives the actual desktop reply after reconnecting', async ({ page, context }) => {
   const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const initialRequestId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const initialMessages = [
@@ -145,11 +174,12 @@ test('live G12 history and an idempotent queued turn map identically across brow
       served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
     }),
   }));
+  let connected = false;
   await page.route('**/api/brain/runtime/status', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({
-      schema_version: 'apocky.owner-brain.runtime-status.v1', status: 'live', reason_code: null,
+      schema_version: 'apocky.owner-brain.runtime-status.v1', status: connected ? 'live' : 'degraded', reason_code: connected ? null : 'BRAIN_OFFLINE',
       observed_at: '2026-09-04T20:00:00.000Z', latency_ms: 5, upstream_status: 200,
       served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
     }),
@@ -170,12 +200,13 @@ test('live G12 history and an idempotent queued turn map identically across brow
   let appendRequestId = '';
   await page.route('**/api/brain/mobile/sync', async route => {
     const request = await route.request().postDataJSON() as {
-      operation: 'pull' | 'append'; request_id: string; payload?: { text?: string } | null;
+      operation: 'pull' | 'append'; request_id: string; session_id: string; payload?: { text?: string } | null;
     };
     const appended = request.operation === 'append';
     if (appended) appendRequestId = request.request_id;
+    const preceding = request.session_id === sessionId ? initialMessages : [];
     const messages = appended ? [
-      ...initialMessages,
+      ...preceding,
       {
         role: 'user', content: request.payload?.text ?? '', request_id: request.request_id,
         recorded_at: '2026-09-04T20:01:00.000Z', event_digest: '3'.repeat(64),
@@ -184,13 +215,13 @@ test('live G12 history and an idempotent queued turn map identically across brow
         role: 'assistant', content: 'This answer survived the signed queue and G12 readback.', request_id: request.request_id,
         recorded_at: '2026-09-04T20:01:01.000Z', event_digest: '4'.repeat(64),
       },
-    ] : initialMessages;
+    ] : preceding;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         schema_version: 'apocky.mini-brain.sync-response.v1', status: appended ? 'appended' : 'advanced',
-        session_id: sessionId, request_id: request.request_id, cursor: appended ? '6'.repeat(64) : '5'.repeat(64),
+        session_id: request.session_id, request_id: request.request_id, cursor: appended ? '6'.repeat(64) : '5'.repeat(64),
         messages, tombstones: [], events_truncated: false,
         provenance: {
           transport: 'owner_bound_apocv4_runtime', privacy_partition_ref: '7'.repeat(64),
@@ -206,13 +237,23 @@ test('live G12 history and an idempotent queued turn map identically across brow
     });
   });
 
-  await page.goto('/apocrypha');
-  await expect(page.getByText('At the verified G12 relay boundary.')).toBeVisible();
-  await expect(page.getByText('observed HTTP 200 · sync ready')).toBeVisible();
-  const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
+  await page.goto('/brain');
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
+  await expect(composer).toBeEnabled();
+  await context.setOffline(true);
+  await expect(page.getByRole('button', { name: 'Queue message', exact: true })).toBeVisible();
   await composer.fill('Carry this exact request across the device boundary.');
-  await page.getByRole('button', { name: 'Send + sync' }).click();
+  await page.getByRole('button', { name: 'Queue message', exact: true }).click();
+  await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
+  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  expect(appendRequestId).toBe('');
+  connected = true;
+  await context.setOffline(false);
   await expect(page.getByText('This answer survived the signed queue and G12 readback.')).toBeVisible();
+  await expect(page.locator('summary').filter({ hasText: 'Connection & device details' })).toContainText('Desktop connected');
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+  await expect(page.getByText('1 encrypted turn waiting')).toHaveCount(0);
   await expect(page.getByText('Device queue and desktop worldline are current.')).toBeVisible();
   expect(appendRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
   await expect(page.getByText('encrypted queue · not yet committed')).toHaveCount(0);
@@ -271,15 +312,17 @@ test('verified owner explicitly creates the first private Mneme profile', async 
     }),
   }));
 
-  await page.goto('/apocrypha');
+  await page.goto('/brain');
   await expect(page.getByText('Mneme needs your confirmation.')).toBeVisible();
   await page.getByRole('button', { name: 'Create my private memory profile' }).click();
   await expect(page.getByText(/Private Mneme profile created for this verified owner session/i)).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'Connection & device details' }).click();
   await expect(page.getByText('0 records · 0 source links')).toBeVisible();
   expect(confirmation).toBe('CREATE_OWNER_PRIVATE_MNEME_PROFILE');
 });
 
 test('@mobile installed Mini Brain restores an encrypted queued worldline offline', async ({ page, context }, testInfo) => {
+  test.setTimeout(120_000);
   await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
   await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'owner-test' } }) }));
   await page.route('**/api/admin/check', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authorized: true }) }));
@@ -307,7 +350,23 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
     }),
   }));
 
-  const onlineDocument = await page.goto('/apocrypha');
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const legacy = await navigator.serviceWorker.register('/brain-sw.js', { scope: '/' });
+    const worker = legacy.installing ?? legacy.waiting ?? legacy.active;
+    if (worker && worker.state !== 'activated') {
+      await new Promise<void>((resolve, reject) => {
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'activated') resolve();
+          if (worker.state === 'redundant') reject(new Error('Legacy worker did not activate'));
+        });
+      });
+    }
+    await (await caches.open('apocky-mini-brain-shell-v1')).put('/apocrypha', new Response('legacy shell fixture'));
+    await (await caches.open('unrelated-shell-fixture')).put('/unrelated-shell-fixture', new Response('preserve unrelated cache'));
+  });
+
+  const onlineDocument = await page.goto('/brain');
   expect(onlineDocument?.status()).toBe(200);
   expect(onlineDocument?.headers()['cache-control']).toContain('no-store');
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
@@ -316,25 +375,37 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   const manifestResponse = await page.request.get('/brain-manifest.json');
   expect(manifestResponse.ok()).toBe(true);
   expect(await manifestResponse.json()).toMatchObject({
-    id: '/apocrypha',
-    start_url: '/apocrypha?source=installed-mini-brain',
-    scope: '/',
+    id: '/brain',
+    start_url: '/brain?source=installed-mini-brain',
+    scope: '/brain',
     display: 'standalone',
   });
-  const composer = page.getByRole('textbox', { name: 'Message Apocrypha / Mini Brain' });
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
   await expect(composer).toBeEnabled();
   await composer.fill('What is the smallest reversible move?');
-  await page.getByRole('button', { name: 'Reflect + queue' }).click();
+  await page.getByRole('button', { name: 'Queue message' }).click();
   await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
-  await expect(page.getByText(/This is a local prompt, not a generated Apocrypha answer/i)).toBeVisible();
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
 
   const worker = await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready;
     return { scope: registration.scope, scriptURL: registration.active?.scriptURL ?? '' };
   });
-  expect(new URL(worker.scope).pathname).toBe('/');
+  expect(new URL(worker.scope).pathname).toBe('/brain');
   expect(new URL(worker.scriptURL).pathname).toBe('/brain-sw.js');
+  await page.locator('summary').filter({ hasText: 'Connection & device details' }).click();
   await expect(page.getByText('Offline shell ready')).toBeVisible();
+  expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations())
+    .filter(registration => registration.active?.scriptURL.endsWith('/brain-sw.js'))
+    .map(registration => new URL(registration.scope).pathname))).toEqual(['/brain']);
+  expect(await page.evaluate(async () => (await caches.keys()).includes('apocky-mini-brain-shell-v1'))).toBe(false);
+  expect(await page.evaluate(async () => (await caches.keys()).includes('unrelated-shell-fixture'))).toBe(true);
+  const publicPage = await context.newPage();
+  for (const publicPath of ['/apocrypha', '/account', '/login']) {
+    await publicPage.goto(publicPath, { waitUntil: 'domcontentloaded' });
+    expect(await publicPage.evaluate(() => navigator.serviceWorker.controller?.scriptURL.endsWith('/brain-sw.js') ?? false)).toBe(false);
+  }
+  await publicPage.close();
   if (testInfo.project.name.startsWith('ios-webkit')) {
     await expect(page.getByText('iPhone: Share → Add to Home Screen')).toBeVisible();
   } else {
@@ -354,7 +425,7 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   await page.reload();
   await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-  await expect.poll(() => page.evaluate(async () => Boolean(await caches.match('/apocrypha')))).toBe(true);
+  await expect.poll(() => page.evaluate(async () => Boolean(await caches.match('/brain')))).toBe(true);
   await page.evaluate(async () => { await fetch('/api/brain/snapshot', { cache: 'no-store' }); });
   const cachedPrivateApiUrls = await page.evaluate(async () => {
     const names = await caches.keys();
@@ -363,7 +434,7 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   });
   expect(cachedPrivateApiUrls).toEqual([]);
   await context.setOffline(true);
-  await page.goto('/apocrypha', { waitUntil: 'domcontentloaded' }).catch((error: unknown) => {
+  await page.goto('/brain', { waitUntil: 'domcontentloaded' }).catch((error: unknown) => {
     if (
       !testInfo.project.name.startsWith('ios-webkit')
       || !(error instanceof Error)
@@ -373,7 +444,8 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
   await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
   await expect(page.getByText('What is the smallest reversible move?')).toBeVisible();
-  await expect(page.getByText(/Offline · encrypted recent history/i)).toBeVisible();
+  await expect(page.getByText('Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.')).toBeVisible();
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   const a11y = await new AxeBuilder({ page }).analyze();

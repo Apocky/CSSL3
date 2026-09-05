@@ -86,4 +86,3 @@ async function run() {
   } finally { if (old === undefined) delete process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID; else process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID = old; }
 }
 void run().catch(error => { console.error(error); process.exitCode = 1; });
-
