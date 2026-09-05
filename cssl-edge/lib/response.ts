@@ -40,11 +40,11 @@ export function commitSha(): string {
   );
 }
 
-// Resolve client cap header. Defaults to "sovereign" — flag for trace.
+// Resolve a declared client cap. Missing, malformed, or unknown input is
+// unprivileged; authorization still requires the independent sovereign secret.
 export function resolveCap(raw: string | string[] | undefined): 'sovereign' | 'none' {
   const v = Array.isArray(raw) ? raw[0] : raw;
-  if (v === 'none') return 'none';
-  return 'sovereign';
+  return v === 'sovereign' ? 'sovereign' : 'none';
 }
 
 // Console-log shape consumed by Vercel runtime logs. Keep keys terse for cost.

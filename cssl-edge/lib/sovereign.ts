@@ -4,11 +4,28 @@
 // caller asserts `sovereign:true` AND presents the matching header, the cap
 // gate is bypassed. Without the header, the sovereign flag is ignored.
 
-// Stage-0 sentinel value. Real impl will rotate this via env-var injection.
+// Legacy development/test fixture. Production authorization never accepts it.
+// A production bypass must be an independently provisioned high-entropy secret.
 export const SOVEREIGN_CAP_HEX = '0xCAFEBABEDEADBEEF';
 
 // Header name (lower-cased — Headers API normalizes anyway).
 export const SOVEREIGN_HEADER_NAME = 'x-loa-sovereign-cap';
+
+function configuredSovereignCap(): string | null {
+  const configured = process.env.LOA_SOVEREIGN_CAP_HEX?.trim();
+  if (configured && configured.length >= 32 && configured.length <= 256) return configured;
+  return process.env.NODE_ENV === 'production' ? null : SOVEREIGN_CAP_HEX;
+}
+
+function matchesConfiguredCap(raw: string): boolean {
+  const expected = configuredSovereignCap();
+  if (!expected || raw.length !== expected.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    mismatch |= raw.charCodeAt(index) ^ expected.charCodeAt(index);
+  }
+  return mismatch === 0;
+}
 
 // Inspect a `Headers` instance for the sovereign-cap header. Returns true ONLY
 // when the caller passes `sovereignFlag === true` AND the header value matches
@@ -17,7 +34,7 @@ export function isSovereignHeader(hdrs: Headers, sovereignFlag?: boolean): boole
   if (sovereignFlag !== true) return false;
   const raw = hdrs.get(SOVEREIGN_HEADER_NAME);
   if (raw === null) return false;
-  return raw.toLowerCase() === SOVEREIGN_CAP_HEX.toLowerCase();
+  return matchesConfiguredCap(raw);
 }
 
 // Pages-router compat : Next.js NextApiRequest carries `headers` as a plain
@@ -31,5 +48,5 @@ export function isSovereignFromIncoming(
   const raw = hdrs[SOVEREIGN_HEADER_NAME];
   const v = Array.isArray(raw) ? raw[0] : raw;
   if (typeof v !== 'string') return false;
-  return v.toLowerCase() === SOVEREIGN_CAP_HEX.toLowerCase();
+  return matchesConfiguredCap(v);
 }

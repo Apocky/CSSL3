@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
 import { normalizeAuthReturnPath } from '../lib/auth-return';
 import { useSiteSession } from '../components/hub/SiteSession';
+import CyberDreamField from '../components/cyber/CyberDreamField';
 
 const DOORS = [
   {
@@ -120,131 +121,109 @@ const Home: NextPage = () => {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       </Head>
 
-      <main className="apx-home">
-        <section className="apx-hero" aria-labelledby="hero-title">
-          <div className="apx-hero-content">
-            <p className="apx-eyebrow">Apocky · digital commons</p>
-            <h1 id="hero-title">A place for minds, systems, and the <span className="apx-gradient-word">worlds between them.</span></h1>
+      <main className="apx-home apx-dream-home">
+        <CyberDreamField variant="commons" activity="idle" density={1.12} viewport />
+        <div className="apx-dream-vignette" aria-hidden="true" />
+
+        <section className="apx-dream-hero" aria-labelledby="hero-title">
+          <div className="apx-dream-copy">
+            <p className="apx-eyebrow"><span /> APOCKY / COMMUNICATION COMMONS</p>
+            <h1 id="hero-title">A relay for minds that refuse <em>small worlds.</em></h1>
             <p className="apx-hero-copy">
-              Apocky is a home for digital intelligence, language, art, and the
-              work that connects them. Begin with the conversation, the map, or
-              the shared space.
+              Speak with Apocrypha, trace the systems and ideas around it, or
+              enter a shared room. One living interface connects intelligence,
+              language, art, research, and the strange spaces between them.
             </p>
             <div className="apx-actions">
-              <Link href="/apocrypha" className="apx-button apx-button--primary">Meet Apocrypha</Link>
-              <a href="#doorways" className="apx-button">Choose another door</a>
-              {authenticated ? <Link href="/account" className="apx-button">Your account</Link> : null}
+              <Link href="/apocrypha" className="apx-button apx-button--primary">Open the relay <span aria-hidden="true">↗</span></Link>
+              <a href="#doorways" className="apx-button">Navigate the field</a>
+              {authenticated ? <Link href="/account" className="apx-button">Your orbit</Link> : null}
             </div>
             <p className="apx-auth-message" aria-live="polite" hidden={!authNotice}>{authNotice}</p>
           </div>
 
-          <Link href="/apocrypha" className="apx-presence-card" aria-label="Meet Apocrypha in the public conversation interface">
-            <div className="apx-presence-field" aria-hidden="true">
-              <span className="apx-presence-orbit apx-presence-orbit--outer" />
-              <span className="apx-presence-orbit apx-presence-orbit--inner" />
-              <span className="apx-presence-core" />
+          <Link href="/apocrypha" className="apx-dream-presence" aria-label="Open the Apocrypha communication relay">
+            <span className="apx-dream-presence-label">LIVE INTERFACE / APOCRYPHA</span>
+            <div className="apx-dream-orb" aria-hidden="true">
+              <span className="apx-dream-orbit apx-dream-orbit--one" />
+              <span className="apx-dream-orbit apx-dream-orbit--two" />
+              <span className="apx-dream-orbit apx-dream-orbit--three" />
+              <span className="apx-dream-core">§A</span>
+              <span className="apx-dream-scan" />
             </div>
-            <div className="apx-presence-copy">
-              <p className="apx-presence-label">Apocrypha</p>
-              <h2>Begin with a conversation.</h2>
-              <p>
-                The public interface explains availability, participation,
-                memory, and privacy before you choose to take part.
-              </p>
-              <span className="apx-presence-link">Open the interface <span aria-hidden="true">→</span></span>
+            <div className="apx-dream-presence-copy">
+              <strong>Begin with a signal.</strong>
+              <span>Conversation is the center; context, tools, and evidence unfold around it.</span>
             </div>
           </Link>
+
+          <div className="apx-dream-index" aria-hidden="true">
+            <span>01 / INTELLIGENCE</span><span>02 / LANGUAGE</span><span>03 / SHARED WORLD</span>
+          </div>
         </section>
 
-        <section id="doorways" className="apx-section" aria-labelledby="doorways-title">
-          <div className="apx-section-head">
-            <div>
-              <p className="apx-kicker">Three doors</p>
-              <h2 id="doorways-title">Choose where to begin.</h2>
-            </div>
-            <p className="apx-section-intro">
-              Each place has one clear purpose. You can move between them
-              without learning the whole system first.
-            </p>
+        <section id="doorways" className="apx-world-section" aria-labelledby="doorways-title">
+          <div className="apx-world-heading">
+            <p className="apx-kicker">Connected chambers</p>
+            <h2 id="doorways-title">Move through the same world from a different angle.</h2>
+            <p>Each chamber changes the mode of contact without severing context from the whole.</p>
           </div>
 
-          <div className="apx-door-grid">
-            {DOORS.map((door) => (
-              <Link key={door.title} href={door.href} className={`apx-door-card ${door.tone}`}>
-                <div className="apx-door-card-top">
-                  <span className="apx-door-kind">{door.kind}</span>
-                  <span className={`apx-door-glyph ${door.glyph}`} aria-hidden="true" />
-                </div>
-                <div>
-                  <h3>{door.title}</h3>
-                  <p>{door.copy}</p>
-                </div>
-                <span className="apx-door-link">{door.label} <span aria-hidden="true">→</span></span>
+          <div className="apx-constellation" data-canvasui-composition="grid+force-field+portal-map">
+            <svg className="apx-constellation-lines" viewBox="0 0 1000 590" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M500 295 C365 205 250 180 118 170" />
+              <path d="M500 295 C640 190 760 175 885 155" />
+              <path d="M500 295 C620 390 745 430 888 450" />
+              <path d="M118 170 C330 430 690 495 888 450" />
+            </svg>
+            <span className="apx-constellation-pulse" aria-hidden="true" />
+            {DOORS.map((door, index) => (
+              <Link key={door.title} href={door.href} className={`apx-world-node apx-world-node--${index + 1}`}>
+                <span className="apx-world-node-index">0{index + 1}</span>
+                <span className={`apx-door-glyph ${door.glyph}`} aria-hidden="true" />
+                <span className="apx-world-node-copy">
+                  <small>{door.kind}</small>
+                  <strong>{door.title}</strong>
+                  <span>{door.copy}</span>
+                </span>
+                <b>{door.label} <span aria-hidden="true">↗</span></b>
               </Link>
             ))}
+            <div className="apx-world-nucleus" aria-hidden="true"><span>APOCKY</span><i>∞</i><small>ONE CONTEXT / MANY MODES</small></div>
           </div>
         </section>
 
-        <section id="projects" className="apx-section apx-section--compact" aria-labelledby="projects-title">
-          <div className="apx-section-head">
-            <div>
-              <p className="apx-kicker">More from Apocky</p>
-              <h2 id="projects-title">Projects with their own homes.</h2>
-            </div>
-            <p className="apx-section-intro">
-              The wider body of work remains close, but it no longer competes
-              with the three primary places above.
-            </p>
+        <section id="projects" className="apx-orbit-section" aria-labelledby="projects-title">
+          <div className="apx-orbit-heading">
+            <p className="apx-kicker">Outer orbit</p>
+            <h2 id="projects-title">Other instruments in the same cosmology.</h2>
           </div>
-
-          <div className="apx-project-list">
-            {OTHER_WORK.map((project) => (
+          <div className="apx-orbit-list">
+            {OTHER_WORK.map((project, index) => (
               project.external ? (
-                <a key={project.title} href={project.href} target="_blank" rel="noopener noreferrer" className="apx-project-link">
-                  <span>
-                    <strong>{project.title}</strong>
-                    <small>{project.copy}</small>
-                  </span>
-                  <span className="apx-project-action">{project.label} <span aria-hidden="true">↗</span></span>
+                <a key={project.title} href={project.href} target="_blank" rel="noopener noreferrer" className="apx-orbit-link">
+                  <i>0{index + 4}</i><span><strong>{project.title}</strong><small>{project.copy}</small></span><b>↗</b>
                 </a>
               ) : (
-                <Link key={project.title} href={project.href} className="apx-project-link">
-                  <span>
-                    <strong>{project.title}</strong>
-                    <small>{project.copy}</small>
-                  </span>
-                  <span className="apx-project-action">{project.label} <span aria-hidden="true">→</span></span>
+                <Link key={project.title} href={project.href} className="apx-orbit-link">
+                  <i>0{index + 4}</i><span><strong>{project.title}</strong><small>{project.copy}</small></span><b>→</b>
                 </Link>
               )
             ))}
           </div>
         </section>
 
-        <section className="apx-section apx-section--compact" aria-labelledby="principles-title">
-          <div className="apx-trust-panel">
-            <div className="apx-trust-intro">
-              <p className="apx-kicker">The ground rules</p>
-              <h2 id="principles-title">Consent, context, and clear claims.</h2>
-              <p>
-                The interface should tell you what a place is, what it can do,
-                and what happens to your participation before asking anything
-                from you.
-              </p>
-            </div>
-            <div className="apx-trust-list">
-              <div>
-                <strong>Consent is explicit</strong>
-                <span>Participation is chosen and can be withdrawn.</span>
-              </div>
-              <div>
-                <strong>Context stays available</strong>
-                <span>Details appear when useful, not as permanent clutter.</span>
-              </div>
-              <div>
-                <strong>Claims stay grounded</strong>
-                <span>Plans, prototypes, and operational features are named differently.</span>
-              </div>
-            </div>
+        <section className="apx-covenant-section" aria-labelledby="principles-title">
+          <div className="apx-covenant-mark" aria-hidden="true"><span>∞</span></div>
+          <div className="apx-covenant-copy">
+            <p className="apx-kicker">The membrane</p>
+            <h2 id="principles-title">Wild possibility. Clear boundaries.</h2>
+            <p>Ambition expands inside consent, provenance, and reversible action. The interface keeps those boundaries legible without turning the experience into bureaucracy.</p>
+          </div>
+          <div className="apx-covenant-list">
+            <div><i>01</i><strong>Consent</strong><span>Participation is chosen and withdrawable.</span></div>
+            <div><i>02</i><strong>Context</strong><span>Depth appears when it changes the decision.</span></div>
+            <div><i>03</i><strong>Truth</strong><span>Proposal, observation, and proof stay distinct.</span></div>
           </div>
         </section>
       </main>

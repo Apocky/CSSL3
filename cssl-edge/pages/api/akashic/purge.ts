@@ -11,16 +11,13 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
-import { getSupabase } from '@/lib/supabase';
-import { isSovereignFromIncoming } from '@/lib/sovereign';
+import { getSupabaseService } from '@/lib/supabase';
 
 const CAP_HEADER = 'x-akashic-cap-witness';
 const MIN_WITNESS_LEN = 8;
 
 interface PurgeBody {
   session_id?: string;
-  user_cap_hash?: string;
-  sovereign?: boolean;
 }
 
 interface OkResp {
@@ -65,16 +62,16 @@ export default async function handler(
   }
 
   const body = (req.body ?? {}) as PurgeBody;
-  const sovereignBypass = isSovereignFromIncoming(req.headers, body.sovereign);
+  if (body.session_id !== undefined && (typeof body.session_id !== 'string' || body.session_id.length > 64)) {
+    const env = envelope();
+    res.status(400).json({ served_by: env.served_by, ts: env.ts, error: 'invalid session_id' });
+    return;
+  }
+  // The caller may never select an arbitrary deletion target. The target is
+  // derived only from the presented witness, matching the client-side link.
+  const target_hash = hash16(witness);
 
-  // Either : (a) sovereign-bypass ⇒ purge using supplied user_cap_hash directly
-  //          (b) regular ⇒ derive user_cap_hash by hashing the witness
-  const target_hash =
-    sovereignBypass && typeof body.user_cap_hash === 'string'
-      ? body.user_cap_hash
-      : hash16(witness);
-
-  const sb = getSupabase();
+  const sb = getSupabaseService();
   if (sb === null) {
     // stub-mode · no DB to delete from. Return 0 deletions (truthful).
     const env = envelope();

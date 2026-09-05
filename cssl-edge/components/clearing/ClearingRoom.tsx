@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
 
 import type { ClearingMember, ClearingMessage, ClearingReaction, ClearingRoom, ClearingLiveState } from '../../lib/clearing/client';
+import CyberDreamField from '../cyber/CyberDreamField';
 import styles from './Clearing.module.css';
 
 export type ClearingContextAxis = 'People' | 'Meaning' | 'Visibility' | 'Time';
@@ -68,6 +69,7 @@ export function ClearingRoom(props: ClearingRoomProps): JSX.Element {
 
   return (
     <main className={styles.clearing} aria-label="The Clearing public room">
+      <CyberDreamField variant="clearing" activity={props.sending ? 'thinking' : props.draft.trim() ? 'listening' : 'idle'} density={0.72} viewport />
       <div className={styles.world} aria-hidden="true"><span className={styles.orbit} /><span className={styles.glow} /></div>
       <div className={styles.frame}>
         <header className={styles.header}>

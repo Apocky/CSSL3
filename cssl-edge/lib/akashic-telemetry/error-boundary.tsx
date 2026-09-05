@@ -19,6 +19,7 @@ export interface AkashicErrorBoundaryProps {
 
 interface AEBState {
   err: Error | null;
+  incidentRef: string | null;
 }
 
 // Normalize a stack-trace into a cluster-signature seed. Strips line-cols +
@@ -52,22 +53,26 @@ export function clusterSignature(stack: string, scope: string | undefined): stri
 }
 
 export class AkashicErrorBoundary extends React.Component<AkashicErrorBoundaryProps, AEBState> {
-  override state: AEBState = { err: null };
+  override state: AEBState = { err: null, incidentRef: null };
 
   static getDerivedStateFromError(err: Error): AEBState {
-    return { err };
+    return { err, incidentRef: null };
   }
 
   override componentDidCatch(err: Error, info: { componentStack?: string }): void {
     const stack = err.stack ?? '';
     const componentStack = info.componentStack ?? '';
+    const cluster = clusterSignature(`${stack}\n${componentStack}`, this.props.scope);
+    const reactErrorCode = /Minified React error #(\d+)/.exec(err.message)?.[1] ?? null;
     capture('react.error', {
       message: err.message ?? 'unknown',
       stack: stack.slice(0, 4000),
       component_stack: componentStack.slice(0, 4000),
-      cluster_signature: clusterSignature(stack, this.props.scope),
+      cluster_signature: cluster,
+      error_code: reactErrorCode ? `react-${reactErrorCode}` : null,
       scope: this.props.scope ?? 'global',
     });
+    this.setState({ incidentRef: cluster });
   }
 
   override render(): React.ReactNode {
@@ -75,14 +80,14 @@ export class AkashicErrorBoundary extends React.Component<AkashicErrorBoundaryPr
       const fb = this.props.fallback;
       if (typeof fb === 'function') return fb(this.state.err);
       if (fb !== undefined) return fb;
-      return defaultFallback(this.state.err, () => this.setState({ err: null }));
+      return defaultFallback(this.state.err, this.state.incidentRef, () => this.setState({ err: null, incidentRef: null }));
     }
     return this.props.children;
   }
 }
 
 // ─── default-fallback · sovereignty-respecting copy · NO blame-the-user ────
-function defaultFallback(err: Error, retry: () => void): React.ReactElement {
+function defaultFallback(err: Error, incidentRef: string | null, retry: () => void): React.ReactElement {
   return (
     <div
       role="alert"
@@ -116,6 +121,11 @@ function defaultFallback(err: Error, retry: () => void): React.ReactElement {
       >
         {err.message}
       </pre>
+      {incidentRef ? (
+        <p style={{ opacity: 0.75, fontFamily: 'ui-monospace, monospace', fontSize: '0.8rem' }}>
+          Incident fingerprint: <code>{incidentRef}</code>
+        </p>
+      ) : null}
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
         <button
           type="button"

@@ -56,13 +56,14 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
   ));
 
   return (
-    <div className="apx-shell">
+    <div className="apx-shell apx-dream-shell">
       <a className="apx-skip-link" href="#main-content">Skip to main content</a>
-      <header>
+      <header className="apx-dream-header">
         <nav className="apx-nav" aria-label="Primary navigation">
+          <span className="apx-nav-aura" aria-hidden="true" />
           <Link href="/" className="apx-brand" aria-label="Apocky home">
             <span className="apx-brand-mark" aria-hidden="true" />
-            <span>APOCKY</span>
+            <span className="apx-brand-copy"><strong>APOCKY</strong><small>COMMONS / RELAY</small></span>
           </Link>
 
           <div className="apx-nav-links" aria-label="Explore Apocky">
@@ -70,6 +71,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
           </div>
 
           <div className="apx-nav-actions">
+            <span className="apx-nav-signal" aria-hidden="true"><i /> LIVE FIELD</span>
             <Link
               href={authenticated ? '/account' : '/login?next=%2Faccount'}
               className="apx-nav-action"
@@ -89,7 +91,8 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
 
       <div id="main-content" className="apx-main" tabIndex={-1}>{children}</div>
 
-      <footer className="apx-footer">
+      <footer className="apx-footer apx-dream-footer">
+        <div className="apx-footer-horizon" aria-hidden="true"><span /><i>∞</i><span /></div>
         <div className="apx-footer-inner">
           <div>
             <Link href="/" className="apx-brand">

@@ -48,6 +48,7 @@ export type RoomPeerRow = {
 
 // Singleton state — lazily initialized on first getSupabase() call.
 let _client: SupabaseClient | null | undefined;
+let _serviceClient: SupabaseClient | null | undefined;
 
 // Returns a configured client OR null when env-vars missing. Routes test for
 // null and fall back to mocked behavior (no Supabase round-trip).
@@ -65,10 +66,25 @@ export function getSupabase(): SupabaseClient | null {
   return _client;
 }
 
+// Server-only service client for routes that have already completed their own
+// explicit authorization check. Never import this helper into browser code.
+export function getSupabaseService(): SupabaseClient | null {
+  if (_serviceClient !== undefined) return _serviceClient;
+  const url = process.env['APOCKY_HUB_SUPABASE_URL'] ?? process.env['NEXT_PUBLIC_SUPABASE_URL'];
+  const key = process.env['APOCKY_HUB_SUPABASE_SERVICE_ROLE_KEY'] ?? process.env['SUPABASE_SERVICE_ROLE_KEY'];
+  if (!url || !key) {
+    _serviceClient = null;
+    return null;
+  }
+  _serviceClient = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return _serviceClient;
+}
+
 // Test-only escape hatch : reset the singleton so per-test env-var changes take
 // effect. Not exported in production paths.
 export function _resetSupabaseForTests(): void {
   _client = undefined;
+  _serviceClient = undefined;
 }
 
 // ─── Room CRUD helpers ─────────────────────────────────────────────────────

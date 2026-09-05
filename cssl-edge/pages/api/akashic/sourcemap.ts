@@ -8,7 +8,7 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
-import { isSovereignFromIncoming } from '@/lib/sovereign';
+import { requireAdmin } from '@/lib/require-admin';
 
 interface OkResp {
   served_by: string;
@@ -20,11 +20,12 @@ interface OkResp {
 }
 interface ErrResp { served_by: string; ts: string; error: string; }
 
-export default function handler(
+export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<OkResp | ErrResp>
-): void {
+): Promise<void> {
   logHit('akashic.sourcemap', { method: req.method ?? 'GET' });
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
   if (req.method !== 'GET') {
     const env = envelope();
     res.setHeader('Allow', 'GET');
@@ -32,16 +33,9 @@ export default function handler(
     return;
   }
 
-  // Sovereign-cap required (source-maps can leak proprietary build paths).
-  const sov = isSovereignFromIncoming(
-    req.headers,
-    (req.query['sovereign'] as string) === 'true'
-  );
-  if (!sov) {
-    const env = envelope();
-    res.status(401).json({ served_by: env.served_by, ts: env.ts, error: 'sovereign-cap required' });
-    return;
-  }
+  // Source-map metadata is owner-only; a public header sentinel is not an
+  // authorization boundary. requireAdmin validates the current Supabase user.
+  if (!(await requireAdmin(req, res))) return;
 
   const bundleRaw = req.query['bundle_url'];
   const bundle_url = Array.isArray(bundleRaw) ? bundleRaw[0] ?? '' : bundleRaw ?? '';

@@ -316,6 +316,36 @@ export function capture(
   if (state.consent_tier === 'none') return '';
   const ts = nowIso();
   const cell_id = hash16(`${ts}|${state.session_id}|${kind}|${JSON.stringify(payload)}`);
+  const suppliedTrace = typeof payload['trace_id'] === 'string' && /^[0-9a-f]{32}$/i.test(payload['trace_id'])
+    ? payload['trace_id'].toLowerCase()
+    : null;
+  const trace_id = suppliedTrace
+    ?? `${hash16(`trace-a|${state.session_id}|${state.page_load_dpl_id}`)}${hash16(`trace-b|${state.session_id}|${state.page_load_dpl_id}`)}`;
+  const severity = /error|fail|unhandled/.test(kind)
+    ? 'error'
+    : /warn|slow|deploy\.detected/.test(kind)
+      ? 'warn'
+      : 'info';
+  const outcome = /error|fail|unhandled/.test(kind)
+    ? 'failed'
+    : /slow|deploy\.detected/.test(kind)
+      ? 'degraded'
+      : 'observed';
+  const telemetryPayload = {
+    ...payload,
+    schema_version: 'apocky.browser-telemetry.v1',
+    event_id: cell_id,
+    trace_id,
+    span_id: cell_id,
+    parent_span_id: null,
+    telemetry_source: 'browser',
+    plane: 'browser',
+    severity,
+    outcome,
+    route: typeof location !== 'undefined' ? location.pathname.slice(0, 256) : '/',
+    privacy_tier: state.consent_tier,
+    redacted: true,
+  };
   const candidate: AkashicEvent = {
     cell_id,
     ts_iso: ts,
@@ -324,7 +354,7 @@ export function capture(
     commit_sha: state.commit_sha,
     build_time: state.build_time,
     kind,
-    payload,
+    payload: telemetryPayload,
     session_id: state.session_id,
   };
   if (state.cap_witness !== undefined) candidate.cap_witness = state.cap_witness;
