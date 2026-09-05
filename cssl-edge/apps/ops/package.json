@@ -1,0 +1,21 @@
+{
+  "name": "@apocky/ops",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3102",
+    "build": "next build",
+    "start": "next start --port 3102",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test tests/auth.test.ts tests/confirmation.test.ts tests/routes.test.ts"
+  },
+  "dependencies": {
+    "@apocky/contracts": "1.0.0",
+    "@apocky/security": "1.0.0",
+    "@apocky/visual-tokens": "1.0.0",
+    "next": "16.2.11",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.4.3"
+  }
+}

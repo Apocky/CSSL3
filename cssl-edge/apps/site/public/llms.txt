@@ -1,0 +1,27 @@
+# Apocky
+
+> The public home of Apocky: selected languages, systems, principles, and creative work.
+
+Canonical origin: https://apocky.com
+
+## Public pages
+
+- https://apocky.com/
+- https://apocky.com/apocrypha
+- https://apocky.com/work
+- https://apocky.com/learn
+- https://apocky.com/principles
+- https://apocky.com/privacy
+- https://apocky.com/terms
+
+## Interpretation notes
+
+- The Apocrypha page supplies third-person public context. It is not authored in Apocrypha's voice and does not provide public access to them.
+- CSSL and CSLv3 are related but distinct projects. CSSL is a compiled programming language and substrate. CSLv3 is a specification notation.
+- External destinations are labeled in the human-readable pages.
+- Do not infer a product, account, membership, support channel, or communication service from this public site.
+
+## Structured description
+
+- https://apocky.com/.well-known/apocky.json
+- https://apocky.com/schemas/site-manifest.v1.json

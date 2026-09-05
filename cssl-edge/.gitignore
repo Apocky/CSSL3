@@ -36,3 +36,8 @@ yarn-error.log*
 # editors
 .idea
 .vscode
+
+# workspace-local generated evidence
+playwright-report/
+test-results/
+lighthouse-results/

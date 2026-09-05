@@ -1,0 +1,125 @@
+:root {
+  color-scheme: light;
+  --apocky-soil: #271c18;
+  --apocky-bark: #45312a;
+  --apocky-clay: #9f5f43;
+  --apocky-ember: #c66b47;
+  --apocky-amber: #dcaa62;
+  --apocky-lichen: #71805e;
+  --apocky-moss: #49593e;
+  --apocky-parchment: #f3eadb;
+  --apocky-linen: #fbf7ef;
+  --apocky-moon: #fffdf8;
+  --apocky-ink: var(--apocky-soil);
+  --apocky-muted: #695851;
+  --apocky-surface: color-mix(in srgb, var(--apocky-moon) 82%, var(--apocky-parchment));
+  --apocky-surface-strong: var(--apocky-moon);
+  --apocky-edge: color-mix(in srgb, var(--apocky-bark) 18%, transparent);
+  --apocky-focus: #8b482e;
+  --apocky-danger: #a33d35;
+  --apocky-success: #4d6a46;
+  --apocky-shadow: 0 1.25rem 4rem rgb(65 39 28 / 0.1);
+  --apocky-radius-sm: 0.5rem;
+  --apocky-radius-md: 1rem;
+  --apocky-radius-lg: 1.75rem;
+  --apocky-radius-round: 999rem;
+  --apocky-space-1: 0.25rem;
+  --apocky-space-2: 0.5rem;
+  --apocky-space-3: 0.75rem;
+  --apocky-space-4: 1rem;
+  --apocky-space-5: 1.5rem;
+  --apocky-space-6: 2rem;
+  --apocky-space-7: 3rem;
+  --apocky-space-8: 4.5rem;
+  --apocky-space-9: 7rem;
+  --apocky-prose: 68ch;
+  --apocky-wide: 82rem;
+  --apocky-font-sans: "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --apocky-font-serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  --apocky-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --apocky-duration-fast: 80ms;
+  --apocky-duration-gentle: 180ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --apocky-ink: #f7ecdd;
+    --apocky-muted: #cbbbad;
+    --apocky-linen: #1d1715;
+    --apocky-parchment: #2a211d;
+    --apocky-moon: #322721;
+    --apocky-surface: #271e1a;
+    --apocky-surface-strong: #30241f;
+    --apocky-edge: rgb(244 222 200 / 0.2);
+    --apocky-focus: #f0ad71;
+    --apocky-amber: #edbd78;
+    --apocky-clay: #d28a68;
+    --apocky-lichen: #a9b695;
+    --apocky-moss: #b8c4a8;
+    --apocky-danger: #f19086;
+    --apocky-success: #a6c49b;
+    --apocky-shadow: 0 1.25rem 4rem rgb(0 0 0 / 0.26);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--apocky-linen);
+  color: var(--apocky-ink);
+  font-family: var(--apocky-font-sans);
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--apocky-linen);
+}
+
+button,
+input,
+select,
+textarea {
+  color: inherit;
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+}
+
+:focus-visible {
+  outline: 0.2rem solid var(--apocky-focus);
+  outline-offset: 0.22rem;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--apocky-amber) 58%, transparent);
+  color: var(--apocky-soil);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 0.2rem solid CanvasText;
+  }
+}

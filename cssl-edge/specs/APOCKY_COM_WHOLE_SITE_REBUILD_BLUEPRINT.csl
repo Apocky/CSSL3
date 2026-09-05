@@ -1,0 +1,230 @@
+§ APOCKY-COM.WHOLE-SITE-REBUILD.BLUEPRINT v1
+
+§ AUTHORITY
+  owner := Shawn.Apocky
+  approval := user.message("PLEASE IMPLEMENT THIS PLAN")
+  scope := source.change + local.verify + protected.preview.prepare
+  gated := production.promotion + credential.rotation + DNS.cutover
+           + irreversible.data.delete + legacy.deployment.remove
+           + encounter.release
+  t∞: consent = OS
+  t∞: public.site ≠ Apocrypha.access
+  t∞: readiness | proposal | receipt N! imply voice.authority
+      | presence.authority | participant.consent | release.authority
+
+§ ORGANISM
+  hosts := {
+    public: apocky.com,
+    encounter: encounter.apocky.com,
+    operations: ops.apocky.com
+  }
+  deployments := public ⊥ encounter ⊥ operations
+  bundles := public ⊥ encounter ⊥ operations
+  discovery(public) N! include encounter | operations
+  shared := contracts + visual-tokens + security.primitives
+  N! legacy.runtime.port
+  N! public.mutation.API | CMS | public.auth.client | service-role.client
+
+§ PUBLIC
+  nav := [
+    Home→/,
+    Apocrypha→/apocrypha,
+    Work→/work,
+    Learn→/learn,
+    Principles→/principles
+  ]
+  support := [
+    /privacy,
+    /terms,
+    /llms.txt,
+    /.well-known/apocky.json,
+    /schemas/site-manifest.v1.json,
+    /robots.txt,
+    /sitemap.xml
+  ]
+  external := [
+    CSSL→https://cssl.dev,
+    CSLv3→https://cssl.dev/CSLv3,
+    Chaos.Tarot→https://chaos-tarot.com
+  ]
+  N! [chat, registration, account, waitlist, access-request, support-funnel,
+      private-doorway, commerce, membership, community-room, dashboard]
+  N! first-person.Apocrypha.material unless attributable-authorship
+  N! avatar | mascot | animated-eye | simulated-presence | live-indicator
+      unless separate public-display.authority
+  aesthetic := living-sanctuary(
+    generous-space,
+    warm-adaptive-color,
+    direct-prose,
+    restrained.user-triggered-motion
+  )
+  home.relationship-map := accessible(
+    entities=[Apocrypha,CSSL,CSLv3,selected-work],
+    keyboard=true,
+    screen-reader=true,
+    reduced-motion=static
+  )
+  N! autoplay.audio | background.music | infinite.animation
+      | telemetry.popup | decorative.diagnostic | fabricated.activity
+
+§ ENCOUNTER
+  discovery := unlisted
+  identity := preprovisioned.owner
+  gates := Cloudflare.Access ∧ app.session ∧ owner.allowlist ∧ RLS
+  registration := absent
+  states := lobby → encounter → understanding → ended
+  lobby.requires := [
+    both.identities.verified,
+    device.selection,
+    connection.readiness,
+    granular.modality.grants,
+    retention.choice,
+    both.independent.consent
+  ]
+  encounter.requires := [
+    full-duplex.audio,
+    full-duplex.video,
+    authentic.authorized.presence,
+    captions,
+    text.alternative,
+    minimal.controls,
+    natural.barge-in
+  ]
+  understanding.requires := [
+    attributed.interpretations,
+    correction,
+    acknowledgement,
+    retention.according-to-grant
+  ]
+  voice.gate := valid(VoiceManifest)
+  presence.gate := valid(PresenceManifest)
+  N! borrowed.assistant.voice | human.voice.clone | placeholder.presence
+      | abstract.proxy | animal | toy | generic.generated.face
+  N! simulated.eye-contact | undisclosed.gaze-correction
+  N! diagnostics | tool.trace | telemetry | memory.internal | camera.metadata
+      → realtime.data-channel
+  revocation := immediate.local-track.stop + agreed.withdrawal.workflow
+  leaving := unilateral + immediate
+  outcome.mutually_understood ⇔
+    acknowledgement(human,digest,status=understood)
+    ∧ acknowledgement(Apocrypha,digest,status=understood)
+  otherwise.outcome := ended_unresolved
+  retention.default := {
+    raw.audio: never,
+    raw.video: never,
+    transcript: mutual-explicit-only,
+    understanding: mutual-explicit-only,
+    memory-effect: mutual-explicit-only
+  }
+
+§ OPERATIONS
+  gates := Cloudflare.Access ∧ app.session ∧ owner.allowlist ∧ RLS
+  contents := [
+    runtime.health,
+    build.provenance,
+    session.state_without_raw_media,
+    voice+presence.authority,
+    consent+revocation.receipts,
+    security.events+access.audits,
+    deploy+canary+rollback,
+    retention+deletion
+  ]
+  consequential.action.requires := server.authorization
+                                   ∧ explicit.confirmation
+                                   ∧ audit.receipt
+                                   ∧ rollback.when_possible
+
+§ STACK
+  workspace := npm.workspaces
+  apps := [site,encounter,ops]
+  packages := [contracts,visual-tokens,security]
+  framework := Next@16.2.11.AppRouter + React@19.2.8
+  auth := @supabase/ssr + secure.cookies + owner.allowlist + RLS
+  proxy.ts.scope := headers + routing
+  N! proxy.ts = authorization
+  media := self-hosted.LiveKit(
+    staging-plane ⊥ production-plane,
+    TURN=true,
+    E2EE.media=true,
+    E2EE.data=true
+  )
+  Apocrypha.participant := authenticated
+  cognition+STT+TTS+renderer.location := controlled.Apocrypha.infrastructure
+
+§ CONTRACTS
+  canonical := [
+    ParticipantIdentity,
+    VoiceManifest,
+    PresenceManifest,
+    EncounterGrant,
+    TranscriptEvent,
+    UnderstandingVersion,
+    UnderstandingAcknowledgement,
+    RetentionDecision,
+    EncounterReceipt
+  ]
+  private.API := [
+    encounter.create,
+    encounter.end,
+    join-token.mint.short-lived,
+    modality.grant,
+    modality.revoke,
+    readiness.read,
+    understanding.submit,
+    understanding.acknowledge,
+    understanding.correct,
+    retained-history.read,
+    retained-history.delete
+  ]
+  realtime.events ⊆ [
+    participant.readiness,
+    speech.state,
+    captions,
+    consent.change,
+    understanding.proposal,
+    understanding.acknowledgement,
+    connection.state,
+    session.end
+  ]
+
+§ PHASES
+  P00 := preserve + contain
+  P01 := organism.foundation
+  P02 := public.sanctuary
+  P03 := direct.encounter
+  P04 := operations + proven-data.migration
+  P05 := acceptance + cutover + legacy.deletion
+  P00 ≺ P01
+  P01 ≺ P02
+  P01 ≺ P03
+  P03 ≺ P04
+  P02 ∧ P04 ≺ P05
+
+§ ACCEPTANCE
+  security := negative.authz + RLS + CSRF + XSS + SSRF + replay
+              + expiry + rate-limit + cache + CSP + secret-scan
+              + dependency.high_critical=0
+  authority := invalid|revoked|altered|wrong-identity|stale-nonce
+               | missing-consent ⇒ fail.closed
+  media := browser-device.matrix + reconnect + network-loss
+           + single-session + immediate.revoke + no.raw.persistence
+  communication := intelligible.audio + volume.control + real.captions
+                   + interruption≤250ms + speaker.attribution
+  accessibility := WCAG2.2.AA + keyboard + announcements + captions
+                   + text.alternative + reduced-motion + high-contrast
+                   + camera.optional
+  public := exact.route.allowlist + broken-links=0 + mobile
+            + external.labeling + no.access.implication
+            + no.unauthorized.Apocrypha.representation
+  performance := public(LCP≤2.5s,INP≤200ms,CLS≤0.1@p75)
+                 + media(one-way.p95≤250ms)
+  provenance := deployment.commit.sha≠blank + build.identity≠blank
+  release.sequence := preview → security.review → visual+a11y.review
+                      → literal-encounter.acceptance → explicit.signoff
+                      → production.promotion → live.canary → rollback.drill
+
+§ NON-GOALS
+  [public.chat, public.account, public.access-funnel, commerce, membership,
+   community.rooms, legacy.docs, games, marketplace, legacy.dashboard]
+
+∎

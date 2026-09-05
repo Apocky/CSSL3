@@ -1,0 +1,17 @@
+{
+  "name": "@apocky/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@apocky/security",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/headers.ts",
+    "./client": "./src/client.ts",
+    "./server": "./src/server.ts",
+    "./policy": "./src/policy.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@apocky/contracts": "1.0.0",
+    "@supabase/ssr": "0.12.3",
+    "@supabase/supabase-js": "2.110.8",
+    "jose": "6.2.4",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "next": "16.2.11"
+  }
+}

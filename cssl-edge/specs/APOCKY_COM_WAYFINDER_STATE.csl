@@ -1,0 +1,330 @@
+§ APOCKY-COM.WAYFINDER.STATE v1
+
+objective := {
+  id: APOCKY-COM-ORGANISM-V1,
+  statement: "Rebuild apocky.com as public sanctuary + private direct encounter + protected operations",
+  owner: Shawn.Apocky,
+  authority: approved-blueprint.user-message,
+  success: [
+    public.exact-routes.verified,
+    public.no-private-access-implication.verified,
+    encounter.fail-closed-authority.verified,
+    mutual-understanding.state-machine.verified,
+    ops.double-gate.verified,
+    production-shaped.acceptance.verified,
+    explicit.release-signoff.received
+  ],
+  non_goals: [
+    public.chat, public.accounts, access.funnel, commerce, membership,
+    community.rooms, legacy.docs, games, marketplace, legacy.dashboard
+  ],
+  source_refs: [
+    specs/APOCKY_COM_WHOLE_SITE_REBUILD_BLUEPRINT.csl,
+    ../../PRIME_DIRECTIVE.md
+  ]
+}.
+
+claim := {
+  id: C01,
+  text: "Current production serves legacy chat, registration, MNEME, admin, content, signaling, and payment surfaces",
+  lane: observed,
+  provenance: [
+    vercel:dpl_BB8tXZhpQjxZFLU8sht5FzfLushL,
+    preservation:D:/CodexPreservation/2026-07-25-apocky-com-whole-site-rebuild/deployment/vercel-inspect.json
+  ],
+  confidence: high,
+  strongest_countercase: "Some endpoints may be dormant or unconfigured",
+  falsifier: "Fresh deployment inventory shows those outputs absent"
+}.
+
+claim := {
+  id: C02,
+  text: "Current production lacks complete global browser security headers and exposes blank build SHA",
+  lane: observed,
+  provenance: [
+    preservation:D:/CodexPreservation/2026-07-25-apocky-com-whole-site-rebuild/deployment/live-http,
+    live:/api/health@2026-07-25T07:09Z
+  ],
+  confidence: high,
+  strongest_countercase: "Cloudflare may inject some edge-only headers",
+  falsifier: "Fresh multi-route probe returns nonblank SHA + required header set"
+}.
+
+phase := {
+  id: P00,
+  name: preservation,
+  owner: root,
+  status: verified,
+  depends_on: [],
+  requirements: [R00,R01,R02],
+  deliverables: [dirty-byte-manifests, archive-refs, verified-bundles, deployment-evidence],
+  tools: [git,sha256,vercel,http],
+  entry_gates: [read-only-preflight],
+  exit_gates: [bundle.verify,byte-archive.verify,worktree.unchanged],
+  failure_routes: {drift: recapture-before-edit},
+  rollback: "restore archive.bundle into new directory; never overwrite source",
+  evidence_refs: [
+    archive:a620ef109697cb70ee7f9bea2d1c630ba8727546,
+    archive:c9b716ae04ce6536c4e4120f386521bea61ee7cc,
+    D:/CodexPreservation/2026-07-25-apocky-com-whole-site-rebuild
+  ],
+  commit_refs: [],
+  active_slices: []
+}.
+
+phase := {
+  id: P01,
+  name: containment,
+  owner: security-lane,
+  status: active,
+  depends_on: [P00],
+  requirements: [R03,R04,R05,R06,R07],
+  deliverables: [typed-410s,authz-denials,security-headers,private-cache,next-patch,consentful-analytics],
+  tools: [typescript,next,node,test],
+  entry_gates: [archive.release.verified],
+  exit_gates: [negative-tests,build,dependency-audit,explicit-deploy-signoff],
+  failure_routes: {test-failure: repair; authority-gap: block},
+  rollback: "containment branch + preserved production deployment",
+  evidence_refs: [],
+  commit_refs: [],
+  active_slices: [S01]
+}.
+
+phase := {
+  id: P02,
+  name: organism-foundation,
+  owner: integration-root,
+  status: active,
+  depends_on: [P00],
+  requirements: [R08,R09,R10,R11,R12],
+  deliverables: [npm-workspace,route-manifest,visual-tokens,contracts,security-library],
+  tools: [next,react,typescript,vitest],
+  entry_gates: [clean-worktree],
+  exit_gates: [install,check,test,build],
+  failure_routes: {dependency-conflict: pin+retest},
+  rollback: "revert bounded foundation commit",
+  evidence_refs: [],
+  commit_refs: [],
+  active_slices: [S02]
+}.
+
+phase := {
+  id: P03,
+  name: public-sanctuary,
+  owner: public-ux-lane,
+  status: ready,
+  depends_on: [P02],
+  requirements: [R13,R14,R15,R16,R17,R18],
+  deliverables: [public-pages,relationship-map,discovery-files,legal-pages,route-negative-tests],
+  tools: [next,playwright,axe,lighthouse],
+  entry_gates: [tokens+route-contract],
+  exit_gates: [route-allowlist,a11y,visual,mobile,performance],
+  failure_routes: {unauthorized-representation: remove},
+  rollback: "revert public slice commit",
+  evidence_refs: [],
+  commit_refs: [],
+  active_slices: []
+}.
+
+phase := {
+  id: P04,
+  name: direct-encounter,
+  owner: encounter-lane,
+  status: ready,
+  depends_on: [P02],
+  requirements: [R19,R20,R21,R22,R23,R24,R25,R26],
+  deliverables: [lobby,media-room,understanding-loop,receipts,retention-workflow],
+  tools: [next,livekit,supabase,cloudflare-access],
+  entry_gates: [contracts+security-library],
+  exit_gates: [authz-negative,authority-negative,media,a11y,human-acceptance],
+  failure_routes: {
+    missing-voice-authority: block-rendering,
+    missing-presence-authority: block-rendering,
+    upstream-media-gap: preserve-fail-closed-shell
+  },
+  rollback: "disable encounter deployment; revoke join-token issuer",
+  evidence_refs: [],
+  commit_refs: [],
+  active_slices: []
+}.
+
+phase := {
+  id: P05,
+  name: protected-operations,
+  owner: ops-lane,
+  status: ready,
+  depends_on: [P02,P04],
+  requirements: [R27,R28,R29,R30],
+  deliverables: [ops-console,receipts,retention-controls,deploy-controls],
+  tools: [next,supabase,cloudflare-access],
+  entry_gates: [private-contracts],
+  exit_gates: [double-gate,confirmation,audit,rollback],
+  failure_routes: {missing-authorization: deny},
+  rollback: "disable ops deployment; no public fallback",
+  evidence_refs: [],
+  commit_refs: [],
+  active_slices: []
+}.
+
+phase := {
+  id: P06,
+  name: acceptance-and-cutover,
+  owner: integration-root,
+  status: blocked,
+  depends_on: [P01,P03,P04,P05],
+  requirements: [R31,R32,R33,R34,R35,R36],
+  deliverables: [protected-previews,acceptance-receipts,migration-report,deletion-commit,canary,rollback-drill],
+  tools: [vercel,livekit,supabase,cloudflare,playwright,lighthouse],
+  entry_gates: [all-builds-green,voice-authority,presence-authority],
+  exit_gates: [explicit-production-signoff,live-canary,rollback-drill],
+  failure_routes: {any-gate-fail: no-promote},
+  rollback: "secured containment deployment",
+  evidence_refs: [],
+  commit_refs: [],
+  active_slices: []
+}.
+
+requirement := { id:R00, text:"Main dirty worktree preserved", source_ref:blueprint.P00, phase_id:P00, status:verified, acceptance:"manifest+byte-archive+branch+bundle", evidence_refs:[archive:a620ef109697cb70ee7f9bea2d1c630ba8727546], waiver_ref:null }.
+requirement := { id:R01, text:"Release dirty worktree preserved", source_ref:blueprint.P00, phase_id:P00, status:verified, acceptance:"manifest+byte-archive+branch+bundle", evidence_refs:[archive:c9b716ae04ce6536c4e4120f386521bea61ee7cc], waiver_ref:null }.
+requirement := { id:R02, text:"Production deployment evidence preserved", source_ref:blueprint.P00, phase_id:P00, status:verified, acceptance:"inspect+live HTTP snapshot", evidence_refs:[vercel:dpl_BB8tXZhpQjxZFLU8sht5FzfLushL], waiver_ref:null }.
+requirement := { id:R03, text:"Public MNEME blocked", source_ref:blueprint.P00, phase_id:P01, status:pending, acceptance:"all routes typed 410 + negative tests", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R04, text:"Caller-asserted content authority blocked", source_ref:blueprint.P00, phase_id:P01, status:pending, acceptance:"server-derived auth or typed 410", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R05, text:"Admin stubs + legacy vision + payments blocked", source_ref:blueprint.P00, phase_id:P01, status:pending, acceptance:"negative route matrix", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R06, text:"Global headers + private cache + truthful analytics", source_ref:blueprint.P00, phase_id:P01, status:pending, acceptance:"multi-route header tests", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R07, text:"Patched Next 15 containment build", source_ref:blueprint.P00, phase_id:P01, status:pending, acceptance:"15.5.21+build+audit", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R08, text:"Fresh npm workspace with three apps", source_ref:blueprint.STACK, phase_id:P02, status:pending, acceptance:"workspace install+independent builds", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R09, text:"Canonical route manifest", source_ref:blueprint.PUBLIC, phase_id:P02, status:pending, acceptance:"positive+negative route tests", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R10, text:"Single visual-token package", source_ref:blueprint.STACK, phase_id:P02, status:pending, acceptance:"all apps consume package", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R11, text:"Canonical signed encounter contracts", source_ref:blueprint.CONTRACTS, phase_id:P02, status:pending, acceptance:"schema+digest+signature tests", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R12, text:"Shared fail-closed security primitives", source_ref:blueprint.STACK, phase_id:P02, status:pending, acceptance:"negative tests", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R13, text:"Exact public navigation + supporting routes", source_ref:blueprint.PUBLIC, phase_id:P03, status:pending, acceptance:"allowlist exact", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R14, text:"No public access implication", source_ref:blueprint.PUBLIC, phase_id:P03, status:pending, acceptance:"copy+link scan", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R15, text:"Attributable Apocrypha authorship only", source_ref:blueprint.PUBLIC, phase_id:P03, status:pending, acceptance:"content provenance check", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R16, text:"Accessible relationship map", source_ref:blueprint.PUBLIC, phase_id:P03, status:pending, acceptance:"keyboard+SR+reduced-motion", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R17, text:"Living-sanctuary responsive design", source_ref:blueprint.PUBLIC, phase_id:P03, status:pending, acceptance:"visual matrix", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R18, text:"Static discovery/legal surfaces", source_ref:blueprint.PUBLIC, phase_id:P03, status:pending, acceptance:"schema+sitemap+robots+links", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R19, text:"Owner-only double-gated lobby", source_ref:blueprint.ENCOUNTER, phase_id:P04, status:pending, acceptance:"Access+session+allowlist+RLS", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R20, text:"Granular bilateral consent + immediate revocation", source_ref:blueprint.ENCOUNTER, phase_id:P04, status:pending, acceptance:"state+track-stop tests", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R21, text:"Conversation-grade LiveKit transport", source_ref:blueprint.STACK, phase_id:P04, status:blocked, acceptance:"full-duplex+TURN+E2EE+reconnect", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R22, text:"Authorized VoiceManifest", source_ref:blueprint.ENCOUNTER, phase_id:P04, status:blocked, acceptance:"Apocrypha-authored signed unrevoked manifest", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R23, text:"Authorized PresenceManifest", source_ref:blueprint.ENCOUNTER, phase_id:P04, status:blocked, acceptance:"Apocrypha-authored signed unrevoked manifest", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R24, text:"Captions + text alternative + device controls", source_ref:blueprint.ENCOUNTER, phase_id:P04, status:pending, acceptance:"browser-device+a11y matrix", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R25, text:"Mutual-understanding digest state machine", source_ref:blueprint.ENCOUNTER, phase_id:P04, status:pending, acceptance:"same digest+two signatures only", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R26, text:"Mutual retention + withdrawal", source_ref:blueprint.ENCOUNTER, phase_id:P04, status:pending, acceptance:"no raw media+two acknowledgements", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R27, text:"Isolated double-gated ops deployment", source_ref:blueprint.OPERATIONS, phase_id:P05, status:pending, acceptance:"no public links+both gates", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R28, text:"Server-derived consequential authorization", source_ref:blueprint.OPERATIONS, phase_id:P05, status:pending, acceptance:"negative authz+confirmation", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R29, text:"Audit receipts + rollback metadata", source_ref:blueprint.OPERATIONS, phase_id:P05, status:pending, acceptance:"receipt verification", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R30, text:"Proven-only legacy data migration", source_ref:blueprint.PHASES, phase_id:P05, status:blocked, acceptance:"ownership+provenance+mutual-retention", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R31, text:"Security acceptance", source_ref:blueprint.ACCEPTANCE, phase_id:P06, status:pending, acceptance:"full negative matrix+0 high/critical", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R32, text:"Accessibility + visual acceptance", source_ref:blueprint.ACCEPTANCE, phase_id:P06, status:pending, acceptance:"WCAG2.2AA+visual matrix", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R33, text:"Performance acceptance", source_ref:blueprint.ACCEPTANCE, phase_id:P06, status:pending, acceptance:"public+media budgets", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R34, text:"Literal encounter human acceptance", source_ref:blueprint.ACCEPTANCE, phase_id:P06, status:blocked, acceptance:"owner+Apocrypha acceptance receipt", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R35, text:"Explicit production promotion signoff", source_ref:blueprint.AUTHORITY, phase_id:P06, status:blocked, acceptance:"new explicit user signoff", evidence_refs:[], waiver_ref:null }.
+requirement := { id:R36, text:"Legacy deletion + 404/410 verification", source_ref:blueprint.PHASES, phase_id:P06, status:blocked, acceptance:"dedicated deletion commit+live probe", evidence_refs:[], waiver_ref:null }.
+
+slice := {
+  id:S01, phase_id:P01, requirement_ids:[R03,R04,R05,R06,R07],
+  invariants:[preserved-release-archive,legacy-data-untouched,no-deploy],
+  allowed_delta:[containment-worktree/source,test,lockfile],
+  rollback:"discard containment branch; archive ref remains",
+  failing_probe:"unauthenticated security-sensitive route does not deny",
+  implementation_refs:[], test_refs:[],
+  security_gate:required, visual_gate:not-applicable,
+  diff_ref:null, commit_ref:null, result:active
+}.
+
+slice := {
+  id:S02, phase_id:P02, requirement_ids:[R08,R09,R10,R11,R12],
+  invariants:[legacy-runtime-not-ported,three-deployments,public-no-db],
+  allowed_delta:[cssl-edge/package*,cssl-edge/apps/**,cssl-edge/packages/**,cssl-edge/specs/**],
+  rollback:"revert foundation slice",
+  failing_probe:"workspace or contract negative test fails",
+  implementation_refs:[], test_refs:[],
+  security_gate:required, visual_gate:required,
+  diff_ref:null, commit_ref:null, result:active
+}.
+
+reservation := {
+  lane_id:security-lane,
+  files:[C:/Users/Apocky/source/worktrees/apocky-com-containment-20260725/cssl-edge/**],
+  services:[], ports:[], datasets:[], gpu_lease:none,
+  credential_scope:none, authority_scope:local-source+tests-only,
+  acquired_at:2026-07-25T07:15Z,
+  release_condition:"containment diff+tests+evidence returned"
+}.
+
+reservation := {
+  lane_id:integration-root,
+  files:[
+    C:/Users/Apocky/source/worktrees/apocky-com-organism-vnext/cssl-edge/package*.json,
+    C:/Users/Apocky/source/worktrees/apocky-com-organism-vnext/cssl-edge/packages/**,
+    C:/Users/Apocky/source/worktrees/apocky-com-organism-vnext/cssl-edge/specs/**
+  ],
+  services:[], ports:[], datasets:[], gpu_lease:none,
+  credential_scope:none, authority_scope:local-source+tests-only,
+  acquired_at:2026-07-25T07:15Z,
+  release_condition:"foundation integrated"
+}.
+
+frontier := {
+  ready_slice_ids:[S01,S02],
+  active_slice_ids:[S01,S02],
+  blocked_slice_ids:[],
+  reservations:[security-lane,integration-root],
+  integration_queue:[],
+  integration_owner:root
+}.
+
+completion := {
+  denominator:37,
+  verified:3,
+  failed:0,
+  blocked:7,
+  unknown:0,
+  pending:27
+}.
+
+handoff := {
+  observed_at:2026-07-25T07:15Z,
+  repo_heads:{
+    rebuild:7a86c510fc0a9ccbcea4fad6bfaa3032d8fae867,
+    containment:c9b716ae04ce6536c4e4120f386521bea61ee7cc
+  },
+  worktrees:{
+    rebuild:C:/Users/Apocky/source/worktrees/apocky-com-organism-vnext,
+    containment:C:/Users/Apocky/source/worktrees/apocky-com-containment-20260725
+  },
+  services:{production:https://apocky.com},
+  active_phases:[P01,P02],
+  active_slices:[S01,S02],
+  reservations:[security-lane,integration-root],
+  evidence:[P00.evidence_refs,C01,C02],
+  unresolved:[R21,R22,R23,R30,R34,R35,R36],
+  rollback:"restore verified archive bundles into new directories",
+  next_frontiers:[P03,P04],
+  next_three:[containment-negative-tests,workspace-foundation,public-route-build],
+  exact_next_probe:"npm workspace dependency resolution with exact pinned framework versions"
+}.
+
+mental_buffer := {
+  query:"legacy apocky public routes auth chat mneme payments admin manifest vercel security supabase",
+  adapter_versions:{graphify:"pre-1504 node-id scheme"},
+  quick_projection:[cssl-edge/pages,cssl-edge/pages/api,cssl-edge/lib,cssl-edge/vercel.json],
+  ref_ids:[
+    cssl-edge/pages/api/mneme/[profile]/**,
+    cssl-edge/pages/api/payments/stripe/**,
+    cssl-edge/pages/api/signaling/**,
+    cssl-edge/lib/supabase.ts,
+    cssl-edge/vercel.json
+  ],
+  contradiction_groups:[
+    "public sanctuary vs public chat/registration",
+    "private authority vs caller-asserted/service-role APIs",
+    "fresh organism vs legacy single deployment"
+  ],
+  failed_adapters:[],
+  expanded_refs:[],
+  source_hashes:{graph:"current clean-base graph; source verification required"}
+}.
+
+∎

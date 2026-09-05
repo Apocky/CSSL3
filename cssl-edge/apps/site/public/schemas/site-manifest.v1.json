@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apocky.com/schemas/site-manifest.v1.json",
+  "title": "Apocky public site manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "name",
+    "canonicalOrigin",
+    "description",
+    "contentModel",
+    "publicRoutes",
+    "externalDestinations"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://apocky.com/schemas/site-manifest.v1.json"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "name": {
+      "type": "string",
+      "const": "Apocky"
+    },
+    "canonicalOrigin": {
+      "type": "string",
+      "format": "uri",
+      "const": "https://apocky.com"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contentModel": {
+      "type": "string",
+      "const": "version-controlled-static"
+    },
+    "publicRoutes": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^/"
+      }
+    },
+    "externalDestinations": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "url"],
+        "properties": {
+          "label": {
+            "type": "string",
+            "enum": ["CSSL", "CSLv3", "Chaos Tarot"]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://"
+          }
+        }
+      }
+    }
+  }
+}
