@@ -14,13 +14,14 @@ const InfinityEngine: NextPage = () => (
         .ie-page {
           width: min(900px, calc(100% - 36px));
           margin: 0 auto;
-          padding: clamp(64px, 9vw, 110px) 0 110px;
+          padding: clamp(36px, 5vw, 56px) 0 clamp(48px, 6vw, 72px);
         }
-        .ie-page h1 { margin: 0; font-size: clamp(2.8rem, 8vw, 6rem); line-height: .95; letter-spacing: -.06em; }
-        .ie-lead { max-width: 720px; margin: 24px 0 0; color: var(--apx-copy); font-size: 1.08rem; line-height: 1.75; }
+        .ie-page h1 { margin: 0; font-size: var(--apx-fs-h1); line-height: 1.05; letter-spacing: -.035em; text-wrap: balance; }
+        .ie-page a:not([class]) { display: inline-flex; align-items: center; min-height: 40px; }
+        .ie-lead { max-width: 660px; margin: 16px 0 0; color: var(--apx-copy); font-size: 1rem; line-height: 1.6; }
         .ie-note { margin: 34px 0; border: 1px solid rgba(255,196,125,.32); border-radius: 16px; background: rgba(255,196,125,.06); padding: 20px; color: #eed4b3; line-height: 1.65; }
         .ie-page section { margin-top: 54px; }
-        .ie-page h2 { margin: 0 0 14px; color: var(--apx-mint-bright); font-size: 1.45rem; }
+        .ie-page h2 { margin: 0 0 12px; color: var(--apx-mint-bright); font-size: 1.3rem; }
         .ie-page p, .ie-page li { color: var(--apx-copy); line-height: 1.75; }
         .ie-page ul { padding-left: 1.3rem; }
         .ie-page li { margin: 8px 0; }

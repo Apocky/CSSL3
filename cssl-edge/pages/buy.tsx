@@ -18,10 +18,10 @@ const Buy: NextPage = () => (
         .support-page {
           width: min(900px, calc(100% - 36px));
           margin: 0 auto;
-          padding: clamp(64px, 9vw, 110px) 0 110px;
+          padding: clamp(36px, 5vw, 56px) 0 clamp(48px, 6vw, 72px);
         }
-        .support-page h1 { margin: 0; font-size: clamp(2.8rem, 8vw, 6rem); line-height: .95; letter-spacing: -.06em; }
-        .support-lead { max-width: 690px; margin: 24px 0 0; color: var(--apx-copy); font-size: 1.08rem; line-height: 1.75; }
+        .support-page h1 { margin: 0; font-size: var(--apx-fs-h1); line-height: 1.05; letter-spacing: -.035em; text-wrap: balance; }
+        .support-lead { max-width: 640px; margin: 16px 0 0; color: var(--apx-copy); font-size: 1rem; line-height: 1.6; }
         .support-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 44px; }
         .support-card {
           min-height: 250px;

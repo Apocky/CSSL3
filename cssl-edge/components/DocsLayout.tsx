@@ -128,6 +128,12 @@ const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProp
           .docs-table th, .docs-table td { border-bottom: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17)); padding: 0.5rem 0.65rem; text-align: left; vertical-align: top; }
           .docs-table th { color: var(--apx-violet, #b998ff); font: 750 0.72rem/1.3 var(--apx-mono, ui-monospace, monospace); letter-spacing: 0.06em; text-transform: uppercase; }
           .docs-status-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font: 600 0.7rem/1.5 var(--apx-mono, ui-monospace, monospace); letter-spacing: 0.04em; }
+          .docs-section { margin-top: 2rem; }
+          .docs-spec-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; margin-top: 0.9rem; }
+          .docs-spec-link { display: block; min-width: 0; padding: 0.6rem 0.85rem; border: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17)); border-radius: 10px; background: rgba(8, 10, 27, 0.6); overflow-wrap: anywhere; }
+          .docs-spec-link:hover { border-color: var(--apx-line-strong, rgba(124, 143, 255, 0.58)); }
+          .docs-spec-slug { color: var(--apx-dim, #7580aa); font: 600 0.7rem/1.3 var(--apx-mono, ui-monospace, monospace); letter-spacing: 0.08em; }
+          .docs-spec-title { margin-top: 0.15rem; color: var(--apx-copy, #d8dcf4); font-size: 0.9rem; line-height: 1.4; }
           .docs-footer { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17)); color: var(--apx-dim, #7580aa); font-size: 0.8rem; }
         `}</style>
       </Head>

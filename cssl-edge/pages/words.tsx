@@ -16,7 +16,7 @@ const Words: NextPage = () => (
 
     <main style={{ width: 'min(900px, calc(100% - 36px))', margin: '0 auto', padding: '72px 0 100px' }}>
       <p className="apx-kicker">Reference</p>
-      <h1 style={{ margin: 0, fontSize: 'clamp(2.5rem, 7vw, 5.5rem)', lineHeight: 0.98, letterSpacing: '-0.055em' }}>
+      <h1 style={{ margin: 0, fontSize: 'var(--apx-fs-h1)', lineHeight: 1.05, letterSpacing: '-0.035em' }}>
         Words and symbols used here
       </h1>
       <p style={{ maxWidth: 720, color: 'var(--apx-copy)', fontSize: '1.05rem', lineHeight: 1.75, margin: '24px 0 0' }}>
@@ -26,7 +26,7 @@ const Words: NextPage = () => (
       </p>
 
       <section id="technical-terms" aria-labelledby="terms-title" style={{ marginTop: 70 }}>
-        <h2 id="terms-title" style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)', margin: '0 0 24px' }}>Words and abbreviations</h2>
+        <h2 id="terms-title" style={{ fontSize: 'var(--apx-fs-h2)', margin: '0 0 16px' }}>Words and abbreviations</h2>
         <dl style={{ margin: 0, display: 'grid', gap: 12 }}>
           {PUBLIC_GLOSSARY_TERMS.map(({ id, term, meaning }) => (
             <div id={id} key={id} style={{ border: '1px solid var(--apx-line)', borderRadius: 14, background: 'var(--apx-panel)', padding: '20px 22px', scrollMarginTop: 90 }}>
@@ -38,7 +38,7 @@ const Words: NextPage = () => (
       </section>
 
       <section id="symbols" aria-labelledby="symbols-title" style={{ marginTop: 70 }}>
-        <h2 id="symbols-title" style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)', margin: '0 0 12px' }}>Symbol key</h2>
+        <h2 id="symbols-title" style={{ fontSize: 'var(--apx-fs-h2)', margin: '0 0 12px' }}>Symbol key</h2>
         <p style={{ maxWidth: 720, color: 'var(--apx-copy)', lineHeight: 1.7 }}>
           General public pages avoid these symbols. They may still appear in
           clearly marked technical specifications or code examples.

@@ -74,31 +74,21 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
         </section>
       ))}
 
-      <section style={{ marginTop: '3rem' }}>
+      <section className="docs-section">
         <h2 className="docs-h2">Technical specifications</h2>
         <p className="docs-p">
           These {specEntries.length} source documents describe architecture and plans in compact CSLv3
           notation. They are reference material, not the starting point. Read the{' '}
-          <a href="/words#symbols" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+          <a href="/words#symbols">
             symbol key
           </a>{' '}
           first. A symbol in these documents is technical notation, not decoration.
         </p>
-        <div style={{ display: 'grid', gap: '0.55rem', marginTop: '1rem' }}>
+        <div className="docs-spec-list">
           {specEntries.map((e) => (
-            <a
-              key={e.slug}
-              href={`/docs/${e.slug}`}
-              style={{
-                display: 'block',
-                padding: '0.65rem 0.9rem',
-                background: 'rgba(20, 20, 30, 0.4)',
-                border: '1px solid #1f1f2a',
-                borderRadius: 4,
-              }}
-            >
-              <div style={{ fontSize: '0.7rem', color: '#7a7a8c', letterSpacing: '0.1em' }}>{e.slug}</div>
-              <div style={{ fontSize: '0.9rem', color: '#cdd6e4', marginTop: '0.2rem' }}>{e.title}</div>
+            <a key={e.slug} href={`/docs/${e.slug}`} className="docs-spec-link">
+              <div className="docs-spec-slug">{e.slug}</div>
+              <div className="docs-spec-title">{e.title}</div>
             </a>
           ))}
         </div>
