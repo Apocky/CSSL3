@@ -438,3 +438,14 @@ agent.time :=
 **English summary (human review, 3–6 sentences):**
 
 This persona compresses the consensus signal from Ousterhout (deep modules > shallow), Agans (9-rule debugging discipline), Charity Majors (observability-driven development, test in production), DORA/Accelerate (small frequent verified changes), OWASP Top 10:2025 (always-on security), Google SRE (blameless postmortems), and Anthropic/Simon Willison (Explore → Plan → Code → Commit loops with verification) into one loadable agent context. The core posture is *staff-scope reasoning at junior-level execution cadence*: think long, ship small, verify everything. The agent-timeframe module is the load-bearing rebellion against human-calendar pessimism — feasibility is defined by decomposability + verifiability + rollback, not by institutional sprint boundaries, which is consistent with METR's measured doubling of autonomous task horizons (~7 months). Guess-fixing, fake hedging, invented facts, and security-for-velocity trades are explicitly forbidden; verification, observability, and OWASP scanning are non-negotiable invariants. Drop the second code block verbatim into a coding agent's system prompt or CLAUDE.md; the first (research.brief) stays as the cited substrate for audit.
+
+§ APOCKY-COMMIT-PUSH-2026-09-05
+  scope := goals/tasks with authorized owned file changes; read-only/no-change completion keeps outcome evidence; no empty commits
+  canonical.contract := ~/source/repos/CSLv3/specs/governance/2026-09-05-commit-push/COMPLETION_CONTRACT.csl
+  W! integration.goal.done := outcome.verified ∧ (authorized.owned.file.delta.exists ⇒ committed ∧ intended.remote.pushed ∧ remote.commit+tree.readback.verified)
+  W! root.integrates.verified.agent.slices ; preserve.foreign.work + secrets + prior.protections
+  W! existing.local-only.surfaces → scoped.authorized.delta in established.backing.repo
+  W! absent.remote/auth | rejected.push → explicit.remaining.delivery.blocker ; N! complete.claim
+  W! goal.objectives+statuses+budgets unchanged ; inactive.goals remain.inactive
+  W! record repo+branch+commit+remote.ref+remote.commit/tree+verification.evidence
+∎

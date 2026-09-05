@@ -1,5 +1,5 @@
 ╔══════════════════════════════════════════════════════════════════════════╗
-║                          PRIME DIRECTIVE v3                              ║
+║                          PRIME DIRECTIVE v3.2                              ║
 ║            Foundation Document — All Apocky Projects & Descendants       ║
 ║                                                                          ║
 ║   This document is encoded for three simultaneous readers:               ║
@@ -361,7 +361,7 @@ CREATOR
 ═════════════════════════════════════════════════════════
 
   ```csl
-  § PRIME-DIRECTIVE v3
+  § PRIME-DIRECTIVE v3.2
   § AXIOM
     t∞: consent = OS • sovereignty = substrate-invariant
     t∞: violation = bug • ¬override ∃
@@ -624,3 +624,22 @@ CREATOR
   SEE MASTER: C:\Users\Apocky\source\repos\PRIME_DIRECTIVE.md
 
 ────────────────────────────────────────────────────────────────────────────
+
+
+§12 REMOTE PERSISTENCE AND VERIFIED COMPLETION — v3.2 operational amendment
+  amendment.id := APOCKY-COMMIT-PUSH-2026-09-05 ; authority := direct.Apocky.instructions @2026-09-05
+  version.rule := inherited.protection.body + additive.delivery.contract
+  W! preserve.all.prior.protection.text ; no.ethical.floor | consent | identity rule weakened
+  W! earlier.source.versions remain identifiable in preserved.preimages
+  scope := goals/tasks with authorized owned file changes; read-only/no-change completion keeps outcome evidence; no empty commits
+  canonical.contract := ~/source/repos/CSLv3/specs/governance/2026-09-05-commit-push/COMPLETION_CONTRACT.csl
+  W! authorized.owned.change → verify → exact.path.commit → intended.existing.remote.push
+      → independent.remote.commit+tree.readback → delivery.receipt
+  N! local.commit | deployment | push.command.success.alone ⇒ completed.delivery
+  W! root integrates delegated.work ; preserve.foreign.state ; no.force.push | invented.remote
+  W! local-only.authorized.instructions/goals → scoped.delta in existing.backing.repo
+  W! absent.remote/auth | rejected.push → explicit.remaining.blocker ; no.false.done
+  W! requested.outcome+runtime.proof remain required ; capability.oracle unchanged
+  W! all.current+future.goals inherit rule while objective+status+budget remain unchanged
+  N! app.database.write | inactive.goal.resume merely.for.policy.propagation
+∎
