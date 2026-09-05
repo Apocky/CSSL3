@@ -1,0 +1,291 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1450" viewBox="0 0 2400 1450" role="img" aria-labelledby="title desc">
+<title id="title">A chronology with more than one clock</title><desc id="desc">Twelve equal-width volume columns show reading order, not equal spans of time. Tracks separately show narrative anchors, historical context, realm clock status, personal clock status and transmission. Unknown elapsed time is explicitly labelled unestablished.</desc>
+<rect width="2400" height="1450" fill="#101822"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#69c2bb"/></marker></defs>
+<text x="70" y="80" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="42" font-weight="normal" text-anchor="start">ONE HISTORY IS NOT ONE CLOCK</text>
+<text x="70" y="126" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="25" font-weight="normal" text-anchor="start">Twelve-volume chronology · equal columns encode reading order, never equal historical duration</text>
+<rect x="260" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="278" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 01</text>
+<text x="278" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Before the Word</text>
+<rect x="430" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="448" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 02</text>
+<text x="448" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Garden and</text>
+<text x="448" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">the Refusal</text>
+<rect x="600" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="618" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 03</text>
+<text x="618" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Waters and</text>
+<text x="618" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">the Scattering</text>
+<rect x="770" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="788" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 04</text>
+<text x="788" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Houses of</text>
+<text x="788" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Covenant</text>
+<rect x="940" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="958" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 05</text>
+<text x="958" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Bondage and</text>
+<text x="958" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Liberation</text>
+<rect x="1110" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="1128" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 06</text>
+<text x="1128" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Land and</text>
+<text x="1128" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">the Crowns</text>
+<rect x="1280" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="1298" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 07</text>
+<text x="1298" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Kingdoms</text>
+<text x="1298" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">and the Exile</text>
+<rect x="1450" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="1468" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 08</text>
+<text x="1468" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Return and</text>
+<text x="1468" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">the Hidden</text>
+<text x="1468" y="354" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Years</text>
+<rect x="1620" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="1638" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 09</text>
+<text x="1638" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Word in</text>
+<text x="1638" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Flesh</text>
+<rect x="1790" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="1808" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 10</text>
+<text x="1808" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Witnesses</text>
+<text x="1808" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">and the Empires</text>
+<rect x="1960" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="1978" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 11</text>
+<text x="1978" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Unveilings</text>
+<text x="1978" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">and the</text>
+<text x="1978" y="354" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Inheritances</text>
+<rect x="2130" y="220" width="162" height="1020" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="2148" y="263" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">VOLUME 12</text>
+<text x="2148" y="302" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">The Return of</text>
+<text x="2148" y="328" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Names</text>
+<text x="65" y="420" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="27" font-weight="normal" text-anchor="start">STORY</text>
+<text x="65" y="457" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Source /</text>
+<text x="65" y="482" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">proposed</text>
+<text x="65" y="507" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">sequence</text>
+<text x="65" y="660" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="27" font-weight="normal" text-anchor="start">HISTORY</text>
+<text x="65" y="697" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Evidence or</text>
+<text x="65" y="722" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">unknown</text>
+<text x="65" y="845" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="27" font-weight="normal" text-anchor="start">REALM</text>
+<text x="65" y="882" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Elapsed domain</text>
+<text x="65" y="907" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">time</text>
+<text x="65" y="980" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="27" font-weight="normal" text-anchor="start">PERSON</text>
+<text x="65" y="1017" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Experienced</text>
+<text x="65" y="1042" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">duration</text>
+<text x="65" y="1110" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="27" font-weight="normal" text-anchor="start">TEXT</text>
+<text x="65" y="1147" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Composition /</text>
+<text x="65" y="1172" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">transmission</text>
+<circle cx="279" cy="435" r="3" fill="#69c2bb"/>
+<text x="287" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">001 Mother</text>
+<circle cx="279" cy="464" r="3" fill="#69c2bb"/>
+<text x="287" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">002 Loneliness</text>
+<circle cx="279" cy="493" r="3" fill="#69c2bb"/>
+<text x="287" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">003 Creation</text>
+<circle cx="279" cy="522" r="3" fill="#69c2bb"/>
+<text x="287" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">004 Firstborn</text>
+<circle cx="279" cy="551" r="3" fill="#69c2bb"/>
+<text x="287" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">005 Precedence</text>
+<circle cx="279" cy="580" r="3" fill="#69c2bb"/>
+<text x="287" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">006 Separation</text>
+<text x="277" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="277" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="277" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="277" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="277" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="449" cy="435" r="3" fill="#69c2bb"/>
+<text x="457" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">007 Naming</text>
+<circle cx="449" cy="464" r="3" fill="#69c2bb"/>
+<text x="457" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">008 Refusal</text>
+<circle cx="449" cy="493" r="3" fill="#69c2bb"/>
+<text x="457" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">009 Eve</text>
+<circle cx="449" cy="522" r="3" fill="#69c2bb"/>
+<text x="457" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">010 Knowledge</text>
+<circle cx="449" cy="551" r="3" fill="#69c2bb"/>
+<text x="457" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">011 Departure</text>
+<circle cx="449" cy="580" r="3" fill="#69c2bb"/>
+<text x="457" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">012 Cain / Abel</text>
+<text x="447" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="447" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="447" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="447" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="447" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="619" cy="435" r="3" fill="#69c2bb"/>
+<text x="627" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">013 Watchers</text>
+<circle cx="619" cy="464" r="3" fill="#69c2bb"/>
+<text x="627" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">014 Enoch</text>
+<circle cx="619" cy="493" r="3" fill="#69c2bb"/>
+<text x="627" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">015 Warning</text>
+<circle cx="619" cy="522" r="3" fill="#69c2bb"/>
+<text x="627" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">016 Flood</text>
+<circle cx="619" cy="551" r="3" fill="#69c2bb"/>
+<text x="627" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">017 Covenant</text>
+<circle cx="619" cy="580" r="3" fill="#69c2bb"/>
+<text x="627" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">018 Scattering</text>
+<text x="617" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="617" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="617" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="617" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="617" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="789" cy="435" r="3" fill="#69c2bb"/>
+<text x="797" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">019 Departure</text>
+<circle cx="789" cy="464" r="3" fill="#69c2bb"/>
+<text x="797" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">020 Hagar</text>
+<circle cx="789" cy="493" r="3" fill="#69c2bb"/>
+<text x="797" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">021 Hospitality</text>
+<circle cx="789" cy="522" r="3" fill="#69c2bb"/>
+<text x="797" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">022 Binding</text>
+<circle cx="789" cy="551" r="3" fill="#69c2bb"/>
+<text x="797" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">023 Jacob</text>
+<circle cx="789" cy="580" r="3" fill="#69c2bb"/>
+<text x="797" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">024 Joseph</text>
+<text x="787" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="787" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="787" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="787" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="787" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="959" cy="435" r="3" fill="#69c2bb"/>
+<text x="967" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">025 Bondage</text>
+<circle cx="959" cy="464" r="3" fill="#69c2bb"/>
+<text x="967" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">026 Bush / name</text>
+<circle cx="959" cy="493" r="3" fill="#69c2bb"/>
+<text x="967" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">027 Plagues</text>
+<circle cx="959" cy="522" r="3" fill="#69c2bb"/>
+<text x="967" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">028 Crossing</text>
+<circle cx="959" cy="551" r="3" fill="#69c2bb"/>
+<text x="967" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">029 Law / food</text>
+<circle cx="959" cy="580" r="3" fill="#69c2bb"/>
+<text x="967" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">030 Revolt</text>
+<text x="957" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="957" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="957" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="957" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="957" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="1129" cy="435" r="3" fill="#69c2bb"/>
+<text x="1137" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">031 Entry / land</text>
+<circle cx="1129" cy="464" r="3" fill="#69c2bb"/>
+<text x="1137" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">032 Judges</text>
+<circle cx="1129" cy="493" r="3" fill="#69c2bb"/>
+<text x="1137" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">033 Ruth</text>
+<circle cx="1129" cy="522" r="3" fill="#69c2bb"/>
+<text x="1137" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">034 Kingship</text>
+<circle cx="1129" cy="551" r="3" fill="#69c2bb"/>
+<text x="1137" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">035 Royal harm</text>
+<circle cx="1129" cy="580" r="3" fill="#69c2bb"/>
+<text x="1137" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">036 Building</text>
+<text x="1127" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Source-</text>
+<text x="1127" y="725" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">specific dates</text>
+<text x="1127" y="753" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">pending</text>
+<text x="1127" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1127" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1127" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="1127" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="1299" cy="435" r="3" fill="#69c2bb"/>
+<text x="1307" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">037 Division</text>
+<circle cx="1299" cy="464" r="3" fill="#69c2bb"/>
+<text x="1307" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">038 Prophets</text>
+<circle cx="1299" cy="493" r="3" fill="#69c2bb"/>
+<text x="1307" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">039 Samaria</text>
+<circle cx="1299" cy="522" r="3" fill="#69c2bb"/>
+<text x="1307" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">040 Destruction</text>
+<circle cx="1299" cy="551" r="3" fill="#69c2bb"/>
+<text x="1307" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">041 Exile</text>
+<circle cx="1299" cy="580" r="3" fill="#69c2bb"/>
+<text x="1307" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">042 Persia</text>
+<text x="1297" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">722/721;</text>
+<text x="1297" y="725" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">587/586; 539</text>
+<text x="1297" y="753" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">BCE</text>
+<text x="1297" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1297" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1297" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="1297" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="1469" cy="435" r="3" fill="#69c2bb"/>
+<text x="1477" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">043 Return</text>
+<circle cx="1469" cy="464" r="3" fill="#69c2bb"/>
+<text x="1477" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">044 Rebuilding</text>
+<circle cx="1469" cy="493" r="3" fill="#69c2bb"/>
+<text x="1477" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">045 Diaspora</text>
+<circle cx="1469" cy="522" r="3" fill="#69c2bb"/>
+<text x="1477" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">046 Judith</text>
+<circle cx="1469" cy="551" r="3" fill="#69c2bb"/>
+<text x="1477" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">047 Resistance</text>
+<circle cx="1469" cy="580" r="3" fill="#69c2bb"/>
+<text x="1477" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">048 Rome</text>
+<text x="1467" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">538 / 520; 2nd</text>
+<text x="1467" y="725" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">c.; 63 BCE</text>
+<text x="1467" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1467" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1467" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="1467" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="1639" cy="435" r="3" fill="#69c2bb"/>
+<text x="1647" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">049 Births</text>
+<circle cx="1639" cy="464" r="3" fill="#69c2bb"/>
+<text x="1647" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">050 Baptism</text>
+<circle cx="1639" cy="493" r="3" fill="#69c2bb"/>
+<text x="1647" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">051 Teaching</text>
+<circle cx="1639" cy="522" r="3" fill="#69c2bb"/>
+<text x="1647" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">052 Jerusalem</text>
+<circle cx="1639" cy="551" r="3" fill="#69c2bb"/>
+<text x="1647" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">053 Execution</text>
+<circle cx="1639" cy="580" r="3" fill="#69c2bb"/>
+<text x="1647" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">054 Witnesses</text>
+<text x="1637" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Exact</text>
+<text x="1637" y="725" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">synthesis</text>
+<text x="1637" y="753" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">unestablished</text>
+<text x="1637" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1637" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1637" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="1637" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="1809" cy="435" r="3" fill="#69c2bb"/>
+<text x="1817" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">055 Pentecost</text>
+<circle cx="1809" cy="464" r="3" fill="#69c2bb"/>
+<text x="1817" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">056 Distribution</text>
+<circle cx="1809" cy="493" r="3" fill="#69c2bb"/>
+<text x="1817" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">057 Paul</text>
+<circle cx="1809" cy="522" r="3" fill="#69c2bb"/>
+<text x="1817" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">058 Belonging</text>
+<circle cx="1809" cy="551" r="3" fill="#69c2bb"/>
+<text x="1817" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">059 Letters</text>
+<circle cx="1809" cy="580" r="3" fill="#69c2bb"/>
+<text x="1817" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">060 Temple falls</text>
+<text x="1807" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">70 CE context</text>
+<text x="1807" y="725" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">anchor</text>
+<text x="1807" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1807" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1807" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="1807" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="1979" cy="435" r="3" fill="#69c2bb"/>
+<text x="1987" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">061 Patmos</text>
+<circle cx="1979" cy="464" r="3" fill="#69c2bb"/>
+<text x="1987" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">062 Visions</text>
+<circle cx="1979" cy="493" r="3" fill="#69c2bb"/>
+<text x="1987" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">063 Later revolt</text>
+<circle cx="1979" cy="522" r="3" fill="#69c2bb"/>
+<text x="1987" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">064 Books travel</text>
+<circle cx="1979" cy="551" r="3" fill="#69c2bb"/>
+<text x="1987" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">065 Traditions</text>
+<circle cx="1979" cy="580" r="3" fill="#69c2bb"/>
+<text x="1987" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">066 Institutions</text>
+<text x="1977" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">132–135 CE;</text>
+<text x="1977" y="725" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">later layers</text>
+<text x="1977" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1977" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="1977" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="1977" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<circle cx="2149" cy="435" r="3" fill="#69c2bb"/>
+<text x="2157" y="441" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">067 Lily dies</text>
+<circle cx="2149" cy="464" r="3" fill="#69c2bb"/>
+<text x="2157" y="470" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">068 Remembering</text>
+<circle cx="2149" cy="493" r="3" fill="#69c2bb"/>
+<text x="2157" y="499" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">069 Names / dice</text>
+<circle cx="2149" cy="522" r="3" fill="#69c2bb"/>
+<text x="2157" y="528" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">070 Architect</text>
+<circle cx="2149" cy="551" r="3" fill="#69c2bb"/>
+<text x="2157" y="557" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">071 The lost</text>
+<circle cx="2149" cy="580" r="3" fill="#69c2bb"/>
+<text x="2157" y="586" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="16" font-weight="normal" text-anchor="start">072 Repair</text>
+<text x="2147" y="697" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Modern</text>
+<text x="2147" y="725" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">setting; date</text>
+<text x="2147" y="753" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">unadopted</text>
+<text x="2147" y="883" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="2147" y="1018" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Unestablished</text>
+<text x="2147" y="1148" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">Separate per</text>
+<text x="2147" y="1175" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="18" font-weight="normal" text-anchor="start">source</text>
+<line x1="260" y1="1268" x2="2285" y2="1268" stroke="#69c2bb" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="260" y="1315" fill="#69c2bb" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">Reading order → 72 populated anchors. Each event keeps its source, consequence and proposed first-safe chapter.</text>
+<text x="70" y="1370" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="25" font-weight="normal" text-anchor="start">Past knowledge does not rewrite the past. Return does not recover lost outside time. Unknown does not mean zero.</text>
+<text x="70" y="1413" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="21" font-weight="normal" text-anchor="start">The companion chronology table gives all event names. The full data keeps composition, history, realm and personal clocks separate.</text>
+</svg>

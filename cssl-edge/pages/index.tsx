@@ -24,6 +24,7 @@ type Gateway = {
 const MORE_PATHS = [
   { href: '/spellcraft', title: 'Create', copy: 'Spellcraft, sigils, and a device-local spellbook.' },
   { href: '/akashic-records', title: 'Read', copy: 'Approved writing and public-safe conversations.' },
+  { href: '/codex-apockalypsis', title: 'Codex Apockalypsis', copy: 'Dark fantasy, dark comedy, and the Omnoid. Read the evolving Good Book and its companion references.' },
   { href: '/clearing', title: 'Gather', copy: 'The public social room for messages and threads.' },
   { href: '/quests', title: 'Play', copy: 'A private-on-device path through the public worlds.' },
 ] as const;

@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1420" viewBox="0 0 2200 1420" role="img" aria-labelledby="title desc">
+<title id="title">Historical places and changing routes</title><desc id="desc">An era-aware schematic locator for the eastern Mediterranean and Mesopotamia. Coarse editorial coordinates show approximate places. Dashed lines are directions or disputed routes, never surveyed roads. Different periods are separated in the legend; global comparison lanes are named without inventing diffusion routes.</desc>
+<rect width="2200" height="1420" fill="#101822"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#69c2bb"/></marker></defs>
+<text x="80" y="82" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="40" font-weight="normal" text-anchor="start">PLACES REMAIN. THEIR BORDERS DO NOT.</text>
+<text x="80" y="126" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="24" font-weight="normal" text-anchor="start">Historical geography schematic · no timeless empire, universal itinerary or surveyed Exodus route</text>
+<rect x="80" y="165" width="1540" height="870" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<rect x="1660" y="165" width="460" height="870" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="1690" y="210" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="28" font-weight="normal" text-anchor="start">READ BY ERA</text>
+<line x1="125.0" y1="220" x2="125.0" y2="980" stroke="#657784" stroke-width="3"/>
+<text x="132.0" y="1010" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">10° E</text>
+<line x1="469.04761904761904" y1="220" x2="469.04761904761904" y2="980" stroke="#657784" stroke-width="3"/>
+<text x="476.04761904761904" y="1010" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">20° E</text>
+<line x1="813.0952380952381" y1="220" x2="813.0952380952381" y2="980" stroke="#657784" stroke-width="3"/>
+<text x="820.0952380952381" y="1010" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">30° E</text>
+<line x1="1157.142857142857" y1="220" x2="1157.142857142857" y2="980" stroke="#657784" stroke-width="3"/>
+<text x="1164.142857142857" y="1010" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">40° E</text>
+<line x1="1501.1904761904761" y1="220" x2="1501.1904761904761" y2="980" stroke="#657784" stroke-width="3"/>
+<text x="1508.1904761904761" y="1010" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">50° E</text>
+<line x1="125" y1="811.1111111111111" x2="1570" y2="811.1111111111111" stroke="#657784" stroke-width="3"/>
+<text x="133" y="801.1111111111111" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">30° N</text>
+<line x1="125" y1="600.0" x2="1570" y2="600.0" stroke="#657784" stroke-width="3"/>
+<text x="133" y="590.0" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">35° N</text>
+<line x1="125" y1="388.8888888888889" x2="1570" y2="388.8888888888889" stroke="#657784" stroke-width="3"/>
+<text x="133" y="378.8888888888889" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="17" font-weight="normal" text-anchor="start">40° N</text>
+<text x="160" y="505" fill="#657784" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">MEDITERRANEAN</text>
+<text x="1120" y="315" fill="#657784" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">MESOPOTAMIA</text>
+<text x="745" y="835" fill="#657784" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">EGYPT</text>
+<text x="1250" y="830" fill="#657784" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">ARABIA</text>
+<text x="980" y="605" fill="#657784" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">LEVANT</text>
+<circle cx="211.01" cy="308.67" r="7" fill="#dfb96d"/>
+<text x="225.0" y="293.7" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Rome</text>
+<circle cx="597.38" cy="474.18" r="7" fill="#dfb96d"/>
+<text x="502.4" y="457.2" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Athens</text>
+<circle cx="721.58" cy="475.87" r="7" fill="#dfb96d"/>
+<text x="736.6" y="457.9" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Ephesus</text>
+<circle cx="810.34" cy="760.44" r="7" fill="#dfb96d"/>
+<text x="690.3" y="740.4" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Alexandria</text>
+<circle cx="856.10" cy="817.44" r="7" fill="#dfb96d"/>
+<text x="749.1" y="852.4" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Memphis</text>
+<circle cx="993.03" cy="735.96" r="7" fill="#dfb96d"/>
+<text x="823.0" y="716.0" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Jerusalem</text>
+<circle cx="1000.95" cy="737.64" r="7" fill="#dfb96d"/>
+<text x="1024.9" y="771.6" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Qumran</text>
+<circle cx="1025.03" cy="549.33" r="7" fill="#dfb96d"/>
+<text x="932.0" y="525.3" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Antioch</text>
+<circle cx="1265.52" cy="542.58" r="7" fill="#dfb96d"/>
+<text x="1281.5" y="524.6" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Nineveh</text>
+<circle cx="1309.21" cy="703.87" r="7" fill="#dfb96d"/>
+<text x="1219.2" y="679.9" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Babylon</text>
+<circle cx="1367.36" cy="770.58" r="7" fill="#dfb96d"/>
+<text x="1379.4" y="799.6" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Ur</text>
+<circle cx="1441.33" cy="718.22" r="7" fill="#dfb96d"/>
+<text x="1457.3" y="703.2" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Susa</text>
+<path d="M 856.1 817.4 Q 900 985 993.0 736.0" fill="none" stroke="#dc8b86" stroke-width="3" stroke-dasharray="11 8"/>
+<text x="835" y="962" fill="#dc8b86" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">V05  disputed movement</text>
+<path d="M 993.0 736.0 Q 1150 530 1309.2 703.9" fill="none" stroke="#89b5df" stroke-width="3" stroke-dasharray="11 8"/>
+<text x="1020" y="585" fill="#89b5df" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">V07  deportation direction</text>
+<path d="M 1309.2 703.9 Q 1110 850 993.0 736.0" fill="none" stroke="#69c2bb" stroke-width="3" stroke-dasharray="11 8"/>
+<text x="1080" y="863" fill="#69c2bb" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">V08  return direction</text>
+<path d="M 993.0 736.0 Q 650 305 211.0 308.7" fill="none" stroke="#dfb96d" stroke-width="3" stroke-dasharray="11 8"/>
+<text x="540" y="390" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">V10–11  circulation network</text>
+<text x="1690" y="260" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">V03–06  Story settings</text>
+<text x="1690" y="295" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Primeval and ancestral dates are</text>
+<text x="1690" y="320" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">unestablished. Pins do not</text>
+<text x="1690" y="345" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">certify events.</text>
+<text x="1690" y="385" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">V07  Conquest and exile</text>
+<text x="1690" y="420" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Samaria 722/721 BCE. Jerusalem</text>
+<text x="1690" y="445" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">587/586 BCE: discrepancy</text>
+<text x="1690" y="470" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">retained.</text>
+<text x="1690" y="510" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">V08  Return and diaspora</text>
+<text x="1690" y="545" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">539 BCE Persian conquest; return</text>
+<text x="1690" y="570" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">and rebuilding are separate</text>
+<text x="1690" y="595" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">processes.</text>
+<text x="1690" y="635" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">V09  Gospel settings</text>
+<text x="1690" y="670" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">Witnesses retain different</text>
+<text x="1690" y="695" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">narrative clocks; no exact</text>
+<text x="1690" y="720" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">synthetic birth date.</text>
+<text x="1690" y="760" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">V10–11  Communities</text>
+<text x="1690" y="795" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">63 BCE, 70 CE and 132–135 CE are</text>
+<text x="1690" y="820" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">separate historical anchors.</text>
+<text x="1690" y="885" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Map rule</text>
+<text x="1690" y="920" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">No shaded imperial border is</text>
+<text x="1690" y="945" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="19" font-weight="normal" text-anchor="start">projected across every era.</text>
+<rect x="80" y="1075" width="2040" height="218" rx="12" fill="#192531" stroke="#657784" stroke-width="2"/>
+<text x="112" y="1120" fill="#dfb96d" font-family="Georgia, DejaVu Serif, serif" font-size="27" font-weight="normal" text-anchor="start">GLOBAL WEAVE  /  CONTEXT WINDOWS, NOT CLAIMED DIFFUSION ROUTES</text>
+<text x="112" y="1173" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">Nile &amp; West Asia</text>
+<text x="112" y="1210" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Creation · kingship · exile</text>
+<text x="612" y="1173" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">Mediterranean worlds</text>
+<text x="612" y="1210" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Empire · letters · transmission</text>
+<text x="1112" y="1173" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">South &amp; East Asia</text>
+<text x="1112" y="1210" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Independent texts and chronologies</text>
+<text x="1612" y="1173" fill="#f2ead9" font-family="Georgia, DejaVu Serif, serif" font-size="23" font-weight="normal" text-anchor="start">Africa &amp; the Americas</text>
+<text x="1612" y="1210" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="20" font-weight="normal" text-anchor="start">Independent traditions and voices</text>
+<text x="80" y="1342" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Pins: coarse editorial locators; not certified site coordinates. Grid preserves rough relative location only.</text>
+<text x="80" y="1381" fill="#b4c1ca" font-family="Georgia, DejaVu Serif, serif" font-size="22" font-weight="normal" text-anchor="start">Dashed connections: schematic directions, disputed movements or networks. No line establishes one historical road.</text>
+</svg>

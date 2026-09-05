@@ -18,6 +18,14 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/api/conversation-corpus/[id]': ['./public/conversation-corpus/approved-records/**/*.json'],
   },
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: '/codex-apockalypsis', destination: '/codex-apockalypsis/index.html' },
+        { source: '/codex-apockalypsis/library/:slug', destination: '/codex-apockalypsis/library/:slug/index.html' },
+      ],
+    };
+  },
   async redirects() {
     return [
       // Binary Tarot now belongs to the Chaos Tarot divination platform.

@@ -1,0 +1,914 @@
+{
+  "baseline_66": [
+    {
+      "source_id": "SRC-BIB-GENESIS",
+      "title": "Genesis",
+      "planned_chapters": [
+        "V01-C01",
+        "V01-C02",
+        "V01-C04",
+        "V01-C06",
+        "V01-C09",
+        "V02-C01",
+        "V02-C03",
+        "V02-C04",
+        "V02-C05",
+        "V02-C06",
+        "V02-C07",
+        "V02-C08",
+        "V02-C09",
+        "V02-C10",
+        "V02-C11",
+        "V02-C12",
+        "V03-C01",
+        "V03-C07",
+        "V03-C08",
+        "V03-C09",
+        "V03-C10",
+        "V03-C11",
+        "V03-C12",
+        "V03-C13",
+        "V04-C01",
+        "V04-C02",
+        "V04-C03",
+        "V04-C04",
+        "V04-C05",
+        "V04-C06",
+        "V04-C07",
+        "V04-C08",
+        "V04-C09",
+        "V04-C10",
+        "V04-C11",
+        "V04-C12",
+        "V04-C13",
+        "V04-C14",
+        "V04-C15",
+        "V04-C16",
+        "V04-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [
+        "PASSAGE-CREATION-GEN-01",
+        "PASSAGE-CREATION-GEN-02",
+        "PASSAGE-CREATION-GEN-03"
+      ],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-EXODUS",
+      "title": "Exodus",
+      "planned_chapters": [
+        "V05-C01",
+        "V05-C02",
+        "V05-C03",
+        "V05-C04",
+        "V05-C05",
+        "V05-C06",
+        "V05-C07",
+        "V05-C08",
+        "V05-C09",
+        "V05-C10",
+        "V05-C11",
+        "V05-C12",
+        "V05-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-LEVITICUS",
+      "title": "Leviticus",
+      "planned_chapters": [
+        "V05-C13"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-NUMBERS",
+      "title": "Numbers",
+      "planned_chapters": [
+        "V05-C14",
+        "V05-C15",
+        "V05-C16"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-DEUTERONOMY",
+      "title": "Deuteronomy",
+      "planned_chapters": [
+        "V05-C16"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JOSHUA",
+      "title": "Joshua",
+      "planned_chapters": [
+        "V06-C01",
+        "V06-C02",
+        "V06-C03",
+        "V06-C04",
+        "V06-C05",
+        "V06-C06",
+        "V06-C07",
+        "V06-C23"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JUDGES",
+      "title": "Judges",
+      "planned_chapters": [
+        "V06-C08",
+        "V06-C09",
+        "V06-C10",
+        "V06-C11",
+        "V06-C12",
+        "V06-C13",
+        "V06-C23"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-RUTH",
+      "title": "Ruth",
+      "planned_chapters": [
+        "V06-C14"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-SAMUEL",
+      "title": "1 Samuel",
+      "planned_chapters": [
+        "V06-C15",
+        "V06-C16",
+        "V06-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-SAMUEL",
+      "title": "2 Samuel",
+      "planned_chapters": [
+        "V06-C18",
+        "V06-C19",
+        "V06-C20"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-KINGS",
+      "title": "1 Kings",
+      "planned_chapters": [
+        "V06-C21",
+        "V06-C22",
+        "V07-C01",
+        "V07-C02",
+        "V07-C03"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-KINGS",
+      "title": "2 Kings",
+      "planned_chapters": [
+        "V07-C04",
+        "V07-C07",
+        "V07-C11",
+        "V07-C13"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-CHRONICLES",
+      "title": "1 Chronicles",
+      "planned_chapters": [
+        "V06-C18"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-CHRONICLES",
+      "title": "2 Chronicles",
+      "planned_chapters": [
+        "V06-C22",
+        "V07-C01",
+        "V07-C11",
+        "V07-C13",
+        "V08-C01"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-EZRA",
+      "title": "Ezra",
+      "planned_chapters": [
+        "V08-C01",
+        "V08-C02",
+        "V08-C04"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-NEHEMIAH",
+      "title": "Nehemiah",
+      "planned_chapters": [
+        "V08-C03",
+        "V08-C04"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-ESTHER",
+      "title": "Esther",
+      "planned_chapters": [
+        "V08-C06",
+        "V08-C07"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JOB",
+      "title": "Job",
+      "planned_chapters": [
+        "V07-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [
+        "PASSAGE-CREATION-JOB-38"
+      ],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-PSALMS",
+      "title": "Psalms",
+      "planned_chapters": [
+        "V07-C14",
+        "V07-C18",
+        "V07-C19"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-PROVERBS",
+      "title": "Proverbs",
+      "planned_chapters": [
+        "V06-C21",
+        "V06-C22",
+        "V07-C18"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [
+        "PASSAGE-CREATION-PROV-08"
+      ],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-ECCLESIASTES",
+      "title": "Ecclesiastes",
+      "planned_chapters": [
+        "V01-C08",
+        "V07-C18"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-SONG-OF-SONGS",
+      "title": "Song of Songs",
+      "planned_chapters": [
+        "V07-C18"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-ISAIAH",
+      "title": "Isaiah",
+      "planned_chapters": [
+        "V07-C07",
+        "V08-C19"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JEREMIAH",
+      "title": "Jeremiah",
+      "planned_chapters": [
+        "V07-C12",
+        "V07-C13",
+        "V08-C05"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-LAMENTATIONS",
+      "title": "Lamentations",
+      "planned_chapters": [
+        "V07-C14",
+        "V07-C19"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-EZEKIEL",
+      "title": "Ezekiel",
+      "planned_chapters": [
+        "V07-C15",
+        "V07-C16"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-DANIEL",
+      "title": "Daniel",
+      "planned_chapters": [
+        "V08-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-HOSEA",
+      "title": "Hosea",
+      "planned_chapters": [
+        "V07-C06"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JOEL",
+      "title": "Joel",
+      "planned_chapters": [
+        "V07-C14"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-AMOS",
+      "title": "Amos",
+      "planned_chapters": [
+        "V07-C05"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-OBADIAH",
+      "title": "Obadiah",
+      "planned_chapters": [
+        "V07-C15"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JONAH",
+      "title": "Jonah",
+      "planned_chapters": [
+        "V07-C09"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-MICAH",
+      "title": "Micah",
+      "planned_chapters": [
+        "V07-C08"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-NAHUM",
+      "title": "Nahum",
+      "planned_chapters": [
+        "V07-C09"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-HABAKKUK",
+      "title": "Habakkuk",
+      "planned_chapters": [
+        "V07-C10"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-ZEPHANIAH",
+      "title": "Zephaniah",
+      "planned_chapters": [
+        "V07-C10"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-HAGGAI",
+      "title": "Haggai",
+      "planned_chapters": [
+        "V08-C02"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-ZECHARIAH",
+      "title": "Zechariah",
+      "planned_chapters": [
+        "V08-C02",
+        "V08-C18"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-MALACHI",
+      "title": "Malachi",
+      "planned_chapters": [
+        "V08-C05"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-MATTHEW",
+      "title": "Matthew",
+      "planned_chapters": [
+        "V09-C01",
+        "V09-C02",
+        "V09-C03",
+        "V09-C04",
+        "V09-C06",
+        "V09-C07",
+        "V09-C10",
+        "V09-C12",
+        "V09-C14",
+        "V09-C15",
+        "V09-C16",
+        "V09-C17",
+        "V09-C18",
+        "V09-C19",
+        "V09-C20"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-MARK",
+      "title": "Mark",
+      "planned_chapters": [
+        "V09-C03",
+        "V09-C04",
+        "V09-C05",
+        "V09-C07",
+        "V09-C09",
+        "V09-C10",
+        "V09-C11",
+        "V09-C12",
+        "V09-C14",
+        "V09-C15",
+        "V09-C16",
+        "V09-C17",
+        "V09-C18",
+        "V09-C19"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-LUKE",
+      "title": "Luke",
+      "planned_chapters": [
+        "V09-C01",
+        "V09-C02",
+        "V09-C03",
+        "V09-C04",
+        "V09-C05",
+        "V09-C06",
+        "V09-C07",
+        "V09-C08",
+        "V09-C09",
+        "V09-C10",
+        "V09-C12",
+        "V09-C14",
+        "V09-C15",
+        "V09-C16",
+        "V09-C17",
+        "V09-C18",
+        "V09-C19",
+        "V09-C20",
+        "V09-C21"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JOHN",
+      "title": "John",
+      "planned_chapters": [
+        "V01-C12",
+        "V09-C03",
+        "V09-C08",
+        "V09-C11",
+        "V09-C13",
+        "V09-C14",
+        "V09-C15",
+        "V09-C16",
+        "V09-C17",
+        "V09-C18",
+        "V09-C19",
+        "V09-C20",
+        "V09-C21",
+        "V11-C03"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [
+        "PASSAGE-CREATION-JOHN-01"
+      ],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-ACTS",
+      "title": "Acts",
+      "planned_chapters": [
+        "V09-C20",
+        "V10-C01",
+        "V10-C02",
+        "V10-C03",
+        "V10-C04",
+        "V10-C05",
+        "V10-C06",
+        "V10-C07",
+        "V10-C09",
+        "V10-C20",
+        "V10-C21"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-ROMANS",
+      "title": "Romans",
+      "planned_chapters": [
+        "V10-C12",
+        "V10-C13"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-CORINTHIANS",
+      "title": "1 Corinthians",
+      "planned_chapters": [
+        "V10-C10",
+        "V10-C11"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-CORINTHIANS",
+      "title": "2 Corinthians",
+      "planned_chapters": [
+        "V10-C12"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-GALATIANS",
+      "title": "Galatians",
+      "planned_chapters": [
+        "V10-C07",
+        "V10-C08"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-EPHESIANS",
+      "title": "Ephesians",
+      "planned_chapters": [
+        "V10-C15"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-PHILIPPIANS",
+      "title": "Philippians",
+      "planned_chapters": [
+        "V10-C09"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-COLOSSIANS",
+      "title": "Colossians",
+      "planned_chapters": [
+        "V10-C14",
+        "V10-C15"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-THESSALONIANS",
+      "title": "1 Thessalonians",
+      "planned_chapters": [
+        "V10-C09"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-THESSALONIANS",
+      "title": "2 Thessalonians",
+      "planned_chapters": [
+        "V10-C09"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-TIMOTHY",
+      "title": "1 Timothy",
+      "planned_chapters": [
+        "V10-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-TIMOTHY",
+      "title": "2 Timothy",
+      "planned_chapters": [
+        "V10-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-TITUS",
+      "title": "Titus",
+      "planned_chapters": [
+        "V10-C17"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-PHILEMON",
+      "title": "Philemon",
+      "planned_chapters": [
+        "V10-C14"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-HEBREWS",
+      "title": "Hebrews",
+      "planned_chapters": [
+        "V10-C19",
+        "V10-C21"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JAMES",
+      "title": "James",
+      "planned_chapters": [
+        "V10-C16"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-PETER",
+      "title": "1 Peter",
+      "planned_chapters": [
+        "V10-C15"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-PETER",
+      "title": "2 Peter",
+      "planned_chapters": [
+        "V10-C19"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-1-JOHN",
+      "title": "1 John",
+      "planned_chapters": [
+        "V10-C18"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-2-JOHN",
+      "title": "2 John",
+      "planned_chapters": [
+        "V10-C18"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-3-JOHN",
+      "title": "3 John",
+      "planned_chapters": [
+        "V10-C18",
+        "V10-C21"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-JUDE",
+      "title": "Jude",
+      "planned_chapters": [
+        "V10-C19"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    },
+    {
+      "source_id": "SRC-BIB-REVELATION",
+      "title": "Revelation",
+      "planned_chapters": [
+        "V11-C01",
+        "V11-C14"
+      ],
+      "status": "has_planning_anchors_not_full_adaptation",
+      "inspected_passage_ids": [],
+      "full_text_inspected": false,
+      "remaining": "Close-read every retained unit; enumerate unadapted passages and literary forms; verify edition, numbering, source variants, ethical transformation, and paired-edition inclusion."
+    }
+  ],
+  "claim": "All 66 baseline books have explicit planning anchors. No book is thereby claimed completely retold or fully read.",
+  "broader_corpus": "See /codex-apockalypsis/files/sources.json for the separate, larger source denominator; this annex does not silently replace it."
+}

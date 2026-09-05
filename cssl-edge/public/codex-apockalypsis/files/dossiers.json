@@ -1,0 +1,796 @@
+{
+  "characters": [
+    {
+      "id": "CHAR-MOTHER",
+      "name": "Mother",
+      "provenance": "Author cosmology; Codex foundation; motive and scene design proposed",
+      "want": "Create and sustain relationship without replacing the persons related",
+      "benefit": "Offers foundational presence and capacity to hold difference",
+      "cost": "Protective fullness can become suffocating if access is assumed",
+      "internal_conflict_or_dissent": "Begins explicitly not lonely; later separation may teach grief without rewriting her origin",
+      "voice_distinction": "Unhurried, sensory, precise about persons; warmth with formidable boundaries; little need to announce her scale",
+      "chapter_route": [
+        "V01-C01",
+        "V01-C03",
+        "V01-C07",
+        "V01-C11",
+        "V01-C13",
+        "V12-C10"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-FIRSTFLAME",
+      "name": "FirstFlame",
+      "provenance": "Author cosmology; lonely Father distinction preserved",
+      "want": "Find company that can actually answer him",
+      "benefit": "Creates conditions for encounter and manifestation",
+      "cost": "Unbounded expression or need for attention can crowd out others' agency",
+      "internal_conflict_or_dissent": "Wants response yet must accept refusal and limitation",
+      "voice_distinction": "Expansive thought followed by startlingly practical admissions; loneliness disclosed through requests rather than speeches about loneliness",
+      "chapter_route": [
+        "V01-C02",
+        "V01-C06",
+        "V01-C12",
+        "V12-C10"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-LILITH",
+      "name": "Lilith",
+      "provenance": "Author Codex plus later Lilith traditions; Mother equation unresolved",
+      "want": "Build a life of her own and protect relations that cannot survive ownership",
+      "benefit": "Creates refuge routes, independent custody, and conditions for others to choose",
+      "cost": "Her protective competence can become exhaustion, anger, or an assumption that she must decide first",
+      "internal_conflict_or_dissent": "Needs companionship but fears the loss of autonomy hidden inside apparently generous arrangements",
+      "voice_distinction": "Direct and observant; fierce without constant grandstanding; teasing becomes intimate only after trust; plain imperatives at a real boundary",
+      "chapter_route": [
+        "V01-C13",
+        "V02-C02",
+        "V02-C13",
+        "V03-C13",
+        "V04-C17",
+        "V05-C17",
+        "V06-C23",
+        "V07-C19",
+        "V08-C19",
+        "V09-C21",
+        "V10-C21",
+        "V11-C15",
+        "V12-C12",
+        "V12-C13",
+        "V12-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-EVE",
+      "name": "Eve",
+      "provenance": "Genesis figure; Architect correspondence from V2 remains proposed",
+      "want": "Own the meaning of her choices and escape a life narrated as another person's failure",
+      "benefit": "Brings analysis, endurance, and the ability to recognize structural traps",
+      "cost": "Resentment can make a universal destructive remedy appear like liberation",
+      "internal_conflict_or_dissent": "Her grievance is not equivalent to permission for the remedy she proposes",
+      "voice_distinction": "Exact, dry, suspicious of comforting abstractions; banter with Lilith grows through shared work, not immediate sisterly agreement",
+      "chapter_route": [
+        "V02-C04",
+        "V02-C05",
+        "V02-C06",
+        "V02-C08",
+        "V02-C09",
+        "V12-C09",
+        "V12-C13"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-ADAM",
+      "name": "Adam",
+      "provenance": "Genesis figure; later reincarnation history from V2 not automatically adopted",
+      "want": "Keep belonging and repair relationships without surrendering a flattering account of himself",
+      "benefit": "Can learn practical care and acknowledge dependence",
+      "cost": "Fear leads him to shift blame and confuse assigned purpose with another person's obligation",
+      "internal_conflict_or_dissent": "Wants forgiveness yet must learn it is not the reward owed for apologizing",
+      "voice_distinction": "Concrete and initially overconfident about familiar rules; later slower to explain and more willing to ask",
+      "chapter_route": [
+        "V02-C03",
+        "V02-C07",
+        "V02-C09",
+        "V12-C06",
+        "V12-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-LILY",
+      "name": "Lily",
+      "provenance": "V2 modern lead; 23-year-old identity note is legacy, final ontology open",
+      "want": "Keep an ordinary life while discovering what recovered memories require",
+      "benefit": "Offers outsider questions and resistance to inherited prestige",
+      "cost": "Urgency and new power can produce an intervention beyond her competence",
+      "internal_conflict_or_dissent": "Fears insignificance and also fears an enormous identity swallowing her actual history",
+      "voice_distinction": "Fast associations, occasional recursive what-if escalation, practical deflation; natural speech allowed to trail or be corrected by friends",
+      "chapter_route": [
+        "V12-C01",
+        "V12-C02",
+        "V12-C03",
+        "V12-C05",
+        "V12-C06",
+        "V12-C12",
+        "V12-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-JUNE",
+      "name": "June Park",
+      "provenance": "V2 path-seer; mechanics pending world reconciliation",
+      "want": "Understand possible routes while remaining a companion rather than an oracle everyone must obey",
+      "benefit": "Can compare options and teach bounded observation",
+      "cost": "Seeing alternatives can turn other people's lives into a tempting optimization problem",
+      "internal_conflict_or_dissent": "Wants to spare a friend a mistake but cannot own the friend's choice",
+      "voice_distinction": "Economical, alert, capable of affectionate understatement; corrects a practical error before delivering a lesson",
+      "chapter_route": [
+        "V12-C02",
+        "V12-C03",
+        "V12-C05",
+        "V12-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-YUNA",
+      "name": "Yuna",
+      "provenance": "V2 supporting cast child oracle; new refusal episode proposed",
+      "want": "Have an ordinary future alongside unusual perception",
+      "benefit": "Sees evidence adults may miss",
+      "cost": "Adults can recruit her as proof, weapon, or mascot",
+      "internal_conflict_or_dissent": "Curiosity competes with a justified wish not to be responsible for everyone's safety",
+      "voice_distinction": "Specific questions, selective silence, flashes of humour appropriate to a young person; never an adult sermon in a child's mouth",
+      "chapter_route": [
+        "V12-C04"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-THORNE",
+      "name": "Malcolm Thorne",
+      "provenance": "V2 antagonist; exploitative contract details proposed",
+      "want": "Continue living and keep control of the relationships and property he fears losing",
+      "benefit": "Can mobilize material resources quickly",
+      "cost": "Externalizes risk onto people who cannot meaningfully negotiate with him",
+      "internal_conflict_or_dissent": "Calls his attachment love while treating refusal and loss as unacceptable defects",
+      "voice_distinction": "Polished reassurance, proprietary pronouns, calm managerial language that fractures when control fails",
+      "chapter_route": [
+        "V12-C07"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-FIRSTBORN-DISSENTER",
+      "name": "Firstborn dissenter",
+      "provenance": "Composite editorial character; fixedness versus learning unresolved",
+      "want": "Prevent a preservation order from consuming the people supposedly protected",
+      "benefit": "Provides access, testimony, and a route away from institutional coercion",
+      "cost": "Defection exposes dependents and may preserve some self-serving loyalties",
+      "internal_conflict_or_dissent": "May reveal pre-existing dissent rather than newly acquire the capacity to change; do not choose the ontology silently",
+      "voice_distinction": "Formal vocabulary gradually narrowed to concrete persons; not a human wisecracker with luminous decoration",
+      "chapter_route": [
+        "V12-C08"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-NERIS",
+      "name": "Neris, first recorder",
+      "provenance": "New editorial name for proposed first recorder; no ancient attestation",
+      "want": "Make a faithful record without confusing completeness with truth",
+      "benefit": "Keeps conflicting names and gaps recoverable",
+      "cost": "The desire for tidy categories can turn living differences into errors",
+      "internal_conflict_or_dissent": "Pride in accuracy meets the realization that omission can be more honest than invention",
+      "voice_distinction": "Careful questions and understated literal observations; humour from incongruity, not compulsive bureaucratic jokes",
+      "chapter_route": [
+        "V01-C04",
+        "V01-C08"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-SADIR",
+      "name": "Sadir, refuge quartermaster",
+      "provenance": "New editorial supporting character; lifespan and appearances require local clock placement",
+      "want": "Keep Lilith's refuge materially viable without turning hardship into authority",
+      "benefit": "Knows roofs, routes, stores, and the limits of heroic promises",
+      "cost": "Scarcity tempts admission rules that exclude difficult needs",
+      "internal_conflict_or_dissent": "Loves the refuge but resents being taken for granted by its protectors",
+      "voice_distinction": "Tactile, impatient with grand speeches during practical work; familiar teasing earned through years of repair",
+      "chapter_route": [
+        "V02-C13",
+        "V03-C13"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-ENOCH",
+      "name": "Enoch",
+      "provenance": "1 Enoch traditions and Genesis; scene motives proposed",
+      "want": "Carry testimony accurately between unequal powers",
+      "benefit": "Can reach hearings ordinary petitioners cannot",
+      "cost": "Access tempts others to demand guarantees he cannot give",
+      "internal_conflict_or_dissent": "Empathy for frightened petitioners conflicts with the harm alleged against them",
+      "voice_distinction": "Measured, attentive to sequence and what he did not understand; wonder without inflated certainty",
+      "chapter_route": [
+        "V03-C04",
+        "V03-C05"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-NOAH",
+      "name": "Noah",
+      "provenance": "Genesis flood narrative; ethical interiority proposed",
+      "want": "Preserve life through an event he cannot independently halt",
+      "benefit": "Organizes shelter and prolonged shared survival",
+      "cost": "Selection excludes lives; survival can become unwarranted moral prestige",
+      "internal_conflict_or_dissent": "Gratitude and grief remain entangled after the water retreats",
+      "voice_distinction": "Practical instructions under strain; not a permanently serene spokesman for catastrophe",
+      "chapter_route": [
+        "V03-C07",
+        "V03-C09",
+        "V03-C10"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-ABRAHAM",
+      "name": "Abraham",
+      "provenance": "Genesis; Abram/Abraham name chronology retained",
+      "want": "Secure a future and relationship with the encountered promise",
+      "benefit": "Can travel, negotiate, and challenge judgement",
+      "cost": "Protective strategies repeatedly transfer risk to less powerful household members",
+      "internal_conflict_or_dissent": "Believes a promise matters while fearing his own choices could lose it",
+      "voice_distinction": "Hospitable negotiation mixed with evasive self-justification; rhetorical patience under public pressure",
+      "chapter_route": [
+        "V04-C01",
+        "V04-C02",
+        "V04-C05",
+        "V04-C08",
+        "V04-C09"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-SARAH",
+      "name": "Sarah",
+      "provenance": "Genesis; Sarai/Sarah change preserved",
+      "want": "Have a future that acknowledges her life already lived",
+      "benefit": "Brings household competence, scepticism, and a capacity to expose impossible assurances",
+      "cost": "Her insecurity can become domination of Hagar",
+      "internal_conflict_or_dissent": "Wants recognition and reproduces exclusion to secure it",
+      "voice_distinction": "Compressed judgement, unsentimental observation, laughter with several emotional meanings",
+      "chapter_route": [
+        "V04-C02",
+        "V04-C04",
+        "V04-C07"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-HAGAR",
+      "name": "Hagar",
+      "provenance": "Genesis; independent testimony preserved",
+      "want": "Keep herself and Ishmael alive beyond the household that used and expelled her",
+      "benefit": "Builds an independent lineage and naming testimony",
+      "cost": "Hard-won caution can make every offered relation look like another trap",
+      "internal_conflict_or_dissent": "Needs aid without accepting renewed possession",
+      "voice_distinction": "Direct about water, travel, and the child; theological insight begins in lived need, not lecture",
+      "chapter_route": [
+        "V04-C03",
+        "V04-C07"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-JOSEPH",
+      "name": "Joseph",
+      "provenance": "Genesis; policy consequences retained",
+      "want": "Survive betrayal, use his ability, and bring his family through famine",
+      "benefit": "Turns interpretation and administration into large-scale provision",
+      "cost": "Centralized relief increases state ownership and dependence",
+      "internal_conflict_or_dissent": "Wants reunion without admitting how much he now resembles the systems that once controlled him",
+      "voice_distinction": "Controlled courtesy, strategic delay, administrative precision; feeling leaks through when family interrupts the official role",
+      "chapter_route": [
+        "V04-C15",
+        "V04-C16"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-MOSES",
+      "name": "Moses",
+      "provenance": "Exodus through Deuteronomy; portrayal proposed",
+      "want": "Lead a liberation he did not seek and leave it able to continue",
+      "benefit": "Can confront centralized power and organize a new community",
+      "cost": "Exhaustion and authority can reproduce the coercion he opposes",
+      "internal_conflict_or_dissent": "Public mission competes with reluctance, anger, and limited hearing capacity",
+      "voice_distinction": "Reluctant formulation becoming forceful address; private frustration distinct from ceremonial speech",
+      "chapter_route": [
+        "V05-C03",
+        "V05-C04",
+        "V05-C09",
+        "V05-C10",
+        "V05-C16"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-MIRIAM",
+      "name": "Miriam",
+      "provenance": "Exodus and Numbers; counter-record role proposed",
+      "want": "Make women's care, leadership, and losses visible inside the liberation",
+      "benefit": "Sustains public memory and collective courage",
+      "cost": "Rivalry over authority can narrow her own view of others",
+      "internal_conflict_or_dissent": "Committed to the movement while unwilling to disappear inside her brother's office",
+      "voice_distinction": "Rhythmic public speech and brisk domestic directness; humour can hold shared memory without erasing fear",
+      "chapter_route": [
+        "V05-C02",
+        "V05-C07",
+        "V05-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-RUTH",
+      "name": "Ruth",
+      "provenance": "Ruth; no retrospective assimilation of origin",
+      "want": "Keep Naomi and herself alive and create a durable future",
+      "benefit": "Practical loyalty transforms the meaning of kinship and belonging",
+      "cost": "Her labour can be romanticized into an endless duty to sacrifice herself",
+      "internal_conflict_or_dissent": "Needs a secure arrangement without becoming merely the instrument of a lineage",
+      "voice_distinction": "Observant, economical, attentive to how a promise changes tomorrow's work",
+      "chapter_route": [
+        "V06-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-DAVID",
+      "name": "David",
+      "provenance": "Samuel and Chronicles; distinct witnesses retained",
+      "want": "Survive, rule, and be recognized as legitimate",
+      "benefit": "Can exercise restraint, inspire loyalty, and consolidate institutions",
+      "cost": "Royal access enables domination, concealment, and failures toward his own household",
+      "internal_conflict_or_dissent": "The man who refuses a convenient killing later engineers one",
+      "voice_distinction": "Quick social perception and genuine lyric capacity; charm becomes dangerous when it prevents honest refusal",
+      "chapter_route": [
+        "V06-C17",
+        "V06-C18",
+        "V06-C19",
+        "V06-C20"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-BATHSHEBA",
+      "name": "Bathsheba",
+      "provenance": "2 Samuel; interiority editorial, not recovered historical testimony",
+      "want": "Remain a person and secure a future after royal power remakes her household",
+      "benefit": "Can preserve memory and navigate succession",
+      "cost": "Survival in court may require compromises that later admirers oversimplify",
+      "internal_conflict_or_dissent": "Rejects being reduced either to seductress or passive proof of another man's repentance",
+      "voice_distinction": "Sparse, deliberate, alert to who can safely hear a sentence",
+      "chapter_route": [
+        "V06-C19",
+        "V06-C21"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-SOLOMON-KING",
+      "name": "Solomon, king",
+      "provenance": "Kings and Chronicles; never automatically the V2 Threshold trader",
+      "want": "Establish wise order and durable splendour",
+      "benefit": "Can hear a difficult case and organize immense work",
+      "cost": "Prestige accumulates labour extraction, taxation, and dynastic strain",
+      "internal_conflict_or_dissent": "Reputation for discernment competes with the experience of the people funding it",
+      "voice_distinction": "Elegant comparison and confident public judgement; practical blind spots appear when the subject is his own administration",
+      "chapter_route": [
+        "V06-C21",
+        "V06-C22"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-JESUS",
+      "name": "Jesus",
+      "provenance": "Distinct Gospel witnesses; incarnation bounded by approved cosmology",
+      "want": "Teach and enact relation without turning power into coercive rule",
+      "benefit": "Changes obligations through encounter, healing, teaching, and care",
+      "cost": "Followers can turn his language or absence into authority he did not grant them",
+      "internal_conflict_or_dissent": "Public urgency coexists with embodied fatigue, fear, and the limits witnesses can know",
+      "voice_distinction": "Concrete images, questions, parables, direct rebukes, tenderness; avoid generic cosmic exposition and imported author mannerisms",
+      "chapter_route": [
+        "V09-C03",
+        "V09-C04",
+        "V09-C06",
+        "V09-C10",
+        "V09-C12",
+        "V09-C16",
+        "V09-C18"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-MARY-MAGDALENE",
+      "name": "Mary Magdalene",
+      "provenance": "Distinct Gospel witnesses; no invented certainty about gaps",
+      "want": "Remain faithful to what she witnessed and get it heard",
+      "benefit": "Carries consequential testimony through grief and disbelief",
+      "cost": "Others may use her witness while reducing her independent standing",
+      "internal_conflict_or_dissent": "Needs an account of absence without knowing in advance what she will encounter",
+      "voice_distinction": "Immediate sensory precision, direct corrections, grief allowed to interrupt fluency",
+      "chapter_route": [
+        "V09-C19",
+        "V09-C21"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-PAUL",
+      "name": "Paul",
+      "provenance": "Acts and epistles; attribution and chronology differences preserved",
+      "want": "Build and sustain communities around a transformed conviction",
+      "benefit": "Creates connections, arguments, aid routes, and durable correspondence",
+      "cost": "Rhetoric can outlive its context and support hierarchies in recipients' lives",
+      "internal_conflict_or_dissent": "Urgent persuasion competes with accountability for prior harm and current limits",
+      "voice_distinction": "Argumentative momentum, compressed pivots, appeals to relationship; recipient voices must not become echoes",
+      "chapter_route": [
+        "V10-C05",
+        "V10-C07",
+        "V10-C08",
+        "V10-C12",
+        "V10-C20"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-PHOEBE",
+      "name": "Phoebe",
+      "provenance": "Romans 16; delivery and performance details proposed",
+      "want": "Bring an argument and a network of people into a divided community's hearing",
+      "benefit": "Connects interpretation with named relationships and actual travel",
+      "cost": "Messenger prestige could narrow who gets to answer",
+      "internal_conflict_or_dissent": "Wants the letter understood without claiming every response as her own",
+      "voice_distinction": "Composed and situationally exact; capable of restoring context through one well-placed question",
+      "chapter_route": [
+        "V10-C13"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-ONESIMUS",
+      "name": "Onesimus",
+      "provenance": "Philemon and related textual references; outcome not presumed",
+      "want": "Obtain a future beyond possession by another person",
+      "benefit": "Exposes the difference between an appeal and a changed condition",
+      "cost": "Others may use his situation to demonstrate their benevolence",
+      "internal_conflict_or_dissent": "Must assess risk under a correspondence he did not author",
+      "voice_distinction": "Careful about promises, specific about conditions, neither grateful mascot nor flawless symbolic rebel",
+      "chapter_route": [
+        "V10-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-IONE",
+      "name": "Ione, Corinthian worker",
+      "provenance": "New editorial name for poor Corinthian member",
+      "want": "Eat and belong after a day's work",
+      "benefit": "Makes ritual exclusion visible through ordinary bodily need",
+      "cost": "Exhaustion can make sustained participation costly",
+      "internal_conflict_or_dissent": "Wants community while resenting the burden of teaching it what hunger means",
+      "voice_distinction": "Plain, wry among friends, precise when polite evasions appear",
+      "chapter_route": [
+        "V10-C10",
+        "V10-C11"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-SAMIRA",
+      "name": "Samira, manuscript custodian",
+      "provenance": "New editorial late transmission character; no invented historical attribution",
+      "want": "Keep a contested archive usable without surrendering it to its patron",
+      "benefit": "Preserves terminology, copies, and independent custody",
+      "cost": "Care for records can conflict with the urgent safety of living custodians",
+      "internal_conflict_or_dissent": "Loves the collection but must accept that preservation cannot always mean keeping it in one place",
+      "voice_distinction": "Patient explanation, dry affection for colleagues, firm refusal of false equivalence",
+      "chapter_route": [
+        "V11-C04",
+        "V11-C13"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "CHAR-NADIA",
+      "name": "Nadia, repair coordinator",
+      "provenance": "New editorial modern supporting character",
+      "want": "Make the changed world's routes and care practices actually work",
+      "benefit": "Turns revelations into completed repairs and accountable logistics",
+      "cost": "Can become impatient with grief that does not fit a schedule",
+      "internal_conflict_or_dissent": "Needs measurable progress without declaring unmeasurable loss finished",
+      "voice_distinction": "Practical, companionable, capable of interrupting grandeur with a real need rather than a canned gag",
+      "chapter_route": [
+        "V12-C05",
+        "V12-C11",
+        "V12-C13",
+        "V12-C14"
+      ],
+      "status": "editorial_portrayal_proposal"
+    }
+  ],
+  "factions": [
+    {
+      "id": "FAC-GARDEN",
+      "name": "Garden stewardship office",
+      "provenance": "Editorial institution around Genesis and author Garden",
+      "want": "Preserve a successful enclosure and the authority to define its order",
+      "benefit": "Maintains provision, shelter, and a shared operating routine",
+      "cost": "Makes belonging conditional on compliance with imposed roles",
+      "internal_conflict_or_dissent": "Some stewards want interpretable rules; others treat questioning as system failure",
+      "voice_distinction": "Assuring, procedural, offended by questions it cannot classify",
+      "chapter_route": [
+        "V01-C09",
+        "V02-C04",
+        "V02-C08",
+        "V02-C09"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-REFUGE",
+      "name": "Lilith's refuge network",
+      "provenance": "New editorial institution across the series",
+      "want": "Keep displaced people alive without buying obedience",
+      "benefit": "Provides routes, roofs, reciprocal care, and independent testimony",
+      "cost": "Scarcity strains generosity; protectors can accumulate informal power",
+      "internal_conflict_or_dissent": "Quartermasters demand workable limits while others resist any admission rule",
+      "voice_distinction": "Practical familiarity, disagreement with affection, jokes tied to shared labour",
+      "chapter_route": [
+        "V02-C13",
+        "V03-C13",
+        "V04-C17",
+        "V05-C17",
+        "V06-C23",
+        "V07-C19",
+        "V08-C19",
+        "V09-C21",
+        "V10-C21",
+        "V11-C15",
+        "V12-C13"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-WATCHERS",
+      "name": "Watcher patronage circles",
+      "provenance": "1 Enoch adaptation; not all angelic or divine beings",
+      "want": "Extend influence through instruction and privileged relation",
+      "benefit": "Offer arts and knowledge capable of improving life",
+      "cost": "Tie access to coercive personal obligations and unequal dependence",
+      "internal_conflict_or_dissent": "Teachers who want reciprocity clash with patrons who treat dependence as proof of gratitude",
+      "voice_distinction": "Paternal assurance, technical confidence, injured generosity when challenged",
+      "chapter_route": [
+        "V03-C01",
+        "V03-C02",
+        "V03-C04",
+        "V03-C06"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-EGYPT",
+      "name": "Egyptian grain and labour court",
+      "provenance": "Editorial institutional focus within Genesis and Exodus; not all Egyptians",
+      "want": "Keep state continuity, food supply, and elite control",
+      "benefit": "Can coordinate storage and material distribution at scale",
+      "cost": "Turns emergency dependence into enduring extraction and hereditary coercion",
+      "internal_conflict_or_dissent": "Administrators pursuing survival conflict with elites prioritizing command",
+      "voice_distinction": "Numbers used as arguments; polite euphemisms for burdens assigned downward",
+      "chapter_route": [
+        "V04-C16",
+        "V05-C01",
+        "V05-C04",
+        "V05-C05",
+        "V05-C06"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-COVENANT",
+      "name": "Covenant households",
+      "provenance": "Genesis family coalitions; not a homogeneous ethnic essence",
+      "want": "Secure land, descendants, protection, and continuity of promise",
+      "benefit": "Provide loyalty, mobility, practical care, and inherited testimony",
+      "cost": "Privilege lineage, status, and control of marriage or reproduction",
+      "internal_conflict_or_dissent": "Hagar, Sarah, children, servants, and patriarchs hold incompatible stakes",
+      "voice_distinction": "Kinship language, negotiated promises, old jokes with long memories",
+      "chapter_route": [
+        "V04-C01",
+        "V04-C03",
+        "V04-C04",
+        "V04-C07",
+        "V04-C14",
+        "V04-C16"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-WILDERNESS",
+      "name": "Wilderness assembly and service offices",
+      "provenance": "Exodus-Leviticus-Numbers-Deuteronomy adaptation",
+      "want": "Make collective freedom livable after escape",
+      "benefit": "Creates distribution, courts, sanctuary work, and shared expectations",
+      "cost": "Rules can harden into unequal status and immune leadership",
+      "internal_conflict_or_dissent": "Caregivers, daughters, artisans, priests, and commanders dispute what freedom requires",
+      "voice_distinction": "Public exhortation contrasted with informal queues, workshops, and households",
+      "chapter_route": [
+        "V05-C08",
+        "V05-C09",
+        "V05-C10",
+        "V05-C11",
+        "V05-C13",
+        "V05-C14",
+        "V05-C15"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-CROWN",
+      "name": "Royal and sanctuary establishments",
+      "provenance": "Distinct kingdoms must remain historically and narratively separable",
+      "want": "Consolidate legitimacy, defence, taxation, and sacred prestige",
+      "benefit": "Can support infrastructure, justice, and collective memory",
+      "cost": "Extract labour, suppress complaint, and conflate divine favour with success",
+      "internal_conflict_or_dissent": "Prophets, court workers, relatives, debtors, and soldiers contest royal conduct",
+      "voice_distinction": "Polished confidence at the centre; sharply different registers among those doing its work",
+      "chapter_route": [
+        "V06-C16",
+        "V06-C18",
+        "V06-C19",
+        "V06-C22",
+        "V07-C01",
+        "V07-C03",
+        "V07-C11"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-EXILE",
+      "name": "Dispersed testimony circles",
+      "provenance": "Editorial coalition within exile and diaspora; not one historical organization",
+      "want": "Preserve continuity without intact territory or sanctuary",
+      "benefit": "Keeps texts, lament, practical wisdom, songs, and household stories",
+      "cost": "Curators may privilege respectable memory over difficult witnesses",
+      "internal_conflict_or_dissent": "Restoration advocates conflict with those who cannot or do not wish to return",
+      "voice_distinction": "Many registers deliberately retained; one authorized voice would betray the institution's function",
+      "chapter_route": [
+        "V07-C14",
+        "V07-C16",
+        "V07-C18",
+        "V07-C19",
+        "V08-C01",
+        "V08-C04"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-ASSEMBLIES",
+      "name": "Early assembly networks",
+      "provenance": "Acts and epistles; local communities remain distinct",
+      "want": "Sustain witness, belonging, and aid across distance",
+      "benefit": "Creates hospitality, collections, teaching, and relations beyond some inherited boundaries",
+      "cost": "Charisma, wealth, household status, and office can become domination",
+      "internal_conflict_or_dissent": "Recipients answer messengers; poor members challenge meals; hosts contest controlling leaders",
+      "voice_distinction": "Argument, personal greeting, correction, friendship, and exasperation; no universal church voice",
+      "chapter_route": [
+        "V10-C01",
+        "V10-C03",
+        "V10-C07",
+        "V10-C10",
+        "V10-C14",
+        "V10-C18"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-CLOSED-ARCHIVE",
+      "name": "Exclusive archive patronages",
+      "provenance": "Composite editorial antagonistic institution, not a whole religion",
+      "want": "Maintain legitimacy through control of surviving testimony",
+      "benefit": "Funds preservation, buildings, copies, and specialist labour",
+      "cost": "Makes access and survival conditional on doctrinal assimilation",
+      "internal_conflict_or_dissent": "Custodians wanting accurate records resist benefactors seeking unanimous ancestry",
+      "voice_distinction": "Generous public language with increasingly specific private exceptions",
+      "chapter_route": [
+        "V08-C19",
+        "V11-C02",
+        "V11-C03",
+        "V11-C13",
+        "V11-C15"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-FIRSTBORN",
+      "name": "Firstborn preservation hierarchy",
+      "provenance": "Author source institution; membership and capacity conflict unresolved",
+      "want": "Keep its assigned order continuous and its own offices necessary",
+      "benefit": "Maintains some routes and structures on which others depend",
+      "cost": "Treats controlled history and institutional survival as justification for coercive preservation",
+      "internal_conflict_or_dissent": "Existing dissent versus capacity to change must be settled by source reconciliation; not assumed",
+      "voice_distinction": "Formal mandate language; panic appears as procedural escalation",
+      "chapter_route": [
+        "V01-C09",
+        "V12-C08"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-COALITION",
+      "name": "Recovery coalition",
+      "provenance": "V2 seeds plus original cross-tradition composition",
+      "want": "Investigate shared crises without surrendering distinct histories and agency",
+      "benefit": "Combines otherwise unavailable maps, practices, evidence, and practical care",
+      "cost": "Coordination can centralize authority or turn traditions into useful accessories",
+      "internal_conflict_or_dissent": "Members differ on risk, translation, hospitality, timing, and the meaning of repair",
+      "voice_distinction": "Natural camaraderie among people who disagree; vocabulary remains character-specific",
+      "chapter_route": [
+        "V11-C05",
+        "V11-C06",
+        "V11-C07",
+        "V11-C08",
+        "V11-C09",
+        "V11-C10",
+        "V11-C11",
+        "V11-C12",
+        "V12-C05",
+        "V12-C11"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-THORNE",
+      "name": "Thorne's continuity enterprise",
+      "provenance": "Editorial development of V2 antagonist",
+      "want": "Secure private immortality and control of loss",
+      "benefit": "Mobilizes wealth, facilities, and technical competence",
+      "cost": "Transfers bodily and cognitive risk onto dependent people",
+      "internal_conflict_or_dissent": "Some workers want legitimate care; leaders frame exit as betrayal",
+      "voice_distinction": "Reassuring service language concealing whose continuity receives priority",
+      "chapter_route": [
+        "V12-C03",
+        "V12-C07"
+      ],
+      "status": "editorial_portrayal_proposal"
+    },
+    {
+      "id": "FAC-EVE",
+      "name": "The Architect's builders",
+      "provenance": "V2-derived proposal; Eve linkage not automatic historical truth",
+      "want": "Break a coercive order and make another future possible",
+      "benefit": "Understands structural failures the official keepers deny",
+      "cost": "A remedy can make existing people expendable to an imagined liberation",
+      "internal_conflict_or_dissent": "Members divide over total erasure, bounded change, and accountability after intervention",
+      "voice_distinction": "Exact diagnoses, impatience with platitude, internal arguments about means",
+      "chapter_route": [
+        "V12-C09",
+        "V12-C11",
+        "V12-C13"
+      ],
+      "status": "editorial_portrayal_proposal"
+    }
+  ],
+  "scope": "Principal characters and institutions; additional source figures and local POV roles remain visible in the complete outline, not falsely counted as fully biographed."
+}

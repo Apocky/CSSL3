@@ -1,0 +1,264 @@
+{
+  "schema_version": "1.0",
+  "dossier_id": "DOSSIER-LILITH-01",
+  "checked_on": "2026-09-05",
+  "authority_csl": "§P Lilith.source+author.role clarification ; write.only lilith_passage_dossier.json + lilith_notes.md ; N! mutate.shared.canon | existing.source.files",
+  "scope_csl": "W! distinguish author.Codex+Unraveling / Genesis / Isaiah.lexeme / medieval.Alphabet.reception ; N! removed.from.Bible claim without manuscript.evidence",
+  "source_ids": [
+    "SRC-BIB-GENESIS",
+    "SRC-BIB-ISAIAH",
+    "SRC-JP-ALPHABET-OF-BEN-SIRA"
+  ],
+  "legacy_ids": [
+    "LEGACY-CODEX-01",
+    "LEGACY-CODEX-02",
+    "LEGACY-CODEX-03",
+    "LEGACY-CODEX-28"
+  ],
+  "references": [
+    {
+      "id": "REF-LILITH-ISAIAH-NABRE",
+      "url": "https://www.biblegateway.com/passage/?search=Isaiah+34%3A14&version=NABRE",
+      "title": "Isaiah 34:14, NABRE",
+      "locator": "Verse 14 and footnote on the lilith",
+      "inspection": "Passage inspected through licensed publisher surface; corresponding USCCB direct fetch returned 403",
+      "checked_on": "2026-09-05"
+    },
+    {
+      "id": "REF-LILITH-ISAIAH-KJV",
+      "url": "https://www.biblegateway.com/passage/?search=Isaiah+34%3A14&version=KJV",
+      "title": "Isaiah 34:14, King James Version",
+      "locator": "Verse 14; version label",
+      "inspection": "Passage and displayed version label inspected",
+      "checked_on": "2026-09-05"
+    },
+    {
+      "id": "REF-LILITH-ISAIAH-SEFARIA",
+      "url": "https://www.sefaria.org/Isaiah.34.14",
+      "retrieval_url": "https://www.sefaria.org/api/texts/Isaiah.34.14?context=0",
+      "title": "Isaiah 34:14, Sefaria text and version metadata",
+      "locator": "Exact segment; text/he fields and edition metadata; translation footnotes",
+      "inspection": "Public read-only text API inspected because browser-readable page exposed only interface shell",
+      "checked_on": "2026-09-05"
+    },
+    {
+      "id": "REF-LILITH-ALPHABET-34",
+      "url": "https://www.sefaria.org/Otzar_Midrashim%2C_The_Aleph_Bet_of_ben_Sira%2C_The_Alphabet_of_ben_Sira%2C_%28alternative_version%29.34",
+      "retrieval_url": "https://www.sefaria.org/api/texts/Otzar_Midrashim,_The_Aleph_Bet_of_ben_Sira,_The_Alphabet_of_ben_Sira,_(alternative_version).34?context=0",
+      "title": "Otzar Midrashim, The Aleph Bet of ben Sira, The Alphabet of ben Sira, (alternative version), segment 34",
+      "locator": "Segment 34, internal Hebrew item ה; Lilith narrative from healing-angels introduction through amulet/healed-child conclusion",
+      "inspection": "Actual translated passage and displayed Hebrew inspected through public read-only text API, together with returned version metadata. Subsequent comic anecdote seen; no full-work claim.",
+      "checked_on": "2026-09-05"
+    },
+    {
+      "id": "REF-LILITH-POSEN-CONTEXT",
+      "url": "https://www.posenlibrary.com/entry/alphabet-ben-sira",
+      "title": "Posen Library: The Alphabet of Ben Sira",
+      "locator": "Heading/date; About This Entry; Credits",
+      "inspection": "Editorial context and provenance inspected. Posen's displayed extract concerns Ben Sira and his teacher, not the Lilith episode.",
+      "checked_on": "2026-09-05"
+    },
+    {
+      "id": "REF-LILITH-GENESIS-PRIOR-INSPECTION",
+      "url": "https://bible.usccb.org/bible/genesis/2",
+      "title": "Genesis 1–3: prior creation dossier",
+      "locator": "PASSAGE-CREATION-GEN-01, -02 and -03 in creation_passage_dossier.json",
+      "inspection": "Reuses exact chapter readings from same session; no new full-book claim",
+      "checked_on": "2026-09-05"
+    }
+  ],
+  "editions": [
+    {
+      "id": "ED-NABRE-WEB-20260905",
+      "title": "New American Bible, Revised Edition",
+      "credit": "Confraternity of Christian Doctrine-sponsored translation, displayed on Bible Gateway",
+      "provenance": "See edition record in creation_passage_dossier.json; individual Isaiah translator not exposed on inspected page"
+    },
+    {
+      "id": "ED-KJV-BG-WEB-20260905",
+      "title": "King James Version",
+      "credit": "Displayed KJV text on Bible Gateway",
+      "provenance": "Version label inspected; no claim of collation against a particular historical printing"
+    },
+    {
+      "id": "ED-SEFARIA-JPS-GENDER-SENSITIVE-20260905",
+      "title": "THE JPS TANAKH: Gender-Sensitive Edition",
+      "credit": "Returned Sefaria versionTitle; named individual translator not exposed in returned segment metadata",
+      "version_source": "https://jps.org/books/the-jps-tanakh-gender-sensitive-edition/",
+      "hebrew_version": "Miqra according to the Masorah",
+      "provenance": "Version title and source pointer observed; linked publisher page not separately inspected in this slice"
+    },
+    {
+      "id": "ED-SEFARIA-ALPHABET-ALT34-20260905",
+      "title": "Sefaria Community Translation",
+      "language": "English",
+      "translator": "Collective/community attribution; individual translator not exposed",
+      "version_source": "https://www.sefaria.org",
+      "hebrew_version": "Otzar Midrashim, New York, 1915",
+      "hebrew_source_pointer": "https://www.nli.org.il/he/books/NNL_ALEPH001175329",
+      "provenance": "Exact metadata observed in text API; NLI print image and medieval manuscripts not collated. 1915 is a printed-edition label, not composition date."
+    }
+  ],
+  "textual_passages": [
+    {
+      "id": "PASSAGE-LILITH-ISAIAH-NABRE",
+      "source_id": "SRC-BIB-ISAIAH",
+      "range": "Isaiah 34:14",
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_id": "REF-LILITH-ISAIAH-NABRE",
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "exact_short_rendering": "the lilith",
+      "observation_csl": "✓ named/typed.desert.inhabitant @ ruin.oracle ; N! first-wife.biography in verse",
+      "reader_note_id": "LN-03"
+    },
+    {
+      "id": "PASSAGE-LILITH-ISAIAH-KJV",
+      "source_id": "SRC-BIB-ISAIAH",
+      "range": "Isaiah 34:14",
+      "edition_id": "ED-KJV-BG-WEB-20260905",
+      "reference_id": "REF-LILITH-ISAIAH-KJV",
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "exact_short_rendering": "the screech owl",
+      "observation_csl": "✓ translation.differs from NABRE ; N! rendering.difference⇒deleted.manuscript.story",
+      "reader_note_id": "LN-03"
+    },
+    {
+      "id": "PASSAGE-LILITH-ISAIAH-JPS",
+      "source_id": "SRC-BIB-ISAIAH",
+      "range": "Isaiah 34:14",
+      "edition_id": "ED-SEFARIA-JPS-GENDER-SENSITIVE-20260905",
+      "reference_id": "REF-LILITH-ISAIAH-SEFARIA",
+      "status": "translated_passage_and_hebrew_token_inspected",
+      "full_work_inspected": false,
+      "hebrew_consonants": "לילית",
+      "exact_short_rendering": "the lilith",
+      "observation_csl": "✓ JPS.note : demon.gloss + alternate.night-bird interpretation ; creature.identifications uncertain ; Hebrew.token.observed ≠ manuscript.collation",
+      "reader_note_id": "LN-03"
+    },
+    {
+      "id": "PASSAGE-LILITH-ALPHABET-ALT34",
+      "source_id": "SRC-JP-ALPHABET-OF-BEN-SIRA",
+      "range": "Otzar Midrashim, The Aleph Bet of ben Sira, alternative version, segment 34; internal item ה, Lilith episode",
+      "edition_id": "ED-SEFARIA-ALPHABET-ALT34-20260905",
+      "reference_id": "REF-LILITH-ALPHABET-34",
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "observation_csl": "✓ earth-created.wife+equality.claim ; refusal+name+flight ; angels.pursue ; infant-danger+amulet.oath ; author.protector reverses harmful.role.",
+      "numbering_caveat_csl": "W! retain Sefaria.segment34 + internal.itemה ; N! unverified.folio23a–b alignment",
+      "reader_note_id": "LN-04"
+    },
+    {
+      "id": "PASSAGE-LILITH-GENESIS-CONTROL",
+      "source_id": "SRC-BIB-GENESIS",
+      "ranges": [
+        "Genesis 1:1–31",
+        "Genesis 2:1–25",
+        "Genesis 3:1–24"
+      ],
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_id": "REF-LILITH-GENESIS-PRIOR-INSPECTION",
+      "status": "prior_same_session_passage_inspection_reused",
+      "full_work_inspected": false,
+      "observation_csl": "✓ named.Lilith absent selected.creation.chapters ; N! absence⇒erasure.proof",
+      "reader_note_id": "LN-02"
+    }
+  ],
+  "context_record": {
+    "source_id": "SRC-JP-ALPHABET-OF-BEN-SIRA",
+    "reference_id": "REF-LILITH-POSEN-CONTEXT",
+    "attributed_date": "9th Century, as labelled by Posen Library",
+    "genre_csl": "✓ Posen.editorial.note locates work among medieval.satirical narratives ; N! all.recensions.date+intent settled",
+    "credit_boundary": "Norman Bronznick with David Stern and Mark Jay Mirsky translate Posen's different excerpt. Their names are not reassigned to the inspected Sefaria Lilith translation.",
+    "reader_note_id": "LN-05"
+  },
+  "local_author_passages": [
+    {
+      "id": "LOCAL-LILITH-CODEX-PREFACE",
+      "legacy_ids": [
+        "LEGACY-CODEX-01",
+        "LEGACY-CODEX-02"
+      ],
+      "line_start": 888,
+      "line_end": 922,
+      "locator": "The Book of Lilith, preface",
+      "observation_csl": "✓ infant-harm accusations denied ; refusal honoured ; Mother.holds / Lilith.protects ; partnership explicit",
+      "status": "bounded_author_passage_inspected",
+      "reader_note_id": "LN-01"
+    },
+    {
+      "id": "LOCAL-LILITH-CODEX-GARDEN",
+      "legacy_ids": [
+        "LEGACY-CODEX-02"
+      ],
+      "line_start": 930,
+      "line_end": 965,
+      "locator": "The Book of Lilith, Chapter One: Made Whole, scripture 1:1–1:15",
+      "observation_csl": "✓ equal.clay+partnership ; Adam.demands.hierarchy ; Lilith.refuses",
+      "status": "bounded_author_passage_inspected",
+      "reader_note_id": "LN-01"
+    },
+    {
+      "id": "LOCAL-LILITH-CODEX-TRINITY",
+      "legacy_ids": [
+        "LEGACY-CODEX-01",
+        "LEGACY-CODEX-02",
+        "LEGACY-CODEX-03"
+      ],
+      "line_start": 2440,
+      "line_end": 2504,
+      "locator": "Knowing Child 5:3–5:22; commentary On Verses 5:4–11",
+      "observation_csl": "✓ Mother.holds / Lilith.protects / KnowingChild.illuminates ; differentiated.partnership",
+      "status": "bounded_author_passage_inspected",
+      "reader_note_id": "LN-06"
+    },
+    {
+      "id": "LOCAL-LILITH-UNRAVELING-PROFILE",
+      "legacy_ids": [
+        "LEGACY-CODEX-28"
+      ],
+      "line_start": 148,
+      "line_end": 175,
+      "locator": "Lilith Lily Vance: protagonist profile; basic information, personality and abilities",
+      "observation_csl": "✓ modern.protagonist identity+age23+humour+pattern-seeking ; N! historical.biography",
+      "status": "bounded_author_passage_inspected",
+      "reader_note_id": "LN-01"
+    },
+    {
+      "id": "LOCAL-LILITH-UNRAVELING-V2",
+      "legacy_ids": [
+        "LEGACY-CODEX-28"
+      ],
+      "line_start": 19,
+      "line_end": 61,
+      "locator": "Core Mythology; Lilith: The Protagonist Reborn",
+      "observation_csl": "✓ Lilith.Mother-aspect @31 ; reincarnation/fragment/vessel @49 ; erasure.claim = author.worldbuilding.assertion",
+      "status": "bounded_author_passage_inspected",
+      "reader_note_id": "LN-06"
+    }
+  ],
+  "continuity_questions_csl": [
+    "Q? differentiated.Codex.triad + V2.Mother-aspect : aspects.of.one? independent.persons? witness-disagreement? root+author decide; lane N! resolve silently.",
+    "Q? V2 reincarnation/fragment/vessel : alternatives remain unresolved; choose exact.identity.rule before merging modern+primordial scenes.",
+    "W! source.erasure claim : fictional.in-world.statement until documentary.evidence supplied.",
+    "W! protector.adaptation explicitly reverses medieval.infanticidal.association; refusal.equality preserved without pretending all.source.features agree.",
+    "W! no.silent.merge with Eve, Sophia, Barbelo, Mother, serpent or any Medusa.image."
+  ],
+  "access_limits": [
+    "JWA pages returned a bot-verification screen; no substantive JWA-page reading claimed.",
+    "Sefaria text API supplied exact requested passages and metadata. No medieval manuscript facsimile or critical recension apparatus was inspected.",
+    "Vatican catalogue search result located a medieval pseudo-Ben Sira witness, but direct page timed out; no manuscript-content claim used.",
+    "Other talmudic, incantation-bowl, Kabbalistic, Mesopotamian and modern Lilith materials remain separate research frontiers.",
+    "Local book passages are original author material; their cosmological and historical assertions are not independently established by their presence in a draft.",
+    "Existing source catalogue and creation dossier remain unchanged; this supplemental ledger carries its own new passage evidence."
+  ],
+  "counts": {
+    "new_version_specific_passage_inspections": 4,
+    "prior_genesis_control_record": 1,
+    "local_author_passages": 5,
+    "context_records": 1,
+    "new_ancient_full_work_readings": 0
+  },
+  "validation_csl": "W! check source+legacy.ids against existing ledgers ; ranges against local.files ; reader.words800..1200 ; preserve existing.source.file.hashes"
+}

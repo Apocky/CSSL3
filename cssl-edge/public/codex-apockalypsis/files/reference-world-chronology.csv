@@ -1,0 +1,146 @@
+event_id,volume_id,source_story_order,title,narrated_source,history_start_year,history_end_year,history_display,history_status,realm_id,realm_time_status,personal_time_status,first_safe_chapter,status,lasting_consequence
+
+EV-001,01,1,The Mother as possibility,Codex: Book of the Mother,,,Unestablished,unknown,R-OMNOID,unestablished,unestablished-until-viewpoint-and-interval-adopted,V01-C01,editorial-proposal,The frame has not yet produced a shared calendar.
+
+EV-002,01,2,The First Flame experiences loneliness,V2: Core Mythology,,,Unestablished,unknown,R-OMNOID,unestablished,unestablished-until-viewpoint-and-interval-adopted,V01-C03,editorial-proposal,"A need for company becomes a creative motive, not automatic justification."
+
+EV-003,01,3,Creation as relation,Codex: Mother and Father,,,Unestablished,unknown,R-OMNOID,unestablished,unestablished-until-viewpoint-and-interval-adopted,V01-C05,editorial-proposal,Neither source nor recipient owns every being that follows.
+
+EV-004,01,4,The divine children emerge,V2: Firstborn,,,Unestablished,unknown,R-OMNOID,unestablished,unestablished-until-viewpoint-and-interval-adopted,V01-C07,editorial-proposal,Kinship begins before agreed limits and institutions.
+
+EV-005,01,5,The claim to precedence,Codex: first wound,,,Unestablished,unknown,R-OMNOID,unestablished,unestablished-until-viewpoint-and-interval-adopted,V01-C09,editorial-proposal,Authority begins to cite age as entitlement.
+
+EV-006,01,6,Separation interrupts relation,Codex: Mother / Torus,,,Unestablished,unknown,R-OMNOID,unestablished,unestablished-until-viewpoint-and-interval-adopted,V01-C11,editorial-proposal,Loss produces a debt of repair that later radiance cannot cancel.
+
+EV-007,02,7,Naming in the Garden,Genesis 2; Codex: Adam,,,Unestablished,unknown,R-EDEN,unestablished,unestablished-until-viewpoint-and-interval-adopted,V02-C01,editorial-proposal,Naming becomes useful and dangerous when confused with ownership.
+
+EV-008,02,8,Lilith refuses subordination,Codex: Lilith; later Lilith tradition requires source note,,,Unestablished,unknown,R-EDEN,unestablished,unestablished-until-viewpoint-and-interval-adopted,V02-C03,editorial-proposal,Departure preserves refusal while imposing material costs.
+
+EV-009,02,9,Eve enters an inherited arrangement,Genesis 2; two Codex Eve variants,,,Unestablished,unknown,R-EDEN,unestablished,unestablished-until-viewpoint-and-interval-adopted,V02-C05,editorial-proposal,Created conditions are not equivalent to chosen conditions.
+
+EV-010,02,10,The fruit and disputed knowledge,Genesis 3; Codex: Knowing Child,,,Unestablished,unknown,R-EDEN,unestablished,unestablished-until-viewpoint-and-interval-adopted,V02-C07,editorial-proposal,Knowledge creates responsibility without guaranteeing wisdom.
+
+EV-011,02,11,Departure and changed embodiment,Genesis 3,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V02-C09,editorial-proposal,World and personal consequences continue after the gate closes.
+
+EV-012,02,12,Abel’s death and Cain’s mark,Genesis 4,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V02-C11,editorial-proposal,Protection from retaliation is not cancellation of harm.
+
+EV-013,03,13,The Watchers cross a boundary,1 Enoch 6–16; Genesis 6 comparison,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V03-C01,editorial-proposal,"Instruction, desire and power are judged by what they do to others."
+
+EV-014,03,14,Enoch receives conflicting measures,1 Enoch: journeys and luminaries,,,Unestablished,unknown,R-SIGHT,unestablished,unestablished-until-viewpoint-and-interval-adopted,V03-C03,editorial-proposal,A traveller’s report does not synchronize all clocks.
+
+EV-015,03,15,Warning and preparation,Genesis 6,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V03-C05,editorial-proposal,Knowledge is unevenly distributed before catastrophe.
+
+EV-016,03,16,The flood and its witnesses,Genesis 7–8; flood parallels kept separate,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V03-C07,editorial-proposal,Survival accounts cannot recover every lost perspective.
+
+EV-017,03,17,Covenant after devastation,Genesis 9,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V03-C09,editorial-proposal,"An oath after disaster leaves grief, hunger and accountability."
+
+EV-018,03,18,Babel and scattering,Genesis 11,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V03-C11,editorial-proposal,"Shared language, coercive unity and migration remain distinguishable."
+
+EV-019,04,19,Abram’s departure,Genesis 12,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V04-C01,editorial-proposal,A promised future changes the lives of people who did not receive the promise.
+
+EV-020,04,20,Hagar is sent away and seen,Genesis 16; 21 as distinct later departure,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V04-C03,editorial-proposal,Household survival does not justify making someone expendable.
+
+EV-021,04,21,Hospitality and the destroyed cities,Genesis 18–19,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V04-C05,editorial-proposal,The fate of bystanders complicates every claim of collective guilt.
+
+EV-022,04,22,The binding and its aftermath,Genesis 22; reception variants separate,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V04-C07,editorial-proposal,A halted act can leave lasting fear and broken trust.
+
+EV-023,04,23,Jacob wrestles with inheritance,Genesis 25–36,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V04-C09,editorial-proposal,A changed name does not pay every old debt.
+
+EV-024,04,24,"Joseph, grain and reconciliation",Genesis 37–50,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V04-C11,editorial-proposal,Power over food can rescue and subordinate at the same time.
+
+EV-025,05,25,An empire organizes bondage,Exodus 1–2,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V05-C01,editorial-proposal,"Labour, households and official language conceal unequal vulnerability."
+
+EV-026,05,26,A name at the burning bush,Exodus 3–4,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V05-C03,editorial-proposal,A voice’s authority and its referent are recorded separately.
+
+EV-027,05,27,Plagues and contested warning,Exodus 7–12,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V05-C05,editorial-proposal,The narrative retains civilian suffering and competing testimony.
+
+EV-028,05,28,Departure and the crossing,Exodus 12–15,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V05-C07,editorial-proposal,A disputed route is never drawn as a surveyed itinerary.
+
+EV-029,05,29,"Law, food and worship",Exodus 16–34; Leviticus,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V05-C09,editorial-proposal,Daily provision and legal authority bind different obligations.
+
+EV-030,05,30,Revolt and the generation’s end,Numbers; Deuteronomy 34,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V05-C11,editorial-proposal,Liberation does not guarantee that the new community remains just.
+
+EV-031,06,31,Entry and contested land,Joshua,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V06-C01,editorial-proposal,Conquest traditions are narrated alongside the losses of inhabitants.
+
+EV-032,06,32,"Judges, cycles and local survival",Judges,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V06-C03,editorial-proposal,Repeated violence changes the ground; the cycle is not a reset.
+
+EV-033,06,33,Ruth and the work of belonging,Ruth,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V06-C05,editorial-proposal,Kinship decisions arise inside economic precarity.
+
+EV-034,06,34,The demand for a king,1 Samuel 8–15,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V06-C07,editorial-proposal,A collective demand gives rulers power without ending accountability.
+
+EV-035,06,35,"David, Bathsheba and royal harm",2 Samuel 11–12,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V06-C09,editorial-proposal,Public achievement cannot redeem an exploitation by accounting trick.
+
+EV-036,06,36,Solomon builds and extracts,1 Kings 1–11,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V06-C11,editorial-proposal,"Temple, wealth and labour are held in the same frame."
+
+EV-037,07,37,A kingdom divides,1 Kings 12,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V07-C01,editorial-proposal,Inherited extraction creates lasting political fracture.
+
+EV-038,07,38,Prophets contest wealth and worship,Amos; Hosea; Isaiah; prophetic corpus,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V07-C03,editorial-proposal,Prophetic testimony remains situated and sometimes contested.
+
+EV-039,07,39,Samaria falls,2 Kings 17; institutional chronology,-722,-721,722/721 BCE,source-discrepancy,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V07-C05,editorial-proposal,"Displacement changes language, land and household continuity."
+
+EV-040,07,40,Jerusalem is destroyed and people displaced,2 Kings 25; Jeremiah; Lamentations,-587,-586,587/586 BCE,source-discrepancy,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V07-C07,editorial-proposal,"587/586 BCE is retained as a source discrepancy, not averaged."
+
+EV-041,07,41,Lament and vision in exile,Ezekiel; exile traditions; Daniel narrative setting,,,Unestablished,unknown,R-REFLECTION,unestablished,unestablished-until-viewpoint-and-interval-adopted,V07-C09,editorial-proposal,The time represented in a book is not its composition date.
+
+EV-042,07,42,Babylon passes to Persian rule,Institutional historical anchor; Ezra context,-539,-539,539 BCE,historical-anchor,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V07-C11,editorial-proposal,A changed imperial policy opens possibilities without instant restoration.
+
+EV-043,08,43,Return is permitted and uneven,Ezra 1–3; historical note at Ezra 3:1–2,-538,-520,538 return tradition; 520 rebuilding resumption,distinct-events-not-one-duration,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V08-C01,editorial-proposal,Departure from exile and rebuilding have separate dates and participants.
+
+EV-044,08,44,Rebuilding and contested belonging,Ezra; Nehemiah; Haggai,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V08-C03,editorial-proposal,Restoration can create new exclusions and old grievances.
+
+EV-045,08,45,Diaspora lives: Esther and Tobit,Esther; Tobit; their narrative settings kept distinct,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V08-C05,editorial-proposal,Different diaspora stories do not become a single dated episode.
+
+EV-046,08,46,Judith’s resistance and historical tension,Judith,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V08-C07,editorial-proposal,"Deliberate literary dislocations are recorded, not silently repaired."
+
+EV-047,08,47,Maccabean resistance and its costs,1–2 Maccabees; Hellenistic context,-199,-100,Second century BCE context only,broad-context-not-event-date,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V08-C09,editorial-proposal,Resistance can gain authority while losing the innocence it claims.
+
+EV-048,08,48,Rome enters the regional balance,63 BCE Pompey anchor; pre-Gospel setting,-63,-63,63 BCE,historical-anchor,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V08-C11,editorial-proposal,The political field inherited by Gospel characters is assembled before them.
+
+EV-049,09,49,Birth accounts and their different clocks,Matthew 1–2; Luke 1–2,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V09-C01,editorial-proposal,The witnesses’ settings are retained without invented exact harmonization.
+
+EV-050,09,50,Baptism and the wilderness,Mark 1; Matthew 3–4; Luke 3–4; John 1,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V09-C03,editorial-proposal,A public claim and a private ordeal establish different evidence.
+
+EV-051,09,51,"Meals, teaching and the excluded",Gospel teaching and encounter cycles,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V09-C05,editorial-proposal,Care changes immediate material relations as well as belief.
+
+EV-052,09,52,Jerusalem and the contest over authority,Gospel Jerusalem cycles,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V09-C07,editorial-proposal,"Crowds, officials and friends carry incompatible expectations."
+
+EV-053,09,53,"Arrest, execution and abandonment",Distinct Passion narratives,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V09-C09,editorial-proposal,Death and political violence are not made painless by later meaning.
+
+EV-054,09,54,Resurrection testimony and changed obligations,Distinct resurrection witnesses,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V09-C11,editorial-proposal,"A return does not erase what mourners, witnesses and betrayers experienced."
+
+EV-055,10,55,Pentecost and public witness,Acts 1–2,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V10-C01,editorial-proposal,Shared speech does not require identical experience.
+
+EV-056,10,56,Scarcity and distribution,Acts 4–6; community traditions,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V10-C03,editorial-proposal,Belief meets the bookkeeping of food and care.
+
+EV-057,10,57,Paul’s changed allegiance,Acts 9; Galatians 1; accounts kept distinct,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V10-C05,editorial-proposal,Changed commitment does not undo earlier harm.
+
+EV-058,10,58,Belonging disputed across communities,Acts 15; Galatians; community letters,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V10-C07,editorial-proposal,A council scene cannot settle every community’s later argument.
+
+EV-059,10,59,"Letters, journeys and unequal authority",Acts journey sequences; Pauline corpus,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V10-C09,editorial-proposal,"Delivery dates, composition dates and narrated journeys remain separate."
+
+EV-060,10,60,Jerusalem’s Temple is destroyed,70 CE historical anchor; later reception,70,70,70 CE,historical-anchor,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V10-C11,editorial-proposal,Collective catastrophe transforms interpretation without supplying a universal verdict.
+
+EV-061,11,61,A visionary writes from Patmos,Revelation narrative frame,,,Unestablished,unknown,R-SIGHT,unestablished,unestablished-until-viewpoint-and-interval-adopted,V11-C01,editorial-proposal,"Vision order, depicted event order and writing date are separate tracks."
+
+EV-062,11,62,Unveilings circulate as competing hopes,Revelation; apocalyptic traditions with independent entries,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V11-C03,editorial-proposal,An image can promise release to one community and terrify another.
+
+EV-063,11,63,A later revolt changes the landscape,132–135 CE institutional historical anchor,132,135,132–135 CE,historical-range,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V11-C05,editorial-proposal,A historical event is not automatically a fulfilment of a prophecy.
+
+EV-064,11,64,"Books travel, change and survive",Source-specific manuscript transmission histories,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V11-C07,editorial-proposal,"Copying, translation, loss and canon selection require separate evidence."
+
+EV-065,11,65,Traditions intersect without becoming identical,World-religion source braids; individual traditions independently sourced,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V11-C09,editorial-proposal,A fictional underlying relation must not masquerade as historical proof.
+
+EV-066,11,66,Institutions inherit both care and harm,Later reception; source-by-source research,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V11-C11,editorial-proposal,"No institution is made timeless, uniform or exempt from internal dissent."
+
+EV-067,12,67,Lily dies and the world continues,Original Unraveling prologue; V2 alternative,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V12-C01,editorial-proposal,Do not import an old exact death interval until this version adopts it.
+
+EV-068,12,68,Remembering meets a living biography,V2 awakening and incarnation premise,,,Unestablished,unknown,R-REFLECTION,unestablished,unestablished-until-viewpoint-and-interval-adopted,V12-C03,editorial-proposal,A recovered identity cannot displace the present person’s consent.
+
+EV-069,12,69,"Names, dice and allies become consequential",V2 HALO and supporting cast,,,Unestablished,unknown,R-THRESHOLD,unestablished,unestablished-until-viewpoint-and-interval-adopted,V12-C05,editorial-proposal,"Twenty-four symbols open 512 ordered combinations, not unlimited control."
+
+EV-070,12,70,The Architect’s claim is tested,Original Architect history versus V2 Eve identity,,,Unestablished,unknown,R-ENGINE,unestablished,unestablished-until-viewpoint-and-interval-adopted,V12-C13,editorial-proposal,Evidence must settle an occupant claim before the story treats it as settled.
+
+EV-071,12,71,The lost are approached on their terms,Codex lost domains; V2 recovery candidates,,,Unestablished,unknown,R-LOST,unestablished,unestablished-until-viewpoint-and-interval-adopted,V12-C09,editorial-proposal,Restoration asks who lived through the interval and what they now want.
+
+EV-072,12,72,Return of names and unfinished repair,Approved finale direction; new scene work required,,,Unestablished,unknown,R-EARTH,unestablished,unestablished-until-viewpoint-and-interval-adopted,V12-C11,editorial-proposal,Victory changes who can choose; grief and obligations remain.
+
