@@ -1,0 +1,12 @@
+import { writeFileSync } from 'node:fs';
+import { bridgeSessionId, createBridgeRequest, encryptBridge } from '../../lib/bridge/crypto';
+import { workerAuthText, workerHeaders, WORKER_POLL_PATH } from '../../lib/bridge/worker-auth';
+const config = { key: Buffer.from(Array.from({ length: 32 }, (_, i) => i)), keyId: 'bridge-test-v1', workerId: 'desktop-test', ownerSubject: '11111111-1111-4111-8111-111111111111' };
+const now = Date.parse('2026-09-04T00:00:00.000Z');
+const body = Buffer.from(JSON.stringify({ text: 'A newline\nand "quotes" with café.', session_id: '22222222-2222-4222-8222-222222222222', request_id: '33333333-3333-4333-8333-333333333333' }));
+const request = createBridgeRequest(config, { channel: 'account', subject: config.ownerSubject, method: 'POST', target: '/v1/account/turn', body }, now);
+const response = { schema_version: 'apocky.bridge.http-result.v1', job_id: request.job_id, status: 200, headers: { 'content-type': 'application/json' }, body_base64: Buffer.from('{"ok":true}').toString('base64'), completed_at: '2026-09-04T00:00:01.000Z' };
+const poll = Buffer.from('{"schema_version":"apocky.bridge.poll.v1"}');
+const nonce = '44444444-4444-4444-8444-444444444444';
+writeFileSync(new URL('./bridge-wire.json', import.meta.url), JSON.stringify({ synthetic_public_fixture: true, key_b64: config.key.toString('base64'), key_id: config.keyId, worker_id: config.workerId, owner_subject: config.ownerSubject, session_id: bridgeSessionId(config, config.ownerSubject), request, request_json: JSON.stringify(request), request_envelope: encryptBridge(config, 'request', request.job_id, request, Buffer.from(Array.from({ length: 12 }, (_, i) => i))), response, response_json: JSON.stringify(response), response_envelope: encryptBridge(config, 'response', request.job_id, response, Buffer.from(Array.from({ length: 12 }, (_, i) => i + 12))), auth: { path: WORKER_POLL_PATH, body_base64: poll.toString('base64'), canonical: workerAuthText(config, 'POST', WORKER_POLL_PATH, poll, String(now / 1000), nonce), headers: workerHeaders(config, WORKER_POLL_PATH, poll, now, nonce) } }, null, 2) + '\n');
+process.stdout.write('Synthetic bridge fixture written.\n');
