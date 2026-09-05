@@ -86,6 +86,24 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await expect(page.getByText('Mneme storage')).not.toBeVisible();
   await expect(page.getByLabel('Find a memory, topic, or phrase')).not.toBeVisible();
   expect(observationRequests).toBe(0);
+  const help = page.getByRole('button', { name: /^Messages are encrypted on this device/ });
+  const tip = page.getByRole('tooltip');
+  if (testInfo.project.name.startsWith('mobile')) await help.tap();
+  else await help.hover();
+  await expect(tip).toBeVisible();
+  const tipBox = await tip.boundingBox();
+  expect(tipBox).not.toBeNull();
+  expect(tipBox!.x).toBeGreaterThanOrEqual(0);
+  expect(tipBox!.y).toBeGreaterThanOrEqual(0);
+  expect(tipBox!.x + tipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(tipBox!.y + tipBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await page.keyboard.press('Escape');
+  await expect(tip).toHaveCount(0);
+  await help.blur();
+  await help.focus();
+  await expect(tip).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(tip).toHaveCount(0);
   const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
   await expect(composer).toBeEnabled();
   await expect(page.getByText('Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.')).toBeVisible();
@@ -116,6 +134,10 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await page.screenshot({ path: testInfo.outputPath('brain-diagnostics.png'), fullPage: true });
   await diagnostics.locator('summary').first().click();
   await connectionDetails.click();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const composerBox = await composer.boundingBox();
+  expect(composerBox).not.toBeNull();
+  expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.screenshot({ path: testInfo.outputPath('brain-conversation.png'), fullPage: true });
 
   await page.getByRole('button', { name: 'Memory', exact: true }).click();
