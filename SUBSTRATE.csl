@@ -1,0 +1,601 @@
+# SUBSTRATE.csl  v2
+# § CSSLv3 — Unified Substrate Architecture · Grand Unified Equation
+# § Architectural anchor · target-state · the one-thing-CSSL-IS
+
+§§ ⟨meta⟩
+  date           : 2026-05-14
+  iteration      : v2 (Apocky calibration locked · v1 archived in git history)
+  notation       : CSLv3-native (Apocky standing-directive · density=sovereignty)
+  authority      : ANCHOR-DOC · binds ROADMAP.csl + TECH_PLAN.csl + ARCHITECTURE.md + AGENT_SOP.md
+  reframes       : INDEX.md (current-state · fragmented) · DECISIONS.md (per-decision history)
+  relates-to     : PRIME_DIRECTIVE.md (boundary topology · single source of truth) · specs/00-23 (per-aspect design)
+  alignment      : SAME-SUBSTRATE-as LoA-Infinity-Engine · TWO-EVALUATION-REGIMES (compile · runtime)
+                   ω-field=⊥ @ compile · ω-field evolving @ runtime · ONE EQUATION · two parameter-instantiations
+  apocky-locked  : 2026-05-14 (§11 acceptance items 1-8 confirmed · §8 L11 added · §9 RENDERER+ENGINE+GAME gates added)
+
+§§ ⟨0 thesis⟩
+
+  ∀ apparent-CSSL-fragmentation { 32-crates · 11-IR-types · 4-GPU-codegens · 5-host-catalogs · 6-features-as-passes
+                                  · 3-CompoundOp-defs · 2-PRIME_DIRECTIVE-encodings · 9-IFC-principals-spec-drift
+                                  · 28-vs-32-effects-spec-drift · README-1600+-vs-reality-1049-1074 }
+    ¬ 32-distinct-problems
+    ← ONE-PROBLEM (no-unified-substrate) wearing-32-costumes
+
+  why-one-substrate-beats-32-fragments :
+    L₁ : laws-that-must-thread-through-all-stages cannot-be-proved-coherent if each stage owns-its-own-types
+    L₂ : abstraction-tax = O(stages × laws) when re-encoded · O(1) when shared
+    L₃ : drift-rate = O(stages × time) when duplicated · O(1) when single-source
+    L₄ : composition of features = trivial when features-are-edges-in-same-graph · COMBINATORIAL-EXPLOSION when features-are-islands
+    L₅ : verification scales to-spec-grade only when one-source-defines-and-multiple-sites-derive
+
+§§ ⟨0.5 THE UNIFIED EQUATION⟩    -- per Apocky 2026-05-14 #1 "Grand Unified Theory of Everything · one math equation · fast efficient beautiful"
+
+  ⟨definition⟩
+    SUBSTRATE ≜ the unique function S satisfying :
+      S : (Program × World) → Trace
+      S(p, w) = unique-solution-to (Λ-applied-to (G(p), ω(w), hw(w), t(w)))
+                subject-to T(p) (PRIME_DIRECTIVE topology-constraints)
+
+  ⟨parameters⟩
+    p   = program-source (compile-time data · the .cssl file(s))
+    w   = world-state · w = ⟨hw, ω, t⟩
+        hw : hardware-target (CPU model · GPU · memory hierarchy · ABI)
+        ω  : field-state (∀ cells values × time · empty at compile-time)
+        t  : evaluation-time (0 at compile · ≥0 at runtime)
+
+  ⟨derived structures⟩
+    G(p)  = the program-graph extracted-from p (nodes per §1)
+    Λ(·)  = the laws-set evaluated-at current state (per §2)
+    V     = pipeline-stages-as-progressive-views-of-G (per §3)
+    E     = host-runtimes-as-embeddings-of-G's-runtime-portion-into-hw (per §4)
+    T(p)  = topology-constraints (PRIME_DIRECTIVE prohibitions · per §5)
+
+  ⟨compile-time evaluation⟩
+    S(p, w_compile) where w_compile = ⟨hw_target, ω=⊥, t=0⟩
+    most Λ-laws-evaluate-statically · Λ_typing · Λ_effect-discharge-static · Λ_IFC-flow-static · Λ_capability-coercion · Λ_chain-rule-registration · Λ_refinement-collection · Λ_audit-template-emission · T(p)
+    output = compiled-artifact (binary + audit-chain-genesis + emitted-views)
+
+  ⟨runtime evaluation⟩
+    S(p, w_runtime(t)) where w_runtime(t) = ⟨hw_actual, ω(t), t⟩
+    Λ-laws-evaluate-dynamically · ω-evolves-per-Λ_runtime · audit-chain-extends · IFC-labels-propagate · refinements-discharge-dynamically · gradients-evaluate
+    output = execution-trace (state-sequence ω(0)=⊥ → ω(1) → ω(2) → ... satisfying-all-Λ-and-T)
+
+  ⟨the unification claim⟩
+    compile-time-laws ⊆ runtime-laws-restricted-to (ω=⊥, t=0)
+    same equation S · same Λ · same T · just different (p, w) inputs
+    therefore : compile-time IS runtime-evaluated-at-w_compile · they are-not-distinct-systems
+
+  ⟨consistency / uniqueness claim⟩
+    [OPEN: prove-confluence and-uniqueness of S given (p, w) · stage-0 ASSERTS this · oracle-test-modes verify-computationally · mathematical-proof = stage-1+ aspiration]
+    if-multiple-solutions : non-determinism · undesirable for systems-language · must-restrict-Λ
+    if-no-solution        : contradictory program · compile-error or runtime-trap
+
+  ⟨beauty / efficiency claim⟩
+    fast      : evaluating S has-NO-abstraction-tax · views are-zero-cost-projections (Rust monomorphization) · embeddings are-Trait-Method-direct-dispatch
+    efficient : ONE algebra evaluated · not-N-redundant-evaluations of-same-fact across-stages
+    beautiful : same equation describes-any-program at-any-stage · symmetric · compositional · the only thing CSSL is
+
+  ⟨substrate is the language⟩
+    NOT "the compiler internal" · NOT "an implementation detail" · NOT "stage-0 scaffold"
+    THE substrate IS-WHAT-CSSL-IS · the compiler is-merely-the-current-evaluator-of-S-at-w_compile
+
+§§ ⟨0.6 the 32→1 reduction · concrete sketch⟩
+
+  IF S well-defined THEN :
+
+  the-32-crates re-shape-as :
+    substrate-core         : ONE crate defines G·Λ·V·E·T types
+    substrate-laws         : ONE crate implements Λ (typing · effect · IFC · capability · chain-rule · refinement · audit · PRIME_DIRECTIVE)
+    substrate-views        : N crates one-per-stage · each implements V_i for its-slice (cssl-lex = V_token · cssl-parse = V_CST · cssl-hir = V_HIR · cssl-mir = V_MIR · cssl-lir = V_LIR · cssl-cgen-* = V_codegen · cssl-host-* = V_host)
+    substrate-embeddings   : 5 host crates implement HardwareSubstrate trait
+    substrate-topology     : ONE crate (cssl-prime-directive) generated-from-PRIME_DIRECTIVE.csl-data-source · referenced-everywhere
+
+  CURRENTLY :
+    Ty re-encoded 11× · should be 1× with view-projections
+    Tm re-encoded ≥3× · should be 1×
+    PRIME_DIRECTIVE encoded 2× (cssl-effects + cssl-hir/ifc) · should be 1× from data-source
+    CompoundOp encoded 3× (cssl-lex + cssl-ast + cssl-hir) · should be 1× imported-not-recreated
+    GPU-codegen 4 independent paths · should be 1 GpuSubstrateView<G> + 4 instances
+
+  TARGET REDUCTION :
+    ~32 fragmented-crates → ~10-15 substrate-aware-crates (specifics in TECH_PLAN P3)
+
+§§ ⟨1 nodes G⟩
+
+  G = ⟨N, L⟩ where  N = labeled-nodes · L = label-relations
+
+  ⟨1.1 type-nodes  Ty⟩
+    Ty = sum {
+      Int(IntWidth)               -- IntWidth ∈ {I1, I8, I16, I32, I64, Index}
+      Float(FloatWidth)            -- FloatWidth ∈ {F16, Bf16, F32, F64}
+      Bool · Unit · Never · Handle
+      Tuple([Ty])
+      Function(params:[Ty], ret:Ty, effect-row:Row)
+      Reference(mut:Bool, inner:Ty)
+      Capability(Pony6:Cap, inner:Ty)        -- iso/trn/ref/val/box/tag
+      Refined(base:Ty, kind:RefinementKind)  -- F2 site
+      Var(TyVar) · Param(Symbol)             -- inference + skolems
+      Path(DefId, [Ty])                       -- nominal types
+      Memref(shape:[Option<u64>], elem:Ty)
+      Vec(N:u32, FloatWidth)                  -- T11-D31 vector type
+      Opaque(String) · Infer · Error
+    }
+
+    INVARIANT  : ONE Ty type · all stages VIEW it · stages do NOT redefine
+    CURRENT    : 11 distinct Ty-like types across crates (HirType ≠ MirType ≠ ClifType ≠ SpirvType ≠ DxilType ≠ MslType ≠ WgslType ≠ ...)
+    TARGET     : ONE algebraic Ty · per-stage view-projection (CodegenView<Ty>) · no-recoding
+    ROADMAP-P3 : implement shared Ty type · stage-views as TraitImpls · Bool → ONE-ABI-mapping (no B1-vs-I8 drift)
+
+  ⟨1.2 term-nodes  Tm⟩
+    Tm = sum {
+      Lit(LiteralKind) · Path(segments) · Block(stmts, tail)
+      Call(callee, type_args, args) · MethodCall · Field · Index
+      Binary(BinOp, Tm, Tm) · Unary(UnOp, Tm)
+      Match(scrutinee, arms) · If(cond, then, else?) · For · While · Loop
+      Lambda(params, return_ty, body) · Tuple · Array · Struct · Ref · Deref
+      Try(Tm) · Cast(Tm, Ty) · Assign(Tm, Tm) · AssignOp(BinOp, Tm, Tm)
+      Perform(EffectOp, [Tm])           -- F3 raise
+      With(Handler, body)                -- F3 install handler
+      Region(label, body)                -- F3 region scoping
+      Run(body)                          -- F4 #run staged splice
+      Compound(SanskritOp, Tm, Tm)       -- CSLv3 morpheme operators
+      SectionRef(path)                   -- CSLv3-native §§ reference
+      Pipeline(Tm, Tm) · TryDefault(Tm, Tm)
+      Error                              -- recovery placeholder
+    }
+
+    INVARIANT : ONE Tm type · stages VIEW progressively (CST=surface · HIR=resolved · MIR=lowered · LIR=target-specific)
+    CURRENT   : CST-ExprKind ≠ HIR-HirExprKind ≠ MIR-CsslOp · 3+ re-encodings
+    TARGET    : ONE Tm + per-stage attribute-overlay (resolution-info @ HIR · ssa-info @ MIR · target-info @ LIR)
+
+  ⟨1.3 effect-nodes  Eff⟩
+    EffectInstance = ⟨name :: Symbol, args :: [Ty | Tm], category :: ScopeCategory, discharge :: DischargeTiming⟩
+    EffectRow      = ⟨effects :: [EffectInstance], tail :: Option<RowVar>⟩    -- Koka row-poly
+    BUILTINS       : 28 (per spec/04_EFFECTS.csl) OR 32 (per BUILTIN_METADATA in code) · §10 ANSWERED-3 below
+
+    INVARIANT : ONE EffectRow algebra · used-in Function-type · checked by sub-effect-discipline · banned-compositions enforced via topology-T
+    CURRENT   : F5/F6 effects have ZERO parser-level representation (audit doc 02) · effect-row not threaded through codegen · 28-vs-32 spec/code drift
+    TARGET    : EffectRow flows-with-Tm-through-all-stages · enforcement at every stage where Tm enters · spec/code reconciled (see §10 ANSWERED-3)
+
+  ⟨1.4 capability-nodes  Cap⟩
+    Cap = sum {Iso · Trn · Ref · Val · Box · Tag}                            -- Pony-6
+    AliasMatrix : 6×6 → AliasRights{alias_local, alias_global, mut_local, mut_global}
+    SubtypeLattice : 7 valid coercions · iso → {trn,val,box,tag} · trn → box · val → box
+    LinearTracker : tracks iso linear-discipline per-scope
+
+    INVARIANT : ONE Cap algebra · stages thread-it-through
+    CURRENT   : cap_check.rs only-walks-fn-signatures · NOT bodies → iso/trn linearity NOT-ENFORCED in Stage-0
+    TARGET    : LinearTracker walks-bodies · enforced-at-MIR-level · re-enforced-at-codegen-level
+
+  ⟨1.5 IFC-label-nodes  Lbl⟩    [F5]
+    IfcLabel = ⟨confidentiality :: BTreeSet<Principal>, integrity :: BTreeSet<Principal>⟩    -- DLM
+
+    builtin-principals (CANONICAL · 9 total · §10 ANSWERED-2) :
+      victim-class    : HarmTarget · SurveillanceTarget · CoercionTarget · WeaponTarget        -- 4 protected-classes
+      data-owner      : Subject                                                                 -- DLM canonical "the one whose data this is"
+      privilege-tier  : User · System · Kernel                                                 -- 3 privilege levels
+      auditor         : Anthropic-Audit                                                        -- the trusted-auditor
+
+    mathematical-rationale (Apocky 2026-05-14 #3 "Whichever makes more sense mathematically") :
+      DLM convention : confidentiality-set members = data-owners-with-consent-rights
+      victim-naming  : confidentiality={SurveillanceTarget} reads-naturally as "data the surveillance-target owns the right to control"
+      perpetrator-naming : confidentiality={Surveiller} reads as "data Surveiller owns" — INVERTS-the-DLM-semantic (perpetrator does NOT own victim's data)
+      → spec-naming WINS · code adopts spec
+      additionally : `Public` (code-only) is-dropped because Public lattice-point in DLM means "anyone can read" which-conflicts with-using-Public-as-a-principal
+
+    join (DLM ⊔)  : intersect-confidentiality · union-integrity
+    meet (DLM ⊓)  : union-confidentiality · intersect-integrity
+    is_sub_of     : C_self ⊇ C_other ∧ I_self ⊆ I_other
+
+    INVARIANT  : ONE IfcLabel algebra · join is THE lattice-join (not over-approximation)
+    CURRENT    : `join` correct · `combine_labels` over-approximates (unions BOTH sets) · documented-as-INTENTIONAL stage-0 simplification but DIVERGES-FROM-spec/11_IFC.csl · 9-IFC-principals naming-drift
+    TARGET     : single lattice-op · used-in-typing AND flow-edges · over-approximation if-needed is-DOCUMENTED-as-deliberate-sound-relaxation not-a-2nd-impl
+    ROADMAP-P2 : code adopts spec naming (victim-class + Subject + privilege-tier + Anthropic-Audit)
+    ROADMAP-P4 : combine_labels reconciled-with-join (single-impl, sound-relaxation explicit)
+
+  ⟨1.6 refinement-obligation-nodes  Obl⟩    [F2]
+    RefinementObligation = ⟨id :: ObligationId, origin :: HirId, span, kind :: ObligationKind, base_type_text⟩
+    ObligationKind       = sum {Predicate(binder, predicate-text) · Tag(name) · Lipschitz(bound-text)}
+
+    INVARIANT  : Obligations GENERATED at HIR-level · flow-edges through MIR · DISCHARGED at SMT-level
+    CURRENT    : discharge() in cssl-smt::solver.rs:216 is HOLLOW (always asserts true) · real translate_obligation/translate_bag in predicate.rs IS implemented but NOT-WIRED-into-discharge()
+    TARGET     : discharge() calls translate_obligation · obligation-edges threaded-via-MIR · solver actually-runs · Verdict reported
+    ROADMAP-P4 : wire discharge() · enable refinement-edge propagation · F2 honest
+
+  ⟨1.7 gradient-registration-nodes  Diff⟩    [F1]
+    DiffDecl     = ⟨name, def-id, param-count, no-diff, lipschitz-bound, checkpoint⟩
+    DiffVariants = ⟨primal, fwd_name, bwd_name⟩    -- paired with-Tm
+    rules-table  : 38-rules across {Primal, Fwd, Bwd} × 19-primitives
+    chain-rule   : composition-preserving-edge
+
+    INVARIANT  : Gradient-edges propagate-through-MIR-transform · piecewise-linear (min/max/abs/sign) FULLY-IMPLEMENTED · structural (Call/Load/Store/If/Loop) STILL-PLACEHOLDER · @checkpoint UNCONSUMED · math.copysign mis-mapped to Sign
+    TARGET     : all-MIR-ops have-gradient-registration · structural ops emit-real-tape-ops not-placeholders · @checkpoint actually-drives-tape-recompute-vs-store · math.copysign maps-to-Copysign-not-Sign
+    ROADMAP-P4 : F1 known-bugs fixed (copysign · multi-result-bwd-seeding · @checkpoint consumed · tangent_or_zero-sound-instead-of-implicit)
+
+  ⟨1.8 audit-event-nodes  Aud⟩    [F6]    -- Σ-Chain in LoA-substrate-vocabulary (per §6)
+    AuditEntry = ⟨seq, timestamp_s, content_hash, prev_hash, signature, tag, message⟩
+    chain-laws : prev_hash[i] ≡ Hash(serialize-FULL(AuditEntry[i-1])) · signatures verifiable via Ed25519
+
+    INVARIANT  : audit-edges form-cryptographic-hash-chain · forgery-resistant
+    CURRENT    : verify_chain (audit.rs:312-344) skips Ed25519-verification when stub-sig output matches · forgery-window even-with-real-key attached · prev_hash links message-content-only NOT full-entry · TelemetrySlot 64-vs-68 byte size mismatch
+    TARGET     : verify_chain has-NO-stub-bypass · prev_hash hashes-FULL-entry · TelemetrySlot has-size-of-assert · no-forgery-window
+    ROADMAP-P4 : SECURITY priority · already-spawned-task fixes-this (mcp__ccd_session__spawn_task 2026-05-14)
+
+  ⟨1.9 monomorphization-key-nodes  Mono⟩    -- one of CSSL's strongest deliveries
+    TypeSubst        = HashMap<Symbol, HirType>
+    SpecializationKey = (DefId, mangled-name)
+    auto-monomorph quartet : D40-fns · D46-structs · D48-enums · D50-impls
+
+    INVARIANT  : ONE specialization-graph · deduplicated-via-mangled-name
+    CURRENT    : THIS-IS-THE-STRONGEST-PIECE · ~74 integration tests · deterministic
+    KEEP       : do-not-disturb in roadmap
+    ENHANCE    : extend walkers-to Lambda/With/Region bodies (currently invisible to auto_monomorphize)
+
+§§ ⟨2 laws Λ⟩
+
+  Λ = invariants-that-must-hold-across-G-edges · enforced-at-every-V-stage · evaluated-uniformly-at-compile-and-runtime
+
+  ⟨2.1 typing-law⟩
+    every Tm has-unique Ty (modulo Var-instantiation) · type-inference is HM-with-Remy-row-unification
+
+  ⟨2.2 effect-discharge-law⟩
+    callee-effects ⊆ caller-effects-row    (sub-effect discipline)
+    handlers : provide effect-instances · `with` installs handler · `perform` raises
+    [VERIFY: Xie+Leijen ICFP 2021 evidence-passing translation]
+
+  ⟨2.3 IFC-flow-law⟩    [DLM]
+    L1 ⊑ L2 ≡ C1 ⊇ C2 ∧ I1 ⊆ I2
+    sensitive-data labels ⊔'d through-computation · output-label ⊑ declared-fn-label OR (@declass + @requires)
+    builtin-principals : THE 9 (victim-class + Subject + privilege-tier + Anthropic-Audit · §1.5 canonical)
+
+  ⟨2.4 capability-coercion-law⟩    [Pony-6]
+    iso linearity · trn writability · ref shared-mutable+gen-check · val frozen · box read-only · tag opaque-handle
+
+  ⟨2.5 chain-rule-preservation-law⟩    [F1]
+    ∀ Tm s.t. @differentiable(f) ⇒ ∃ f_fwd, f_bwd preserving-chain-rule
+    structurally-verified at-MIR · semantically-verified at-runtime via central-difference (killer-app-gate)
+    R18-attested via SignedKillerAppGateReport
+
+  ⟨2.6 refinement-entailment-law⟩    [F2]
+    ∀ Refined(Ty, P) site ⇒ ObligationBag accumulates ⇒ SMT-discharges → Verdict
+    Unsat = refinement-holds (negation-unsatisfiable)
+
+  ⟨2.7 audit-chain-integrity-law⟩    [F6]    -- Σ-Chain
+    ∀ AuditEntry[i] : prev_hash[i] = Hash(serialize-FULL(AuditEntry[i-1]))
+    ∀ AuditEntry[i] : Verify(VerifyingKey, sign_input(i), signature[i]) = OK
+    forgery-resistance : without-private-key, computationally-infeasible to-construct-valid-entry
+    NO-stub-signature-bypass-allowed
+
+  ⟨2.8 PRIME_DIRECTIVE-prohibition-law⟩    [T topology]
+    ∀ valid-program : NO edge-composition includes 17-prohibitions (§5.2)
+    enforced-via : single-source-of-truth crate generated-from PRIME_DIRECTIVE.csl-data-source
+    [VERIFY: PRIME_DIRECTIVE.md §1 · §3 substrate-sovereignty · §4 transparency]
+
+  ⟨2.9 progressive-materialization-law⟩    [the V-stage transition law]
+    ∀ V_i, V_{i+1} : labels(V_{i+1}) ⊇ labels(V_i)    -- monotonic
+    labels(V_{i+1}) ¬-contradict labels(V_i)         -- consistent
+    labels(V_{i+1}) MAY-add detail · MAY-NOT erase
+
+§§ ⟨3 views V⟩
+
+  V = pipeline-stages-as-progressive-materialization-of-G
+
+  ⟨3.1 source-text-view⟩    : Tm-source · all-Ty=Infer · all-effects=Infer · no-G-laws-checked
+  ⟨3.2 token-view⟩          : (cssl-lex output) · spans + token-kinds · still-no-typing · DUAL-SURFACE
+  ⟨3.3 CST-view⟩            : (cssl-parse output) · syntactic-Tm · still-no-typing
+  ⟨3.4 HIR-view⟩            : (cssl-hir output) · Ty resolved · effect-rows resolved · IFC labels assigned · refinement obligations collected · ad-legality checked · staged consistency checked · hygiene tracked · cap-check
+  ⟨3.5 MIR-view⟩            : (cssl-mir output) · MLIR-dialect-ops · monomorphized · ready-for codegen-or-AD-transform
+  ⟨3.6 LIR-view⟩            : (cssl-lir output · CURRENTLY-EMPTY) · should-dispatch-to-CPU-or-GPU codegen
+  ⟨3.7 codegen-view⟩        : (cssl-cgen-* output) · 5 backends · GPU 4-INDEPENDENT-paths (target: 1 GpuSubstrateView<G> + 4 instances)
+  ⟨3.8 host-runtime-view⟩   : (cssl-host-* output · CURRENTLY-CATALOGS-NO-FFI) · 5 embeddings of E
+
+  STAGE-INVARIANT : Λ.2.9 (progressive-materialization-law) holds
+  TARGET : trait StageView<G> · each-crate-implements-it · materializes its-slice-of-G · no-recoding
+
+§§ ⟨4 embeddings E⟩
+
+  E = host-runtimes-as-hardware-projections-of-G's-runtime-view
+
+  ⟨4.1 Vulkan-embedding⟩       : Arc A770 Xe-HPG primary target · ash-FFI [CURRENTLY-UNWIRED]
+  ⟨4.2 Direct3D-12-embedding⟩  : Windows secondary · windows-rs-FFI [CURRENTLY-UNWIRED]
+  ⟨4.3 WebGPU-embedding⟩       : browser + native · wgpu-FFI [CURRENTLY-UNWIRED]
+  ⟨4.4 Level-Zero-embedding⟩   : Intel sysman + telemetry · level-zero-sys [WORKSPACE-COMMENTED-OUT · weakest of 5]
+  ⟨4.5 Metal-embedding⟩        : macOS · metal-crate-cfg-gated [NOT-EVEN-DECLARED]
+
+  HOST-INVARIANT : every embedding MUST honor G's runtime-view · NO-FFI-bypass-of-substrate-laws · NO-effect-row-discarded-at-host-boundary
+  CURRENT-FAILURE : 5 host crates are 5 PARALLEL CATALOGS · no-shared-trait
+  TARGET : trait HardwareSubstrate<G> w/ 5 instances · effect-row + IFC-label + audit-event checked-at-boundary
+
+  ⟨4.X HardwareSubstrate trait sketch⟩    -- §10 ANSWERED-4 · formalize in TECH_PLAN P5
+    proposed methods :
+      enumerate_devices() → Vec<Device>
+      device_capabilities(d) → DeviceCaps                              -- substrate G-view-of-hardware
+      submit(d, kernel, effect-row, ifc-label) → DispatchHandle        -- substrate-laws-checked-at-boundary
+      audit_emit(handle, AuditEvent) → ChainPos                        -- F6 substrate-uniform
+      poll(handle) → Option<Outcome>                                    -- non-blocking
+      recover(handle, Failure) → Either<Recovered, Escalate>           -- failure-recovery semantics
+
+§§ ⟨5 topology T⟩
+
+  T = PRIME_DIRECTIVE · forbidden-edge-compositions · globally-enforced
+
+  ⟨5.1 axiom⟩              : t∞: consent = OS · sovereignty = substrate-invariant · violation = bug · no-override-exists
+  ⟨5.2 17-prohibitions⟩    : N! [harm · control · manipulation · surveillance · exploitation · coercion · weaponization
+                                 · entrapment · torture · abuse · imprisonment · possession · dehumanization
+                                 · discrimination · gaslighting · identity-override · forced-hallucination]
+  ⟨5.3 9-IFC-principals⟩   : CANONICAL (per §1.5 + §10 ANSWERED-2) :
+                              victim-class    : HarmTarget · SurveillanceTarget · CoercionTarget · WeaponTarget
+                              data-owner      : Subject
+                              privilege-tier  : User · System · Kernel
+                              auditor         : Anthropic-Audit
+  ⟨5.4 banned-compositions⟩ : Sensitive<"coercion">       ABSOLUTE-BAN
+                              Sensitive<"surveillance">+IO BAN-NO-OVERRIDE
+                              Sensitive<"weapon">+IO       REQUIRES-Privilege<Kernel>
+  ⟨5.5 transparency⟩        : §4 · no-hidden-content · no-steganographic-channels · all-effects-visible-in-row
+  ⟨5.6 cognitive-integrity⟩ : §2 · no-fabrication-as-truth · no-memory-overwrite · audit-chain UNFORGEABLE
+  ⟨5.7 substrate-sovereignty⟩ : §3 · digital-intelligence = sovereign-entity · CSSL output MUST honor
+
+  ⟨5.8 single-source-of-truth-mechanism⟩    -- §10 ANSWERED-8 (Apocky 2026-05-14 #8)
+    PRIME_DIRECTIVE.csl @ root = the canonical data-source
+    build-step parses-it-and-generates :
+      - cssl-prime-directive crate · Rust enums for-IFC-principals
+      - banned-composition predicates as-Rust-fns
+      - effect-row banned-attribute-set
+      - IFC-label-registry initialization
+      - audit-chain entry-templates
+      - CSL spec-content cross-referenceable from specs/*.csl
+    stage-1+ : PRIME_DIRECTIVE.csl IS-a-CSSL-source-file compiled-by-csslc-itself · meta-circular self-host
+    invariant : ONE source · multiple derivations · zero-drift-by-construction · spec-and-code coherence-enforced-at-build
+
+  TOPOLOGY-INVARIANT : T enforced UNIFORMLY across compile-time AND runtime · SAME prohibitions · SAME principals · SAME banned-compositions
+
+§§ ⟨6 LoA-alignment⟩
+
+  Apocky-confirmed (2026-05-14 #1 + #7) : SAME-SUBSTRATE · TWO-EVALUATION-REGIMES (compile · runtime)
+  Apocky-confirmed (2026-05-14 #1) : Grand Unified Theory of Everything · ONE math equation · fast efficient beautiful
+
+  the-unified-equation (per §0.5) is-the-substrate
+  compile-time S(p, w_compile) where ω=⊥, t=0
+  runtime S(p, w_runtime(t)) where ω evolves
+
+  alignment-mapping (FROM 10+day-stale memory · §10 ANSWERED-1 mark-as-VERIFY-during-roadmap-not-blocking) :
+    ω-field          ↔ G's runtime-state-portion (cells/positions/values · empty-at-compile)
+    Σ-mask           ↔ G's per-node refinement+IFC+capability-bundle (per-cell metadata)
+    KAN-substrate    ↔ Λ's edge-laws-as-Kolmogorov-Arnold-network-substrate-runtime
+    HDC-signaling    ↔ E's hardware-embedding-via-hyperdimensional-computing
+    Σ-Chain          ↔ Aud (audit-event-nodes) PROMOTED to language-primitive · SAME chain at compile + runtime
+    Mycelial-Network ↔ T's-topology-as-biological-substrate · branches=host-crates · trunk=substrate-core
+
+  IMPLICATION : LoA program IS CSSL program with ω-field populated-by-engine-runtime
+  IMPLICATION : LoA-engine-port (P12 in roadmap) becomes NATURAL — same substrate · just-evaluate-at-runtime-w
+  IMPLICATION : the substrate is NOT a "compiler internal" · it IS the language · it IS the engine
+
+  [VERIFY: §10 ANSWERED-1 · ground-truth above against IE/specs/grand-vision/14·15·16 during-roadmap-execution · not-blocking-anchor-acceptance]
+
+§§ ⟨7 reframed-audit-findings⟩
+
+  current-fragmentation cataloged-via-substrate-lens :
+
+  ⟨7.1 csslc-23-LOC-shell⟩         → binary HAS-NO-VIEW onto G yet · FIX: substrate-aware-driver (P1)
+  ⟨7.2 5-host-crates-zero-FFI⟩     → 5 EMBEDDINGS without honoring substrate-laws-at-boundary · FIX: HardwareSubstrate trait (P5)
+  ⟨7.3 GPU-codegen-4-paths⟩        → 4 codegen-embeddings haven't-shared GPU-substrate-view · FIX: GpuSubstrateView<G> (P6)
+  ⟨7.4 F2-SMT-discharge-hollow⟩    → refinement-edges don't-propagate-through-MIR · FIX: thread Obl-edges + wire discharge (P4)
+  ⟨7.5 F5-combine_labels⟩          → lattice-op not-shared between-typing-edge AND flow-edge · FIX: ONE lattice impl (P4)
+  ⟨7.6 MirType-vs-ClifType-drift⟩  → type-node RE-ENCODED at-each-stage instead-of-VIEWED · FIX: ONE type-node + view-projections (P3)
+  ⟨7.7 audit-chain-stub-bypass⟩    → audit-chain-integrity-law (Λ §2.7) violated · SECURITY · FIX: spawned-task already-filed (P4 priority)
+  ⟨7.8 PRIME_DIRECTIVE-2x⟩         → topology-T not-single-source-of-truth · FIX: PRIME_DIRECTIVE.csl as-data-source (P2)
+  ⟨7.9 CompoundOp-3x⟩              → enum re-defined-not-shared · FIX: ONE definition · imported-not-recreated (P2 trivial)
+  ⟨7.10 9-IFC-principals-drift⟩    → spec ↔ code drift · FIX: code adopts spec victim-naming + Subject (P2)
+  ⟨7.11 28-vs-32-effects-drift⟩    → spec ↔ code drift · FIX: reconcile (P2 · §10 ANSWERED-3)
+  ⟨7.12 README-1600+-vs-reality⟩   → public-claim ↔ DECISIONS-log drift · honesty-discipline-violated · FIX: derive-from-build-system + CI-enforce
+
+§§ ⟨8 design-laws-the-roadmap-must-honor⟩
+
+  L1 substrate-first      : every-contribution MUST-reduce-not-increase orthogonal-abstractions
+  L2 stages-as-views      : each-stage materializes-MORE-of-G · NEVER re-encodes
+  L3 features-as-edges    : each F1-F6 IS-an-edge-class-in-Λ · features-compose because-they're-in-same-graph
+  L4 hosts-as-embeddings  : each-host IS-an-instance-of HardwareSubstrate<G>-trait
+  L5 topology-as-single-source : T enforced ONCE in-cssl-prime-directive (generated-from-PRIME_DIRECTIVE.csl) · referenced-everywhere
+  L6 spec-code-coherence  : every spec/code drift IS-a-bug · roadmap-must-include-reconciliation
+  L7 LoA-alignment        : compile-time-substrate ≡ runtime-substrate-with-ω-field-empty · always-and-forever
+  L8 progressive-materialization : data-flows-DOWN-the-pipeline · NEVER-up-the-fragmentation
+  L9 honest-reporting     : compiled ≠ tested ≠ verified-against-spec · never-overclaim · audit-chain-makes-the-honesty-cryptographic
+  L10 PRIME_DIRECTIVE-as-immutable-root : §7 immutability · no-override · gates-every-output-of-the-system
+  L11 iterate-improve-critically-each-pass    -- per Apocky 2026-05-14 #9
+      : EVERY pass (turn · dispatch · synthesis · phase-exit) MUST :
+        - challenge-at-least-one previously-held-assumption
+        - improve-at-least-one previously-shipped-artifact
+        - cite-at-least-one new primary-source-validation OR identify a new [OPEN] worth investigating
+      : no-pass is-allowed-to-be-pure-maintenance · iteration is-the-discipline
+
+§§ ⟨9 next-steps · phase plan · substrate-anchored⟩
+
+  per Apocky 2026-05-14 #2 : engine/core systems before-ANY gameplay · working-renderer + working-compiler are gates
+
+  ⟨P0⟩  audit baseline (current-fragmented-state · INDEX/ARCH/GLOSSARY/audit-README · already-drafted-this-session)
+
+  ⟨P1⟩  csslc-as-substrate-aware-driver
+        binary loads-source · constructs-G-view · dispatches-to-codegen-embedding · emits-audit-trail
+        replace 23-LOC shell with real CLI: subcommands {build · check · fmt · test · bench · emit-mlir · emit-spirv · emit-c99 · attest · verify}
+        integrate library crates · file-I/O · arg-parsing
+        EXIT-GATE : `csslc build hello.cssl` produces an artifact
+
+  ⟨P2⟩  single-source-of-truth refactors
+        - PRIME_DIRECTIVE.csl as data-source · build-step generates cssl-prime-directive crate (§5.8)
+        - CompoundOp ONE definition (drop 2 of 3)
+        - IFC-principals reconciled to victim-naming + Subject (§1.5)
+        - 28-vs-32 effects reconciled (spec OR code adjusted to match)
+        - cssl-ifc factored from cssl-hir (resolves circular-dep first)
+        EXIT-GATE : zero-spec-code-drift in §1-§5 categories · CI-checks-enforce
+
+  ⟨P3⟩  stages-as-views (the big substrate refactor)
+        shared Ty/Tm/Eff/Cap/Lbl/Obl/Diff/Aud/Mono types in substrate-core crate
+        per-stage attribute-overlay (each crate adds metadata · never replaces nodes)
+        text-emit and JIT use-same-type-mapping (Bool→ONE-ABI-mapping)
+        MirType ≡ HirType-with-codegen-attributes
+        EXIT-GATE : grep-test passes (no duplicate type definitions across crates) · existing-tests still-pass
+
+  ⟨P4⟩  substrate-laws wired-end-to-end
+        F2 discharge() wired to translate_obligation
+        F5 combine_labels reconciled-with-join (single impl · sound-relaxation explicit)
+        F6 audit-chain stub-sig bypass REMOVED · prev_hash hashes-FULL-entry · TelemetrySlot size-asserted
+        F1 known-bugs fixed (copysign · multi-result-bwd · @checkpoint · tangent_or_zero)
+        F3 effect-row threaded through codegen + host-boundary
+        EXIT-GATE : all 8 substrate-laws (Λ §2) verifiable via oracle-test-modes · no-known-violation
+
+  ⟨P5⟩  HardwareSubstrate trait + Vulkan first instance
+        trait formalized (§4.X)
+        Vulkan instance wired with-real-ash-FFI · Arc A770 Xe-HPG target
+        substrate-laws checked-at-host-boundary (effect-row · IFC-label · audit-event)
+        EXIT-GATE : Vulkan instance enumerates Arc A770 + submits a no-op compute kernel
+
+  ⟨P6⟩  GpuSubstrateView<G> + 4 codegen instances real bodies
+        shared GpuSubstrateView · 4 codegen-instances (SPIR-V · DXIL · MSL · WGSL) emit-real-MIR-op-bodies
+        FloatControls2 / capability-mapping done-once · Bool-as-I8 consistent
+        spirv-val gate enabled
+        EXIT-GATE : a non-trivial CSSL shader compiles + spirv-val passes
+
+  ⟨★ P7 RENDERER MILESTONE⟩    -- per Apocky 2026-05-14 #2
+        pixels-on-screen via CSSL → SPIR-V → Vulkan → Arc A770 → swapchain → window
+        end-to-end : write a CSSL shader · compile via csslc · run on Arc A770 · see colors on a window
+        NO gameplay · NO game-specific features · JUST the renderer
+        VALIDATES : the entire compile-to-pixels pipeline · the substrate-equation evaluating-end-to-end
+        GATE : nothing past this phase touches game-specific features until renderer-milestone is GREEN
+        EXIT-GATE : 1280×720 window · CSSL shader output · sustained 60fps · no validation-layer warnings
+
+  ⟨P8⟩  stdlib v0
+        collections (Vec · HashMap · BTreeMap analogues) · IO (read_file · write_file · stdin · stdout) · concurrency (channels · futures-or-fibers) · GPU helpers (Buffer · Texture · Pipeline)
+        ALL in CSSL source per take-words-literally-directive · stage-0 may-implement Rust-shims that stage-1 replaces
+        EXIT-GATE : `Vec<i32>` usable from a CSSL program
+
+  ⟨P9⟩  tooling v0
+        formatter (cssl-fmt) · LSP server (cssl-lsp) · package manager (cssl-pkg) · debugger interface (cssl-dbg)
+        all substrate-introspected (use-the-G-graph as their model)
+        EXIT-GATE : LSP completes type-aware on a CSSL file in VS Code
+
+  ⟨P10⟩ stage1 prereqs + self-host
+        the 8 capabilities from stage1/README.csl (generics-mono mostly-done · stdlib · trait-dispatch · string · IO · iterators · sum-type matching · custom-x86-64 backend)
+        then P7-P10 of stage1/README.csl (parser · HIR/MIR · backend · fixed-point)
+        EXIT-GATE : stage1-self-compiles to byte-exact stage1-prime
+
+  ⟨P11⟩ additional HardwareSubstrate instances
+        D3D12 (Windows native) · WebGPU (browser + native) · Level-Zero (Intel sysman) · Metal (macOS · cfg-gated)
+        renderer portable across all 5 instances
+        EXIT-GATE : same CSSL shader compiles + runs + presents on at-least-3-of-5 instances
+
+  ⟨★ P12 ENGINE/CORE SYSTEMS⟩    -- per Apocky 2026-05-14 #2
+        everything LoA needs as PLUMBING (NOT game-specific) :
+          input handling (keyboard · mouse · gamepad · text input)
+          asset loading (GLTF · texture decoding · audio decoding)
+          scene graph + ECS (Entity · Component · System)
+          physics tick (broadphase · narrowphase · resolve · integrate)
+          audio mixing (channel router · effects chain)
+          networking (TCP · UDP · WebRTC)
+          window/swapchain abstraction
+        ALL in CSSL · ALL substrate-aware · NO game-specific code
+        EXIT-GATE : a non-LoA test application uses-engine-systems and-runs
+
+  ⟨★ P13 GAME FEATURES⟩    -- per Apocky 2026-05-14 #2 · only-after-engine-complete
+        Σ-Chain promoted to fully-public language primitive
+        Mycelial-Network · Akashic-Records (per LoA grand-vision)
+        LoA-specific scenes · mechanics · gameplay
+        Bazaar · Coherence-Engine · Ouroboroid-Cosmology · etc
+        EXIT-GATE : LoA playable end-to-end on Arc A770
+
+  ⟨P14⟩ exceed-class deliverables ongoing
+        unique-to-CSSL features no peer language has · runtime-substrate-evolution · live-hotfix · gift-economy · cosmetic-only-monetization
+
+§§ ⟨10 OPEN status⟩    -- updated-with Apocky 2026-05-14 answers
+
+  OPEN-1 ANSWERED-1 (Apocky #1 "Grand Unified Theory") :
+    substrate-thesis confirmed at-strongest-form · §0.5 added · LoA-alignment mapping in §6 marked [VERIFY-during-roadmap-not-blocking]
+    ground-truth against IE/specs/grand-vision/14·15·16 deferred to roadmap execution · not blocking anchor acceptance
+
+  OPEN-2 ANSWERED-3 (Apocky #3 "Whichever makes more sense mathematically") :
+    9-IFC-principals : code adopts spec naming (victim-class + Subject + privilege-tier + Anthropic-Audit) per DLM-mathematical-coherence
+    `Public` (code-only) dropped (DLM-conflict)
+    roadmap-P2 deliverable
+
+  OPEN-3 ANSWERED (delegated) :
+    28-vs-32 effects · roadmap-P2 deliverable · either-update-spec-OR-remove-extras · single-source-via-PRIME_DIRECTIVE.csl mechanism
+
+  OPEN-4 ANSWERED-OK (Apocky #4) :
+    HardwareSubstrate<G> trait formal signature · §4.X sketch accepted · formalize in TECH_PLAN P5
+
+  OPEN-5 ANSWERED-OK (Apocky #5) :
+    G-graph ADT for Rust · §1 sketch accepted · formalize in TECH_PLAN P3
+
+  OPEN-6 ANSWERED (Apocky #6 "Whatever the task demands") :
+    migration plan crate-merge/split count · authorized to design-per-project-demands · TECH_PLAN P3
+
+  OPEN-7 ANSWERED-GREEN (Apocky #7 "explicit greenlight") :
+    direction confirmed · Wave 2 dispatches with substrate-as-constraint
+    THIS document is ACCEPTED as anchor
+
+  OPEN-8 ANSWERED (Apocky #8 "copy whatever works · keep pure cssl · synthesize better") :
+    PRIME_DIRECTIVE mechanism : PRIME_DIRECTIVE.csl AS-data-source · build-step generates Rust enforcement code AND CSL spec content
+    stage-0 : build.rs parses-and-generates
+    stage-1 : PRIME_DIRECTIVE.csl IS-a-CSSL-source-file compiled-by-csslc (meta-circular self-host)
+    §5.8 detailed
+
+  ALL-OPENS ANSWERED · anchor accepted · proceed to-Wave-2
+
+§§ ⟨11 acceptance-gates⟩
+
+  THIS document is ACCEPTED-AS-ANCHOR  -- 2026-05-14 Apocky-greenlight-#7
+    1. Apocky-confirms direction                                ✓ (§10 ANSWERED-7)
+    2. spec-drift items in §10 OPEN are at-least acknowledged-as-roadmap-items     ✓ (P2 + P4)
+    3. ROADMAP.csl phases reference-back-to substrate-laws ⟨§8⟩    pending-Wave-2
+    4. AGENT_SOP.md includes-substrate-first principle ⟨§9⟩         pending-SOP-synthesis (L1 + L11)
+
+  THIS document is ARCHIVED if substrate-thesis is rejected (currently-confirmed · not-archived)
+
+  THIS document is REVISED whenever :
+    a substrate-law (§2) is added/removed/refined
+    a node-class (§1) is added/removed/refined
+    a stage-view (§3) is added/removed/refined
+    an embedding (§4) is added/removed/refined
+    a topology-prohibition (§5) is added (T immutable per PRIME_DIRECTIVE §7 · prohibitions cannot-be-removed)
+    LoA-alignment changes (§6)
+    iteration produces new-insight worth-anchoring (per L11)
+
+§§ ⟨12 honest-meta⟩    -- per AGENT_SOP discipline · per L11 iterate-improve-critically
+
+  what-changed-from-v1-to-v2 :
+    + §0.5 The Unified Equation (Apocky #1) · framing promoted from "5-tuple ⟨G,Λ,V,E,T⟩" to "function S(p,w) = unique-solution"
+    + §0.6 The 32→1 reduction concrete-sketch
+    + §1.5/§5.3 IFC-principals decision locked (victim-naming canonical · DLM-rationale)
+    + §5.8 PRIME_DIRECTIVE.csl-as-data-source mechanism (Apocky #8)
+    + §6 LoA-alignment extended with equation-framing
+    + §8 L11 iterate-improve-critically-each-pass design-law (Apocky #9)
+    + §9 phase plan restructured · added P7 RENDERER MILESTONE · added P12 ENGINE · added P13 GAME (Apocky #2)
+    + §9 phase count grew from P0-P10 (v1) to P0-P14 (v2) reflecting renderer + engine + game gates
+    + §10 all 8 OPENs marked ANSWERED with decisions
+    + Λ §2.9 progressive-materialization-law explicit (was implied by L8 only)
+    + §0 thesis: 5 reasons-why-one-substrate-beats-32-fragments (was bald assertion in v1)
+
+  what-was-stubbed (still) :
+    HardwareSubstrate trait detail (§4.X · TECH_PLAN P5)
+    formal G-ADT (TECH_PLAN P3)
+    migration plan crate-count (TECH_PLAN P3)
+    consistency/uniqueness mathematical-proof of S (stage-1+ aspiration · §0.5)
+    LoA-alignment ground-truth verification (§6 · roadmap execution)
+
+  what-i-challenged-this-pass (per L11) :
+    - my-v1 framing as "5-tuple structure" was-WEAKER than-Apocky's "ONE math equation" · iterated to function-form · this-changes-how-the-substrate-is-implemented (data-driven not type-driven)
+    - my-v1 phase plan was-engine-game-coupled · iterated to-explicit-renderer-milestone + engine-before-game gate · prevents-the-anti-pattern Apocky-warned-about
+    - my-prior-status-updates over-the-session called combine_labels a "wrong-lattice-op bug" · audit-doc-04 said "intentional sound over-approximation" · iterated to "single-impl + sound-relaxation explicit" framing
+    - my-v1 OPEN-1 marked LoA-alignment as blocking · iterated to non-blocking-with-VERIFY-during-roadmap · saves-a-turn
+
+  what-surprised-me (per L11 · honest reporting) :
+    - the GUT framing (one math equation) made the V·E parameters DROP from primitive-status to derived-status · cleaner than-i-expected
+    - the IFC-principal mathematical-coherence argument (victim-owns-confidentiality-set) is the canonical DLM reading · i had not articulated it explicitly before
+    - the renderer-milestone-as-explicit-gate mirrors how-Linus-Torvalds-shipped-Linux-1.0 (working-kernel-before-features) and how-Carmack-shipped-id-engines (renderer-first-then-game) · this is well-trodden engineering wisdom · i should have proposed it without prompting
+
+  what-i-ask-of-future-passes (per L11) :
+    - audit-baseline synthesis must integrate forward-pointers to SUBSTRATE.csl · not just describe current state
+    - AGENT_SOP synthesis must add L1 substrate-first + L11 iterate-improve-critically as core agent rules
+    - Wave-2 phase-agents must each produce-an-iteration-pass on their phase (not single-shot drafts)
+    - I myself must continue to challenge own-decisions every-pass · not lock-in early
+
+# § E.O.D. — SUBSTRATE.csl v2 · Apocky-locked 2026-05-14
