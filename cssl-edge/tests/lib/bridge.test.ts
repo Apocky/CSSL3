@@ -57,10 +57,14 @@ async function run() {
   assert.throws(() => validateBridgeResult(fixture.request.job_id, { ...fixture.response, headers: { authorization: 'PRIVATE_SECRET' } }));
   assert.throws(() => bridgeConfiguration({ NODE_ENV: 'test', APOCRYPHA_BRIDGE_KEY_B64: Buffer.alloc(31).toString('base64') }));
   assert.equal(validBridgeTarget('owner', 'GET', '/v1/observe/errors?privacy_partition=owner%3Aapocky&limit=100'), true);
+  assert.equal(validBridgeTarget('owner', 'GET', '/v1/auth/status'), true);
+  assert.equal(validBridgeTarget('owner', 'GET', '/v1/auth/status?subject=other'), false);
+  assert.equal(validBridgeTarget('account', 'GET', '/v1/auth/status'), false);
   for (const target of ['https://evil.test', '//evil.test', '/v1/observe/errors?privacy_partition=other', '/v1/observe/errors?limit=100&privacy_partition=owner%3Aapocky', '/v1/observe/errors?privacy_partition=owner%3Aapocky&limit=01', '/v1/observe/errors?privacy_partition=owner%3Aapocky&secret=x']) assert.equal(validBridgeTarget('owner', 'GET', target), false);
   const operation = { operation_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', objective: 'A safe fixture.', allowed_paths: ['tests/fixture.txt'] };
   assert.doesNotThrow(() => createBridgeRequest(cfg, { ...input, channel: 'owner', target: '/v1/code/operations', body: Buffer.from(JSON.stringify(operation)) }, initial));
   assert.throws(() => createBridgeRequest(cfg, { ...input, channel: 'owner', target: '/v1/code/operations', body: Buffer.from(JSON.stringify({ ...operation, allowed_paths: ['../outside'] })) }, initial));
+  for (const path of ['.git/config', '.GIT/config', 'src/CON.txt', 'src/COM1', 'src/nul', 'src/filename.', 'src/filename ', 'src/é.ts']) assert.throws(() => createBridgeRequest(cfg, { ...input, channel: 'owner', target: '/v1/code/operations', body: Buffer.from(JSON.stringify({ ...operation, allowed_paths: [path] })) }, initial));
 
   const store = new MemoryPersistence(); let now = initial;
   const queue = new BridgeQueue(cfg, store, () => now);

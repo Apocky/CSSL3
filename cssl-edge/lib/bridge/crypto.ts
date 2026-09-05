@@ -104,13 +104,20 @@ export interface BridgeRequest {
   schema_version: typeof BRIDGE_REQUEST_SCHEMA; job_id: string; subject: string; channel: 'owner' | 'account';
   method: 'GET' | 'POST'; target: string; headers: Record<string, string>; body_base64: string; created_at: string; expires_at: string; nonce: string | null;
 }
+export function validBridgeCodePath(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 4096 || value !== value.trim()
+    || !/^[A-Za-z0-9_.@+ -]+(?:\/[A-Za-z0-9_.@+ -]+)*$/.test(value)) return false;
+  const parts = value.split('/');
+  return parts[0]?.toLowerCase() !== '.git' && parts.every(part => part !== '.' && part !== '..'
+    && !/[ .]$/.test(part) && !/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(part.split('.')[0]!));
+}
 export function validBridgeTarget(channel: string, method: string, target: string): boolean {
   if (typeof target !== 'string' || target.length > 1024) return false;
   if (channel === 'account') return validAccountTarget(method, target);
   if (channel !== 'owner') return false;
   if (method === 'POST') return ['/v1/chat', '/v1/code/operations', '/v1/code/operations/rollback'].includes(target);
   if (method !== 'GET') return false;
-  if (target === '/health' || target === '/v1/code/capabilities') return true;
+  if (target === '/health' || target === '/v1/auth/status' || target === '/v1/code/capabilities') return true;
   if (target.startsWith('/v1/code/operations?operation_id=')) return CONVERSATION_UUID.test(target.slice('/v1/code/operations?operation_id='.length));
   if (/^\/v1\/observe\/(status|events|trace|errors|metrics|shards)\?/.test(target)) {
     const query = new URLSearchParams(target.slice(target.indexOf('?') + 1));
@@ -147,8 +154,7 @@ function validateInput(config: BridgeConfiguration, input: BridgeInput): void {
       if (!rollback) {
         if (typeof body.objective !== 'string' || body.objective !== body.objective.trim() || [...body.objective].length < 1 || [...body.objective].length > 32768
           || !Array.isArray(body.allowed_paths) || body.allowed_paths.length < 1 || body.allowed_paths.length > 32
-          || !body.allowed_paths.every(path => typeof path === 'string' && path.length <= 1024 && path !== '' && !path.startsWith('/') && !path.includes('\\')
-            && !/[\x00-\x1f\x7f:]/.test(path) && path.split('/').every(part => part !== '' && part !== '.' && part !== '..'))
+          || !body.allowed_paths.every(validBridgeCodePath)
           || [...new Set(body.allowed_paths)].sort().join('\0') !== body.allowed_paths.join('\0')) throw new BridgeError('BRIDGE_REQUEST_INVALID', 400);
       }
       return;
