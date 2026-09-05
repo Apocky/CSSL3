@@ -1,11 +1,7 @@
 // apocky.com/api/admin/apocrypha/status · backend-reachability probe
 //
-// Phase-0 stub per Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl.
-// Phase-1 will replace this with a real proxy to the cloudflared tunnel
-// (env APOCRYPHA_TUNNEL_HOST, e.g. apocrypha.apocky.com) → localhost:8137/api/status.
-//
-// Until Phase-1 lands, this returns a deterministic stub so the cockpit
-// placeholder page can show wiring is in place + announces the next gate.
+// Live backend-reachability probe through the configured cloudflared tunnel.
+// Missing configuration is a bounded 503, never a fake/stub success.
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
@@ -13,7 +9,7 @@ import { envelope } from '@/lib/response';
 import { requireAdmin } from '@/lib/require-admin';
 
 interface ApocryphaStatusResponse {
-  phase: 'stub' | 'tunnel';
+  phase: 'tunnel';
   reachable: boolean;
   tunnel_host: string | null;
   note: string;
@@ -34,18 +30,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const tunnelHost = process.env.APOCRYPHA_TUNNEL_HOST ?? null;
 
   if (!tunnelHost) {
-    const stub: ApocryphaStatusResponse = {
-      phase: 'stub',
+    const unavailable: ApocryphaStatusResponse = {
+      phase: 'tunnel',
       reachable: false,
       tunnel_host: null,
-      note:
-        'Phase-0 stub. Set APOCRYPHA_TUNNEL_HOST env-var (e.g. apocrypha.apocky.com) ' +
-        'after Phase-1 wires cloudflared + CF Access. Apocrypha backend lives at ' +
-        'localhost:8137 on Apocky-PC.',
-      next_gate: 'G1 · Phase-1 · curl https://apocky.com/api/admin/apocrypha/status returns Apocrypha JSON',
+      note: 'Apocrypha tunnel is not configured; backend reachability is unknown.',
+      next_gate: 'Configure APOCRYPHA_TUNNEL_HOST and verify the live tunnel.',
       spec: 'Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl',
     };
-    return res.status(200).json({ ...stub, ...envelope() });
+    return res.status(503).json({ ...unavailable, ...envelope() });
   }
 
   // Phase-1 active path · proxy to cloudflared tunnel

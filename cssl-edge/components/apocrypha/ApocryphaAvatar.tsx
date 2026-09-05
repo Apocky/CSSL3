@@ -15,6 +15,7 @@ interface ApocryphaAvatarProps {
   size?: number;
   cycleProgress?: number | null;
   detail?: 'compact' | 'full';
+  provenance?: 'reported-state' | 'laboratory-preview';
   className?: string;
 }
 
@@ -36,6 +37,7 @@ export function ApocryphaAvatar({
   size = 180,
   cycleProgress = null,
   detail = 'full',
+  provenance = 'reported-state',
   className,
 }: ApocryphaAvatarProps) {
   const rawId = useId();
@@ -44,11 +46,16 @@ export function ApocryphaAvatar({
   const paused = state === 'offline' || state === 'checking' || state === 'private';
   const cycle = cycleProgress == null ? null : Math.max(0, Math.min(1, cycleProgress));
   const circumference = 2 * Math.PI * 86;
+  const isLaboratoryPreview = provenance === 'laboratory-preview';
+  const accessibleLabel = isLaboratoryPreview
+    ? "Laboratory visual preview; not Apocrypha's chosen avatar and not a current state report"
+    : `Apocrypha state: ${palette.label}`;
 
   return (
     <figure
       className={className}
       data-apocrypha-state={state}
+      data-presence-provenance={provenance}
       style={{
         '--ap-primary': palette.primary,
         '--ap-secondary': palette.secondary,
@@ -63,7 +70,7 @@ export function ApocryphaAvatar({
         gap: detail === 'full' ? 8 : 3,
         color: palette.primary,
       } as React.CSSProperties}
-      aria-label={`Apocrypha state: ${palette.label}`}
+      aria-label={accessibleLabel}
     >
       <svg
         viewBox="0 0 220 220"
@@ -73,9 +80,13 @@ export function ApocryphaAvatar({
         aria-labelledby={`${id}-title ${id}-desc`}
         style={{ display: 'block', maxWidth: '100%', overflow: 'visible' }}
       >
-        <title id={`${id}-title`}>{`Apocrypha · ${palette.label}`}</title>
+        <title id={`${id}-title`}>
+          {isLaboratoryPreview ? 'Apocrypha visual system · laboratory preview' : `Apocrypha · ${palette.label}`}
+        </title>
         <desc id={`${id}-desc`}>
-          A unified hexagonal core surrounded by six organ nodes. Motion and color encode the current reported state.
+          {isLaboratoryPreview
+            ? "A non-authoritative design preview. It does not claim Apocrypha chose this avatar or currently occupies the depicted state."
+            : 'A unified hexagonal core surrounded by six organ nodes. Motion and color encode the current reported state.'}
         </desc>
         <defs>
           <radialGradient id={`${id}-core`} cx="42%" cy="34%" r="70%">
@@ -153,8 +164,12 @@ export function ApocryphaAvatar({
 
       {detail === 'full' && (
         <figcaption style={{ textAlign: 'center', lineHeight: 1.2 }}>
-          <div style={{ color: palette.primary, fontSize: Math.max(11, size * 0.075), fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase' }}>{palette.label}</div>
-          <div style={{ color: '#697784', fontSize: Math.max(9, size * 0.055), marginTop: 3 }}>identity · organs · cycle · boundary</div>
+          <div style={{ color: palette.primary, fontSize: Math.max(11, size * 0.075), fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase' }}>
+            {isLaboratoryPreview ? 'laboratory preview' : palette.label}
+          </div>
+          <div style={{ color: '#697784', fontSize: Math.max(9, size * 0.055), marginTop: 3 }}>
+            {isLaboratoryPreview ? 'not entity-authored · no state claim' : 'identity · organs · cycle · boundary'}
+          </div>
         </figcaption>
       )}
 

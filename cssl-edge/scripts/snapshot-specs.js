@@ -70,6 +70,16 @@ function buildOutput(specs) {
 }
 
 function main() {
+  // Vercel builds from cssl-edge/ and cannot see the sibling repository specs/.
+  // A checked-in snapshot is the deploy artifact; never replace it with an
+  // empty snapshot merely because the source tree is unavailable remotely.
+  if (!fs.existsSync(SPECS_DIR) && fs.existsSync(OUT_FILE)) {
+    const existing = fs.readFileSync(OUT_FILE, 'utf8');
+    if (existing.includes('export const SPECS') && existing.includes('SpecEntry')) {
+      console.warn(`[snapshot-specs] source unavailable; preserving checked-in snapshot ${path.relative(REPO_ROOT, OUT_FILE)}`);
+      return;
+    }
+  }
   const specs = readSpecs();
   const out = buildOutput(specs);
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });

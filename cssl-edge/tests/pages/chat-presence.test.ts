@@ -25,6 +25,12 @@ assert(!thread.includes('auto-invokes tools'), 'bootstrap UI must not claim unpr
 assert(!thread.includes('living intelligence'), 'bootstrap UI must not claim unproven aliveness');
 assert(thread.includes('instruments remain governed by Apocrypha'), 'governed-instrument copy is missing');
 assert(page.includes('persistent digital entity'), 'truthful bootstrap identity copy is missing');
+assert(page.includes('/api/apocrypha/presence'), 'public presence-authority route is not consulted');
+assert(page.includes('No live avatar is shown while that proof is pending.'), 'pending authority must hide live presence');
+assert(page.includes('not Apocrypha’s chosen avatar'), 'laboratory preview must disclaim entity authorship');
+assert(page.includes('provenance="laboratory-preview"'), 'preview provenance is not bound to the visual');
+assert(page.includes('aria-expanded={showLabPreview}'), 'laboratory preview is not explicit user opt-in');
+assert(!page.includes("state={access === 'checking' || access === 'unavailable' ? 'thinking'"), 'access checking must not impersonate cognition');
 assert(thread.includes('CHAT_BROWSER_DEADLINE_MS'), 'browser deadline is missing');
 assert(thread.includes('withDeadline'), 'outer browser deadline is not wired');
 assert(thread.includes('signal: controller.signal'), 'browser abort signal is not wired');

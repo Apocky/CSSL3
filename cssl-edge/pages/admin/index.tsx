@@ -6,11 +6,11 @@ import { useEffect, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 
 interface HealthData {
-  status: string;
-  commit?: string;
-  uptime_s?: number;
+  ok?: boolean;
+  sha?: string;
   stripe_configured?: boolean;
-  supabase_configured?: boolean;
+  supabase_connected?: boolean;
+  supabase_status?: 'connected' | 'unconfigured' | 'misconfigured' | 'auth_failed' | 'unreachable';
 }
 
 interface SystemCard {
@@ -29,16 +29,31 @@ const Dashboard: NextPage = () => {
     fetch('/api/health')
       .then((r) => r.json())
       .then((j) => setHealth(j))
-      .catch(() => setHealth({ status: 'unknown' }));
+      .catch(() => setHealth({ ok: false, supabase_status: 'unreachable' }));
     setNow(new Date().toLocaleString());
     const t = setInterval(() => setNow(new Date().toLocaleString()), 1000);
     return () => clearInterval(t);
   }, []);
 
+  const supabaseLabel =
+    health === null
+      ? '◐ checking'
+      : health.supabase_connected
+        ? '✓ connected'
+        : health.supabase_status === 'unconfigured'
+          ? '○ unconfigured'
+          : health.supabase_status === 'misconfigured'
+            ? '✗ configuration invalid'
+            : health.supabase_status === 'auth_failed'
+              ? '✗ API key rejected'
+              : '✗ unreachable';
+  const supabaseHealthy = health?.supabase_connected === true;
+  const supabaseNeutral = health?.supabase_status === 'unconfigured' || health === null;
+
   const cards: SystemCard[] = [
     {
       label: 'apocky.com',
-      value: health?.status === 'ok' ? '✓ live' : '◐ checking',
+      value: health === null ? '◐ checking' : health.ok ? '✓ live' : '✗ unavailable',
       glyph: '⊑',
       accent: '#34d399',
       href: '/',
@@ -52,9 +67,9 @@ const Dashboard: NextPage = () => {
     },
     {
       label: 'Supabase',
-      value: health?.supabase_configured ? '✓ live' : '◐ stub-mode',
+      value: supabaseLabel,
       glyph: '◇',
-      accent: health?.supabase_configured ? '#34d399' : '#fbbf24',
+      accent: supabaseHealthy ? '#34d399' : supabaseNeutral ? '#fbbf24' : '#fb7185',
     },
     {
       label: 'LoA-alpha',

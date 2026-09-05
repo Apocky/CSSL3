@@ -22,6 +22,17 @@ const nextConfig = {
       { source: '/admin/tasks', destination: '/admin/sub-minds', permanent: true },
     ];
   },
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: '/', destination: '/commons/index.html' },
+        { source: '/commons', destination: '/commons/index.html' },
+        { source: '/atlas', destination: '/commons/atlas.html' },
+        { source: '/membership', destination: '/commons/membership.html' },
+        { source: '/principles', destination: '/commons/principles.html' },
+      ],
+    };
+  },
 };
 
 module.exports = nextConfig;

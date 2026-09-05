@@ -13,14 +13,17 @@ const isMain =
   typeof module !== 'undefined' &&
   require.main === module;
 
-function runAll(): void {
-  testHealthCarriesW9Keys();
-  testHealthPaymentsReadyComposite();
+async function runAll(): Promise<void> {
+  await testHealthCarriesW9Keys();
+  await testHealthPaymentsReadyComposite();
   // eslint-disable-next-line no-console
   console.log('health-w9.test : OK · 2 tests passed');
 }
 
 if (isMain) {
-  try { runAll(); }
-  catch (err) { /* eslint-disable-next-line no-console */ console.error(err); process.exit(1); }
+  void runAll().catch((err: unknown) => {
+    /* eslint-disable-next-line no-console */
+    console.error(err);
+    process.exitCode = 1;
+  });
 }

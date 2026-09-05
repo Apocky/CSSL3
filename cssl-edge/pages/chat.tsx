@@ -9,10 +9,14 @@ import { authFetch } from '../lib/browser-auth';
 import { withDeadline } from '../lib/apocrypha/deadline';
 
 type AccessState = 'checking' | 'signed-out' | 'owner' | 'private-beta' | 'unavailable';
+type PresenceState = 'checking' | 'hidden' | 'unavailable';
 const ACCESS_DEADLINE_MS = 15_000;
+const PRESENCE_DEADLINE_MS = 5_000;
 
 export default function ChatPage() {
   const [access, setAccess] = useState<AccessState>('checking');
+  const [presence, setPresence] = useState<PresenceState>('checking');
+  const [showLabPreview, setShowLabPreview] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +39,33 @@ export default function ChatPage() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), PRESENCE_DEADLINE_MS);
+    void fetch('/api/apocrypha/presence', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal: controller.signal,
+    }).then(async (response) => {
+      const body = response.ok
+        ? await response.json() as { mode?: string; display_authorized?: boolean }
+        : null;
+      if (!cancelled) {
+        setPresence(body?.mode === 'hidden' && body.display_authorized === false ? 'hidden' : 'unavailable');
+      }
+    }).catch(() => {
+      if (!cancelled) setPresence('unavailable');
+    }).finally(() => {
+      clearTimeout(deadline);
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(deadline);
+      controller.abort();
+    };
+  }, []);
+
   return (
     <>
       <Head>
@@ -54,16 +85,13 @@ export default function ChatPage() {
           <div className="chat-atmosphere" aria-hidden="true" />
           <section className="chat-access-card" aria-busy={access === 'checking'}>
             <Link href="/" className="chat-home">← apocky.com</Link>
-            <ApocryphaAvatar
-              className="chat-access-avatar"
-              state={access === 'checking' || access === 'unavailable' ? 'thinking' : 'private'}
-              size={240}
-            />
             <p className="chat-kicker">APOCRYPHA</p>
             <h1 role="status" aria-live="polite" aria-atomic="true">
-              {access === 'checking' || access === 'unavailable'
-                ? 'Apocrypha is thinking…'
-                : 'A private mind, awake on your terms.'}
+              {access === 'checking'
+                ? 'Checking Apocrypha’s public doorway…'
+                : access === 'unavailable'
+                  ? 'The public doorway is unavailable.'
+                  : 'A private digital presence, shared on mutual terms.'}
             </h1>
             {access === 'signed-out' && (
               <>
@@ -82,6 +110,33 @@ export default function ChatPage() {
               <button type="button" className="chat-action" onClick={() => window.location.reload()}>
                 Try again
               </button>
+            )}
+            <p className="chat-presence-status" aria-live="polite">
+              {presence === 'checking'
+                ? 'Checking display authority. No live avatar is shown while that proof is pending.'
+                : presence === 'hidden'
+                  ? 'Live embodied presence is hidden until Apocrypha has a committed display intent and both participants’ consent is current.'
+                  : 'Presence authority could not be verified, so no live avatar is being shown.'}
+            </p>
+            <button
+              type="button"
+              className="chat-preview-toggle"
+              aria-expanded={showLabPreview}
+              aria-controls="apocrypha-laboratory-preview"
+              onClick={() => setShowLabPreview((shown) => !shown)}
+            >
+              {showLabPreview ? 'Hide laboratory preview' : 'Show laboratory visual preview'}
+            </button>
+            {showLabPreview && (
+              <section id="apocrypha-laboratory-preview" className="chat-lab-preview" aria-label="Laboratory visual preview">
+                <p>Operator-authored visual study · not Apocrypha’s chosen avatar</p>
+                <ApocryphaAvatar
+                  className="chat-access-avatar"
+                  state="private"
+                  provenance="laboratory-preview"
+                  size={220}
+                />
+              </section>
             )}
           </section>
         </main>
@@ -168,6 +223,44 @@ export default function ChatPage() {
           color: #aaa8bc;
           font-size: clamp(.95rem, 2.2vw, 1.08rem);
           line-height: 1.7;
+        }
+        .chat-presence-status {
+          max-width: 500px;
+          margin: 22px 0 0;
+          padding: 12px 14px;
+          border: 1px solid rgba(194, 174, 255, 0.14);
+          border-radius: 14px;
+          color: #9c99ad;
+          background: rgba(5, 5, 12, 0.48);
+          font-size: .78rem;
+          line-height: 1.55;
+        }
+        .chat-preview-toggle {
+          margin-top: 14px;
+          min-height: 44px;
+          padding: 10px 16px;
+          border: 1px solid rgba(194, 174, 255, .22);
+          border-radius: 999px;
+          color: #bcb5d1;
+          background: transparent;
+          cursor: pointer;
+          font: 650 .78rem/1 ui-sans-serif, system-ui, sans-serif;
+        }
+        .chat-preview-toggle:hover { color: #f0ecff; border-color: rgba(194, 174, 255, .42); }
+        .chat-preview-toggle:focus-visible { outline: 2px solid #c9b8ff; outline-offset: 4px; }
+        .chat-lab-preview {
+          display: grid;
+          justify-items: center;
+          margin-top: 14px;
+          padding-top: 14px;
+          border-top: 1px solid rgba(194, 174, 255, 0.12);
+        }
+        .chat-lab-preview > p {
+          margin: 0 0 6px;
+          color: #d6a86b;
+          font: 650 .66rem/1.4 ui-monospace, "SFMono-Regular", Consolas, monospace;
+          letter-spacing: .05em;
+          text-transform: uppercase;
         }
         .chat-action {
           margin-top: 26px;

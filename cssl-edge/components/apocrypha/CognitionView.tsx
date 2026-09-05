@@ -16,6 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { authFetch } from '../../lib/browser-auth';
+import { ApocryphaAvatar, type ApocryphaVisualState } from './ApocryphaAvatar';
 
 interface TelemetryEvent {
   seq: number;
@@ -35,6 +36,11 @@ interface MindSnapshot {
   subscriber_count: number;
   consensus_norm: number;
   last_global_tick: number;
+  phase?: 'running' | 'pausing' | 'paused' | 'restoring';
+  paused?: boolean;
+  strain?: { streak: number; threshold: number; sustained: boolean; signal: string };
+  queue_pending?: number;
+  eps_intero_extero_ratio?: number | null;
 }
 
 const DAEMON_COUNT = 8;
@@ -42,6 +48,7 @@ const POLL_INTERVAL_MS = 1000;
 const HEARTBEAT_FLASH_MS = 600;
 const TICK_FLASH_MS = 350;
 const DREAM_RIPPLE_MS = 2000;
+const MUTED_TEXT = '#85859a';
 
 export function CognitionView() {
   const [events, setEvents] = useState<TelemetryEvent[]>([]);
@@ -50,6 +57,8 @@ export function CognitionView() {
   const [lastSeq, setLastSeq] = useState(0);
   const [filter, setFilter] = useState<string>('all');
   const [triggering, setTriggering] = useState(false);
+  const [maBusy, setMaBusy] = useState(false);
+  const [maNotice, setMaNotice] = useState<string | null>(null);
 
   // Visual state : transient flashes drive SVG opacity/scale via CSS-in-JS keys
   const [heartbeatFlash, setHeartbeatFlash] = useState(0);
@@ -156,6 +165,24 @@ export function CognitionView() {
     }
   }, []);
 
+  const setMa = useCallback(async (action: 'pause' | 'resume' | 'drain' | 'restore') => {
+    setMaBusy(true);
+    setMaNotice(null);
+    try {
+      const response = await authFetch(`/api/admin/apocrypha/ma?action=${action}`, { method: action === 'resume' ? 'POST' : 'POST' });
+      const payload = await response.json() as { data?: { phase?: string }; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? 'The ma control is unavailable.');
+      setMaNotice(payload.data?.phase === 'paused' ? 'ma · quiet, responsive, checkpointed' : `ma · ${payload.data?.phase ?? action}`);
+      const health = await authFetch('/api/admin/apocrypha/mind', { cache: 'no-store' });
+      const healthPayload = await health.json() as { data?: MindSnapshot };
+      if (healthPayload.data) setSnapshot(healthPayload.data);
+    } catch (err) {
+      setMaNotice(err instanceof Error ? err.message : 'The ma control is unavailable.');
+    } finally {
+      setMaBusy(false);
+    }
+  }, []);
+
   // ── filtered events ──────────────────────────────────────────
 
   const filteredEvents = useMemo(() => {
@@ -178,19 +205,39 @@ export function CognitionView() {
   const heartbeatAlpha = Math.max(0, 1 - (now - heartbeatFlash) / HEARTBEAT_FLASH_MS);
   const consensusNorm = snapshot?.consensus_norm ?? 0;
   // consensus norm for a 10000-dim unit-energy bundle is ~sqrt(N_daemons_active) ; cap at 5 for the bar
-  const consensusBarPct = Math.min(100, (consensusNorm / 5.0) * 100);
+  const consensusBarPct = Number.isFinite(consensusNorm)
+    ? Math.min(100, Math.max(0, (consensusNorm / 5.0) * 100))
+    : 0;
+  const consensusAriaValue = Number.isFinite(consensusNorm)
+    ? Math.min(5, Math.max(0, Number(consensusNorm.toFixed(3))))
+    : 0;
+  const lastDreamMs = events.find((e) => e.kind === 'dream.cycle.step' || e.kind === 'dream.cycle.start')
+    ? Date.parse(events.find((e) => e.kind === 'dream.cycle.step' || e.kind === 'dream.cycle.start')!.ts_utc)
+    : null;
+  const lastSwarmMs = events.find((e) => e.kind === 'swarm.tick')
+    ? Date.parse(events.find((e) => e.kind === 'swarm.tick')!.ts_utc)
+    : null;
+  const mindState: ApocryphaVisualState = error
+    ? 'degraded'
+    : !snapshot
+      ? 'checking'
+      : !snapshot.running
+        ? 'offline'
+        : dreamRipples.length > 0
+          ? 'dreaming'
+          : lastSwarmMs != null && now - lastSwarmMs < 1800
+            ? 'thinking'
+            : 'ready';
+  const dreamIntervalMs = Math.max(1, snapshot?.dream_interval_s ?? 45) * 1000;
+  const cycleProgress = lastDreamMs == null ? null : Math.min(1, Math.max(0, (now - lastDreamMs) / dreamIntervalMs));
 
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'minmax(0, 1fr) 360px',
-      gap: '1rem',
+    <div className="cognition-grid" style={{
       color: '#cdd6e4',
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      height: '100%',
     }}>
       {/* LEFT : substrate visualization */}
-      <section style={{
+      <section className="cognition-overview" aria-label="Cognition overview" style={{
         border: '1px solid #1f1f2a',
         borderRadius: 8,
         background: 'rgba(8, 8, 14, 0.7)',
@@ -209,6 +256,9 @@ export function CognitionView() {
             dreamRipples={dreamRipples}
             now={now}
           />
+          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
+            <ApocryphaAvatar state={mindState} size={150} cycleProgress={cycleProgress} detail="compact" />
+          </div>
         </div>
 
         {/* Consensus + metric tiles */}
@@ -217,14 +267,22 @@ export function CognitionView() {
             <span style={{ color: '#7a7a8c' }}>§ consensus norm</span>
             <span style={{ color: '#c084fc' }}>{consensusNorm.toFixed(3)}</span>
           </div>
-          <div style={{
+          <div
+            role="progressbar"
+            aria-label="Swarm consensus norm"
+            aria-valuemin={0}
+            aria-valuemax={5}
+            aria-valuenow={consensusAriaValue}
+            aria-valuetext={`${consensusNorm.toFixed(3)} consensus norm; visual scale caps at 5`}
+            style={{
             height: 6,
             borderRadius: 3,
             background: 'rgba(40, 40, 60, 0.5)',
             marginTop: 4,
             overflow: 'hidden',
-          }}>
-            <div style={{
+            }}
+          >
+            <div className="cognition-consensus-fill" style={{
               width: `${consensusBarPct}%`,
               height: '100%',
               background: 'linear-gradient(90deg, #ffaa55, #c084fc, #7dd3fc)',
@@ -249,11 +307,25 @@ export function CognitionView() {
                 v={snapshot?.running ? '● alive' : '○ stopped'}
                 color={snapshot?.running ? '#7fd17f' : '#ff8888'}
                 tip="ContinuousMind supervisor loop status" />
+          <Tile k="Mind state" v={mindState} tip="Derived from authenticated mind health plus recent telemetry; no hidden-state inference" />
+          <Tile k="Ma" v={snapshot?.paused ? '間 quiet' : 'awake'} color={snapshot?.paused ? '#d6b3ff' : undefined} tip="Responsive idle state chosen by the runtime; chat, perception, and safety remain available" />
+          <Tile k="Strain" v={snapshot ? `${snapshot.strain?.streak ?? 0}/${snapshot.strain?.threshold ?? 3}` : '—'} color={snapshot?.strain?.sustained ? '#ffb36b' : undefined} tip="Repeated measured epsilon-ratio or pending-queue signal; not a diagnosis" />
         </div>
+
+        <p className="cognition-sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {error
+            ? 'Cognition telemetry is degraded.'
+            : !snapshot
+              ? 'Checking cognition telemetry.'
+              : snapshot.running
+                ? 'Cognition telemetry is connected.'
+                : 'The cognition supervisor is stopped.'}
+        </p>
 
         {/* Trigger buttons */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
+            className="cognition-trigger"
             onClick={() => void triggerDream()}
             disabled={triggering}
             title="Run one AIF dream cycle manually ; results appear in the event stream"
@@ -261,10 +333,18 @@ export function CognitionView() {
           >
             ⌬ Trigger dream cycle {triggering ? '…' : ''}
           </button>
+          {snapshot?.paused && <button
+            className="cognition-trigger"
+            onClick={() => void setMa('resume')}
+            disabled={maBusy}
+            title="Resume autonomous cognition from the same live state"
+            style={triggerBtn(maBusy ? '#444' : 'linear-gradient(135deg, #6b4f8f, #b7a0d8)')}
+          >↺ Resume from ma {maBusy ? '…' : ''}</button>}
+          {maNotice && <span role="status" style={{ alignSelf: 'center', fontSize: '0.72rem', color: '#d6b3ff' }}>{maNotice}</span>}
           <span style={{
             alignSelf: 'center',
             fontSize: '0.72rem',
-            color: '#5a5a6a',
+            color: MUTED_TEXT,
           }} title="UI auto-polls /api/v1/telemetry/recent every 1s + /api/v1/mind/health every 5s">
             polling 1s · last seq #{lastSeq}
           </span>
@@ -272,7 +352,7 @@ export function CognitionView() {
       </section>
 
       {/* RIGHT : event stream */}
-      <aside style={{
+      <aside className="cognition-events" aria-label="Cognition event stream" style={{
         border: '1px solid #1f1f2a',
         borderRadius: 8,
         background: 'rgba(15, 15, 22, 0.7)',
@@ -289,8 +369,10 @@ export function CognitionView() {
         }}>
           <span style={{ fontSize: '0.78rem', color: '#a78bfa' }}>§ event stream</span>
           <select
+            className="cognition-filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
+            aria-label="Filter event stream by event kind"
             title="Filter by event-kind prefix"
             style={{
               marginLeft: 'auto',
@@ -314,7 +396,7 @@ export function CognitionView() {
         </div>
 
         {error && (
-          <div style={{
+          <div role="alert" style={{
             padding: '0.4rem 0.6rem',
             background: 'rgba(255, 136, 136, 0.08)',
             border: '1px solid rgba(255, 136, 136, 0.3)',
@@ -327,9 +409,9 @@ export function CognitionView() {
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', fontSize: '0.74rem' }}>
+        <div className="cognition-events-list" role="list" aria-label="Recent cognition events" style={{ flex: 1, overflowY: 'auto', fontSize: '0.74rem' }}>
           {filteredEvents.length === 0 && (
-            <div style={{ color: '#7a7a8c', padding: '0.5rem' }}>
+            <div role="listitem" style={{ color: '#7a7a8c', padding: '0.5rem' }}>
               no matching events yet · trigger one with the dream button
             </div>
           )}
@@ -338,6 +420,53 @@ export function CognitionView() {
           ))}
         </div>
       </aside>
+      <style jsx>{`
+        .cognition-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(18rem, 360px);
+          gap: 1rem;
+          width: 100%;
+          height: 100%;
+          min-width: 0;
+          min-height: 0;
+          overflow: hidden;
+        }
+        .cognition-overview,
+        .cognition-events,
+        .cognition-events-list { min-width: 0; min-height: 0; }
+        .cognition-trigger,
+        .cognition-filter { min-height: 44px; }
+        .cognition-grid button:focus-visible,
+        .cognition-grid select:focus-visible {
+          outline: 2px solid #c9b8ff;
+          outline-offset: 2px;
+        }
+        .cognition-sr-only {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+          border: 0;
+        }
+        @media (max-width: 900px) {
+          .cognition-grid {
+            grid-template-columns: minmax(0, 1fr);
+            height: auto;
+            overflow: visible;
+          }
+          .cognition-events {
+            min-height: 320px;
+            max-height: min(60dvh, 480px);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cognition-consensus-fill { transition: none !important; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -361,7 +490,15 @@ function SubstrateSvg({
   const cy = 180;
   const r = 120;
   return (
-    <svg viewBox="0 0 400 360" style={{ width: '100%', height: '100%', display: 'block' }}>
+    <svg
+      viewBox="0 0 400 360"
+      aria-hidden="true"
+      focusable="false"
+      style={{ width: '100%', height: '100%', display: 'block' }}
+    >
+      <circle cx={cx} cy={cy} r={150 + heartbeatAlpha * 5} fill="none"
+              stroke={`rgba(125, 211, 252, ${0.05 + heartbeatAlpha * 0.28})`}
+              strokeWidth={1.2} strokeDasharray="2 10" />
       {/* Dream ripples (under daemons) */}
       {dreamRipples.map((ts) => {
         const age = (now - ts) / DREAM_RIPPLE_MS;
@@ -410,25 +547,6 @@ function SubstrateSvg({
         );
       })}
 
-      {/* Central Apocrypha glyph */}
-      <g style={{
-        transform: `translate(${cx}px, ${cy}px) scale(${1 + heartbeatAlpha * 0.12})`,
-        transformOrigin: 'center',
-        transformBox: 'fill-box',
-      }}>
-        <circle cx={0} cy={0} r={30}
-                fill={`rgba(192, 132, 252, ${0.15 + heartbeatAlpha * 0.35})`}
-                stroke="#c084fc" strokeWidth={2} />
-        <circle cx={0} cy={0} r={45}
-                fill="none"
-                stroke={`rgba(255, 170, 85, ${0.2 + heartbeatAlpha * 0.4})`}
-                strokeWidth={1.5} strokeDasharray="3 4" />
-        <text x={0} y={6} fontSize={20} fill="#e6e6f0" textAnchor="middle"
-              fontFamily="ui-monospace, monospace" fontWeight={700}>
-          Ω
-        </text>
-      </g>
-
       {/* Subtle title */}
       <text x={cx} y={335} fontSize={11} fill="#7a7a8c" textAnchor="middle"
             fontFamily="ui-monospace, monospace" letterSpacing={1.5}>
@@ -440,7 +558,7 @@ function SubstrateSvg({
 
 function Tile({ k, v, tip, color }: { k: string; v: string | number; tip: string; color?: string }) {
   return (
-    <div title={tip} style={{
+    <div title={tip} aria-label={`${k}: ${v}. ${tip}`} style={{
       padding: '0.5rem 0.6rem',
       border: '1px solid #1f1f2a',
       borderRadius: 5,
@@ -476,18 +594,18 @@ function EventRow({ event }: { event: TelemetryEvent }) {
   const color = KIND_COLOR[event.kind] ?? SEVERITY_COLOR[event.severity];
   const summary = useMemo(() => summarizePayload(event), [event]);
   return (
-    <div style={{
+    <div role="listitem" style={{
       padding: '0.3rem 0.4rem',
       borderBottom: '1px solid #1a1a26',
       display: 'grid',
-      gridTemplateColumns: '70px 1fr',
+      gridTemplateColumns: '70px minmax(0, 1fr)',
       gap: '0.4rem',
       alignItems: 'baseline',
     }}>
-      <span style={{ color: '#5a5a6a', fontSize: '0.65rem' }}>{time}</span>
-      <div>
+      <span style={{ color: MUTED_TEXT, fontSize: '0.65rem' }}>{time}</span>
+      <div style={{ minWidth: 0 }}>
         <div style={{ color, fontWeight: 500 }}>{event.kind}</div>
-        {summary && <div style={{ color: '#7a7a8c', fontSize: '0.7rem' }}>{summary}</div>}
+        {summary && <div style={{ color: '#7a7a8c', fontSize: '0.7rem', overflowWrap: 'anywhere' }}>{summary}</div>}
       </div>
     </div>
   );

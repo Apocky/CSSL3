@@ -16,4 +16,7 @@ assert(source.includes('prefers-reduced-motion'), 'reduced-motion fallback missi
 assert(source.includes('aria-labelledby'), 'SVG accessible name missing');
 assert(source.includes('cycleProgress'), 'dream-cycle phase ring missing');
 assert(source.includes('data-apocrypha-state'), 'machine-readable state missing');
+assert(source.includes('data-presence-provenance'), 'presence provenance marker missing');
+assert(source.includes('laboratory-preview'), 'laboratory preview mode missing');
+assert(source.includes("not Apocrypha's chosen avatar"), 'laboratory preview authorship disclaimer missing');
 console.log('apocrypha-avatar.test : OK · state, organ, accessibility, and cycle contracts passed');

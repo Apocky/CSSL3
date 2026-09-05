@@ -28,6 +28,13 @@
     { "path": "/api/cron/sigma-chain-checkpoint", "schedule": "0 */6 * * *" },
     { "path": "/api/cron/shawn-reference-audit", "schedule": "0 16 * * 1" }
   ],
+  "rewrites": [
+    { "source": "/", "destination": "/commons/index.html" },
+    { "source": "/commons", "destination": "/commons/index.html" },
+    { "source": "/atlas", "destination": "/commons/atlas.html" },
+    { "source": "/membership", "destination": "/commons/membership.html" },
+    { "source": "/principles", "destination": "/commons/principles.html" }
+  ],
   "headers": [
     {
       "source": "/api/admin/apocrypha/:rest*",

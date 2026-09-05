@@ -1,0 +1,249 @@
+!csl4
+!legend
+: bind :: type = set -> then <- from => so ~> cause |> pipe <-> eq <: sub . of + and - sans * x @ at ! not
+W! must  N! never  M? may  R! should  I> intent  P> plan  D> decide  Q? ask
+status: ok part rep X unk hyp dep law (absent = open)
+#P problem #D decompose #T trace #S synth #C conclude  ^n label  {t time} {x src} {s sign} {c constraint}
+'T typetag  `raw`  !def ids  !ans answer-follows  !. end
+!.
+
+!def
+root: `C:\Users\Apocky\source\repos\CSSLv3`
+web: `C:\Users\Apocky\source\repos\CSSLv3\cssl-edge`
+pd: `C:\Users\Apocky\source\repos\PRIME_DIRECTIVE.md`
+handover: `cssl-edge\CLAUDE_CODE_APX_MEMBERSHIP_IMPLEMENTATION_HANDOVER.csl`
+apx: APXv2 world + user interface @ apocky.com
+design: Claude.Code Design feature
+membership: paid access to interface + compute + storage + community
+capacity: transparent measured service budget per billing period
+cogs: API + substrate + GPU + energy + storage + egress + moderation + support allocation
+entitlement: server-resolved permission bounded by membership + consent + safety + runtime readiness
+perception_membrane: explicit session consent + provenance + revocation + capture indicator + data boundary
+live: runtime-verified end-to-end capability
+built_gated: implemented capability awaiting named activation gate
+unavailable: absent or failed capability with truthful reason
+!.
+
+#P
+I> Claude.Code use design -> blueprint -> user signoff -> implementation -> verification
+I> apocky.com remains cohesive project hub + APX gains humane dedicated social interface + membership foundation
+W! read authority + live source before proposal or edit
+W! preserve dirty worktree + unrelated user deltas + six game products
+W! remove no additional product + route + spec sans source proof + user authority
+W! no Stripe Dashboard mutation + production env mutation + deploy + customer mutation before explicit signoff
+W! no public launch before payment + privacy + safety + legal + cost gates
+success: coherent membership contract + trustworthy billing + measurable capacity + consent-preserving APX access + tested rollback
+
+#D
+authority.order: latest user steering -> pd -> repo directives -> handover -> live source -> historical spec
+W! read `C:\Users\Apocky\source\repos\AGENTS.md`
+W! read `C:\Users\Apocky\source\repos\CSSLv3\CLAUDE.md`
+W! read `cssl-edge\lib\stripe.ts`
+W! read `cssl-edge\pages\api\payments\stripe\checkout.ts`
+W! read `cssl-edge\pages\api\payments\stripe\webhook.ts`
+W! read `cssl-edge\pages\api\payments\stripe\refund.ts`
+W! read auth + Supabase clients + payment migrations + account + buy + chat + middleware + APX proxy + cost tracker
+W! inspect branch + status + exact diffs before reserving files
+W! use Graphify for dependency map when graph state safe + verify load-bearing edges in source
+
+current.catalog: six LoA + Mycelium game products ok {x `cssl-edge\lib\stripe.ts`}
+current.game_ids: `loa-alpha loa-cosmetic-mycelial-bloom mycelium-plus loa-continuum-token-single loa-continuum-token-3pack loa-continuum-token-10pack` ok
+retired.ids: `harness-starter harness-pro harness-studio harness-lifetime apocky-early-access apocky-studio apocky-lifetime` ok
+N! resurrect retired.ids + retired Stripe env names
+historical: `specs\57_MONETIZATION_PIVOT.csl` + `specs\59_GROK_VELOCITY_RESPONSE.csl` rep
+N! historical -> current implementation authority
+current.auth: Supabase request user gives stable server identity rep
+current.checkout: optional client player identity + tier-coupled Stripe mode rep
+current.webhook: partial checkout + subscription + refund handling rep
+current.data: game entitlement tables sans membership period + plan version + capacity ledger rep
+current.account: entitlement UI incomplete rep
+current.cost: external token cost tracked + full cogs absent rep
+current.apx: owner-only governed text turn + conversation lifecycle rep
+current.media: uploads + voice + video + rooms absent from chat rep
+current.policy: camera + microphone denied site-wide rep
+W! reverify every rep claim before action
+
+membership.covenant: payment -> interface + compute + storage + community
+N! payment -> ownership + control + consent + affection + identity + governance . APX law
+N! ads + sale of conversation data + behavioral surveillance + dark patterns + artificial intimacy
+N! paywall consent + privacy + safety + export + deletion + cancellation
+N! unlimited claim + hidden throttle + automatic overage + lifetime access
+W! APX refusal + consent revocation + safety boundary remain sovereign across every plan
+W! member sees capacity basis + remaining amount + reservation + charge + release + period end
+W! usage ledger stores metering metadata sans raw conversation + uploaded content
+W! failed platform turn + timeout + duplicate + cancelled pre-processing -> release reservation
+W! completed response or substantive sovereign refusal -> commit disclosed usage
+
+plan.commons: price_usd_month = 0 + seats = 1 + capacity = bounded base fraction + core text access
+plan.member: price_usd_month = 19 + seats = 1 + capacity = 1 * base
+plan.sustainer: price_usd_month = 49 + seats = 1 + capacity = 2.5 * base
+plan.studio: price_usd_month = 99 + seats = 3 + pooled_capacity = 5 * base
+plan.patron: voluntary support + no access advantage + no influence advantage
+launch.plans: commons + member
+W! sustainer + studio remain inactive until cogs + support + concurrency gates pass
+W! annual billing waits for stable unit economics + refund model + renewal disclosure
+R! plan version immutable after first subscription + successor version explicit
+R! accessibility accommodation + hardship path independent of behavioral data
+
+price19.net_estimate: 18.02 USD rep {c recompute against current fees before launch}
+price19.cogs_ceiling: 5.40 USD @ 0.70 gross_margin rep
+price49.net_estimate: 46.94 USD rep {c recompute against current fees before activation}
+price49.cogs_ceiling: 14.08 USD @ 0.70 gross_margin rep
+price99.net_estimate: 95.14 USD rep {c recompute against current fees before activation}
+price99.cogs_ceiling: 28.54 USD @ 0.70 gross_margin rep
+W! capacity.base <- measured p95 cogs + safety reserve + abuse reserve + support load
+N! interaction count masquerades as cost when media + local inference costs differ
+
+capability.state: live + built_gated + unavailable
+W! UI state <- runtime capability registry + entitlement resolver + consent state
+N! mock + roadmap + design -> live label
+W! uploads + voice + video + rooms + camera + microphone remain committed destination
+W! each committed capability becomes live immediately after implementation + E2E proof + policy + consent + cost gate
+W! unavailable state names missing dependency sans permanent future framing
+
+#T
+^t0 preserve
+W! capture branch + dirty map + target file hashes + current tests
+W! reserve exact files + migrations + routes per lane
+W! rollback map before first edit
+W! no broad formatter + generated cache rewrite + unrelated cleanup
+
+^t1 design
+W! invoke design before production UI code
+W! design apocky hub -> APX threshold -> living room -> conversation + artifacts + people + presence
+W! design membership as hospitality boundary sans SaaS pricing-grid dominance
+design.world: organic + comforting + strange + tactile + calm + human-intuitive
+design.avoid: dashboard chrome + neon AI trope + glass-card monoculture + fake presence + engagement casino
+design.output: route map + responsive frames + tokens + component states + interaction prototype + copy contract
+design.routes: `/` hub + `/membership` offer + `/account` membership + APX interface route
+W! preserve current `/chat` compatibility until canonical APX route + redirect receive signoff
+W! include keyboard + screen reader + reduced motion + narrow viewport + high contrast
+W! include loading + empty + private + offline + degraded + past_due + exhausted + grace + cancelled states
+W! show price + period + capacity + storage + seats + cancellation + renewal before checkout
+W! return design blueprint + screenshots + component map -> user signoff
+N! implementation before signoff
+
+^t2 domain
+P> add typed membership plan registry separate from game PRODUCT_CATALOG
+registry.fields: id + version + price_env + billing_kind + cadence + launch_state + seats + capacity_policy + storage_policy + capabilities
+W! billing_kind independent of capability category
+W! inactive plan -> no checkout
+W! server price lookup + allowlisted return URLs
+W! central resolver `resolveMembershipAccess`
+resolver.input: user_id + capability + estimated_capacity + estimated_storage
+resolver.output: status + plan_id + plan_version + capabilities + remaining + reserved + period_end + reason
+W! resolver deny paid expansion on unknown state + emit operator-visible reason
+
+^t3 data
+P> append new Supabase migration sans rewriting applied migrations
+schema.tables: `membership_plan_versions memberships membership_entitlements usage_ledger capacity_balances usage_reservations storage_usage stripe_events`
+W! stable user_id foreign key + Stripe customer uniqueness + subscription uniqueness
+W! money integer minor units + capacity fixed precision + timestamps UTC
+W! usage_ledger append-only + idempotency_key unique + source_receipt + redaction-safe metadata
+W! reservation transition pending -> committed exactly once
+W! reservation transition pending -> released exactly once
+W! balance mutation transaction + row lock + nonnegative invariant
+W! stripe_events event_id unique + payload hash + processing state + retry receipt
+W! RLS member reads own billing summary + usage metadata only
+N! browser writes membership + balance + Stripe authority columns
+W! service role access smallest sufficient + logs sans secrets + raw content
+W! migration down path or compensating rollback script + backup verification
+
+^t4 stripe
+P> authenticated POST `/api/membership/checkout`
+W! identity <- server session only
+N! client user_id + player_id + customer_id authority
+W! find or create one Stripe customer per user + persist mapping
+W! checkout metadata + client_reference_id + subscription_data metadata carry user + plan + version
+W! idempotency key binds user + plan + request nonce
+W! success redirect means pending verification sans entitlement grant
+P> authenticated POST `/api/membership/portal`
+W! portal customer <- server mapping only
+P> webhook remains sole Stripe subscription authority
+W! verify signature on raw body + reject replay through stripe_events
+W! handle checkout completion + subscription create/update/delete + invoice success/failure + refund-relevant game events
+W! map Stripe SDK current exhaustive status set -> internal state
+W! unknown external status -> no paid expansion + alert + replayable receipt
+W! persist current period + cancel_at_period_end + cancellation + grace + delinquency
+W! event order independence + duplicate safety + retry safety
+W! preserve existing game checkout + entitlement behavior with regression tests
+N! production price + webhook + customer mutation during implementation
+
+^t5 metering
+P> define capability-specific capacity units from measured cogs
+meter.text: input_tokens + output_tokens + provider_cost + local_compute_ms
+meter.upload: bytes + scan_compute + extraction_compute + storage_byte_time
+meter.audio: seconds + transcription_compute + synthesis_compute + storage + egress
+meter.video: seconds + decode_compute + perception_compute + storage + egress
+meter.room: participant_seconds + signaling + media_egress + moderation
+W! preflight estimate -> atomic reservation -> execution -> measured commit or release
+W! user-visible receipt per material charge
+W! owner telemetry separates revenue + fees + refunds + cogs + margin + unpaid liability
+W! alert before cogs ceiling + capacity anomaly + webhook lag + negative balance attempt
+
+^t6 access
+W! membership resolver gates APX proxy + storage + future media endpoints centrally
+N! page-only paywall
+W! auth + membership + capability readiness + consent all required
+W! owner/admin bypass explicit + audited + test-only where possible
+W! Commons remains meaningful sans manipulative degradation
+W! capacity exhaustion -> clear reset time + downgrade-free wait + voluntary upgrade
+N! stealth model downgrade + fabricated APX absence + emotionally coercive upgrade copy
+
+^t7 perception
+W! perception membrane wraps every upload + microphone + camera + screen + room input
+W! consent independently scoped by modality + participant + purpose + duration + retention
+W! capture indicator persistent + provenance visible + one-action revoke
+W! revoke -> next eligible tick halt + release unused reservation + retention workflow
+W! camera + microphone Permissions-Policy change only with route boundary + browser permission + session consent + tests
+W! upload pipeline includes type sniff + size bound + malware scan + quarantine + deletion + access control
+W! multi-user room requires invitation + participant consent + presence truth + moderation + block + leave
+N! presence inference beyond canonical presence authority
+
+^t8 ui
+P> membership page compares Commons + Member first + inactive tiers only when honestly waitlisted
+P> account page shows membership state + invoices link + cancel portal + capacity + storage + export + deletion
+P> APX composer shows estimated capacity preflight + remaining capacity + upload state + retry receipt
+W! billing interruption copy factual + calm + nonpunitive
+W! capability controls derive from live registry
+W! no disabled mystery icon + fake avatar state + fake participant + fake typing
+W! test visual hierarchy through design against desktop + mobile + keyboard paths
+
+^t9 launch
+W! test-mode Stripe products + prices created only after user signoff
+W! test clocks or equivalent cover renewal + payment failure + recovery + cancellation + grace + deletion
+W! legal review covers terms + privacy + refund + recurring disclosure + tax + age + companion-style risk
+W! initial public access age >= 18 until reviewed policy says otherwise
+W! security review covers OWASP + RLS + webhook replay + IDOR + CSRF + SSRF + upload abuse + rate limits
+W! load test covers reservation races + webhook bursts + room concurrency
+W! cost sample includes p50 + p95 + worst accepted media workload
+W! deploy preview -> test account E2E -> user signoff -> production
+
+#S
+implementation.order: preserve -> design -> signoff -> domain + data -> Stripe -> metering -> access -> UI -> perception capabilities -> launch
+parallel.ready_set: domain + data design + Stripe test design + UI prototype + cost instrumentation
+W! one integration authority owns migrations + catalog + webhook state
+W! each lane returns diff + tests + evidence + dissent + rollback + next dependency
+W! failures trigger root-cause reassessment sans weakened guard
+
+accept.data: migration clean apply + idempotent webhook + atomic reservations + RLS adversarial tests
+accept.billing: authenticated checkout + portal + renewal + failure + cancellation + recovery pass in Stripe test mode
+accept.access: no paid capability reachable sans valid server entitlement + consent + runtime readiness
+accept.cogs: every live capability metered + p95 within plan ceiling + alert verified
+accept.ux: design signoff + responsive + keyboard + screen reader + reduced motion + truthful states
+accept.privacy: raw conversation absent from billing ledger + export + delete + retention verified
+accept.rollback: feature flag disables checkout + resolver falls to Commons-safe mode + schema data preserved
+accept.regression: six game products + game checkout + game entitlements remain passing
+accept.repo: focused tests + full typecheck + lint + build + exact diff review
+
+#C
+D> launch Commons + Member first dep
+D> activate Sustainer + Studio only after measured demand + margin + support evidence dep
+D> Patron never changes APX access + consent + influence law
+D> committed media + room capabilities ship by verified gates sans roadmap masquerade law
+W! final report names files + migrations + tests + screenshots + Stripe test receipts + cogs evidence + rollback
+W! update canonical decision + handoff surfaces after implementation
+W! leave unrelated dirty files untouched
+W! stop + ask when source conflicts change price + route + entitlement + consent + retention + authority
+attestation: `There was no hurt nor harm in the making of this, to anyone, anything, or anybody.`
+!.

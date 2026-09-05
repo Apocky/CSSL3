@@ -18,10 +18,29 @@ export function testProductCatalogShape(): void {
   for (const p of PRODUCT_CATALOG) {
     assert(!ids.has(p.id), `duplicate product_id : ${p.id}`);
     ids.add(p.id);
-    assert(['alpha-free', 'cosmetic', 'subscription'].includes(p.tier), `tier value : ${p.tier}`);
+    assert(
+      ['alpha-free', 'cosmetic', 'subscription', 'continuation'].includes(p.tier),
+      `tier value : ${p.tier}`,
+    );
     assert(p.price_cents >= 0, `price non-negative : ${p.id}`);
     assert(p.currency === 'usd', `currency usd : ${p.id}`);
     assert(typeof p.stripe_price_env === 'string' && p.stripe_price_env.startsWith('STRIPE_PRICE_'), 'env-var prefix');
+  }
+}
+
+export function testLegacyProductsAbsent(): void {
+  const ids = new Set(PRODUCT_CATALOG.map((product) => product.id));
+  const retiredIds = [
+    'harness-starter',
+    'harness-pro',
+    'harness-studio',
+    'harness-lifetime',
+    'apocky-early-access',
+    'apocky-studio',
+    'apocky-lifetime',
+  ];
+  for (const id of retiredIds) {
+    assert(!ids.has(id), `retired product must remain absent : ${id}`);
   }
 }
 
@@ -43,8 +62,9 @@ if (isMain) {
     testBuyDefaultExport();
     testProductCatalogShape();
     testCosmeticChannelOnly();
+    testLegacyProductsAbsent();
     // eslint-disable-next-line no-console
-    console.log('buy.test : OK · 3 tests passed');
+    console.log('buy.test : OK · 4 tests passed');
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(err);
