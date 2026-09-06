@@ -79,7 +79,7 @@ async function baseline(scope) {
   check(hash(raw) === scope.baseline.envelopeSha256 && hash(frozen) === scope.baseline.manifestSha256, 'Historical release seal changed.');
   const body = JSON.parse(raw), manifest = JSON.parse(frozen);
   check(body.project === scope.project && body.target === 'production', 'Historical project binding changed.');
-  check(manifest.sourceFiles.length === 730 && body.files.length === 730, 'Historical source count changed.');
+  check(manifest.sourceFiles.length === 769 && body.files.length === 769, 'Historical source count changed.');
   exactRefs(body.files, manifest.sourceFiles.map(x => ({ file: x.file, sha: x.sha1 })));
   const records = catalogue(manifest.sourceFiles), payloads = new Map();
   for (const row of records.values()) {
@@ -94,7 +94,7 @@ async function baseline(scope) {
     const data = await read(path.join(scope.repo, scope.appPrefix), row.file);
     verify(data, row.expected, row.file); payloads.set(row.file, data);
   }
-  check(replaced === 4 && added === 0 && payloads.size === 730, 'Release denominator changed.');
+  check(replaced === 4 && added === 0 && payloads.size === 769, 'Release denominator changed.');
   const sources = [...payloads].map(([file, data]) => pin(file, data)).sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
   return { body, payloads, sources, sourceSetSha256: hash(json(sources)) };
 }
@@ -144,8 +144,8 @@ async function build(scope, prepared) {
   await fs.symlink(dependencies, target, process.platform === 'win32' ? 'junction' : 'dir');
   await run(process.execPath, [path.join(dependencies, 'next/dist/bin/next'), 'build'], path.join(prepared.stage, 'app'), 15 * 60 * 1000);
   for (const row of prepared.sources) verify(await read(path.join(prepared.stage, 'app'), row.file), row, row.file);
-  await exclusive(path.join(prepared.stage, 'build-passed.json'), json({ at: stamp(), sourceSetSha256: prepared.sourceSetSha256, sourcesUnchanged: 730, next: installed.version, node: process.version }));
-  print({ state: 'LOCAL_NEXT_BUILD_PASSED', stage: prepared.stage, sourcesUnchanged: 730 });
+  await exclusive(path.join(prepared.stage, 'build-passed.json'), json({ at: stamp(), sourceSetSha256: prepared.sourceSetSha256, sourcesUnchanged: 769, next: installed.version, node: process.version }));
+  print({ state: 'LOCAL_NEXT_BUILD_PASSED', stage: prepared.stage, sourcesUnchanged: 769 });
 }
 async function gitProof(scope, prepared, commit) {
   check(/^[a-f0-9]{40}$/.test(commit || ''), 'Supply the reviewed --git-sha.');
@@ -211,7 +211,7 @@ async function candidate(scope, prepared) {
 async function deploy(scope, prepared, opts) {
   const proof = await gitProof(scope, prepared, opts['git-sha']);
   const passed = JSON.parse(await read(prepared.stage, 'build-passed.json'));
-  check(passed.sourceSetSha256 === prepared.sourceSetSha256 && passed.sourcesUnchanged === 730, 'Exact candidate build proof required.');
+  check(passed.sourceSetSha256 === prepared.sourceSetSha256 && passed.sourcesUnchanged === 769, 'Exact candidate build proof required.');
   if (opts.promote) {
     const target = await candidate(scope, prepared);
     check(target.readyState === 'READY' && target.gitCommit === proof.commit, 'Ready candidate and current pushed commit must match.');
@@ -226,7 +226,7 @@ async function deploy(scope, prepared, opts) {
     const live = { ...scope, baseline: { ...scope.baseline, id: target.id } };
     await baselineLive(live, { files: prepared.sources.map(x => ({ file: x.file, sha: x.sha1 })) });
     await exclusive(path.join(prepared.stage, 'promotion-completed.json'), json({ at: stamp(), ...target, sourceSetSha256: prepared.sourceSetSha256, proof, aliases: scope.aliases }));
-    print({ state: 'PROMOTED_ALIASES_AND_730_SOURCE_REFS_VERIFIED', ...target }); return;
+    print({ state: 'PROMOTED_ALIASES_AND_769_SOURCE_REFS_VERIFIED', ...target }); return;
   }
   await absent(path.join(prepared.stage, 'submission-attempt.json'));
   await baselineLive(scope, prepared.body);

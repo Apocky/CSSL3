@@ -1,6 +1,6 @@
 {
   "schema": "apocky.pending-reply.release-scope.v1",
-  "status": "candidate; 730-source live baseline; 2 runtime and 2 fixture replacements; root checks pending",
+  "status": "candidate; reconstructed 769-source current production baseline; 2 runtime and 2 fixture replacements; fresh build pending",
   "repo": "C:/Users/Apocky/source/worktrees/codex-apockalypsis-20260905",
   "appPrefix": "cssl-edge/",
   "branch": "codex/codex-apockalypsis-20260905",
@@ -13,19 +13,19 @@
     "www.apocky.com"
   ],
   "baseline": {
-    "id": "dpl_8XRyAKRCgbpf4jK5XhNfwSfYyun5",
-    "app": "C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/app",
-    "envelope": "C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/deployment-body.json",
-    "envelopeSha256": "e1eaabca9a5a821cded018561870773a6a68e793ccb2a52385aa06c73d8ee3ed",
-    "manifest": "C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/manifest.json",
-    "manifestSha256": "437b7fb9dbdbd98c00639dc377de00bf830e202085720c30c99d65a43635a594"
+    "id": "dpl_J4rTPkwuWxCwbvAPg1aTUUvpGQHT",
+    "app": "C:/Users/Apocky/AppData/Local/Temp/apocky-current-live-rlbmVs/app",
+    "envelope": "C:/Users/Apocky/AppData/Local/Temp/apocky-current-live-rlbmVs/deployment-body.json",
+    "envelopeSha256": "0483f198833e763fac8f467ba83f0b099ca1d3d70411ab54d42e55456252ce58",
+    "manifest": "C:/Users/Apocky/AppData/Local/Temp/apocky-current-live-rlbmVs/manifest.json",
+    "manifestSha256": "d7fcd4169d508636d34bd600e3819e2533201c11d1d71ae013b24776fd423345"
   },
   "counts": {
-    "baseline": 730,
-    "retained": 726,
+    "baseline": 769,
+    "retained": 765,
     "replaced": 4,
     "added": 0,
-    "total": 730
+    "total": 769
   },
   "overlays": [
     {

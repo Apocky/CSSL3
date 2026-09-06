@@ -8,27 +8,31 @@ I> authority := existing user.chat.repair + publication + commit.push; agent.pre
   pending continuation := successful history pull → no terminal → same immutable ID/base/text; existing native admission may require continuation.
   failed pull → no POST; terminal → settle existing queue; conflict → explicit review; N! automatic rebase.
   legacy queue → read-only history despite stale health; unmarked continuation still requires fresh live health or existing explicit/reconnect authority.
-§S baseline := dpl_8XRyAKRCgbpf4jK5XhNfwSfYyun5; sourceSet := 57a68ecf2ab6372c32598906ca684fcf9cbe3f36f3306e2338108e1247bb80f7.
-  snapshot := C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/{app,manifest.json,deployment-body.json}.
-  source denominator := 730 = 726 byte-retained + 4 exact replacements; added=0.
+§S baseline := dpl_J4rTPkwuWxCwbvAPg1aTUUvpGQHT; sourceSet := 94ba4a6d4a85988e48fa02f795350f1cf1cba688b2ff92c255ecb8975a08d8fe.
+  snapshot := C:/Users/Apocky/AppData/Local/Temp/apocky-current-live-rlbmVs/{app,manifest.json,deployment-body.json,reconstruction.json}.
+  ✓ root reconstructed769 live SHA1 refs from verified local/immutable bytes; missing=0; inherited7 build settings unchanged; deployed foreign additions retained.
+  source denominator := 769 = 765 byte-retained + 4 exact replacements; added=0.
   runtime replacements := components/brain/BrainExperience.tsx + lib/brain/mini-brain.ts.
   fixture replacements := tests/e2e/brain.spec.ts + tests/lib/mini-brain-writer.test.ts.
   scope.json pins bytes + SHA1 + SHA256 before/after; release.mjs allows exact ordered4 only.
   preserve := inherited build settings + aliases + every retained source + queued IDs + history + drafts + foreign work.
-  exclude := graphify-out foreign delta + tsbuildinfo + unrelated working-tree changes; N! whole-checkout upload.
-§T root sequence := reviewed source → node release.mjs --prepare → new temporary stage+manifest → explicit --build → complete730 readback.
+  exclude := additional unverified working-tree-only graphify-out delta + tsbuildinfo + unrelated local changes; all769 verified live files retained/overlaid explicitly; N! whole-checkout upload.
+§T root sequence := reviewed source → node release.mjs --prepare → new temporary stage+manifest → explicit --build → complete769 readback.
   root.commit := exact owned source/specs → intended remote push → commit/tree/ref readback; helper gitProof checks4source+3releasefiles.
   candidate := --deploy with --stage/--manifest-sha256/--git-sha → ordinary installed Vercel CLI session → autoAssignCustomDomains=false.
   N! manual credential read | auth extraction | shell wrapper; child process := shell=false + windowsHide=true.
-  candidate observation := --status; exact730 source refs + READY + anonymous desktop/mobile layout.
+  candidate observation := --status; exact769 source refs + READY + anonymous desktop/mobile layout.
   qa := pinned receipt binding deployment+sourceSet; checks desktop/mobile/online-send/retry/reconnect/history-preserved/pending-reply/legacy-queue/history-before-continuation.
   evidence labels := local fixture ≠ live authenticated flow; candidate auth allowlist limitations remain explicit.
-  promote := --deploy --promote + same stage/manifest/git + --qa-receipt/--qa-sha256 → prior live pin check → ordinary CLI promote → aliases+all730refs readback.
+  promote := --deploy --promote + same stage/manifest/git + --qa-receipt/--qa-sha256 → prior live pin check → ordinary CLI promote → aliases+all769refs readback.
 §C meaningful checks := strict pending claims + persisted optional marker + legacy decode + same-ID continuation + failed pull zeroPOST + terminal zeroPOST + no rebase + draft/history retention.
   ✓ root library persistence tests + TypeScript passed; final12desktop/mobile browser cases passed32.9s, including legacy failure/empty/terminal and draft retention.
   ✓ exact730source candidate Next build passed; stage apocky-pending-reply-ugmct8, sourceSet74a6b22a1cfee7edb830a742430c4643129f6b2b5a09152ce87cbca6e74413c1, manifest e1156dd55f878544a1d5720e8d81e03e0cc3f09266faa916e6c6f14d09c217c9.
-  ○ candidate deployment + visual/live authenticated acceptance pending.
+  ✓ prior730 candidate submission stopped before any network write: production moved to J4rTPkwuWxCwbvAPg1aTUUvpGQHT; no candidate POST, no rollback/overwrite of newer release.
+  ○ fresh769 source candidate build + deployment + visual/live authenticated acceptance pending; prior730 build cannot satisfy769 source proof.
   N! helper preparation ⇒ published | automatic live arrival accepted | runtime latency fixed | node fleet available.
 §A rollback := root normal promotion of previously verified baseline; retain new/old encrypted queues and terminal history; no state erasure or failed-ID replay.
   old decoder ignores optional local marker; signed sync schema unchanged.
+✓ root.current769build := PASSED; complete769sourcebytes reverified after Next build.
+  candidate.stage := apocky-pending-reply-rpRqkX; manifest6c5af31ad07bc38e45c6ef418cc8660550f85f22ae09a4c0c3d48b18eaab72fc; sourceSet5050995ed041c8a73520b1dc282d2960ef7c10526b765cadb5bc3cabc5d74a5f.
 ∎
