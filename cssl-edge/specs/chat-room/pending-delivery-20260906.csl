@@ -1,0 +1,21 @@
+§ PENDING.DELIVERY @ 2026-09-06
+§P observed := one approved Send produced completed backend reply while browser displayed HTTP_ERROR+waiting-to-send; cached health prevented history reconciliation until explicit Refresh. Original terminal Status? and new request IDs preserved.
+  owner := source lane4files; root owns tests/build/release/commit/push. Candidate only; no production update or completion claim.
+§D protocol unchanged
+  native admission := exact owner-bound503 chat_living_admission_pending → bridge BRIDGE_APEX_ADMISSION_PENDING → BRAIN_APEX_ADMISSION_PENDING. No supported202/async ticket exists. Pending native admission may require same-ID continuation; pure history polling cannot perform that continuation.
+  marker admission_pending?:true := local encrypted queued-turn observation only; never signed request body, capability, ID, session, base cursor or text. Set only after existing strict503 status+code+request/session+retry_after_ms1000 match. Legacy missing marker remains valid; malformed marker ignored.
+  callback publishes only after durable write. Terminal success/failure history removes exact pending item and preserves message history; stale snapshot cannot resurrect terminal request. Transient transport/read failure cannot erase pending knowledge.
+§S behavior
+  known pending → concise Waiting for reply at message/header; detailed errors remain settings. No false waiting-to-send or offline conclusion from known pending transport failure.
+  visible background poll30s, coalesced one flight; prioritize pending conversation history independently of cached health. Failure → no POST. Successful history → terminal acknowledgement first. Only same known-pending request still queued + no conflict permits existing bounded continuation1/2/4/8s, original immutable ID/base/text. Never automatic rebase or blind new POST.
+  legacy unmarked queue → read-only history even when cached health stale; failed/empty pull never implies pending admission. Unmarked same-ID delivery still requires fresh live health or existing explicit/reconnect authority; draft preserved.
+  offline queue, explicit conflict review, owner/device binding, Web Locks and durable history retain existing contracts.
+§T exact owned files
+  lib/brain/mini-brain.ts ; components/brain/BrainExperience.tsx ; tests/lib/mini-brain-writer.test.ts ; tests/e2e/brain.spec.ts. No API/native/bridge/auth/schema/capability changes.
+  expected tests := matched503 marker survives reopen+transient failure ; mismatched request/session/status/retry claim cannot mark ; signed wire unchanged ; success+failure terminal dominates ; legacy/malformed optional metadata safe ; stale-health pending→failed pull→same-ID allowed resume→terminal history displays automatically without manual Refresh/new Send ; no append during failed pull ; legacy unmarked saved queue→failed/empty/terminal pulls under stale health with zero resend+draft retained ; prior offline/conflict/queue tests unchanged.
+  browser clock := installed Playwright Clock API,3bounded poll intervals; isolated fixtures only. Root executes writer/typecheck/e2e/build and independent review.
+§C limits + rollback
+  known pending requires authoritative existing503; generic first-attempt transport uncertainty does not imply acceptance. Header waiting describes request phase, not live health proof.
+  no change to80s chat proxy deadline,120s browser delivery,120s bridgePOST,30s session proxy or330s bridge result wait. Runtime restarts/performance and verbose response style remain separate observed gaps.
+  rollback := revert exact2runtime source overlays; optional local marker compatible with old reader; no queue deletion/migration or credential change. Root release must retain730source denominator.
+∎

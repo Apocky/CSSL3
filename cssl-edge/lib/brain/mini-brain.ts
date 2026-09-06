@@ -86,6 +86,8 @@ export interface MiniBrainQueuedTurn {
   readonly queued_at: string;
   readonly base_cursor: string | null;
   readonly local_message_ids: readonly string[];
+  // § local observation only; never enters the signed request or grants delivery authority.
+  readonly admission_pending?: true;
 }
 
 export interface MiniBrainState {
@@ -400,7 +402,8 @@ function boundedState(state: MiniBrainState): MiniBrainState {
     ...state,
     sessions,
     memories: state.memories.slice(0, MAX_MEMORIES),
-    queue: state.queue.slice(0, MAX_QUEUE),
+    queue: state.queue.slice(0, MAX_QUEUE).map(({ admission_pending, ...turn }) =>
+      admission_pending === true ? { ...turn, admission_pending: true as const } : turn),
     updated_at: new Date().toISOString(),
   };
 }
@@ -770,7 +773,7 @@ export class MiniBrainVault {
     state: MiniBrainState,
     input: MiniBrainRequestIntent,
     send: (request: MiniBrainSyncRequest, signal: AbortSignal) => Promise<MiniBrainSyncResponse>,
-    options: { readonly signal?: AbortSignal; readonly timeoutMs?: number } = {},
+    options: { readonly signal?: AbortSignal; readonly timeoutMs?: number; readonly onPending?: (state: MiniBrainState) => void } = {},
   ): Promise<MiniBrainState> {
     const controller = new AbortController();
     const timeoutMs = options.timeoutMs ?? 120_000;
@@ -816,11 +819,31 @@ export class MiniBrainVault {
             if (signal.aborted) throw deliveryAbortReason(signal);
             if (replayRetries === 0 && error && typeof error === 'object'
               && 'code' in error && error.code === 'BRAIN_SYNC_REPLAY_REJECTED') { replayRetries += 1; continue; }
-            const retryDelay = ADMISSION_RETRY_DELAYS_MS[admissionRetries];
-            if (admissionPendingFor(error, input) && retryDelay !== undefined) {
-              admissionRetries += 1;
-              await waitForAdmissionRetry(retryDelay, signal);
-              continue;
+            if (admissionPendingFor(error, input)) {
+              state = await this.mutateCurrent(state, current => {
+                const turn = current.queue.find(item => item.request_id === input.requestId);
+                if (!turn) {
+                  const terminal = current.sessions.find(session => session.session_id === input.sessionId)?.messages
+                    .some(message => message.request_id === input.requestId && (message.role === 'assistant' || message.terminal_failure));
+                  if (terminal) return current;
+                  throw new Error('MINI_BRAIN_QUEUED_REQUEST_UNAVAILABLE');
+                }
+                if (turn.session_id !== input.sessionId || turn.text !== input.payload?.text) {
+                  throw new Error('MINI_BRAIN_REQUEST_IDENTITY_CONFLICT');
+                }
+                return turn.admission_pending === true ? current : {
+                  ...current,
+                  queue: current.queue.map(item => item === turn ? { ...item, admission_pending: true as const } : item),
+                };
+              });
+              options.onPending?.(state);
+              if (!state.queue.some(turn => turn.request_id === input.requestId)) return state;
+              const retryDelay = ADMISSION_RETRY_DELAYS_MS[admissionRetries];
+              if (retryDelay !== undefined) {
+                admissionRetries += 1;
+                await waitForAdmissionRetry(retryDelay, signal);
+                continue;
+              }
             }
             throw error;
           }

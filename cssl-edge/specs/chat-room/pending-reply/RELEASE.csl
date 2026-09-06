@@ -1,0 +1,34 @@
+§ APOCRYPHA.PENDING.REPLY.RELEASE @2026-09-06
+I> status := candidate.source.only; root reviews + executes + integrates.
+I> authority := existing user.chat.repair + publication + commit.push; agent.preparation ≠ deployment.
+§P ✓ one approved live turn completed backend; interrupted response hid reply until explicit read-only Refresh.
+§D delta := local encrypted pending marker + coalesced history-first reconciliation + concise Waiting-for-reply UI.
+  exact typed503 := BRAIN_APEX_ADMISSION_PENDING + matching request_id/session_id + retry_after_ms=1000.
+  marker ⊄ signed immutable request; legacy absence valid; unknown status never implies accepted work.
+  pending continuation := successful history pull → no terminal → same immutable ID/base/text; existing native admission may require continuation.
+  failed pull → no POST; terminal → settle existing queue; conflict → explicit review; N! automatic rebase.
+  legacy queue → read-only history despite stale health; unmarked continuation still requires fresh live health or existing explicit/reconnect authority.
+§S baseline := dpl_8XRyAKRCgbpf4jK5XhNfwSfYyun5; sourceSet := 57a68ecf2ab6372c32598906ca684fcf9cbe3f36f3306e2338108e1247bb80f7.
+  snapshot := C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/{app,manifest.json,deployment-body.json}.
+  source denominator := 730 = 726 byte-retained + 4 exact replacements; added=0.
+  runtime replacements := components/brain/BrainExperience.tsx + lib/brain/mini-brain.ts.
+  fixture replacements := tests/e2e/brain.spec.ts + tests/lib/mini-brain-writer.test.ts.
+  scope.json pins bytes + SHA1 + SHA256 before/after; release.mjs allows exact ordered4 only.
+  preserve := inherited build settings + aliases + every retained source + queued IDs + history + drafts + foreign work.
+  exclude := graphify-out foreign delta + tsbuildinfo + unrelated working-tree changes; N! whole-checkout upload.
+§T root sequence := reviewed source → node release.mjs --prepare → new temporary stage+manifest → explicit --build → complete730 readback.
+  root.commit := exact owned source/specs → intended remote push → commit/tree/ref readback; helper gitProof checks4source+3releasefiles.
+  candidate := --deploy with --stage/--manifest-sha256/--git-sha → ordinary installed Vercel CLI session → autoAssignCustomDomains=false.
+  N! manual credential read | auth extraction | shell wrapper; child process := shell=false + windowsHide=true.
+  candidate observation := --status; exact730 source refs + READY + anonymous desktop/mobile layout.
+  qa := pinned receipt binding deployment+sourceSet; checks desktop/mobile/online-send/retry/reconnect/history-preserved/pending-reply/legacy-queue/history-before-continuation.
+  evidence labels := local fixture ≠ live authenticated flow; candidate auth allowlist limitations remain explicit.
+  promote := --deploy --promote + same stage/manifest/git + --qa-receipt/--qa-sha256 → prior live pin check → ordinary CLI promote → aliases+all730refs readback.
+§C meaningful checks := strict pending claims + persisted optional marker + legacy decode + same-ID continuation + failed pull zeroPOST + terminal zeroPOST + no rebase + draft/history retention.
+  ✓ root library persistence tests + TypeScript passed; final12desktop/mobile browser cases passed32.9s, including legacy failure/empty/terminal and draft retention.
+  ✓ exact730source candidate Next build passed; stage apocky-pending-reply-ugmct8, sourceSet74a6b22a1cfee7edb830a742430c4643129f6b2b5a09152ce87cbca6e74413c1, manifest e1156dd55f878544a1d5720e8d81e03e0cc3f09266faa916e6c6f14d09c217c9.
+  ○ candidate deployment + visual/live authenticated acceptance pending.
+  N! helper preparation ⇒ published | automatic live arrival accepted | runtime latency fixed | node fleet available.
+§A rollback := root normal promotion of previously verified baseline; retain new/old encrypted queues and terminal history; no state erasure or failed-ID replay.
+  old decoder ignores optional local marker; signed sync schema unchanged.
+∎

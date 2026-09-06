@@ -1,0 +1,88 @@
+{
+  "schema": "apocky.pending-reply.release-scope.v1",
+  "status": "candidate; 730-source live baseline; 2 runtime and 2 fixture replacements; root checks pending",
+  "repo": "C:/Users/Apocky/source/worktrees/codex-apockalypsis-20260905",
+  "appPrefix": "cssl-edge/",
+  "branch": "codex/codex-apockalypsis-20260905",
+  "remote": "https://github.com/Apocky/CSSL3.git",
+  "project": "prj_7G4FJtQBrPeWJ2Vo00jTR3jbKiO7",
+  "team": "team_Y6LfW90oecok9MxGTNoyA3Y5",
+  "scope": "shawn-bakers-projects-cb1c9715",
+  "aliases": [
+    "apocky.com",
+    "www.apocky.com"
+  ],
+  "baseline": {
+    "id": "dpl_8XRyAKRCgbpf4jK5XhNfwSfYyun5",
+    "app": "C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/app",
+    "envelope": "C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/deployment-body.json",
+    "envelopeSha256": "e1eaabca9a5a821cded018561870773a6a68e793ccb2a52385aa06c73d8ee3ed",
+    "manifest": "C:/Users/Apocky/AppData/Local/Temp/apocky-immediate-send-5OmeTq/manifest.json",
+    "manifestSha256": "437b7fb9dbdbd98c00639dc377de00bf830e202085720c30c99d65a43635a594"
+  },
+  "counts": {
+    "baseline": 730,
+    "retained": 726,
+    "replaced": 4,
+    "added": 0,
+    "total": 730
+  },
+  "overlays": [
+    {
+      "file": "components/brain/BrainExperience.tsx",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 61283,
+        "sha1": "dd2e4d12f8298e29ce06d78865778163f9a1bcee",
+        "sha256": "0f5e310bf622d5074b0bb3cb153e8efdbdfcf584ffece03ef9165cf87de8067b"
+      },
+      "expected": {
+        "bytes": 63627,
+        "sha1": "bb19ca9cfbb466768a57e404733f43ee31979a8c",
+        "sha256": "80b9c8ea7500074b91b5def0153e3b045fed3106db270ae9016b697c96f05cee"
+      }
+    },
+    {
+      "file": "lib/brain/mini-brain.ts",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 39516,
+        "sha1": "4f61725d2a704dfe9b01151bfeddb5acdf5ac9a7",
+        "sha256": "9d2bb6f71aac2d5340242c1509c23974970ea76511a8d44a26f639bf739430cf"
+      },
+      "expected": {
+        "bytes": 41047,
+        "sha1": "5411e0b0df7dde23db8b11ee650d8b36a71567a2",
+        "sha256": "997a2f5e3298ca74d58c057c881eddfbead2141a8b17522dd5cc4f940f4e82ec"
+      }
+    },
+    {
+      "file": "tests/e2e/brain.spec.ts",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 40847,
+        "sha1": "9c1377e3ca16cee216576d84dd5cfee359063b44",
+        "sha256": "9e9b185e117a71c978ad24f35655b2e66b9b31e6d6038de438fbe8dce2014ba0"
+      },
+      "expected": {
+        "bytes": 48092,
+        "sha1": "6fca761bc6fa531d8dfbd113f25970e536424620",
+        "sha256": "fe8949ece8a32f2226cec0c4cfa93fa3cad3dae25bc95ea9ac22c61e0cd637c7"
+      }
+    },
+    {
+      "file": "tests/lib/mini-brain-writer.test.ts",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 25031,
+        "sha1": "7a35f76a24b64b4e09a231d31a2752b6b5dc67f5",
+        "sha256": "fd2ebdb35373e622d9cf131851e82598831c71ae0455cfbd2d8980ca612bb337"
+      },
+      "expected": {
+        "bytes": 30263,
+        "sha1": "34c6fa76fd70472431206de72259821643b11424",
+        "sha256": "866feb1f7f86dacd68e10bc10186818fde42fc83cd0b0595bed2f0ca0f7ff662"
+      }
+    }
+  ]
+}

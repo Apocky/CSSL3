@@ -318,9 +318,64 @@ async function main() {
   await assert.rejects(populated.vault.adoptDiscoveredSession({ ...syncedFresh, owner_ref: 'wrong-owner' }, 'discovered-desktop'),
     /MINI_BRAIN_VAULT_BINDING_MISMATCH/, 'adoption cannot cross owner identity');
 
+  // § typed admission evidence survives transport failure; identity remains immutable.
+  const admissionFixture = await freshFixture();
+  const admissionQueued = await admissionFixture.vault.queueTurn(admissionFixture.state, 'Keep this exact pending message');
+  const admissionIntent = { operation: 'append' as const, sessionId: admissionQueued.turn.session_id,
+    requestId: admissionQueued.turn.request_id, baseCursor: admissionQueued.turn.base_cursor, payload: { text: admissionQueued.turn.text } };
+  const pendingError = (requestId = admissionIntent.requestId, sessionId = admissionIntent.sessionId) => Object.assign(new Error('Admission pending'), {
+    code: 'BRAIN_APEX_ADMISSION_PENDING', status: 503,
+    payload: { code: 'BRAIN_APEX_ADMISSION_PENDING', request_id: requestId, session_id: sessionId, retry_after_ms: 1000 },
+  });
+  const admissionRequests: Array<{ request_id: string; session_id: string; base_cursor: string | null; payload: unknown }> = [];
+  let pendingNotifications = 0;
+  await assert.rejects(admissionFixture.vault.deliverSync(admissionQueued.state, admissionIntent, async request => {
+    admissionRequests.push({ request_id: request.request_id, session_id: request.session_id, base_cursor: request.base_cursor, payload: request.payload });
+    assert.equal(Object.hasOwn(request, 'admission_pending'), false, 'local pending evidence never enters signed wire contract');
+    if (admissionRequests.length === 1) throw pendingError();
+    throw new Error('Transient history GET failure');
+  }, { onPending(state) { pendingNotifications += 1; assert.equal(state.queue[0]?.admission_pending, true); } }), /Transient history GET failure/);
+  assert.equal(pendingNotifications, 1);
+  assert.equal(admissionRequests.length, 2, 'only existing bounded same-ID admission continuation occurs');
+  assert.deepEqual(admissionRequests[0], admissionRequests[1], 'continuation preserves exact session, request, base and text');
+  const admissionReopened: MiniBrainVault = new Vault(admissionFixture.database, structuredClone(identity));
+  const pendingAfterReopen = (await admissionReopened.load())!;
+  assert.deepEqual(pendingAfterReopen.queue[0], { ...admissionQueued.turn, admission_pending: true });
+  const admissionResponse: MiniBrainSyncResponse = { ...replyA, session_id: admissionIntent.sessionId, request_id: admissionIntent.requestId,
+    messages: [{ ...messageA, request_id: admissionIntent.requestId, content: admissionQueued.turn.text },
+      { ...messageA, role: 'assistant', request_id: admissionIntent.requestId, content: 'A real terminal reply', event_digest: '7'.repeat(64) }] };
+  const admissionCompleted = await admissionReopened.applySync(pendingAfterReopen, admissionResponse);
+  assert.equal(admissionCompleted.queue.length, 0, 'terminal history dominates pending marker');
+  assert.equal(admissionCompleted.sessions[0]?.messages.at(-1)?.content, 'A real terminal reply');
+  let terminalResends = 0;
+  const terminalReplay = await admissionFixture.vault.deliverSync(pendingAfterReopen, admissionIntent, async () => { terminalResends += 1; return admissionResponse; });
+  assert.equal(terminalResends, 0, 'terminal acknowledgement prevents a stale pending snapshot from resending');
+  assert.equal(terminalReplay.queue.length, 0);
+  for (const mismatched of [pendingError('wrong-request'), pendingError(admissionIntent.requestId, 'wrong-session'),
+    { ...pendingError(), status: 502 }, { ...pendingError(), payload: { ...pendingError().payload, retry_after_ms: 2000 } }]) {
+    const invalid = await freshFixture();
+    const queued = await invalid.vault.queueTurn(invalid.state, admissionQueued.turn.text, {
+      request_id: admissionIntent.requestId, session_id: admissionIntent.sessionId,
+    });
+    let invalidCalls = 0;
+    await assert.rejects(invalid.vault.deliverSync(queued.state, admissionIntent, async () => { invalidCalls += 1; throw mismatched; }));
+    assert.equal(invalidCalls, 1);
+    assert.deepEqual((await invalid.vault.load())!.queue, queued.state.queue, 'unbound pending claims cannot mark durable queue');
+  }
+  const malformed = await freshFixture();
+  const malformedQueued = await malformed.vault.queueTurn(malformed.state, 'Legacy pending metadata remains untrusted');
+  await malformed.vault.save({ ...malformedQueued.state, queue: [{ ...malformedQueued.turn, admission_pending: 'true' as unknown as true }] });
+  assert.deepEqual((await malformed.vault.load())!.queue, [malformedQueued.turn], 'optional marker decoder ignores malformed metadata and preserves legacy turn');
+
   // § terminal failure settles only its exact queued message; failed text persists.
   const failedFixture = await freshFixture();
   const failedQueued = await failedFixture.vault.queueTurn(failedFixture.state, 'Preserve a failed message');
+  const failurePause = new AbortController();
+  await assert.rejects(failedFixture.vault.deliverSync(failedQueued.state, { operation: 'append',
+    sessionId: failedQueued.turn.session_id, requestId: failedQueued.turn.request_id, baseCursor: failedQueued.turn.base_cursor,
+    payload: { text: failedQueued.turn.text } }, async () => { throw pendingError(failedQueued.turn.request_id, failedQueued.turn.session_id); },
+  { signal: failurePause.signal, onPending() { failurePause.abort(new Error('Pause after durable pending observation')); } }), /Pause after durable pending observation/);
+  assert.equal((await failedFixture.vault.load())!.queue[0]?.admission_pending, true);
   const otherQueued = await failedFixture.peer.queueTurn(failedQueued.state, 'Preserve unrelated waiting message');
   const failedResponse = { ...replyA, session_id: failedQueued.turn.session_id,
     request_id: failedQueued.turn.request_id, status: 'idempotent_replay' as const,

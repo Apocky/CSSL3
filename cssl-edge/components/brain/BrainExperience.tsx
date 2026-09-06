@@ -190,6 +190,7 @@ async function syncMiniBrain(
     readonly baseCursor: string | null;
     readonly text?: string;
     readonly signal?: AbortSignal;
+    readonly onPending?: (state: MiniBrainState) => void;
   },
 ): Promise<MiniBrainState> {
   return vault.deliverSync(state, {
@@ -203,7 +204,7 @@ async function syncMiniBrain(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
     signal,
-  }), { signal: input.signal });
+  }), { signal: input.signal, onPending: input.onPending });
 }
 
 function miniConversation(state: MiniBrainState | null): readonly MiniBrainMessage[] {
@@ -569,6 +570,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     initial: MiniBrainState,
     rebase = false,
     signal?: AbortSignal,
+    onlyRequestId?: string,
   ): Promise<MiniBrainState> => {
     const active = queueFlightRef.current;
     if (active?.vault === vault) return active.promise;
@@ -576,7 +578,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     let state = await vault.load() ?? initial;
     syncConflictRef.current = false;
     setSyncConflict(false);
-    for (const turn of [...state.queue]) {
+    for (const turn of state.queue.filter(item => !onlyRequestId || item.request_id === onlyRequestId)) {
       try {
         state = await syncMiniBrain(vault, state, {
           operation: 'append',
@@ -585,9 +587,12 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
           baseCursor: rebase ? miniCursor(state, turn.session_id) : turn.base_cursor,
           text: turn.text,
           signal,
+          onPending: commitState,
         });
         commitState(state);
       } catch (error) {
+        state = await vault.load() ?? state;
+        commitState(state);
         if (error instanceof BrainApiError && (error.code === 'BRAIN_SYNC_CONFLICT' || error.code === 'BRAIN_SYNC_REMOTE_ABSENT')) {
           try {
             state = await pullSession(vault, state, turn.session_id);
@@ -760,6 +765,30 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
       try {
         const state = await readLocal();
         if (!state || !online || access !== 'owner' || disposed) return;
+        const pending = state.queue.find(turn => turn.admission_pending === true) ?? state.queue[0];
+        if (pending) {
+          // § all saved queues: history first; legacy rows never imply admitted work.
+          const synchronized = await pullSession(observedVault, state, pending.session_id, abort.signal);
+          if (disposed || abort.signal.aborted) return;
+          commitState(synchronized);
+          if (!syncConflictRef.current && synchronized.queue.some(turn => turn.request_id === pending.request_id && turn.admission_pending === true)) {
+            const resumed = await flushQueue(observedVault, synchronized, false, abort.signal, pending.request_id);
+            if (!disposed && !abort.signal.aborted) commitState(resumed);
+          } else if (!synchronized.queue.some(turn => turn.request_id === pending.request_id)) {
+            setSyncNotice('History is synchronized.');
+          } else if (pending.admission_pending !== true) {
+            // § unmarked queue: retain live-health delivery rules, never infer pending admission.
+            const status = await jsonRequest<BrainRuntimeStatus>('/api/brain/runtime/status', { signal: abort.signal });
+            if (!disposed && !abort.signal.aborted) {
+              setRuntime(status);
+              if (status.status === 'live' && !syncConflictRef.current) {
+                const resumed = await flushQueue(observedVault, synchronized, false, abort.signal, pending.request_id);
+                if (!disposed && !abort.signal.aborted) commitState(resumed);
+              }
+            }
+          }
+          return;
+        }
         const status = await jsonRequest<BrainRuntimeStatus>('/api/brain/runtime/status', { signal: abort.signal });
         if (!disposed) setRuntime(status);
         if (status.status === 'live' && !disposed) {
@@ -1051,7 +1080,9 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     requestAnimationFrame(() => composerRef.current?.focus());
     return true;
   };
-  const visibleNotice = syncNotice && !syncNotice.startsWith('Device queue and desktop worldline are current.')
+  const pendingReplyIds = new Set(miniState?.queue.filter(turn => turn.admission_pending === true).map(turn => turn.request_id) ?? []);
+  const waitingForReply = pendingReplyIds.size > 0;
+  const visibleNotice = (!waitingForReply || syncConflict) && syncNotice && !syncNotice.startsWith('Device queue and desktop worldline are current.')
     && !syncNotice.startsWith('History is synchronized.') ? short(syncNotice, 180) : '';
 
   return (
@@ -1063,7 +1094,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
           <button type="button" className={styles.connectionState} data-connected={desktopConnected}
             aria-expanded={activePanel === 'settings'} aria-controls="brain-settings-panel"
             onClick={event => togglePanel('settings', event.currentTarget)}>
-            <span aria-hidden="true" />{desktopConnected ? 'Desktop connected' : 'Waiting for desktop'}
+            <span aria-hidden="true" />{waitingForReply ? 'Waiting for reply' : desktopConnected ? 'Desktop connected' : 'Waiting for desktop'}
           </button>
         </div>
         <nav className={styles.roomActions} aria-label="Conversation controls">
@@ -1093,14 +1124,14 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
               <article key={message.id} data-role={message.role} data-origin={message.origin}>
                 <p><span className={styles.messageAuthor}><span className={styles.messageAvatar} aria-hidden="true">{message.role === 'user' ? 'Y' : '∞'}</span><strong>{message.role === 'user' ? 'You' : 'Apocrypha'}</strong></span><time dateTime={message.recorded_at}>{formattedDate(message.recorded_at)}</time></p>
                 <ConversationMessageContent content={message.content} assistant={message.role === 'assistant'} />
-                {message.origin === 'queued-mobile' ? <small>Saved on this device · waiting to send</small> : null}
+                {message.origin === 'queued-mobile' ? <small>{pendingReplyIds.has(message.request_id) ? 'Waiting for reply' : 'Saved on this device · waiting to send'}</small> : null}
                 {message.terminal_failure ? <div className={styles.messageFailure}>
                   <span>{message.terminal_failure.code === 'chat_prompt_capacity_exceeded' ? 'This message exceeded the conversation capacity. Its text is preserved.' : 'Apocrypha could not reply to this message. Its text is preserved.'}</span>
                   <button type="button" disabled={sending || Boolean(draft.trim())} onClick={() => { setDraft(message.content); setSyncNotice('Review and send to retry. The earlier failed message stays in history.'); composerRef.current?.focus(); }}>Retry message</button>
                 </div> : null}
               </article>
             ))}
-            {sending ? <p className={styles.responding} role="status">{online ? 'Sending your message…' : 'Saving your message…'}</p> : null}
+            {sending ? <p className={styles.responding} role="status">{waitingForReply ? 'Waiting for reply' : online ? 'Sending your message…' : 'Saving your message…'}</p> : null}
           </div>
 
           {showLatest ? <button type="button" className={styles.latestMessages} onClick={() => { scrollToLatest(); messageLogRef.current?.focus(); }}>Latest messages <span aria-hidden="true">↓</span></button> : null}
@@ -1109,9 +1140,9 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
             <div className={styles.composerFeedback}>
             {visibleNotice ? <div className={styles.roomNotice} role="status"><span>{visibleNotice}</span><button type="button" onClick={event => togglePanel('settings', event.currentTarget)}>Details</button></div> : null}
             {miniState && miniState.queue.length > 0 ? <div className={styles.roomQueue}>
-              <span>{miniState.queue.length} message{miniState.queue.length === 1 ? '' : 's'} waiting</span>
+              <span>{waitingForReply ? 'Waiting for reply' : `${miniState.queue.length} message${miniState.queue.length === 1 ? '' : 's'} waiting`}</span>
               {syncConflict ? <button type="button" onClick={() => { void retryConflict(); }} disabled={sending || !online}>Retry on current history</button>
-                : <button type="button" onClick={() => { void syncQueued(); }} disabled={sending || !online}>Try delivery</button>}
+                : waitingForReply ? null : <button type="button" onClick={() => { void syncQueued(); }} disabled={sending || !online}>Try delivery</button>}
             </div> : null}
             </div>
             <form className={styles.roomComposer} onSubmit={event => { void send(event); }}>

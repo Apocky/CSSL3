@@ -261,6 +261,128 @@ test('online Send reaches an available append server while cached runtime status
   await expect(page.locator('main[data-brain-state]')).toHaveAttribute('data-brain-state', 'degraded');
 });
 
+test('known pending reply survives transient history failures and reconciles automatically despite stale health', async ({ page }) => {
+  await page.clock.install();
+  await installStaleOwnerFixture(page);
+  const requests: MiniBrainSyncRequest[] = [];
+  let phase: 'history-fails' | 'resume-admission' | 'complete' = 'history-fails';
+  let historyReads = 0;
+  let successfulPendingReads = 0;
+  await page.route('**/api/brain/mobile/sync', async route => {
+    const request = route.request().postDataJSON() as MiniBrainSyncRequest;
+    if (request.operation === 'pull') {
+      historyReads += 1;
+      if (phase === 'history-fails') return route.fulfill({ status: 502, json: {
+        code: 'BRAIN_RUNTIME_HTTP_ERROR', error: 'A temporary history read failed.',
+      } });
+      if (phase === 'complete') return fulfillSync(route, request,
+        completedTurn(requests[0]!, 'The completed reply appeared without Refresh or another Send.'), '6'.repeat(64), 'advanced');
+      successfulPendingReads += 1;
+      return fulfillSync(route, request, [], null, 'empty');
+    }
+    requests.push(request);
+    if (requests.length === 1) return route.fulfill({ status: 503, json: {
+      code: 'BRAIN_APEX_ADMISSION_PENDING', error: 'Your message is saved and waiting for Apocrypha.',
+      request_id: request.request_id, session_id: request.session_id, retry_after_ms: 1000,
+    } });
+    if (requests.length === 3) expect(successfulPendingReads).toBe(1);
+    return route.fulfill({ status: 502, json: {
+      code: 'BRAIN_RUNTIME_HTTP_ERROR', error: 'A transient read interrupted admission continuation.',
+    } });
+  });
+  await page.goto('/brain');
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Keep one immutable request while its reply is pending.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Waiting for reply', exact: true })).toBeVisible();
+  await expect.poll(() => requests.length).toBe(2);
+  await expect(composer).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Try delivery', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Waiting for desktop', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
+  await page.reload();
+  await expect(composer).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Waiting for reply', exact: true })).toBeVisible();
+  expect(requests).toHaveLength(2);
+  await page.clock.fastForward(31_000);
+  await expect.poll(() => historyReads).toBe(1);
+  await expect(page.getByRole('button', { name: 'Waiting for reply', exact: true })).toBeVisible();
+  expect(requests).toHaveLength(2); // § failed pull never resumes POST.
+  phase = 'resume-admission';
+  await page.clock.fastForward(31_000);
+  await expect.poll(() => requests.length).toBe(3);
+  await expect(composer).toBeEnabled();
+  for (const request of requests.slice(1)) expect(request).toMatchObject({
+    request_id: requests[0]!.request_id, session_id: requests[0]!.session_id,
+    base_cursor: requests[0]!.base_cursor, payload: requests[0]!.payload,
+    payload_digest: requests[0]!.payload_digest, device_id: requests[0]!.device_id,
+  });
+  phase = 'complete';
+  await page.clock.fastForward(31_000);
+  await expect(page.getByText('The completed reply appeared without Refresh or another Send.', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(3); // § terminal history prevents another continuation.
+  await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Waiting for reply', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Try delivery', exact: true })).toHaveCount(0);
+  await expect(page.locator('main[data-brain-state]')).toHaveAttribute('data-brain-state', 'degraded');
+});
+
+test('legacy unmarked queue reconciles terminal history with stale health without resending or clearing the draft', async ({ page }) => {
+  await page.clock.install();
+  await installStaleOwnerFixture(page);
+  const requests: MiniBrainSyncRequest[] = [];
+  let phase: 'history-fails' | 'empty' | 'complete' = 'history-fails';
+  let historyReads = 0;
+  await page.route('**/api/brain/mobile/sync', async route => {
+    const request = route.request().postDataJSON() as MiniBrainSyncRequest;
+    if (request.operation === 'pull') {
+      historyReads += 1;
+      if (phase === 'history-fails') return route.fulfill({ status: 502, json: {
+        code: 'BRAIN_RUNTIME_HTTP_ERROR', error: 'History is temporarily unavailable.',
+      } });
+      if (phase === 'complete') return fulfillSync(route, request,
+        completedTurn(requests[0]!, 'The saved reply arrived after upgrading the page.'), '7'.repeat(64), 'advanced');
+      return fulfillSync(route, request, [], null, 'empty');
+    }
+    requests.push(request);
+    // § no typed 503: durable row has the exact pre-marker queue shape.
+    return route.fulfill({ status: 502, json: {
+      code: 'BRAIN_RUNTIME_HTTP_ERROR', error: 'The delivery response was interrupted.',
+    } });
+  });
+  await page.goto('/brain');
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Preserve this legacy saved message and its identity.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('1 message waiting', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
+  await page.reload();
+  await expect(composer).toBeEnabled();
+  await composer.fill('Keep this unsent draft while history refreshes.');
+  await page.clock.fastForward(31_000);
+  await expect.poll(() => historyReads).toBe(1);
+  expect(requests).toHaveLength(1); // § failed pull never appends.
+  await expect(page.getByText('1 message waiting', { exact: true })).toBeVisible();
+  phase = 'empty';
+  await page.clock.fastForward(31_000);
+  await expect.poll(() => historyReads).toBe(2);
+  expect(requests).toHaveLength(1); // § empty history + stale health never upgrades legacy authority.
+  await expect(page.getByText('1 message waiting', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Waiting for reply', exact: true })).toHaveCount(0);
+  phase = 'complete';
+  await page.clock.fastForward(31_000);
+  await expect(page.getByText('The saved reply arrived after upgrading the page.', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
+  await expect(page.getByText('1 message waiting', { exact: true })).toHaveCount(0);
+  await expect(composer).toHaveValue('Keep this unsent draft while history refreshes.');
+  await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(1);
+  await expect(page.locator('main[data-brain-state]')).toHaveAttribute('data-brain-state', 'degraded');
+});
+
 test('refused online delivery survives reload and Try delivery preserves the queued request identity', async ({ page }) => {
   await installStaleOwnerFixture(page);
   const requests: MiniBrainSyncRequest[] = [];
