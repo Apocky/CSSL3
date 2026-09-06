@@ -946,3 +946,26 @@ fn movq_extended_xmm_from_extended_gpr() {
 fn x64_encoder_version_present() {
     assert!(!X64_ENCODER_VERSION.is_empty());
 }
+
+#[test]
+fn byte_alu_immediate_requires_neutral_rex_for_low_registers() {
+    for (dst, cmp_modrm, add_modrm) in [
+        (Gpr::Rsp, 0xfc, 0xc4), (Gpr::Rbp, 0xfd, 0xc5),
+        (Gpr::Rsi, 0xfe, 0xc6), (Gpr::Rdi, 0xff, 0xc7),
+    ] {
+        assert_eq!(enc(X64Inst::CmpRI { size: OperandSize::B8, dst, imm: 0 }),
+                   vec![0x40, 0x80, cmp_modrm, 0x00]);
+        assert_eq!(enc(X64Inst::AddRI { size: OperandSize::B8, dst, imm: 1 }),
+                   vec![0x40, 0x80, add_modrm, 0x01]);
+    }
+}
+
+#[test]
+fn byte_alu_immediate_preserves_legacy_and_extended_prefixes() {
+    assert_eq!(enc(X64Inst::CmpRI { size: OperandSize::B8, dst: Gpr::Rax, imm: 0 }),
+               vec![0x80, 0xf8, 0x00]);
+    assert_eq!(enc(X64Inst::CmpRI { size: OperandSize::B8, dst: Gpr::R8, imm: 0 }),
+               vec![0x41, 0x80, 0xf8, 0x00]);
+    assert_eq!(enc(X64Inst::CmpRI { size: OperandSize::B32, dst: Gpr::Rsi, imm: 0 }),
+               vec![0x83, 0xfe, 0x00]);
+}

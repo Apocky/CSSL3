@@ -1747,9 +1747,10 @@ pub fn emit_object_module_native_with_format(
     // § Stages 3..5 : per-fn body assembly with cross-fn relocs.
     let mut obj_funcs: Vec<ObjFunc> = Vec::with_capacity(isel_funcs.len());
     for f in &isel_funcs {
-        // Convention : a function named "main" is exported so the linker
-        // resolves it to the program entry-point ; all others are local.
-        let is_export = f.name == "main";
+        // § Preserve main compatibility and explicit public source linkage.
+        let is_export = f.name == "main" || module.find_func(&f.name).is_some_and(|mir_fn| {
+            mir_fn.attributes.iter().any(|(key, value)| key == "linkage" && value == "export")
+        });
         let obj_func = build_func_bytes(f, abi, is_export, &plan)?;
         obj_funcs.push(obj_func);
     }
@@ -2110,6 +2111,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn public_linkage_exports_coff_symbol_and_private_stays_local() {
+        for (name, exported, expected_class) in [("pubapi", true, 2u8), ("hidden", false, 3u8), ("main", false, 2u8)] {
+            let mut module = build_main_42(42);
+            module.funcs[0].name = name.to_owned();
+            if exported { module.funcs[0].attributes.push(("linkage".to_owned(), "export".to_owned())); }
+            let bytes = emit_object_module_native_with_format(&module, ObjectFormat::Coff).unwrap();
+            let symbol_offset = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+            let symbol_count = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+            let mut found = None;
+            let mut index = 0usize;
+            while index < symbol_count {
+                let symbol = &bytes[symbol_offset + index * 18..symbol_offset + (index + 1) * 18];
+                let end = symbol[..8].iter().position(|b| *b == 0).unwrap_or(8);
+                if &symbol[..end] == name.as_bytes() { found = Some(symbol[16]); }
+                index += 1 + usize::from(symbol[17]);
+            }
+            assert_eq!(found, Some(expected_class), "COFF linkage for {name}");
+        }
+    }
+
     // ─── select_module_with_marker ──────────────────────────────────
 
     #[test]
@@ -2191,18 +2213,23 @@ mod tests {
     }
 
     #[test]
-    fn build_func_bytes_rejects_multi_block_body() {
-        // Build an isel func with two blocks (synthetic — push a fresh
-        // block via the api).
+    fn build_func_bytes_prunes_dead_scaffolding_but_rejects_reachable_placeholder() {
         let m = build_main_42(42);
         let mut funcs = select_module_with_marker(&m).unwrap();
-        let _b1 = funcs[0].fresh_block();
-        let plan = ModulePlan::build(&funcs).unwrap();
         let abi = X64Abi::host_default();
+        let expected = crate::mb_walker::build_multi_block_func_bytes(&funcs[0], abi, true).unwrap();
+        let dead = funcs[0].fresh_block();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let actual = build_func_bytes(&funcs[0], abi, true, &plan).unwrap();
+        assert_eq!(actual, expected);
+
+        let entry = funcs[0].entry;
+        funcs[0].blocks.iter_mut().find(|block| block.id == entry).unwrap().terminator =
+            IselTerm::Jmp { target: dead };
         let err = build_func_bytes(&funcs[0], abi, true, &plan).unwrap_err();
         match err {
             NativeX64Error::UnsupportedOp { op_name, .. } => {
-                assert!(op_name.contains("multi-block"));
+                assert!(op_name.contains("placeholder Unreachable terminator"));
             }
             other => panic!("expected UnsupportedOp, got {other:?}"),
         }

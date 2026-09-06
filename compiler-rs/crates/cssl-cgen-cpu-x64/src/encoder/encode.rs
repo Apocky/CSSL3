@@ -242,6 +242,11 @@ fn emit_alu_ri(buf: &mut Vec<u8>, size: OperandSize, dst: Gpr, imm: i32, op_ext:
     let rex = make_rex_optional(size.rex_w(), false, false, dst.rex_bit());
     if let Some(r) = rex {
         buf.push(r);
+    } else if matches!(size, OperandSize::B8)
+        && matches!(dst, Gpr::Rsp | Gpr::Rbp | Gpr::Rsi | Gpr::Rdi)
+    {
+        // § SPL/BPL/SIL/DIL require REX presence; absent 0x40 selects AH/CH/DH/BH.
+        buf.push(0x40);
     }
     if matches!(size, OperandSize::B8) {
         // 80 /ext ib

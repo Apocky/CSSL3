@@ -1,0 +1,41 @@
+§ CSSL.NATIVE.FOUNDATION @2026-09-06
+  scope := statement.CFG + public.COFF.linkage + boolean.materialization/liveness + byte.ALU.immediate.REX.
+  base := df39bfaa3aaa963037d06c10baa3dade4e77b489 ; branch := codex/apocrypha-v2-cssl-foundation-20260906 .
+  authority := user.plan/build+fix existing.compiler.bootstrap; cognitive.implementation remains CSSL.
+§P CHANGES
+  ✓ MIR public export survives signature lowering→COFF externally defined function.
+  ✓ named signed comparisons + structured statement branches + actual predicate materialization + live register preservation.
+  ✓ unreachable scaffolding pruned ; reachable placeholder terminators refused.
+  ✓ BranchTarget current.API Rel(i32) used for local short branches.
+  ✓ byte ALU immediate neutral.REX for SPL/BPL/SIL/DIL; preserve legacy+extended register semantics.
+  ✓ TTL expressed with i64 intermediate bounds; no unsupported unary negation or narrowed large literal.
+§T ACTUAL.PROOF
+  ✓ backend.library489PASS0FAIL ; MIR.library816PASS0FAIL ; includes public_function_linkage_survives_signature_lowering.
+  ✓ native_statement_cfg6PASS0FAIL:32768admission+8TTL+84branch/liveness+1312selector.calls.
+  ✓ policy.CSSL→AMD64.object608B; exact2exports; imports0; relocations0.
+  ✓ isolated.carrier3PASS0FAIL:16384admission+3precedence+11TTL; final.compiler policy.object byte-identical.
+  ✓ unchanged expert_selection.cssl exhaustive1296+boundary34+replay240=1570PASS0FAIL via isolated native invocation.
+  ✗ first.selector.run1484/1570failed:80FE00=CMP.DH instead of required40.80.FE.00=CMP.SIL; failure preserved; source/fixtures unchanged through repair.
+  codegen.fixture := compiler-rs/crates/cssl-cgen-cpu-x64/tests/fixtures/expert_selection.cssl
+    SHA256=297c15cdb27b0324c36e58e3eafc8779d3282831cd2614f4b5eafb9e467b8f9a .
+  policy.object.SHA256 := 8dabf0704f8a174fea3adc854da4d66a8a714551bea6e4f9fb2a7bed9cec5210 .
+  selector.object.SHA256 := 5ec33723ddeaa1f27a7960b025c2cd5af1e76bdc8ecbf1fad7ec6e7dec9d04db .
+  final.compiler.SHA256 := 2c5113382b8faa21a33c7679effac927fc3470407d5dbbadde1a3790c3ce1232 .
+§C LIMITS
+  W! compiled.subset proof ≠ general compiler acceptance | learned MoE | mixed weights | persistent cognition.
+  Windows.unwind/SEH OPEN: emitted prolog changes nonvolatile registers/RSP without .pdata/.xdata.
+  Other byte-register instruction families outside this scoped ALU-immediate fix remain unreviewed.
+  Carrier candidate not installed: canonical newer federation behavior and existing build contract preserved.
+  Graph AST-only ≠ semantic execution proof ; graph maintenance scope=this isolated checkout.
+  N! live runtime/model/service cutover ; preserve original sources + shared checkout foreign changes.
+∎
+
+§ GRAPH.PROOF
+  ✓ isolated.AST update exit0;47575nodes+111807edges+1541communities; SHA256=9c5a103b320caf22a9db0c3a3dffb9a211262531e82cafc517fe81632604735a .
+  W! sparse.compiler projection retained privately ; canonical.whole-project.graph bytes preserved, not replaced by a partial graph.
+∎
+
+§ COMMIT.EXECUTION
+  graph.post-commit hook launches shell+detached Python; current.no-shell rule controls.
+  manual.windowless graph update PASS; commit-only empty.hooks override; repository hook/config bytes unchanged; no validation gate omitted.
+∎

@@ -1,0 +1,93 @@
+// § N1 expert.selection ; four scalar descriptors ; authority.NONE ; allocation.NONE.
+// § accepted scores={zero-2,zero-1,zero,1,2}; unavailable=zero-3.
+// § result=4*first_id+second_id ; zero-1=invalid.descriptor ; zero-2=insufficient.eligible.
+// § tie: lower expert.id first ; NIL companion CONTRACT_ONLY_NOT_EXECUTED.
+pub fn apoc_v2_expert_top2(a : i64, b : i64, c : i64, d : i64) -> i64 {
+    let zero = a - a;
+    let unavailable = zero - 3;
+    let invalid = zero - 1;
+    let insufficient = zero - 2;
+
+    if a < unavailable { return invalid; }
+    if a > 2 { return invalid; }
+    if b < unavailable { return invalid; }
+    if b > 2 { return invalid; }
+    if c < unavailable { return invalid; }
+    if c > 2 { return invalid; }
+    if d < unavailable { return invalid; }
+    if d > 2 { return invalid; }
+
+    // § first.id=0 ; ties retain earliest id.
+    if a >= b {
+        if a >= c {
+            if a >= d {
+                if b >= c {
+                    if b >= d {
+                        if b == unavailable { return insufficient; }
+                        return 1;
+                    }
+                }
+                if c >= d {
+                    if c == unavailable { return insufficient; }
+                    return 2;
+                }
+                if d == unavailable { return insufficient; }
+                return 3;
+            }
+        }
+    }
+
+    // § first.id=1 ; lower id=0 requires strict win.
+    if b > a {
+        if b >= c {
+            if b >= d {
+                if a >= c {
+                    if a >= d {
+                        if a == unavailable { return insufficient; }
+                        return 4;
+                    }
+                }
+                if c >= d {
+                    if c == unavailable { return insufficient; }
+                    return 6;
+                }
+                if d == unavailable { return insufficient; }
+                return 7;
+            }
+        }
+    }
+
+    // § first.id=2 ; lower ids require strict wins.
+    if c > a {
+        if c > b {
+            if c >= d {
+                if a >= b {
+                    if a >= d {
+                        if a == unavailable { return insufficient; }
+                        return 8;
+                    }
+                }
+                if b >= d {
+                    if b == unavailable { return insufficient; }
+                    return 9;
+                }
+                if d == unavailable { return insufficient; }
+                return 11;
+            }
+        }
+    }
+
+    // § remaining maximum first.id=3.
+    if a >= b {
+        if a >= c {
+            if a == unavailable { return insufficient; }
+            return 12;
+        }
+    }
+    if b >= c {
+        if b == unavailable { return insufficient; }
+        return 13;
+    }
+    if c == unavailable { return insufficient; }
+    return 14;
+}

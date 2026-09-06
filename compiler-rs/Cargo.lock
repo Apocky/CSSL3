@@ -966,6 +966,10 @@ dependencies = [
 name = "cssl-cgen-cpu-x64"
 version = "0.1.0"
 dependencies = [
+ "cssl-ast",
+ "cssl-hir",
+ "cssl-lex",
+ "cssl-parse",
  "cssl-mir",
  "thiserror 1.0.69",
 ]

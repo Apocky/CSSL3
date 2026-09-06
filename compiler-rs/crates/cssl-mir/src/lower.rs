@@ -152,6 +152,10 @@ pub fn lower_function_signature(ctx: &LowerCtx<'_>, f: &HirFn) -> MirFunc {
     };
     let name = ctx.interner.resolve(f.name);
     let mut mf = MirFunc::new(name, params, results);
+    // § Public source functions preserve explicit cross-object linkage.
+    if f.visibility == cssl_hir::HirVisibility::Public {
+        mf.attributes.push(("linkage".to_owned(), "export".to_owned()));
+    }
     // T11-D43 : mark fns with unbound generic params so the cleanup pass can
     // drop them post-monomorphization.
     mf.is_generic = !f.generics.params.is_empty();
@@ -341,6 +345,14 @@ mod tests {
         let (cst, _bag) = cssl_parse::parse(&f, &toks);
         let (hir, interner, _lower_bag) = cssl_hir::lower_module(&f, &cst);
         (hir, interner)
+    }
+
+    #[test]
+    fn public_function_linkage_survives_signature_lowering() {
+        let (hir, interner) = hir_from("pub fn api() -> i64 { 1 } fn hidden() -> i64 { 2 }");
+        let mir = lower_module_signatures(&LowerCtx::new(&interner), &hir);
+        assert!(mir.find_func("api").unwrap().attributes.iter().any(|(k, v)| k == "linkage" && v == "export"));
+        assert!(!mir.find_func("hidden").unwrap().attributes.iter().any(|(k, v)| k == "linkage" && v == "export"));
     }
 
     #[test]

@@ -80,7 +80,7 @@
 //!   There was no hurt nor harm in the making of this, to anyone /
 //!   anything / anybody.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::abi::{GpReg, X64Abi, XmmReg};
 use crate::encoder::inst::{BranchTarget, Cond, X64Inst as EncInst};
@@ -306,13 +306,100 @@ fn is_callee_saved_xmm(abi: X64Abi, xmm: Xmm) -> Option<XmmReg> {
         .find(|x| abi_xmm_to_enc(*x) == xmm)
 }
 
-/// Run the G9 greedy register allocator over the IselFunc's blocks.
+// § CFG liveness; exact supported-op uses, no spill or implicit clobber guessing.
+fn native_inst_uses(name: &str, inst: &IselInst) -> Result<Vec<X64VReg>, MultiBlockError> {
+    Ok(match inst {
+        IselInst::Mov { src, .. } | IselInst::Movzx { src, .. } => vec![*src],
+        IselInst::MovImm { .. } | IselInst::Setcc { .. } => vec![],
+        IselInst::Add { dst, src } | IselInst::Sub { dst, src }
+        | IselInst::IMul { dst, src } => vec![*dst, *src],
+        IselInst::Neg { dst } => vec![*dst],
+        IselInst::Cmp { lhs, rhs } => vec![*lhs, *rhs],
+        _ => return Err(MultiBlockError::UnsupportedInst {
+            fn_name: name.to_string(), detail: format!("op {inst:?} outside native CFG liveness subset"),
+        }),
+    })
+}
+
+fn native_term_uses(term: &X64Term) -> Vec<X64VReg> {
+    match term {
+        X64Term::Jcc { cond_vreg, .. } => vec![*cond_vreg],
+        X64Term::Ret { operands } => operands.clone(),
+        _ => vec![],
+    }
+}
+
+fn native_successors(term: &X64Term) -> Vec<BlockId> {
+    match term {
+        X64Term::Jcc { then_block, else_block, .. } => vec![*then_block, *else_block],
+        X64Term::Jmp { target } => vec![*target],
+        X64Term::Fallthrough { next } => vec![*next],
+        _ => vec![],
+    }
+}
+
+fn native_interference(func: &IselFunc) -> Result<HashMap<u32, BTreeSet<u32>>, MultiBlockError> {
+    let n = func.blocks.len();
+    let mut uses = vec![BTreeSet::new(); n];
+    let mut defs = vec![BTreeSet::new(); n];
+    for (i, block) in func.blocks.iter().enumerate() {
+        for inst in &block.insts {
+            for v in native_inst_uses(&func.name, inst)? {
+                if !defs[i].contains(&v.id) { uses[i].insert(v.id); }
+            }
+            if let Some(v) = inst.def() { defs[i].insert(v.id); }
+        }
+        for v in native_term_uses(&block.terminator) {
+            if !defs[i].contains(&v.id) { uses[i].insert(v.id); }
+        }
+        if native_successors(&block.terminator).iter().any(|b| b.0 as usize >= n) {
+            return Err(MultiBlockError::UnsupportedInst {
+                fn_name: func.name.clone(), detail: "CFG target outside function".to_string(),
+            });
+        }
+    }
+    let mut live_in = vec![BTreeSet::new(); n];
+    let mut live_out = live_in.clone();
+    loop {
+        let mut changed = false;
+        for i in (0..n).rev() {
+            let out: BTreeSet<u32> = native_successors(&func.blocks[i].terminator)
+                .into_iter().flat_map(|b| live_in[b.0 as usize].iter().copied()).collect();
+            let input: BTreeSet<u32> = uses[i].union(&out.difference(&defs[i]).copied().collect()).copied().collect();
+            changed |= out != live_out[i] || input != live_in[i];
+            live_out[i] = out;
+            live_in[i] = input;
+        }
+        if !changed { break; }
+    }
+    let mut graph: HashMap<u32, BTreeSet<u32>> = HashMap::new();
+    let mut edge = |a: u32, b: u32| {
+        if a != b { graph.entry(a).or_default().insert(b); graph.entry(b).or_default().insert(a); }
+    };
+    for (i, block) in func.blocks.iter().enumerate() {
+        let mut live = live_out[i].clone();
+        live.extend(native_term_uses(&block.terminator).into_iter().map(|v| v.id));
+        for inst in block.insts.iter().rev() {
+            if let Some(d) = inst.def() {
+                for v in &live { edge(d.id, *v); }
+                live.remove(&d.id);
+            }
+            // § byte/word widening clears destination before reading source.
+            if let IselInst::Movzx { dst, src } = inst { edge(dst.id, src.id); }
+            live.extend(native_inst_uses(&func.name, inst)?.into_iter().map(|v| v.id));
+        }
+    }
+    Ok(graph)
+}
+
+/// Run the native CFG interference allocator over the IselFunc's blocks.
 ///
 /// # Errors
 /// Returns [`MultiBlockError::OutOfRegisters`] when the simple greedy policy
 /// can't place a vreg.
 pub fn allocate(func: &IselFunc, abi: X64Abi) -> Result<VregAlloc, MultiBlockError> {
     let mut alloc = VregAlloc::default();
+    let interference = native_interference(func)?;
 
     // § 1. Pin param vregs to ABI arg-registers.
     let int_args = abi.int_arg_regs();
@@ -404,7 +491,7 @@ pub fn allocate(func: &IselFunc, abi: X64Abi) -> Result<VregAlloc, MultiBlockErr
                     let xmm = G9_XMM_ALLOC_ORDER
                         .iter()
                         .copied()
-                        .find(|x| !used_xmm.contains(x))
+                        .find(|x| !interference.get(&v.id).into_iter().flatten().any(|id| alloc.mapping.get(id) == Some(&VregLoc::Xmm(*x))))
                         .ok_or_else(|| MultiBlockError::OutOfRegisters {
                             fn_name: func.name.clone(),
                             bank: "xmm",
@@ -416,7 +503,7 @@ pub fn allocate(func: &IselFunc, abi: X64Abi) -> Result<VregAlloc, MultiBlockErr
                     let gp = G9_GP_ALLOC_ORDER
                         .iter()
                         .copied()
-                        .find(|g| !used_gp.contains(g))
+                        .find(|g| !interference.get(&v.id).into_iter().flatten().any(|id| alloc.mapping.get(id) == Some(&VregLoc::Gp(*g))))
                         .ok_or_else(|| MultiBlockError::OutOfRegisters {
                             fn_name: func.name.clone(),
                             bank: "gpr",
@@ -684,32 +771,33 @@ fn lower_inst_to_encoder(
             }]
         }
         IselInst::Setcc { dst, cond_kind } => {
-            // Setcc materializes the flag bit into an 8-bit register. The
-            // encoder doesn't expose a Setcc opcode in its canonical surface
-            // (it's one of the future-coverage variants). At G9 we recognize
-            // Setcc but treat it as a NO-OP at byte-emission time : the
-            // following Jcc immediately reads the same flags directly. The
-            // boolean vreg "exists" only for SSA bookkeeping in the IselFunc
-            // surface ; the actual branch decision uses the live flags.
-            //
-            // ‼ This works ONLY when Setcc is immediately consumed by a Jcc
-            //   (the structured-CFG shape of scf.if). If a Setcc result
-            //   flows through Mov / Movzx into another register and is
-            //   tested later via Test, the flags would have been clobbered
-            //   by intervening ops. The G9 walker assumes the structured-CFG
-            //   shape — for arbitrary boolean-flowing patterns the future
-            //   slice that adds full Setcc emission picks up here.
-            let _ = (dst, cond_kind);
-            vec![]
+            // § Materialize 0/1 using existing MOV/Jcc encoders. MOV preserves
+            // comparison flags; the local displacement comes from encoded bytes.
+            let d = alloc.get_gpr(fn_name, *dst)?;
+            let zero = EncInst::MovRI { size: OperandSize::B32, dst: d, imm: 0 };
+            let skip = i8::try_from(encode_inst(&zero).len()).map_err(|_| MultiBlockError::UnsupportedInst {
+                fn_name: fn_name.to_string(), detail: "boolean materialization displacement overflow".to_string(),
+            })?;
+            vec![
+                EncInst::MovRI { size: OperandSize::B32, dst: d, imm: 1 },
+                EncInst::Jcc { cond: setcc_to_cond(*cond_kind), target: BranchTarget::Rel(i32::from(skip)) },
+                zero,
+            ]
         }
         IselInst::Movzx { dst, src } => {
-            // Boolean widening : the encoder's Setcc + Movzx pair would
-            // materialize the bool into a wider GP. At G9 the Setcc is a
-            // no-op (see above) so the Movzx that consumes it would read
-            // garbage. We emit nothing — the structured-CFG shape feeds
-            // Cmp+Jcc directly without the intermediate widening.
-            let _ = (dst, src);
-            vec![]
+            let d = alloc.get_gpr(fn_name, *dst)?;
+            let s = alloc.get_gpr(fn_name, *src)?;
+            match (src.width, dst.width) {
+                (X64Width::Bool | X64Width::I8, X64Width::I16 | X64Width::I32 | X64Width::I64)
+                | (X64Width::I16, X64Width::I32 | X64Width::I64) if d != s => vec![
+                    EncInst::MovRI { size: OperandSize::B32, dst: d, imm: 0 },
+                    EncInst::MovRR { size: gp_size(fn_name, src.width)?, dst: d, src: s },
+                ],
+                (X64Width::I32, X64Width::I64) => vec![EncInst::MovRR { size: OperandSize::B32, dst: d, src: s }],
+                _ => return Err(MultiBlockError::UnsupportedInst {
+                    fn_name: fn_name.to_string(), detail: "unsupported native unsigned widening".to_string(),
+                }),
+            }
         }
         // ─── Rejected at G9 ──────────────────────────────────────────────
         IselInst::Movsx { .. }
@@ -950,9 +1038,18 @@ fn build_block_bodies(
                 }
             }
         }
+        // § Jcc consumes its actual boolean value, not stale processor flags.
+        let mut term = block.terminator.clone();
+        if let X64Term::Jcc { cond_vreg, cond_kind, .. } = &mut term {
+            encode_into(&mut body_bytes, &EncInst::CmpRI {
+                size: gp_size(&func.name, cond_vreg.width)?,
+                dst: alloc.get_gpr(&func.name, *cond_vreg)?, imm: 0,
+            });
+            *cond_kind = X64SetCondCode::Int(IntCmpKind::Ne);
+        }
         out.push(BlockEmit {
             body_bytes,
-            term: block.terminator.clone(),
+            term,
             term_bytes: Vec::new(),
         });
     }
@@ -1087,71 +1184,84 @@ fn resolve_layout(
 /// # Errors
 /// Returns [`NativeX64Error`] for any per-stage failure (allocation, op
 /// rejection, layout convergence, or G3 ABI lowering).
+// § Discard only graph-unreachable scaffolding; preserve dense target identity.
+fn reachable_native_cfg(func: &IselFunc) -> Result<IselFunc, MultiBlockError> {
+    let mut keep = BTreeSet::new();
+    let mut pending = vec![func.entry];
+    while let Some(id) = pending.pop() {
+        if !keep.insert(id.0 as usize) { continue; }
+        let block = func.blocks.get(id.0 as usize).ok_or_else(|| MultiBlockError::UnsupportedInst {
+            fn_name: func.name.clone(), detail: "CFG target outside function".to_string(),
+        })?;
+        pending.extend(native_successors(&block.terminator));
+    }
+    let mut mapping = HashMap::new();
+    for (index, old) in keep.iter().enumerate() { mapping.insert(*old, BlockId(index as u32)); }
+    let mut out = func.clone();
+    out.blocks = keep.iter().map(|old| {
+        let mut block = func.blocks[*old].clone();
+        block.id = mapping[old];
+        block.terminator = match block.terminator {
+            X64Term::Jcc { cond_kind, cond_vreg, then_block, else_block } => X64Term::Jcc {
+                cond_kind, cond_vreg, then_block: mapping[&(then_block.0 as usize)],
+                else_block: mapping[&(else_block.0 as usize)],
+            },
+            X64Term::Jmp { target } => X64Term::Jmp { target: mapping[&(target.0 as usize)] },
+            X64Term::Fallthrough { next } => X64Term::Jmp { target: mapping[&(next.0 as usize)] },
+            other => other,
+        };
+        block
+    }).collect();
+    out.entry = mapping[&(func.entry.0 as usize)];
+    if out.entry != BlockId::ENTRY {
+        return Err(MultiBlockError::UnsupportedInst {
+            fn_name: func.name.clone(), detail: "native CFG entry must be first block".to_string(),
+        });
+    }
+    Ok(out)
+}
+
 pub fn build_multi_block_func_bytes(
     func: &IselFunc,
     abi: X64Abi,
     is_export: bool,
 ) -> Result<crate::objemit::func::X64Func, NativeX64Error> {
-    // § 1. Allocate vregs to pregs.
+    let reachable = reachable_native_cfg(func).map_err(MultiBlockError::into_native)?;
+    let func = &reachable;
     let alloc = allocate(func, abi).map_err(MultiBlockError::into_native)?;
-
-    // § 2. Build per-block bodies (without terminators).
     let mut block_emits = build_block_bodies(func, &alloc).map_err(MultiBlockError::into_native)?;
-
-    // § 3. Resolve terminator forms (short vs long) to fixed-point.
-    let _block_starts =
-        resolve_layout(&func.name, &mut block_emits).map_err(MultiBlockError::into_native)?;
-
-    // § 4. Build the body stream by concatenating block (body + terminator)
-    //      in id order. The Ret terminator emits no bytes here ; the
-    //      epilogue (next stage) provides the actual ret.
-    let mut body_bytes = Vec::new();
-    let mut saw_ret = false;
-    for block in &block_emits {
-        body_bytes.extend_from_slice(&block.body_bytes);
-        body_bytes.extend_from_slice(&block.term_bytes);
-        if matches!(block.term, X64Term::Ret { .. }) {
-            saw_ret = true;
-        }
-    }
-
-    // § 5. Lower G3 prologue + epilogue, threading the callee-saved set.
     let layout = FunctionLayout {
-        abi,
-        local_frame_bytes: 0,
+        abi, local_frame_bytes: 0,
         callee_saved_gp_used: alloc.callee_saved_gp_used.clone(),
         callee_saved_xmm_used: alloc.callee_saved_xmm_used,
     };
     let prologue: LoweredPrologue = lower_prologue(&layout);
     let epilogue: LoweredEpilogue = lower_epilogue_for(&layout, &prologue);
-
-    // § 6. Encode prologue + body + epilogue (in that order). The body
-    //      already includes terminators ; the epilogue's `ret` closes the
-    //      function. If the IselFunc never reached a Ret terminator (e.g.
-    //      every block ends in Jmp/Jcc to other blocks ; a malformed
-    //      input), the epilogue still emits its `ret` so the linker
-    //      receives a valid function body.
-    let _ = saw_ret;
-    let mut bytes = Vec::with_capacity(body_bytes.len() + 16);
-    for ai in &prologue.insns {
-        for ei in abi_lower_to_encoder(ai)? {
-            encode_into(&mut bytes, &ei);
-        }
-    }
-    bytes.extend_from_slice(&body_bytes);
+    let mut epilogue_bytes = Vec::new();
     for ai in &epilogue.insns {
-        for ei in abi_lower_to_encoder(ai)? {
-            encode_into(&mut bytes, &ei);
+        for ei in abi_lower_to_encoder(ai)? { encode_into(&mut epilogue_bytes, &ei); }
+    }
+    // § Every source return joins one real epilogue. No fallthrough into
+    // sibling branches; return placement already precedes this terminator.
+    let epilogue_id = BlockId(block_emits.len() as u32);
+    for block in &mut block_emits {
+        if matches!(block.term, X64Term::Ret { .. }) {
+            block.term = X64Term::Jmp { target: epilogue_id };
         }
     }
-
-    // § 7. Pack into the G5 boundary type.
-    let obj_func =
-        crate::objemit::func::X64Func::new(func.name.clone(), bytes, Vec::new(), is_export)
-            .map_err(|e| NativeX64Error::ObjectWriteFailed {
-                detail: format!("X64Func::new for `{}` failed : {e}", func.name),
-            })?;
-    Ok(obj_func)
+    block_emits.push(BlockEmit {
+        body_bytes: epilogue_bytes, term: X64Term::Ret { operands: vec![] }, term_bytes: Vec::new(),
+    });
+    resolve_layout(&func.name, &mut block_emits).map_err(MultiBlockError::into_native)?;
+    let mut bytes = Vec::new();
+    for ai in &prologue.insns {
+        for ei in abi_lower_to_encoder(ai)? { encode_into(&mut bytes, &ei); }
+    }
+    for block in block_emits { bytes.extend(block.body_bytes); bytes.extend(block.term_bytes); }
+    crate::objemit::func::X64Func::new(func.name.clone(), bytes, Vec::new(), is_export)
+        .map_err(|e| NativeX64Error::ObjectWriteFailed {
+            detail: format!("X64Func::new for {} failed: {e}", func.name),
+        })
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1334,16 +1444,16 @@ mod tests {
     }
 
     #[test]
-    fn allocate_assigns_distinct_pregs_to_distinct_vregs() {
+    fn allocate_preserves_interference_and_reuses_dead_values() {
         let f = build_abs_isel();
         let alloc = allocate(&f, X64Abi::SystemV).unwrap();
-        // All five vregs should be distinct.
-        let mut seen = std::collections::HashSet::new();
-        for v_id in [1, 2, 3, 4, 5] {
-            let loc = alloc.mapping.get(&v_id).copied();
-            assert!(loc.is_some(), "vreg {v_id} has no mapping");
-            assert!(seen.insert(loc), "vreg {v_id} mapping not distinct");
+        for (id, neighbors) in native_interference(&f).unwrap() {
+            for other in neighbors {
+                assert_ne!(alloc.mapping.get(&id), alloc.mapping.get(&other));
+            }
         }
+        let locations: std::collections::HashSet<_> = alloc.mapping.values().collect();
+        assert!(locations.len() < alloc.mapping.len());
     }
 
     // ─── width translation tests ─────────────────────────────────────────
@@ -1554,7 +1664,7 @@ mod tests {
     }
 
     #[test]
-    fn lower_setcc_emits_no_bytes_at_g9() {
+    fn lower_setcc_materializes_boolean_with_preserved_flags() {
         let mut alloc = VregAlloc::default();
         let d = X64VReg::new(1, X64Width::Bool);
         alloc.mapping.insert(1, VregLoc::Gp(Gpr::Rax));
@@ -1567,18 +1677,23 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(out.is_empty(), "Setcc is no-op at G9 ; got {out:?}");
+        assert_eq!(out.len(), 3);
+        assert!(matches!(out[0], EncInst::MovRI { size: OperandSize::B32, imm: 1, .. }));
+        assert!(matches!(out[1], EncInst::Jcc { cond: Cond::L, target: BranchTarget::Rel(_), .. }));
+        assert!(matches!(out[2], EncInst::MovRI { size: OperandSize::B32, imm: 0, .. }));
     }
 
     #[test]
-    fn lower_movzx_emits_no_bytes_at_g9() {
+    fn lower_movzx_clears_upper_bits_then_copies_source() {
         let mut alloc = VregAlloc::default();
         let d = X64VReg::new(1, X64Width::I32);
         let s = X64VReg::new(2, X64Width::Bool);
         alloc.mapping.insert(1, VregLoc::Gp(Gpr::Rax));
         alloc.mapping.insert(2, VregLoc::Gp(Gpr::Rcx));
         let out = lower_inst_to_encoder("f", &alloc, &X64Inst::Movzx { dst: d, src: s }).unwrap();
-        assert!(out.is_empty());
+        assert_eq!(out.len(), 2);
+        assert!(matches!(out[0], EncInst::MovRI { size: OperandSize::B32, imm: 0, .. }));
+        assert!(matches!(out[1], EncInst::MovRR { size: OperandSize::B8, .. }));
     }
 
     #[test]

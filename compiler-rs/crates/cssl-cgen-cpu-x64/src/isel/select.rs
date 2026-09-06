@@ -415,7 +415,11 @@ fn walk_op(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<bool, SelectError> {
         "arith.divf" => select_fp_binary(ctx, op, FpBinOp::Div).map(|()| false),
         "arith.negf" => select_fp_neg(ctx, op).map(|()| false),
         // ─── Comparisons ────────────────────────────────────────────────
-        "arith.cmpi" => select_cmpi(ctx, op).map(|()| false),
+        "arith.cmpi" | "arith.cmpi_eq" | "arith.cmpi_ne"
+        | "arith.cmpi_slt" | "arith.cmpi_sle" | "arith.cmpi_sgt" | "arith.cmpi_sge"
+        | "arith.cmpi_ult" | "arith.cmpi_ule" | "arith.cmpi_ugt" | "arith.cmpi_uge" => {
+            select_cmpi(ctx, op).map(|()| false)
+        }
         "arith.cmpf" => select_cmpf(ctx, op).map(|()| false),
         "arith.select" => select_select(ctx, op).map(|()| false),
         // ─── Memory ─────────────────────────────────────────────────────
@@ -671,7 +675,19 @@ fn select_fp_neg(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
 fn select_cmpi(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
     let (lhs_id, rhs_id) = two_operands(ctx, op)?;
     let r = single_result(ctx, op)?;
-    let pred = predicate(ctx, op)?;
+    // § HIR body lowering uses named predicates; retain the canonical attribute form.
+    let pred = if let Some(named) = op.name.strip_prefix("arith.cmpi_") {
+        if op.attributes.iter().any(|(key, value)| key == "predicate" && value != named) {
+            return Err(SelectError::BadComparisonPredicate {
+                fn_name: ctx.src.name.clone(),
+                op: op.name.clone(),
+                predicate: "<conflicting named predicate>".to_string(),
+            });
+        }
+        named
+    } else {
+        predicate(ctx, op)?
+    };
     let kind = parse_int_cmp(pred).ok_or_else(|| SelectError::BadComparisonPredicate {
         fn_name: ctx.src.name.clone(),
         op: op.name.clone(),
@@ -945,8 +961,14 @@ fn select_scf_if(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
     let else_block = ctx.out.fresh_block();
     let merge_block = ctx.out.fresh_block();
 
-    // Result merge-vreg — only allocated if the scf.if has a result.
-    let merge_vreg: Option<X64VReg> = if let Some(r) = op.results.first() {
+    // § HIR statement-if has one None placeholder, not a machine value.
+    if op.results.len() > 1 {
+        return Err(SelectError::ResultCountMismatch {
+            fn_name: ctx.src.name.clone(), op: op.name.clone(),
+            expected: 1, actual: op.results.len(),
+        });
+    }
+    let merge_vreg: Option<X64VReg> = if let Some(r) = op.results.first().filter(|r| r.ty != MirType::None) {
         let width = result_width(ctx, op, &r.ty)?;
         let v = ctx.out.fresh_vreg(width);
         ctx.val_map.insert(r.id, v);
@@ -969,16 +991,20 @@ fn select_scf_if(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
     // Walk then-region.
     ctx.yield_target_stack.push(merge_vreg);
     let then_region = &op.regions[0];
-    let saved_block = ctx.current_block;
     ctx.current_block = then_block;
-    walk_region(ctx, then_region)?;
+    if !then_region.blocks.is_empty() {
+        walk_region(ctx, then_region)?;
+    } else if merge_vreg.is_some() {
+        return Err(SelectError::EmptyBody { fn_name: ctx.src.name.clone() });
+    }
+    let then_exit = ctx.current_block;
     // If the body didn't terminate (no func.return inside), close with Jmp merge.
     if matches!(
-        ctx.out.blocks[then_block.0 as usize].terminator,
+        ctx.out.blocks[then_exit.0 as usize].terminator,
         X64Term::Unreachable
     ) {
         ctx.out.set_terminator(
-            then_block,
+            then_exit,
             X64Term::Jmp {
                 target: merge_block,
             },
@@ -990,13 +1016,18 @@ fn select_scf_if(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
     ctx.yield_target_stack.push(merge_vreg);
     let else_region = &op.regions[1];
     ctx.current_block = else_block;
-    walk_region(ctx, else_region)?;
+    if !else_region.blocks.is_empty() {
+        walk_region(ctx, else_region)?;
+    } else if merge_vreg.is_some() {
+        return Err(SelectError::EmptyBody { fn_name: ctx.src.name.clone() });
+    }
+    let else_exit = ctx.current_block;
     if matches!(
-        ctx.out.blocks[else_block.0 as usize].terminator,
+        ctx.out.blocks[else_exit.0 as usize].terminator,
         X64Term::Unreachable
     ) {
         ctx.out.set_terminator(
-            else_block,
+            else_exit,
             X64Term::Jmp {
                 target: merge_block,
             },
@@ -1006,7 +1037,6 @@ fn select_scf_if(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
 
     // Continue selection at the merge block.
     ctx.current_block = merge_block;
-    let _ = saved_block;
     Ok(())
 }
 
@@ -1575,6 +1605,53 @@ mod tests {
     }
 
     // ─── Comparisons + select ────────────────────────────────────────
+
+    fn named_integer_compare_fixture(name: &str, ty: MirType, attribute: Option<&str>) -> MirFunc {
+        let mut f = MirFunc::new("comparison", vec![ty.clone(), ty.clone()], vec![MirType::Bool]);
+        f.next_value_id = 3;
+        let entry = f.body.entry_mut().unwrap();
+        entry.args = vec![MirValue::new(ValueId(0), ty.clone()), MirValue::new(ValueId(1), ty)];
+        let mut op = MirOp::std(name)
+            .with_operand(ValueId(0)).with_operand(ValueId(1))
+            .with_result(ValueId(2), MirType::Bool);
+        if let Some(value) = attribute { op = op.with_attribute("predicate", value); }
+        entry.ops.push(op);
+        entry.ops.push(MirOp::std("func.return").with_operand(ValueId(2)));
+        f
+    }
+
+    #[test]
+    fn named_integer_comparisons_match_canonical_native_selection() {
+        for ty in [i32_ty(), i64_ty()] {
+            for pred in ["eq", "ne", "slt", "sle", "sgt", "sge", "ult", "ule", "ugt", "uge"] {
+                let canonical = marked_module(named_integer_compare_fixture("arith.cmpi", ty.clone(), Some(pred)));
+                let named = marked_module(named_integer_compare_fixture(&format!("arith.cmpi_{pred}"), ty.clone(), None));
+                let canonical = select_function(&canonical, &canonical.funcs[0]).unwrap();
+                let named = select_function(&named, &named.funcs[0]).unwrap();
+                assert_eq!(format_func(&named), format_func(&canonical), "native compare for {ty:?} {pred}");
+            }
+        }
+    }
+
+    #[test]
+    fn named_integer_comparisons_reject_conflicting_predicate() {
+        let m = marked_module(named_integer_compare_fixture("arith.cmpi_eq", i64_ty(), Some("ne")));
+        assert!(matches!(select_function(&m, &m.funcs[0]), Err(SelectError::BadComparisonPredicate { .. })));
+    }
+
+    #[test]
+    fn named_integer_comparisons_retain_unknown_and_shape_refusal() {
+        let unknown = marker_only_module(named_integer_compare_fixture("arith.cmpi_bogus", i64_ty(), None));
+        assert!(matches!(select_function(&unknown, &unknown.funcs[0]), Err(SelectError::UnsupportedOp { .. })));
+        let mut missing_operand = named_integer_compare_fixture("arith.cmpi_eq", i64_ty(), None);
+        missing_operand.body.entry_mut().unwrap().ops[0].operands.pop();
+        let missing_operand = marker_only_module(missing_operand);
+        assert!(matches!(select_function(&missing_operand, &missing_operand.funcs[0]), Err(SelectError::OperandCountMismatch { .. })));
+        let mut missing_result = named_integer_compare_fixture("arith.cmpi_sge", i64_ty(), None);
+        missing_result.body.entry_mut().unwrap().ops[0].results.clear();
+        let missing_result = marker_only_module(missing_result);
+        assert!(matches!(select_function(&missing_result, &missing_result.funcs[0]), Err(SelectError::ResultCountMismatch { .. })));
+    }
 
     #[test]
     fn cmpi_slt_lowers_to_cmp_setl() {

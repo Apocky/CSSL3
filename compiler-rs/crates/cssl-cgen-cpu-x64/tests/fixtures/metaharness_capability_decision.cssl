@@ -1,0 +1,29 @@
+// § Apocky capability admission; authority none; pure scalar decision.
+// § ABI i64 timestamps := u64 XOR 0x8000000000000000, bit-preserved as i64.
+// § Signed order exactly matches original u64 order across the full domain.
+// § flags: schema=1, kind=2, owner=4, endpoint=8, bearer-shape=16.
+// § result: 0 admitted, 1 binding mismatch, 2 expired, 3 invalid bearer.
+pub fn apoc_meta_capability_decide(flags : i64, issued_order : i64, expires_order : i64, now_order : i64) -> i64 {
+    if flags == 31 {
+        if issued_order >= expires_order { return 1; }
+        if now_order >= expires_order { return 2; }
+        return 0;
+    }
+    if flags == 15 {
+        if issued_order >= expires_order { return 1; }
+        if now_order >= expires_order { return 2; }
+        return 3;
+    }
+    return 1;
+}
+
+// § Existing bootstrap lifetime contract: 1..86400000 ms, inclusive.
+pub fn apoc_meta_bootstrap_ttl(ttl_order : i64) -> i64 {
+    let zero = ttl_order - ttl_order;
+    let half_word = zero + 2147483647 + 1;
+    let minimum = (zero - half_word) * half_word * 2;
+    let maximum = minimum + 86400000;
+    if ttl_order == minimum { return 0; }
+    if ttl_order > maximum { return 0; }
+    return 1;
+}
