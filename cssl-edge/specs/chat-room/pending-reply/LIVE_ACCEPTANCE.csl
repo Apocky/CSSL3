@@ -1,0 +1,13 @@
+§ CHAT.PENDING.REPLY.LIVE.ACCEPTANCE @2026-09-06
+✓ deployment := dpl_7bQj4j4MqLqPLVsqszGwYXKbRGoK; bothpublicaliases;769exactfiles.
+✓ source := e75c139ac1c269dd0b9760b51bf412f3a38d1420 tree1716dbd7593ae0f352513a3c9189f10d831c302b.
+✓ loadedownerbrowser := build5MphGf46ULCks5_WlzVqk + deploymentmatchedscriptIDs.
+✓ before := savedreply blocked by missing runtimebinding; ordinaryautomatic sync502.
+✓ after := normalruntime startup reconciled existingAPPLIED command; originalreply automaticvisible23:11:24.656Z.
+✓ passiveUI :=7messages/4user/3assistant; pendingannotations0/waitinglabels0/Trydelivery0/draft0; originalhistory retained.
+✓ no Send/Retry/Refresh/reload/New/erase/rebase duringrecovery; earlier22:46:57.665Zreload loadedpublishedclient.
+✓ root inspected actualscreenshot; nooverflow.
+✓ localchecks :=12desktop/mobilefixtures + librarypersistence + TypeScript.
+I> claimscope := savedreply deliveryrecovery; noinstant-model/continuousfleet/host-offavailabilityclaim.
+○ next := permanentruntime postcommit recovery + conversationalreplypresentation.
+∎
