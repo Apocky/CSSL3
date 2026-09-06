@@ -1,0 +1,26 @@
+{
+  "schema": "apocrypha.availability.portable-delivery.v1",
+  "scope": "reviewed memory service configuration and current acceptance",
+  "localFiles": [
+    {
+      "name": "AVAILABILITY_PLAN.csl",
+      "sha256": "b4c4cc147763bb59f17d824b7d45181afb47103ebe5e04605d521390cf2ba60e"
+    },
+    {
+      "name": "ACCEPTANCE.csl",
+      "sha256": "4661fa7710b7493336bd1b5e9b6b7e869de936baa2a784642161378dbc768db3"
+    },
+    {
+      "name": "MEMPALACE_HTTP_TASK.csl",
+      "sha256": "5457e45087196484e2e91073b4f3a592f470b4b836d4c659336ca0ff9d59b2c0"
+    },
+    {
+      "name": "MEMPALACE_HTTP_TASK.xml",
+      "sha256": "fc5619d923d132f5db15b759bc57252d830b1d4d96d36f25719d8d9ad225cb7c"
+    }
+  ],
+  "portableTemplate": "MEMPALACE_HTTP_TASK.xml.in",
+  "privateValues": "User profile and task principal replaced by explicit template parameters; no credential or memory record bodies included.",
+  "runtime": "MemPalace managed start and automatic scheduled recovery verified; remaining service host work stays open.",
+  "localCommit": "cbdf8fcfe38d2387e72282b67967ff8dc1f4c438"
+}
