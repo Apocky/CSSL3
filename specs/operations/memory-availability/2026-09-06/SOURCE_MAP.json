@@ -21,6 +21,19 @@
   ],
   "portableTemplate": "MEMPALACE_HTTP_TASK.xml.in",
   "privateValues": "User profile and task principal replaced by explicit template parameters; no credential or memory record bodies included.",
-  "runtime": "MemPalace managed start and automatic scheduled recovery verified; remaining service host work stays open.",
-  "localCommit": "cbdf8fcfe38d2387e72282b67967ff8dc1f4c438"
+  "runtime": "MemPalace and the native three-service monitor have verified scheduled recovery; actual recall and both MetaHarness bindings respond. Powered-off access, multi-host continuity, remaining regions and accepted chat reply remain open.",
+  "localCommit": "cbdf8fcfe38d2387e72282b67967ff8dc1f4c438",
+  "revisions": [
+    {
+      "sourceCommit": "5498f031fa879b4d42671d9244c037567c28c02c",
+      "sourceTree": "2f218c8ecef8a2683a88cde21313b961abfd2430",
+      "planSha256": "58a09ecc95df932bdc928681ee3e6b3a2ea5753bbdb1702a619d9701b7be4ee6",
+      "acceptanceSha256": "059381a3e0d59914fc3e6c0908d7896cf741ae043d447f23f4ba1fb06a8112a9",
+      "installedBinarySha256": "59565a76307ef1a6d8515aba2a949e509f4d64585896fabe2d704983d2265c7f",
+      "installedConfigSha256": "69929d5f4a85314d310990ca8979962fbd807e50c97b5dba3b24a5dceec22472",
+      "publicSummary": "NATIVE_AVAILABILITY.csl",
+      "scope": "Resident monitoring, native policy, same-scope renewal and scheduled monitor recovery verified; remaining availability and actual chat reply remain open."
+    }
+  ],
+  "previousRuntime": "MemPalace managed start and automatic scheduled recovery verified; remaining service host work stays open."
 }

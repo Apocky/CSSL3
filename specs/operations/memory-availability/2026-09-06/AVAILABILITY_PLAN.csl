@@ -10,10 +10,10 @@ I> authority := current.user explicit repair.unreachable.memory+use.Trinity+all.
 §D
   A01 now := restore actual.retrieval + preserve all stored.memory/history/pending + verify protocol.
   A02 now := replace MemPalace shell.startup with exact installed.service console-free scheduled.action ; process-local idle.exit0 ; logon+1min recovery ; serialized owned.transfer.
-  A03 next := close MetaHarness+3MNEME no-shell servicehost+same-scope renewal gaps through existing.native.OS boundary ; no bare uncredentialed server launch.
-  A04 next := independent protocol+bounded.search probes with explicit freshness, owner, readiness, error and last-success ; low.CPU ≠ failed.
+  A03 ✓ native.host operational := close MetaHarness+3MNEME no-shell servicehost+same-scope renewal gaps through existing.native.OS boundary ; no bare uncredentialed server launch.
+  A04 ✓ resident.profiles+both.Meta.clients := independent protocol+bounded.search probes with explicit freshness, owner, readiness, error and last-success ; low.CPU ≠ failed.
   A05 next := native graph+Brainmonsoon+Anamnesis actual read interfaces verified ; persistent.writer refresh remains exclusive + admitted ; no fabricated.context.
-  A06 dependent := remove cached.desktop-health dispatch prerequisite ; retain immutable request and durable replay ; then state-compatible node selection.
+  A06 ✓ live immediate.send+reconnect := cached.desktop-health no dispatch prerequisite ; immutable request+durable replay retained ; actual backend.reply OPEN ; state-compatible node selection OPEN.
   A07 dependent := opt-in replica/independent-job federation ; measured latency+queue+state/weights locality ; single StateRoot/effect leader ; mobile thermal/battery/revocation limits.
 §T
   task.change := disabled.register→native.scheduler.readback→quiet exact owned.service transfer→enable/run→one.owner→MCP.initialize+status+search.
@@ -31,5 +31,5 @@ I> authority := current.user explicit repair.unreachable.memory+use.Trinity+all.
 §C
   delivery := exact owned local.files commit + portable scoped delta in established CSSL3 backing.repository + independent remote commit/tree readback.
   statuses := all-memory availability OPEN ; shared-compute federation OPEN ; native full-state handoff OPEN ; no goal/status/budget rewrite.
-  next.restart := inspect MEMPALACE_HTTP_TASK.csl + live task XML ; finish durable8766 transfer ; then native servicehost custody contract before other startup changes.
+  next.restart := inspect NATIVE_HOST_ACCEPTANCE.csl + current task XML+protocolcalls ; native monitor+MemPalace automatic.restart proven ; restore exact sealed conversation supervisor+bridge through normal admission without changing living.resident ; retain shared-compute frontier.
 ∎

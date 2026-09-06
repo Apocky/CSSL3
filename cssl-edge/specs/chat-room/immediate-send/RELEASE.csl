@@ -1,8 +1,9 @@
 § APOCRYPHA.IMMEDIATE.SEND @2026-09-06
 I> authority := user.immediate.messages+shared.compute; public.site.deploy+commit.push authorized.
 §P ✓ online.send+explicit.delivery previously gated by cached.runtime.status; reconnect also gated.
-§D ✓ send+explicit.retry attempt online; queue persisted first; actual.offline→online arms one retained-base flush after bound.state restore; initial.online.mount does.not auto-submit; known.conflict requires explicit.retry.
+§D ✓ send+explicit.retry attempt online; queue persisted first; actual.offline→online arms one reconnect-triggered retained-base flush after bound.state restore; new.reconnect.trigger does.not arm initial.online.mount; existing.live-health load-path may.flush; known.conflict requires explicit.retry.
 §T ✓ TypeScript; desktop6/6; mobile1/1 before final conflict-only guard; queue.writer.unit. ExistingAPIfixture502vs200 remains separate/untouched.
 §C W! exact730currentproduction.sources→2owned.replacements+728retained; localbuild→commit.push+remote.readback→unassignedcandidate→visual+flow.evidence→promote+all.refs.
 N! UI.send.attempt ⇒ backend.reply | fleet.enrollment | completed.stateful.failover. Memory.availability+shared.compute remain active.
+✓ LIVE dpl_8XRyAKRCgbpf4jK5XhNfwSfYyun5; bothaliases+730refsverified; commit0882883f23e6f5407c7a4f459478914720ee8eeb remotelyreadback tree292e04f47b8ac0b2d88c123b60149eaad379ff8a.
 ∎
