@@ -1,0 +1,28 @@
+§ APOCRYPHA.CHAT-ROOM @2026-09-06
+§P
+  authority := user.current.request + standing.commit-push + live.site.release
+  outcome := conversation-first room + creation.inside.chat + quiet.reachable.details
+  evidence ✓ live.owner.page: expanded.connection+diagnostics consumes ~42dvh; waiting status repeated; pending Status? retained
+  graph.query := account chat brain experience conversation; graph.commit=3af5e56d; extracted.imports→source.verified
+§D
+  root owns AccountChat.tsx + AccountChat.module.css + blueprint + integration + live.verification
+  A owns BrainExperience.tsx + BrainExperience.module.css
+  B owns ChatTools.tsx + ChatTools.module.css
+  C owns focused.tests + fixture.verification.plan
+  architecture := compact.header → message.stream → composer
+  panels := history | memory(owner) | connection | create; exclusive.open; close+Escape→trigger.focus
+  create := existing.local.sigil + reflection + definitions + oracle; result.visible.inline; add→draft; send.explicit
+  interface ChatTools{onInsert(text),disabled?}; hidden→retain.input+result; account.change→discard.foreign.tool.state
+  source.auth + encrypted.journal + queue.ids + messages.bytes + transport.routes := invariant
+  shared.room := clarification.pending; preserve.private.scope; no.membership/exposure.change
+§T
+  focused.source/contracts + TypeScript + build; browser.actual.components @desktop+mobile+320
+  verify := pending.retry.identity + history + tool.create/close/reopen/add + no.autosend + offline.truth + keyboard/focus + scroll
+  fixtures ≠ production.reply.proof; native.compiler.execution remains.paused
+§S
+  delta := UI.presentation + local.creation.seam; no.model/router/credentials/storage.migration
+  no.new.backup @user.steering; existing.git.history+foreign.work preserved
+§C
+  status ✓ local.implemented+verified; ◐ publication.waiting.identity; release requires owned.commit+push+remote.tree.readback + live.visual.effect
+  deployment.auth ○ prior403; refresh.only.normal.authorized.channel; no.false.live.claim
+∎

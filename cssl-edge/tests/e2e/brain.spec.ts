@@ -81,37 +81,40 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
 
   await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
   await expect(page.locator('.apx-diagnostics-opener')).toHaveCount(0);
-  const connectionDetails = page.locator('summary').filter({ hasText: 'Connection & device details' });
+  const connectionDetails = page.getByRole('button', { name: 'Conversation settings', exact: true });
   await expect(connectionDetails).toBeVisible();
   await expect(page.getByText('Mneme storage')).not.toBeVisible();
   await expect(page.getByLabel('Find a memory, topic, or phrase')).not.toBeVisible();
   expect(observationRequests).toBe(0);
-  const help = page.getByRole('button', { name: /^Messages are encrypted on this device/ });
-  const tip = page.getByRole('tooltip');
-  if (testInfo.project.name.startsWith('mobile')) await help.tap();
-  else await help.hover();
-  await expect(tip).toBeVisible();
-  const tipBox = await tip.boundingBox();
-  expect(tipBox).not.toBeNull();
-  expect(tipBox!.x).toBeGreaterThanOrEqual(0);
-  expect(tipBox!.y).toBeGreaterThanOrEqual(0);
-  expect(tipBox!.x + tipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  expect(tipBox!.y + tipBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  const settingsPanel = page.locator('#brain-settings-panel');
+  await connectionDetails.click();
+  await expect(settingsPanel).toBeVisible();
+  await expect(settingsPanel.getByRole('button', { name: 'Close conversation settings' })).toBeFocused();
+  await expect(page.locator('#brain-memory-panel')).not.toBeVisible();
+  await expect(page.locator('#brain-tools-panel')).not.toBeVisible();
+  const panelBox = await settingsPanel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.x).toBeGreaterThanOrEqual(0);
+  expect(panelBox!.y).toBeGreaterThanOrEqual(0);
+  expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  const historyButton = page.getByRole('button', { name: 'Conversation history', exact: true });
+  await historyButton.click();
+  await expect(page.locator('#brain-history-panel')).toBeVisible();
+  await expect(settingsPanel).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close conversation history' })).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(tip).toHaveCount(0);
-  await help.blur();
-  await help.focus();
-  await expect(tip).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(tip).toHaveCount(0);
+  await expect(page.locator('#brain-history-panel')).not.toBeVisible();
+  await expect(historyButton).toBeFocused();
+  expect(observationRequests).toBe(0);
   const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
   await expect(composer).toBeEnabled();
-  await expect(page.getByText('Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Waiting for desktop', exact: true })).toBeVisible();
   await composer.fill('How do I preserve the source boundary?');
   await page.getByRole('button', { name: 'Queue message' }).click();
   await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
   await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
-  await expect(page.getByText(/encrypted queue · not yet committed/i)).toBeVisible();
+  await expect(page.getByText('Saved on this device · waiting to send', { exact: true })).toBeVisible();
   await connectionDetails.click();
   await expect(page.getByText('Mneme storage')).toBeVisible();
   const releaseShelf = page.locator('#brain-releases');
@@ -268,17 +271,18 @@ test('offline user-only queue receives the actual desktop reply after reconnecti
   await page.getByRole('button', { name: 'Queue message', exact: true }).click();
   await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
   await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
-  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toBeVisible();
   expect(appendRequestId).toBe('');
   connected = true;
   await context.setOffline(false);
   await expect(page.getByText('This answer survived the signed queue and G12 readback.')).toBeVisible();
-  await expect(page.locator('summary').filter({ hasText: 'Connection & device details' })).toContainText('Desktop connected');
+  await expect(page.getByRole('button', { name: 'Desktop connected', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  await expect(page.getByText('1 encrypted turn waiting')).toHaveCount(0);
-  await expect(page.getByText('Device queue and desktop worldline are current.')).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Conversation settings', exact: true }).click();
+  await expect(page.locator('#brain-settings-panel').getByText('Device queue and desktop worldline are current.', { exact: true })).toBeVisible();
   expect(appendRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
-  await expect(page.getByText('encrypted queue · not yet committed')).toHaveCount(0);
+  await expect(page.getByText('Saved on this device · waiting to send', { exact: true })).toHaveCount(0);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
@@ -335,10 +339,10 @@ test('verified owner explicitly creates the first private Mneme profile', async 
   }));
 
   await page.goto('/brain');
-  await expect(page.getByText('Mneme needs your confirmation.')).toBeVisible();
+  await page.getByRole('button', { name: 'Conversation settings', exact: true }).click();
+  await expect(page.getByText('Memory needs your confirmation.')).toBeVisible();
   await page.getByRole('button', { name: 'Create my private memory profile' }).click();
-  await expect(page.getByText(/Private Mneme profile created for this verified owner session/i)).toBeVisible();
-  await page.locator('summary').filter({ hasText: 'Connection & device details' }).click();
+  await expect(page.locator('#brain-settings-panel').getByText(/Private Mneme profile created for this verified owner session/i)).toBeVisible();
   await expect(page.getByText('0 records · 0 source links')).toBeVisible();
   expect(confirmation).toBe('CREATE_OWNER_PRIVATE_MNEME_PROFILE');
 });
@@ -406,7 +410,7 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   await expect(composer).toBeEnabled();
   await composer.fill('What is the smallest reversible move?');
   await page.getByRole('button', { name: 'Queue message' }).click();
-  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toBeVisible();
   await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
 
   const worker = await page.evaluate(async () => {
@@ -415,8 +419,8 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   });
   expect(new URL(worker.scope).pathname).toBe('/brain');
   expect(new URL(worker.scriptURL).pathname).toBe('/brain-sw.js');
-  await page.locator('summary').filter({ hasText: 'Connection & device details' }).click();
-  await expect(page.getByText('Offline shell ready')).toBeVisible();
+  await page.getByRole('button', { name: 'Conversation settings', exact: true }).click();
+  await expect(page.getByText('The offline shell is ready.')).toBeVisible();
   expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations())
     .filter(registration => registration.active?.scriptURL.endsWith('/brain-sw.js'))
     .map(registration => new URL(registration.scope).pathname))).toEqual(['/brain']);
@@ -445,7 +449,7 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
     await expect(installButton).toHaveCount(0);
   }
   await page.reload();
-  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   await expect.poll(() => page.evaluate(async () => Boolean(await caches.match('/brain')))).toBe(true);
   await page.evaluate(async () => { await fetch('/api/brain/snapshot', { cache: 'no-store' }); });
@@ -464,9 +468,9 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
     ) throw error;
   });
   await expect(page.getByRole('heading', { level: 1, name: 'Apocrypha' })).toBeVisible();
-  await expect(page.getByText('1 encrypted turn waiting')).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toBeVisible();
   await expect(page.getByText('What is the smallest reversible move?')).toBeVisible();
-  await expect(page.getByText('Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Waiting for desktop', exact: true })).toBeVisible();
   await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);

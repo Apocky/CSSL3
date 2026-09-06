@@ -1,0 +1,93 @@
+§ CHAT_ROOM_TEST_PLAN.v1
+  scope := actual AccountChat + BrainExperience + ChatTools + real CSS
+  owner := root.integration ; test.slice := write_evidence_review
+  date := 2026-09-06
+  state := ◐ local automated checks passed ; browser/live acceptance remains open
+  invariant := existing auth + owner binding + encrypted queue + request identity + saved history preserved
+  allowed.delta := presentation + inline creation + explicit draft insertion
+  N! fixture readiness ⇒ production delivery | live-runtime acceptance
+
+§ AUTOMATED
+  tests/pages/chat-tools.test.ts
+    engines := all intent presets → actual analyzeSpell/createSigil parity
+    variants := 0,1,255 accepted ; -1,256,fraction,NaN,Infinity refused
+    input := blank + over-limit + unknown lexeme + markup refused
+    vocabulary := actual records + exact-word priority + bounded12 + missing query
+    oracle := fixed-seed drawOracle parity + normalized question + high-stakes/empty/overlong refusal
+    UI.events := initial render no creation ; explicit submit creates ; Add alone inserts
+    insert.refusal := disabled ∨ callback.false ⇒ no success notice
+    stale.result := changed intention clears ; alternate image retains meaning
+    evidence.limit := VM hook/event harness ; ¬ browser focus/layout/storage proof
+  existing.regressions :=
+    tests/lib/mini-brain-writer.test.ts
+    tests/lib/brain-offline-worker.test.ts
+    tests/e2e/native-mobile.spec.ts
+    tests/e2e/brain.spec.ts
+    tests/e2e/mobile-diagnostics.spec.ts
+  runner := direct Node --import tsx tests/pages/chat-tools.test.ts
+  W! root records actual command + exit + current source binding
+
+§ LOCAL_BROWSER_FIXTURE
+  entry := tests/ui/chat-room-preview.mjs
+  files := chat-room-fixture.tsx + chat-room-boundaries.ts
+  address := http://127.0.0.1:3197
+  binding := fixed loopback ; occupied port → refusal ; N! terminate other listener
+  compilation := installed esbuild ; actual components/CSS ; in-memory outputs
+  N! production route changes | real credentials | external fetch | telemetry | service-worker registration
+  boundaries := SiteSession + Link/router + auth transport + owner MiniBrain vault
+  account.journal := actual openAccountPendingJournal @ isolated localhost origin
+  owner.vault := synthetic sessionStorage ; N! encryption/storage integrity inference
+  scenario := mode∈{account,owner} × pending∈{0,1}
+  data := synthetic long history + long unbroken text + table + optional pending identity
+  owner.runtime := degraded ; messages remain queued ; no fabricated assistant reply
+  account.turn := fixture503 ; explicit Send retains actual pending journal
+  browser := CUA only ; N! Playwright control
+  inspector := visible "Inspect UI test state" button → DOM JSON synthetic request list + pending IDs ; CUA reads rendered output
+  startup := pinned Node tests/ui/chat-room-preview.mjs ; cwd cssl-edge ; windowsHide true ; shell false
+  restart := own server only after component changes ; bundle captured at startup
+
+§ CUA_ORACLES
+  widths := 320 + 390 + 768 + 1440 ; also mobile short viewport + desktop zoom
+  each := visible header + readable messages + reachable composer + no horizontal page overflow
+  scroll := long history scrolls independently ; composer remains reachable ; table/unbroken token contained
+  panels := Create + History + Details/settings + owner Memory
+  flow := Create → choose tool → create → close → reopen → same source/result
+  keyboard := reachable controls + named textarea + visible focus ; Escape closes/returns trigger
+  typing := Shift+Enter newline ; composition Enter no send ; plain Enter explicit send
+  creation := draw/make/switch/variant/copy/download N! chat POST
+  Add := retains prior draft + separator + result ; closes panel + focuses composer ; N! automatic send
+  oracle := chance reflection label ; no confidence misrepresentation ; high-stakes refusal preserved
+  owner.cap := insertion ≤16384 UTF16 code units ∧ ≤16384 UTF8 bytes ; exact ASCII boundary accepted ; either limit exceeded → refusal ; emoji counts2 units+4 bytes
+  account.cap := 16384 UTF8 bytes ; exact boundary accepted ; boundary+1 refused ; emoji counted4
+  cap.refusal := existing draft unchanged + result retained + visible failure ; no truncated surrogate
+  pending.account := draft/send/new chat blocked ; create inspect allowed ; Add disabled ; retry same request
+  pending.owner := prior queue retained through panel switch/new chat/history ; new explicit send adds one unique turn
+  reload := account pending ID preserved ; owner synthetic queue preserved ; N! mocked owner reload proves real vault
+  private.queue := compare before/after IDs for every non-send action
+  signed-out := actual auth route reviewed separately ; fixture does not prove production authorization
+
+§ LIVE_ACCEPTANCE
+  W! correct full-panel source + route baseline retained
+  W! root test/build + CUA owner/account + intended Git commit/push/readback
+  W! authenticated live owner + account flows after authorized deployment
+  deployment.READY ≠ visible usable chat ≠ verified backend conversation
+  blocked.auth := record exact remaining limitation ; N! false completion
+  results := append actual observations + dates + source/commit ; N! fabricate test passes
+∎
+
+§ LOCAL_AUTOMATED_RESULT
+  observed_at := 2026-09-06T15:55:40.940Z
+  runner := direct pinned Node ; shell false ; windowsHide true
+  chat-tools.test := ✓ exit0 ; actual engines + VM event harness
+  tsc := ✓ --noEmit --incremental false ; exit0
+  result.focus := ✓ visible focuses+scrolls ; hidden/absent skips ; no automatic insertion
+  source.bindings.sha256 :=
+    tests/pages/chat-tools.test.ts := b2880a40dfdf4ed38a381b067ae829b373e7aae75c543beaec0742c5d2ed7157
+    tests/ui/chat-room-preview.mjs := e9e49fe381ea08e13ba76c56c2c4686197f0d3888d74d97436a01c4ec13e16af
+    tests/ui/chat-room-boundaries.ts := 9a90ec46dee6db6790fae6d5ef9df8ef9b1ee17535cff95df9015bd8d0117865
+    tests/ui/chat-room-fixture.tsx := 01dc870c6b3743e30ac07897c6feb89bcfe8f1ebbda16fd909b99d8bd039be74
+    components/apocrypha/ChatTools.tsx := 180a2cb7c3a073927b14ad437341f1fa20f1c1289d43ffaa07bf0a075c0df02c
+    components/apocrypha/ChatTools.module.css := b61ff43306725b14c126da5b1235d338b6920da1d8083575ad81bfc45ae148cd
+    lib/apocrypha/chat-tools.ts := 7cd6e60288fda17346d932db74accbd85dcb5a7478f9ce6a6ddf639bba28798c
+  limits := browser focus/layout/runtime/pending acceptance owned root ; N! local gates imply live success
+∎

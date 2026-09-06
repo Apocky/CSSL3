@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import ConversationMessageContent from '@/components/apocrypha/ConversationMessageContent';
+import ChatTools from '@/components/apocrypha/ChatTools';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
@@ -27,7 +28,6 @@ import { authFetch } from '@/lib/browser-auth';
 import { useSiteSession } from '@/components/hub/SiteSession';
 import styles from './BrainExperience.module.css';
 import BrainDiagnostics from './BrainDiagnostics';
-import { HelpTip } from '../ui/Feedback';
 
 type BrainView = 'graph' | 'timeline' | 'tunnel';
 type ServerAccess = 'owner' | 'forbidden' | 'unavailable';
@@ -433,7 +433,7 @@ function Tunnel({ memory, memories, messages, onSelect }: {
 }
 
 export default function BrainExperience({ serverAccess }: { serverAccess: ServerAccess }): JSX.Element {
-  const { access, refresh } = useSiteSession();
+  const { access, refresh, subjectKey } = useSiteSession();
   const [snapshot, setSnapshot] = useState<BrainSnapshot | null>(null);
   const [runtime, setRuntime] = useState<BrainRuntimeStatus | null>(null);
   const [view, setView] = useState<BrainView>('graph');
@@ -455,7 +455,42 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   const [online, setOnline] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
-  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<'history' | 'memory' | 'settings' | 'tools' | null>(null);
+  const auxiliaryRef = useRef<HTMLDivElement | null>(null);
+  const panelTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const messageLogRef = useRef<HTMLDivElement | null>(null);
+  const followedLogRef = useRef<HTMLDivElement | null>(null);
+  const followedSessionRef = useRef<string | null | undefined>(undefined);
+  const nearLatestRef = useRef(true);
+  const [showLatest, setShowLatest] = useState(false);
+  const scrollToLatest = useCallback(() => {
+    const log = messageLogRef.current;
+    if (!log) return;
+    log.scrollTop = log.scrollHeight;
+    nearLatestRef.current = true;
+    setShowLatest(false);
+  }, []);
+  const closePanel = useCallback(() => {
+    setActivePanel(null);
+    requestAnimationFrame(() => {
+      const trigger = panelTriggerRef.current;
+      if (trigger?.isConnected && !trigger.closest('[hidden]')) trigger.focus();
+      else composerRef.current?.focus();
+    });
+  }, []);
+  const togglePanel = (panel: 'history' | 'memory' | 'settings' | 'tools', trigger: HTMLButtonElement): void => {
+    if (activePanel === panel) { closePanel(); return; }
+    panelTriggerRef.current = trigger;
+    setActivePanel(panel);
+  };
+  useEffect(() => {
+    if (!activePanel) return;
+    const frame = requestAnimationFrame(() => auxiliaryRef.current?.querySelector<HTMLButtonElement>('[data-panel-active="true"] [data-panel-close]')?.focus());
+    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { event.preventDefault(); closePanel(); } };
+    document.addEventListener('keydown', escape);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', escape); };
+  }, [activePanel, closePanel]);
   const [offlineShellReady, setOfflineShellReady] = useState(false);
   const [syncConflict, setSyncConflict] = useState(false);
   const [draft, setDraft] = useState('');
@@ -933,6 +968,31 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   const conversation = miniConversation(miniState);
   const desktopConnected = online && runtime?.status === 'live';
   const sessionId = miniState?.current_session_id ?? null;
+  const latestMessageId = conversation[conversation.length - 1]?.id;
+  useEffect(() => {
+    const log = messageLogRef.current;
+    if (!log) return;
+    const reset = followedLogRef.current !== log || followedSessionRef.current !== sessionId;
+    followedLogRef.current = log;
+    followedSessionRef.current = sessionId;
+    const frame = requestAnimationFrame(() => {
+      if (reset || nearLatestRef.current) scrollToLatest();
+      else setShowLatest(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sessionId, latestMessageId, conversation.length, loading, sending, scrollToLatest]);
+  useEffect(() => {
+    const log = messageLogRef.current;
+    if (!log || typeof ResizeObserver === 'undefined') return;
+    let frame: number | undefined;
+    const observer = new ResizeObserver(() => {
+      if (!nearLatestRef.current) return;
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => { if (nearLatestRef.current) scrollToLatest(); });
+    });
+    observer.observe(log);
+    return () => { observer.disconnect(); if (frame !== undefined) cancelAnimationFrame(frame); };
+  }, [loading, sessionId, scrollToLatest]);
   const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/u.test(navigator.userAgent);
   const standaloneIos = typeof navigator !== 'undefined' && Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
   const allowOfflineVault = !online && serverAccess === 'owner';
@@ -959,153 +1019,117 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     return <main className={styles.gate} aria-busy="true"><p>APOCRYPHA</p><h1>Opening your conversation…</h1><span role="status">Verifying your account before loading messages.</span></main>;
   }
 
+  const insertToolText = (text: string): boolean => {
+    if (miniStatus !== 'ready' || sending || !text.trim()) return false;
+    const next = draft ? draft + '\n\n' + text : text;
+    if (next.length > 16_384 || new TextEncoder().encode(next).length > 16_384) {
+      return false;
+    }
+    setDraft(next);
+    setActivePanel(null);
+    requestAnimationFrame(() => composerRef.current?.focus());
+    return true;
+  };
+  const visibleNotice = syncNotice && !syncNotice.startsWith('Device queue and desktop worldline are current.')
+    && !syncNotice.startsWith('History is synchronized.') ? short(syncNotice, 180) : '';
+
   return (
     <main className={styles.brain} data-brain-state={runtime?.status ?? 'degraded'}>
-      <header className={styles.header}>
-        <Link href="/" className={styles.brand} aria-label="Apocky home"><span aria-hidden="true">∞</span><strong>APOCKY</strong></Link>
-        <div><p>CONVERSATION</p><h1>Apocrypha</h1></div>
-        <nav aria-label="Apocrypha navigation"><Link href="/download/apocrypha">Get the app</Link><Link href="/account">Account</Link></nav>
+      <header className={styles.roomHeader}>
+        <Link href="/" className={styles.roomHome} aria-label="Apocky home"><span className="apx-brand-mark" aria-hidden="true" /></Link>
+        <div className={styles.roomTitle}>
+          <h1>Apocrypha</h1>
+          <button type="button" className={styles.connectionState} data-connected={desktopConnected}
+            aria-expanded={activePanel === 'settings'} aria-controls="brain-settings-panel"
+            onClick={event => togglePanel('settings', event.currentTarget)}>
+            <span aria-hidden="true" />{desktopConnected ? 'Desktop connected' : 'Waiting for desktop'}
+          </button>
+        </div>
+        <nav className={styles.roomActions} aria-label="Conversation controls">
+          <button type="button" aria-label="Conversation history" title="Conversation history" aria-expanded={activePanel === 'history'} aria-controls="brain-history-panel" onClick={event => togglePanel('history', event.currentTarget)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6M12 7v5l3 2" /></svg>
+          </button>
+          <button type="button" aria-label="Conversation settings" title="Conversation settings" aria-expanded={activePanel === 'settings'} aria-controls="brain-settings-panel" onClick={event => togglePanel('settings', event.currentTarget)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6" /></svg>
+          </button>
+        </nav>
       </header>
 
-      <details className={styles.connectionDetails}>
-        <summary><span data-connected={desktopConnected}>{desktopConnected ? 'Desktop connected' : 'Waiting for desktop'}</span><small>{miniState?.queue.length ? `${miniState.queue.length} waiting · ` : ''}Connection & device details</small></summary>
-      <section className={styles.statusStrip} aria-label="Observed connector states">
-        <Connector
-          label="Mini Brain"
-          state={miniStatus === 'ready' ? 'live' : 'degraded'}
-          detail={miniStatus === 'ready'
-            ? `${miniState?.queue.length ?? 0} queued · encrypted here`
-            : miniStatus === 'initializing'
-              ? 'opening encrypted device vault'
-              : miniStatus === 'unbound'
-                ? 'encrypted vault ready · owner/device binding unavailable'
-                : 'encrypted device vault unavailable'}
-        />
-        <Connector
-          label="Mneme storage"
-          state={snapshot ? 'live' : 'degraded'}
-          detail={snapshot ? `${snapshot.counts.memories} records · ${snapshot.counts.source_links} source links` : 'remote memory unavailable · local digest cache only'}
-        />
-        <Connector
-          label="Desktop Apocrypha"
-          state={desktopConnected ? 'live' : 'degraded'}
-          detail={desktopConnected ? 'Connected to desktop' : 'Waiting for desktop'}
-        />
-        <button type="button" onClick={() => { void load(); }}>Refresh evidence</button>
-      </section>
-
-      <section className={styles.miniBar} aria-labelledby="mini-brain-title">
-        <div>
-          <p>INSTALLABLE · OWNER/DEVICE BOUND</p>
-          <h2 id="mini-brain-title">{desktopConnected ? 'Connected to desktop' : 'Waiting for desktop'}</h2>
-          <span>This device keeps an encrypted copy. Replies come from your desktop.</span>
-        </div>
-        <div className={styles.miniActions}>
-          {installPrompt && !installed ? <button type="button" onClick={() => { void install(); }}>Install Mini Brain</button> : null}
-          {isIos && !standaloneIos ? <span>iPhone: Share → Add to Home Screen</span> : null}
-          {installed ? <span>Installed</span> : null}
-          <span>{offlineShellReady ? 'Offline shell ready' : 'Keep online once to seal the offline shell'}</span>
-          <button type="button" className={styles.subtleButton} onClick={() => { void eraseOfflineCopy(); }} disabled={miniStatus !== 'ready'}>Erase offline copy</button>
-        </div>
-      </section>
-
-      <BrainDiagnostics />
-      <ReleaseShelf />
-      </details>
-
-      {memoryError ? (
-        <div className={styles.error} role="status">
-          <div><strong>{memoryProvisionable ? 'Mneme needs your confirmation.' : 'Mneme is degraded.'}</strong> {memoryError} The encrypted Mini Brain remains available.</div>
-          {memoryProvisionable ? (
-            <button type="button" onClick={() => { void provisionMneme(); }} disabled={provisioningMemory}>
-              {provisioningMemory ? 'Creating private profile…' : 'Create my private memory profile'}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      {syncNotice ? <div className={styles.syncNotice} role="status">{syncNotice}</div> : null}
-
-      <div className={styles.layout} data-memory-open={memoryOpen}>
-        <section className={styles.conversation} aria-labelledby="brain-conversation-title">
-          <header className={styles.panelHead}>
-            <div className={styles.conversationTitle}><h2 id="brain-conversation-title">Conversation</h2><HelpTip label="Messages are encrypted on this device and delivered to your desktop. A waiting message stays queued until the desktop confirms a reply or reports a failure. Enter sends; Shift+Enter adds a line." /></div>
-            <div className={styles.conversationActions}>
-              {runtime?.status === 'live' && sessions.length > 0 ? (
-                <label><span>History</span><select value={sessionId ?? ''} disabled={runtimeLoading || sending}
-                  onFocus={() => { void loadSessionPage().catch(error => setSyncNotice(error instanceof Error ? error.message : 'Conversation history is unavailable.')); }}
-                  onChange={(event) => { void chooseSession(event.currentTarget.value); }}>
-                  {!sessions.some(session => session.session_id === sessionId) ? (
-                    <option value={sessionId ?? ''}>{miniState && miniCursor(miniState, sessionId ?? '') ? 'Current conversation' : 'Current local draft'}</option>
-                  ) : null}
-              {runtime?.status === 'live' && historyCursor !== null ? (
-                <button type="button" disabled={historyLoading} onClick={() => {
-                  void loadSessionPage(historyCursor).catch(error => setSyncNotice(error instanceof Error ? error.message : 'Older conversations could not load.'));
-                }}>{historyLoading ? 'Loading conversations…' : 'Load older conversations'}</button>
-              ) : null}
-                  {sessions.map(session => <option key={session.session_id} value={session.session_id}>{short(session.title, 42)} · {session.message_count}</option>)}
-                </select></label>
-              ) : null}
-              <button type="button" aria-expanded={memoryOpen} aria-controls="brain-memory-panel" onClick={() => setMemoryOpen(value => !value)}>Memory</button>
-              <button type="button" onClick={() => { void newConversation(); }} disabled={miniStatus !== 'ready' || sending}>New</button>
-            </div>
-          </header>
-
-          <div className={styles.messageLog} role="log" aria-live="polite" aria-busy={sending || runtimeLoading}>
+      <div className={styles.roomLayout}>
+        <section className={styles.roomConversation} aria-label="Conversation with Apocrypha">
+          <div ref={messageLogRef} tabIndex={0} className={styles.messageLog} role="log" aria-label="Messages" aria-live="polite" aria-busy={sending || runtimeLoading}
+            onScroll={event => {
+              const log = event.currentTarget;
+              const near = log.scrollHeight - log.clientHeight - log.scrollTop <= 80;
+              nearLatestRef.current = near;
+              setShowLatest(!near);
+            }}>
             {!desktopConnected && conversation.length === 0 ? (
-              <div className={styles.runtimeDegraded}>
-                <strong>Waiting for desktop</strong>
-                <p>Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.</p>
-                <code>{runtime?.reason_code ?? 'BRAIN_RUNTIME_STATUS_UNAVAILABLE'}</code>
-              </div>
+              <div className={styles.runtimeDegraded}><strong>Start wherever you are.</strong><p>Your desktop is not connected yet. You can write now; your message will be saved on this device until it can be delivered.</p></div>
             ) : conversation.length === 0 ? (
-              <div className={styles.emptyConversation}><strong>What’s on your mind?</strong><p>Your conversation continues with Apocrypha on your desktop.</p></div>
+              <div className={styles.emptyConversation}><strong>What’s on your mind?</strong><p>Ask a question, follow a thought, or make something together.</p></div>
             ) : conversation.map(message => (
               <article key={message.id} data-role={message.role} data-origin={message.origin}>
-                <p>{message.role === 'user' ? 'You' : 'Apocrypha'}<time dateTime={message.recorded_at}>{formattedDate(message.recorded_at)}</time></p>
+                <p><span className={styles.messageAuthor}><span className={styles.messageAvatar} aria-hidden="true">{message.role === 'user' ? 'Y' : '∞'}</span><strong>{message.role === 'user' ? 'You' : 'Apocrypha'}</strong></span><time dateTime={message.recorded_at}>{formattedDate(message.recorded_at)}</time></p>
                 <ConversationMessageContent content={message.content} assistant={message.role === 'assistant'} />
-                {message.origin === 'queued-mobile' ? <small>encrypted queue · not yet committed on desktop</small> : null}
-                {message.terminal_failure ? <div>
-                  <small>{message.terminal_failure.code === 'chat_prompt_capacity_exceeded'
-                    ? 'This message exceeded the conversation capacity. Its text is preserved.'
-                    : 'Apocrypha could not reply to this message. Its text is preserved.'}</small>
-                  <button type="button" disabled={sending || Boolean(draft.trim())}
-                    onClick={() => { setDraft(message.content); setSyncNotice('Review and send to retry. The earlier failed message stays in history.'); }}>Retry message</button>
+                {message.origin === 'queued-mobile' ? <small>Saved on this device · waiting to send</small> : null}
+                {message.terminal_failure ? <div className={styles.messageFailure}>
+                  <span>{message.terminal_failure.code === 'chat_prompt_capacity_exceeded' ? 'This message exceeded the conversation capacity. Its text is preserved.' : 'Apocrypha could not reply to this message. Its text is preserved.'}</span>
+                  <button type="button" disabled={sending || Boolean(draft.trim())} onClick={() => { setDraft(message.content); setSyncNotice('Review and send to retry. The earlier failed message stays in history.'); composerRef.current?.focus(); }}>Retry message</button>
                 </div> : null}
-                {message.provenance_digests.length > 0 ? <small>{message.provenance_digests.length} provenance digest{message.provenance_digests.length === 1 ? '' : 's'} retained</small> : null}
               </article>
             ))}
+            {sending ? <p className={styles.responding} role="status">{desktopConnected ? 'Apocrypha is responding…' : 'Saving your message…'}</p> : null}
           </div>
 
-          {miniState && miniState.queue.length > 0 ? (
-            <div className={styles.queueBar}>
-              <span>{miniState.queue.length} encrypted turn{miniState.queue.length === 1 ? '' : 's'} waiting</span>
-              {syncConflict
-                ? <button type="button" onClick={() => { void retryConflict(); }} disabled={sending || !online || runtime?.status !== 'live'}>Retry on current history</button>
-                : <button type="button" onClick={() => { void syncQueued(); }} disabled={sending || !online || runtime?.status !== 'live'}>Sync queued</button>}
-            </div>
-          ) : null}
+          {showLatest ? <button type="button" className={styles.latestMessages} onClick={() => { scrollToLatest(); messageLogRef.current?.focus(); }}>Latest messages <span aria-hidden="true">↓</span></button> : null}
 
-          <form className={styles.composer} onSubmit={(event) => { void send(event); }}>
-            <label htmlFor="brain-message">Message Apocrypha</label>
-            <textarea
-              id="brain-message"
-              value={draft}
-              onChange={(event) => setDraft(event.currentTarget.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (draft.trim() && miniStatus === 'ready' && !sending) event.currentTarget.form?.requestSubmit(); } }}
-              placeholder={desktopConnected ? 'Message Apocrypha…' : 'Write a message to deliver when your desktop connects…'}
-              disabled={miniStatus !== 'ready' || sending}
-              maxLength={16_384}
-              rows={2}
-            />
-            <button type="submit" disabled={miniStatus !== 'ready' || sending || !draft.trim()}>{sending ? 'Saving…' : desktopConnected ? 'Send' : 'Queue message'}</button>
-            <p>Messages stay encrypted on this device; desktop remains authoritative.</p>
-          </form>
+          <div className={styles.composerDock}>
+            <div className={styles.composerFeedback}>
+            {visibleNotice ? <div className={styles.roomNotice} role="status"><span>{visibleNotice}</span><button type="button" onClick={event => togglePanel('settings', event.currentTarget)}>Details</button></div> : null}
+            {miniState && miniState.queue.length > 0 ? <div className={styles.roomQueue}>
+              <span>{miniState.queue.length} message{miniState.queue.length === 1 ? '' : 's'} waiting</span>
+              {syncConflict ? <button type="button" onClick={() => { void retryConflict(); }} disabled={sending || !online || runtime?.status !== 'live'}>Retry on current history</button>
+                : <button type="button" onClick={() => { void syncQueued(); }} disabled={sending || !online || runtime?.status !== 'live'}>Try delivery</button>}
+            </div> : null}
+            </div>
+            <form className={styles.roomComposer} onSubmit={event => { void send(event); }}>
+              <label className={styles.roomSrOnly} htmlFor="brain-message">Message Apocrypha</label>
+              <textarea ref={composerRef} id="brain-message" value={draft} onChange={event => setDraft(event.currentTarget.value)}
+                onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (draft.trim() && miniStatus === 'ready' && !sending) event.currentTarget.form?.requestSubmit(); } }}
+                placeholder="Message Apocrypha…" disabled={miniStatus !== 'ready' || sending} maxLength={16_384} rows={2} />
+              <div className={styles.composerControls}>
+                <div>
+                  <button type="button" aria-expanded={activePanel === 'tools'} aria-controls="brain-tools-panel" onClick={event => togglePanel('tools', event.currentTarget)}>+ Create</button>
+                  <button type="button" aria-expanded={activePanel === 'memory'} aria-controls="brain-memory-panel" onClick={event => togglePanel('memory', event.currentTarget)}>Memory</button>
+                  <button type="button" disabled={miniStatus !== 'ready' || sending} onClick={() => { void newConversation(); }}>New</button>
+                </div>
+                <button className={styles.roomSend} type="submit" disabled={miniStatus !== 'ready' || sending || !draft.trim()}>{sending ? 'Saving…' : desktopConnected ? 'Send' : 'Queue message'}</button>
+              </div>
+            </form>
+            <p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>
+          </div>
         </section>
 
-        <section id="brain-memory-panel" className={styles.explorer} aria-labelledby="brain-explorer-title" hidden={!memoryOpen}>
-          <header className={styles.panelHead}>
-            <div className={styles.conversationTitle}><h2 id="brain-explorer-title">Memory</h2><HelpTip label="Memory search uses saved records and does not ask a model. Open a record to inspect its source links." /></div><Link href="/memory-tools">Memory tools</Link>
-          </header>
+        <div ref={auxiliaryRef} className={styles.auxiliary} hidden={activePanel === null}>
+          <section id="brain-history-panel" className={styles.auxPanel} role="region" aria-labelledby="brain-history-title" hidden={activePanel !== 'history'} data-panel-active={activePanel === 'history'}>
+            <header className={styles.auxHeader}><h2 id="brain-history-title">Your conversations</h2><button type="button" data-panel-close aria-label="Close conversation history" onClick={closePanel}>×</button></header>
+            <div className={styles.auxBody}>
+              {runtime?.status === 'live' ? <>
+                <label className={styles.historyPicker}><span>Open a conversation</span><select value={sessionId ?? ''} disabled={runtimeLoading || sending}
+                  onFocus={() => { void loadSessionPage().catch(error => setSyncNotice(error instanceof Error ? error.message : 'Conversation history is unavailable.')); }}
+                  onChange={event => { void chooseSession(event.currentTarget.value); closePanel(); }}>
+                  {!sessions.some(session => session.session_id === sessionId) ? <option value={sessionId ?? ''}>{miniState && miniCursor(miniState, sessionId ?? '') ? 'Current conversation' : 'Current local draft'}</option> : null}
+                  {sessions.map(session => <option key={session.session_id} value={session.session_id}>{short(session.title, 60)} · {session.message_count} messages</option>)}
+                </select></label>
+                {historyCursor !== null ? <button type="button" className={styles.panelButton} disabled={historyLoading} onClick={() => { void loadSessionPage(historyCursor).catch(error => setSyncNotice(error instanceof Error ? error.message : 'Older conversations could not load.')); }}>{historyLoading ? 'Loading conversations…' : 'Load older conversations'}</button> : null}
+              </> : <p>Your saved conversation stays on this device. Connect your desktop to browse its history.</p>}
+            </div>
+          </section>
+
+          <section id="brain-memory-panel" className={styles.auxPanel} role="region" aria-labelledby="brain-explorer-title" hidden={activePanel !== 'memory'} data-panel-active={activePanel === 'memory'}>
+            <header className={styles.auxHeader}><h2 id="brain-explorer-title">Memory</h2><button type="button" data-panel-close aria-label="Close memory" onClick={closePanel}>×</button></header>
+            <div className={styles.memoryBody}><p className={styles.memoryIntro}>Explore your saved records and their source links.</p>
           {snapshot ? (
             <>
               <label className={styles.search}>
@@ -1134,7 +1158,40 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
               {(miniState?.memories.length ?? 0) === 0 ? <code>MNEME_STORAGE_UNAVAILABLE · NO_LOCAL_DIGEST_CACHE</code> : null}
             </div>
           )}
-        </section>
+
+            </div>
+          </section>
+
+          <section id="brain-settings-panel" className={styles.auxPanel} role="region" aria-labelledby="brain-settings-title" hidden={activePanel !== 'settings'} data-panel-active={activePanel === 'settings'}>
+            <header className={styles.auxHeader}><h2 id="brain-settings-title">Conversation settings</h2><button type="button" data-panel-close aria-label="Close conversation settings" onClick={closePanel}>×</button></header>
+            <div className={styles.auxBody}>
+              <nav className={styles.settingsLinks} aria-label="Your Apocrypha"><Link href="/account">Your account</Link><Link href="/download/apocrypha">Get the app</Link></nav>
+              <h3>Connection & device details</h3>
+              <p>{desktopConnected ? 'Your desktop is connected.' : 'Your desktop is not connected yet.'} This device keeps an encrypted copy; replies come from your desktop.</p>
+              <div className={styles.connectionFacts}>
+                <Connector label="Mini Brain" state={miniStatus === 'ready' ? 'live' : 'degraded'} detail={miniStatus === 'ready' ? String(miniState?.queue.length ?? 0) + ' queued · encrypted here' : miniStatus === 'initializing' ? 'opening encrypted device vault' : miniStatus === 'unbound' ? 'encrypted vault ready · owner/device binding unavailable' : 'encrypted device vault unavailable'} />
+                <Connector label="Mneme storage" state={snapshot ? 'live' : 'degraded'} detail={snapshot ? String(snapshot.counts.memories) + ' records · ' + String(snapshot.counts.source_links) + ' source links' : 'remote memory unavailable · local digest cache only'} />
+              </div>
+              {runtime?.reason_code ? <code className={styles.settingsCode}>{runtime.reason_code}</code> : null}
+              {syncNotice ? <p className={styles.settingsNotice}>{syncNotice}</p> : null}
+              {memoryError ? <div className={styles.settingsNotice}><strong>{memoryProvisionable ? 'Memory needs your confirmation.' : 'Memory is unavailable.'}</strong><p>{memoryError}</p>{memoryProvisionable ? <button type="button" className={styles.panelButton} onClick={() => { void provisionMneme(); }} disabled={provisioningMemory}>{provisioningMemory ? 'Creating private profile…' : 'Create my private memory profile'}</button> : null}</div> : null}
+              <button type="button" className={styles.panelButton} onClick={() => { void load(); }}>Refresh connection</button>
+              <h3>On this device</h3>
+              <p>{offlineShellReady ? 'The offline shell is ready.' : 'Keep this page online once to prepare the offline shell.'}</p>
+              {installPrompt && !installed ? <button type="button" className={styles.panelButton} onClick={() => { void install(); }}>Install Mini Brain</button> : null}
+              {isIos && !standaloneIos ? <p>iPhone: Share → Add to Home Screen</p> : null}
+              {installed ? <p>Installed on this device.</p> : null}
+              <button type="button" className={styles.panelButton} onClick={() => { void eraseOfflineCopy(); }} disabled={miniStatus !== 'ready'}>Erase offline copy</button>
+              <BrainDiagnostics />
+              <ReleaseShelf />
+            </div>
+          </section>
+
+          <section id="brain-tools-panel" className={styles.auxPanel} role="region" aria-labelledby="brain-tools-title" hidden={activePanel !== 'tools'} data-panel-active={activePanel === 'tools'}>
+            <header className={styles.auxHeader}><h2 id="brain-tools-title">Create in chat</h2><button type="button" data-panel-close aria-label="Close Create in chat" onClick={closePanel}>×</button></header>
+            <div className={styles.auxBody}><ChatTools key={subjectKey} onInsert={insertToolText} disabled={miniStatus !== 'ready' || sending} /></div>
+          </section>
+        </div>
       </div>
     </main>
   );

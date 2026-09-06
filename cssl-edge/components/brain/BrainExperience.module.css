@@ -688,3 +688,116 @@
   .brain *::before,
   .brain *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* § Conversation room: persistent transcript; auxiliary views never consume the initial viewport. */
+.brain { min-height: 0; overflow: hidden; }
+.roomHeader { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; min-height: 76px; padding: calc(10px + env(safe-area-inset-top, 0px)) max(20px, calc((100% - 1120px)/2)) 10px; border-bottom: 1px solid rgba(146,157,255,.1); background: rgba(3,4,12,.9); }
+.roomHome { flex: 0 0 44px; display: grid; width: 44px; height: 44px; place-items: center; color: var(--ink); text-decoration: none; }
+.roomTitle { flex: 1; min-width: 0; }
+.roomTitle h1 { margin: 0; color: var(--ink); font-size: 20px; line-height: 1.2; font-weight: 600; letter-spacing: -.025em; }
+.connectionState { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin: -5px 0 -8px; padding: 0; border: 0; background: none; color: var(--copy); font-size: 12px !important; cursor: pointer; }
+.connectionState > span { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #cbb290; }
+.connectionState[data-connected="true"] > span { background: #87cfb1; }
+.roomActions { display: flex; gap: 4px; }
+.roomActions button { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--copy); cursor: pointer; }
+.roomActions svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.roomActions button:hover, .roomActions button[aria-expanded="true"] { background: rgba(124,136,255,.09); border-color: var(--line); color: var(--ink); }
+.roomLayout { position: relative; flex: 1; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.roomConversation { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.roomConversation .messageLog { flex: 1; min-height: 48px; padding: 24px 0 32px; }
+.roomConversation .messageLog article { width: min(100% - 40px, 780px); padding: 20px 4px 24px; border: 0; }
+.roomConversation .messageLog article[data-role="user"] { margin-block: 8px; padding: 16px 20px; border: 1px solid rgba(146,157,255,.12); border-radius: 18px; background: rgba(124,136,255,.055); }
+.roomConversation .messageLog article[data-role="assistant"] { background: transparent; }
+.roomConversation .messageLog article > p { align-items: center; color: var(--copy); font-size: 13px; font-weight: 600; }
+.roomConversation .messageLog article time { font-size: 11px; }
+.messageAuthor { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.messageAuthor strong { font-weight: 600; }
+.messageAvatar { flex: 0 0 30px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: #343059; color: #d6c9ff; font-size: 19px; }
+.messageLog article[data-role="user"] .messageAvatar { background: #223743; color: #a9ddec; font: 600 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+.roomConversation .messageLog article > div { font-size: 16px; line-height: 1.75; }
+.roomConversation .messageLog article > small { color: var(--copy); font-size: 12px; }
+.roomConversation .emptyConversation, .roomConversation .runtimeDegraded { border: 0; background: none; padding: 24px 8px; margin-top: clamp(24px, 12dvh, 140px); }
+.roomConversation .emptyConversation strong, .roomConversation .runtimeDegraded strong { display: block; font: 500 clamp(25px, 3.5vw, 36px)/1.18 Georgia, serif; letter-spacing: -.03em; }
+.roomConversation .emptyConversation p, .roomConversation .runtimeDegraded p { max-width: 440px; margin: 14px auto 0; font-size: 16px; line-height: 1.65; }
+.latestMessages { flex: 0 0 auto; align-self: center; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #111524; color: var(--copy); font-size: 13px !important; cursor: pointer; }
+.latestMessages:hover { border-color: var(--line-strong); color: var(--ink); }
+.responding { width: min(100% - 40px, 780px); margin: 4px auto; color: var(--copy); font-size: 14px; }
+.messageFailure { margin-top: 12px; display: grid; justify-items: start; gap: 8px; color: var(--copy); }
+.messageFailure span { font-size: 14px; }
+.messageFailure button, .roomNotice button, .roomQueue button { min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--ink); font-size: 13px !important; cursor: pointer; }
+.messageFailure button:disabled, .roomQueue button:disabled { opacity: .45; cursor: default; }
+.composerDock { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; width: min(100%, 840px); max-height: calc(100% - 48px); margin: 0 auto; padding: 8px 20px calc(12px + env(safe-area-inset-bottom, 0px)); }
+.composerFeedback { flex: 0 1 auto; min-height: 0; max-height: 24dvh; overflow-y: auto; overscroll-behavior: contain; }
+.composerFeedback:empty { display: none; }
+.roomComposer { flex: 0 0 auto; min-width: 0; border: 1px solid rgba(146,157,255,.24); border-radius: 22px; background: rgba(15,18,37,.95); padding: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.12); }
+.roomComposer textarea { display: block; width: 100%; min-height: 54px; max-height: min(200px, 25dvh); resize: vertical; padding: 3px 5px; border: 0; outline: none; background: none; color: var(--ink); font: 16px/1.55 Inter, ui-sans-serif, system-ui, sans-serif; }
+.roomComposer textarea::placeholder { color: #9297b1; }
+.roomComposer textarea:disabled { opacity: .6; }
+.composerControls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.composerControls > div { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.composerControls button { min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; color: var(--copy); background: transparent; font-size: 14px !important; cursor: pointer; white-space: nowrap; }
+.composerControls button:hover, .composerControls button[aria-expanded="true"] { background: rgba(124,136,255,.1); color: var(--ink); }
+.composerControls .roomSend { flex: 0 0 auto; margin-left: auto; padding: 0 18px; background: #badcf0; color: #0a1520; font-weight: 650; }
+.composerControls .roomSend:hover { background: #d4ecf9; color: #0a1520; }
+.composerControls button:disabled { cursor: default; opacity: .4; }
+.composerHint { flex: 0 0 auto; margin: 9px 0 0; text-align: center; color: var(--dim); font-size: 11px; line-height: 1.5; }
+.roomNotice, .roomQueue { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; padding: 4px 2px 10px; color: var(--copy); font-size: 13px; line-height: 1.5; }
+.roomNotice > span { flex: 1; min-width: 160px; overflow-wrap: anywhere; }
+.roomQueue { color: #c9c4e9; }
+.auxiliary { position: absolute; z-index: 25; top: 12px; right: 16px; bottom: 12px; width: min(500px, calc(100% - 32px)); min-width: 0; border: 1px solid rgba(146,157,255,.22); border-radius: 20px; background: #0b0e1b; box-shadow: 0 24px 80px rgba(0,0,0,.55); overflow: hidden; }
+.auxiliary[hidden], .auxPanel[hidden] { display: none !important; }
+.auxPanel { display: flex; height: 100%; min-height: 0; min-width: 0; flex-direction: column; }
+.auxHeader { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--line); }
+.auxHeader h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+.auxHeader button { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border: 0; border-radius: 10px; background: none; color: var(--copy); font-size: 25px !important; cursor: pointer; }
+.auxHeader button:hover { background: rgba(124,136,255,.1); }
+.auxBody, .memoryBody { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 18px 20px; color: var(--copy); font-size: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+.auxBody p { margin: 0 0 16px; }
+.auxBody h3 { margin: 24px 0 10px; color: var(--ink); font-size: 16px; line-height: 1.4; }
+.auxBody button, .auxBody select, .memoryBody button, .memoryBody input { min-height: 44px; }
+.settingsLinks { display: flex; flex-wrap: wrap; gap: 8px; }
+.settingsLinks a, .panelButton { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--ink); padding: 8px 12px; font-size: 14px !important; text-decoration: none; cursor: pointer; }
+.panelButton:disabled { opacity: .5; cursor: default; }
+.connectionFacts { display: grid; gap: 8px; margin: 16px 0; }
+.connectionFacts .connector { min-width: 0; }
+.connectionFacts .connector strong { font-size: 14px; }
+.connectionFacts .connector small { font-size: 12px; }
+.settingsCode { display: block; margin-bottom: 16px; overflow-wrap: anywhere; color: var(--dim); font-size: 12px; }
+.settingsNotice { margin: 16px 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; }
+.historyPicker { display: grid; gap: 10px; margin-bottom: 16px; font-size: 15px; }
+.historyPicker select { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #12162a; color: var(--ink); font-size: 16px; }
+.memoryBody { padding: 0; }
+.memoryIntro { padding: 16px 20px; margin: 0; font-size: 14px; }
+.memoryIntro a { color: var(--blue); }
+.memoryBody .search > span, .memoryBody .views button { font-size: 14px; }
+.memoryBody .search input { font-size: 16px; }
+.memoryBody .search small { font-size: 12px; }
+.memoryBody .projection { overflow: visible; }
+.memoryBody .localMemory { padding: 20px; font-size: 14px; }
+.roomSrOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+@media (max-width: 640px) {
+  .roomHeader { min-height: 70px; padding: calc(7px + env(safe-area-inset-top, 0px)) 10px 7px; gap: 8px; }
+  .roomHome { flex-basis: 44px; width: 44px; height: 44px; }
+  .roomTitle h1 { font-size: 18px; }
+  .connectionState { font-size: 11px !important; }
+  .roomActions { gap: 0; }
+  .roomConversation .messageLog { padding-top: 14px; }
+  .roomConversation .messageLog article { width: calc(100% - 32px); padding-inline: 0; }
+  .roomConversation .messageLog article[data-role="user"] { padding: 14px; }
+  .roomConversation .messageLog article time { font-size: 10px; }
+  .composerDock { padding: 6px 10px calc(9px + env(safe-area-inset-bottom, 0px)); }
+  .roomComposer { padding: 10px; border-radius: 18px; }
+  .composerControls { gap: 4px; }
+  .composerControls > div { gap: 0; }
+  .composerControls button { padding: 0 8px; font-size: 13px !important; }
+  .composerControls .roomSend { padding: 0 11px; }
+  .auxiliary { inset: auto 8px 8px; width: auto; height: min(78dvh, calc(100% - 8px)); border-radius: 20px; }
+  .auxHeader { padding-left: 16px; }
+  .auxBody { padding: 16px; }
+  .composerHint { font-size: 10px; }
+}
+
+@media (max-height: 500px) {
+  .roomConversation .messageLog { padding-block: 8px; }
+  .composerHint { display: none; }
+}

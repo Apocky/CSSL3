@@ -1,0 +1,56 @@
+§ APOCRYPHA.CHAT_ROOM.ACCEPTANCE @2026-09-06T16:10:40.248Z
+§P
+  authority := user.chatroom+inline.creation + standing.commit/push + live.publish
+  outcome ◐ local.implementation.verified; production.publish blocked.normal.Vercel.identity-check
+  scope := 7 production.files; account+owner presentation + shared.local.creation
+§S
+  room := compact.header + latest-following.transcript + fixed.reachable.composer
+  panels := create | history | details/settings | owner.memory; nested.within.chat
+  tools := sigil.SVG + reflection + actual.word.definitions + existing.oracle
+  creation := browser.local.engines; result.retained.across.panel.close; Add.appends.draft; send.explicit
+  N! claim.image/video/3D.model.generation; existing3D.endpoint.stub remains.unexposed
+  shared.public.chat := no.user.selection; existing.private.scope.retained
+§T
+  production.build ✓ direct.pinned.Node → next.build; full.exit0 after.final.short-viewport.fixes
+  existing.warning := Akashic.article131kB >128kB; no.chat.build.failure
+  source.tests ✓ mobile-chat-contract + spellcraft-engine + oracle + chat-tools
+    + mini-brain-writer.writer/delivery/adoption/failure + brain-offline-worker.private-route/offline-restore/cache-migration
+  owner.browser-session.controller ✓ exported.main20assertions; async.pending/clear/unavailable + explicit.handoff + account.race
+  TypeScript ✓ --noEmit --incremental false
+  CUA.local.actual.components ✓ account+owner; synthetic.boundaries; real.account.pending.journal@localhost
+  viewport ✓ desktop1440×900; account1024×900 +390×844 +320×568 +390×400;
+    owner390×844 +320×360 +1440×900
+  overflow ✓ none.observed; editable.font16px; creation.buttons≥44px @320
+  short.account := form.bottom390/viewport400; log.height91
+  short.owner := form.bottom351/viewport360; log.height48; tool.panel.within302×278.8
+  result ✓ real.sigil.image.visible; close/reopen.retains; Add.preserves.prior.draft; focus→composer; message.count.unchanged
+  refusal ✓ owner.draft16380ASCII +reflection→false; exact.draft.length16380 retained; visible.failure +result.retained
+  pending.owner ✓ same.queue.requestID across.creation/settings/refusal; requests.GET-only
+  pending.account ✓ actual.journal.ID unchanged across.create/history.switch.attempt;
+    Add+Send+New.disabled; source.gate.retains.current.pending.session; requests.GET-only
+  scroll.account ✓ PageUp→top0 +Latest.control; resize1440→1024 retains.top0;
+    explicit.Latest→distance0; resize.following→distance0
+  panels ✓ Escape→close+trigger.focus; tool.result→visible.focus+nearest.scroll
+  browser.logs ✓ final.preview warnings0/errors0
+  production.before ✓ owner.screenshot+live.DOM; original.pending.Status? untouched;
+    N! live.Send | queue.retry | queue.sync | new.chat | erase.storage
+§C
+  source.transport := original.auth/session/restore/send/delivery logic preserved;
+    existing.page.pending-journal.controller byte-identical.to.deployed3af5e56
+  foreign := preexisting.tsconfig.tsbuildinfo bytes preserved; outside-app.dirty.files untouched
+  literature+hub := candidate.retains723 predecessor.refs +4 replacements +3 additions=730sources
+  production.evidence.limit := current.Vercel.Verify.Your.Identity waiting.authenticator/passkey;
+    no.deployment.created; no.live.new.UI/reply.proof; fixture≠backend.integration
+  regression.e2e := updated.owner+diagnostics.specs; full.Playwright.runner not.executed;
+    UI.control := CUA only
+  publication := normal.identity.flow.only; no.2FA.bypass; no.new.backups
+  Git := root.exact.owned.paths.stage/commit/push + independent.remote.commit/tree.readback.pending
+§ SOURCE_SHA256
+  components/apocrypha/AccountChat.tsx := c4f0c85017282574b03487d569e22558498a202d44481ccbe711cf5492e7c2e7
+  styles/AccountChat.module.css := d5993d0840b42a5208be00dfeb2ffcba39ee1aeb0b6ffb5293be598a3cc42910
+  components/brain/BrainExperience.tsx := 49fec6288e92abd074c7f7e155f5992c3b8cd61164759ee09a3f5906e27e39bd
+  components/brain/BrainExperience.module.css := 86b9739b60472e7c1b6ab1e555ad03228fcd1cb029f54da3483fcfff1ebf1fa1
+  components/apocrypha/ChatTools.tsx := 180a2cb7c3a073927b14ad437341f1fa20f1c1289d43ffaa07bf0a075c0df02c
+  components/apocrypha/ChatTools.module.css := b61ff43306725b14c126da5b1235d338b6920da1d8083575ad81bfc45ae148cd
+  lib/apocrypha/chat-tools.ts := 7cd6e60288fda17346d932db74accbd85dcb5a7478f9ce6a6ddf639bba28798c
+∎
