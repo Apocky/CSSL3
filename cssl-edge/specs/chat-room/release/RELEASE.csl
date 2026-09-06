@@ -1,7 +1,8 @@
 § CHAT.ROOM.RELEASE 2026-09-06
   status := ✓ helper.syntax + local.prepare + exact.candidate.Next.build730sources.unchanged
   authentication := ✓ normal.CLI.whoami + project.GET; project.production matches historical.baseline
-  candidate.deployed := ⊘ pending.root.submission
+  candidate.deployed := ✓ dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf; production.promoted+verified
+  actual.promotion.path := ordinary.CLI; candidate.auth gate adapted→live.auth check; PROMOTION_REVIEW.csl +LIVE_ACCEPTANCE.csl
   authority := root.integration ; source.delta := 7 ; helper.delta := 3
   source := scope.json ; historical.envelope.sha256 := bc40b7816a5b6c89549638958c00ae38dd277d17cdad5611918ea43f5996e1f0
   baseline := dpl_AjgK4VYHXQH3iWWWmRjPnYfx4oRi @ 2026-09-05T23:40:35.275Z
@@ -78,5 +79,5 @@
   no.cleanup.command ; no.backups.created ; historical.predecessor retained untouched
   rollback.deployment := existing.previous.production ; requires root.execution+fresh.observation
   root.verified := syntax + prepare + candidate.build + ordinary.CLI.project.access
-  deployment+live.effect remain root.verification
+  deployment+live.effect ✓ root.CUA + independent.CLI730refs + HTTP12paths
 ∎

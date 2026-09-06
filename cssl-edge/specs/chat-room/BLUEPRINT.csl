@@ -23,6 +23,6 @@
   delta := UI.presentation + local.creation.seam; no.model/router/credentials/storage.migration
   no.new.backup @user.steering; existing.git.history+foreign.work preserved
 §C
-  status ✓ local.implemented+verified; ◐ publication.pending.release; release requires owned.commit+push+remote.tree.readback + live.visual.effect
+  status ✓ local.implemented+verified + live.published; release requires owned.commit+push+remote.tree.readback + live.visual.effect
   deployment.auth ✓ ordinary.CLI.whoami + live.project.GET; no.false.live.claim
 ∎

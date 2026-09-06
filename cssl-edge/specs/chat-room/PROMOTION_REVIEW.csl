@@ -1,0 +1,17 @@
+§ CHAT.PROMOTION.REVIEW @2026-09-06T16:22:40.613Z
+  authority := standing.user.publish.live + current.chatroom.scope
+  candidate := dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf
+  committed.source := 1c901128dd2c16f8e684fa660cb106b21c499590
+  evidence ✓ READY + exact730source.refs + inherited.build.settings + public.CUA1440/390 + HTTP24/24
+  local.actual.components ✓ tools+draft+queue+history+keyboard+short.viewport
+  current.production+bothdomains ✓ dpl_AjgK4VYHXQH3iWWWmRjPnYfx4oRi
+  candidate.auth ✗ normal.Google.flow redirected.to.production.SiteURL; PKCE.origin mismatch
+  auth.config := retained; N! token/cookie copying | allowlist.change | fabricated.candidate.auth.QA
+  procedure.adjustment := candidate.authenticated.UI.check→immediate.live.authenticated.UI.check
+  reason := existing.provider.redirect.allowlist; source/queue/auth unchanged + existing.signed-in.production.session available
+  helper.--promote := not.used; its.candidate.auth.attestation cannot.truthfully.pass
+  promotion := ordinary.installed.VercelCLI.promote; no.permission.bypass
+  prerequisite ✓ original.live.Status?.present +1queued +draft.empty; no.Send/Retry/Sync/New/Erase
+  acceptance W! final.live.newUI +queue+draft+tools +domains/source.ref readback
+  recovery := previous.existing.production retained; unexpectedloss/regression→restore.previous.production
+∎

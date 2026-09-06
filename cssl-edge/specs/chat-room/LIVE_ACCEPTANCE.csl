@@ -1,0 +1,35 @@
+§ CHAT_ROOM.LIVE_ACCEPTANCE @2026-09-06T16:28:45.602Z
+§ OUTCOME
+  ✓ published https://www.apocky.com/apocrypha ; apocky.com alias verified
+  deployment := dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf
+  release.commit := 1c901128dd2c16f8e684fa660cb106b21c499590
+  implementation.commit := fe38c24f8a7e7e5ea1d21c80087fd6e9c5312f30
+  source730 := all.unique.refs match reviewed.candidate; 723retained+4replaced+3added; zero.removal
+  domain+project.readback ✓ independent.CLI.GET @2026-09-06T16:26:44.956Z
+§ LIVE.CUA
+  signed-in.owner ✓ original.production.session; desktop2560×1215 +responsive390×844
+  room ✓ compact.header + visible.transcript + composer; settings/diagnostics closed
+  mobile ✓ width390; page.overflow false; form.bottom811<viewport844
+  retained.history ✓ 3message.articles; original.Status? still.saved/waiting; 1queued
+  create ✓ actual.sigil.SVG visible.inside.chat; result.focus; close/reopen.same.output
+  Add ✓ prior.draft retained+meaning appended; panel.closed; delayed.focus→brain-message
+  no.send ✓ message.count3 throughout; original.queued.message remains
+  history/settings ✓ openswithin.chat; Escape closes+returns.trigger; no.session.switch
+  final.state ✓ all.panels.closed +draft.length0 +same3messages +Status?.waiting
+  cleanup.note := UI.fill(empty) did.not.persist.controlled.state; actual.SelectAll+Backspace verified.after.panel.rerender
+  browser.errors ✓0 observed.final.live.review
+§ LIVE.HTTP
+  ✓12/12 terminal200;8/8 protectedCodex.original.byteSHA256 retained
+  ✓home/tools/words retained; guest.chat matches intended.candidate.text
+  ✓11public.routes lack preview.noindex; private.chat retains no-store+noindex policies
+  evidence := CANDIDATE_HTTP.csl
+§ BOUNDARY
+  candidate.auth ✗ provider.redirect.to.production.origin; unmodified.existing.allowlist
+  root.adaptation := PROMOTION_REVIEW.csl; no false.pre-promotion.authenticated.attestation
+  ✓immediate.post-promotion.authenticated.UI check completed
+  local.account.fixture+controller.tests ≠ live.non-owner.account.reply proof
+  live.desktop.connection := waiting; no.backend.delivery.fix or new.reply.claim
+  generating := existing.local.sigil/reflection/definition/oracle engines; no.new.image/video/3D.model endpoint
+  N! original.Send/Retry/Sync/New/Erase; no.private.reply/body archival
+  no.new.backups; former.release retained byexisting.platformhistory
+∎

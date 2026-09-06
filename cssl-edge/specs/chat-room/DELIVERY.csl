@@ -11,7 +11,10 @@
   candidate.local.Next.build ✓ 730 sources unchanged
   candidate.count := 723retained +4replaced +3added =730
   auth ✓ ordinary.VercelCLI.whoami + project.GET
-  current.production := dpl_AjgK4VYHXQH3iWWWmRjPnYfx4oRi
-  production.new.UI := ⊘ not.yet.deployed; pending.candidate + visual.review + promotion
+  current.production := dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf
+  production.new.UI := ✓ published+live.visual+interaction.verified; LIVE_ACCEPTANCE.csl
+  release.commit := 1c901128dd2c16f8e684fa660cb106b21c499590
+  release.tree := 9768fbf9e84231e023f2f9bd825558b1a7ffad20
+  release.remote ✓ independent.GitHub.commit/tree +ls-remote matched
   N! local.fixture ⇒ live.reply | full.production.prebuild.proof
 ∎

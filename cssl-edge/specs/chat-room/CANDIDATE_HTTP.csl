@@ -1,0 +1,220 @@
+§ CHAT_ROOM.CANDIDATE_HTTP.v1
+  observed_at := 2026-09-06T16:20:36.786Z
+  candidate.id := dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf
+  candidate.base := https://apocky-k1y1j6vsh-shawn-bakers-projects-cb1c9715.vercel.app
+  baseline.base := https://apocky.com
+  authority := read-only public GET ; credentials omitted ; N! POST | auth | user-data queries
+  probe := 12 paths × 2 origins ; concurrency4 ; response cap2097152 bytes ; timeout20000ms ; no retries
+  redirects := live apex307→www same path ; candidate none
+  summary := ✓24 terminal200 ; ✓8 Codex routes/assets exact byteSHA256 ; ✓3 unchanged public text projections
+  expected.delta := /apocrypha guest UI ; title preserved ; h1 now Apocrypha
+  raw.HTML.delta := / + /tools + /words differ ; text projections equal ; N! infer full DOM parity
+  header.parity := cache-control + nosniff + frame-denial + referrer-policy equal across each pair
+  header.delta := candidate public paths x-robots-tag=noindex ; baseline absent ; /apocrypha privacy directives equal
+  W! post-promotion domain check confirms public indexing header matches intended production state
+  private.route := /apocrypha cache-control private,no-store,no-cache,must-revalidate,max-age=0 ; noindex,nofollow,noarchive,nosnippet preserved
+  text.projection := UTF8 HTML → remove script/style blocks → remove tags → collapse whitespace → SHA256 ; ¬ rendered browser proof
+  limits := bounded sample ; no authenticated conversation | model reply | visual/layout acceptance
+
+§ ROUTES
+  /
+    status := live200 + candidate200
+    bytes := live29728 + candidate29728
+    live.sha256 := b8912facc0df00159157de4abf5c2db0855205b8839f7962eb381914bb1c99fc
+    candidate.sha256 := 669dcc2bcdf3a5a4a0f350a9ee6eae3e8ac4a501e62ad03532c78bbf69e840ed
+    byte.equal := false
+    live.text.sha256 := a041888e291ab24cfcc7cd898535002feb9536c8785443f454a8abd8479b006f
+    candidate.text.sha256 := a041888e291ab24cfcc7cd898535002feb9536c8785443f454a8abd8479b006f
+    text.equal := true
+  /apocrypha
+    status := live200 + candidate200
+    bytes := live7335 + candidate7596
+    live.sha256 := b1748b966fdb43a5f540e21683e9ad1cb2e8bf3d454a27bc858617a96434f567
+    candidate.sha256 := d845dcfe4e495e4f2df43630b11ead51a84fcee2d21289f38f752a62a1555836
+    byte.equal := false
+    live.text.sha256 := 7fc12346bdeb709ced0b02accbd007aa7cfd077b9c28e5ee5bc924b14e2ac103
+    candidate.text.sha256 := 0956568a2ad0fcf440a97cefda7f024fdc3acb43e7e6483e74f0abb98fdd9f95
+    text.equal := false
+  /codex-apockalypsis
+    status := live200 + candidate200
+    bytes := live123123 + candidate123123
+    live.sha256 := 6277878a085477f25c96ca16565c5826ced7153704015298c1c194bfe8343804
+    candidate.sha256 := 6277878a085477f25c96ca16565c5826ced7153704015298c1c194bfe8343804
+    byte.equal := true
+    live.text.sha256 := b4b5bc0a42b9574b7ec400f524f62fd35fdcc7c69c57c1e867aaf55036f4d9e9
+    candidate.text.sha256 := b4b5bc0a42b9574b7ec400f524f62fd35fdcc7c69c57c1e867aaf55036f4d9e9
+    text.equal := true
+  /tools
+    status := live200 + candidate200
+    bytes := live13594 + candidate13594
+    live.sha256 := 624cee23c1621fbf7184185be9a3b228ed12107b6f48612ddaa50f0322402787
+    candidate.sha256 := b3df6f2d861693035582cb839ed4d201c782e03b4aadf5dbd0e4f1e656e7f309
+    byte.equal := false
+    live.text.sha256 := a7055cfd8f0747019b030a572a8358c5698b025f8cb8386c1e4c0a66f2fd16ea
+    candidate.text.sha256 := a7055cfd8f0747019b030a572a8358c5698b025f8cb8386c1e4c0a66f2fd16ea
+    text.equal := true
+  /words
+    status := live200 + candidate200
+    bytes := live26271 + candidate26271
+    live.sha256 := 1d77a6a01f8efeba6ffe67edd2c38212d6c2a45709ea50ea5d70597ff728556d
+    candidate.sha256 := df2208241d1e453a97dfc993575584fd947e01b055a811266dc7d1f741049020
+    byte.equal := false
+    live.text.sha256 := a82f0ec0db342f792c65569bc39c1653ab6ce3fa07901e74b526bc63e481cdbb
+    candidate.text.sha256 := a82f0ec0db342f792c65569bc39c1653ab6ce3fa07901e74b526bc63e481cdbb
+    text.equal := true
+  /codex-apockalypsis/content.json
+    status := live200 + candidate200
+    bytes := live353952 + candidate353952
+    live.sha256 := 9a51fc373900ec699b376e309fc5e23fa7108c030f16a4499e5ffddef71ac468
+    candidate.sha256 := 9a51fc373900ec699b376e309fc5e23fa7108c030f16a4499e5ffddef71ac468
+    byte.equal := true
+  /codex-apockalypsis/inclusion_manifest.json
+    status := live200 + candidate200
+    bytes := live11807 + candidate11807
+    live.sha256 := ccf3a18fe10fb3cad046e815974afae0804d0b8798804edb52973ce1a19ce312
+    candidate.sha256 := ccf3a18fe10fb3cad046e815974afae0804d0b8798804edb52973ce1a19ce312
+    byte.equal := true
+  /codex-apockalypsis/assets/codex.js
+    status := live200 + candidate200
+    bytes := live1705 + candidate1705
+    live.sha256 := 89acae5bc2e7d4b9775cc4a5643173903eda32307b3ec9c24a2dd1c628ea692b
+    candidate.sha256 := 89acae5bc2e7d4b9775cc4a5643173903eda32307b3ec9c24a2dd1c628ea692b
+    byte.equal := true
+  /codex-apockalypsis/assets/codex.css
+    status := live200 + candidate200
+    bytes := live26599 + candidate26599
+    live.sha256 := a2c7198898d3d1da20ce2a8a173c13fe148d3332a9cdf11f95e915a44454ecdb
+    candidate.sha256 := a2c7198898d3d1da20ce2a8a173c13fe148d3332a9cdf11f95e915a44454ecdb
+    byte.equal := true
+  /codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked
+    status := live200 + candidate200
+    bytes := live21316 + candidate21316
+    live.sha256 := 3be45630d0da9aff2ed003e36a27ff4d32565e7b4ee078234500b43945e10f81
+    candidate.sha256 := 3be45630d0da9aff2ed003e36a27ff4d32565e7b4ee078234500b43945e10f81
+    byte.equal := true
+    live.text.sha256 := 1e424e8c33d2956ea0c1069dd00a17628ad79c56d09deadc4941deb1da507877
+    candidate.text.sha256 := 1e424e8c33d2956ea0c1069dd00a17628ad79c56d09deadc4941deb1da507877
+    text.equal := true
+  /codex-apockalypsis/library/codex-volume-01-01-the-unanswered-interval
+    status := live200 + candidate200
+    bytes := live14150 + candidate14150
+    live.sha256 := 10fb88e6f80e795fe9fc57dfbffb8b2ced49a83b8653eefe9e334b5d69e94480
+    candidate.sha256 := 10fb88e6f80e795fe9fc57dfbffb8b2ced49a83b8653eefe9e334b5d69e94480
+    byte.equal := true
+    live.text.sha256 := fd1cd5874b656f9b9c657054ed025cab1826278040b113254f5ac2d19e67ca55
+    candidate.text.sha256 := fd1cd5874b656f9b9c657054ed025cab1826278040b113254f5ac2d19e67ca55
+    text.equal := true
+  /codex-apockalypsis/maps/01_omnoid_topology.svg
+    status := live200 + candidate200
+    bytes := live12095 + candidate12095
+    live.sha256 := 294a7eec441d158d8fa349c09d5401711f2c7ec186c63ca709f75f1153a42e56
+    candidate.sha256 := 294a7eec441d158d8fa349c09d5401711f2c7ec186c63ca709f75f1153a42e56
+    byte.equal := true
+∎
+
+§ PROMOTED_LIVE_HTTP
+  observed_at := 2026-09-06T16:23:21.203Z
+  deployment := dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf ; promotion reported root ; live GET evidence below
+  origin := https://apocky.com → https://www.apocky.com
+  probe := same12 paths ; credentials omitted ; GET only ; no retries
+  terminal.status := ✓12/12 HTTP200
+  protected.Codex := ✓8/8 original baseline byteSHA256 retained
+  other.public := home + Tools + Words original text projections retained ; reviewed candidate bytes exact
+  Apocrypha := reviewed candidate guest text projection exact ; h1 Apocrypha ; title preserved
+  raw.response.limit := /apocrypha dynamic HTML hash differs from candidate ; equal bytecount+text projection ; no claim raw HTML parity
+  indexing := ✓11 public paths x-robots-tag absent ; preview noindex not carried into public production
+  private.indexing := ✓/apocrypha noindex,nofollow,noarchive,nosnippet unchanged
+  headers := ✓all12 cache-control + nosniff + frame + referrer parity against original live baseline
+  limits := HTTP sample only ; signed-in conversation + source-ref verification owned root
+  /
+    status := 200
+    bytes := 29728
+    live.sha256 := 669dcc2bcdf3a5a4a0f350a9ee6eae3e8ac4a501e62ad03532c78bbf69e840ed
+    original.byte.equal := false
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+    live.text.sha256 := a041888e291ab24cfcc7cd898535002feb9536c8785443f454a8abd8479b006f
+  /apocrypha
+    status := 200
+    bytes := 7596
+    live.sha256 := 67a6712c4d115414ef30fd6a1a5a712c47bc16c2c739d7e699299c8118857316
+    original.byte.equal := false
+    candidate.byte.equal := false
+    indexing.baseline.equal := true
+    live.text.sha256 := 0956568a2ad0fcf440a97cefda7f024fdc3acb43e7e6483e74f0abb98fdd9f95
+  /codex-apockalypsis
+    status := 200
+    bytes := 123123
+    live.sha256 := 6277878a085477f25c96ca16565c5826ced7153704015298c1c194bfe8343804
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+    live.text.sha256 := b4b5bc0a42b9574b7ec400f524f62fd35fdcc7c69c57c1e867aaf55036f4d9e9
+  /tools
+    status := 200
+    bytes := 13594
+    live.sha256 := b3df6f2d861693035582cb839ed4d201c782e03b4aadf5dbd0e4f1e656e7f309
+    original.byte.equal := false
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+    live.text.sha256 := a7055cfd8f0747019b030a572a8358c5698b025f8cb8386c1e4c0a66f2fd16ea
+  /words
+    status := 200
+    bytes := 26271
+    live.sha256 := df2208241d1e453a97dfc993575584fd947e01b055a811266dc7d1f741049020
+    original.byte.equal := false
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+    live.text.sha256 := a82f0ec0db342f792c65569bc39c1653ab6ce3fa07901e74b526bc63e481cdbb
+  /codex-apockalypsis/content.json
+    status := 200
+    bytes := 353952
+    live.sha256 := 9a51fc373900ec699b376e309fc5e23fa7108c030f16a4499e5ffddef71ac468
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+  /codex-apockalypsis/inclusion_manifest.json
+    status := 200
+    bytes := 11807
+    live.sha256 := ccf3a18fe10fb3cad046e815974afae0804d0b8798804edb52973ce1a19ce312
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+  /codex-apockalypsis/assets/codex.js
+    status := 200
+    bytes := 1705
+    live.sha256 := 89acae5bc2e7d4b9775cc4a5643173903eda32307b3ec9c24a2dd1c628ea692b
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+  /codex-apockalypsis/assets/codex.css
+    status := 200
+    bytes := 26599
+    live.sha256 := a2c7198898d3d1da20ce2a8a173c13fe148d3332a9cdf11f95e915a44454ecdb
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+  /codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked
+    status := 200
+    bytes := 21316
+    live.sha256 := 3be45630d0da9aff2ed003e36a27ff4d32565e7b4ee078234500b43945e10f81
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+    live.text.sha256 := 1e424e8c33d2956ea0c1069dd00a17628ad79c56d09deadc4941deb1da507877
+  /codex-apockalypsis/library/codex-volume-01-01-the-unanswered-interval
+    status := 200
+    bytes := 14150
+    live.sha256 := 10fb88e6f80e795fe9fc57dfbffb8b2ced49a83b8653eefe9e334b5d69e94480
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+    live.text.sha256 := fd1cd5874b656f9b9c657054ed025cab1826278040b113254f5ac2d19e67ca55
+  /codex-apockalypsis/maps/01_omnoid_topology.svg
+    status := 200
+    bytes := 12095
+    live.sha256 := 294a7eec441d158d8fa349c09d5401711f2c7ec186c63ca709f75f1153a42e56
+    original.byte.equal := true
+    candidate.byte.equal := true
+    indexing.baseline.equal := true
+∎

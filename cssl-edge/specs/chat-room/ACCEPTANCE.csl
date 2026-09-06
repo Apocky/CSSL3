@@ -1,7 +1,7 @@
 § APOCRYPHA.CHAT_ROOM.ACCEPTANCE @2026-09-06T16:10:40.248Z
 §P
   authority := user.chatroom+inline.creation + standing.commit/push + live.publish
-  outcome ◐ local.implementation.verified; production.publish pending.root.release
+  outcome ✓ local.implementation + live.owner.UI verified; published.apocky.com
   scope := 7 production.files; account+owner presentation + shared.local.creation
 §S
   room := compact.header + latest-following.transcript + fixed.reachable.composer
@@ -40,7 +40,7 @@
   foreign := preexisting.tsconfig.tsbuildinfo bytes preserved; outside-app.dirty.files untouched
   literature+hub := candidate.retains723 predecessor.refs +4 replacements +3 additions=730sources
   production.evidence.limit := browser.Vercel.identity.challenge observed; normal.CLI.session+project.access subsequently.verified;
-    no.deployment.created; no.live.new.UI/reply.proof; fixture≠backend.integration
+    deployment.created+promoted dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf; live.new.owner.UI verified; no.new.backend.reply.proof; fixture≠backend.integration
   regression.e2e := updated.owner+diagnostics.specs; full.Playwright.runner not.executed;
     UI.control := CUA only
   publication := normal.identity.flow.only; no.2FA.bypass; no.new.backups
