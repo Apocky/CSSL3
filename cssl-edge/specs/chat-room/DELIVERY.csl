@@ -1,0 +1,17 @@
+§ CHAT_ROOM.DELIVERY @2026-09-06T16:17:37.508Z
+  implementation.commit := fe38c24f8a7e7e5ea1d21c80087fd6e9c5312f30
+  implementation.tree := 1e4961adebc9fe03660cc112ec5ed13575352e60
+  repo := https://github.com/Apocky/CSSL3.git
+  branch := codex/codex-apockalypsis-20260905
+  remote.ref := refs/heads/codex/codex-apockalypsis-20260905
+  proof ✓ git.push + independent.ls-remote + GitHub.git.commits.API commit/tree equal
+  candidate.stage := C:/Users/Apocky/AppData/Local/Temp/apocky-chat-room-33J8JX
+  candidate.manifest.sha256 := 3d02b3ce1ad5a05cf698a447b92b64184ca56b7258c6db8ad80ca8e180d8b7b2
+  candidate.sources.sha256 := 0fd9b2dddeb733906390f5623a37de3099b4a18bf7fc6f2f87694ccb48a2bc6d
+  candidate.local.Next.build ✓ 730 sources unchanged
+  candidate.count := 723retained +4replaced +3added =730
+  auth ✓ ordinary.VercelCLI.whoami + project.GET
+  current.production := dpl_AjgK4VYHXQH3iWWWmRjPnYfx4oRi
+  production.new.UI := ⊘ not.yet.deployed; pending.candidate + visual.review + promotion
+  N! local.fixture ⇒ live.reply | full.production.prebuild.proof
+∎

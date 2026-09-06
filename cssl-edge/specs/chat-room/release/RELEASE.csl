@@ -1,0 +1,82 @@
+§ CHAT.ROOM.RELEASE 2026-09-06
+  status := ✓ helper.syntax + local.prepare + exact.candidate.Next.build730sources.unchanged
+  authentication := ✓ normal.CLI.whoami + project.GET; project.production matches historical.baseline
+  candidate.deployed := ⊘ pending.root.submission
+  authority := root.integration ; source.delta := 7 ; helper.delta := 3
+  source := scope.json ; historical.envelope.sha256 := bc40b7816a5b6c89549638958c00ae38dd277d17cdad5611918ea43f5996e1f0
+  baseline := dpl_AjgK4VYHXQH3iWWWmRjPnYfx4oRi @ 2026-09-05T23:40:35.275Z
+  count := 727 historical - 4 replaced + 4 replacement + 3 new = 730
+  retained := 723 ; additions := 3 ; deletions := 0
+  N! historical.receipt ⇒ current.live | authenticated | delivered
+
+§ OWNERSHIP
+  release.mjs + scope.json + RELEASE.csl only
+  source.overlay := AccountChat.tsx + styles/AccountChat.module.css
+                    + BrainExperience.tsx + BrainExperience.module.css
+                    + ChatTools.tsx + ChatTools.module.css + lib/apocrypha/chat-tools.ts
+  exact.paths + old/new.byte.length+SHA1+SHA256 := scope.json
+  N! old.helper.edit | old.stage.edit | backups | repo.copy | unrelated.source.upload
+  temp.candidate := OS.tmp/apocky-chat-room-<unique>/app ; 730 selected.source.files only
+  build.dependencies := existing.app/node_modules junction ; N! install | dependency.copy
+  N! native.CSL | FFI | resident.runtime | shell.wrapper | credential.read/write
+
+§ USE
+  cwd := cssl-edge
+  prepare.local := node specs/chat-room/release/release.mjs
+    → {stage,manifestSha256,sourceSetSha256,counts}
+    W! inspect concrete.manifest before further.action
+  build.local := node specs/chat-room/release/release.mjs --build
+                 --stage <stage> --manifest-sha256 <manifestSha256>
+  candidate.submit := node specs/chat-room/release/release.mjs --deploy
+                      --stage <stage> --manifest-sha256 <manifestSha256> --git-sha <pushedCommit>
+  candidate.observe := node specs/chat-room/release/release.mjs --status
+                       --stage <stage> --manifest-sha256 <manifestSha256>
+  production.promote := node specs/chat-room/release/release.mjs --deploy --promote
+                        --stage <stage> --manifest-sha256 <manifestSha256> --git-sha <pushedCommit>
+                        --qa-receipt <absoluteQaJson> --qa-sha256 <reviewedQaSha256>
+  placeholders := actual.prepare.output + exact.reviewed.commit ; N! literal.placeholder.execution
+
+§ GATES
+  prepare := local.filesystem only ; verifies historical.envelope+manifest + all727.source.preimages
+             → verifies current7.pins → assembles730 → writes manifest
+  build := explicit.local.process ; direct.NextCLI ; Next.version=retained.package.pin
+           → source730 unchanged → build-passed.json
+  submit := explicit.--deploy + candidate.build.proof + manifest.seal
+            + local.HEAD/branch/origin + committed7source+3helper.bytes
+            + remote.ref=commit + content.addressed.tree.proof
+            + current.production+both.aliases=historical.baseline + exact727.live.source.refs
+            → ordinary.VercelCLI.api upload7 → recheck.baseline → create730 candidate
+  domains := unassigned ; inherited.production.settings unchanged
+  promote := explicit.--deploy.--promote + READY + exact730.candidate.refs
+             + matching.pushed.commit + reviewed.QA.receipt + unchanged.production.baseline
+             → ordinary.VercelCLI.promote → both.aliases+production+730refs verified
+  CLI := installed.normal.VercelCLI ; auth=its.existing.normal.session
+  N! token.argument | auth.file.read | browser.bypass | permission.skip.flag
+  CLI.failure → stop ; authentication handled by user through normal CLI/browser flow
+  source.commit.comparison := exact.bytes ∨ CRLF→LF only ; normalization recorded
+  remote.tree := local.tree bound cryptographically to same independently.read.remote.commit
+  N! same.commit.binding ⇒ independent.remote.tree.API.read
+
+§ QA.RECEIPT
+  format := JSON
+  required := deploymentId=<created.id> + sourceSetSha256=<prepared.seal> + passed=true
+              + checks={desktop:true,mobile:true,keyboard:true,tool-output:true,
+                        explicit-insertion:true,auth-history:true}
+  W! checks ← actual.candidate observation ; N! fabricated.attestation
+  auth-history := signed-in.history+pending+draft preserved; switching.identity clears tool.panel state
+  explicit-insertion := tool.creation does.not.send ; Add.to.message appends only after explicit.action
+  live.acceptance remains separate from build+READY+source.refs
+
+§ LIMITS + RECOVERY
+  local.build := Next.build only ; existing.time-dependent.npm.prebuild not run locally
+  production := inherited.npm.prebuild preserved ; historical.behavior regenerated3.releaseJSON
+  ∴ local.build ≠ proof.production.prebuild.output identical
+  candidate.source changed after build → refuse ; N! automatic.source.restore
+  attempt.marker := exclusive.before.submit | exclusive.before.promote
+  ambiguous.response → inspect existing.marker + CLI dashboard ; N! helper.automatic.retry
+  CLI.internal.retry.behavior remains normal.installed.CLI behavior
+  no.cleanup.command ; no.backups.created ; historical.predecessor retained untouched
+  rollback.deployment := existing.previous.production ; requires root.execution+fresh.observation
+  root.verified := syntax + prepare + candidate.build + ordinary.CLI.project.access
+  deployment+live.effect remain root.verification
+∎

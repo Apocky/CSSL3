@@ -1,7 +1,7 @@
 § APOCRYPHA.CHAT_ROOM.ACCEPTANCE @2026-09-06T16:10:40.248Z
 §P
   authority := user.chatroom+inline.creation + standing.commit/push + live.publish
-  outcome ◐ local.implementation.verified; production.publish blocked.normal.Vercel.identity-check
+  outcome ◐ local.implementation.verified; production.publish pending.root.release
   scope := 7 production.files; account+owner presentation + shared.local.creation
 §S
   room := compact.header + latest-following.transcript + fixed.reachable.composer
@@ -39,12 +39,13 @@
     existing.page.pending-journal.controller byte-identical.to.deployed3af5e56
   foreign := preexisting.tsconfig.tsbuildinfo bytes preserved; outside-app.dirty.files untouched
   literature+hub := candidate.retains723 predecessor.refs +4 replacements +3 additions=730sources
-  production.evidence.limit := current.Vercel.Verify.Your.Identity waiting.authenticator/passkey;
+  production.evidence.limit := browser.Vercel.identity.challenge observed; normal.CLI.session+project.access subsequently.verified;
     no.deployment.created; no.live.new.UI/reply.proof; fixture≠backend.integration
   regression.e2e := updated.owner+diagnostics.specs; full.Playwright.runner not.executed;
     UI.control := CUA only
   publication := normal.identity.flow.only; no.2FA.bypass; no.new.backups
-  Git := root.exact.owned.paths.stage/commit/push + independent.remote.commit/tree.readback.pending
+  Git := implementation.fe38c24f8a7e7e5ea1d21c80087fd6e9c5312f30 pushed;
+    independent.ls-remote + GitHub.GitCommit.API commit/tree matched; release.helper.commit follows
 § SOURCE_SHA256
   components/apocrypha/AccountChat.tsx := c4f0c85017282574b03487d569e22558498a202d44481ccbe711cf5492e7c2e7
   styles/AccountChat.module.css := d5993d0840b42a5208be00dfeb2ffcba39ee1aeb0b6ffb5293be598a3cc42910
