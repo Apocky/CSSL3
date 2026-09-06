@@ -493,6 +493,8 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   }, [activePanel, closePanel]);
   const [offlineShellReady, setOfflineShellReady] = useState(false);
   const [syncConflict, setSyncConflict] = useState(false);
+  const syncConflictRef = useRef(false);
+  const reconnectPendingRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const vaultRef = useRef<MiniBrainVault | null>(null);
@@ -572,6 +574,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     if (active?.vault === vault) return active.promise;
     const run = (async () => {
     let state = await vault.load() ?? initial;
+    syncConflictRef.current = false;
     setSyncConflict(false);
     for (const turn of [...state.queue]) {
       try {
@@ -590,6 +593,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
             state = await pullSession(vault, state, turn.session_id);
             commitState(state);
           } catch { /* preserve the encrypted queue and original conflict */ }
+          syncConflictRef.current = true;
           setSyncConflict(true);
           setSyncNotice('Desktop history changed while this device was away. The latest history is loaded; review it, then choose “Retry on current history.”');
           return state;
@@ -650,6 +654,15 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
         return;
       }
 
+      if (reconnectPendingRef.current && state && vault.isBound && access === 'owner') {
+        reconnectPendingRef.current = false;
+        if (!syncConflictRef.current && state.queue.length > 0) {
+          setSyncNotice('Connection restored. Sending your saved message…');
+          state = await flushQueue(vault, state);
+          commitState(state);
+        }
+      }
+
       const [memoryResult, runtimeResult] = await Promise.allSettled([
         jsonRequest<BrainSnapshot>('/api/brain/snapshot'),
         jsonRequest<BrainRuntimeStatus>('/api/brain/runtime/status'),
@@ -694,7 +707,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
           commitState(state);
           state = await pullSession(vault, state, state.current_session_id);
           commitState(state);
-          state = await flushQueue(vault, state);
+          if (!syncConflictRef.current) state = await flushQueue(vault, state);
           commitState(state);
         } catch (runtimeError) {
           setSyncNotice(runtimeError instanceof Error ? runtimeError.message : 'Desktop history could not synchronize.');
@@ -810,9 +823,17 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   }, [access, commitState, flushQueue, loadSessionPage, observedVault, online, pullSession, serverAccess, syncConflict]);
 
   useEffect(() => {
-    setOnline(navigator.onLine);
-    const onOnline = (): void => setOnline(true);
-    const onOffline = (): void => setOnline(false);
+    let wasOnline = navigator.onLine;
+    setOnline(wasOnline);
+    const onOnline = (): void => {
+      if (!wasOnline) reconnectPendingRef.current = true;
+      wasOnline = true;
+      setOnline(true);
+    };
+    const onOffline = (): void => {
+      wasOnline = false;
+      setOnline(false);
+    };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     return () => {
@@ -893,10 +914,10 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
     try {
       const queued = await vault.queueTurn(current, text);
       commitState(queued.state);
-      setSyncNotice(online && runtime?.status === 'live'
-        ? 'Encrypted on this device · synchronizing with desktop…'
-        : 'Desktop connection unavailable. Your message will stay encrypted here until it can be delivered.');
-      if (online && runtime?.status === 'live') {
+      setSyncNotice(online
+        ? 'Saved on this device. Sending…'
+        : 'You are offline. Your message is saved on this device.');
+      if (online) {
         const synchronized = await flushQueue(vault, queued.state);
         commitState(synchronized);
       }
@@ -912,7 +933,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   const retryConflict = async (): Promise<void> => {
     const vault = vaultRef.current;
     const current = stateRef.current;
-    if (!vault || !current || !online || runtime?.status !== 'live') return;
+    if (!vault || !current || !online) return;
     setSending(true);
     try {
       const synchronized = await flushQueue(vault, current, true);
@@ -931,7 +952,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
   const syncQueued = async (): Promise<void> => {
     const vault = vaultRef.current;
     const current = stateRef.current;
-    if (!vault || !current || !online || runtime?.status !== 'live') return;
+    if (!vault || !current || !online) return;
     setSending(true);
     try {
       const synchronized = await flushQueue(vault, current);
@@ -1079,7 +1100,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
                 </div> : null}
               </article>
             ))}
-            {sending ? <p className={styles.responding} role="status">{desktopConnected ? 'Apocrypha is responding…' : 'Saving your message…'}</p> : null}
+            {sending ? <p className={styles.responding} role="status">{online ? 'Sending your message…' : 'Saving your message…'}</p> : null}
           </div>
 
           {showLatest ? <button type="button" className={styles.latestMessages} onClick={() => { scrollToLatest(); messageLogRef.current?.focus(); }}>Latest messages <span aria-hidden="true">↓</span></button> : null}
@@ -1089,8 +1110,8 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
             {visibleNotice ? <div className={styles.roomNotice} role="status"><span>{visibleNotice}</span><button type="button" onClick={event => togglePanel('settings', event.currentTarget)}>Details</button></div> : null}
             {miniState && miniState.queue.length > 0 ? <div className={styles.roomQueue}>
               <span>{miniState.queue.length} message{miniState.queue.length === 1 ? '' : 's'} waiting</span>
-              {syncConflict ? <button type="button" onClick={() => { void retryConflict(); }} disabled={sending || !online || runtime?.status !== 'live'}>Retry on current history</button>
-                : <button type="button" onClick={() => { void syncQueued(); }} disabled={sending || !online || runtime?.status !== 'live'}>Try delivery</button>}
+              {syncConflict ? <button type="button" onClick={() => { void retryConflict(); }} disabled={sending || !online}>Retry on current history</button>
+                : <button type="button" onClick={() => { void syncQueued(); }} disabled={sending || !online}>Try delivery</button>}
             </div> : null}
             </div>
             <form className={styles.roomComposer} onSubmit={event => { void send(event); }}>
@@ -1104,7 +1125,7 @@ export default function BrainExperience({ serverAccess }: { serverAccess: Server
                   <button type="button" aria-expanded={activePanel === 'memory'} aria-controls="brain-memory-panel" onClick={event => togglePanel('memory', event.currentTarget)}>Memory</button>
                   <button type="button" disabled={miniStatus !== 'ready' || sending} onClick={() => { void newConversation(); }}>New</button>
                 </div>
-                <button className={styles.roomSend} type="submit" disabled={miniStatus !== 'ready' || sending || !draft.trim()}>{sending ? 'Saving…' : desktopConnected ? 'Send' : 'Queue message'}</button>
+                <button className={styles.roomSend} type="submit" disabled={miniStatus !== 'ready' || sending || !draft.trim()}>{sending ? online ? 'Sending…' : 'Saving…' : online ? 'Send' : 'Save message'}</button>
               </div>
             </form>
             <p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>

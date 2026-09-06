@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
+import type { MiniBrainSyncRequest, MiniBrainSyncResponse } from '../../lib/brain/mobile-contracts';
 
 test.skip(process.env.BRAIN_E2E_OWNER !== '1', 'owner Brain fixture requires the explicit local test-auth gate');
 
@@ -71,6 +72,10 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
     }),
   }));
 
+  await page.route('**/api/brain/mobile/sync', route => route.fulfill({ status: 503, json: {
+    error: 'Delivery is temporarily unavailable. Your message is saved on this device.', code: 'BRAIN_RUNTIME_UNAVAILABLE',
+  } }));
+
   await page.goto('/');
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.json');
@@ -111,7 +116,7 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await expect(composer).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Waiting for desktop', exact: true })).toBeVisible();
   await composer.fill('How do I preserve the source boundary?');
-  await page.getByRole('button', { name: 'Queue message' }).click();
+  await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
   await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
   await expect(page.getByText('Saved on this device · waiting to send', { exact: true })).toBeVisible();
@@ -163,7 +168,205 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await page.screenshot({ path: testInfo.outputPath('brain.png'), fullPage: true });
 });
 
-test('offline user-only queue receives the actual desktop reply after reconnecting', async ({ page, context }) => {
+
+async function installStaleOwnerFixture(page: Page): Promise<void> {
+  await page.setExtraHTTPHeaders({ 'x-apocky-test-admin-email': 'owner@example.com' });
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'owner-test' } } }));
+  await page.route('**/api/admin/check', route => route.fulfill({ json: { authorized: true } }));
+  await page.route('**/api/brain/mobile/device', route => route.fulfill({ json: {
+    schema_version: 'apocky.mini-brain.device-registration.v1', status: 'bound',
+    device_token: 'test-device-token', owner_ref: 'a'.repeat(64), key_thumbprint: 'b'.repeat(64),
+    expires_at: '2099-01-01T00:00:00.000Z', served_by: 'fixture', ts: '2026-09-06T00:00:00.000Z',
+  } }));
+  await page.route('**/api/brain/snapshot', route => route.fulfill({ json: {
+    schema_version: 'apocky.owner-brain.snapshot.v1', status: 'live',
+    connectors: { mneme_storage: 'live', source_projection: 'live', local_apocv4: 'live' },
+    memories: [], messages: [], counts: { memories: 0, messages: 0, source_links: 0 },
+    limits: { memories: 200, recent_messages: 120, source_messages: 200 },
+    served_by: 'fixture', ts: '2026-09-06T00:00:00.000Z',
+  } }));
+  await page.route('**/api/brain/runtime/status', route => route.fulfill({ json: {
+    schema_version: 'apocky.owner-brain.runtime-status.v1', status: 'degraded',
+    reason_code: 'BRAIN_RUNTIME_STATUS_UNAVAILABLE', observed_at: '2026-09-03T00:00:00.000Z',
+    latency_ms: null, upstream_status: null, served_by: 'fixture', ts: '2026-09-03T00:00:00.000Z',
+  } }));
+  await page.route('**/api/brain/runtime/sessions*', route => route.fulfill({ json: {
+    schema_version: 'apocky.owner-brain.sessions.v1', status: 'live', history_surface: 'g12_chat_history',
+    discovery_scope: 'owner_conversations_page', sessions: [], count: 0, next_cursor: null, has_more: false,
+    served_by: 'fixture', ts: '2026-09-06T00:00:00.000Z',
+  } }));
+}
+
+function completedTurn(request: MiniBrainSyncRequest, reply: string): Record<string, unknown>[] {
+  return [
+    { role: 'user', content: request.payload?.text ?? '', request_id: request.request_id,
+      recorded_at: '2026-09-06T00:00:01.000Z', event_digest: '3'.repeat(64) },
+    { role: 'assistant', content: reply, request_id: request.request_id,
+      recorded_at: '2026-09-06T00:00:02.000Z', event_digest: '4'.repeat(64) },
+  ];
+}
+
+async function fulfillSync(
+  route: Route,
+  request: MiniBrainSyncRequest,
+  messages: Record<string, unknown>[],
+  cursor: string | null = '6'.repeat(64),
+  status: MiniBrainSyncResponse['status'] = 'appended',
+): Promise<void> {
+  await route.fulfill({ json: {
+    schema_version: 'apocky.mini-brain.sync-response.v1', status,
+    session_id: request.session_id, request_id: request.request_id, cursor,
+    messages, tombstones: [], events_truncated: false,
+    provenance: { transport: 'owner_bound_apocv4_runtime', privacy_partition_ref: '7'.repeat(64),
+      principal_ref: '8'.repeat(64), binding_ref: '9'.repeat(64) },
+    controls: { owner_session: 'verified', device_signature: 'verified',
+      replay: 'bounded_sequence_and_idempotent_request', rate_limit: 'relay_instance_burst',
+      partition: 'server_derived_owner' },
+    served_by: 'fixture', ts: '2026-09-06T00:00:02.000Z',
+  } satisfies MiniBrainSyncResponse });
+}
+
+test('online Send reaches an available append server while cached runtime status stays degraded', async ({ page }) => {
+  await installStaleOwnerFixture(page);
+  const requests: MiniBrainSyncRequest[] = [];
+  let releaseReply: () => void = () => undefined;
+  const replyReady = new Promise<void>(resolve => { releaseReply = resolve; });
+  await page.route('**/api/brain/mobile/sync', async route => {
+    const request = route.request().postDataJSON() as MiniBrainSyncRequest;
+    if (request.operation !== 'append') return fulfillSync(route, request, [], null, 'empty');
+    requests.push(request);
+    await replyReady;
+    await fulfillSync(route, request, completedTurn(request, 'The server accepted this message immediately.'));
+  });
+
+  await page.goto('/brain');
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
+  await expect(composer).toBeEnabled();
+  await expect(page.locator('main[data-brain-state]')).toHaveAttribute('data-brain-state', 'degraded');
+  await composer.fill('Send this without waiting for the next status poll.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => requests.length, { timeout: 2500 }).toBe(1);
+  await expect(page.getByRole('button', { name: 'Sending…', exact: true })).toBeDisabled();
+  await expect(page.getByText('Sending your message…', { exact: true })).toBeVisible();
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
+  expect(requests[0]!.payload?.text).toBe('Send this without waiting for the next status poll.');
+  expect(requests[0]!.request_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  expect(requests[0]!.signature).toMatch(/^[A-Za-z0-9_-]+$/u);
+  releaseReply();
+
+  await expect(page.getByText('The server accepted this message immediately.', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toHaveCount(0);
+  await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(1);
+  await expect(page.locator('main[data-brain-state]')).toHaveAttribute('data-brain-state', 'degraded');
+});
+
+test('refused online delivery survives reload and Try delivery preserves the queued request identity', async ({ page }) => {
+  await installStaleOwnerFixture(page);
+  const requests: MiniBrainSyncRequest[] = [];
+  await page.route('**/api/brain/mobile/sync', async route => {
+    const request = route.request().postDataJSON() as MiniBrainSyncRequest;
+    if (request.operation !== 'append') return fulfillSync(route, request, [], null, 'empty');
+    requests.push(request);
+    if (requests.length === 1) return route.fulfill({ status: 503, json: {
+      error: 'Delivery is temporarily unavailable. Your message is saved on this device.',
+      code: 'BRAIN_RUNTIME_UNAVAILABLE',
+    } });
+    await fulfillSync(route, request, completedTurn(request, 'The original saved request has now arrived.'));
+  });
+
+  await page.goto('/brain');
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Keep this exact message and request through a failed delivery.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Conversation with Apocrypha' }).getByText('Delivery is temporarily unavailable. Your message is saved on this device. (BRAIN_RUNTIME_UNAVAILABLE)', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toBeVisible();
+  await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+  const first = requests[0]!;
+
+  await page.reload();
+  await expect(composer).toBeEnabled();
+  await expect(page.getByText('1 message waiting')).toBeVisible();
+  await expect(page.getByText('Keep this exact message and request through a failed delivery.', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
+  const retry = page.getByRole('button', { name: 'Try delivery', exact: true });
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(page.getByText('The original saved request has now arrived.', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toMatchObject({
+    request_id: first.request_id, session_id: first.session_id, base_cursor: first.base_cursor,
+    payload: first.payload, payload_digest: first.payload_digest, device_id: first.device_id,
+  });
+  expect(requests[1]!.sequence).toBeGreaterThan(first.sequence);
+  await expect(page.getByText('1 message waiting')).toHaveCount(0);
+  await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
+});
+
+test('online history conflict keeps the original base through reconnect until Retry on current history is chosen', async ({ page, context }) => {
+  await installStaleOwnerFixture(page);
+  const requests: MiniBrainSyncRequest[] = [];
+  const newerCursor = 'c'.repeat(64);
+  let historyPulls = 0;
+  const newerMessages = [
+    { role: 'user', content: 'A previous message arrived from another device.',
+      request_id: '11111111-1111-4111-8111-111111111111', event_digest: '1'.repeat(64), recorded_at: '2026-09-06T00:00:00.000Z' },
+    { role: 'assistant', content: 'The newer history is available to review.',
+      request_id: '11111111-1111-4111-8111-111111111111', event_digest: '2'.repeat(64), recorded_at: '2026-09-06T00:00:00.500Z' },
+  ];
+  await page.route('**/api/brain/mobile/sync', async route => {
+    const request = route.request().postDataJSON() as MiniBrainSyncRequest;
+    if (request.operation === 'pull') {
+      historyPulls += 1;
+      return fulfillSync(route, request, newerMessages, newerCursor, 'advanced');
+    }
+    requests.push(request);
+    if (requests.length === 1) return route.fulfill({ status: 409, json: {
+      error: 'This conversation has newer history.', code: 'BRAIN_SYNC_CONFLICT',
+    } });
+    await fulfillSync(route, request, [...newerMessages, ...completedTurn(request, 'Continued after the explicit history review.')]);
+  });
+
+  await page.goto('/brain');
+  const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Keep my queued message while I review the newer history.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('The newer history is available to review.', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 message waiting')).toBeVisible();
+  const retry = page.getByRole('button', { name: 'Retry on current history', exact: true });
+  await expect(retry).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Try delivery', exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]!.base_cursor).toBeNull();
+
+  await page.route('**/api/brain/runtime/status', route => route.fulfill({ status: 200, json: {
+    schema_version: 'apocky.owner-brain.runtime-status.v1', status: 'live', reason_code: null,
+    observed_at: '2026-09-06T00:00:03.000Z', latency_ms: 5, upstream_status: 200,
+    served_by: 'fixture', ts: '2026-09-06T00:00:03.000Z',
+  } }));
+  await context.setOffline(true);
+  await expect(page.getByRole('button', { name: 'Save message', exact: true })).toBeVisible();
+  await context.setOffline(false);
+  await expect(page.getByRole('button', { name: 'Desktop connected', exact: true })).toBeVisible();
+  await expect.poll(() => historyPulls).toBeGreaterThanOrEqual(2);
+  await expect(page.getByRole('log')).toHaveAttribute('aria-busy', 'false');
+  await expect(retry).toBeEnabled();
+  expect(requests).toHaveLength(1);
+
+  await retry.click();
+  await expect(page.getByText('Continued after the explicit history review.', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toMatchObject({
+    request_id: requests[0]!.request_id, session_id: requests[0]!.session_id,
+    payload: requests[0]!.payload, base_cursor: newerCursor,
+  });
+  await expect(page.getByText('1 message waiting')).toHaveCount(0);
+});
+
+test('offline user-only queue receives the actual reply after reconnecting while runtime status stays degraded', async ({ page, context }) => {
   const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const initialRequestId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const initialMessages = [
@@ -199,12 +402,11 @@ test('offline user-only queue receives the actual desktop reply after reconnecti
       served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
     }),
   }));
-  let connected = false;
   await page.route('**/api/brain/runtime/status', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({
-      schema_version: 'apocky.owner-brain.runtime-status.v1', status: connected ? 'live' : 'degraded', reason_code: connected ? null : 'BRAIN_OFFLINE',
+      schema_version: 'apocky.owner-brain.runtime-status.v1', status: 'degraded', reason_code: 'BRAIN_RUNTIME_STATUS_UNAVAILABLE',
       observed_at: '2026-09-04T20:00:00.000Z', latency_ms: 5, upstream_status: 200,
       served_by: 'fixture', ts: '2026-09-04T20:00:00.000Z',
     }),
@@ -266,17 +468,16 @@ test('offline user-only queue receives the actual desktop reply after reconnecti
   const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
   await expect(composer).toBeEnabled();
   await context.setOffline(true);
-  await expect(page.getByRole('button', { name: 'Queue message', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save message', exact: true })).toBeVisible();
   await composer.fill('Carry this exact request across the device boundary.');
-  await page.getByRole('button', { name: 'Queue message', exact: true }).click();
+  await page.getByRole('button', { name: 'Save message', exact: true }).click();
   await expect(page.getByRole('log').locator('article[data-role="user"]')).toHaveCount(1);
   await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
   await expect(page.getByText('1 message waiting')).toBeVisible();
   expect(appendRequestId).toBe('');
-  connected = true;
   await context.setOffline(false);
   await expect(page.getByText('This answer survived the signed queue and G12 readback.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Desktop connected', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Waiting for desktop', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await expect(page.getByText('1 message waiting')).toHaveCount(0);
   await page.getByRole('button', { name: 'Conversation settings', exact: true }).click();
@@ -376,6 +577,10 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
     }),
   }));
 
+  await page.route('**/api/brain/mobile/sync', route => route.fulfill({ status: 503, json: {
+    error: 'Delivery is temporarily unavailable. Your message is saved on this device.', code: 'BRAIN_RUNTIME_UNAVAILABLE',
+  } }));
+
   await page.goto('/');
   await page.evaluate(async () => {
     const legacy = await navigator.serviceWorker.register('/brain-sw.js', { scope: '/' });
@@ -409,7 +614,7 @@ test('@mobile installed Mini Brain restores an encrypted queued worldline offlin
   const composer = page.getByRole('textbox', { name: 'Message Apocrypha' });
   await expect(composer).toBeEnabled();
   await composer.fill('What is the smallest reversible move?');
-  await page.getByRole('button', { name: 'Queue message' }).click();
+  await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('1 message waiting')).toBeVisible();
   await expect(page.getByRole('log').locator('article[data-role="assistant"]')).toHaveCount(0);
 

@@ -1,0 +1,60 @@
+{
+  "schema": "apocky.immediate-send.release-scope.v1",
+  "status": "current730sourcebaseline; owned2filedeliveryfix",
+  "repo": "C:/Users/Apocky/source/worktrees/codex-apockalypsis-20260905",
+  "appPrefix": "cssl-edge/",
+  "branch": "codex/codex-apockalypsis-20260905",
+  "remote": "https://github.com/Apocky/CSSL3.git",
+  "project": "prj_7G4FJtQBrPeWJ2Vo00jTR3jbKiO7",
+  "team": "team_Y6LfW90oecok9MxGTNoyA3Y5",
+  "scope": "shawn-bakers-projects-cb1c9715",
+  "aliases": [
+    "apocky.com",
+    "www.apocky.com"
+  ],
+  "baseline": {
+    "id": "dpl_F2JJV5LqTPdULpm6QYkztzAjxAQf",
+    "app": "C:/Users/Apocky/AppData/Local/Temp/apocky-chat-room-33J8JX/app",
+    "envelope": "C:/Users/Apocky/AppData/Local/Temp/apocky-chat-room-33J8JX/deployment-body.json",
+    "envelopeSha256": "c7339d912734912e3ac044ff00eb5f55a0dad29772884e292e662744e32ccdec",
+    "manifest": "C:/Users/Apocky/AppData/Local/Temp/apocky-chat-room-33J8JX/manifest.json",
+    "manifestSha256": "3d02b3ce1ad5a05cf698a447b92b64184ca56b7258c6db8ad80ca8e180d8b7b2"
+  },
+  "counts": {
+    "baseline": 730,
+    "retained": 728,
+    "replaced": 2,
+    "added": 0,
+    "total": 730
+  },
+  "overlays": [
+    {
+      "file": "components/brain/BrainExperience.tsx",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 60789,
+        "sha1": "8892871ba06e72d0f0ac475c0fc0200afd585c48",
+        "sha256": "49fec6288e92abd074c7f7e155f5992c3b8cd61164759ee09a3f5906e27e39bd"
+      },
+      "expected": {
+        "bytes": 61283,
+        "sha1": "dd2e4d12f8298e29ce06d78865778163f9a1bcee",
+        "sha256": "0f5e310bf622d5074b0bb3cb153e8efdbdfcf584ffece03ef9165cf87de8067b"
+      }
+    },
+    {
+      "file": "tests/e2e/brain.spec.ts",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 28192,
+        "sha1": "ba19b69c8d01810228a53337d233b7de4465bdbd",
+        "sha256": "cdb8e0885c00b73eb7d0ea90921029334a9e5f8c62c658dc3afc0b93defec01a"
+      },
+      "expected": {
+        "bytes": 40847,
+        "sha1": "9c1377e3ca16cee216576d84dd5cfee359063b44",
+        "sha256": "9e9b185e117a71c978ad24f35655b2e66b9b31e6d6038de438fbe8dce2014ba0"
+      }
+    }
+  ]
+}
