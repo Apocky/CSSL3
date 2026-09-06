@@ -1,0 +1,6 @@
+// § N2 byte widening oracle ; synthetic scalar reads, no state/effects.
+pub fn byte_unsigned(src : &[u8; 1]) -> i64 { return src[0] as i64; }
+pub fn byte_signed(src : &[i8; 1]) -> i64 { return src[0] as i64; }
+pub fn byte_alias(src : &[u8; 1]) -> i64 { let value = src[0]; return value as i64; }
+pub fn unsigned_scalar(value : u8) -> i64 { return value as i64; }
+pub fn signed_scalar(value : i8) -> i64 { return value as i64; }

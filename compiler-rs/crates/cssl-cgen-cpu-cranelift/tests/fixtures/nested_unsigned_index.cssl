@@ -1,0 +1,2 @@
+pub fn nested_index(src : &[u8; 300], ix : &[u8; 1]) -> u8 { return src[ix[0]]; }
+pub fn nested_alias(src : &[u8; 300], ix : &[u8; 1]) -> u8 { let j = ix[0]; return src[j]; }

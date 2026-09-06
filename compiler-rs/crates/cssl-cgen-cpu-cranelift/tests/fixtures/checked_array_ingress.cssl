@@ -1,0 +1,39 @@
+// § N2 checked.array.ingress ; synthetic compiler.execution.fixture.
+// I> owner=root ; authority.NONE ; effects.NONE ; writes.NONE.
+// W! index.units=elements ; compiler.boundary checks remain execution.PENDING.
+// W! caller supplies live aligned array storage ; no pointer ownership transfer.
+
+pub fn bytesfirst(src : &[u8; 4]) -> u8 {
+    return src[0];
+}
+
+pub fn byteslast(src : &[u8; 4]) -> u8 {
+    return src[3];
+}
+
+pub fn bytesat(src : &[u8; 4], i : i64) -> u8 {
+    return src[i];
+}
+
+// § u8 index 0..255 ; extent300 must retain full width.
+pub fn wideat(src : &[u8; 300], i : u8) -> u8 {
+    return src[i];
+}
+
+pub fn wordsat(src : &[u16; 4], i : i64) -> u16 {
+    return src[i];
+}
+
+pub fn longsat(src : &[i64; 4], i : i64) -> i64 {
+    return src[i];
+}
+
+pub fn doublesat(src : &[f64; 4], i : i64) -> f64 {
+    return src[i];
+}
+
+// § local reference alias retains source extent+element type.
+pub fn aliasat(src : &[u8; 4], i : i64) -> u8 {
+    let alias : &[u8; 4] = src;
+    return alias[i];
+}

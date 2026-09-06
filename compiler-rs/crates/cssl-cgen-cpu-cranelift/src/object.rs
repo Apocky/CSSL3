@@ -2172,6 +2172,7 @@ fn lower_one_op(
         //
         //   For float↔int + same-width int-bitcast we add explicit cranelift
         //   conversions when the result-ty is concretely typed.
+        "arith.extui" | "arith.extsi" => obj_lower_integer_extension(op, builder, value_map, fn_name, ptr_ty),
         "arith.bitcast" => obj_lower_arith_bitcast(op, builder, value_map, fn_name, ptr_ty),
         // § T11-W19-α-CSSLC-FIX16 — `cssl.try` (`?`-operator desugar).
         //   body_lower::lower_try mints `cssl.try %inner` carrying the
@@ -2218,6 +2219,29 @@ fn lower_one_op(
             op_name: other.to_string(),
         }),
     }
+}
+
+// § Explicit integer extension keeps source signedness in the operation, across signless MIR types.
+fn obj_lower_integer_extension(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    if op.operands.len() != 1 || op.results.len() != 1 {
+        return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: format!("{} requires one operand and one result", op.name) });
+    }
+    let result = &op.results[0];
+    let source = *value_map.get(&op.operands[0]).ok_or_else(|| ObjectError::UnknownValueId { fn_name: fn_name.to_owned(), value_id: op.operands[0].0 })?;
+    let source_ty = builder.func.dfg.value_type(source);
+    let target_ty = mir_type_to_cl(&result.ty, ptr_ty).ok_or_else(|| ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: format!("{} requires an integer result", op.name) })?;
+    if !source_ty.is_int() || !target_ty.is_int() || source_ty.bits() >= target_ty.bits() {
+        return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: format!("{} requires strictly wider integer result", op.name) });
+    }
+    let value = if op.name == "arith.extui" { builder.ins().uextend(target_ty, source) } else { builder.ins().sextend(target_ty, source) };
+    value_map.insert(result.id, value);
+    Ok(false)
 }
 
 /// § T11-W19-α-CSSLC-FIX13 — lower `arith.bitcast` (an `as`-cast emitted by
@@ -2281,9 +2305,8 @@ fn obj_lower_arith_bitcast(
         Some(d) if d.is_int() && src_cl.is_int() => {
             // Width-aware int coercion.
             if d.bits() > src_cl.bits() {
-                // Widen via sign-extend (cranelift IR is signedness-erased ;
-                // sextend is correct for both signed + unsigned widening
-                // when the source already represents the canonical bit-pattern).
+                // § Legacy hand-built bitcast retains signed coercion. Source-level
+                // integer widening now arrives as explicit arith.extui/extsi.
                 builder.ins().sextend(d, src_val)
             } else if d.bits() < src_cl.bits() {
                 builder.ins().ireduce(d, src_val)
@@ -3929,7 +3952,38 @@ fn obj_lower_memref_load(
         slot: 0,
         ty: format!("{}", r.ty),
     })?;
-    let addr = obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?;
+    // § Checked-array metadata forms one complete contract; partial/duplicate attributes refuse.
+    let checked_keys = ["array_extent", "index_units", "index_unsigned"];
+    let checked = op.attributes.iter().any(|(name, _)| checked_keys.contains(&name.as_str()));
+    if checked && (checked_keys.iter().any(|key| op.attributes.iter().filter(|(name, _)| name == key).count() != 1)
+        || !op.attributes.iter().any(|(name, value)| name == "index_unsigned" && matches!(value.as_str(), "true" | "false"))) {
+        return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "incomplete or invalid fixed-array metadata".to_owned() });
+    }
+    let addr = if let Some((_, extent_text)) = op.attributes.iter().find(|(name, _)| name == "array_extent") {
+        let extent = extent_text.parse::<u64>().ok().filter(|n| *n <= i64::MAX as u64 / u64::from(elem_ty.bytes()))
+            .ok_or_else(|| ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "invalid fixed-array extent".to_owned() })?;
+        if !op.attributes.iter().any(|(name, value)| name == "index_units" && value == "elements") {
+            return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index unit missing".to_owned() });
+        }
+        let index_id = offset_id.ok_or_else(|| ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index missing".to_owned() })?;
+        let index = *value_map.get(&index_id).ok_or_else(|| ObjectError::UnknownValueId { fn_name: fn_name.to_owned(), value_id: index_id.0 })?;
+        let base = *value_map.get(&ptr_id).ok_or_else(|| ObjectError::UnknownValueId { fn_name: fn_name.to_owned(), value_id: ptr_id.0 })?;
+        let index_ty = builder.func.dfg.value_type(index);
+        if !index_ty.is_int() || index_ty.bits() > ptr_ty.bits() || builder.func.dfg.value_type(base) != ptr_ty {
+            return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index/base width invalid".to_owned() });
+        }
+        let unsigned = op.attributes.iter().any(|(name, value)| name == "index_unsigned" && value == "true");
+        let index = if index_ty.bits() < ptr_ty.bits() {
+            if unsigned { builder.ins().uextend(ptr_ty, index) } else { builder.ins().sextend(ptr_ty, index) }
+        } else { index };
+        // § Unsigned comparison rejects negative signed indices as well as the upper bound.
+        let in_bounds = builder.ins().icmp_imm(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, index, extent as i64);
+        builder.ins().trapz(in_bounds, cranelift_codegen::ir::TrapCode::HEAP_OUT_OF_BOUNDS);
+        let bytes = builder.ins().imul_imm(index, i64::from(elem_ty.bytes()));
+        builder.ins().iadd(base, bytes)
+    } else {
+        obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?
+    };
     let flags = obj_memref_flags(align);
     let v = builder.ins().load(elem_ty, flags, addr, 0);
     value_map.insert(r.id, v);
@@ -5549,6 +5603,68 @@ mod tests {
         module.push_func(f);
         let bytes = emit_object_module(&module).expect("emit ok");
         assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_integer_extensions_accept_explicit_signedness() {
+        for name in ["arith.extui", "arith.extsi"] {
+            for (source, target) in [(IntWidth::I8, IntWidth::I16), (IntWidth::I8, IntWidth::I64), (IntWidth::I16, IntWidth::I64), (IntWidth::I32, IntWidth::I64)] {
+                let mut function = MirFunc::new("extend", vec![MirType::Int(source)], vec![MirType::Int(target)]);
+                function.push_op(MirOp::std(name).with_operand(ValueId(0)).with_result(ValueId(1), MirType::Int(target)));
+                function.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+                let mut module = MirModule::new(); module.push_func(function);
+                let bytes = emit_object_module(&module).expect("explicit extension compiles");
+                assert!(bytes.starts_with(magic_prefix(host_default_format())));
+            }
+        }
+    }
+
+    #[test]
+    fn obj_integer_extensions_reject_equal_narrow_float_and_bad_arity() {
+        for name in ["arith.extui", "arith.extsi"] {
+            for (source, target, operands, results) in [
+                (MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I8), 1, 1),
+                (MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I8), 1, 1),
+                (MirType::Float(FloatWidth::F32), MirType::Int(IntWidth::I64), 1, 1),
+                (MirType::Int(IntWidth::I8), MirType::Float(FloatWidth::F64), 1, 1),
+                (MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I64), 0, 1),
+                (MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I64), 2, 1),
+                (MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I64), 1, 0),
+                (MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I64), 1, 2),
+            ] {
+                let mut function = MirFunc::new("bad_extend", vec![source], vec![target.clone()]);
+                let mut op = MirOp::std(name);
+                for _ in 0..operands { op.operands.push(ValueId(0)); }
+                for index in 0..results { op = op.with_result(ValueId(index + 1), target.clone()); }
+                function.push_op(op);
+                function.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+                let mut module = MirModule::new(); module.push_func(function);
+                assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "{name}: {target:?}, {operands}/{results}");
+            }
+        }
+    }
+
+    #[test]
+    fn obj_checked_array_metadata_requires_complete_unambiguous_contract() {
+        let cases: &[&[(&str, &str)]] = &[
+            &[("index_units", "elements")],
+            &[("index_unsigned", "true")],
+            &[("array_extent", "4"), ("index_units", "elements")],
+            &[("array_extent", "4"), ("index_units", "elements"), ("index_unsigned", "maybe")],
+            &[("array_extent", "4"), ("index_units", "bytes"), ("index_unsigned", "false")],
+            &[("array_extent", "-1"), ("index_units", "elements"), ("index_unsigned", "false")],
+            &[("array_extent", "4"), ("array_extent", "8"), ("index_units", "elements"), ("index_unsigned", "false")],
+        ];
+        for attrs in cases {
+            let mut f = MirFunc::new("bad_array", vec![MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64)], vec![MirType::Int(IntWidth::I8)]);
+            let mut op = MirOp::std("memref.load").with_operand(ValueId(0)).with_operand(ValueId(1)).with_result(ValueId(2), MirType::Int(IntWidth::I8));
+            for (key, value) in *attrs { op.attributes.push(((*key).to_owned(), (*value).to_owned())); }
+            f.push_op(op);
+            f.push_op(MirOp::std("func.return").with_operand(ValueId(2)));
+            let mut module = MirModule::new();
+            module.push_func(f);
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "accepted malformed contract: {attrs:?}");
+        }
     }
 
     #[test]

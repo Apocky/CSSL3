@@ -774,6 +774,15 @@ fn select_select(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
 /// Operand shape per `specs/02_IR.csl § MEMORY-OPS` :
 ///   `(ptr : i64 [, offset : i64]) -> elem-T`.
 fn select_memref_load(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
+    // § Checked-array metadata → refusal; N! erase bounds or element units.
+    if op.attributes.iter().any(|(name, _)| {
+        matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned")
+    }) {
+        return Err(SelectError::UnsupportedOp {
+            fn_name: ctx.src.name.clone(),
+            op: "memref.load: checked array indexing is not implemented by native-x64".to_string(),
+        });
+    }
     if op.operands.is_empty() || op.operands.len() > 2 {
         return Err(SelectError::OperandCountMismatch {
             fn_name: ctx.src.name.clone(),
@@ -1811,6 +1820,46 @@ mod tests {
         let xf = select_function(&m, &m.funcs[0]).unwrap();
         let s = format_func(&xf);
         assert!(s.contains("<- load [v1:ptr]"));
+    }
+
+    #[test]
+    fn memref_load_rejects_checked_array_metadata() {
+        let cases: &[&[(&str, &str)]] = &[
+            &[("array_extent", "4")],
+            &[("index_units", "elements")],
+            &[("index_unsigned", "true")],
+            &[("index_unsigned", "false")],
+            &[("array_extent", "4"), ("index_units", "elements")],
+            &[("array_extent", "invalid")],
+            &[("index_units", "bytes")],
+        ];
+        for (case, attributes) in cases.iter().enumerate() {
+            let name = format!("checked_array_{case}");
+            let mut f = MirFunc::new(name.clone(), vec![i64_ty(), i64_ty()], vec![i32_ty()]);
+            f.next_value_id = 3;
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), i64_ty()),
+                MirValue::new(ValueId(1), i64_ty()),
+            ];
+            let mut load = MirOp::std("memref.load")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), i32_ty());
+            for &(key, value) in *attributes {
+                load.attributes.push((key.to_string(), value.to_string()));
+            }
+            entry.ops.push(load);
+            entry.ops.push(MirOp::std("func.return").with_operand(ValueId(2)));
+            let module = marked_module(f);
+            match select_function(&module, &module.funcs[0]).unwrap_err() {
+                SelectError::UnsupportedOp { fn_name, op } => {
+                    assert_eq!(fn_name, name);
+                    assert!(op.contains("checked array indexing"));
+                }
+                other => panic!("expected checked-array refusal, got {other:?}"),
+            }
+        }
     }
 
     #[test]

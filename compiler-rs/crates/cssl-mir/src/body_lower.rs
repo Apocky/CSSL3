@@ -72,6 +72,14 @@ pub struct BodyLowerCtx<'a> {
     pub trait_impl_table: Option<&'a TraitImplTable>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
+    /// § Source unsignedness for checked indices; signless MIR width alone cannot select extension.
+    pub index_unsigned_vars: HashMap<Symbol, bool>,
+    /// Known source binding contracts for checked array and integer aliases.
+    pub checked_alias_types: HashMap<Symbol, (MirType, bool)>,
+    // § Cast provenance follows actual SSA values, not signless MIR widths or mutable names.
+    pub integer_unsigned_values: HashMap<ValueId, bool>,
+    pub array_unsigned_values: HashMap<ValueId, bool>,
+    pub integer_unsigned_cells: HashMap<ValueId, bool>,
     /// T11-D35 : mapping from HIR vec-param-symbol → N consecutive scalar value-ids
     /// + lane-count + element width. A `vec3<f32>` param `p` maps to `(vec![v0, v1, v2], 3, F32)`.
     /// Kept distinct from [`Self::param_vars`] so stage-0 can dispatch per-op
@@ -171,6 +179,11 @@ impl<'a> BodyLowerCtx<'a> {
             source: None,
             trait_impl_table: None,
             param_vars: HashMap::new(),
+            index_unsigned_vars: HashMap::new(),
+            checked_alias_types: HashMap::new(),
+            integer_unsigned_values: HashMap::new(),
+            array_unsigned_values: HashMap::new(),
+            integer_unsigned_cells: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
             local_cells: HashMap::new(),
@@ -189,6 +202,11 @@ impl<'a> BodyLowerCtx<'a> {
             source: Some(source),
             trait_impl_table: None,
             param_vars: HashMap::new(),
+            index_unsigned_vars: HashMap::new(),
+            checked_alias_types: HashMap::new(),
+            integer_unsigned_values: HashMap::new(),
+            array_unsigned_values: HashMap::new(),
+            integer_unsigned_cells: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
             local_cells: HashMap::new(),
@@ -246,6 +264,11 @@ impl<'a> BodyLowerCtx<'a> {
             source: self.source,
             trait_impl_table: self.trait_impl_table,
             param_vars: self.param_vars.clone(),
+            index_unsigned_vars: self.index_unsigned_vars.clone(),
+            checked_alias_types: self.checked_alias_types.clone(),
+            integer_unsigned_values: self.integer_unsigned_values.clone(),
+            array_unsigned_values: self.array_unsigned_values.clone(),
+            integer_unsigned_cells: self.integer_unsigned_cells.clone(),
             vec_param_vars: self.vec_param_vars.clone(),
             local_vars: self.local_vars.clone(),
             // T11-D318 (W-CC-mut-assign) : INHERIT mutable-cell map so loop
@@ -324,8 +347,25 @@ pub fn lower_fn_body_with_table(
         } else {
             let id = ValueId(next_id);
             next_id = next_id.saturating_add(1);
-            let ty = lower_hir_type_light(interner, &p.ty);
+            let ty = lower_hir_type_at(interner, source, &p.ty);
+            // § Preserve fixed extent in both signature and body; no host-width fallback.
+            mir_fn.params[id.0 as usize] = ty.clone();
+            if let Some(arg) = mir_fn.body.entry_mut().and_then(|entry| entry.args.get_mut(id.0 as usize)) {
+                arg.ty = ty.clone();
+            }
+            if let HirTypeKind::Reference { mutable, .. } = &p.ty.kind {
+                mir_fn.attributes.push((format!("borrow.{}", id.0), if *mutable { "mutable" } else { "shared" }.to_owned()));
+            }
             if let Some(sym) = sym {
+                ctx.index_unsigned_vars.insert(sym, hir_integer_unsigned(interner, &p.ty));
+                if let Some(contract) = checked_alias_type(interner, source, &p.ty) {
+                    match &contract.0 {
+                        MirType::Int(_) => { ctx.integer_unsigned_values.insert(id, contract.1); }
+                        MirType::Memref { elem, .. } if matches!(elem.as_ref(), MirType::Int(_)) => { ctx.array_unsigned_values.insert(id, contract.1); }
+                        _ => {}
+                    }
+                    ctx.checked_alias_types.insert(sym, contract);
+                }
                 ctx.param_vars.insert(sym, (id, ty));
             }
         }
@@ -400,6 +440,9 @@ fn emit_local_load(
     span: Span,
 ) -> (ValueId, MirType) {
     let result_id = ctx.fresh_value_id();
+    if let Some(unsigned) = ctx.integer_unsigned_cells.get(&cell_id).copied() {
+        ctx.integer_unsigned_values.insert(result_id, unsigned);
+    }
     ctx.ops.push(
         MirOp::std("memref.load")
             .with_operand(cell_id)
@@ -417,8 +460,8 @@ fn lower_hir_type_light(interner: &Interner, t: &HirType) -> MirType {
         } if path.len() == 1 => {
             let n = interner.resolve(path[0]);
             match n.as_str() {
-                "i8" => MirType::Int(IntWidth::I8),
-                "i16" => MirType::Int(IntWidth::I16),
+                "i8" | "u8" => MirType::Int(IntWidth::I8),
+                "i16" | "u16" => MirType::Int(IntWidth::I16),
                 "i32" | "u32" | "isize" | "usize" => MirType::Int(IntWidth::I32),
                 "i64" | "u64" => MirType::Int(IntWidth::I64),
                 "f16" => MirType::Float(FloatWidth::F16),
@@ -449,8 +492,72 @@ fn lower_hir_type_light(interner: &Interner, t: &HirType) -> MirType {
         }
         HirTypeKind::Refined { base, .. } => lower_hir_type_light(interner, base),
         HirTypeKind::Reference { inner, .. } => lower_hir_type_light(interner, inner),
+        HirTypeKind::Array { elem, .. } | HirTypeKind::Slice { elem } => MirType::Memref {
+            shape: vec![None], elem: Box::new(lower_hir_type_light(interner, elem)),
+        },
         HirTypeKind::Infer => MirType::None,
         _ => MirType::None,
+    }
+}
+
+// § Source-aware fixed extent; unresolved const expressions stay dynamic and refuse indexed native access.
+fn lower_hir_type_at(interner: &Interner, source: Option<&SourceFile>, t: &HirType) -> MirType {
+    match &t.kind {
+        HirTypeKind::Reference { inner, .. } => lower_hir_type_at(interner, source, inner),
+        HirTypeKind::Refined { base, .. } => lower_hir_type_at(interner, source, base),
+        HirTypeKind::Array { elem, len } => {
+            let extent = if matches!(&len.kind, HirExprKind::Literal(lit) if matches!(lit.kind, HirLiteralKind::Int)) {
+                source.and_then(|s| s.slice(len.span.start, len.span.end))
+                    .and_then(parse_int_literal).and_then(|n| u64::try_from(n).ok())
+            } else { None };
+            MirType::Memref { shape: vec![extent], elem: Box::new(lower_hir_type_light(interner, elem)) }
+        }
+        _ => lower_hir_type_light(interner, t),
+    }
+}
+
+// § Exact binding contracts; unknown RHS never inherits an asserted backing extent.
+fn checked_alias_type(
+    interner: &Interner, source: Option<&SourceFile>, ty: &HirType,
+) -> Option<(MirType, bool)> {
+    match &ty.kind {
+        HirTypeKind::Reference { inner, .. } => checked_alias_type(interner, source, inner),
+        HirTypeKind::Refined { base, .. } => checked_alias_type(interner, source, base),
+        HirTypeKind::Array { elem, .. } => {
+            let lowered = lower_hir_type_at(interner, source, ty);
+            if let MirType::Memref { shape, elem: lowered_elem } = &lowered {
+                if matches!(shape.as_slice(), [Some(_)])
+                    && crate::memref_typed::TypedMemrefElem::from_mir_type(lowered_elem).is_some()
+                {
+                    return Some((lowered, hir_integer_unsigned(interner, elem)));
+                }
+            }
+            None
+        }
+        HirTypeKind::Path { .. } => {
+            let lowered = lower_hir_type_at(interner, source, ty);
+            matches!(lowered, MirType::Int(_))
+                .then(|| (lowered, hir_integer_unsigned(interner, ty)))
+        }
+        _ => None,
+    }
+}
+
+// § Literal initialization keeps the existing contextual-width path; computed integers require exact declared contract.
+fn integer_literal_span(expr: &HirExpr) -> Option<(Span, bool)> {
+    match &expr.kind {
+        HirExprKind::Literal(lit) if matches!(lit.kind, HirLiteralKind::Int) => Some((lit.span, false)),
+        HirExprKind::Paren(inner) => integer_literal_span(inner),
+        HirExprKind::Unary { op: HirUnOp::Neg, operand } => integer_literal_span(operand).map(|(span, negative)| (span, !negative)),
+        _ => None,
+    }
+}
+
+fn alias_binding_symbol(expr: &HirExpr) -> Option<Symbol> {
+    match &expr.kind {
+        HirExprKind::Path { segments, .. } if segments.len() == 1 => Some(segments[0]),
+        HirExprKind::Paren(inner) => alias_binding_symbol(inner),
+        _ => None,
     }
 }
 
@@ -535,6 +642,54 @@ fn lower_block(ctx: &mut BodyLowerCtx<'_>, block: &HirBlock) -> Option<(ValueId,
     block.trailing.as_ref().and_then(|e| lower_expr(ctx, e))
 }
 
+// § Integer local storage receives exact declared-width literals; no partial-width store or unchecked truncation.
+fn lower_contextual_integer_literal(
+    ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr, target: &MirType, unsigned: bool,
+) -> Option<Result<(ValueId, MirType), ValueId>> {
+    let (literal_span, negative) = integer_literal_span(expr)?;
+    let MirType::Int(width) = target else { return None; };
+    let bits = match width { IntWidth::I1 => 1, IntWidth::I8 => 8, IntWidth::I16 => 16, IntWidth::I32 => 32, IntWidth::I64 | IntWidth::Index => 64 };
+    let parsed = (|| -> Result<i64, &'static str> {
+        let raw = ctx.source.and_then(|source| source.slice(literal_span.start, literal_span.end))
+            .ok_or("integer literal source unavailable")?.trim();
+        let digits = strip_int_type_suffix(raw);
+        let suffix = &raw[digits.len()..];
+        if !suffix.is_empty() {
+            let suffix_unsigned = suffix.starts_with('u');
+            let suffix_bits = if matches!(suffix, "isize" | "usize") { Some(64) } else { suffix[1..].parse::<u32>().ok() };
+            if suffix_unsigned != unsigned || suffix_bits != Some(bits) { return Err("integer literal suffix differs from declared type"); }
+        }
+        let cleaned: String = digits.chars().filter(|character| *character != '_').collect();
+        let (radix, body) = if let Some(body) = cleaned.strip_prefix("0x").or_else(|| cleaned.strip_prefix("0X")) { (16, body) }
+            else if let Some(body) = cleaned.strip_prefix("0b").or_else(|| cleaned.strip_prefix("0B")) { (2, body) }
+            else if let Some(body) = cleaned.strip_prefix("0o").or_else(|| cleaned.strip_prefix("0O")) { (8, body) }
+            else { (10, cleaned.as_str()) };
+        let magnitude = u128::from_str_radix(body, radix).map_err(|_| "invalid or oversized integer literal")?;
+        if unsigned {
+            if negative || magnitude > ((1_u128 << bits) - 1) { return Err("integer literal outside declared unsigned range"); }
+            Ok((magnitude as u64) as i64)
+        } else {
+            let limit = 1_u128 << (bits - 1);
+            if (negative && magnitude > limit) || (!negative && magnitude >= limit) { return Err("integer literal outside declared signed range"); }
+            Ok(if negative { -(magnitude as i128) as i64 } else { magnitude as i64 })
+        }
+    })();
+    let id = ctx.fresh_value_id();
+    match parsed {
+        Ok(value) => {
+            ctx.integer_unsigned_values.insert(id, unsigned);
+            ctx.ops.push(MirOp::std("arith.constant").with_result(id, target.clone())
+                .with_attribute("value", value.to_string()).with_attribute("source_loc", format!("{:?}", expr.span)));
+            Some(Ok((id, target.clone())))
+        }
+        Err(reason) => {
+            ctx.ops.push(MirOp::std("cssl.integer.literal.contract.unverified").with_result(id, MirType::None)
+                .with_attribute("reason", reason).with_attribute("source_loc", format!("{:?}", expr.span)));
+            Some(Err(id))
+        }
+    }
+}
+
 fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
     match &stmt.kind {
         HirStmtKind::Let {
@@ -544,7 +699,14 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
             ..
         } => {
             if let Some(e) = value {
-                if let Some((vid, ty)) = lower_expr(ctx, e) {
+                let integer_contract = declared_ty.as_ref().and_then(|ty| checked_alias_type(ctx.interner, ctx.source, ty))
+                    .filter(|(ty, _)| matches!(ty, MirType::Int(_)));
+                let lowered = if let Some((target, unsigned)) = integer_contract {
+                    match lower_contextual_integer_literal(ctx, e, &target, unsigned) {
+                        Some(Ok(value)) => Some(value), Some(Err(_)) => return, None => lower_expr(ctx, e),
+                    }
+                } else { lower_expr(ctx, e) };
+                if let Some((vid, ty)) = lowered {
                     // § T11-D77 (S6-C5 redo) : bind the let-pattern's name → its
                     //   lowered ValueId so subsequent path-refs resolve, AND so
                     //   closure free-var analysis can map a captured local to
@@ -574,7 +736,46 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
                     if let Some((sym, mutable)) = extract_binding_pattern(pat) {
                         let final_ty = declared_ty
                             .as_ref()
-                            .map_or(ty.clone(), |t| lower_hir_type_light(ctx.interner, t));
+                            .map_or(ty.clone(), |t| lower_hir_type_at(ctx.interner, ctx.source, t));
+                        let source_binding = alias_binding_symbol(e);
+                        let source_contract = source_binding
+                            .and_then(|source_sym| ctx.checked_alias_types.get(&source_sym).cloned())
+                            .or_else(|| if matches!(&ty, MirType::Int(_)) {
+                                ctx.integer_unsigned_values.get(&vid).map(|unsigned| (ty.clone(), *unsigned))
+                            } else { None });
+                        let declared_contract = declared_ty.as_ref()
+                            .and_then(|t| checked_alias_type(ctx.interner, ctx.source, t));
+                        let array_alias = matches!(&final_ty, MirType::Memref { .. });
+                        // § Contextual literals already carry exact type+sign; unknown computed sources never bypass admission.
+                        let declared_integer_alias = declared_ty.is_some() && matches!(&final_ty, MirType::Int(_));
+                        let must_match = (declared_ty.is_some() && array_alias) || declared_integer_alias;
+                        let refusal = if mutable && array_alias {
+                            Some("mutable checked-array aliases require validated assignment contracts")
+                        } else if must_match && (declared_contract.is_none()
+                            || source_contract != declared_contract || ty != final_ty) {
+                            Some("checked alias requires the exact known source extent, element type, width, and signedness")
+                        } else {
+                            None
+                        };
+                        if let Some(reason) = refusal {
+                            let id = ctx.fresh_value_id();
+                            ctx.ops.push(MirOp::std("cssl.alias.contract.unverified")
+                                .with_result(id, MirType::None)
+                                .with_attribute("reason", reason)
+                                .with_attribute("source_loc", format!("{:?}", stmt.span)));
+                            ctx.local_cells.remove(&sym);
+                            ctx.checked_alias_types.remove(&sym);
+                            ctx.index_unsigned_vars.remove(&sym);
+                            ctx.local_vars.insert(sym, (id, MirType::None));
+                            return;
+                        }
+                        let unsigned = declared_ty.as_ref().map_or_else(|| index_expr_unsigned(ctx, e), |t| hir_integer_unsigned(ctx.interner, t));
+                        ctx.index_unsigned_vars.insert(sym, unsigned);
+                        if let Some(contract) = declared_contract.clone().or(source_contract) {
+                            ctx.checked_alias_types.insert(sym, contract);
+                        } else {
+                            ctx.checked_alias_types.remove(&sym);
+                        }
                         if mutable {
                             // § T11-D318 — declare the stack-slot cell + seed
                             //   it with the rhs-value. Register `x` in
@@ -584,6 +785,11 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
                             //   `cssl.local.alloca` lowering can compute the
                             //   right StackSlotData size + alignment.
                             let cell_id = emit_local_alloca(ctx, &final_ty, stmt.span);
+                            if matches!(&final_ty, MirType::Int(_)) && final_ty == ty {
+                                let unsigned = declared_contract.as_ref().map(|contract| contract.1)
+                                    .or_else(|| ctx.integer_unsigned_values.get(&vid).copied());
+                                if let Some(unsigned) = unsigned { ctx.integer_unsigned_cells.insert(cell_id, unsigned); }
+                            }
                             emit_local_store(ctx, cell_id, vid, stmt.span);
                             ctx.local_cells.insert(sym, (cell_id, final_ty.clone()));
                             // Also keep `local_vars` populated with the LATEST
@@ -846,22 +1052,71 @@ fn lower_field(
     (id, ty)
 }
 
+// § Track source sign at checked memory ingress; broader unsigned arithmetic stays a separate gate.
+fn hir_integer_unsigned(interner: &Interner, ty: &HirType) -> bool {
+    match &ty.kind {
+        HirTypeKind::Path { path, .. } if path.len() == 1 => matches!(interner.resolve(path[0]).as_str(), "u8" | "u16" | "u32" | "u64" | "usize" | "char"),
+        HirTypeKind::Refined { base, .. } => hir_integer_unsigned(interner, base),
+        _ => false,
+    }
+}
+fn index_expr_unsigned(ctx: &BodyLowerCtx<'_>, expr: &HirExpr) -> bool {
+    match &expr.kind {
+        HirExprKind::Path { segments, .. } if segments.len() == 1 => ctx.index_unsigned_vars.get(&segments[0]).copied().unwrap_or(false),
+        HirExprKind::Paren(inner) => index_expr_unsigned(ctx, inner),
+        HirExprKind::Cast { ty, .. } => hir_integer_unsigned(ctx.interner, ty),
+        HirExprKind::Binary { lhs, rhs, .. } => index_expr_unsigned(ctx, lhs) || index_expr_unsigned(ctx, rhs),
+        _ => false,
+    }
+}
+
 fn lower_index(
-    ctx: &mut BodyLowerCtx<'_>,
-    obj: &HirExpr,
-    index: &HirExpr,
-    span: Span,
+    ctx: &mut BodyLowerCtx<'_>, obj: &HirExpr, index: &HirExpr, span: Span,
 ) -> (ValueId, MirType) {
-    let (obj_id, _) = lower_expr(ctx, obj).unwrap_or((ctx.fresh_value_id(), MirType::None));
-    let (idx_id, _) = lower_expr(ctx, index).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    // § Existing vec parameters are flattened scalar lanes, never an address to dereference.
+    if let HirExprKind::Path { segments, .. } = &obj.kind {
+        if segments.len() == 1 {
+            if let Some((lanes, _, width)) = ctx.vec_param_vars.get(&segments[0]) {
+                if matches!(&index.kind, HirExprKind::Literal(lit) if matches!(lit.kind, HirLiteralKind::Int)) {
+                    if let Some(lane) = ctx.source.and_then(|s| s.slice(index.span.start, index.span.end)).and_then(parse_int_literal)
+                        .and_then(|n| usize::try_from(n).ok()).and_then(|n| lanes.get(n)).copied() {
+                        return (lane, MirType::Float(*width));
+                    }
+                }
+            }
+        }
+    }
+    let (obj_id, obj_ty) = lower_expr(ctx, obj).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let (idx_id, idx_ty) = lower_expr(ctx, index).unwrap_or((ctx.fresh_value_id(), MirType::None));
     let id = ctx.fresh_value_id();
-    ctx.ops.push(
-        MirOp::std("memref.load")
-            .with_operand(obj_id)
-            .with_operand(idx_id)
-            .with_result(id, MirType::None)
-            .with_attribute("source_loc", format!("{span:?}")),
-    );
+    // § Fixed scalar array ingress only. Dynamic descriptors need an admitted length ABI.
+    if let MirType::Memref { shape, elem } = obj_ty {
+        if let [Some(extent)] = shape.as_slice() {
+            if crate::memref_typed::TypedMemrefElem::from_mir_type(&elem).is_some()
+                && matches!(idx_ty, MirType::Int(_)) {
+                // § Index extension follows the actual lowered value, including nested loads and aliases.
+                let Some(index_unsigned) = ctx.integer_unsigned_values.get(&idx_id).copied() else {
+                    ctx.ops.push(MirOp::std("cssl.array.index.signedness.unverified")
+                        .with_operand(obj_id).with_operand(idx_id).with_result(id, MirType::None)
+                        .with_attribute("source_loc", format!("{span:?}")));
+                    return (id, MirType::None);
+                };
+                let ty = *elem;
+                if matches!(&ty, MirType::Int(_)) {
+                    if let Some(unsigned) = ctx.array_unsigned_values.get(&obj_id).copied() {
+                        ctx.integer_unsigned_values.insert(id, unsigned);
+                    }
+                }
+                ctx.ops.push(MirOp::std("memref.load").with_operand(obj_id).with_operand(idx_id)
+                    .with_result(id, ty.clone()).with_attribute("array_extent", extent.to_string())
+                    .with_attribute("index_units", "elements").with_attribute("index_unsigned", index_unsigned.to_string())
+                    .with_attribute("source_loc", format!("{span:?}")));
+                return (id, ty);
+            }
+        }
+    }
+    ctx.ops.push(MirOp::std("cssl.array.index.unresolved").with_operand(obj_id).with_operand(idx_id)
+        .with_result(id, MirType::None).with_attribute("source_loc", format!("{span:?}")));
     (id, MirType::None)
 }
 
@@ -872,6 +1127,12 @@ fn lower_assign(
     rhs: &HirExpr,
     span: Span,
 ) -> (ValueId, MirType) {
+    // § Array writes require checked mutable-borrow and output-buffer lowering; fail closed meanwhile.
+    if matches!(&lhs.kind, HirExprKind::Index { .. }) {
+        let id = ctx.fresh_value_id();
+        ctx.ops.push(MirOp::std("cssl.array.store.unimplemented").with_result(id, MirType::None));
+        return (id, MirType::None);
+    }
     // § T11-D318 (W-CC-mut-assign) — Detect path-LHS to a `let mut` cell
     //   FIRST, before lowering the LHS as an expression. Lowering the LHS
     //   as an expression would emit a stray `memref.load cell` op whose
@@ -883,8 +1144,21 @@ fn lower_assign(
     if let HirExprKind::Path { segments, .. } = &lhs.kind {
         if segments.len() == 1 {
             if let Some((cell_id, elem_ty)) = ctx.local_cells.get(&segments[0]).cloned() {
-                let (rhs_id, _rhs_ty) =
-                    lower_expr(ctx, rhs).unwrap_or((ctx.fresh_value_id(), elem_ty.clone()));
+                let cell_unsigned = ctx.integer_unsigned_cells.get(&cell_id).copied();
+                let contextual = cell_unsigned.and_then(|unsigned| lower_contextual_integer_literal(ctx, rhs, &elem_ty, unsigned));
+                let (rhs_id, rhs_ty) = match contextual {
+                    Some(Ok(value)) => value,
+                    Some(Err(id)) => return (id, MirType::None),
+                    None => lower_expr(ctx, rhs).unwrap_or((ctx.fresh_value_id(), MirType::None)),
+                };
+                if matches!(&elem_ty, MirType::Int(_)) && (rhs_ty != elem_ty || cell_unsigned.is_none()
+                    || ctx.integer_unsigned_values.get(&rhs_id).copied() != cell_unsigned) {
+                    let id = ctx.fresh_value_id();
+                    ctx.ops.push(MirOp::std("cssl.integer.assignment.contract.unverified").with_result(id, MirType::None)
+                        .with_attribute("reason", "integer assignment requires exact cell width and signedness; use explicit conversion")
+                        .with_attribute("source_loc", format!("{span:?}")));
+                    return (id, MirType::None);
+                }
                 let value_to_store = match op {
                     None => rhs_id,
                     Some(bin_op) => {
@@ -988,7 +1262,7 @@ fn emit_compound_op(
 }
 
 fn lower_cast(ctx: &mut BodyLowerCtx<'_>, inner: &HirExpr, target_hir_ty: &cssl_hir::HirType, span: Span) -> (ValueId, MirType) {
-    let (in_id, _) = lower_expr(ctx, inner).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let (in_id, in_ty) = lower_expr(ctx, inner).unwrap_or((ctx.fresh_value_id(), MirType::None));
     let id = ctx.fresh_value_id();
     // § FIX 2026-05-06 : thread the target-type from the `as`-syntax through to the MIR result-type
     //   so the cgen-side bitcast handler can emit a real numerical conversion (fcvt-from-sint /
@@ -996,8 +1270,26 @@ fn lower_cast(ctx: &mut BodyLowerCtx<'_>, inner: &HirExpr, target_hir_ty: &cssl_
     //   Prior behavior emitted MirType::None, leaving cgen no choice but to-pass-the-source-bits-unchanged
     //   (silently producing wrong results for `(int) as f32` in loops).
     let target_mir_ty = lower_hir_type_light(ctx.interner, target_hir_ty);
+    // § Array casts cannot manufacture a checked backing buffer.
+    if matches!(&target_mir_ty, MirType::Memref { .. }) {
+        ctx.ops.push(MirOp::std("cssl.array.cast.unverified")
+            .with_result(id, MirType::None)
+            .with_attribute("source_loc", format!("{span:?}")));
+        return (id, MirType::None);
+    }
+    let widening = matches!((&in_ty, &target_mir_ty), (MirType::Int(src), MirType::Int(dst)) if src.natural_alignment() < dst.natural_alignment());
+    let op_name = if widening {
+        match ctx.integer_unsigned_values.get(&in_id) {
+            Some(true) => "arith.extui",
+            Some(false) => "arith.extsi",
+            None => "cssl.cast.integer.signedness.unverified",
+        }
+    } else { "arith.bitcast" };
+    if matches!(&target_mir_ty, MirType::Int(_)) {
+        ctx.integer_unsigned_values.insert(id, hir_integer_unsigned(ctx.interner, target_hir_ty));
+    }
     ctx.ops.push(
-        MirOp::std("arith.bitcast")
+        MirOp::std(op_name)
             .with_operand(in_id)
             .with_result(id, target_mir_ty.clone())
             .with_attribute("source_loc", format!("{span:?}")),
@@ -2080,6 +2372,14 @@ fn lower_literal(ctx: &mut BodyLowerCtx<'_>, lit: &HirLiteral, span: Span) -> (V
         HirLiteralKind::Unit => (MirType::None, "unit".into()),
     };
     let id = ctx.fresh_value_id();
+    // § Existing integer literals are I32; admit signed provenance only for exact unsuffixed values.
+    if matches!(lit.kind, HirLiteralKind::Int) {
+        if let Some(raw) = slice {
+            if strip_int_type_suffix(raw) == raw && parse_int_literal(raw).and_then(|n| i32::try_from(n).ok()).is_some() {
+                ctx.integer_unsigned_values.insert(id, false);
+            }
+        }
+    }
     ctx.ops.push(
         MirOp::std("arith.constant")
             .with_result(id, ty.clone())
@@ -2242,7 +2542,7 @@ fn lower_binary(
     span: Span,
 ) -> Option<(ValueId, MirType)> {
     let (lhs_id, lhs_ty) = lower_expr(ctx, lhs)?;
-    let (rhs_id, _rhs_ty) = lower_expr(ctx, rhs)?;
+    let (rhs_id, rhs_ty) = lower_expr(ctx, rhs)?;
     let is_float = matches!(lhs_ty, MirType::Float(_));
     let op_name = match (op, is_float) {
         (HirBinOp::Add, false) => "arith.addi",
@@ -2291,6 +2591,14 @@ fn lower_binary(
         _ => lhs_ty.clone(),
     };
     let id = ctx.fresh_value_id();
+    if matches!(&result_ty, MirType::Int(_)) {
+        if let (Some(left), Some(right)) = (ctx.integer_unsigned_values.get(&lhs_id), ctx.integer_unsigned_values.get(&rhs_id)) {
+            // § Existing backend sign-extends signed integer pairs. Unsigned mixed-width arithmetic remains unproved.
+            if left == right && (lhs_ty == rhs_ty || (!*left && matches!((&lhs_ty, &rhs_ty), (MirType::Int(left_width), MirType::Int(right_width)) if left_width.natural_alignment() >= right_width.natural_alignment()))) {
+                ctx.integer_unsigned_values.insert(id, *left);
+            }
+        }
+    }
     ctx.ops.push(
         MirOp::std(op_name)
             .with_operand(lhs_id)
@@ -2337,6 +2645,13 @@ fn lower_unary(
         HirUnOp::Deref => "cssl.deref",
     };
     let id = ctx.fresh_value_id();
+    if matches!(&in_ty, MirType::Int(_)) {
+        if let Some(unsigned) = ctx.integer_unsigned_values.get(&in_id).copied() {
+            if matches!(op, HirUnOp::Not | HirUnOp::BitNot) || (matches!(op, HirUnOp::Neg) && !unsigned) {
+                ctx.integer_unsigned_values.insert(id, unsigned);
+            }
+        }
+    }
     ctx.ops.push(
         MirOp::std(op_name)
             .with_operand(in_id)
@@ -6421,6 +6736,311 @@ mod tests {
     }
 
     #[test]
+    fn declared_integer_initializer_cannot_bypass_unknown_source_contract() {
+        for source in [
+            "fn bad(a: u8, b: i8) -> i64 { let mut value: i64 = a + b; value }",
+            "fn bad(a: u8, b: i8) -> i8 { let mut value: i8 = a + b; value }",
+            "fn bad(flag: bool) -> i64 { let mut value: i64 = if flag { 0 } else { 1 }; value }",
+            "fn bad(flag: bool) -> i32 { let value: i32 = if flag { 0 } else { 1 }; value }",
+        ] {
+            let (f, _) = lower_one(source);
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.alias.contract.unverified"), "{source}");
+            assert!(!names.contains(&"cssl.local.alloca") && !names.contains(&"memref.store"), "{source}");
+        }
+        for source in [
+            "fn good(value: u8) -> i64 { let mut widened: i64 = value as i64; widened }",
+            "fn good(left: i32, right: i32) -> i64 { let widened: i64 = (left + right) as i64; widened }",
+            "fn good() -> i64 { let mut zero: i64 = 0; zero }",
+            "fn good() -> u64 { let maximum: u64 = 18446744073709551615; maximum }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(!op_names(&f).contains(&"cssl.alias.contract.unverified"), "{source}");
+        }
+    }
+
+    #[test]
+    fn integer_cell_zero_initialization_and_reset_store_the_declared_width() {
+        let (f, _) = lower_one("fn reset(seed: i64) -> i64 { let mut value: i64 = 0; value = seed; value = 0; value }");
+        let ops = &f.body.entry().unwrap().ops;
+        let mut types = std::collections::HashMap::new();
+        for arg in &f.body.entry().unwrap().args { types.insert(arg.id, arg.ty.clone()); }
+        for op in ops { for result in &op.results { types.insert(result.id, result.ty.clone()); } }
+        let stores: Vec<_> = ops.iter().filter(|op| op.name == "memref.store").collect();
+        assert_eq!(stores.len(), 3);
+        for store in stores { assert_eq!(types.get(&store.operands[0]), Some(&MirType::Int(IntWidth::I64))); }
+        assert_eq!(ops.iter().filter(|op| op.name == "arith.constant" && op.results[0].ty == MirType::Int(IntWidth::I64)
+            && op.attributes.iter().any(|(key, value)| key == "value" && value == "0")).count(), 2);
+        assert!(!op_names(&f).contains(&"cssl.integer.assignment.contract.unverified"));
+    }
+
+    #[test]
+    fn contextual_integer_literal_ranges_preserve_exact_declared_bits() {
+        for (ty, literal, width, bits) in [
+            ("u8", "255", IntWidth::I8, "255"),
+            ("i8", "-128", IntWidth::I8, "-128"),
+            ("u16", "65535", IntWidth::I16, "65535"),
+            ("i16", "-32768", IntWidth::I16, "-32768"),
+            ("u32", "4294967295", IntWidth::I32, "4294967295"),
+            ("i32", "-2147483648", IntWidth::I32, "-2147483648"),
+            ("u64", "18446744073709551615", IntWidth::I64, "-1"),
+            ("i64", "-9223372036854775808", IntWidth::I64, "-9223372036854775808"),
+            ("i64", "9223372036854775807i64", IntWidth::I64, "9223372036854775807"),
+        ] {
+            let source = format!("fn exact() -> {ty} {{ let mut value: {ty} = {literal}; value }}");
+            let (f, _) = lower_one(&source);
+            let constant = f.body.entry().unwrap().ops.iter().find(|op| op.name == "arith.constant").expect("typed constant");
+            assert_eq!(constant.results[0].ty, MirType::Int(width), "{source}");
+            assert!(constant.attributes.iter().any(|(key, value)| key == "value" && value == bits), "{source}");
+            assert!(!op_names(&f).contains(&"cssl.integer.literal.contract.unverified"), "{source}");
+        }
+    }
+
+    #[test]
+    fn contextual_integer_literal_rejects_range_or_suffix_mismatch_before_storage() {
+        for (ty, literal) in [
+            ("i8", "128"), ("i8", "-129"), ("u8", "-1"), ("u8", "256"),
+            ("i64", "9223372036854775808"), ("i64", "-9223372036854775809"),
+            ("u64", "18446744073709551616"), ("i64", "0u64"), ("u64", "0i64"), ("u8", "0u16"),
+        ] {
+            let (f, _) = lower_one(&format!("fn invalid() -> {ty} {{ let mut value: {ty} = {literal}; value }}"));
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.integer.literal.contract.unverified"), "{ty}: {literal}");
+            assert!(!names.contains(&"cssl.local.alloca") && !names.contains(&"memref.store"), "{ty}: {literal}");
+        }
+    }
+
+    #[test]
+    fn integer_cell_assignment_requires_exact_type_or_explicit_cast() {
+        for source in [
+            "fn bad(value: i8) -> u8 { let mut cell: u8 = 0; cell = value; cell }",
+            "fn bad(value: u8) -> i8 { let mut cell: i8 = 0; cell = value; cell }",
+            "fn bad(value: i32) -> i64 { let mut cell: i64 = 0; cell = value; cell }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(op_names(&f).contains(&"cssl.integer.assignment.contract.unverified"), "{source}");
+            assert_eq!(op_names(&f).iter().filter(|name| **name == "memref.store").count(), 1, "{source}");
+        }
+        for source in [
+            "fn good(value: i8) -> u8 { let mut cell: u8 = 0; cell = value as u8; cell }",
+            "fn good(value: u8) -> i64 { let mut cell: i64 = 0; cell = value as i64; cell }",
+            "fn good(value: i8) -> i64 { let mut cell: i64 = 0; cell = value as i64; cell }",
+            "fn good() -> i64 { let mut cell: i64 = 0; cell = cell + 1; cell += 1; cell = 0; cell }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(!op_names(&f).contains(&"cssl.integer.assignment.contract.unverified"), "{source}");
+        }
+        let (f, _) = lower_one("fn bad() -> u8 { let mut cell: u8 = 0; cell = 256; cell }");
+        assert!(op_names(&f).contains(&"cssl.integer.literal.contract.unverified"));
+        assert_eq!(op_names(&f).iter().filter(|name| **name == "memref.store").count(), 1);
+    }
+
+    #[test]
+    fn integer_widening_preserves_scalar_array_and_alias_signedness() {
+        for (source, expected) in [
+            ("fn f(value: u8) -> i64 { value as i64 }", "arith.extui"),
+            ("fn f(value: i8) -> i64 { value as i64 }", "arith.extsi"),
+            ("fn f(src: &[u8; 1]) -> i64 { src[0] as i64 }", "arith.extui"),
+            ("fn f(src: &[i8; 1]) -> i64 { src[0] as i64 }", "arith.extsi"),
+            ("fn f(src: &[u8; 1]) -> i64 { let array = src; let first = array[0]; let second = first; (second) as i64 }", "arith.extui"),
+            ("fn f(src: &[i8; 1]) -> i64 { let first = src[0]; let second = first; second as i64 }", "arith.extsi"),
+            ("fn f(src: &[u8; 1]) -> i64 { let mut value = src[0]; value as i64 }", "arith.extui"),
+            ("fn f(value: u16) -> i64 { value as i64 }", "arith.extui"),
+            ("fn f(value: u32) -> i64 { value as i64 }", "arith.extui"),
+            ("fn f(value: i16) -> i64 { value as i64 }", "arith.extsi"),
+            ("fn f(value: u8) -> i64 { let summed = value + value; summed as i64 }", "arith.extui"),
+            ("fn f(value: i8) -> i64 { (-value) as i64 }", "arith.extsi"),
+        ] {
+            let (f, _) = lower_one(source);
+            let names = op_names(&f);
+            assert!(names.contains(&expected), "{source}: {names:?}");
+            assert!(!names.contains(&"arith.bitcast"), "{source}: {names:?}");
+        }
+    }
+
+    #[test]
+    fn typed_loaded_integer_alias_requires_exact_value_contract() {
+        for source in [
+            "fn f(src: &[u8; 1]) -> i64 { let signed: i8 = src[0]; signed as i64 }",
+            "fn f(src: &[i8; 1]) -> i64 { let unsigned: u8 = src[0]; unsigned as i64 }",
+            "fn f(src: &[u8; 1]) -> i64 { let wider: u16 = src[0]; wider as i64 }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(op_names(&f).contains(&"cssl.alias.contract.unverified"), "{source}");
+        }
+        for source in [
+            "fn f(src: &[u8; 1]) -> i64 { let first = src[0]; let second: u8 = first; second as i64 }",
+            "fn f(src: &[u8; 1]) -> i64 { let byte: u8 = src[0]; byte as i64 }",
+            "fn f(src: &[u8; 1]) -> i64 { let signed: i8 = src[0] as i8; signed as i64 }",
+            "fn f(src: &[u8; 1]) -> i64 { let wider: u16 = src[0] as u16; wider as i64 }",
+            "fn f() -> i64 { let mut counter: i64 = 0; counter }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(!op_names(&f).contains(&"cssl.alias.contract.unverified"), "{source}");
+        }
+    }
+
+    #[test]
+    fn integer_widening_keeps_explicit_cast_result_provenance() {
+        let (f, _) = lower_one("fn f(value: u8) -> i64 { (value as u16) as i64 }");
+        assert_eq!(op_names(&f).iter().filter(|name| **name == "arith.extui").count(), 2);
+        let (signed, _) = lower_one("fn f(value: u8) -> i64 { (value as i8) as i64 }");
+        assert!(op_names(&signed).contains(&"arith.extsi"));
+    }
+
+    #[test]
+    fn integer_widening_rejects_ambiguous_mixed_signedness() {
+        let (f, _) = lower_one("fn f(unsigned: u8, signed: i8) -> i64 { (unsigned + signed) as i64 }");
+        assert!(op_names(&f).contains(&"cssl.cast.integer.signedness.unverified"));
+        assert!(!op_names(&f).contains(&"arith.bitcast"));
+    }
+
+    #[test]
+    fn checked_array_alias_rejects_extent_element_and_unknown_rhs() {
+        for source in [
+            "fn at(src: &[u8; 4]) -> u8 { let alias: &[u8; 300] = src; alias[299] }",
+            "fn at(src: &[u8; 4]) -> u64 { let alias: &[u64; 4] = src; alias[0] }",
+            "fn at(src: &[u8; 4]) -> i8 { let alias: &[i8; 4] = src; alias[0] }",
+            "fn at(address: i64) -> u8 { let alias: &[u8; 4] = address; alias[0] }",
+            "fn at(src: &[u8]) -> u8 { let alias: &[u8; 4] = src; alias[0] }",
+        ] {
+            let (f, _) = lower_one(source);
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.alias.contract.unverified"), "{source}");
+            assert!(!names.contains(&"memref.load"), "{source}");
+        }
+    }
+
+    #[test]
+    fn checked_integer_alias_rejects_width_and_signedness_changes() {
+        for source in [
+            "fn at(src: &[u8; 300], i: i8) -> u8 { let j: u8 = i; src[j] }",
+            "fn at(src: &[u8; 300], i: u8) -> u8 { let j: i8 = i; src[j] }",
+            "fn at(src: &[u8; 300], i: u8) -> u8 { let j: u64 = i; src[j] }",
+        ] {
+            let (f, _) = lower_one(source);
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.alias.contract.unverified"), "{source}");
+            assert!(!names.contains(&"memref.load"), "{source}");
+        }
+    }
+
+    #[test]
+    fn mutable_checked_array_alias_refuses_before_cell_creation() {
+        for source in [
+            "fn at(src: &[u8; 4]) -> u8 { let mut alias: &[u8; 4] = src; alias[0] }",
+            "fn at(src: &[u8; 4]) -> u8 { let mut alias = src; alias[0] }",
+        ] {
+            let (f, _) = lower_one(source);
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.alias.contract.unverified"), "{source}");
+            assert!(!names.contains(&"cssl.local.alloca"), "{source}");
+            assert!(!names.contains(&"memref.store"), "{source}");
+        }
+    }
+
+    #[test]
+    fn array_cast_cannot_mint_a_checked_buffer() {
+        for source in [
+            "fn at(address: i64) -> u8 { (address as &[u8; 4])[0] }",
+            "fn at(src: &[u8; 4]) -> u8 { let alias: &[u8; 300] = src as &[u8; 300]; alias[299] }",
+        ] {
+            let (f, _) = lower_one(source);
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.array.cast.unverified"), "{source}");
+            assert!(!names.contains(&"memref.load"), "{source}");
+        }
+    }
+
+    #[test]
+    fn immutable_checked_alias_chain_retains_exact_contract() {
+        let (f, _) = lower_one("fn at(src: &[u8; 300], i: u8) -> u8 { let first = src; let alias: &[u8; 300] = first; let j = i; let k: u8 = j; alias[k] }");
+        let names = op_names(&f);
+        assert!(!names.contains(&"cssl.alias.contract.unverified"));
+        let load = f.body.entry().unwrap().ops.iter().find(|o| o.name == "memref.load").unwrap();
+        assert_eq!(load.results[0].ty, MirType::Int(IntWidth::I8));
+        assert!(load.attributes.iter().any(|(key, value)| key == "array_extent" && value == "300"));
+        assert!(load.attributes.iter().any(|(key, value)| key == "index_unsigned" && value == "true"));
+    }
+
+    #[test]
+    fn unsigned_indices_and_typed_array_aliases_keep_their_contract() {
+        let (f, _) = lower_one("fn at(src: &[u8; 300], i: u8) -> u8 { let alias: &[u8; 300] = src; let j: u8 = i; alias[j] }");
+        let load = f.body.entry().unwrap().ops.iter().find(|o| o.name == "memref.load").unwrap();
+        assert!(load.attributes.iter().any(|(k,v)| k == "array_extent" && v == "300"));
+        assert!(load.attributes.iter().any(|(k,v)| k == "index_unsigned" && v == "true"));
+    }
+
+    #[test]
+    fn checked_nested_byte_index_uses_actual_unsigned_value_provenance() {
+        for source in [
+            "fn at(src: &[u8; 300], ix: &[u8; 1]) -> u8 { src[ix[0]] }",
+            "fn at(src: &[u8; 300], ix: &[u8; 1]) -> u8 { let first = ix[0]; let second = first; src[second] }",
+        ] {
+            let (f, _) = lower_one(source);
+            let load = f.body.entry().unwrap().ops.iter().find(|op| op.name == "memref.load"
+                && op.attributes.iter().any(|(key, value)| key == "array_extent" && value == "300")).expect("outer load");
+            assert!(load.attributes.iter().any(|(key, value)| key == "index_unsigned" && value == "true"), "{source}");
+            assert!(!op_names(&f).contains(&"cssl.array.index.signedness.unverified"), "{source}");
+        }
+        let (f, _) = lower_one("fn at(src: &[u8; 300], ix: &[i8; 1]) -> u8 { src[ix[0]] }");
+        let load = f.body.entry().unwrap().ops.iter().find(|op| op.name == "memref.load"
+            && op.attributes.iter().any(|(key, value)| key == "array_extent" && value == "300")).expect("signed outer load");
+        assert!(load.attributes.iter().any(|(key, value)| key == "index_unsigned" && value == "false"));
+    }
+
+    #[test]
+    fn checked_array_index_refuses_unknown_computed_signedness() {
+        for source in [
+            "fn at(src: &[u8; 300], a: u8, b: i8) -> u8 { src[a + b] }",
+            "fn at(src: &[u8; 300], flag: bool) -> u8 { src[if flag { 0 } else { 1 }] }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(op_names(&f).contains(&"cssl.array.index.signedness.unverified"), "{source}");
+            assert!(!op_names(&f).contains(&"memref.load"), "{source}");
+        }
+    }
+
+    #[test]
+    fn fixed_borrowed_byte_array_preserves_extent_and_load_width() {
+        let (f, _) = lower_one("fn byte_at(src: &[u8; 4], index: i64) -> u8 { src[index] }");
+        assert_eq!(f.params[0], MirType::Memref { shape: vec![Some(4)], elem: Box::new(MirType::Int(IntWidth::I8)) });
+        assert!(f.attributes.iter().any(|(k,v)| k == "borrow.0" && v == "shared"));
+        let load = f.body.entry().unwrap().ops.iter().find(|o| o.name == "memref.load").unwrap();
+        assert_eq!(load.results[0].ty, MirType::Int(IntWidth::I8));
+        assert!(load.attributes.iter().any(|(k,v)| k == "array_extent" && v == "4"));
+        assert!(load.attributes.iter().any(|(k,v)| k == "index_units" && v == "elements"));
+    }
+
+    #[test]
+    fn fixed_borrowed_wider_arrays_keep_element_types() {
+        for (source, expected) in [
+            ("fn at(src: &[u16; 3], i: i64) -> u16 { src[i] }", MirType::Int(IntWidth::I16)),
+            ("fn at(src: &[i64; 3], i: i64) -> i64 { src[i] }", MirType::Int(IntWidth::I64)),
+            ("fn at(src: &[f64; 3], i: i64) -> f64 { src[i] }", MirType::Float(crate::FloatWidth::F64)),
+        ] {
+            let (f, _) = lower_one(source);
+            let load = f.body.entry().unwrap().ops.iter().find(|o| o.name == "memref.load").unwrap();
+            assert_eq!(load.results[0].ty, expected);
+            assert_eq!(f.params[0], MirType::Memref { shape: vec![Some(3)], elem: Box::new(expected) });
+        }
+    }
+
+    #[test]
+    fn dynamic_borrowed_array_cannot_fall_back_to_pointer_width_load() {
+        let (f, _) = lower_one("fn at(src: &[u8], i: i64) -> u8 { src[i] }");
+        assert!(op_names(&f).contains(&"cssl.array.index.unresolved"));
+        assert!(!op_names(&f).contains(&"memref.load"));
+    }
+
+    #[test]
+    fn indexed_array_store_requires_a_checked_mutable_output_contract() {
+        let (f, _) = lower_one("fn put(src: &mut [u8; 4], i: i64, v: u8) { src[i] = v; }");
+        assert!(op_names(&f).contains(&"cssl.array.store.unimplemented"));
+        assert!(!op_names(&f).contains(&"memref.store"));
+    }
+
+    #[test]
     fn empty_body_emits_return() {
         let (f, _) = lower_one("fn noop() {}");
         let names = op_names(&f);
@@ -6822,12 +7442,12 @@ mod tests {
     }
 
     #[test]
-    fn index_emits_memref_load() {
+    fn constant_vec_index_returns_the_flattened_lane_without_memory_access() {
         let (f, _) = lower_one("fn idx(a : vec3) -> f32 { a[0] }");
-        let names = op_names(&f);
-        assert!(names
-            .iter()
-            .any(|n| n == &"memref.load" || n == &"cssl.std"));
+        let ops = &f.body.entry().unwrap().ops;
+        assert!(!ops.iter().any(|op| op.name == "memref.load"));
+        assert_eq!(ops.last().unwrap().operands, vec![crate::ValueId(0)]);
+        assert_eq!(f.results, vec![MirType::Float(crate::FloatWidth::F32)]);
     }
 
     #[test]

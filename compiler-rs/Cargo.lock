@@ -969,8 +969,8 @@ dependencies = [
  "cssl-ast",
  "cssl-hir",
  "cssl-lex",
- "cssl-parse",
  "cssl-mir",
+ "cssl-parse",
  "thiserror 1.0.69",
 ]
 

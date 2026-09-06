@@ -1,0 +1,41 @@
+§ CSSL.NATIVE.INGRESS.ORACLE rev1
+I> scope=compiler.regression ; target=x86_64-pc-windows-msvc ; backend=Cranelift.object ; no application/private-state payload.
+
+§P BUILD
+ CSSL.fixture → csslc build <fixture> --backend=cranelift --emit=object --target=x86_64-pc-windows-msvc -o <object>.
+ object → MSVC link /DLL /NOENTRY /NODEFAULTLIB /MACHINE:X64 /OUT:<dll> /EXPORT:<each.fixture.pub.fn> <object>.
+ W! actual native caller verifies source+object+DLL hashes; exact C ABI widths; valid aligned live borrowed storage covers declared extent.
+ W! bad-index trap runs in bounded isolated child; never load trap fixture into owner/resident process.
+
+§T BYTE.WIDENING
+ fixture=checked_byte_widening.cssl ; b∈[0,255].
+ byte_unsigned([b])=b ; byte_alias([b])=b ; unsigned_scalar(b)=b.
+ byte_signed([b])=signed_scalar(s8(b))=b when b<128 else b−256.
+ calls=256×5=1280 ; input.bytes unchanged.
+
+§T CHECKED.ARRAY
+ fixture=checked_array_ingress.cssl.
+ bytes=[0,127,128,255]; first=0,last=255; bytesat/aliasat actual indexed byte.
+ wide300[i]=(73i+19) mod256; ∀u8.index0…255 wideat matches true element.
+ words=[0,255,256,65535]; longs=[0,1,−1,INT64max]; doubles=[0.125,−3.5,π,1e100]; exact ABI element strides1/2/8.
+ bad.indices=[−1,4,INT64max,INT64min]; ∀bytesat/aliasat/wordsat/longsat/doublesat trap beforeload.
+ expected.carrier.trap=0xC000001D ; not domain.TypedRefusal.
+ malformed/duplicate/incomplete checked.metadata rejected by compiler; unsupportedbackend rejects allchecked keys.
+
+§T NESTED.UNSIGNED
+ fixture=nested_unsigned_index.cssl; source300 pattern above; index.buffer=[b] ∀b0…255.
+ nested_index(source,index)=nested_alias(source,index)=source[b]; calls512; especially b128…255 valid.
+ unknown.index.signedness refuses before checkedload; no syntax-derived defaultsign.
+
+§T LOOP.WIDTH
+ fixture=state_byte_ingress.cssl; byte.sum=Σb[i]; byte.weighted=Σb[i]×(i+1).
+ count<0∨count>65536⇒−1; accepted count0⇒0; source unchanged.
+ repeat16times: buffer65536 all255 → weighted(count65536)=547616686080; then weighted(count0)=0.
+ warm.calls=32; catches stale.upper32bits that isolated small calls can miss.
+ lengths=[0,1,3,255,256,65536]; external known byte-sequences optional; fixture contains no private data.
+
+§C EXPLICIT.LIMITS
+ unproven := general unsigned arithmetic | pointer validity/lifetime | mutable array stores | nominal records | fullcodec | SHA256 | RNG | persistence | Windows unwind.
+ compiler widening+declared integer initialization requires exact known width/sign; unsupported ambiguity emits diagnostic, never silent partialstore.
+ rollback := retain priorcompiler; fixture/test changes reversible; no installed runtime replacement.
+∎

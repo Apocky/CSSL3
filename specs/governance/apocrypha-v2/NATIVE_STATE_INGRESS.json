@@ -1,0 +1,130 @@
+{
+  "schema": "cssl.native-ingress-proof.v1",
+  "at": "2026-09-06T04:01:27.635Z",
+  "status": "BOUNDED_NATIVE_INGRESS_VERIFIED",
+  "base_commit": "6f243962887861f8b77be14c85dc4f7dbd8cdce2",
+  "source": [
+    {
+      "path": "compiler-rs/Cargo.lock",
+      "sha256": "907c45fec5eff5b00309e4e03f3705b1199a5f881f9bcb8f17557c795228929e"
+    },
+    {
+      "path": "compiler-rs/crates/cssl-cgen-cpu-cranelift/src/jit.rs",
+      "sha256": "a9ebf52a11d68eadd163e3c946eb9cedb15b280f47257b29bd447bf380d90df2"
+    },
+    {
+      "path": "compiler-rs/crates/cssl-cgen-cpu-cranelift/src/object.rs",
+      "sha256": "38068a18efff9d04972589c9a1294c0f86503281a7ed943a804525f2411ca88f"
+    },
+    {
+      "path": "compiler-rs/crates/cssl-cgen-cpu-x64/src/isel/select.rs",
+      "sha256": "17acdf086e065f889dfbbc97bbc92d28371571f22bd8f2861153ec0ba374ce36"
+    },
+    {
+      "path": "compiler-rs/crates/cssl-mir/src/body_lower.rs",
+      "sha256": "fa8e40d2cccc12f846a4ea168115b6819320fcbcb1b8cbb190e0864093c58343"
+    }
+  ],
+  "compiler_sha256": "e607afc0d65782260fe9f6353ee409e098dbcb444affd7c428f16dbf3e19cc97",
+  "target": "x86_64-pc-windows-msvc",
+  "backend": "cranelift-object-bootstrap",
+  "library": {
+    "cranelift": 623,
+    "native_x64": 490,
+    "mir": 837,
+    "failed": 0,
+    "process_exit": 0
+  },
+  "native": {
+    "byte_widening": 1280,
+    "checked_array": 278,
+    "byte_loops": 86,
+    "warm_reset": 32,
+    "nested_unsigned_index": 512,
+    "normal_calls_total": 2188,
+    "normal_failures": 0,
+    "expected_bounds_traps": 20,
+    "trap_exit": "0xC000001D",
+    "unsafe_initializer_compile_refusals": 2
+  },
+  "before": {
+    "unsigned_widening_failed": 384,
+    "warm_reset_failed": 31,
+    "unsafe_initializers_accepted": 2,
+    "nested_unsigned_valid_index_trapped": 2
+  },
+  "drivers": [
+    {
+      "name": "byte",
+      "sha256": "686a821f95478bef5e76e116aa35f8f4ac60bf38a2a88ec9d8cb404d920b9ff3"
+    },
+    {
+      "name": "array",
+      "sha256": "f63a327abd89e4406fcaacc359f7c49858f7d6bf2df45bd157ca852efdbac660"
+    },
+    {
+      "name": "loop",
+      "sha256": "825e33cc01d373df9e1f08ad518395134bc05adef4c76e055d5ede7901f13942"
+    },
+    {
+      "name": "warm",
+      "sha256": "7544c3fe8d5b5732df3ef92eaa56b66910d22903773128b7046245efcb78fa7c"
+    },
+    {
+      "name": "nested",
+      "sha256": "9dce33bd975ced3c81359b124648753ea27ce44ed1e1dd686d866d95442e2319"
+    },
+    {
+      "name": "bounds",
+      "sha256": "8a9953d9fbb4b383e9c4a742f8222d01271884f5c46fcbf2fd91f5054651a8e4"
+    }
+  ],
+  "carriers": [
+    {
+      "fixture": "byte",
+      "source_sha256": "ac4941a0dc2883d29a7238aa30c1b22b88a0a2fc32a1fdac6a6f907f8f5bb58b",
+      "object_sha256": "fe2a252741408b5159101a241f984f0e8c6ce151c19bc2a37116f717baec4bec",
+      "dll_sha256": "44adf1a16114a54de2a85cf8fdf8a40c6acf30b647e3fb44a3df697a2abb574f"
+    },
+    {
+      "fixture": "array",
+      "source_sha256": "1cf9861118e32685f01ee616b9a44c46ef733d01a1322905016ed4b8d25daa1c",
+      "object_sha256": "7db4b40118b067a3726b6546fc1f6ff3efefa64859b6dd768ee9ab1e4c20d7e0",
+      "dll_sha256": "53f19964f7ea0bf1487be7cd7dad1170135d3fa727d53658cc8302414e3bdd94"
+    },
+    {
+      "fixture": "scan",
+      "source_sha256": "121331a8dab755965dde040eb37d801978e7b34bd1fa943f4c7f925746d73bef",
+      "object_sha256": "207fb59b3c203737d22fae82cde28e4e669e029dbc6c74df945f85ba34670d78",
+      "dll_sha256": "c4713facbf4503687fea7e3a067ba7ed37a6d865ed728a495250c565888dc60d"
+    },
+    {
+      "fixture": "nested",
+      "source_sha256": "7c72ddfd7fddb5f1d95e7a8a029498cccbcd2de7b7c75499332eb0ee7f0a62de",
+      "object_sha256": "946cdfebd0043d4189bb4c9692f002757c53f59d3b28ffd56b7743bfc1e0d5d4",
+      "dll_sha256": "3e2a168c987d2675fbf720a2bf1604ea7db163ff1c886f92ec599b9f4d2fd957"
+    }
+  ],
+  "graph": {
+    "scope": "isolated compiler refresh; canonical full graph preserved",
+    "sha256": "3d034a204e51b6ebadf89dedd1553f2286364e59e80ca426324468a58958cc9a",
+    "nodes": 47610,
+    "edges": 111939
+  },
+  "preconditions": [
+    "valid aligned live borrowed allocation covers declared fixed extent",
+    "native trap cases isolated from owner process"
+  ],
+  "unproven": [
+    "general unsigned arithmetic",
+    "checked mutable output",
+    "complete codec and hash",
+    "nominal record layout",
+    "RNG replay",
+    "state restoration and persistence",
+    "Windows unwind",
+    "native-x64 and JIT checked-array execution"
+  ],
+  "installed": false,
+  "private_application_state_included": false
+}

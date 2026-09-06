@@ -1782,6 +1782,15 @@ fn lower_memref_load(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
 ) -> Result<bool, JitError> {
+    // § Checked-array metadata → refusal; N! erase bounds or element units.
+    if op.attributes.iter().any(|(name, _)| {
+        matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned")
+    }) {
+        return Err(JitError::UnsupportedFeature {
+            fn_name: fn_name.to_string(),
+            reason: "checked array indexing is not implemented by the JIT backend".to_string(),
+        });
+    }
     let r = op.results.first().ok_or_else(|| JitError::LoweringFailed {
         fn_name: fn_name.to_string(),
         detail: "memref.load with no result".to_string(),
@@ -4050,6 +4059,35 @@ mod tests {
         let h = m.compile(&f).unwrap();
         m.finalize().unwrap();
         assert_eq!(h.call_i64_to_i32(ptr, &m).unwrap(), stored);
+    }
+
+    #[test]
+    fn memref_load_rejects_checked_array_metadata() {
+        let cases: &[&[(&str, &str)]] = &[
+            &[("array_extent", "4")],
+            &[("index_units", "elements")],
+            &[("index_unsigned", "true")],
+            &[("index_unsigned", "false")],
+            &[("array_extent", "4"), ("index_units", "elements")],
+            &[("array_extent", "invalid")],
+            &[("index_units", "bytes")],
+        ];
+        for (case, attributes) in cases.iter().enumerate() {
+            let name = format!("checked_array_{case}");
+            let mut f = build_memref_load_i32_fn(&name);
+            for &(key, value) in *attributes {
+                f.body.entry_mut().unwrap().ops[0]
+                    .attributes.push((key.to_string(), value.to_string()));
+            }
+            let mut module = JitModule::new();
+            match module.compile(&f).unwrap_err() {
+                JitError::UnsupportedFeature { fn_name, reason } => {
+                    assert_eq!(fn_name, name);
+                    assert!(reason.contains("checked array indexing"));
+                }
+                other => panic!("expected checked-array refusal, got {other:?}"),
+            }
+        }
     }
 
     #[test]

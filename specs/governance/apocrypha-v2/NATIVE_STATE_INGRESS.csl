@@ -1,0 +1,14 @@
+§ CSSL.NATIVE.STATE.INGRESS rev1
+I> status=BOUNDED_VERIFIED ; basis=NATIVE_STATE_INGRESS.json ; application.core.complete=false.
+§P defect:=unsigned byte widened as signed; contextual integer literal partially initialized64bitcell; ambiguous computedinitializer escaped check; nested byte index lostsign.
+§D repair:=exact value-provenance+width contracts; explicit extui/extsi; exact contextualliteral/resetwidth; unknown declaredinteger/index contracts refuse; fixed-array bounds+element addressing; unsupportedbackend metadata refuses.
+§T actual:=1950libraryPASS +2188native.normalPASS +20expectedbounds.traps +2compile.refusals; allowned finalcases0unexpectedfailure.
+ before:=384bytefailures+31warmfailures+2unsafeacceptedinitializers+2validnestedindextraps; original fixtures retained through repairs.
+ scope:=CraneliftAOTbootstrap on WindowsAMD64; no installed runtime cutover.
+ oracle:=compiler-rs/crates/cssl-cgen-cpu-cranelift/tests/fixtures/NATIVE_INGRESS.csl.
+§C no-loss:=oldcompiler+failureobjects preserved; oneintegrationbranch; canonicalgraphpreserved; privateappstate excluded.
+ N! checked index bounds⇒pointerownership/lifetime | bytechecksum⇒codec | nativecarrier⇒fullstatecore.
+ next:=checked mutablewrites→unsigned/U128/f64bits→canonicalcodec/hash→nominal25slotframe→trustedtransition→isolatedpersistence.
+ falsifier:=unchanged fixture mismatch, unexpected object acceptance, earlyread/write, changedsourcepin, failedlibrary/nativecase.
+ rollback:=priorcompiler6f243962 remains available; revertownedcommit without resettingforeignwork.
+∎
