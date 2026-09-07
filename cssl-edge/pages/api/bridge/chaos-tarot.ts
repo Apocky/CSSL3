@@ -39,7 +39,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       message,
       conversationId: body.conversation_id,
       requestId: body.request_id,
-      sessionId: body.conversation_id,
       sessionPrincipal: publicMemberPrincipalRef(owner),
       privacyPartition: 'owner:apocky',
       credentialProfile: 'owner',
