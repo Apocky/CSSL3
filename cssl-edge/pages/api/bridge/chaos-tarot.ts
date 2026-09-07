@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { timingSafeEqual } from 'node:crypto';
 import { isOpaqueClientRequestId, isOpaqueConversationId, setPrivateNoStore } from '@/lib/apocrypha/proxy';
-import { publicMemberPrincipalRef, submitRuntimeChat } from '@/lib/apocv4/runtime-proxy';
+import { publicMemberPrincipalRef, RuntimeProxyError, submitRuntimeChat } from '@/lib/apocv4/runtime-proxy';
 
 const MAX_TEXT_BYTES = 16_384;
 
@@ -45,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       credentialProfile: 'public',
     }, req.headers['traceparent'] as string | undefined);
     res.status(200).json({ text: projection.model_reported.text, conversation_id: body.conversation_id, request_id: body.request_id, provider: 'apocrypha' });
-  } catch {
-    res.status(502).json({ error: 'Apocrypha runtime unavailable' });
+  } catch (error) {
+    res.status(502).json({ error: 'Apocrypha runtime unavailable', code: error instanceof RuntimeProxyError ? error.code : 'runtime_upstream_error' });
   }
 }
