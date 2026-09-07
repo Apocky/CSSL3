@@ -41,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       requestId: body.request_id,
       sessionId: body.conversation_id,
       sessionPrincipal: publicMemberPrincipalRef(owner),
-      privacyPartition: 'public:chaos-tarot',
+      privacyPartition: 'public:apocrypha',
       credentialProfile: 'public',
     }, req.headers['traceparent'] as string | undefined);
     res.status(200).json({ text: projection.model_reported.text, conversation_id: body.conversation_id, request_id: body.request_id, provider: 'apocrypha' });
