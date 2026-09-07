@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { timingSafeEqual } from 'node:crypto';
 import { isOpaqueClientRequestId, isOpaqueConversationId, setPrivateNoStore } from '@/lib/apocrypha/proxy';
-import { publicMemberPrincipalRef, RuntimeProxyError, submitRuntimeChat } from '@/lib/apocv4/runtime-proxy';
+import { publicMemberPrincipalRef, RuntimeProxyError, submitOwnerBrainRuntimeChat } from '@/lib/apocv4/runtime-proxy';
 
 const MAX_TEXT_BYTES = 16_384;
 
@@ -35,14 +35,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const owner = process.env.APOCRYPHA_BRIDGE_OWNER_USER_ID?.trim();
   if (!owner) { res.status(503).json({ error: 'Bridge owner is not configured' }); return; }
   try {
-    const projection = await submitRuntimeChat({
+    const projection = await submitOwnerBrainRuntimeChat({
       message,
       conversationId: body.conversation_id,
       requestId: body.request_id,
       sessionId: body.conversation_id,
       sessionPrincipal: publicMemberPrincipalRef(owner),
-      privacyPartition: 'public:apocrypha',
-      credentialProfile: 'public',
+      privacyPartition: 'owner:apocky',
+      credentialProfile: 'owner',
     }, req.headers['traceparent'] as string | undefined);
     res.status(200).json({ text: projection.model_reported.text, conversation_id: body.conversation_id, request_id: body.request_id, provider: 'apocrypha' });
   } catch (error) {
