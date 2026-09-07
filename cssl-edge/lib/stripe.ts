@@ -11,7 +11,7 @@
 // § Q-07 RESOLVED 2026-05-01 (Apocky-canonical) :
 //   verbatim : "Hold on cosmetics, main game first."
 //   COSMETIC_LAUNCH_PAUSED = true ; cosmetic-products visible:false
-//   alpha-free product remains visible (main-game pathway)
+//   no LoA or game purchase is exposed in production until the game is ready
 //   Stripe-infrastructure preserved · /buy banner notifies users
 //   resume-trigger : Apocky greenlights "main-game-shipped"
 
@@ -71,16 +71,6 @@ export interface ProductDescriptor {
 export const COSMETIC_LAUNCH_PAUSED = true;
 
 export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
-  {
-    id: 'loa-alpha',
-    display_name: 'Labyrinth of Apocalypse · Alpha',
-    blurb: 'First public alpha · self-hosted · DRM-free · feedback welcome. Free during alpha; sliding-scale tier on v1.0 release.',
-    price_cents: 0,
-    currency: 'usd',
-    stripe_price_env: 'STRIPE_PRICE_LOA_ALPHA',
-    tier: 'alpha-free',
-    visible: true, // alpha stays visible (main-game pathway · Q-07-aligned)
-  },
   {
     id: 'loa-cosmetic-mycelial-bloom',
     display_name: 'Mycelial Bloom · cosmetic shader-pack',

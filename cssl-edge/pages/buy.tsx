@@ -1,6 +1,6 @@
 // apocky.com/buy · product list + Stripe-Checkout initiator
 // SSG-friendly · client-side fetch only on Buy-button click
-// Stub-mode-aware : if STRIPE_SECRET_KEY missing, renders "alpha free / coming soon" pill.
+// Stub-mode-aware : the live Chaos Tarot button remains available even when the legacy server checkout is absent.
 
 import type { NextPage, GetStaticProps } from 'next';
 import Head from 'next/head';
@@ -40,10 +40,6 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
     setErrorMsg(null);
     setPendingId(p.id);
     try {
-      if (p.tier === 'alpha-free') {
-        window.location.href = '/download';
-        return;
-      }
       const origin = typeof window !== 'undefined' ? window.location.origin : 'https://apocky.com';
       const res = await fetch('/api/payments/stripe/checkout', {
         method: 'POST',
@@ -57,7 +53,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
       });
       const data = (await res.json()) as CheckoutResponseShape;
       if (data.stub === true) {
-        setErrorMsg('Stripe is in stub-mode on this deploy. Check back soon · alpha is free at /download in the meantime.');
+        setErrorMsg('The live Chaos Tarot checkout is available above. Additional server checkout products are not currently offered.');
         return;
       }
       if (data.ok === true && typeof data.url === 'string' && data.url.length > 0) {
@@ -137,10 +133,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
               color: '#c084fc',
             }}
           >
-            <strong>§ cosmetics phase-2 · main game first</strong> — the cosmetic store is held until LoA's main game ships.
-            Alpha is{' '}
-            <a href="/download" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>free at /download</a>{' '}
-            and the support pathway today.
+            <strong>§ additional products paused</strong> — Chaos Tarot membership is the current live offer.
           </div>
         ) : null}
 
@@ -156,8 +149,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
               color: '#fbbf24',
             }}
           >
-            ⚠ Stripe is in <strong>stub-mode</strong> on this deploy — clicking Buy will not charge. The alpha download is{' '}
-            <a href="/download" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>free</a> in the meantime.
+            ⚠ Server-side product checkout is not configured on this page. Use the live Chaos Tarot checkout above.
           </div>
         ) : null}
 
@@ -178,7 +170,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
           </div>
         ) : null}
 
-        <section
+        {products.length > 0 ? <section
           aria-labelledby="chaos-tarot-membership"
           style={{
             marginTop: '2rem',
@@ -201,7 +193,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
             'buy-button-id': 'buy_btn_1UD2TD2M59SA2Ef7B02nUiO9',
             'publishable-key': 'pk_live_51PtJw92M59SA2Ef7bOvdRnArvKVJ9aNjUbodmvdd6lsyYIf1cWmPDfbutYaIIgY5HmVObYWB2bnXtIcSyfZhJaEq00govSs3sm',
           })}
-        </section>
+        </section> : null}
 
         {/* ── PRODUCT GRID ── */}
         <section

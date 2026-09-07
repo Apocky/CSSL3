@@ -113,7 +113,7 @@ const Register: NextPage = () => {
           Create your account
         </h1>
         <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.92rem' }}>
-          One identity · access to all Apocky-projects (LoA · CSSL · Σ-Chain · Mycelium · etc.) · sovereign-revocable
+          One identity · access to Apocky services · sovereign-revocable
         </p>
 
         {/* ─── WHAT YOU GET ─── */}

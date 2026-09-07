@@ -1,7 +1,7 @@
 {
   "name": "Apocky Admin · Substrate Control",
   "short_name": "Apocky",
-  "description": "Phone-first admin + monitor for apocky.com substrate · LoA · CSSL · DGI · Mycelium",
+  "description": "Phone-first Apocky workspace for Apocrypha, CSSL, DGI, and Mycelium",
   "start_url": "/admin",
   "display": "standalone",
   "orientation": "portrait",

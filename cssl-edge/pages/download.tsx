@@ -1,7 +1,7 @@
 // apocky.com/download · Labyrinth of Apocalypse · alpha download page
 // SSG-friendly · static · no auth required for alpha (free tier)
 
-import type { NextPage } from 'next';
+import type { GetServerSideProps, NextPage } from 'next';
 import Head from 'next/head';
 
 const VERSION = 'v0.1.0-alpha';
@@ -299,3 +299,7 @@ const Download: NextPage = () => {
 };
 
 export default Download;
+
+export const getServerSideProps: GetServerSideProps = async () => ({
+  redirect: { destination: '/membership', permanent: false },
+});
