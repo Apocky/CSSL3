@@ -21,6 +21,9 @@
     "pages/api/admin/apocrypha/inspect.ts": {
       "maxDuration": 120
     },
+    "pages/api/bridge/chaos-tarot.ts": {
+      "maxDuration": 120
+    },
     "pages/api/**/*.ts": {
       "maxDuration": 30
     },
