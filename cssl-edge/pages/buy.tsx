@@ -4,9 +4,20 @@
 
 import type { NextPage, GetStaticProps } from 'next';
 import Head from 'next/head';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { PRODUCT_CATALOG, COSMETIC_LAUNCH_PAUSED, type ProductDescriptor } from '@/lib/stripe';
 import { STRIPE_CHECKOUT_INIT } from '@/lib/cap';
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      'stripe-buy-button': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        'buy-button-id': string;
+        'publishable-key': string;
+      };
+    }
+  }
+}
 
 interface BuyProps {
   products: ReadonlyArray<ProductDescriptor>;
@@ -69,6 +80,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0a0a0f" />
         <link rel="canonical" href="https://apocky.com/buy" />
+        <script async src="https://js.stripe.com/v3/buy-button.js" />
         <style>{`
           * { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; }
@@ -165,6 +177,31 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
             {errorMsg}
           </div>
         ) : null}
+
+        <section
+          aria-labelledby="chaos-tarot-membership"
+          style={{
+            marginTop: '2rem',
+            padding: '1.5rem',
+            background: 'linear-gradient(135deg, rgba(192,132,252,0.14), rgba(125,211,252,0.08))',
+            border: '1px solid rgba(192,132,252,0.45)',
+            borderRadius: 10,
+          }}
+        >
+          <div style={{ color: '#c084fc', fontSize: '0.68rem', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+            Chaos Tarot · membership
+          </div>
+          <h2 id="chaos-tarot-membership" style={{ margin: '0.45rem 0 0.35rem', fontSize: '1.35rem', color: '#f4eafe' }}>
+            Monthly AI oracle interpretations
+          </h2>
+          <p style={{ margin: '0 0 1rem', color: '#cdd6e4', fontSize: '0.9rem', maxWidth: 620 }}>
+            Keep the Chaos Tarot current with Apocrypha-guided readings and ongoing membership access.
+          </p>
+          {React.createElement('stripe-buy-button', {
+            'buy-button-id': 'buy_btn_1UD2TD2M59SA2Ef7B02nUiO9',
+            'publishable-key': 'pk_live_51PtJw92M59SA2Ef7bOvdRnArvKVJ9aNjUbodmvdd6lsyYIf1cWmPDfbutYaIIgY5HmVObYWB2bnXtIcSyfZhJaEq00govSs3sm',
+          })}
+        </section>
 
         {/* ── PRODUCT GRID ── */}
         <section
