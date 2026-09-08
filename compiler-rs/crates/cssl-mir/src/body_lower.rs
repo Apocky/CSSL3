@@ -62,11 +62,12 @@ pub struct CallParamContract {
     pub unsigned: Option<bool>,
 }
 
-/// Deterministic direct-callee parameter table used by generic `func.call`
+/// Deterministic direct-callee signature table used by generic `func.call`
 /// lowering. Entries use the same source-form symbol names as `MirFunc.name`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CallSignatureTable {
     entries: BTreeMap<String, Vec<CallParamContract>>,
+    results: BTreeMap<String, CallParamContract>,
 }
 
 impl CallSignatureTable {
@@ -74,6 +75,7 @@ impl CallSignatureTable {
     pub const fn new() -> Self {
         Self {
             entries: BTreeMap::new(),
+            results: BTreeMap::new(),
         }
     }
 
@@ -87,9 +89,13 @@ impl CallSignatureTable {
     ) {
         let lower_ctx = crate::lower::LowerCtx::new(interner);
         for item in &module.items {
-            let (name, params) = match item {
-                HirItem::Fn(function) => (function.name, &function.params),
-                HirItem::ExternFn(function) => (function.name, &function.params),
+            let (name, params, return_ty) = match item {
+                HirItem::Fn(function) => {
+                    (function.name, &function.params, function.return_ty.as_ref())
+                }
+                HirItem::ExternFn(function) => {
+                    (function.name, &function.params, function.return_ty.as_ref())
+                }
                 _ => continue,
             };
             let contracts = params
@@ -102,13 +108,36 @@ impl CallSignatureTable {
                     CallParamContract { ty, unsigned }
                 })
                 .collect();
-            self.entries.insert(interner.resolve(name), contracts);
+            let result = return_ty.map_or(
+                CallParamContract {
+                    ty: MirType::None,
+                    unsigned: None,
+                },
+                |ty| {
+                    let lowered = lower_ctx.lower_type(ty);
+                    let unsigned = matches!(lowered, MirType::Int(_))
+                        .then(|| declared_scalar_integer_unsigned(interner, ty))
+                        .flatten();
+                    CallParamContract {
+                        ty: lowered,
+                        unsigned,
+                    }
+                },
+            );
+            let name = interner.resolve(name);
+            self.entries.insert(name.clone(), contracts);
+            self.results.insert(name, result);
         }
     }
 
     #[must_use]
     pub fn get(&self, callee: &str) -> Option<&[CallParamContract]> {
         self.entries.get(callee).map(Vec::as_slice)
+    }
+
+    #[must_use]
+    pub fn result(&self, callee: &str) -> Option<&CallParamContract> {
+        self.results.get(callee)
     }
 }
 
@@ -1283,7 +1312,10 @@ fn lower_assign(
                         // the next read observes the freshly-stored
                         // value.
                         let (old_id, _) = emit_local_load(ctx, cell_id, &elem_ty, span);
-                        emit_compound_op(ctx, bin_op, old_id, rhs_id, &elem_ty, span)
+                        match emit_compound_op(ctx, bin_op, old_id, rhs_id, &elem_ty, span) {
+                            Ok(id) => id,
+                            Err(id) => return (id, MirType::None),
+                        }
                     }
                 };
                 emit_local_store(ctx, cell_id, value_to_store, span);
@@ -1340,8 +1372,20 @@ fn emit_compound_op(
     rhs_id: ValueId,
     elem_ty: &MirType,
     span: Span,
-) -> ValueId {
+) -> Result<ValueId, ValueId> {
     let is_float = matches!(elem_ty, MirType::Float(_));
+    let right_shift = if matches!(op, HirBinOp::Shr) {
+        match exact_right_shift_op(ctx, lhs_id, elem_ty, rhs_id, elem_ty) {
+            Ok(contract) => Some(contract),
+            Err(reason) => {
+                return Err(emit_integer_shift_contract_refusal(
+                    ctx, lhs_id, elem_ty, rhs_id, elem_ty, reason, span,
+                ));
+            }
+        }
+    } else {
+        None
+    };
     let op_name = match (op, is_float) {
         (HirBinOp::Add, false) => "arith.addi",
         (HirBinOp::Add, true) => "arith.addf",
@@ -1360,7 +1404,9 @@ fn emit_compound_op(
         (HirBinOp::BitOr | HirBinOp::Or, _) => "arith.ori",
         (HirBinOp::BitXor, _) => "arith.xori",
         (HirBinOp::Shl, _) => "arith.shli",
-        (HirBinOp::Shr, _) => "arith.shrsi",
+        (HirBinOp::Shr, _) => right_shift
+            .map(|(name, _)| name)
+            .expect("right shift was checked above"),
         // Compound forms of comparison / implication don't make sense ; map
         // to a placeholder add as the safest fallback (the source-level
         // shape is malformed, but crashing here would be worse).
@@ -1374,7 +1420,10 @@ fn emit_compound_op(
             .with_result(result_id, elem_ty.clone())
             .with_attribute("source_loc", format!("{span:?}")),
     );
-    result_id
+    if let Some((_, unsigned)) = right_shift {
+        ctx.integer_unsigned_values.insert(result_id, unsigned);
+    }
+    Ok(result_id)
 }
 
 fn lower_cast(ctx: &mut BodyLowerCtx<'_>, inner: &HirExpr, target_hir_ty: &cssl_hir::HirType, span: Span) -> (ValueId, MirType) {
@@ -2452,6 +2501,32 @@ fn lower_literal(ctx: &mut BodyLowerCtx<'_>, lit: &HirLiteral, span: Span) -> (V
     let slice = ctx
         .source
         .and_then(|s| s.slice(lit.span.start, lit.span.end));
+    if matches!(lit.kind, HirLiteralKind::Int) {
+        if let Some(contract) = slice.and_then(parse_suffixed_integer_literal) {
+            let id = ctx.fresh_value_id();
+            match contract {
+                Ok((ty, unsigned, value)) => {
+                    ctx.integer_unsigned_values.insert(id, unsigned);
+                    ctx.ops.push(
+                        MirOp::std("arith.constant")
+                            .with_result(id, ty.clone())
+                            .with_attribute("value", value.to_string())
+                            .with_attribute("source_loc", format!("{span:?}")),
+                    );
+                    return (id, ty);
+                }
+                Err(reason) => {
+                    ctx.ops.push(
+                        MirOp::std("cssl.integer.literal.contract.unverified")
+                            .with_result(id, MirType::None)
+                            .with_attribute("reason", reason)
+                            .with_attribute("source_loc", format!("{span:?}")),
+                    );
+                    return (id, MirType::None);
+                }
+            }
+        }
+    }
     let (ty, attr_value) = match lit.kind {
         HirLiteralKind::Int => {
             let parsed = slice.and_then(parse_int_literal);
@@ -2552,6 +2627,79 @@ fn strip_int_type_suffix(raw: &str) -> &str {
         }
     }
     raw
+}
+
+/// Decode an explicitly-suffixed source integer without guessing from the
+/// signless MIR width. `None` means the literal is unsuffixed; malformed,
+/// out-of-range, and unsupported-width suffix contracts return a structural
+/// error for the caller to materialize in MIR.
+fn parse_suffixed_integer_literal(
+    raw: &str,
+) -> Option<Result<(MirType, bool, i64), &'static str>> {
+    let digits = strip_int_type_suffix(raw);
+    if digits == raw {
+        return None;
+    }
+    let suffix = &raw[digits.len()..];
+    let unsigned = suffix.starts_with('u');
+    let bits = if matches!(suffix, "isize" | "usize") {
+        64
+    } else {
+        match suffix.get(1..).and_then(|value| value.parse::<u32>().ok()) {
+            Some(bits) => bits,
+            None => return Some(Err("invalid integer literal suffix")),
+        }
+    };
+    let width = match bits {
+        8 => IntWidth::I8,
+        16 => IntWidth::I16,
+        32 => IntWidth::I32,
+        64 => IntWidth::I64,
+        _ => return Some(Err("integer literal suffix width is not supported by MIR")),
+    };
+    let cleaned: String = digits
+        .chars()
+        .filter(|character| *character != '_')
+        .collect();
+    let (radix, body) = if let Some(body) = cleaned
+        .strip_prefix("0x")
+        .or_else(|| cleaned.strip_prefix("0X"))
+    {
+        (16, body)
+    } else if let Some(body) = cleaned
+        .strip_prefix("0b")
+        .or_else(|| cleaned.strip_prefix("0B"))
+    {
+        (2, body)
+    } else if let Some(body) = cleaned
+        .strip_prefix("0o")
+        .or_else(|| cleaned.strip_prefix("0O"))
+    {
+        (8, body)
+    } else {
+        (10, cleaned.as_str())
+    };
+    let magnitude = match u128::from_str_radix(body, radix) {
+        Ok(value) => value,
+        Err(_) => return Some(Err("invalid or oversized integer literal")),
+    };
+    if unsigned {
+        let max = (1_u128 << bits) - 1;
+        if magnitude > max {
+            return Some(Err("integer literal outside declared unsigned range"));
+        }
+        Some(Ok((
+            MirType::Int(width),
+            true,
+            (magnitude as u64) as i64,
+        )))
+    } else {
+        let max = (1_u128 << (bits - 1)) - 1;
+        if magnitude > max {
+            return Some(Err("integer literal outside declared signed range"));
+        }
+        Some(Ok((MirType::Int(width), false, magnitude as i64)))
+    }
 }
 
 /// Strip a trailing float-type suffix (e.g. `3.14f32` → `3.14`). Recognized
@@ -2658,7 +2806,39 @@ fn lower_binary(
     span: Span,
 ) -> Option<(ValueId, MirType)> {
     let (lhs_id, lhs_ty) = lower_expr(ctx, lhs)?;
-    let (rhs_id, rhs_ty) = lower_expr(ctx, rhs)?;
+    let exact_integer_operands = matches!(
+        op,
+        HirBinOp::BitAnd | HirBinOp::BitOr | HirBinOp::BitXor | HirBinOp::Shl | HirBinOp::Shr
+    );
+    let (rhs_id, rhs_ty) = if exact_integer_operands {
+        let contextual = ctx
+            .integer_unsigned_values
+            .get(&lhs_id)
+            .copied()
+            .and_then(|unsigned| {
+                lower_contextual_integer_literal(ctx, rhs, &lhs_ty, unsigned)
+            });
+        match contextual {
+            Some(Ok(value)) => value,
+            Some(Err(id)) => return Some((id, MirType::None)),
+            None => lower_expr(ctx, rhs)?,
+        }
+    } else {
+        lower_expr(ctx, rhs)?
+    };
+    let right_shift = if matches!(op, HirBinOp::Shr) {
+        match exact_right_shift_op(ctx, lhs_id, &lhs_ty, rhs_id, &rhs_ty) {
+            Ok(contract) => Some(contract),
+            Err(reason) => {
+                let id = emit_integer_shift_contract_refusal(
+                    ctx, lhs_id, &lhs_ty, rhs_id, &rhs_ty, reason, span,
+                );
+                return Some((id, MirType::None));
+            }
+        }
+    } else {
+        None
+    };
     let is_float = matches!(lhs_ty, MirType::Float(_));
     let op_name = match (op, is_float) {
         (HirBinOp::Add, false) => "arith.addi",
@@ -2697,7 +2877,9 @@ fn lower_binary(
         (HirBinOp::BitOr, _) => "arith.ori",
         (HirBinOp::BitXor, _) => "arith.xori",
         (HirBinOp::Shl, _) => "arith.shli",
-        (HirBinOp::Shr, _) => "arith.shrsi",
+        (HirBinOp::Shr, _) => right_shift
+            .map(|(name, _)| name)
+            .expect("right shift was checked above"),
         (HirBinOp::Implies | HirBinOp::Entails, _) => "cssl.verify.assert",
     };
     let result_ty = match op {
@@ -2708,7 +2890,9 @@ fn lower_binary(
     };
     let id = ctx.fresh_value_id();
     if matches!(&result_ty, MirType::Int(_)) {
-        if let (Some(left), Some(right)) = (ctx.integer_unsigned_values.get(&lhs_id), ctx.integer_unsigned_values.get(&rhs_id)) {
+        if let Some((_, unsigned)) = right_shift {
+            ctx.integer_unsigned_values.insert(id, unsigned);
+        } else if let (Some(left), Some(right)) = (ctx.integer_unsigned_values.get(&lhs_id), ctx.integer_unsigned_values.get(&rhs_id)) {
             // § Existing backend sign-extends signed integer pairs. Unsigned mixed-width arithmetic remains unproved.
             if left == right && (lhs_ty == rhs_ty || (!*left && matches!((&lhs_ty, &rhs_ty), (MirType::Int(left_width), MirType::Int(right_width)) if left_width.natural_alignment() >= right_width.natural_alignment()))) {
                 ctx.integer_unsigned_values.insert(id, *left);
@@ -2724,6 +2908,64 @@ fn lower_binary(
     );
     let _ = span;
     Some((id, result_ty))
+}
+
+/// Select right-shift semantics only from exact source contracts. MIR integer
+/// widths are signless, so falling back to `shrsi` or `shrui` when either
+/// operand lost provenance would silently manufacture language semantics.
+fn exact_right_shift_op(
+    ctx: &BodyLowerCtx<'_>,
+    lhs_id: ValueId,
+    lhs_ty: &MirType,
+    rhs_id: ValueId,
+    rhs_ty: &MirType,
+) -> Result<(&'static str, bool), &'static str> {
+    if !matches!(lhs_ty, MirType::Int(_)) || !matches!(rhs_ty, MirType::Int(_)) {
+        return Err("right shift requires exact integer operand types");
+    }
+    if lhs_ty != rhs_ty {
+        return Err("right shift operand widths must match exactly");
+    }
+    let Some(lhs_unsigned) = ctx.integer_unsigned_values.get(&lhs_id).copied() else {
+        return Err("right shift lhs signedness is unverified");
+    };
+    let Some(rhs_unsigned) = ctx.integer_unsigned_values.get(&rhs_id).copied() else {
+        return Err("right shift rhs signedness is unverified");
+    };
+    if lhs_unsigned != rhs_unsigned {
+        return Err("right shift operand signedness must match exactly");
+    }
+    Ok((
+        if lhs_unsigned {
+            "arith.shrui"
+        } else {
+            "arith.shrsi"
+        },
+        lhs_unsigned,
+    ))
+}
+
+fn emit_integer_shift_contract_refusal(
+    ctx: &mut BodyLowerCtx<'_>,
+    lhs_id: ValueId,
+    lhs_ty: &MirType,
+    rhs_id: ValueId,
+    rhs_ty: &MirType,
+    reason: &str,
+    span: Span,
+) -> ValueId {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.integer.shift.contract.unverified")
+            .with_operand(lhs_id)
+            .with_operand(rhs_id)
+            .with_result(id, MirType::None)
+            .with_attribute("reason", reason)
+            .with_attribute("lhs_type", lhs_ty.to_string())
+            .with_attribute("rhs_type", rhs_ty.to_string())
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    id
 }
 
 fn lower_unary(
@@ -3369,6 +3611,10 @@ fn lower_call(
         .call_signatures
         .and_then(|table| table.get(&target))
         .map(<[CallParamContract]>::to_vec);
+    let declared_result = ctx
+        .call_signatures
+        .and_then(|table| table.result(&target))
+        .cloned();
     if let Some(params) = &declared_params {
         if params.len() != args.len() {
             return Some(emit_call_contract_refusal(
@@ -3428,8 +3674,12 @@ fn lower_call(
     // AD walker emit correctly-typed successor ops (e.g., `arith.constant
     // 0.0 : f32` for abs-fwd instead of an opaque-typed constant).
     let result_ty = infer_intrinsic_result_type(&target, &operand_tys)
+        .or_else(|| declared_result.as_ref().map(|contract| contract.ty.clone()))
         .unwrap_or_else(|| MirType::Opaque(format!("!cssl.call_result.{target}")));
     let id = ctx.fresh_value_id();
+    if let Some(unsigned) = declared_result.and_then(|contract| contract.unsigned) {
+        ctx.integer_unsigned_values.insert(id, unsigned);
+    }
     // § T11-D41 : record the HirId of the source Call expression as an attribute.
     //   The auto-monomorphization call-site-rewriter keys off this to map MIR
     //   func.call ops back to their originating HIR Call nodes.
@@ -6868,11 +7118,15 @@ fn _unused(_: MirValue) {}
 
 #[cfg(test)]
 mod tests {
-    use super::{lower_fn_body, lower_fn_body_with_call_signatures, CallSignatureTable};
+    use super::{
+        emit_compound_op, lower_fn_body, lower_fn_body_with_call_signatures, BodyLowerCtx,
+        CallSignatureTable,
+    };
     use crate::lower::{lower_function_signature, LowerCtx};
     use crate::value::IntWidth;
     use crate::value::MirType;
-    use cssl_ast::{SourceFile, SourceId, Surface};
+    use cssl_ast::{SourceFile, SourceId, Span, Surface};
+    use cssl_hir::HirBinOp;
 
     fn hir_from(src: &str) -> (cssl_hir::HirModule, cssl_hir::Interner, SourceFile) {
         let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
@@ -7032,6 +7286,181 @@ mod tests {
             assert!(names.contains(&"cssl.integer.literal.contract.unverified"), "{ty}: {literal}");
             assert!(!names.contains(&"cssl.local.alloca") && !names.contains(&"memref.store"), "{ty}: {literal}");
         }
+    }
+
+    #[test]
+    fn typed_right_shift_selects_logical_or_arithmetic_from_exact_provenance() {
+        for (source, expected, count) in [
+            (
+                "fn logical(value: u32, amount: u32) -> u32 { (value >> amount) >> amount }",
+                "arith.shrui",
+                2,
+            ),
+            (
+                "fn logical() -> u64 { let value: u64 = 0x8000000000000000u64; let amount: u64 = 1u64; value >> amount }",
+                "arith.shrui",
+                1,
+            ),
+            (
+                "fn logical(value: u32) -> u32 { value >> 1u32 }",
+                "arith.shrui",
+                1,
+            ),
+            (
+                "fn logical(value: u32) -> u32 { let amount = 1u32; value >> amount }",
+                "arith.shrui",
+                1,
+            ),
+            (
+                "fn logical(value: u32) -> u32 { (value & 0xff000000u32) >> 24u32 }",
+                "arith.shrui",
+                1,
+            ),
+            (
+                "fn arithmetic(value: i32, amount: i32) -> i32 { (value >> amount) >> amount }",
+                "arith.shrsi",
+                2,
+            ),
+            (
+                "fn arithmetic() -> i64 { let value: i64 = -9223372036854775808i64; let amount: i64 = 1i64; value >> amount }",
+                "arith.shrsi",
+                1,
+            ),
+            (
+                "fn arithmetic(value: i32) -> i32 { value >> 1i32 }",
+                "arith.shrsi",
+                1,
+            ),
+        ] {
+            let (function, _) = lower_one(source);
+            let names = op_names(&function);
+            assert_eq!(
+                names.iter().filter(|name| **name == expected).count(),
+                count,
+                "{source}"
+            );
+            assert!(!names.contains(&"cssl.integer.shift.contract.unverified"), "{source}");
+        }
+    }
+
+    #[test]
+    fn typed_compound_right_shift_uses_the_same_exact_signedness_contract() {
+        let (_, interner, _) = hir_from("fn placeholder() -> i32 { 0 }");
+        for (unsigned, expected) in [(true, "arith.shrui"), (false, "arith.shrsi")] {
+            let mut ctx = BodyLowerCtx::new(&interner);
+            let lhs = ctx.fresh_value_id();
+            let rhs = ctx.fresh_value_id();
+            ctx.integer_unsigned_values.insert(lhs, unsigned);
+            ctx.integer_unsigned_values.insert(rhs, unsigned);
+            let result = emit_compound_op(
+                &mut ctx,
+                HirBinOp::Shr,
+                lhs,
+                rhs,
+                &MirType::Int(IntWidth::I32),
+                Span::DUMMY,
+            )
+            .expect("exact compound shift must lower");
+            assert_eq!(ctx.ops.last().map(|op| op.name.as_str()), Some(expected));
+            assert_eq!(ctx.integer_unsigned_values.get(&result), Some(&unsigned));
+        }
+
+        let mut ctx = BodyLowerCtx::new(&interner);
+        let lhs = ctx.fresh_value_id();
+        let rhs = ctx.fresh_value_id();
+        ctx.integer_unsigned_values.insert(lhs, true);
+        let refusal = emit_compound_op(
+            &mut ctx,
+            HirBinOp::Shr,
+            lhs,
+            rhs,
+            &MirType::Int(IntWidth::I32),
+            Span::DUMMY,
+        )
+        .expect_err("unknown compound shift signedness must refuse");
+        assert_eq!(ctx.ops.last().map(|op| op.name.as_str()), Some("cssl.integer.shift.contract.unverified"));
+        assert!(!ctx.integer_unsigned_values.contains_key(&refusal));
+    }
+
+    #[test]
+    fn right_shift_unknown_or_mixed_contract_refuses_instead_of_guessing_signed() {
+        for source in [
+            "fn unknown(value: u32) -> u32 { value >> not_declared() }",
+            "fn mixed(value: u32, amount: i32) -> u32 { value >> amount }",
+        ] {
+            let (function, _) = lower_one(source);
+            let names = op_names(&function);
+            assert!(names.contains(&"cssl.integer.shift.contract.unverified"), "{source}");
+            assert!(!names.contains(&"arith.shrsi") && !names.contains(&"arith.shrui"), "{source}");
+        }
+
+        let (missing_source, _) =
+            lower_one_nosrc("fn missing(value: u32) -> u32 { value >> 1u32 }");
+        let missing_names = op_names(&missing_source);
+        assert!(missing_names.contains(&"cssl.integer.literal.contract.unverified"));
+        assert!(!missing_names.contains(&"arith.shrsi") && !missing_names.contains(&"arith.shrui"));
+
+        let (out_of_range, _) = lower_one("fn range(value: u8) -> u8 { value >> 256u8 }");
+        let range_names = op_names(&out_of_range);
+        assert!(range_names.contains(&"cssl.integer.literal.contract.unverified"));
+        assert!(!range_names.contains(&"arith.shrsi") && !range_names.contains(&"arith.shrui"));
+    }
+
+    #[test]
+    fn direct_call_result_preserves_declared_signedness_for_right_shift() {
+        for (source, expected) in [
+            (
+                "fn identity(value: u32) -> u32 { value } fn caller(value: u32, amount: u32) -> u32 { identity(value) >> amount }",
+                "arith.shrui",
+            ),
+            (
+                "fn identity(value: i64) -> i64 { value } fn caller(value: i64, amount: i64) -> i64 { identity(value) >> amount }",
+                "arith.shrsi",
+            ),
+        ] {
+            let function = lower_named_with_call_signatures(source, "caller", true);
+            let names = op_names(&function);
+            assert!(names.contains(&"func.call"), "{source}");
+            assert!(names.contains(&expected), "{source}");
+            assert!(!names.contains(&"cssl.integer.shift.contract.unverified"), "{source}");
+        }
+    }
+
+    #[test]
+    fn cross_module_call_result_preserves_declared_unsigned_shift_contract() {
+        let (callee_hir, callee_interner, _) =
+            hir_from("fn word(value: u32) -> u32 { value }");
+        let (caller_hir, caller_interner, caller_source) = hir_from(
+            "fn caller(value: u32, amount: u32) -> u32 { let result = word(value); result >> amount }",
+        );
+        let mut signatures = CallSignatureTable::new();
+        signatures.extend_hir_module(&callee_hir, &callee_interner);
+        signatures.extend_hir_module(&caller_hir, &caller_interner);
+        let caller = caller_hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                cssl_hir::HirItem::Fn(function)
+                    if caller_interner.resolve(function.name) == "caller" =>
+                {
+                    Some(function)
+                }
+                _ => None,
+            })
+            .expect("caller");
+        let lower_ctx = LowerCtx::new(&caller_interner);
+        let mut function = lower_function_signature(&lower_ctx, caller);
+        lower_fn_body_with_call_signatures(
+            &caller_interner,
+            Some(&caller_source),
+            &signatures,
+            caller,
+            &mut function,
+        );
+        let names = op_names(&function);
+        assert!(names.contains(&"func.call"));
+        assert!(names.contains(&"arith.shrui"));
+        assert!(!names.contains(&"cssl.integer.shift.contract.unverified"));
     }
 
     #[test]

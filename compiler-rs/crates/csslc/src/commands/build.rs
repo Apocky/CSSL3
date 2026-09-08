@@ -757,6 +757,54 @@ mod tests {
     }
 
     #[test]
+    fn build_typed_logical_and_arithmetic_right_shifts_emit_object() {
+        let src = "pub fn logical_u32(value: u32, amount: u32) -> u32 { value >> amount }\n\
+                   pub fn logical_u64(value: u64, amount: u64) -> u64 { value >> amount }\n\
+                   pub fn arithmetic_i32(value: i32, amount: i32) -> i32 { value >> amount }\n\
+                   pub fn arithmetic_i64(value: i64, amount: i64) -> i64 { value >> amount }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9004_positive_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9004_positive.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9004_positive.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
+        assert!(tmp_out.exists(), "typed shifts must emit an object");
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn build_right_shift_refuses_unknown_or_mixed_integer_contract() {
+        for (case, src) in [
+            (
+                "unknown_amount",
+                "pub fn invalid(value: u32) -> u32 { value >> not_declared() }\n",
+            ),
+            (
+                "mixed_signedness",
+                "pub fn invalid(value: u32, amount: i32) -> u32 { value >> amount }\n",
+            ),
+            (
+                "suffix_type",
+                "pub fn invalid(value: u32) -> u32 { value >> 1i32 }\n",
+            ),
+            (
+                "out_of_range",
+                "pub fn invalid(value: u8) -> u8 { value >> 256u8 }\n",
+            ),
+        ] {
+            let tmp_out = std::env::temp_dir()
+                .join(format!("csslc_abi9004_{case}_{}.obj", std::process::id()));
+            let _ = std::fs::remove_file(&tmp_out);
+            let args = build_args("abi9004_negative.cssl", tmp_out.to_str().unwrap());
+            let code = run_with_source(Path::new("abi9004_negative.cssl"), src, &args);
+            let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+            assert_eq!(format!("{code:?}"), format!("{err:?}"), "{case}");
+            assert!(!tmp_out.exists(), "refused shift wrote output: {case}");
+        }
+    }
+
+    #[test]
     fn build_with_emit_mlir_writes_placeholder() {
         // Non-object emit modes still write the explanatory placeholder.
         let src = "module com.apocky.examples.hello\n\

@@ -148,13 +148,50 @@ pub fn profile_probe_codec_shift_v1() -> i32 {
     0i32
 }
 
-// Exercise the primitive unsigned shift separately from the codec's safe
-// mask-after-shift pattern. The pinned compiler lowers this as signed and must
-// therefore expose 9004 until the primitive semantics are repaired.
+pub fn profile_u32_logical_shift_v1(value: u32, amount: u32) -> u32 {
+    value >> amount
+}
+
+pub fn profile_u64_logical_shift_v1(value: u64, amount: u64) -> u64 {
+    value >> amount
+}
+
+pub fn profile_i32_arithmetic_shift_v1(value: i32, amount: i32) -> i32 {
+    value >> amount
+}
+
+pub fn profile_i64_arithmetic_shift_v1(value: i64, amount: i64) -> i64 {
+    value >> amount
+}
+
+// Exercise primitive shifts separately from the codec's safe mask-after-shift
+// pattern. Typed unsigned values require logical shift; typed signed values
+// require arithmetic shift across local bindings and direct callees.
+pub fn profile_probe_u32_logical_shift_v1() -> i32 {
+    let unsigned32: u32 = 0x80000000u32;
+    let unsigned32_amount: u32 = 1u32;
+    let unsigned32_expected: u32 = 0x40000000u32;
+    if profile_u32_logical_shift_v1(unsigned32, unsigned32_amount) != unsigned32_expected { return 9004i32; }
+    0i32
+}
+
 pub fn profile_probe_unsigned_shift_semantics_v1() -> i32 {
-    let value: u32 = 0x80000000u32;
-    let amount: u32 = 1u32;
-    if (value >> amount) != 0x40000000u32 { return 9004i32; }
+    if profile_probe_u32_logical_shift_v1() != 0i32 { return 9004i32; }
+
+    let unsigned64: u64 = 0x8000000000000000u64;
+    let unsigned64_amount: u64 = 1u64;
+    let unsigned64_expected: u64 = 0x4000000000000000u64;
+    if profile_u64_logical_shift_v1(unsigned64, unsigned64_amount) != unsigned64_expected { return 9004i32; }
+
+    let signed32: i32 = -2i32;
+    let signed32_amount: i32 = 1i32;
+    let signed32_expected: i32 = -1i32;
+    if profile_i32_arithmetic_shift_v1(signed32, signed32_amount) != signed32_expected { return 9004i32; }
+
+    let signed64: i64 = -2i64;
+    let signed64_amount: i64 = 1i64;
+    let signed64_expected: i64 = -1i64;
+    if profile_i64_arithmetic_shift_v1(signed64, signed64_amount) != signed64_expected { return 9004i32; }
     0i32
 }
 
@@ -195,7 +232,7 @@ pub fn profile_probe_known_refusals_v1() -> i32 {
     if profile_probe_variant_v1() != 9002i32 { return 9022i32; }
     if profile_probe_u128_composite_v1() != 0i32 { return 9023i32; }
     if profile_probe_native_u128_scalar_v1() != 9003i32 { return 9024i32; }
-    if profile_probe_unsigned_shift_semantics_v1() != 9004i32 { return 9025i32; }
+    if profile_probe_unsigned_shift_semantics_v1() != 0i32 { return 9025i32; }
     if profile_probe_u64_cross_call_v1() != 0i32 { return 9026i32; }
     0i32
 }
