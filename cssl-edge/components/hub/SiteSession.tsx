@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { getAuthClient } from '../../lib/auth';
+import { getAuthClient, persistSessionToCookie } from '../../lib/auth';
 import { authFetch } from '../../lib/browser-auth';
 import { withDeadline } from '../../lib/apocrypha/deadline';
 
@@ -43,19 +43,40 @@ async function resolveSiteAccessUnchecked(): Promise<ResolvedSiteSession> {
   try {
     const response = await authFetch('/api/auth/me', { cache: 'no-store' });
     if (!response.ok) return { access: browserAuthenticated ? 'unavailable' : 'signed-out', subjectKey: null };
-    const payload = await response.json() as { user?: unknown; owner_conversation?: unknown };
+    const payload = await response.json() as {
+      user?: unknown;
+      authorized?: unknown;
+      owner_conversation?: unknown;
+      failure_kind?: unknown;
+    };
     serverAuthenticated = Boolean(payload.user);
     ownerConversation = serverAuthenticated && payload.owner_conversation === true;
     if (payload.user && typeof payload.user === 'object' && !Array.isArray(payload.user)) {
       const candidate = (payload.user as Record<string, unknown>).id;
       subjectKey = typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
     }
+    if (!serverAuthenticated) {
+      const definitivelySignedOut = payload.failure_kind === 'unauthenticated'
+        || payload.failure_kind === 'invalid-session';
+      return {
+        access: definitivelySignedOut || !browserAuthenticated ? 'signed-out' : 'unavailable',
+        subjectKey: null,
+        ownerConversation: false,
+      };
+    }
+    if (typeof payload.authorized === 'boolean') {
+      return {
+        access: payload.authorized ? 'owner' : 'member',
+        subjectKey,
+        ownerConversation: payload.authorized && ownerConversation,
+      };
+    }
   } catch {
-    if (!browserAuthenticated) return { access: 'unavailable', subjectKey: null };
+    return { access: 'unavailable', subjectKey: null };
   }
 
-  if (!serverAuthenticated && !browserAuthenticated) return { access: 'signed-out', subjectKey: null };
-
+  // Compatibility path for an older /api/auth/me response during rolling
+  // deployment. Current production returns authorization in the first reply.
   try {
     const response = await authFetch('/api/admin/check', { cache: 'no-store' });
     if (!response.ok) return { access: 'member', subjectKey };
@@ -95,7 +116,8 @@ export function SiteSessionProvider({ children }: { children: React.ReactNode })
     const client = getAuthClient();
     if (!client) return undefined;
     let queuedRefresh: ReturnType<typeof setTimeout> | null = null;
-    const { data } = client.auth.onAuthStateChange(() => {
+    const { data } = client.auth.onAuthStateChange((_event, nextSession) => {
+      if (nextSession?.access_token) void persistSessionToCookie(nextSession.access_token);
       // Supabase dispatches this callback while its auth state is locked. Defer
       // the read so refresh() cannot wait on the callback that invoked it.
       if (queuedRefresh !== null) return;

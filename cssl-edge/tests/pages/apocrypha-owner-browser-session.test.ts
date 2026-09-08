@@ -20,15 +20,37 @@ export async function main(root: string): Promise<void> {
   } }).outputText;
   let checks = 0;
   const equal = (actual: unknown, expected: unknown, message: string): void => { assert.equal(actual, expected, message); checks += 1; };
-  let account: Record<string, unknown> = { user: { id: 'owner' }, owner_conversation: true };
+  const browserAuthExports: Record<string, any> = {};
+  let protectedFetches = 0;
+  let mirrorAttempts = 0;
+  runInNewContext(compile(readFileSync(join(root, 'lib/browser-auth.ts'), 'utf8')), {
+    exports: browserAuthExports,
+    Headers,
+    fetch: async () => { protectedFetches += 1; return { ok: true }; },
+    require(name: string) {
+      if (name.endsWith('/auth')) return {
+        getAuthClient: () => ({ auth: { getSession: async () => ({ data: { session: { access_token: 'browser-token' } } }) } }),
+        persistSessionToCookie: async () => { mirrorAttempts += 1; return new Promise<boolean>(() => undefined); },
+      };
+      return {};
+    },
+  });
+  await browserAuthExports.authFetch('/api/protected');
+  equal(protectedFetches, 1, 'protected request starts without waiting for a second session-mirror verification');
+  equal(mirrorAttempts, 0, 'ordinary protected requests do not remint the session cookie');
+  let account: Record<string, unknown> = { user: { id: 'owner' }, owner_conversation: true, authorized: true };
   let authorized = true;
   let hangSiteFetch = false;
+  let siteFetchDelayMs = 0;
+  let siteFetchCount = 0;
   const sessionExports: Record<string, any> = {};
   runInNewContext(compile(readFileSync(join(root, 'components/hub/SiteSession.tsx'), 'utf8')), { exports: sessionExports, require(name: string) {
       if (name === 'react') return { createContext: () => ({}) };
       if (name.endsWith('/auth')) return { getAuthClient: () => ({ auth: { getSession: async () => ({ data: { session: {} } }) } }) };
       if (name.endsWith('/browser-auth')) return { authFetch: async (url: string) => {
+        siteFetchCount += 1;
         if (hangSiteFetch) return new Promise<never>(() => undefined);
+        if (siteFetchDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, siteFetchDelayMs));
         return { ok: true, json: async () => url === '/api/auth/me' ? account : { authorized } };
       } };
       if (name.endsWith('/apocrypha/deadline')) return { withDeadline };
@@ -36,13 +58,19 @@ export async function main(root: string): Promise<void> {
     } });
   let session = await sessionExports.resolveSiteAccess();
   equal(session.ownerConversation, true, 'browser bearer session admits the server-verified owner');
-  account = { user: { id: 'operator' }, owner_conversation: false };
+  equal(siteFetchCount, 1, 'combined identity response avoids a duplicate admin verification request');
+  account = { user: { id: 'operator' }, owner_conversation: false, authorized: true };
   session = await sessionExports.resolveSiteAccess();
   equal(session.ownerConversation, false, 'admin access alone does not admit another owner conversation');
-  account = { user: null, owner_conversation: true };
+  account = { user: null, owner_conversation: true, authorized: true };
   equal((await sessionExports.resolveSiteAccess()).ownerConversation, false, 'capability requires authenticated identity');
-  account = { user: { id: 'owner' }, owner_conversation: true }; authorized = false;
+  account = { user: { id: 'owner' }, owner_conversation: true, authorized: false }; authorized = false;
   equal((await sessionExports.resolveSiteAccess()).ownerConversation, false, 'failed admin admission stays closed');
+  account = { user: { id: 'owner' }, owner_conversation: true, authorized: true };
+  siteFetchDelayMs = 30;
+  session = await sessionExports.resolveSiteAccess(50);
+  equal(session.access, 'owner', 'one combined verification completes inside the browser deadline');
+  siteFetchDelayMs = 0;
   hangSiteFetch = true;
   const deadlineStarted = Date.now();
   session = await sessionExports.resolveSiteAccess(10);

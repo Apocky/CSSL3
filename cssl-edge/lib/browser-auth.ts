@@ -1,4 +1,4 @@
-import { getAuthClient, persistSessionToCookie } from './auth';
+import { getAuthClient } from './auth';
 
 export async function getBrowserAuthHeaders(): Promise<Headers> {
   const headers = new Headers();
@@ -8,7 +8,6 @@ export async function getBrowserAuthHeaders(): Promise<Headers> {
   try {
     const { data } = await client.auth.getSession();
     if (data.session?.access_token) {
-      await persistSessionToCookie(data.session.access_token);
       headers.set('Authorization', `Bearer ${data.session.access_token}`);
     }
   } catch {
@@ -21,5 +20,8 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   const authHeaders = await getBrowserAuthHeaders();
   const headers = new Headers(init.headers);
   authHeaders.forEach((value, key) => headers.set(key, value));
-  return fetch(input, { ...init, headers });
+  // OAuth completion and auth-state changes maintain the HttpOnly mirror.
+  // Protected requests carry the browser bearer immediately instead of waiting
+  // for a second network verification before starting the request itself.
+  return fetch(input, { ...init, headers, credentials: init.credentials ?? 'same-origin' });
 }

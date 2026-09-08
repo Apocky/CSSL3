@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { createSessionHandler } from '@/pages/api/auth/session';
+import { createAuthMeHandler } from '@/pages/api/auth/me';
 import logoutHandler from '@/pages/api/auth/logout';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -106,10 +107,45 @@ async function testLogoutClearsAllSessionSurfaces(): Promise<void> {
   assert(cookies.every((cookie) => cookie.includes('Max-Age=0')), 'logout only emits expirations');
 }
 
+async function testIdentityAndOwnerAdmissionShareOneVerification(): Promise<void> {
+  let calls = 0;
+  const user = {
+    id: '00000000-0000-4000-8000-000000000111',
+    email: 'owner@example.test',
+    provider: 'google',
+    createdAt: '2026-09-08T00:00:00.000Z',
+  };
+  const handler = createAuthMeHandler(async () => {
+    calls += 1;
+    return { user, authorized: true, authConfigured: true };
+  }, () => true);
+  const res = response();
+  await handler(request({ method: 'GET' }), res);
+  assert(res.statusCodeValue === 200, 'identity endpoint accepts a verified session');
+  assert(calls === 1, 'identity and owner classification use one verification');
+  const body = res.body as Record<string, unknown>;
+  assert(body.user === user, 'identity endpoint returns the verified user');
+  assert(body.authorized === true, 'identity endpoint returns owner authorization');
+  assert(body.owner_conversation === true, 'identity endpoint returns owner-runtime admission');
+
+  const unavailable = createAuthMeHandler(async () => ({
+    user: null,
+    authorized: false,
+    authConfigured: true,
+    failureKind: 'upstream-unavailable',
+    reason: 'temporary upstream failure',
+  }), () => false);
+  const unavailableRes = response();
+  await unavailable(request({ method: 'GET' }), unavailableRes);
+  const unavailableBody = unavailableRes.body as Record<string, unknown>;
+  assert(unavailableBody.failure_kind === 'upstream-unavailable', 'temporary verification failure stays distinct from sign-out');
+}
+
 async function run(): Promise<void> {
   await testValidSession();
   await testRejections();
   await testLogoutClearsAllSessionSurfaces();
+  await testIdentityAndOwnerAdmissionShareOneVerification();
   // eslint-disable-next-line no-console
   console.log('shawn/auth-session.test : OK · same-origin verified HttpOnly session + complete logout');
 }
