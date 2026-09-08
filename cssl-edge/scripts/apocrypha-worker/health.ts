@@ -2,12 +2,14 @@ import { createServer, type Server } from 'node:http';
 import type { AttemptJournal } from './journal';
 import type { WorkerConfig, WorkerRuntimeState } from './types';
 import type { QwenClient } from './qwen';
+import type { FrontierClient } from './frontier';
 
 export function startHealthServer(
   config: WorkerConfig,
   runtime: WorkerRuntimeState,
   journal: AttemptJournal,
   qwen: QwenClient,
+  frontier?: FrontierClient,
 ): Server {
   const server = createServer(async (request, response) => {
     response.setHeader('content-type', 'application/json; charset=utf-8');
@@ -21,7 +23,8 @@ export function startHealthServer(
     const probe = request.url === '/ready'
       ? await qwen.probe().catch((error) => ({ healthy: false, model: config.modelAlias, detail: error instanceof Error ? error.message : 'probe failed' }))
       : null;
-    const ready = request.url !== '/ready' || probe?.healthy === true;
+    const frontierStatus = frontier?.status() ?? null;
+    const ready = request.url !== '/ready' || probe?.healthy === true || frontierStatus?.available === true;
     response.statusCode = ready ? 200 : 503;
     response.end(JSON.stringify({
       status: ready ? 'ok' : 'degraded',
@@ -38,12 +41,20 @@ export function startHealthServer(
         recovered_attempts: runtime.recoveredAttempts,
         pending_journals: pendingJournals,
         last_error: runtime.lastError,
+        memory_probe: {
+          in_flight: runtime.memoryProbeStartedAt !== null,
+          started_at: runtime.memoryProbeStartedAt,
+          last_success_at: runtime.adapterProbeAt,
+          consecutive_failures: runtime.memoryProbeConsecutiveFailures,
+          last_failure: runtime.memoryProbeLastFailure,
+        },
       },
       qwen: {
         model_alias: config.modelAlias,
         profile_hash: config.profileHash,
         probe,
       },
+      frontier: frontierStatus,
       manifests: {
         tool_registry_version: config.toolRegistryVersion,
         memory_manifest_hash: config.memoryManifestHash,

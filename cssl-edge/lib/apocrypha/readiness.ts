@@ -59,6 +59,12 @@ interface SafeWorkerProfile {
     adapter_probe_at: string | null;
     adapter_states: Record<ApocryphaRequiredMemoryAdapter, string | null>;
   }>;
+  memory_probe: {
+    started_at: string | null;
+    last_success_at: string | null;
+    consecutive_failures: number;
+    last_failure: { code: string; detail: string; at: string } | null;
+  };
 }
 
 export interface ApocryphaReadinessProjection {
@@ -92,6 +98,7 @@ export interface ApocryphaReadinessProjection {
     memory_freshness_window_ms: number;
     required_memory_adapters: readonly ApocryphaRequiredMemoryAdapter[];
     adapter_states: Record<ApocryphaRequiredMemoryAdapter, string | null>;
+    memory_probe: SafeWorkerProfile['memory_probe'];
   };
   worker: {
     active_nodes: number;
@@ -123,6 +130,26 @@ function safeInteger(value: unknown, minimum: number, maximum: number): number |
     : null;
 }
 
+function safeMemoryProbe(value: unknown): SafeWorkerProfile['memory_probe'] {
+  const source = record(value);
+  const failureSource = record(source.last_failure);
+  const failure = typeof failureSource.code === 'string'
+    && typeof failureSource.detail === 'string'
+    && typeof failureSource.at === 'string'
+    ? {
+      code: failureSource.code.slice(0, 96),
+      detail: failureSource.detail.slice(0, 300),
+      at: safeString(failureSource.at, 64),
+    }
+    : null;
+  return {
+    started_at: safeString(source.started_at, 64),
+    last_success_at: safeString(source.last_success_at, 64),
+    consecutive_failures: safeInteger(source.consecutive_failures, 0, 100_000) ?? 0,
+    last_failure: failure && failure.at ? { ...failure, at: failure.at } : null,
+  };
+}
+
 function safeAdapterStates(value: unknown): Record<ApocryphaRequiredMemoryAdapter, string | null> {
   const source = record(value);
   return Object.fromEntries(
@@ -152,6 +179,7 @@ function profile(row: ApocryphaWorkerReadinessRow): SafeWorkerProfile {
     generation_deadline_ms: safeInteger(source.generation_deadline_ms, 60_000, APOCRYPHA_GENERATION_DEADLINE_MAX_MS),
     adapter_states: safeAdapterStates(source.adapter_states),
     capability_memory: capabilityMemory,
+    memory_probe: safeMemoryProbe(source.memory_probe),
   };
 }
 
@@ -324,6 +352,12 @@ export function projectApocryphaReadiness(input: {
       adapter_states: selectedMemoryEvidence?.adapter_states ?? Object.fromEntries(
         APOCRYPHA_REQUIRED_MEMORY_ADAPTERS.map((name) => [name, null]),
       ) as Record<ApocryphaRequiredMemoryAdapter, string | null>,
+      memory_probe: selectedProfile?.memory_probe ?? {
+        started_at: null,
+        last_success_at: null,
+        consecutive_failures: 0,
+        last_failure: null,
+      },
     },
     worker: {
       active_nodes: active.length,

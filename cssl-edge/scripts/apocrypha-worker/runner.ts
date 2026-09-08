@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   const worker = new ApocryphaWorker(config);
   await worker.journal.initialize();
   const instanceLock = await acquireWorkerLock(config.journalDir);
-  const health = startHealthServer(config, worker.runtime, worker.journal, worker.qwen);
+  const health = startHealthServer(config, worker.runtime, worker.journal, worker.qwen, worker.frontier);
   const stop = (signal: string): void => {
     log('info', 'worker.stop.requested', { signal });
     worker.stop(signal);

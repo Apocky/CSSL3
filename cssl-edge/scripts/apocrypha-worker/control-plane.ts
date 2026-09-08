@@ -232,6 +232,12 @@ export class ControlPlaneClient {
             adapter_states: runtime.capabilityAdapterStates[capability],
             adapter_probe_at: runtime.capabilityAdapterProbeAt[capability] ?? null,
           }])),
+          memory_probe: {
+            started_at: runtime.memoryProbeStartedAt,
+            last_success_at: runtime.adapterProbeAt,
+            consecutive_failures: runtime.memoryProbeConsecutiveFailures,
+            last_failure: runtime.memoryProbeLastFailure,
+          },
           generation_deadline_ms: this.config.qwenMaxRuntimeMs,
         },
         idempotencyKey: `${this.config.nodeId}:heartbeat:${Math.floor(Date.now() / this.config.heartbeatIntervalMs)}`,

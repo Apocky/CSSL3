@@ -95,6 +95,13 @@ export interface WorkerConfig {
   nodeId: string;
   nodeToken: string;
   qwenBaseUrl: string;
+  /** Optional paid-tier frontier rail. It is enabled only with an explicit model. */
+  frontierProvider?: 'openai' | 'anthropic' | null;
+  frontierBaseUrl?: string | null;
+  frontierApiKey?: string | null;
+  frontierModel?: string | null;
+  frontierTimeoutMs?: number;
+  frontierCooldownMs?: number;
   runtimeProfilePath: string | null;
   modelAlias: string;
   profileHash: string;
@@ -206,4 +213,10 @@ export interface WorkerRuntimeState {
   adapterProbeAt: string | null;
   capabilityAdapterStates: Record<string, Record<string, AdapterState>>;
   capabilityAdapterProbeAt: Record<string, string | null>;
+  /** Start time of the most recent bounded resident-memory probe. */
+  memoryProbeStartedAt: string | null;
+  /** Consecutive probe failures; successful probes reset this to zero. */
+  memoryProbeConsecutiveFailures: number;
+  /** Last bounded probe failure, with no credentials or record content. */
+  memoryProbeLastFailure: { code: string; detail: string; at: string } | null;
 }

@@ -2,6 +2,7 @@ import { ControlPlaneClient, ControlPlaneError, fenceFromClaim } from './control
 import { AttemptJournal } from './journal';
 import { log } from './log';
 import { composeQwenRequest } from './prompt';
+import { FrontierClient, FrontierError } from './frontier';
 import { QwenClient, QwenError } from './qwen';
 import { probeMemoryAdapters, retrieveMemory } from './retrieval';
 import type {
@@ -30,6 +31,23 @@ function boundedError(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).replace(/[\r\n]+/g, ' ').slice(0, 2_000);
 }
 
+interface ModelRoutePolicy {
+  serviceTier: 'free' | 'basic' | 'premium';
+  strategy: string;
+  primaryRail: 'local_qwen' | 'frontier';
+}
+
+function modelRoutePolicy(claim: ClaimedJob): ModelRoutePolicy {
+  const raw = claim.request.model_policy && typeof claim.request.model_policy === 'object'
+    ? claim.request.model_policy as Record<string, unknown>
+    : {};
+  const tierValue = raw.service_tier ?? claim.request.service_tier;
+  const serviceTier = tierValue === 'premium' || tierValue === 'basic' ? tierValue : 'free';
+  const strategy = typeof raw.strategy === 'string' ? raw.strategy : 'qwen_single_rail';
+  const primaryRail = raw.primary_rail === 'frontier' ? 'frontier' : 'local_qwen';
+  return { serviceTier, strategy, primaryRail };
+}
+
 class LeaseLostError extends Error {
   readonly code: string;
   readonly cancelled: boolean;
@@ -45,6 +63,7 @@ class LeaseLostError extends Error {
 interface Dependencies {
   controlPlane?: ControlPlaneClient;
   qwen?: QwenClient;
+  frontier?: FrontierClient;
   journal?: AttemptJournal;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
@@ -54,6 +73,7 @@ export class ApocryphaWorker {
   readonly runtime: WorkerRuntimeState;
   readonly journal: AttemptJournal;
   readonly qwen: QwenClient;
+  readonly frontier: FrontierClient;
   private readonly config: WorkerConfig;
   private readonly controlPlane: ControlPlaneClient;
   private readonly env: NodeJS.ProcessEnv;
@@ -71,6 +91,7 @@ export class ApocryphaWorker {
     this.fetchImpl = dependencies.fetchImpl ?? fetch;
     this.controlPlane = dependencies.controlPlane ?? new ControlPlaneClient(config, this.fetchImpl);
     this.qwen = dependencies.qwen ?? new QwenClient(config, this.fetchImpl);
+    this.frontier = dependencies.frontier ?? new FrontierClient(config, this.fetchImpl);
     this.journal = dependencies.journal ?? new AttemptJournal(config.journalDir, config.nodeToken, config.nodeId);
     this.runtime = {
       phase: 'starting',
@@ -90,6 +111,9 @@ export class ApocryphaWorker {
         Object.fromEntries(config.manifest.memory.adapters.map((adapter) => [adapter.name, 'unconfigured'])),
       ])),
       capabilityAdapterProbeAt: Object.fromEntries(config.manifest.capabilities.map((capability) => [capability, null])),
+      memoryProbeStartedAt: null,
+      memoryProbeConsecutiveFailures: 0,
+      memoryProbeLastFailure: null,
     };
   }
 
@@ -106,6 +130,12 @@ export class ApocryphaWorker {
     await this.recoverPendingAttempts();
     this.runtime.phase = 'idle';
     if (this.config.heartbeatEnabled) this.startHeartbeat();
+    // Do not hold the first heartbeat behind a slow faculty probe. The probe
+    // publishes a complete observation when it finishes and retains the last
+    // known-good state across transient failures; the in-flight marker makes
+    // the startup gap explicit to diagnostics.
+    this.memoryProbeInFlight = true;
+    void this.refreshMemoryProbe('startup').finally(() => { this.memoryProbeInFlight = false; });
   }
 
   async run(): Promise<void> {
@@ -247,8 +277,15 @@ export class ApocryphaWorker {
     const started = Date.now();
     try {
       this.assertCompatibleClaim(claim);
-      const probe = await this.qwen.probe(abortController.signal);
-      if (!probe.healthy) throw new QwenError(`Qwen is not ready: ${probe.detail}`, 'QWEN_NOT_READY', true);
+      const routePolicy = modelRoutePolicy(claim);
+      const frontierPreferred = routePolicy.serviceTier === 'premium'
+        && routePolicy.strategy === 'frontier_preferred'
+        && routePolicy.primaryRail === 'frontier';
+      const qwenProbe = await this.qwen.probe(abortController.signal);
+      const frontierAtAdmission = this.frontier.status();
+      if (!qwenProbe.healthy && !(frontierPreferred && frontierAtAdmission.available)) {
+        throw new QwenError(`Qwen is not ready: ${qwenProbe.detail}`, 'QWEN_NOT_READY', true);
+      }
       this.runtime.phase = 'retrieving';
       memory = await this.serializeMemoryOperation(
         () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
@@ -328,22 +365,71 @@ export class ApocryphaWorker {
           if (timedFlushReady && buffer.length > 0) await flush(true);
         }
       };
-      const generate = async (overflowRetry = false): Promise<QwenResult> => {
+      const generateQwen = async (overflowRetry = false): Promise<QwenResult> => {
         const request = composeQwenRequest(this.config, claim, memory as RetrievalBundle, { overflowRetry });
         return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);
       };
-      let result: QwenResult;
-      try {
-        result = await generate();
-      } catch (error) {
-        if (!(error instanceof QwenError) || error.code !== 'QWEN_CONTEXT_OVERFLOW' || streamed) throw error;
-        log('warn', 'worker.qwen.context_retry', {
-          job_id: claim.jobId,
-          attempt_id: claim.attemptId,
-          detail: boundedError(error),
-        });
-        result = await generate(true);
+      let result: QwenResult | null = null;
+      let selectedRail: 'local_qwen' | 'frontier' = 'local_qwen';
+      let fallbackReason: string | null = null;
+      const composed = composeQwenRequest(this.config, claim, memory as RetrievalBundle);
+      if (frontierPreferred) {
+        if (frontierAtAdmission.available) {
+          try {
+            result = await this.frontier.generate(composed.messages, composed.generation, abortController.signal);
+            selectedRail = 'frontier';
+            log('info', 'worker.model_route.completed', {
+              job_id: claim.jobId,
+              attempt_id: claim.attemptId,
+              outcome: 'expected_fired',
+              requested_rail: 'frontier',
+              selected_rail: 'frontier',
+              provider: frontierAtAdmission.provider,
+            });
+          } catch (error) {
+            // Frontier calls are best effort for paid tiers. The terminal local
+            // rail remains authoritative when credits, workspace, or provider
+            // capacity is unavailable.
+            fallbackReason = error instanceof FrontierError ? error.code : 'FRONTIER_ERROR';
+            log('warn', 'worker.model_route.frontier_fallback', {
+              job_id: claim.jobId,
+              attempt_id: claim.attemptId,
+              outcome: 'unexpected_fired',
+              requested_rail: 'frontier',
+              selected_rail: 'local_qwen',
+              fallback_reason: fallbackReason,
+              detail: boundedError(error),
+            });
+          }
+        } else {
+          fallbackReason = frontierAtAdmission.configured ? 'FRONTIER_COOLDOWN' : 'FRONTIER_UNCONFIGURED';
+          log('info', 'worker.model_route.frontier_skipped', {
+            job_id: claim.jobId,
+            attempt_id: claim.attemptId,
+            outcome: 'expected_missed',
+            requested_rail: 'frontier',
+            selected_rail: 'local_qwen',
+            fallback_reason: fallbackReason,
+          });
+        }
       }
+      if (!result) {
+        try {
+          result = await generateQwen();
+        } catch (error) {
+          if (!(error instanceof QwenError) || error.code !== 'QWEN_CONTEXT_OVERFLOW' || streamed) throw error;
+          log('warn', 'worker.qwen.context_retry', {
+            job_id: claim.jobId,
+            attempt_id: claim.attemptId,
+            detail: boundedError(error),
+          });
+          result = await generateQwen(true);
+        }
+      }
+      // Frontier is a bounded non-streaming call. Deliver its complete answer
+      // only after the provider call has succeeded; a delivery failure must
+      // never trigger a second model answer and duplicate visible text.
+      if (selectedRail === 'frontier') await onDelta(result.content);
       await flush(true);
       const completion = {
         content: result.content,
@@ -356,6 +442,14 @@ export class ApocryphaWorker {
           memory_digest: memory.digest,
           memory_sources: memory.results.map((item) => ({ name: item.name, state: item.state, records: item.records.length, duration_ms: item.durationMs })),
           provenance_ids: memory.records.map((item) => `${item.source}:${item.provenanceId}`).slice(0, 100),
+          model_route: {
+            service_tier: routePolicy.serviceTier,
+            strategy: routePolicy.strategy,
+            requested_rail: routePolicy.primaryRail,
+            selected_rail: selectedRail,
+            fallback_reason: fallbackReason,
+            frontier: this.frontier.status(),
+          },
         },
         usage: {
           prompt_tokens: result.usage.promptTokens,
@@ -577,32 +671,96 @@ export class ApocryphaWorker {
     }
   }
 
-  private startMemoryProbe(): void {
-    if (this.memoryProbeInFlight || this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return;
-    this.memoryProbeInFlight = true;
-    void this.serializeMemoryOperation(async () => {
-      if (this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return null;
-      return probeMemoryAdapters(this.config, this.env, this.fetchImpl);
-    }).then((memoryProbe) => {
-      if (!memoryProbe) return;
+  private async refreshMemoryProbe(trigger: 'startup' | 'interval'): Promise<boolean> {
+    this.runtime.memoryProbeStartedAt = new Date().toISOString();
+    try {
+      const memoryProbe = await this.serializeMemoryOperation(() => probeMemoryAdapters(this.config, this.env, this.fetchImpl));
+      if (!memoryProbe) {
+        throw new Error('resident memory readiness did not return an observation');
+      }
+      const globalReady = memoryProbe.probedAt !== null
+        && memoryProbe.results.length > 0
+        && memoryProbe.results.every((result) => result.state === 'ok');
+      const capabilityReady = this.config.manifest.capabilities.every((capability) => {
+        const capabilityProbe = memoryProbe.capabilityProbes?.[capability];
+        // Older standalone probe implementations have no per-capability
+        // result. The global observation remains valid in that mode.
+        return !memoryProbe.capabilityProbes || (
+          capabilityProbe?.probedAt !== null
+          && capabilityProbe?.probedAt !== undefined
+          && (capabilityProbe.results.length === 0 || capabilityProbe.results.every((result) => result.state === 'ok'))
+        );
+      });
+      if (!globalReady || !capabilityReady) {
+        // Before the first complete probe there is no known-good snapshot to
+        // retain. Expose the observed per-adapter states for diagnostics, but
+        // never mint a freshness timestamp from this partial observation.
+        if (this.runtime.adapterProbeAt === null) {
+          this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
+          for (const capability of this.config.manifest.capabilities) {
+            const capabilityProbe = memoryProbe.capabilityProbes?.[capability];
+            if (capabilityProbe) {
+              this.runtime.capabilityAdapterStates[capability] = Object.fromEntries(
+                capabilityProbe.results.map((result) => [result.name, result.state]),
+              );
+            }
+          }
+        }
+        const failed = memoryProbe.results
+          .filter((result) => result.state !== 'ok')
+          .map((result) => `${result.name}:${result.state}`)
+          .join(', ');
+        throw new Error(failed || 'resident memory readiness is incomplete');
+      }
+
+      // Publish only complete observations. A transient failed probe must not
+      // erase the last known-good evidence and make a healthy node appear down.
       this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
       this.runtime.adapterProbeAt = memoryProbe.probedAt;
       for (const capability of this.config.manifest.capabilities) {
         const capabilityProbe = memoryProbe.capabilityProbes?.[capability];
+        if (!capabilityProbe || capabilityProbe.probedAt === null) continue;
         this.runtime.capabilityAdapterStates[capability] = Object.fromEntries(
-          (capabilityProbe?.results ?? this.config.manifest.memory.adapters.map((adapter) => ({
-            name: adapter.name,
-            state: 'unconfigured' as const,
-          }))).map((result) => [result.name, result.state]),
+          capabilityProbe.results.map((result) => [result.name, result.state]),
         );
-        this.runtime.capabilityAdapterProbeAt[capability] = capabilityProbe?.probedAt ?? null;
+        this.runtime.capabilityAdapterProbeAt[capability] = capabilityProbe.probedAt;
       }
-    }).catch((error) => {
-      this.recordError('MEMORY_PROBE_FAILED', boundedError(error));
-      log('warn', 'worker.memory_probe.failed', { detail: boundedError(error) });
-    }).finally(() => {
-      this.memoryProbeInFlight = false;
-    });
+      this.runtime.memoryProbeConsecutiveFailures = 0;
+      this.runtime.memoryProbeLastFailure = null;
+      log('info', 'worker.memory_probe.completed', {
+        trigger,
+        outcome: 'expected_fired',
+        expected: true,
+        fired: true,
+        probed_at: memoryProbe.probedAt,
+        adapter_states: this.runtime.adapterStates,
+      });
+      return true;
+    } catch (error) {
+      const detail = boundedError(error);
+      const failure = { code: 'MEMORY_PROBE_FAILED', detail, at: new Date().toISOString() };
+      this.runtime.memoryProbeConsecutiveFailures += 1;
+      this.runtime.memoryProbeLastFailure = failure;
+      this.recordError(failure.code, detail);
+      log('warn', 'worker.memory_probe.degraded', {
+        trigger,
+        outcome: 'unexpected_fired',
+        expected: false,
+        fired: true,
+        consecutive_failures: this.runtime.memoryProbeConsecutiveFailures,
+        last_success_at: this.runtime.adapterProbeAt,
+        detail,
+      });
+      return false;
+    } finally {
+      this.runtime.memoryProbeStartedAt = null;
+    }
+  }
+
+  private startMemoryProbe(): void {
+    if (this.memoryProbeInFlight || this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return;
+    this.memoryProbeInFlight = true;
+    void this.refreshMemoryProbe('interval').finally(() => { this.memoryProbeInFlight = false; });
   }
 
   private startHeartbeat(): void {
@@ -623,10 +781,24 @@ export class ApocryphaWorker {
           qwenHealthy: probe.healthy,
           qwenProbeAt: new Date().toISOString(),
         });
+        log('info', 'worker.heartbeat.completed', {
+          outcome: supported ? 'expected_fired' : 'expected_missed',
+          expected: true,
+          fired: supported,
+          qwen_healthy: probe.healthy,
+          memory_probe_at: this.runtime.adapterProbeAt,
+          memory_probe_failures: this.runtime.memoryProbeConsecutiveFailures,
+        });
         this.heartbeatRetryAt = supported ? 0 : Date.now() + 5 * 60_000;
       } catch (error) {
         this.recordError('HEARTBEAT_FAILED', boundedError(error));
-        log('warn', 'worker.heartbeat.failed', { detail: boundedError(error) });
+        log('warn', 'worker.heartbeat.failed', {
+          outcome: 'unexpected_fired',
+          expected: true,
+          fired: true,
+          code: this.runtime.lastError?.code,
+          detail: boundedError(error),
+        });
       } finally {
         this.heartbeatInFlight = false;
       }

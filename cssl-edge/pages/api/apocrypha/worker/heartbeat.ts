@@ -80,6 +80,33 @@ function generationDeadline(value: unknown): number {
   return Math.min(7_200_000, Math.max(60_000, Number(value)));
 }
 
+function memoryProbeDiagnostics(value: unknown): {
+  started_at: string | null;
+  last_success_at: string | null;
+  consecutive_failures: number;
+  last_failure: { code: string; detail: string; at: string } | null;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { started_at: null, last_success_at: null, consecutive_failures: 0, last_failure: null };
+  }
+  const source = value as Record<string, unknown>;
+  const failure = source.last_failure && typeof source.last_failure === 'object' && !Array.isArray(source.last_failure)
+    ? source.last_failure as Record<string, unknown>
+    : null;
+  const failureAt = failure && typeof failure.at === 'string'
+    ? probeTimestamp(failure.at, 'INVALID_MEMORY_PROBE_AT')
+    : null;
+  return {
+    started_at: source.started_at == null ? null : probeTimestamp(source.started_at, 'INVALID_MEMORY_PROBE_AT', true),
+    last_success_at: source.last_success_at == null ? null : probeTimestamp(source.last_success_at, 'INVALID_MEMORY_PROBE_AT', true),
+    consecutive_failures: Number.isInteger(source.consecutive_failures) && Number(source.consecutive_failures) >= 0
+      ? Math.min(100_000, Number(source.consecutive_failures)) : 0,
+    last_failure: failure && typeof failure.code === 'string' && typeof failure.detail === 'string' && failureAt
+      ? { code: failure.code.slice(0, 96), detail: failure.detail.slice(0, 300), at: failureAt }
+      : null,
+  };
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   noStore(res);
   if (req.method !== 'POST') return methodNotAllowed(res, ['POST']);
@@ -105,6 +132,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const adapterStates = operationalAdapterStates(body.adapter_states);
     const adapterProbeAt = probeTimestamp(body.adapter_probe_at, 'INVALID_ADAPTER_PROBE_AT', true);
     const scopedMemory = capabilityMemory(body.capability_memory);
+    const memoryProbe = memoryProbeDiagnostics(body.memory_probe);
     const generationDeadlineMs = generationDeadline(body.generation_deadline_ms);
     const { data, error } = await client
       .from('apocrypha_worker_node')
@@ -122,6 +150,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           adapter_probe_at: adapterProbeAt,
           capability_memory: scopedMemory,
           generation_deadline_ms: generationDeadlineMs,
+          memory_probe: memoryProbe,
           phase: body.status,
           load: body.load,
         },

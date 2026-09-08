@@ -81,6 +81,38 @@ function safeUrl(raw: string, label: string, allowLoopbackHttp: boolean): string
   return url.toString().replace(/\/$/, '');
 }
 
+function optionalFrontier(env: NodeJS.ProcessEnv): Pick<WorkerConfig, 'frontierProvider' | 'frontierBaseUrl' | 'frontierApiKey' | 'frontierModel' | 'frontierTimeoutMs' | 'frontierCooldownMs'> {
+  const providerRaw = env.APOCRYPHA_FRONTIER_PROVIDER?.trim().toLowerCase() || '';
+  if (providerRaw && providerRaw !== 'openai' && providerRaw !== 'anthropic') {
+    throw new Error('APOCRYPHA_FRONTIER_PROVIDER must be openai or anthropic');
+  }
+  const provider = providerRaw ? providerRaw as 'openai' | 'anthropic' : null;
+  const model = env.APOCRYPHA_FRONTIER_MODEL?.trim().slice(0, 160) || null;
+  // Provider-specific keys may be reused only after the operator explicitly
+  // selects the provider and model. This prevents an accidental paid call from
+  // a key that happens to be present in the worker environment.
+  const apiKey = provider === 'openai'
+    ? env.APOCRYPHA_FRONTIER_API_KEY?.trim() || env.OPENAI_API_KEY?.trim() || null
+    : provider === 'anthropic'
+      ? env.APOCRYPHA_FRONTIER_API_KEY?.trim() || env.ANTHROPIC_API_KEY?.trim() || env.FABLE_API_KEY?.trim() || null
+      : null;
+  const defaultBase = provider === 'openai'
+    ? 'https://api.openai.com/v1'
+    : provider === 'anthropic'
+      ? 'https://api.anthropic.com'
+      : null;
+  const baseRaw = env.APOCRYPHA_FRONTIER_BASE_URL?.trim() || defaultBase;
+  const baseUrl = baseRaw ? safeUrl(baseRaw, 'APOCRYPHA_FRONTIER_BASE_URL', false) : null;
+  return {
+    frontierProvider: provider,
+    frontierBaseUrl: baseUrl,
+    frontierApiKey: apiKey,
+    frontierModel: model,
+    frontierTimeoutMs: integerEnv(env, 'APOCRYPHA_FRONTIER_TIMEOUT_MS', 90_000, 5_000, 180_000),
+    frontierCooldownMs: integerEnv(env, 'APOCRYPHA_FRONTIER_COOLDOWN_MS', 300_000, 30_000, 900_000),
+  };
+}
+
 export function loadManifest(path = join(moduleDir, 'manifest.production.json')): WorkerManifest {
   const manifest = JSON.parse(readFileSync(path, 'utf8')) as WorkerManifest;
   if (manifest.schema !== 'apocrypha.worker-manifest.v1') throw new Error('unsupported worker manifest schema');
@@ -138,12 +170,14 @@ export function loadConfig(
     || (gatewayPort ? `http://${gatewayHost}:${gatewayPort}/ready` : '');
   const readinessToken = env.APOCRYPHA_MEMORY_READINESS_TOKEN?.trim()
     || env.APOCRYPHA_MEMORY_GATEWAY_TOKEN?.trim() || null;
+  const frontier = optionalFrontier(env);
 
   const config: WorkerConfig = {
     controlPlaneUrl: safeUrl(required(env, 'APOCRYPHA_CONTROL_PLANE_URL'), 'APOCRYPHA_CONTROL_PLANE_URL', false),
     nodeId: required(env, 'APOCRYPHA_WORKER_NODE_ID'),
     nodeToken: required(env, 'APOCRYPHA_WORKER_TOKEN'),
     qwenBaseUrl: safeUrl(env.APOCRYPHA_QWEN_BASE_URL?.trim() || 'http://127.0.0.1:19124/v1', 'APOCRYPHA_QWEN_BASE_URL', true),
+    ...frontier,
     runtimeProfilePath: profilePathRaw ? resolve(profilePathRaw) : null,
     modelAlias: env.APOCRYPHA_MODEL_ALIAS?.trim() || manifest.model.alias,
     profileHash: env.APOCRYPHA_MODEL_PROFILE_HASH?.trim().toLowerCase() || manifest.model.profileHash.toLowerCase(),

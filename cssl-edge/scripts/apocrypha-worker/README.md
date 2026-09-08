@@ -1,6 +1,6 @@
-# Apocrypha outbound Qwen worker
+# Apocrypha outbound worker
 
-This resident worker gives Apocky.com owner chat, signed-in member chat, and Chaos Tarot one durable local inference rail without exposing the local machine to inbound traffic. It polls the HTTPS control plane, claims one fenced attempt, retrieves admitted read-only context, streams the exact accepted Qwen profile, and commits Qwen's answer as the primary revision.
+This resident worker gives Apocky.com owner chat, signed-in member chat, and Chaos Tarot one durable inference rail without exposing the local machine to inbound traffic. It polls the HTTPS control plane, claims one fenced attempt, retrieves admitted read-only context, and commits a bounded answer as the primary revision.
 
 ## Production contract
 
@@ -10,7 +10,9 @@ This resident worker gives Apocky.com owner chat, signed-in member chat, and Cha
 - Model: `qwen35-35b-a3b-q4` at `http://127.0.0.1:19124/v1`.
 - Runtime profile SHA-256: `5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9`.
 - Claim, lease, chunk, completion, and failure mutations carry the exact `job_id + attempt_id + lease_epoch + lease_token` fence.
-- Qwen is the terminal primary answer. Optional frontier corroboration is a separate revision owned by the control plane.
+- Free requests use a short Qwen answer (768-token cap); basic paid requests use a fuller Qwen answer (1536-token cap); premium requests prefer the explicitly configured frontier provider (3072-token cap) and fall back to Qwen immediately when it is unconfigured, rate-limited, timed out, or unavailable.
+- The frontier rail is opt-in per provider and model. Set `APOCRYPHA_FRONTIER_PROVIDER` (`openai` or `anthropic`) and `APOCRYPHA_FRONTIER_MODEL` in the ignored host secret file. The worker may reuse the matching `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `FABLE_API_KEY`; a key alone never activates paid calls.
+- Every completion records requested tier, selected rail, fallback reason, provider status, memory availability, and bounded usage in its provenance. Provider failures trip a cooldown so repeated premium requests do not pay the same failing latency before using Qwen.
 
 The worker calls only outbound HTTPS control-plane routes:
 
@@ -93,7 +95,7 @@ GET http://127.0.0.1:19126/health
 GET http://127.0.0.1:19126/ready
 ```
 
-`/health` reports the worker phase, current attempt, journal count, accepted model/profile, manifest versions, adapter availability, and last bounded error. `/ready` also probes Qwen and verifies the model alias.
+`/health` reports the worker phase, current attempt, journal count, accepted model/profile, manifest versions, adapter availability, frontier configuration state, and last bounded error. `/ready` probes Qwen and also succeeds when an explicitly configured frontier rail is available.
 
 Tests:
 

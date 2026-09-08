@@ -82,7 +82,10 @@ function extractContent(payload: unknown): string {
 
 export function isQwenContextOverflow(status: number, detail: string): boolean {
   if (![400, 413, 422].includes(status)) return false;
-  return /(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit).{0,80}(?:context|token|prompt)|(?:context|token|prompt).{0,80}(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit)/iu.test(detail);
+  // llama.cpp and OpenAI-compatible front ends use several phrasings. Keep
+  // this classifier broad enough to route every context rejection through the
+  // deterministic compaction retry, while leaving unrelated HTTP 400s alone.
+  return /(?:context\s*(?:size|window|length)|n[_ -]?ctx|prompt\s*(?:tokens?|length)|(?:tokens?|prompt).{0,80}(?:exceed|over|maximum|limit)|(?:exceed|over|maximum|limit).{0,80}(?:context|tokens?|prompt)|too\s+(?:many|long|large).{0,80}(?:context|tokens?|prompt))/iu.test(detail);
 }
 
 export class QwenClient {
