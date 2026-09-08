@@ -9,6 +9,8 @@ import { createGatewayServer } from '../scripts/apocrypha-memory-gateway/gateway
 import {
   brainmonsoonRecords,
   canonicalGraphQuery,
+  canonicalMemPalaceQuery,
+  canonicalMetaHarnessQuery,
   MEM_PALACE_POLICY_PATH,
   SerialReadGate,
   nativeErrorCode,
@@ -98,6 +100,15 @@ async function main(): Promise<void> {
   const graphQuery = canonicalGraphQuery(`Tower\r\n${'Star '.repeat(1_000)}`);
   assert(!/[\r\n]/u.test(graphQuery) && Buffer.byteLength(graphQuery, 'utf8') <= 4_000,
     'Graphify query retained forbidden controls or exceeded its native bound');
+  const memPalaceQuery = canonicalMemPalaceQuery(`Tower\r\n${'Star 🧠 '.repeat(1_000)}`);
+  assert(!/[\r\n]/u.test(memPalaceQuery) && Buffer.byteLength(memPalaceQuery, 'utf8') <= 768,
+    'MemPalace query retained forbidden controls or exceeded its CSSLv3 byte budget');
+  assert(!memPalaceQuery.endsWith('\uFFFD'), 'MemPalace query split a UTF-8 code point');
+  const metaHarnessQuery = canonicalMetaHarnessQuery(`Tower\r\n${'Star 🧠 '.repeat(1_000)}`);
+  assert(!/[\r\n]/u.test(metaHarnessQuery) && Buffer.byteLength(metaHarnessQuery, 'utf8') <= 256
+    && [...metaHarnessQuery].length <= 256,
+  'MetaHarness query retained forbidden controls or exceeded its observer character budget');
+  assert(!metaHarnessQuery.endsWith('\uFFFD'), 'MetaHarness query split a UTF-8 code point');
   assert(nativeErrorCode({ ok: false, error: { code: 'APOC_GRAPH_QUERY_INVALID' } }, 'NATIVE_GRAPH_UNAVAILABLE')
     === 'APOC_GRAPH_QUERY_INVALID', 'nested native Graphify error code was lost');
   assert(nativeMemPalaceResultHealthy({ status: 'empty', code: 'MEM_EMPTY', records: [] }),

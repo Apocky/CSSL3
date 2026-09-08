@@ -76,6 +76,17 @@ export function canonicalGraphQuery(value: string): string {
   return utf8Prefix(value.replace(/\s+/gu, ' ').trim(), 4_000);
 }
 
+export function canonicalMemPalaceQuery(value: string): string {
+  return utf8Prefix(value.replace(/\s+/gu, ' ').trim(), 768);
+}
+
+export function canonicalMetaHarnessQuery(value: string): string {
+  // MetaHarness independently enforces a 256-character query ceiling. A
+  // 256-byte prefix is at least as strict for UTF-8 and cannot split a code
+  // point because utf8Prefix backs up to a complete character.
+  return utf8Prefix(value.replace(/\s+/gu, ' ').trim(), 256);
+}
+
 function innerDeadline(outerTimeoutMs: number): number {
   return outerTimeoutMs - Math.min(2_000, Math.max(1, Math.floor(outerTimeoutMs / 5)));
 }
@@ -213,7 +224,7 @@ class NativeMemPalaceAdapter implements ReadOnlyAdapter {
         request_id: scopedRequestId('gateway-mem', request),
         db_path: native.mempalaceDb,
         privacy_partition: native.privacyPartition,
-        query: request.query,
+        query: canonicalMemPalaceQuery(request.query),
         limit: request.limit,
         deadline_ms: innerDeadline(this.config.limits.timeoutMs),
         include_sample_digest: false,
@@ -300,7 +311,9 @@ class NativeObserveAdapter implements ReadOnlyAdapter {
   ) {}
   async search(request: SearchRequest, signal: AbortSignal): Promise<unknown> {
     const native = this.config.native;
-    const query = utf8Prefix(request.query.replace(/\s+/gu, ' ').trim(), 768);
+    const query = this.name === 'metaharness'
+      ? canonicalMetaHarnessQuery(request.query)
+      : utf8Prefix(request.query.replace(/\s+/gu, ' ').trim(), 768);
     const owner = native.ownerId as string;
     const partition = native.privacyPartition as string;
     const frames = await this.gate.run(signal, () => runBoundedJsonl(
