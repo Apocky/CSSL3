@@ -149,7 +149,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
               color: '#fbbf24',
             }}
           >
-            ⚠ Server-side product checkout is not configured on this page. Use the live Chaos Tarot checkout above.
+            Server-side product checkout is paused. Use the live Chaos Tarot checkout below.
           </div>
         ) : null}
 
@@ -170,7 +170,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
           </div>
         ) : null}
 
-        {products.length > 0 ? <section
+        <section
           aria-labelledby="chaos-tarot-membership"
           style={{
             marginTop: '2rem',
@@ -193,7 +193,7 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_
             'buy-button-id': 'buy_btn_1UD2TD2M59SA2Ef7B02nUiO9',
             'publishable-key': 'pk_live_51PtJw92M59SA2Ef7bOvdRnArvKVJ9aNjUbodmvdd6lsyYIf1cWmPDfbutYaIIgY5HmVObYWB2bnXtIcSyfZhJaEq00govSs3sm',
           })}
-        </section> : null}
+        </section>
 
         {/* ── PRODUCT GRID ── */}
         <section
