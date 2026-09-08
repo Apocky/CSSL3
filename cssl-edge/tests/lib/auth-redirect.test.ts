@@ -64,16 +64,26 @@ export function testAuthCallbackParamParsing(): void {
 }
 
 export function testAuthReturnPathNormalization(): void {
-  assertEqual('admin return preserved', normalizeAuthReturnPath('/admin/chat'), '/admin/chat');
-  assertEqual('legacy chat normalized', normalizeAuthReturnPath('/chat'), '/admin/chat');
-  assertEqual('legacy chat query normalized', normalizeAuthReturnPath('/chat?x=1'), '/admin/chat?x=1');
+  assertEqual('available admin return preserved', normalizeAuthReturnPath('/admin'), '/admin');
+  assertEqual('primary private route preserved', normalizeAuthReturnPath('/apocrypha'), '/apocrypha');
+  assertEqual('retired admin return rejected', normalizeAuthReturnPath('/admin/chat'), '/account');
+  assertEqual('retired public chat return rejected', normalizeAuthReturnPath('/chat'), '/account');
+  assertEqual('retired public chat query rejected', normalizeAuthReturnPath('/chat?x=1'), '/account');
+  assertEqual('retired prefix rejected', normalizeAuthReturnPath('/apocrypha/session/abc'), '/account');
   assertEqual('external return rejected', normalizeAuthReturnPath('https://evil.example/admin/chat'), '/account');
   assertEqual('callback loop rejected', normalizeAuthReturnPath('/auth/callback?next=/admin/chat'), '/account');
-  assertEqual('login href includes next', loginHrefForReturnPath('/admin/chat'), '/login?next=%2Fadmin%2Fchat');
+  assertEqual('login href includes available next', loginHrefForReturnPath('/admin'), '/login?next=%2Fadmin');
+  assertEqual('login href includes primary private next', loginHrefForReturnPath('/apocrypha'), '/login?next=%2Fapocrypha');
+  assertEqual('login href recovers retired next', loginHrefForReturnPath('/admin/chat'), '/login?next=%2Faccount');
   assertEqual(
     'callback URL carries safe next',
+    buildAuthCallbackUrl('https://www.apocky.com', '/admin'),
+    'https://www.apocky.com/auth/callback?next=%2Fadmin',
+  );
+  assertEqual(
+    'callback URL drops retired next',
     buildAuthCallbackUrl('https://www.apocky.com', '/admin/chat'),
-    'https://www.apocky.com/auth/callback?next=%2Fadmin%2Fchat',
+    'https://www.apocky.com/auth/callback',
   );
 }
 

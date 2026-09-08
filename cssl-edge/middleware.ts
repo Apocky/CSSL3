@@ -1,7 +1,68 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-function makeCsp(nonce: string): string {
+const RETIRED_EXACT_PATHS = new Set([
+  '/apoc',
+  '/apocrypha-manifest.json',
+  '/apx',
+  '/api/apocrypha',
+  '/conversation-corpus/index.v1.json',
+]);
+
+const RETIRED_PATH_PREFIXES = [
+  '/apoc/',
+  '/apocrypha/',
+  '/apx/',
+  '/conversation-corpus/records/',
+];
+
+// Only the authenticated, server-derived `me` profile may reach the member
+// handlers. Named profiles, smoke probes, and bulk ingestion stay unreachable
+// through the public runtime.
+const UNBROKERED_PRIVATE_PATH_PREFIXES = ['/api/mneme/'];
+const BROKERED_MEMBER_MEMORY_PATH = /^\/api\/mneme\/me\/(?:health|list|remember|recall|forget|export)\/?$/;
+const BROKERED_SERVICE_MEMORY_PATH = /^\/api\/mneme\/([a-z0-9-]{1,64})\/(health|list|remember|recall|forget|export|ingest|smoke)\/?$/;
+
+const RETIRED_HOST = 'apocrypha.apocky.com';
+
+function requestHost(request: NextRequest): string {
+  return (request.headers.get('host') ?? request.nextUrl.hostname)
+    .split(':', 1)[0]
+    ?.toLowerCase() ?? '';
+}
+
+export function isRetiredWebRuntimeRequest(request: NextRequest): boolean {
+  const pathname = request.nextUrl.pathname;
+  const operatorInspection = pathname === '/api/admin/apocrypha/inspect';
+  return requestHost(request) === RETIRED_HOST
+    || RETIRED_EXACT_PATHS.has(pathname)
+    || (!operatorInspection && RETIRED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix)));
+}
+
+export function isUnbrokeredPrivateRuntimeRequest(request: NextRequest): boolean {
+  const pathname = request.nextUrl.pathname;
+  const service = BROKERED_SERVICE_MEMORY_PATH.exec(pathname);
+  const serviceBrokered = service !== null
+    && service[1] !== 'me'
+    && /^Bearer\s+\S+$/.test(request.headers.get('authorization') ?? '')
+    && request.headers.get('x-mneme-profile') === service[1]
+    && request.headers.get('x-mneme-capability') === `mneme.${service[2]}`;
+  return UNBROKERED_PRIVATE_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+    && !BROKERED_MEMBER_MEMORY_PATH.test(pathname)
+    && !serviceBrokered;
+}
+
+function retiredNotFound(): NextResponse {
+  const response = new NextResponse(null, { status: 404 });
+  response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  return response;
+}
+
+function makeCsp(nonce: string, accountSurface = false): string {
   const isDev = process.env.NODE_ENV === 'development';
   return [
     "default-src 'self'",
@@ -11,7 +72,7 @@ function makeCsp(nonce: string): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    accountSurface ? "connect-src 'self' https://pzirbmyfmrbtkllrtcmx.supabase.co" : "connect-src 'self'",
     "media-src 'self'",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
@@ -25,9 +86,26 @@ function makeCsp(nonce: string): string {
 }
 
 export function middleware(request: NextRequest): NextResponse {
+  if (isRetiredWebRuntimeRequest(request) || isUnbrokeredPrivateRuntimeRequest(request)) {
+    return retiredNotFound();
+  }
+
   const nonce = btoa(crypto.randomUUID());
-  const clinical = request.nextUrl.pathname.startsWith('/shawn/clinical');
-  const csp = makeCsp(nonce);
+  const privateSurface = request.nextUrl.pathname.startsWith('/shawn/clinical')
+    || request.nextUrl.pathname === '/chat'
+    || request.nextUrl.pathname.startsWith('/chat/')
+    || request.nextUrl.pathname.startsWith('/admin/')
+    || request.nextUrl.pathname.startsWith('/api/admin/')
+    || request.nextUrl.pathname.startsWith('/api/apocrypha/')
+    || request.nextUrl.pathname.startsWith('/api/cron/')
+    || request.nextUrl.pathname.startsWith('/api/mneme/')
+    || request.nextUrl.pathname === '/admin/apocrypha'
+    || request.nextUrl.pathname === '/api/admin/apocrypha/inspect'
+    || request.nextUrl.pathname === '/apocrypha'
+    || request.nextUrl.pathname === '/brain'
+    || request.nextUrl.pathname.startsWith('/brain/')
+    || request.nextUrl.pathname.startsWith('/api/brain/');
+  const csp = makeCsp(nonce, ['/apocrypha', '/admin/apocrypha'].includes(request.nextUrl.pathname));
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
@@ -42,7 +120,7 @@ export function middleware(request: NextRequest): NextResponse {
     'camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()'
   );
 
-  if (clinical) {
+  if (privateSurface) {
     response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
@@ -52,5 +130,44 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ['/shawn', '/shawn/:path*'],
+  matcher: [
+    '/shawn',
+    '/shawn/:path*',
+    '/brain',
+    '/brain/:path*',
+    '/api/brain/:path*',
+    '/apoc',
+    '/apoc/:path*',
+    '/apocrypha',
+    '/apocrypha/:path*',
+    '/apocrypha-manifest.json',
+    '/apx',
+    '/apx/:path*',
+    '/chat',
+    '/chat/:path*',
+    '/admin/apex',
+    '/admin/apocrypha',
+    '/admin/apocrypha/:path*',
+    '/admin/chat',
+    '/admin/coder',
+    '/admin/cognition',
+    '/admin/controls',
+    '/admin/diagnostics',
+    '/admin/sub-minds',
+    '/admin/tools',
+    '/api/apocrypha',
+    '/api/apocrypha/:path*',
+    '/api/admin/apocrypha',
+    '/api/admin/apocrypha/:path*',
+    '/api/admin/apocv4',
+    '/api/admin/apocv4/:path*',
+    '/api/cron/apocrypha-sms',
+    '/api/mneme/:path*',
+    '/conversation-corpus/index.v1.json',
+    '/conversation-corpus/records/:path*',
+    {
+      source: '/:path*',
+      has: [{ type: 'host', value: 'apocrypha.apocky.com' }],
+    },
+  ],
 };

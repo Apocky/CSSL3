@@ -1,16 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="192" height="192" fill="none">
   <defs>
-    <radialGradient id="bg" cx="50%" cy="30%" r="80%">
-      <stop offset="0%" stop-color="#15151f"/>
-      <stop offset="60%" stop-color="#0a0a0f"/>
-      <stop offset="100%" stop-color="#050507"/>
+    <radialGradient id="apocky-icon-field" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 224) rotate(90) scale(330)">
+      <stop stop-color="#171044"/>
+      <stop offset="0.5" stop-color="#09061A"/>
+      <stop offset="1" stop-color="#000000"/>
     </radialGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="60%" stop-color="#c084fc"/>
-      <stop offset="100%" stop-color="#7dd3fc"/>
+    <linearGradient id="apocky-icon-spectrum" x1="126" y1="110" x2="389" y2="409" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.48" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
     </linearGradient>
+    <linearGradient id="apocky-icon-core" x1="171" y1="129" x2="348" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFF"/>
+      <stop offset="0.54" stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#D8B4FE"/>
+    </linearGradient>
+    <filter id="apocky-icon-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="13" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
-  <rect width="192" height="192" rx="36" fill="url(#bg)"/>
-  <text x="96" y="124" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="120" font-weight="800" fill="url(#accent)">§</text>
+  <path d="M0 0H512V512H0Z" fill="#000000"/>
+  <path d="M38 132C38 80 80 38 132 38H380C432 38 474 80 474 132V380C474 432 432 474 380 474H132C80 474 38 432 38 380Z" fill="url(#apocky-icon-field)" stroke="#312E81" stroke-width="4"/>
+  <g filter="url(#apocky-icon-glow)" opacity="0.34">
+    <path d="M112 194C139 126 202 91 270 96C330 100 379 137 402 194" stroke="#38BDF8" stroke-width="18" stroke-linecap="round"/>
+    <path d="M400 316C373 384 310 421 242 416C182 412 133 375 110 318" stroke="#A855F7" stroke-width="18" stroke-linecap="round"/>
+  </g>
+  <path d="M112 194C139 126 202 91 270 96C330 100 379 137 402 194" stroke="url(#apocky-icon-spectrum)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M400 316C373 384 310 421 242 416C182 412 133 375 110 318" stroke="url(#apocky-icon-spectrum)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M354 157C317 118 239 111 193 142C150 171 152 216 184 240C207 258 243 266 285 277C333 290 360 313 354 345C346 387 298 409 249 402C207 396 173 376 155 346" stroke="url(#apocky-icon-core)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M340 201C312 174 252 165 215 185C186 201 183 224 205 242C224 257 253 264 290 274C353 292 380 327 358 365" stroke="url(#apocky-icon-spectrum)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M256 224L288 256L256 288L224 256Z" fill="#000000" stroke="#F8FAFF" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M256 242L270 256L256 270L242 256Z" fill="#38BDF8"/>
+  <path d="M103 181L116 194L103 207L90 194Z" fill="#38BDF8"/>
+  <path d="M409 181L422 194L409 207L396 194Z" fill="#A855F7"/>
+  <path d="M101 305L114 318L101 331L88 318Z" fill="#6366F1"/>
+  <path d="M409 303L422 316L409 329L396 316Z" fill="#D8B4FE"/>
 </svg>

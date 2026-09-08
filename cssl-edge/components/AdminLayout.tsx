@@ -1,10 +1,4 @@
-// Apocrypha admin layout · 8-item nav · phone-first · sovereign-cap-protected
-//
-// Per Apocky's UX-cleanup pass : "Apocrypha is the name, not a nav element".
-// Every page in /admin/* is part of the Apocrypha surface ; the side-nav lists
-// destinations within that surface, not separate apps. LoA-specific destinations
-// (the old Tasks/Analytics/MCP content) were Apocky's other-project leakage and
-// were removed/repurposed per D043 (Apocrypha != LoA).
+// Apocky site admin layout · phone-first · sovereign-cap-protected.
 
 import Head from 'next/head';
 import Link from 'next/link';
@@ -12,11 +6,14 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { loginHrefForReturnPath } from '../lib/auth-return';
 import { authFetch } from '../lib/browser-auth';
+import { getAuthClient } from '../lib/auth';
 
 interface AdminLayoutProps {
   title: string;
   children: ReactNode;
   onAdminCheck?: (check: AdminCheck) => void;
+  hideHeading?: boolean;
+  immersive?: boolean;
 }
 
 interface AdminCheck {
@@ -34,62 +31,71 @@ interface NavItem {
   mobile?: boolean;
 }
 
-// 8 items · all Apocrypha-internal · LoA stuff lives elsewhere now (D043).
-// Mobile bottom-nav = 3 icons (Chat / Diagnostics / Logs) — the trio you actually
-// pull out your phone for. Everything else lives in the desktop side-nav.
 const NAV: ReadonlyArray<NavItem> = [
   { href: '/admin', label: 'Home', glyph: '§',
-    tip: 'Apocrypha health summary · today\'s activity · quick links' },
-  { href: '/admin/chat', label: 'Chat', glyph: '⊕', mobile: true,
-    tip: 'Talk with Apocrypha · sidebar + bubbles + SSE streaming · Enter to send' },
-  { href: '/admin/cognition', label: 'Cognition', glyph: '∞', mobile: true,
-    tip: 'LIVE substrate visualization · swarm ticks · dream cycles · interactive triggers' },
-  { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬',
-    tip: 'Live tool-call timeline · recent conversations · what Apocrypha is doing right now' },
-  { href: '/admin/sub-minds', label: 'Sub-Minds', glyph: 'Ω',
-    tip: 'Lazarus (Ω9 operator) + Tessera (Ω10 reasoner) — health, queue, recent runs' },
-  { href: '/admin/controls', label: 'Controls', glyph: '☢',
-    tip: 'Kill switch · API keys · consent grants · operator-tier dangerous controls' },
-  { href: '/admin/tools', label: 'Tools', glyph: '⊑',
-    tip: 'Apocrypha\'s 19+ registered tools across 7 organs (memory/swarm/lang/forage/evolve/dream/state)' },
-  { href: '/admin/analytics', label: 'Analytics', glyph: '∂',
-    tip: 'Cost tracker · spend-by-model · memory size · swarm consensus · longer-term trends' },
-  { href: '/admin/logs', label: 'Logs', glyph: 'G',
-    tip: 'Apocrypha dispatch + cloudflared process logs · audit events' },
+    tip: 'Site health summary · today\'s activity · quick links', mobile: true },
+  { href: '/admin/analytics', label: 'Analytics', glyph: '∂', mobile: true,
+    tip: 'Consent-bounded site analytics' },
+  { href: '/admin/mcp', label: 'MCP', glyph: '⊑',
+    tip: 'Owner-only local developer bridge' },
+  { href: '/admin/logs', label: 'Observatory', glyph: '◫', mobile: true,
+    tip: 'Consented visitors · creation ledger · operational events' },
+  { href: '/admin/apocrypha', label: 'Apocrypha', glyph: '∞', mobile: true,
+    tip: 'Account inspection · desktop actions · diagnostics' },
 ];
 
 const MOBILE_NAV = NAV.filter((item) => item.mobile);
 
-export default function AdminLayout({ title, children, onAdminCheck }: AdminLayoutProps) {
+export default function AdminLayout({
+  title,
+  children,
+  onAdminCheck,
+  hideHeading = false,
+  immersive = false,
+}: AdminLayoutProps) {
   const router = useRouter();
   const [check, setCheck] = useState<AdminCheck | null>(null);
-  const loginHref = loginHrefForReturnPath(router.asPath || router.pathname || '/admin/chat');
+  const loginHref = loginHrefForReturnPath(router.asPath || router.pathname || '/admin');
 
   useEffect(() => {
-    authFetch('/api/admin/check', { cache: 'no-store' })
+    let active = true;
+    let revision = 0;
+    const refresh = () => {
+      const current = ++revision;
+      setCheck(null);
+      void authFetch('/api/admin/check', { cache: 'no-store' })
       .then((r) => r.json())
       .then((j: AdminCheck) => {
+        if (!active || current !== revision) return;
         setCheck(j);
         onAdminCheck?.(j);
       })
       .catch(() => {
+        if (!active || current !== revision) return;
         const denied = { authorized: false, reason: 'network error' };
         setCheck(denied);
         onAdminCheck?.(denied);
       });
+    };
+    refresh();
+    const subscription = getAuthClient()?.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') { ++revision; setCheck({ authorized: false, reason: 'Signed out.' }); }
+      else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') refresh();
+    }).data.subscription;
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   return (
     <>
       <Head>
-        <title>{`${title} · Apocrypha · Apocky`}</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0a0a0f" />
+        <title>{`${title} · Apocky admin`}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#000000" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Apocky" />
         <link rel="manifest" href="/manifest.json" />
-        <link rel="apple-touch-icon" href="/icon-192.svg" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         <style>{`
           * { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -107,20 +113,24 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
           input, button, select, textarea { font-family: inherit; font-size: 1rem; }
           @media (max-width: 767px) {
             .admin-main { padding-bottom: 80px !important; }
+            .admin-main--immersive { padding: 0 !important; }
             .admin-side { display: none !important; }
             .admin-bottom-nav { display: flex !important; }
+            .admin-bottom-nav--immersive { display: none !important; }
           }
           @media (min-width: 768px) {
             .admin-bottom-nav { display: none !important; }
             .admin-side { display: flex !important; }
             .admin-main { margin-left: 220px; }
+            .admin-side--immersive { display: none !important; }
+            .admin-main--immersive { margin-left: 0 !important; padding: 0 !important; }
           }
         `}</style>
       </Head>
 
       {/* ─── DESKTOP / TABLET SIDE-NAV ─── */}
       <aside
-        className="admin-side"
+        className={`admin-side${immersive ? ' admin-side--immersive' : ''}`}
         style={{
           display: 'none',
           flexDirection: 'column',
@@ -144,7 +154,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
             textTransform: 'uppercase',
           }}
         >
-          § Apocrypha
+          § APOCKY
         </div>
         <div
           style={{
@@ -153,7 +163,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
             marginBottom: '1.4rem',
           }}
         >
-          continuously-thinking digital intelligence
+          site owner console
         </div>
         {NAV.map((n) => {
           const active = router.pathname === n.href
@@ -200,7 +210,10 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
       </aside>
 
       {/* ─── MAIN CONTENT ─── */}
-      <main className="admin-main" style={{ padding: '1.25rem 1rem 2rem', minHeight: '100dvh' }}>
+      <main
+        className={`admin-main${immersive ? ' admin-main--immersive' : ''}`}
+        style={{ padding: immersive ? 0 : '1.25rem 1rem 2rem', minHeight: '100dvh' }}
+      >
         {/* AUTH STATUS BANNER */}
         {check && !check.authorized && (
           <div
@@ -229,7 +242,7 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
         )}
 
         {/* PAGE HEADING */}
-        <header style={{ marginBottom: '1.5rem' }}>
+        {!hideHeading && <header style={{ marginBottom: '1.5rem' }}>
           <h1
             style={{
               fontSize: 'clamp(1.5rem, 5vw, 1.75rem)',
@@ -242,14 +255,14 @@ export default function AdminLayout({ title, children, onAdminCheck }: AdminLayo
           >
             {title}
           </h1>
-        </header>
+        </header>}
 
         {check?.authorized ? children : check ? null : <p style={{ color: '#7a7a8c' }}>§ checking admin session…</p>}
       </main>
 
-      {/* ─── MOBILE BOTTOM-NAV (3 icons : Chat · Diagnostics · Logs) ─── */}
+      {/* ─── MOBILE BOTTOM-NAV ─── */}
       <nav
-        className="admin-bottom-nav"
+        className={`admin-bottom-nav${immersive ? ' admin-bottom-nav--immersive' : ''}`}
         style={{
           display: 'none',
           position: 'fixed',

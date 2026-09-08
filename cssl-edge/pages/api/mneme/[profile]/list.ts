@@ -8,12 +8,17 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
-import { MNEME_CAPABILITIES, requireMnemeProfileAccess } from '@/lib/mneme/auth';
 import { getMnemeClient, listMemories, memoryToPublic } from '@/lib/mneme/store';
 import type { ListResponse, MemoryType } from '@/lib/mneme/types';
+import {
+    requireStoredMnemeProfile,
+    respondMnemeMemberFailure,
+} from '@/lib/mneme/member-profile';
+import { MNEME_CAPABILITIES, requireMnemeRouteAccess } from '@/lib/mneme/route-access';
 
 interface ErrorResponse {
     error:     string;
+    code?:     string;
     served_by: string;
     ts:        string;
 }
@@ -36,9 +41,9 @@ export default async function handler(
         return;
     }
 
-    const access = await requireMnemeProfileAccess(req, res, MNEME_CAPABILITIES.list);
-    if (!access) return;
-    const profile_id = access.profileId;
+    const binding = await requireMnemeRouteAccess(req, res, MNEME_CAPABILITIES.list);
+    if (!binding) return;
+    const profile_id = binding.profileId;
     const typeRaw = typeof req.query['type'] === 'string' ? req.query['type'] : undefined;
     const type = typeRaw && TYPES.includes(typeRaw as MemoryType) ? typeRaw as MemoryType : undefined;
     const limitRaw = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : NaN;
@@ -46,19 +51,15 @@ export default async function handler(
     const cursor = typeof req.query['cursor'] === 'string' ? req.query['cursor'] : undefined;
 
     const sb = getMnemeClient();
+    const storageFailure = await requireStoredMnemeProfile(sb, profile_id);
+    if (storageFailure) {
+        respondMnemeMemberFailure(res, storageFailure);
+        return;
+    }
+    const client = sb!;
     try {
         const env = envelope();
-        if (!sb) {
-            // Mock mode — empty list with stable shape.
-            res.status(200).json({
-                ok: true,
-                memories: [],
-                next_cursor: null,
-                served_by: env.served_by, ts: env.ts,
-            });
-            return;
-        }
-        const out = await listMemories(sb, profile_id, { type, limit, cursor });
+        const out = await listMemories(client, profile_id, { type, limit, cursor });
         res.status(200).json({
             ok: true,
             memories: out.memories.map(memoryToPublic),
@@ -67,9 +68,8 @@ export default async function handler(
         });
     } catch (e) {
         const env = envelope();
-        const msg = e instanceof Error ? e.message : String(e);
         // eslint-disable-next-line no-console
-        console.error(JSON.stringify({ evt: 'mneme.list.fail', err: msg }));
-        res.status(502).json({ error: msg, served_by: env.served_by, ts: env.ts });
+        console.error(JSON.stringify({ evt: 'mneme.list.fail', code: e instanceof Error ? e.name : 'UNKNOWN' }));
+        res.status(502).json({ error: 'Private memory could not be listed. Retry before making changes.', code: 'MNEME_LIST_FAILED', served_by: env.served_by, ts: env.ts });
     }
 }

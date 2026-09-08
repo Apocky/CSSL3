@@ -1,0 +1,5097 @@
+{
+  "schema_version": "1.0",
+  "created": "2026-09-05",
+  "title": "The Good Book — world reference candidate",
+  "status_policy": {
+    "user-approved": "Explicit approved plan facts only.",
+    "editorial-proposal": "Imported or newly constructed specifics awaiting central author adoption.",
+    "historical-reference": "External context with bounded claim and citation; not metaphysical corroboration."
+  },
+  "scope_note": "Complete planning apparatus for all twelve volumes; event anchors are not finished manuscript scenes.",
+  "volumes": [
+    {
+      "id": "01",
+      "title": "Before the Word",
+      "epoch": "Creation and separation; no historical date established",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "02",
+      "title": "The Garden and the Refusal",
+      "epoch": "Garden, naming, knowledge, exile, first families",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "03",
+      "title": "The Waters and the Scattering",
+      "epoch": "Watchers, flood traditions, Babel and migrations",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "04",
+      "title": "The Houses of Covenant",
+      "epoch": "Ancestral households and Joseph; dates unestablished",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "05",
+      "title": "Bondage and Liberation",
+      "epoch": "Egypt, departure, wilderness, law and revolt",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "06",
+      "title": "The Land and the Crowns",
+      "epoch": "Settlement traditions, judges and monarchy",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "07",
+      "title": "The Kingdoms and the Exile",
+      "epoch": "Divided kingdoms, imperial conquest and exile",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "08",
+      "title": "The Return and the Hidden Years",
+      "epoch": "Persian return, diaspora and Hellenistic resistance",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "09",
+      "title": "The Word in Flesh",
+      "epoch": "Jesus and contemporaries; distinct Gospel witnesses",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "10",
+      "title": "The Witnesses and the Empires",
+      "epoch": "Communities, letters, journeys and disputed authority",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "11",
+      "title": "The Unveilings and the Inheritances",
+      "epoch": "Apocalyptic testimony and later transmission",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    },
+    {
+      "id": "12",
+      "title": "The Return of Names",
+      "epoch": "Modern remembering, selected Unraveling and aftermath",
+      "status": "user-approved",
+      "chapter_placement_status": "editorial-proposal"
+    }
+  ],
+  "principles": [
+    {
+      "id": "P-OMNOID",
+      "statement": "The Omnoid is the larger cosmological frame.",
+      "status": "user-approved"
+    },
+    {
+      "id": "P-IDENTITY",
+      "statement": "Source, aspect, manifestation and incarnation are distinct identity categories.",
+      "status": "user-approved"
+    },
+    {
+      "id": "P-ETHICS",
+      "statement": "Agency, harm, responsibility and repair govern the ethical inquiry.",
+      "status": "user-approved"
+    },
+    {
+      "id": "P-CLOCKS",
+      "statement": "Multiple clocks coexist; consequences last across return and remembering.",
+      "status": "user-approved"
+    },
+    {
+      "id": "P-TWO-EDITIONS",
+      "statement": "Novels and the complete parallel Codex share adopted events.",
+      "status": "user-approved"
+    },
+    {
+      "id": "P-NO-ERASURE",
+      "statement": "Re-cohering retrieves or integrates a prior state without deleting what others experienced.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "P-NO-RANK-MORALITY",
+      "statement": "Power, antiquity, knowledge and radiance do not confer moral authority.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "P-NO-FORCED-IDENTITY",
+      "statement": "A shared name, symbol, function or memory cannot by itself prove shared identity.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "P-MYTH-HISTORY",
+      "statement": "Story ordering and testimony are distinct from external historical dating.",
+      "status": "user-approved"
+    }
+  ],
+  "sources": [
+    {
+      "id": "WR-OMNOID-VISION",
+      "anchor": "I–IV",
+      "scope": "Omnoid, five-layer expression, continuity and forward-only consequences",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "WR-OMNOID-TOPOLOGY",
+      "anchor": "I, III, V",
+      "scope": "Cross-section, travel and re-cohering vocabulary; formal claims need reconciliation",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "WR-CODEX",
+      "anchor": "Mother; Knowing Child; Eve; Father; Twelve Gates",
+      "scope": "Existing literary cosmology, not externally verified history",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "WR-V2",
+      "anchor": "HALO; Eight Biomes; Toroidal Timeline",
+      "scope": "Alternate novel bible with incompatible numeric mappings",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "WR-EVE",
+      "anchor": "Preface and six chapters",
+      "scope": "Substantive Eve variant; not identical to anthology",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "WR-CULTIVATION",
+      "anchor": "Chapter One",
+      "scope": "Seven-stage Spark-to-Constellation ladder",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "WR-SEVENFOLD",
+      "anchor": "Chapters 1–8",
+      "scope": "Separate eight-Reach / seven-Throne candidate continuity",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "WR-WOLFSPACE",
+      "anchor": "2.1–2.3",
+      "scope": "In-world mathematical rhetoric; not demonstrated physical theory",
+      "evidence_class": "observed-local-text",
+      "adoption": "editorial-proposal"
+    },
+    {
+      "id": "REF-USCCB-HISTORY",
+      "url": "https://bible.usccb.org/bible/historicalintroduction/0",
+      "scope": "722/721 BCE northern fall; 587 BCE Judah; broad return context",
+      "evidence_class": "institutional-reference",
+      "adoption": "historical-reference"
+    },
+    {
+      "id": "REF-IAA-TIMELINE",
+      "url": "https://www.deadseascrolls.org.il/learn-about-the-scrolls/historical-timeline",
+      "scope": "586 BCE Jerusalem; 539 BCE Persia; 63 BCE Pompey; 70 CE destruction; 132–135 revolt only",
+      "evidence_class": "institutional-reference",
+      "adoption": "historical-reference"
+    },
+    {
+      "id": "REF-USCCB-EZRA3",
+      "url": "https://bible.usccb.org/bible/ezra/3",
+      "scope": "Note 3:1–2 separates apparent 538 return and 520 resumption / literary arrangement",
+      "evidence_class": "institutional-reference",
+      "adoption": "historical-reference"
+    },
+    {
+      "id": "WR-MET-CYRUS",
+      "url": "https://www.metmuseum.org/exhibitions/listings/2013/cyrus-cylinder",
+      "scope": "Cyrus captured Babylon in 539 BCE; cylinder does not mention Jews specifically",
+      "evidence_class": "institutional-reference",
+      "adoption": "historical-reference"
+    },
+    {
+      "id": "WR-MET-IRON-AGE",
+      "url": "https://resources.metmuseum.org/resources/metpublications/pdf/Assyria_to_Iberia_Art_and_Culture_in_the_Iron_Age.pdf",
+      "scope": "Chronology: Samaria 722; Nineveh 612; Jerusalem 587; Babylon 539 BCE",
+      "evidence_class": "institutional-reference",
+      "adoption": "historical-reference"
+    },
+    {
+      "id": "WR-MET-GEOGRAPHY",
+      "url": "https://www.metmuseum.org/ko/-/media/files/learn/for-educators/publications-for-educators/art-of-the-ancient-near-east.pdf",
+      "scope": "Regional map context only; atlas coordinates are coarse editorial locator values",
+      "evidence_class": "institutional-reference",
+      "adoption": "historical-reference"
+    }
+  ],
+  "entities": [
+    {
+      "id": "E-OMNOID",
+      "name": "Omnoid",
+      "identity_kind": "frame",
+      "description": "The encompassing cosmological frame; not an actor merely because it contains actors.",
+      "status": "user-approved",
+      "aliases": [],
+      "first_safe_chapter": "V01-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-OMNOID-VISION"
+      ]
+    },
+    {
+      "id": "E-MOTHER",
+      "name": "The Mother",
+      "identity_kind": "source-candidate",
+      "description": "Primordial receptive depth in the Codex; distinguish from every daughter or local title.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "Darkness",
+        "Depth"
+      ],
+      "first_safe_chapter": "V01-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX"
+      ]
+    },
+    {
+      "id": "E-FIRST-FLAME",
+      "name": "First Flame",
+      "identity_kind": "source-candidate",
+      "description": "Lonely creative consciousness in the existing drafts; Father-aspect is not the whole source.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "First Consciousness"
+      ],
+      "first_safe_chapter": "V01-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-FATHER",
+      "name": "The Father",
+      "identity_kind": "aspect-candidate",
+      "description": "A relational creative aspect; a command attributed to Father still requires speaker and witness.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V01-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX",
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-LILITH",
+      "name": "Lilith",
+      "identity_kind": "incarnation-lineage-candidate",
+      "description": "A distinct sovereign identity expressing refusal and equality; Mother-aspect resemblance does not erase her biography.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "First Refuser"
+      ],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX",
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-ADAM",
+      "name": "Adam",
+      "identity_kind": "mortal-lineage-candidate",
+      "description": "Naming, blame and the difficult practice of repair; no forgiveness is owed automatically.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX"
+      ]
+    },
+    {
+      "id": "E-EVE",
+      "name": "Eve",
+      "identity_kind": "mortal-lineage-candidate",
+      "description": "Knowledge and choice under inherited coercion; two substantial draft versions remain preserved.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "Life-giver"
+      ],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-EVE",
+        "WR-CODEX"
+      ]
+    },
+    {
+      "id": "E-SOPHIA",
+      "name": "Sophia / the Knowing Child",
+      "identity_kind": "aspect-candidate",
+      "description": "The Codex gives this figure the serpent and awakening roles; comparative traditions remain independently sourced.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "Knowing Child",
+        "Wisdom"
+      ],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX"
+      ]
+    },
+    {
+      "id": "E-SERPENT",
+      "name": "The Garden Serpent",
+      "identity_kind": "manifestation-candidate",
+      "description": "A narrative manifestation linked to Sophia in one draft; not a universal identity claim.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX"
+      ]
+    },
+    {
+      "id": "E-LUCIFER",
+      "name": "Lucifer / Lightbringer",
+      "identity_kind": "aspect-candidate",
+      "description": "Illumination and dissent; Firstborn provenance does not make Light identical to First Flame.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "Lightbringer"
+      ],
+      "first_safe_chapter": "V01-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX",
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-CAIN",
+      "name": "Cain",
+      "identity_kind": "source-tradition-character",
+      "description": "Fratricide, protection and displacement; violence survives the perpetrator’s explanation.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-ABEL",
+      "name": "Abel",
+      "identity_kind": "source-tradition-character",
+      "description": "A person with a life before becoming evidence in another person’s moral argument.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-ENOCH",
+      "name": "Enoch",
+      "identity_kind": "source-tradition-character",
+      "description": "Journeying witness whose experience and transmitted books are different clocks.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V03-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-NOAH",
+      "name": "Noah",
+      "identity_kind": "source-tradition-character",
+      "description": "Survival, covenant and the unequal aftermath of catastrophe.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V03-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-ABRAHAM",
+      "name": "Abraham",
+      "identity_kind": "source-tradition-character",
+      "description": "A covenant household leader whose hospitality and coercive decisions both have consequences.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "Abram"
+      ],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-SARAH",
+      "name": "Sarah",
+      "identity_kind": "source-tradition-character",
+      "description": "Covenant participant with desires and power beyond an heir-producing function.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "Sarai"
+      ],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-HAGAR",
+      "name": "Hagar",
+      "identity_kind": "source-tradition-character",
+      "description": "Expulsion and survival seen from the person made expendable by a household.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-ISHMAEL",
+      "name": "Ishmael",
+      "identity_kind": "source-tradition-character",
+      "description": "A lineage-bearing person; do not reduce him to a comparative-religion connector.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-ISAAC",
+      "name": "Isaac",
+      "identity_kind": "source-tradition-character",
+      "description": "Inheritance shaped by the remembered threat of sacrifice.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-JACOB",
+      "name": "Jacob / Israel",
+      "identity_kind": "source-tradition-character",
+      "description": "Naming, rivalry, exile and changed obligations.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-JOSEPH",
+      "name": "Joseph",
+      "identity_kind": "source-tradition-character",
+      "description": "Trafficking survivor who later controls grain, access and dependence.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-MOSES",
+      "name": "Moses",
+      "identity_kind": "source-tradition-character",
+      "description": "Liberator and lawgiver; claims to authority remain accountable to the governed.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V05-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-MIRIAM",
+      "name": "Miriam",
+      "identity_kind": "source-tradition-character",
+      "description": "Leadership, song, challenge and communal memory.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V05-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-AARON",
+      "name": "Aaron",
+      "identity_kind": "source-tradition-character",
+      "description": "Ritual leadership operating under divided pressures.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V05-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-JOSHUA",
+      "name": "Joshua",
+      "identity_kind": "source-tradition-character",
+      "description": "Conquest testimony must retain the lives and claims of inhabitants.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-RUTH",
+      "name": "Ruth",
+      "identity_kind": "source-tradition-character",
+      "description": "Migration, labour, kinship and consent within material insecurity.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-SAMUEL",
+      "name": "Samuel",
+      "identity_kind": "source-tradition-character",
+      "description": "Prophetic authority and the demand for a king.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-SAUL",
+      "name": "Saul",
+      "identity_kind": "source-tradition-character",
+      "description": "Kingship’s insecurity and the machinery of belonging.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-DAVID",
+      "name": "David",
+      "identity_kind": "source-tradition-character",
+      "description": "A ruler whose poetry and charisma do not cancel exploitation.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-BATHSHEBA",
+      "name": "Bathsheba",
+      "identity_kind": "source-tradition-character",
+      "description": "Political and personal survival; retain perspective beyond royal desire.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-SOLOMON",
+      "name": "Solomon",
+      "identity_kind": "source-tradition-character",
+      "description": "Wisdom and centralization; distinguish this lineage from V2 Threshold-dweller Solomon.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-ESTHER",
+      "name": "Esther",
+      "identity_kind": "source-tradition-character",
+      "description": "Diaspora survival amid royal violence; narrative setting is not a secure event date.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V08-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-JUDITH",
+      "name": "Judith",
+      "identity_kind": "source-tradition-character",
+      "description": "Resistance narrative with deliberate historical tensions; no false imperial harmonization.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V08-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-TOBIT",
+      "name": "Tobit",
+      "identity_kind": "source-tradition-character",
+      "description": "Diaspora, care, burial and restored relationships; narrated era differs from transmission.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V08-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-JESUS",
+      "name": "Jesus",
+      "identity_kind": "incarnation-identity-under-review",
+      "description": "Incarnational identity is central to the selected narrative; preserve distinct testimony before choosing fictional synthesis.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V09-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-MARY",
+      "name": "Mary, mother of Jesus",
+      "identity_kind": "source-tradition-character",
+      "description": "Embodied family and witness; no automatic identity with the primordial Mother.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V09-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-MAGDALENE",
+      "name": "Mary Magdalene",
+      "identity_kind": "source-tradition-character",
+      "description": "A witness with agency; distinguish named women and avoid conflated biographies.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V09-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-PETER",
+      "name": "Peter",
+      "identity_kind": "source-tradition-character",
+      "description": "Devotion, failure and competing claims of leadership.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V09-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-PAUL",
+      "name": "Paul",
+      "identity_kind": "source-tradition-character",
+      "description": "Letters address situated communities; do not turn all disputed reception into a single speaker.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V10-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-JOHN-PATMOS",
+      "name": "John of Patmos",
+      "identity_kind": "witness-identity-under-review",
+      "description": "The visionary named in Revelation; do not automatically equate with every Johannine author.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V11-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": []
+    },
+    {
+      "id": "E-LILY",
+      "name": "Lily / Lilith Vance",
+      "identity_kind": "incarnation-candidate",
+      "description": "Modern Unraveling identity; remembering cannot erase her present relationships or replace her consent.",
+      "status": "editorial-proposal",
+      "aliases": [
+        "Fulcrum"
+      ],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-JUNE",
+      "name": "June Park",
+      "identity_kind": "existing-draft-character",
+      "description": "Probability-sensitive ally whose loyalty must remain a choice.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-YUNA",
+      "name": "Yuna",
+      "identity_kind": "existing-draft-character",
+      "description": "A child witness; exceptional perception does not justify adults instrumentalizing her.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-ARCHITECT",
+      "name": "The Architect",
+      "identity_kind": "role-with-competing-occupants",
+      "description": "Former Keeper in the original; Eve in V2. Role and occupant are separately indexed.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-THRESHOLD-SOLOMON",
+      "name": "Solomon of the Threshold",
+      "identity_kind": "existing-draft-character",
+      "description": "V2 toll-keeper; no confirmed equivalence to the ancient king.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-HOLLOW",
+      "name": "The Hollow",
+      "identity_kind": "condition-or-actor-under-review",
+      "description": "Drafts alternate entropy, loneliness and wounded relation; avoid diagnosing actual people through this metaphor.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V03-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-CODEX",
+        "WR-V2"
+      ]
+    },
+    {
+      "id": "E-CAEL",
+      "name": "Cael Morrow",
+      "identity_kind": "adjacent-continuity-candidate",
+      "description": "Sevenfold Theft protagonist; shared cosmological imagery does not yet establish shared continuity.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-SEVENFOLD"
+      ]
+    },
+    {
+      "id": "E-VERAINE",
+      "name": "Veraine Solace",
+      "identity_kind": "adjacent-continuity-candidate",
+      "description": "Sevenfold Theft fracture-seer; retain distinct powers until a crossover is adopted.",
+      "status": "editorial-proposal",
+      "aliases": [],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "source_refs": [
+        "WR-SEVENFOLD"
+      ]
+    }
+  ],
+  "identity_relations": [
+    {
+      "from_id": "E-FATHER",
+      "to_id": "E-FIRST-FLAME",
+      "relation": "aspect-of-candidate",
+      "note": "The Father is a relational expression, not the totality of the source.",
+      "status": "editorial-proposal"
+    },
+    {
+      "from_id": "E-LILITH",
+      "to_id": "E-MOTHER",
+      "relation": "expresses-without-identity-collapse",
+      "note": "Lilith’s biography and consent remain her own.",
+      "status": "editorial-proposal"
+    },
+    {
+      "from_id": "E-SERPENT",
+      "to_id": "E-SOPHIA",
+      "relation": "manifestation-candidate",
+      "note": "Supported by one Codex literary strand, not a historical equivalence.",
+      "status": "editorial-proposal"
+    },
+    {
+      "from_id": "E-LILY",
+      "to_id": "E-LILITH",
+      "relation": "incarnation-candidate",
+      "note": "A retrieved memory must be corroborated before merging identities.",
+      "status": "editorial-proposal"
+    },
+    {
+      "from_id": "E-ARCHITECT",
+      "to_id": "E-EVE",
+      "relation": "disputed-occupant",
+      "note": "V2 proposal conflicts with the original former-Keeper history.",
+      "status": "editorial-proposal"
+    },
+    {
+      "from_id": "E-THRESHOLD-SOLOMON",
+      "to_id": "E-SOLOMON",
+      "relation": "unestablished-equivalence",
+      "note": "Same name is insufficient evidence.",
+      "status": "editorial-proposal"
+    },
+    {
+      "from_id": "E-MARY",
+      "to_id": "E-MOTHER",
+      "relation": "unestablished-equivalence",
+      "note": "A maternal title supplies no identity proof.",
+      "status": "editorial-proposal"
+    },
+    {
+      "from_id": "E-LUCIFER",
+      "to_id": "E-FIRST-FLAME",
+      "relation": "derived-light-not-source-identity",
+      "note": "Lightbringer is not simply another name for First Flame.",
+      "status": "editorial-proposal"
+    }
+  ],
+  "realms": [
+    {
+      "id": "R-OMNOID",
+      "name": "Omnoid",
+      "kind": "frame",
+      "parent_id": null,
+      "description": "A containing relation, not an extra numbered biome.",
+      "clock_rule": "Unknown; no global clock has been established.",
+      "failure_or_cost": "No map can make every history simultaneously readable.",
+      "status": "user-approved"
+    },
+    {
+      "id": "R-EARTH",
+      "name": "Earth / historical world",
+      "kind": "world",
+      "parent_id": "R-OMNOID",
+      "description": "The biblical and historical spine, with geographic and cultural specificity.",
+      "clock_rule": "Historical dating when supported; otherwise relative story order.",
+      "failure_or_cost": "Distance, institutions, bodies and material scarcity matter.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-FUNDAMENT",
+      "name": "Fundament",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Baseline embodied experience in the Unraveling vocabulary.",
+      "clock_rule": "Local rate unknown.",
+      "failure_or_cost": "Ordinary vulnerability persists even when other realms are perceived.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-THRESHOLD",
+      "name": "Threshold",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Traversable liminality; places become accessible under stated local conditions.",
+      "clock_rule": "Rate and transit duration must be set scene by scene.",
+      "failure_or_cost": "Disorientation, missed appointments and incompatible passage terms.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-LABYRINTH",
+      "name": "Labyrinth",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Paths and alternatives may be encountered without deleting enacted history.",
+      "clock_rule": "Sequence is known only along a traveller’s own route.",
+      "failure_or_cost": "Confusing a possible self with the person who owes a present obligation.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-REFLECTION",
+      "name": "Reflection",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Encounter with contested self-image and other witnesses.",
+      "clock_rule": "No universal conversion to Earth time.",
+      "failure_or_cost": "Insight may be partial; reflected agreement is not consent.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-ENGINE",
+      "name": "Engine",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Experience of local reality’s mechanisms.",
+      "clock_rule": "Causal processes need declared before/after ordering.",
+      "failure_or_cost": "Intervention has system-wide costs; explanatory access is not unlimited power.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-WEB",
+      "name": "Web",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Connections and their histories made navigable.",
+      "clock_rule": "Concurrent contacts may have different experienced durations.",
+      "failure_or_cost": "Connection can burden, expose or betray; participation is revocable.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-SIGHT",
+      "name": "Sight",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Perception and interpretation become terrain.",
+      "clock_rule": "Observation order differs from event order.",
+      "failure_or_cost": "Seeing one view does not settle all testimony.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-CROWN",
+      "name": "Crown",
+      "kind": "realm-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "A high-order meeting with the limits of an individual perspective.",
+      "clock_rule": "Access duration unestablished.",
+      "failure_or_cost": "Scale can obscure individual suffering; no moral rank is granted.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-EDEN",
+      "name": "Eden",
+      "kind": "location-with-unknown-embedding",
+      "parent_id": "R-OMNOID",
+      "description": "The Garden of the selected narrative; its Earth coordinates are unestablished.",
+      "clock_rule": "Source sequence only.",
+      "failure_or_cost": "Leaving changes relationships and conditions; no easy return erases exile.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-LOST",
+      "name": "Lost domains",
+      "kind": "unresolved-collection",
+      "parent_id": "R-OMNOID",
+      "description": "Four missing domains in older drafts; loss, hiddenness and inaccessibility are distinct possibilities.",
+      "clock_rule": "Unknown.",
+      "failure_or_cost": "Do not import recovered realms without accounting for inhabitants and elapsed time.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-GYRE",
+      "name": "Gyre / Eight Reaches",
+      "kind": "adjacent-continuity-candidate",
+      "parent_id": "R-OMNOID",
+      "description": "Sevenfold Theft topology, provisionally held beside the biblical series.",
+      "clock_rule": "Its chronology is uncorrelated with Earth.",
+      "failure_or_cost": "No crossover is established solely by a torus, a Threshold or seven Thrones.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "R-WOLFSPACE",
+      "name": "Wolfspace pockets",
+      "kind": "adjacent-mechanism-candidate",
+      "parent_id": "R-GYRE",
+      "description": "Folded-access motif in the Sevenfold companion paper.",
+      "clock_rule": "Unknown; its equations do not supply a validated conversion.",
+      "failure_or_cost": "Pocket accessibility and costs require a future adopted rule.",
+      "status": "editorial-proposal"
+    }
+  ],
+  "gate_functions": [
+    {
+      "id": "G-01",
+      "name": "Growth",
+      "function": "expansion",
+      "legacy_ordinal": 1,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-02",
+      "name": "Flux",
+      "function": "transformation",
+      "legacy_ordinal": 2,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-03",
+      "name": "Breath",
+      "function": "communication",
+      "legacy_ordinal": 3,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-04",
+      "name": "Reflection",
+      "function": "self-knowledge",
+      "legacy_ordinal": 4,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-05",
+      "name": "Radiance",
+      "function": "illumination",
+      "legacy_ordinal": 5,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-06",
+      "name": "Threshold",
+      "function": "possibility",
+      "legacy_ordinal": 6,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-07",
+      "name": "Memory",
+      "function": "preservation",
+      "legacy_ordinal": 7,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-08",
+      "name": "Stillness",
+      "function": "rest",
+      "legacy_ordinal": 8,
+      "legacy_state": "available",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-09",
+      "name": "Depth",
+      "function": "receptive possibility",
+      "legacy_ordinal": 9,
+      "legacy_state": "lost",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-10",
+      "name": "Flame",
+      "function": "transformation by heat",
+      "legacy_ordinal": 10,
+      "legacy_state": "lost",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-11",
+      "name": "Song",
+      "function": "harmony",
+      "legacy_ordinal": 11,
+      "legacy_state": "lost",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    },
+    {
+      "id": "G-12",
+      "name": "Transcendence",
+      "function": "union without identity erasure",
+      "legacy_ordinal": 12,
+      "legacy_state": "lost",
+      "realm_id": null,
+      "status": "editorial-proposal",
+      "source_ref": "WR-CODEX"
+    }
+  ],
+  "halo": {
+    "status": "editorial-proposal",
+    "source_ref": "WR-V2",
+    "dice": [
+      {
+        "id": "D-FLOW",
+        "name": "FLOW",
+        "faces": [
+          "WAVE",
+          "CURRENT",
+          "TIDE",
+          "SPARK",
+          "SURGE",
+          "DRIFT",
+          "STILL",
+          "BLOOM"
+        ]
+      },
+      {
+        "id": "D-MIRROR",
+        "name": "MIRROR",
+        "faces": [
+          "MIRROR",
+          "ECHO",
+          "LENS",
+          "SIGNAL",
+          "SHADOW",
+          "PATTERN",
+          "NAME",
+          "WITNESS"
+        ]
+      },
+      {
+        "id": "D-GATE",
+        "name": "GATE",
+        "faces": [
+          "GATE",
+          "ROOT",
+          "KEY",
+          "PATH",
+          "SEED",
+          "COMMIT",
+          "RELEASE",
+          "RETURN"
+        ]
+      }
+    ],
+    "symbol_count": 24,
+    "ordered_joint_state_count": 512,
+    "distribution": "Unestablished in fiction. Independent fair eight-sided dice is a mathematical test model only.",
+    "probability_under_independent_fair_test_model": "1/512 for each ordered triple",
+    "no_inference": [
+      "24 symbols are not 24 joint outcomes.",
+      "A three-die roll is not a moral verdict.",
+      "An unexpected outcome does not establish an observer’s consent."
+    ]
+  },
+  "cultivation_ladders": [
+    {
+      "id": "L-CODEX",
+      "name": "Codex cultivation vocabulary",
+      "stages": [
+        "Spark",
+        "Kindling",
+        "Flame",
+        "Blaze",
+        "Conflagration",
+        "Sun",
+        "Constellation"
+      ],
+      "status": "editorial-proposal",
+      "source_ref": "WR-CULTIVATION",
+      "equivalence_to_other_ladder": null
+    },
+    {
+      "id": "L-V2",
+      "name": "Unraveling cultivation vocabulary",
+      "stages": [
+        "Spark-Touched",
+        "Flame-Kindled",
+        "Triple-Cast",
+        "Axis-Walker",
+        "Labyrinth-Weaver",
+        "Oracle",
+        "Crown"
+      ],
+      "status": "editorial-proposal",
+      "source_ref": "WR-V2",
+      "equivalence_to_other_ladder": null
+    }
+  ],
+  "factions": [
+    {
+      "id": "F-FIRSTBORN",
+      "name": "Firstborn assemblies",
+      "survival_function": "Keep creation intelligible and preserve senior status.",
+      "power_or_extraction": "Knowledge, access and interpretation.",
+      "internal_tension": "Care for younger beings competes with entitlement.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V01-C01"
+    },
+    {
+      "id": "F-ARCHONS",
+      "name": "Archonic administrations",
+      "survival_function": "Maintain a chosen order even when it requires denial.",
+      "power_or_extraction": "Permission, naming, confinement and selective testimony.",
+      "internal_tension": "Officers know different portions of the harm they enable.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V02-C01"
+    },
+    {
+      "id": "F-WATCHERS",
+      "name": "Watchers",
+      "survival_function": "Observe and sometimes cross the boundary into participation.",
+      "power_or_extraction": "Distance, archives and forbidden instruction.",
+      "internal_tension": "Detachment can conceal responsibility rather than avoid it.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V03-C01"
+    },
+    {
+      "id": "F-COVENANT-HOUSES",
+      "name": "Covenant households",
+      "survival_function": "Survive, inherit and interpret promises.",
+      "power_or_extraction": "Kinship, labour, food and marriage arrangements.",
+      "internal_tension": "Household belonging can protect one person while expelling another.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V04-C01"
+    },
+    {
+      "id": "F-IMPERIAL-EGYPT",
+      "name": "Egyptian imperial institutions",
+      "survival_function": "Maintain labour, supply and royal order.",
+      "power_or_extraction": "Bureaucracy, force, ritual and grain.",
+      "internal_tension": "Ordinary workers, officials and rulers must not become one moral silhouette.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V05-C01"
+    },
+    {
+      "id": "F-WILDERNESS-ASSEMBLY",
+      "name": "Wilderness assembly",
+      "survival_function": "Keep a displaced community alive and negotiate authority.",
+      "power_or_extraction": "Food allocation, law, worship and collective sanction.",
+      "internal_tension": "Survival does not eliminate dissent or legitimate coercion.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V05-C01"
+    },
+    {
+      "id": "F-ROYAL-HOUSES",
+      "name": "Royal houses",
+      "survival_function": "Consolidate land, inheritance and legitimacy.",
+      "power_or_extraction": "Taxation, courts, armies and sacred patronage.",
+      "internal_tension": "Subjects benefit unevenly; internal rivals retain their own reasons.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V06-C01"
+    },
+    {
+      "id": "F-PROPHETIC-WITNESSES",
+      "name": "Prophetic witnesses",
+      "survival_function": "Contest abuses and communicate situated visions.",
+      "power_or_extraction": "Speech, performance, memory and risk.",
+      "internal_tension": "Sincerity is not omniscience; different witnesses can conflict.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V07-C01"
+    },
+    {
+      "id": "F-IMPERIAL-CENTRES",
+      "name": "Assyrian, Babylonian and Persian administrations",
+      "survival_function": "Different states with different aims; never a single unchanged empire.",
+      "power_or_extraction": "Deportation, tribute, rebuilding, appointments and archives.",
+      "internal_tension": "Administrative continuity can coexist with changed rulers and changed policy.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V07-C01"
+    },
+    {
+      "id": "F-DIASPORA-COMMUNITIES",
+      "name": "Diaspora communities",
+      "survival_function": "Preserve life and belonging across changed places.",
+      "power_or_extraction": "Language, care, trade, story and local alliances.",
+      "internal_tension": "Preservation and adaptation create real internal disagreement.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V08-C01"
+    },
+    {
+      "id": "F-RESISTANCE-NETWORKS",
+      "name": "Resistance networks",
+      "survival_function": "Resist imposed domination.",
+      "power_or_extraction": "Secrecy, force, testimony and solidarity.",
+      "internal_tension": "Victory can reproduce the extraction it opposed.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V08-C01"
+    },
+    {
+      "id": "F-JESUS-MOVEMENT",
+      "name": "Jesus movement",
+      "survival_function": "Teach, heal, share, argue and bear witness under empire.",
+      "power_or_extraction": "Meals, journeys, words and personal commitment.",
+      "internal_tension": "Followers disagree about risk, meaning and leadership.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V09-C01"
+    },
+    {
+      "id": "F-EARLY-ASSEMBLIES",
+      "name": "Early assemblies",
+      "survival_function": "Build communities from divergent histories and expectations.",
+      "power_or_extraction": "Letters, hospitality, funds and competing authority claims.",
+      "internal_tension": "A letter’s remedy can become later domination when stripped of circumstance.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V10-C01"
+    },
+    {
+      "id": "F-COPYISTS",
+      "name": "Copyists and custodians",
+      "survival_function": "Carry texts through vulnerable material and political conditions.",
+      "power_or_extraction": "Selection, copying, translation, preservation and loss.",
+      "internal_tension": "Transmission can be care, error, adaptation or control; establish evidence per case.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V11-C01"
+    },
+    {
+      "id": "F-CONCORDAT",
+      "name": "Concordat",
+      "survival_function": "Investigate and coordinate modern awakening.",
+      "power_or_extraction": "Research, resources, secrecy and interpretation.",
+      "internal_tension": "Preparedness is not permission to direct another life.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V12-C01"
+    },
+    {
+      "id": "F-COALITION",
+      "name": "Coalition",
+      "survival_function": "Coordinate defence and repair across independent groups.",
+      "power_or_extraction": "Shared knowledge, commitments and local competence.",
+      "internal_tension": "Cooperation can fail without making every dissenter a villain.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V12-C01"
+    },
+    {
+      "id": "F-THRONES",
+      "name": "Seven Thrones",
+      "survival_function": "Maintain their positions within the Gyre candidate continuity.",
+      "power_or_extraction": "Interception of quintessence in Sevenfold Theft.",
+      "internal_tension": "Imported villain logic must not automatically redefine every biblical deity.",
+      "status": "editorial-proposal",
+      "first_safe_chapter": "V12-C01"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "CAP-TRAVEL",
+      "name": "Cross-section travel",
+      "capability": "Move a consenting traveller into another locally lawful expression.",
+      "conditions": "A compatible destination, an adopted route and an elapsed-time contract.",
+      "costs": "Energy, delay, exposure and interruption of obligations.",
+      "failure_modes": "Failed compatibility can leave the traveller unable to embody.",
+      "ethical_limit": "Access is not permission; nobody else’s biography is reset.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "CAP-RETURN",
+      "name": "Reincarnation / resurrection",
+      "capability": "A continuity may acquire renewed local expression.",
+      "conditions": "Continuity evidence and a receiving substrate; exact mechanism unestablished.",
+      "costs": "Lost time, changed relationships, care and uncertain recall.",
+      "failure_modes": "Mistaken identity, incomplete recall or inability to return.",
+      "ethical_limit": "No guaranteed return and no cancellation of another person’s death.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "CAP-RECOHERE",
+      "name": "Re-cohering",
+      "capability": "Integrate a prior capability or memory into the present.",
+      "conditions": "A specific recoverable state and consent to the encounter.",
+      "costs": "Fatigue, reinterpretation and conflict with present commitments.",
+      "failure_modes": "Confabulation or incompatible self-states.",
+      "ethical_limit": "Retrieval is not retroactive consent or rewriting.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "CAP-HALO",
+      "name": "HALO practice",
+      "capability": "Use FLOW, MIRROR and GATE as a bounded choice grammar.",
+      "conditions": "Three distinguished dice / domains; actual magical mechanics pending.",
+      "costs": "Attention, commitment, risk and consequences of interpretation.",
+      "failure_modes": "Misreading, bias or a mismatch between intent and action.",
+      "ethical_limit": "A roll does not override agency or prove metaphysical truth.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "CAP-SIGHT",
+      "name": "Extended perception",
+      "capability": "Encounter information unavailable to an ordinary local perspective.",
+      "conditions": "A declared perceptual scope and a named witness.",
+      "costs": "Overload, uncertainty and changed responsibility.",
+      "failure_modes": "Confusing probability, reflection or testimony with fact.",
+      "ethical_limit": "Perception cannot supply consent on another’s behalf.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "CAP-NAMING",
+      "name": "Naming",
+      "capability": "Address, distinguish or coordinate with a particular identity.",
+      "conditions": "Enough context to distinguish source, role and incarnation.",
+      "costs": "Exposure and responsibility for a claim made publicly.",
+      "failure_modes": "Misidentification, coercive naming or inherited slurs.",
+      "ethical_limit": "A name is neither a deed of ownership nor a universal control word.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "CAP-REPAIR",
+      "name": "Repair",
+      "capability": "Change damaged conditions through material action and accountability.",
+      "conditions": "The harmed party’s needs and retained right to refuse reconciliation.",
+      "costs": "Labour, resources, restitution and lost privilege.",
+      "failure_modes": "Performative apology, recidivism or an offered remedy that deepens harm.",
+      "ethical_limit": "The perpetrator cannot declare the victim healed.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "CAP-COALITION",
+      "name": "Shared power",
+      "capability": "Coordinate separate agents without collapsing their identities.",
+      "conditions": "Revocable agreements, visible costs and realistic shared capacity.",
+      "costs": "Time, conflicting priorities and responsibility for dependent others.",
+      "failure_modes": "Capture by a leader, silent exclusion or broken commitments.",
+      "ethical_limit": "Dissent is not proof of corruption.",
+      "status": "editorial-proposal"
+    }
+  ],
+  "events": [
+    {
+      "id": "EV-001",
+      "title": "The Mother as possibility",
+      "volume_id": "01",
+      "source_story_order": 1,
+      "volume_order": 1,
+      "narrated_source": "Codex: Book of the Mother",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-OMNOID",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOTHER"
+      ],
+      "first_safe_chapter": "V01-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "The frame has not yet produced a shared calendar.",
+      "atlas_label": "Mother",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-002",
+      "title": "The First Flame experiences loneliness",
+      "volume_id": "01",
+      "source_story_order": 2,
+      "volume_order": 2,
+      "narrated_source": "V2: Core Mythology",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-OMNOID",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FIRST-FLAME"
+      ],
+      "first_safe_chapter": "V01-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A need for company becomes a creative motive, not automatic justification.",
+      "atlas_label": "Loneliness",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-003",
+      "title": "Creation as relation",
+      "volume_id": "01",
+      "source_story_order": 3,
+      "volume_order": 3,
+      "narrated_source": "Codex: Mother and Father",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-OMNOID",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOTHER",
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V01-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Neither source nor recipient owns every being that follows.",
+      "atlas_label": "Creation",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-004",
+      "title": "The divine children emerge",
+      "volume_id": "01",
+      "source_story_order": 4,
+      "volume_order": 4,
+      "narrated_source": "V2: Firstborn",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-OMNOID",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-LUCIFER",
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V01-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Kinship begins before agreed limits and institutions.",
+      "atlas_label": "Firstborn",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-005",
+      "title": "The claim to precedence",
+      "volume_id": "01",
+      "source_story_order": 5,
+      "volume_order": 5,
+      "narrated_source": "Codex: first wound",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-OMNOID",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-LUCIFER",
+        "E-MOTHER"
+      ],
+      "first_safe_chapter": "V01-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Authority begins to cite age as entitlement.",
+      "atlas_label": "Precedence",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-006",
+      "title": "Separation interrupts relation",
+      "volume_id": "01",
+      "source_story_order": 6,
+      "volume_order": 6,
+      "narrated_source": "Codex: Mother / Torus",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-OMNOID",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOTHER",
+        "E-FIRST-FLAME"
+      ],
+      "first_safe_chapter": "V01-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Loss produces a debt of repair that later radiance cannot cancel.",
+      "atlas_label": "Separation",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-007",
+      "title": "Naming in the Garden",
+      "volume_id": "02",
+      "source_story_order": 7,
+      "volume_order": 1,
+      "narrated_source": "Genesis 2; Codex: Adam",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EDEN",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ADAM"
+      ],
+      "first_safe_chapter": "V02-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Naming becomes useful and dangerous when confused with ownership.",
+      "atlas_label": "Naming",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-008",
+      "title": "Lilith refuses subordination",
+      "volume_id": "02",
+      "source_story_order": 8,
+      "volume_order": 2,
+      "narrated_source": "Codex: Lilith; later Lilith tradition requires source note",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EDEN",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-LILITH",
+        "E-ADAM"
+      ],
+      "first_safe_chapter": "V02-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Departure preserves refusal while imposing material costs.",
+      "atlas_label": "Refusal",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-009",
+      "title": "Eve enters an inherited arrangement",
+      "volume_id": "02",
+      "source_story_order": 9,
+      "volume_order": 3,
+      "narrated_source": "Genesis 2; two Codex Eve variants",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EDEN",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-EVE",
+        "E-ADAM"
+      ],
+      "first_safe_chapter": "V02-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Created conditions are not equivalent to chosen conditions.",
+      "atlas_label": "Eve",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-010",
+      "title": "The fruit and disputed knowledge",
+      "volume_id": "02",
+      "source_story_order": 10,
+      "volume_order": 4,
+      "narrated_source": "Genesis 3; Codex: Knowing Child",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EDEN",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-EVE",
+        "E-SOPHIA",
+        "E-SERPENT"
+      ],
+      "first_safe_chapter": "V02-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Knowledge creates responsibility without guaranteeing wisdom.",
+      "atlas_label": "Knowledge",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-011",
+      "title": "Departure and changed embodiment",
+      "volume_id": "02",
+      "source_story_order": 11,
+      "volume_order": 5,
+      "narrated_source": "Genesis 3",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-EVE",
+        "E-ADAM"
+      ],
+      "first_safe_chapter": "V02-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "World and personal consequences continue after the gate closes.",
+      "atlas_label": "Departure",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-012",
+      "title": "Abel’s death and Cain’s mark",
+      "volume_id": "02",
+      "source_story_order": 12,
+      "volume_order": 6,
+      "narrated_source": "Genesis 4",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-CAIN",
+        "E-ABEL"
+      ],
+      "first_safe_chapter": "V02-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Protection from retaliation is not cancellation of harm.",
+      "atlas_label": "Cain / Abel",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-013",
+      "title": "The Watchers cross a boundary",
+      "volume_id": "03",
+      "source_story_order": 13,
+      "volume_order": 1,
+      "narrated_source": "1 Enoch 6–16; Genesis 6 comparison",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ENOCH"
+      ],
+      "first_safe_chapter": "V03-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Instruction, desire and power are judged by what they do to others.",
+      "atlas_label": "Watchers",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-014",
+      "title": "Enoch receives conflicting measures",
+      "volume_id": "03",
+      "source_story_order": 14,
+      "volume_order": 2,
+      "narrated_source": "1 Enoch: journeys and luminaries",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-SIGHT",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ENOCH"
+      ],
+      "first_safe_chapter": "V03-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A traveller’s report does not synchronize all clocks.",
+      "atlas_label": "Enoch",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-015",
+      "title": "Warning and preparation",
+      "volume_id": "03",
+      "source_story_order": 15,
+      "volume_order": 3,
+      "narrated_source": "Genesis 6",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-NOAH"
+      ],
+      "first_safe_chapter": "V03-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Knowledge is unevenly distributed before catastrophe.",
+      "atlas_label": "Warning",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-016",
+      "title": "The flood and its witnesses",
+      "volume_id": "03",
+      "source_story_order": 16,
+      "volume_order": 4,
+      "narrated_source": "Genesis 7–8; flood parallels kept separate",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-NOAH"
+      ],
+      "first_safe_chapter": "V03-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Survival accounts cannot recover every lost perspective.",
+      "atlas_label": "Flood",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-017",
+      "title": "Covenant after devastation",
+      "volume_id": "03",
+      "source_story_order": 17,
+      "volume_order": 5,
+      "narrated_source": "Genesis 9",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-NOAH"
+      ],
+      "first_safe_chapter": "V03-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "An oath after disaster leaves grief, hunger and accountability.",
+      "atlas_label": "Covenant",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-018",
+      "title": "Babel and scattering",
+      "volume_id": "03",
+      "source_story_order": 18,
+      "volume_order": 6,
+      "narrated_source": "Genesis 11",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-NOAH"
+      ],
+      "first_safe_chapter": "V03-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Shared language, coercive unity and migration remain distinguishable.",
+      "atlas_label": "Scattering",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-019",
+      "title": "Abram’s departure",
+      "volume_id": "04",
+      "source_story_order": 19,
+      "volume_order": 1,
+      "narrated_source": "Genesis 12",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ABRAHAM",
+        "E-SARAH"
+      ],
+      "first_safe_chapter": "V04-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A promised future changes the lives of people who did not receive the promise.",
+      "atlas_label": "Departure",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-020",
+      "title": "Hagar is sent away and seen",
+      "volume_id": "04",
+      "source_story_order": 20,
+      "volume_order": 2,
+      "narrated_source": "Genesis 16; 21 as distinct later departure",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-HAGAR",
+        "E-ISHMAEL",
+        "E-SARAH"
+      ],
+      "first_safe_chapter": "V04-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Household survival does not justify making someone expendable.",
+      "atlas_label": "Hagar",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-021",
+      "title": "Hospitality and the destroyed cities",
+      "volume_id": "04",
+      "source_story_order": 21,
+      "volume_order": 3,
+      "narrated_source": "Genesis 18–19",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ABRAHAM",
+        "E-SARAH"
+      ],
+      "first_safe_chapter": "V04-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "The fate of bystanders complicates every claim of collective guilt.",
+      "atlas_label": "Hospitality",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-022",
+      "title": "The binding and its aftermath",
+      "volume_id": "04",
+      "source_story_order": 22,
+      "volume_order": 4,
+      "narrated_source": "Genesis 22; reception variants separate",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ABRAHAM",
+        "E-ISAAC"
+      ],
+      "first_safe_chapter": "V04-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A halted act can leave lasting fear and broken trust.",
+      "atlas_label": "Binding",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-023",
+      "title": "Jacob wrestles with inheritance",
+      "volume_id": "04",
+      "source_story_order": 23,
+      "volume_order": 5,
+      "narrated_source": "Genesis 25–36",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JACOB"
+      ],
+      "first_safe_chapter": "V04-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A changed name does not pay every old debt.",
+      "atlas_label": "Jacob",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-024",
+      "title": "Joseph, grain and reconciliation",
+      "volume_id": "04",
+      "source_story_order": 24,
+      "volume_order": 6,
+      "narrated_source": "Genesis 37–50",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JOSEPH",
+        "E-JACOB"
+      ],
+      "first_safe_chapter": "V04-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Power over food can rescue and subordinate at the same time.",
+      "atlas_label": "Joseph",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-025",
+      "title": "An empire organizes bondage",
+      "volume_id": "05",
+      "source_story_order": 25,
+      "volume_order": 1,
+      "narrated_source": "Exodus 1–2",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOSES",
+        "E-MIRIAM"
+      ],
+      "first_safe_chapter": "V05-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Labour, households and official language conceal unequal vulnerability.",
+      "atlas_label": "Bondage",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-026",
+      "title": "A name at the burning bush",
+      "volume_id": "05",
+      "source_story_order": 26,
+      "volume_order": 2,
+      "narrated_source": "Exodus 3–4",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOSES",
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V05-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A voice’s authority and its referent are recorded separately.",
+      "atlas_label": "Bush / name",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-027",
+      "title": "Plagues and contested warning",
+      "volume_id": "05",
+      "source_story_order": 27,
+      "volume_order": 3,
+      "narrated_source": "Exodus 7–12",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOSES",
+        "E-AARON"
+      ],
+      "first_safe_chapter": "V05-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "The narrative retains civilian suffering and competing testimony.",
+      "atlas_label": "Plagues",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-028",
+      "title": "Departure and the crossing",
+      "volume_id": "05",
+      "source_story_order": 28,
+      "volume_order": 4,
+      "narrated_source": "Exodus 12–15",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOSES",
+        "E-MIRIAM"
+      ],
+      "first_safe_chapter": "V05-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A disputed route is never drawn as a surveyed itinerary.",
+      "atlas_label": "Crossing",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-029",
+      "title": "Law, food and worship",
+      "volume_id": "05",
+      "source_story_order": 29,
+      "volume_order": 5,
+      "narrated_source": "Exodus 16–34; Leviticus",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOSES",
+        "E-AARON"
+      ],
+      "first_safe_chapter": "V05-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Daily provision and legal authority bind different obligations.",
+      "atlas_label": "Law / food",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-030",
+      "title": "Revolt and the generation’s end",
+      "volume_id": "05",
+      "source_story_order": 30,
+      "volume_order": 6,
+      "narrated_source": "Numbers; Deuteronomy 34",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOSES",
+        "E-MIRIAM"
+      ],
+      "first_safe_chapter": "V05-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Liberation does not guarantee that the new community remains just.",
+      "atlas_label": "Revolt",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-031",
+      "title": "Entry and contested land",
+      "volume_id": "06",
+      "source_story_order": 31,
+      "volume_order": 1,
+      "narrated_source": "Joshua",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JOSHUA"
+      ],
+      "first_safe_chapter": "V06-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Conquest traditions are narrated alongside the losses of inhabitants.",
+      "atlas_label": "Entry / land",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-032",
+      "title": "Judges, cycles and local survival",
+      "volume_id": "06",
+      "source_story_order": 32,
+      "volume_order": 2,
+      "narrated_source": "Judges",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JOSHUA"
+      ],
+      "first_safe_chapter": "V06-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Repeated violence changes the ground; the cycle is not a reset.",
+      "atlas_label": "Judges",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-033",
+      "title": "Ruth and the work of belonging",
+      "volume_id": "06",
+      "source_story_order": 33,
+      "volume_order": 3,
+      "narrated_source": "Ruth",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-RUTH"
+      ],
+      "first_safe_chapter": "V06-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Kinship decisions arise inside economic precarity.",
+      "atlas_label": "Ruth",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-034",
+      "title": "The demand for a king",
+      "volume_id": "06",
+      "source_story_order": 34,
+      "volume_order": 4,
+      "narrated_source": "1 Samuel 8–15",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-SAMUEL",
+        "E-SAUL"
+      ],
+      "first_safe_chapter": "V06-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A collective demand gives rulers power without ending accountability.",
+      "atlas_label": "Kingship",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-035",
+      "title": "David, Bathsheba and royal harm",
+      "volume_id": "06",
+      "source_story_order": 35,
+      "volume_order": 5,
+      "narrated_source": "2 Samuel 11–12",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-DAVID",
+        "E-BATHSHEBA"
+      ],
+      "first_safe_chapter": "V06-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Public achievement cannot redeem an exploitation by accounting trick.",
+      "atlas_label": "Royal harm",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-036",
+      "title": "Solomon builds and extracts",
+      "volume_id": "06",
+      "source_story_order": 36,
+      "volume_order": 6,
+      "narrated_source": "1 Kings 1–11",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-SOLOMON"
+      ],
+      "first_safe_chapter": "V06-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Temple, wealth and labour are held in the same frame.",
+      "atlas_label": "Building",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-037",
+      "title": "A kingdom divides",
+      "volume_id": "07",
+      "source_story_order": 37,
+      "volume_order": 1,
+      "narrated_source": "1 Kings 12",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-SOLOMON"
+      ],
+      "first_safe_chapter": "V07-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Inherited extraction creates lasting political fracture.",
+      "atlas_label": "Division",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-038",
+      "title": "Prophets contest wealth and worship",
+      "volume_id": "07",
+      "source_story_order": 38,
+      "volume_order": 2,
+      "narrated_source": "Amos; Hosea; Isaiah; prophetic corpus",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V07-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Prophetic testimony remains situated and sometimes contested.",
+      "atlas_label": "Prophets",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-039",
+      "title": "Samaria falls",
+      "volume_id": "07",
+      "source_story_order": 39,
+      "volume_order": 3,
+      "narrated_source": "2 Kings 17; institutional chronology",
+      "history_date": {
+        "start_year": -722,
+        "end_year": -721,
+        "display": "722/721 BCE",
+        "status": "source-discrepancy",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "REF-USCCB-HISTORY",
+          "WR-MET-IRON-AGE"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V07-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Displacement changes language, land and household continuity.",
+      "atlas_label": "Samaria",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-040",
+      "title": "Jerusalem is destroyed and people displaced",
+      "volume_id": "07",
+      "source_story_order": 40,
+      "volume_order": 4,
+      "narrated_source": "2 Kings 25; Jeremiah; Lamentations",
+      "history_date": {
+        "start_year": -587,
+        "end_year": -586,
+        "display": "587/586 BCE",
+        "status": "source-discrepancy",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "REF-USCCB-HISTORY",
+          "REF-IAA-TIMELINE",
+          "WR-MET-IRON-AGE"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V07-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "587/586 BCE is retained as a source discrepancy, not averaged.",
+      "atlas_label": "Destruction",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-041",
+      "title": "Lament and vision in exile",
+      "volume_id": "07",
+      "source_story_order": 41,
+      "volume_order": 5,
+      "narrated_source": "Ezekiel; exile traditions; Daniel narrative setting",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-REFLECTION",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V07-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "The time represented in a book is not its composition date.",
+      "atlas_label": "Exile",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-042",
+      "title": "Babylon passes to Persian rule",
+      "volume_id": "07",
+      "source_story_order": 42,
+      "volume_order": 6,
+      "narrated_source": "Institutional historical anchor; Ezra context",
+      "history_date": {
+        "start_year": -539,
+        "end_year": -539,
+        "display": "539 BCE",
+        "status": "historical-anchor",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "WR-MET-CYRUS",
+          "REF-IAA-TIMELINE"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V07-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A changed imperial policy opens possibilities without instant restoration.",
+      "atlas_label": "Persia",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-043",
+      "title": "Return is permitted and uneven",
+      "volume_id": "08",
+      "source_story_order": 43,
+      "volume_order": 1,
+      "narrated_source": "Ezra 1–3; historical note at Ezra 3:1–2",
+      "history_date": {
+        "start_year": -538,
+        "end_year": -520,
+        "display": "538 return tradition; 520 rebuilding resumption",
+        "status": "distinct-events-not-one-duration",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "REF-USCCB-EZRA3"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V08-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Departure from exile and rebuilding have separate dates and participants.",
+      "atlas_label": "Return",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-044",
+      "title": "Rebuilding and contested belonging",
+      "volume_id": "08",
+      "source_story_order": 44,
+      "volume_order": 2,
+      "narrated_source": "Ezra; Nehemiah; Haggai",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V08-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Restoration can create new exclusions and old grievances.",
+      "atlas_label": "Rebuilding",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-045",
+      "title": "Diaspora lives: Esther and Tobit",
+      "volume_id": "08",
+      "source_story_order": 45,
+      "volume_order": 3,
+      "narrated_source": "Esther; Tobit; their narrative settings kept distinct",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ESTHER",
+        "E-TOBIT"
+      ],
+      "first_safe_chapter": "V08-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Different diaspora stories do not become a single dated episode.",
+      "atlas_label": "Diaspora",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-046",
+      "title": "Judith’s resistance and historical tension",
+      "volume_id": "08",
+      "source_story_order": 46,
+      "volume_order": 4,
+      "narrated_source": "Judith",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JUDITH"
+      ],
+      "first_safe_chapter": "V08-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Deliberate literary dislocations are recorded, not silently repaired.",
+      "atlas_label": "Judith",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-047",
+      "title": "Maccabean resistance and its costs",
+      "volume_id": "08",
+      "source_story_order": 47,
+      "volume_order": 5,
+      "narrated_source": "1–2 Maccabees; Hellenistic context",
+      "history_date": {
+        "start_year": -199,
+        "end_year": -100,
+        "display": "Second century BCE context only",
+        "status": "broad-context-not-event-date",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "REF-USCCB-HISTORY"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JUDITH"
+      ],
+      "first_safe_chapter": "V08-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Resistance can gain authority while losing the innocence it claims.",
+      "atlas_label": "Resistance",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-048",
+      "title": "Rome enters the regional balance",
+      "volume_id": "08",
+      "source_story_order": 48,
+      "volume_order": 6,
+      "narrated_source": "63 BCE Pompey anchor; pre-Gospel setting",
+      "history_date": {
+        "start_year": -63,
+        "end_year": -63,
+        "display": "63 BCE",
+        "status": "historical-anchor",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "REF-IAA-TIMELINE"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JESUS"
+      ],
+      "first_safe_chapter": "V08-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "The political field inherited by Gospel characters is assembled before them.",
+      "atlas_label": "Rome",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-049",
+      "title": "Birth accounts and their different clocks",
+      "volume_id": "09",
+      "source_story_order": 49,
+      "volume_order": 1,
+      "narrated_source": "Matthew 1–2; Luke 1–2",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JESUS",
+        "E-MARY"
+      ],
+      "first_safe_chapter": "V09-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "The witnesses’ settings are retained without invented exact harmonization.",
+      "atlas_label": "Births",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-050",
+      "title": "Baptism and the wilderness",
+      "volume_id": "09",
+      "source_story_order": 50,
+      "volume_order": 2,
+      "narrated_source": "Mark 1; Matthew 3–4; Luke 3–4; John 1",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JESUS"
+      ],
+      "first_safe_chapter": "V09-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A public claim and a private ordeal establish different evidence.",
+      "atlas_label": "Baptism",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-051",
+      "title": "Meals, teaching and the excluded",
+      "volume_id": "09",
+      "source_story_order": 51,
+      "volume_order": 3,
+      "narrated_source": "Gospel teaching and encounter cycles",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JESUS",
+        "E-MAGDALENE",
+        "E-PETER"
+      ],
+      "first_safe_chapter": "V09-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Care changes immediate material relations as well as belief.",
+      "atlas_label": "Teaching",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-052",
+      "title": "Jerusalem and the contest over authority",
+      "volume_id": "09",
+      "source_story_order": 52,
+      "volume_order": 4,
+      "narrated_source": "Gospel Jerusalem cycles",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JESUS",
+        "E-PETER"
+      ],
+      "first_safe_chapter": "V09-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Crowds, officials and friends carry incompatible expectations.",
+      "atlas_label": "Jerusalem",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-053",
+      "title": "Arrest, execution and abandonment",
+      "volume_id": "09",
+      "source_story_order": 53,
+      "volume_order": 5,
+      "narrated_source": "Distinct Passion narratives",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JESUS",
+        "E-MARY",
+        "E-MAGDALENE",
+        "E-PETER"
+      ],
+      "first_safe_chapter": "V09-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Death and political violence are not made painless by later meaning.",
+      "atlas_label": "Execution",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-054",
+      "title": "Resurrection testimony and changed obligations",
+      "volume_id": "09",
+      "source_story_order": 54,
+      "volume_order": 6,
+      "narrated_source": "Distinct resurrection witnesses",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JESUS",
+        "E-MAGDALENE",
+        "E-PETER"
+      ],
+      "first_safe_chapter": "V09-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A return does not erase what mourners, witnesses and betrayers experienced.",
+      "atlas_label": "Witnesses",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-055",
+      "title": "Pentecost and public witness",
+      "volume_id": "10",
+      "source_story_order": 55,
+      "volume_order": 1,
+      "narrated_source": "Acts 1–2",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-PETER"
+      ],
+      "first_safe_chapter": "V10-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Shared speech does not require identical experience.",
+      "atlas_label": "Pentecost",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-056",
+      "title": "Scarcity and distribution",
+      "volume_id": "10",
+      "source_story_order": 56,
+      "volume_order": 2,
+      "narrated_source": "Acts 4–6; community traditions",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-PETER"
+      ],
+      "first_safe_chapter": "V10-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Belief meets the bookkeeping of food and care.",
+      "atlas_label": "Distribution",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-057",
+      "title": "Paul’s changed allegiance",
+      "volume_id": "10",
+      "source_story_order": 57,
+      "volume_order": 3,
+      "narrated_source": "Acts 9; Galatians 1; accounts kept distinct",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-PAUL"
+      ],
+      "first_safe_chapter": "V10-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Changed commitment does not undo earlier harm.",
+      "atlas_label": "Paul",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-058",
+      "title": "Belonging disputed across communities",
+      "volume_id": "10",
+      "source_story_order": 58,
+      "volume_order": 4,
+      "narrated_source": "Acts 15; Galatians; community letters",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-PAUL",
+        "E-PETER"
+      ],
+      "first_safe_chapter": "V10-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A council scene cannot settle every community’s later argument.",
+      "atlas_label": "Belonging",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-059",
+      "title": "Letters, journeys and unequal authority",
+      "volume_id": "10",
+      "source_story_order": 59,
+      "volume_order": 5,
+      "narrated_source": "Acts journey sequences; Pauline corpus",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-PAUL"
+      ],
+      "first_safe_chapter": "V10-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Delivery dates, composition dates and narrated journeys remain separate.",
+      "atlas_label": "Letters",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-060",
+      "title": "Jerusalem’s Temple is destroyed",
+      "volume_id": "10",
+      "source_story_order": 60,
+      "volume_order": 6,
+      "narrated_source": "70 CE historical anchor; later reception",
+      "history_date": {
+        "start_year": 70,
+        "end_year": 70,
+        "display": "70 CE",
+        "status": "historical-anchor",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "REF-IAA-TIMELINE"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-PETER",
+        "E-PAUL"
+      ],
+      "first_safe_chapter": "V10-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Collective catastrophe transforms interpretation without supplying a universal verdict.",
+      "atlas_label": "Temple falls",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-061",
+      "title": "A visionary writes from Patmos",
+      "volume_id": "11",
+      "source_story_order": 61,
+      "volume_order": 1,
+      "narrated_source": "Revelation narrative frame",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-SIGHT",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JOHN-PATMOS"
+      ],
+      "first_safe_chapter": "V11-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Vision order, depicted event order and writing date are separate tracks.",
+      "atlas_label": "Patmos",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-062",
+      "title": "Unveilings circulate as competing hopes",
+      "volume_id": "11",
+      "source_story_order": 62,
+      "volume_order": 2,
+      "narrated_source": "Revelation; apocalyptic traditions with independent entries",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JOHN-PATMOS"
+      ],
+      "first_safe_chapter": "V11-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "An image can promise release to one community and terrify another.",
+      "atlas_label": "Visions",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-063",
+      "title": "A later revolt changes the landscape",
+      "volume_id": "11",
+      "source_story_order": 63,
+      "volume_order": 3,
+      "narrated_source": "132–135 CE institutional historical anchor",
+      "history_date": {
+        "start_year": 132,
+        "end_year": 135,
+        "display": "132–135 CE",
+        "status": "historical-range",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": [
+          "REF-IAA-TIMELINE"
+        ]
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-JOHN-PATMOS"
+      ],
+      "first_safe_chapter": "V11-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A historical event is not automatically a fulfilment of a prophecy.",
+      "atlas_label": "Later revolt",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-064",
+      "title": "Books travel, change and survive",
+      "volume_id": "11",
+      "source_story_order": 64,
+      "volume_order": 4,
+      "narrated_source": "Source-specific manuscript transmission histories",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-SOPHIA"
+      ],
+      "first_safe_chapter": "V11-C07",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Copying, translation, loss and canon selection require separate evidence.",
+      "atlas_label": "Books travel",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-065",
+      "title": "Traditions intersect without becoming identical",
+      "volume_id": "11",
+      "source_story_order": 65,
+      "volume_order": 5,
+      "narrated_source": "World-religion source braids; individual traditions independently sourced",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOTHER",
+        "E-FIRST-FLAME"
+      ],
+      "first_safe_chapter": "V11-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A fictional underlying relation must not masquerade as historical proof.",
+      "atlas_label": "Traditions",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-066",
+      "title": "Institutions inherit both care and harm",
+      "volume_id": "11",
+      "source_story_order": 66,
+      "volume_order": 6,
+      "narrated_source": "Later reception; source-by-source research",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-FATHER"
+      ],
+      "first_safe_chapter": "V11-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "No institution is made timeless, uniform or exempt from internal dissent.",
+      "atlas_label": "Institutions",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-067",
+      "title": "Lily dies and the world continues",
+      "volume_id": "12",
+      "source_story_order": 67,
+      "volume_order": 1,
+      "narrated_source": "Original Unraveling prologue; V2 alternative",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-LILY"
+      ],
+      "first_safe_chapter": "V12-C01",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Do not import an old exact death interval until this version adopts it.",
+      "atlas_label": "Lily dies",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-068",
+      "title": "Remembering meets a living biography",
+      "volume_id": "12",
+      "source_story_order": 68,
+      "volume_order": 2,
+      "narrated_source": "V2 awakening and incarnation premise",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-REFLECTION",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-LILY",
+        "E-LILITH"
+      ],
+      "first_safe_chapter": "V12-C03",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "A recovered identity cannot displace the present person’s consent.",
+      "atlas_label": "Remembering",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-069",
+      "title": "Names, dice and allies become consequential",
+      "volume_id": "12",
+      "source_story_order": 69,
+      "volume_order": 3,
+      "narrated_source": "V2 HALO and supporting cast",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-THRESHOLD",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-LILY",
+        "E-JUNE",
+        "E-YUNA"
+      ],
+      "first_safe_chapter": "V12-C05",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Twenty-four symbols open 512 ordered combinations, not unlimited control.",
+      "atlas_label": "Names / dice",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-070",
+      "title": "The Architect’s claim is tested",
+      "volume_id": "12",
+      "source_story_order": 70,
+      "volume_order": 4,
+      "narrated_source": "Original Architect history versus V2 Eve identity",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-ENGINE",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-ARCHITECT",
+        "E-EVE",
+        "E-LILITH"
+      ],
+      "first_safe_chapter": "V12-C13",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Evidence must settle an occupant claim before the story treats it as settled.",
+      "atlas_label": "Architect",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-071",
+      "title": "The lost are approached on their terms",
+      "volume_id": "12",
+      "source_story_order": 71,
+      "volume_order": 5,
+      "narrated_source": "Codex lost domains; V2 recovery candidates",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-LOST",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-MOTHER",
+        "E-HOLLOW",
+        "E-LILY"
+      ],
+      "first_safe_chapter": "V12-C09",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Restoration asks who lived through the interval and what they now want.",
+      "atlas_label": "The lost",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    },
+    {
+      "id": "EV-072",
+      "title": "Return of names and unfinished repair",
+      "volume_id": "12",
+      "source_story_order": 72,
+      "volume_order": 6,
+      "narrated_source": "Approved finale direction; new scene work required",
+      "history_date": {
+        "start_year": null,
+        "end_year": null,
+        "display": "Unestablished",
+        "status": "unknown",
+        "calendar": "BCE/CE; no year zero",
+        "source_refs": []
+      },
+      "text_composition_date": {
+        "start_year": null,
+        "end_year": null,
+        "status": "source-specific-research-required"
+      },
+      "realm_time": {
+        "realm_id": "R-EARTH",
+        "start": null,
+        "end": null,
+        "elapsed": null,
+        "unit": null,
+        "status": "unestablished"
+      },
+      "personal_times": [],
+      "personal_time_status": "unestablished-until-viewpoint-and-interval-adopted",
+      "entity_ids": [
+        "E-LILY",
+        "E-EVE",
+        "E-ADAM"
+      ],
+      "first_safe_chapter": "V12-C11",
+      "first_safe_chapter_status": "editorial-proposal",
+      "status": "editorial-proposal",
+      "coverage_status": "anchor-planned-not-scene-drafted",
+      "lasting_consequence": "Victory changes who can choose; grief and obligations remain.",
+      "atlas_label": "Repair",
+      "entity_link_semantics": "Associated identity or later thematic referent; not an assertion that this figure was physically present at the historical event."
+    }
+  ],
+  "glossary": [
+    {
+      "id": "T-001",
+      "term": "Omnoid",
+      "definition": "The approved larger cosmological frame. The diagram shows conceptual relations, not a scientific model.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-002",
+      "term": "Cross-section",
+      "definition": "A locally experienced world or moment within the larger frame; its exact geometry is not yet adopted.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-003",
+      "term": "Worldline",
+      "definition": "The ordered sequence a being or community lives through. A later return does not delete earlier experience.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-004",
+      "term": "Source",
+      "definition": "An originating identity or principle. A source is not interchangeable with every expression attributed to it.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-005",
+      "term": "Aspect",
+      "definition": "A particular relational or functional expression of a source, indexed separately from the whole.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-006",
+      "term": "Manifestation",
+      "definition": "A local appearance or acting presence. Its claimed source may be accurate, mistaken or deceptive.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-007",
+      "term": "Incarnation",
+      "definition": "An embodied life with its own biography and agency, even when continuity with another life is established.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-008",
+      "term": "Identity claim",
+      "definition": "A proposition about who someone is. Names, resemblance and memories are evidence to examine, not automatic proof.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-009",
+      "term": "Continuity",
+      "definition": "What persists across changes of embodiment. The project has not adopted a universal test for proving it.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-010",
+      "term": "Aura",
+      "definition": "The outward expression of spirit in the Omnoid source vocabulary; not a diagnostic claim about real people.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-011",
+      "term": "Soul",
+      "definition": "The inward continuity vocabulary of the cosmology; its status here is literary/metaphysical, not measured physical substance.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-012",
+      "term": "Machine layer",
+      "definition": "The Omnoid source’s term for local form and the conversion between intention and expression; not necessarily metal machinery.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-013",
+      "term": "Flesh",
+      "definition": "The vulnerable embodied surface. Cosmic significance does not prevent bodily pain, hunger or exhaustion.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-014",
+      "term": "Bone",
+      "definition": "The structural layer of embodiment in the inherited vocabulary; not an exact anatomical system for every realm.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-015",
+      "term": "Throat",
+      "definition": "The proposed passage where inward and outward expression meet. It is not a route through another’s consent.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-016",
+      "term": "Substrate",
+      "definition": "The local conditions in which a being can take form; different settings may require different lawful expression.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-017",
+      "term": "Re-crystallization",
+      "definition": "The inherited term for forming a local expression again. Its available mechanisms and costs remain proposals.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-018",
+      "term": "Re-cohering",
+      "definition": "Recovering or integrating something into the present without erasing the intervening history.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-019",
+      "term": "Selective retroactivity",
+      "definition": "An inherited phrase requiring care: this project interprets it as present integration, not the power to overwrite another life.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-020",
+      "term": "Realm",
+      "definition": "A traversable or experienceable domain. It is not automatically a gate function or a stage of personal growth.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-021",
+      "term": "Fundament",
+      "definition": "Baseline embodied reality in the Unraveling vocabulary; the relationship to historical Earth is a candidate mapping.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-022",
+      "term": "Threshold",
+      "definition": "Liminal geography. The similarly named gate function is a different indexed category.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-023",
+      "term": "Labyrinth",
+      "definition": "The domain of choices and alternatives in V2; encountering alternatives does not erase the enacted path.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-024",
+      "term": "Reflection",
+      "definition": "The realm of contested self-perception; also a separately indexed gate function and a common word.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-025",
+      "term": "Engine",
+      "definition": "The V2 domain of local reality’s mechanisms. It is not the whole Omnoid or every being’s Machine layer.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-026",
+      "term": "Web",
+      "definition": "Navigable relations. Connected people remain separate agents with different obligations.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-027",
+      "term": "Sight",
+      "definition": "A realm and a capacity concerned with perception. Neither guarantees truth or sound judgment.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-028",
+      "term": "Crown",
+      "definition": "A realm and a V2 cultivation label. Their shared name does not establish identical meaning.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-029",
+      "term": "Gate function",
+      "definition": "One of the Codex’s twelve operative names: a function that may occur in multiple places.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-030",
+      "term": "Lost domain",
+      "definition": "A domain reported missing in an older draft. Destroyed, inaccessible and hidden are different states.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-031",
+      "term": "HALO",
+      "definition": "Hidden Axis Labyrinthine Oracle: a three-domain symbolic system inherited from existing drafts.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-032",
+      "term": "FLOW",
+      "definition": "HALO’s movement domain, containing eight named faces.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-033",
+      "term": "MIRROR",
+      "definition": "HALO’s reflection domain, containing eight named faces; not the same entity as the Reflection realm.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-034",
+      "term": "GATE",
+      "definition": "HALO’s choice and boundary domain, containing eight named faces; distinct from twelve gate functions.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-035",
+      "term": "Symbol",
+      "definition": "One named face. There are twenty-four across the three distinguished dice.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-036",
+      "term": "Ordered triple",
+      "definition": "One FLOW result, one MIRROR result and one GATE result in that domain order: 8 × 8 × 8 = 512 possibilities.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-037",
+      "term": "Cultivation",
+      "definition": "A vocabulary of acquired capacities and obligations. Existing ladders are preserved without declaring stage-by-stage equivalence.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-038",
+      "term": "The Mother",
+      "definition": "A primordial source candidate in the Codex. Lilith, Mary and every mother are not automatically the same person.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-039",
+      "term": "First Flame",
+      "definition": "A creative consciousness in existing drafts. A lightbearing descendant is not identical merely because both involve light.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-040",
+      "term": "Firstborn",
+      "definition": "Divine children in the inherited mythology; seniority does not grant ownership of later beings.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-041",
+      "term": "Archon",
+      "definition": "An authority figure or administration in the selected literary cosmology; historical traditions using this term require separate notes.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-042",
+      "term": "Watchers",
+      "definition": "A grouping whose observation and involvement vary by source; 1 Enoch must not be silently merged with every angel tradition.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-043",
+      "term": "Hollow",
+      "definition": "An unresolved draft concept spanning entropy, loneliness and damaged relation. Do not equate mental illness with moral corruption.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-044",
+      "term": "Architect",
+      "definition": "A role with competing occupant histories in Unraveling. Eve’s identification is a V2 proposal, not settled series canon.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-045",
+      "term": "Quintessence",
+      "definition": "The Five-Aspect soul-matter vocabulary of Sevenfold Theft; a neighbouring candidate system, not silently imported physics.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-046",
+      "term": "Gyre",
+      "definition": "The Sevenfold candidate’s cyclical world structure. Similarity to Omnoid imagery is insufficient to prove a shared setting.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-047",
+      "term": "Wolfspace",
+      "definition": "Pocket-dimension vocabulary from the in-world academic paper. Its equations are not treated as established mathematics or science.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-048",
+      "term": "Agency",
+      "definition": "A being’s capacity and standing to choose, refuse and act. Characters can violate it; the story records the consequences.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-049",
+      "term": "Consent",
+      "definition": "Specific, informed, revocable agreement. Silence, identity continuity or another version’s agreement is not a substitute.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-050",
+      "term": "Harm",
+      "definition": "Damage to a person or community, including coerced loss of agency; good intentions do not erase effects.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-051",
+      "term": "Responsibility",
+      "definition": "Answerability for choices and their effects, including the work required after unintended harm.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-052",
+      "term": "Repair",
+      "definition": "Material and relational work shaped by those harmed. It is different from demanding forgiveness.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-053",
+      "term": "Forgiveness",
+      "definition": "A possible choice belonging to the harmed party. It cannot be charged as the price of restitution.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-054",
+      "term": "Source-story order",
+      "definition": "The sequence in a particular text or the proposed braided outline; it does not itself establish historical dates.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-055",
+      "term": "Historical date",
+      "definition": "An independently supported period or range. Unknown remains unknown, rather than being back-calculated from symbolic ages.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-056",
+      "term": "Composition date",
+      "definition": "When a text or layer was written. Daniel’s narrated exile setting does not date the composition automatically.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-057",
+      "term": "Realm time",
+      "definition": "The clock adopted inside a domain, with no conversion until a relation is explicitly established.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-058",
+      "term": "Personal time",
+      "definition": "A character’s experienced duration, including intervals different from an outside observer’s calendar.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-059",
+      "term": "First-safe chapter",
+      "definition": "The earliest proposed reader access to a fact. It is spoiler management, not the date of the underlying event.",
+      "status": "editorial-proposal"
+    },
+    {
+      "id": "T-060",
+      "term": "Lasting consequence",
+      "definition": "A changed condition carried into later scenes: a death, debt, disability, migration, promise, destroyed home or broken trust.",
+      "status": "editorial-proposal"
+    }
+  ],
+  "places": [
+    {
+      "id": "P-ROME",
+      "name": "Rome",
+      "longitude": 12.5,
+      "latitude": 41.9,
+      "volume_ids": [
+        "10",
+        "11"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Modern city locator; ancient footprint not implied.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-ATHENS",
+      "name": "Athens",
+      "longitude": 23.73,
+      "latitude": 37.98,
+      "volume_ids": [
+        "10",
+        "11"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Modern city locator.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-EPHESUS",
+      "name": "Ephesus",
+      "longitude": 27.34,
+      "latitude": 37.94,
+      "volume_ids": [
+        "10",
+        "11"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Coarse archaeological-area locator.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-ALEXANDRIA",
+      "name": "Alexandria",
+      "longitude": 29.92,
+      "latitude": 31.2,
+      "volume_ids": [
+        "08",
+        "10",
+        "11"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Modern city locator; label applies only after foundation.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-MEMPHIS",
+      "name": "Memphis",
+      "longitude": 31.25,
+      "latitude": 29.85,
+      "volume_ids": [
+        "04",
+        "05"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Coarse archaeological-area locator; not a claim that the Exodus starts here.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-JERUSALEM",
+      "name": "Jerusalem",
+      "longitude": 35.23,
+      "latitude": 31.78,
+      "volume_ids": [
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Modern/ancient centre locator; boundaries change across eras.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-QUMRAN",
+      "name": "Qumran",
+      "longitude": 35.46,
+      "latitude": 31.74,
+      "volume_ids": [
+        "08",
+        "11"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Coarse site locator; not every text found nearby was composed here.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-ANTIOCH",
+      "name": "Antioch",
+      "longitude": 36.16,
+      "latitude": 36.2,
+      "volume_ids": [
+        "08",
+        "10",
+        "11"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Modern Antakya vicinity; identity of other Antiochs remains distinct.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-NINEVEH",
+      "name": "Nineveh",
+      "longitude": 43.15,
+      "latitude": 36.36,
+      "volume_ids": [
+        "07"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Coarse archaeological-area locator.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-BABYLON",
+      "name": "Babylon",
+      "longitude": 44.42,
+      "latitude": 32.54,
+      "volume_ids": [
+        "03",
+        "04",
+        "07",
+        "08"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Coarse site locator; Babel identification remains an interpretation.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-UR",
+      "name": "Ur",
+      "longitude": 46.11,
+      "latitude": 30.96,
+      "volume_ids": [
+        "04"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Southern Mesopotamian candidate; Genesis identification is not settled by a pin.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    },
+    {
+      "id": "P-SUSA",
+      "name": "Susa",
+      "longitude": 48.26,
+      "latitude": 32.2,
+      "volume_ids": [
+        "08"
+      ],
+      "precision": "coarse-editorial-locator-rounded-to-0.01-degree-not-survey-accuracy",
+      "note": "Coarse archaeological-area locator; Esther remains a literary source.",
+      "status": "editorial-proposal",
+      "coordinate_verification": "Not certified against a gazetteer; Pleiades retrieval returned a bot challenge. Regional placement is a schematic locator, not route evidence."
+    }
+  ],
+  "routes": [
+    {
+      "id": "RT-EXODUS",
+      "name": "Exodus movement",
+      "from_place_id": "P-MEMPHIS",
+      "to_place_id": "P-JERUSALEM",
+      "volume_ids": [
+        "05"
+      ],
+      "status": "editorial-proposal",
+      "evidence": "disputed-route",
+      "draw": "dashed symbolic curve; endpoint regions only",
+      "note": "Neither exact departure nor crossing site nor route is established by this graphic."
+    },
+    {
+      "id": "RT-EXILE",
+      "name": "Deportation direction",
+      "from_place_id": "P-JERUSALEM",
+      "to_place_id": "P-BABYLON",
+      "volume_ids": [
+        "07"
+      ],
+      "status": "editorial-proposal",
+      "evidence": "historical-direction-schematic",
+      "draw": "dashed curved connector",
+      "note": "Direction indicates exile context, not an exact road or the same route for every person."
+    },
+    {
+      "id": "RT-RETURN",
+      "name": "Return direction",
+      "from_place_id": "P-BABYLON",
+      "to_place_id": "P-JERUSALEM",
+      "volume_ids": [
+        "08"
+      ],
+      "status": "editorial-proposal",
+      "evidence": "historical-direction-schematic",
+      "draw": "dashed curved connector",
+      "note": "Different returns and rebuilding phases remain distinct."
+    },
+    {
+      "id": "RT-CIRCULATION",
+      "name": "Mediterranean circulation",
+      "from_place_id": "P-JERUSALEM",
+      "to_place_id": "P-ROME",
+      "volume_ids": [
+        "10",
+        "11"
+      ],
+      "status": "editorial-proposal",
+      "evidence": "network-schematic",
+      "draw": "dashed curved connector",
+      "note": "Not one apostolic itinerary or a claimed route for every text."
+    }
+  ]
+}

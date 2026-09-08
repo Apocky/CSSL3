@@ -1,0 +1,281 @@
+{
+  "schema_version": "1.0",
+  "dossier_id": "DOSSIER-CREATION-01",
+  "checked_on": "2026-09-05",
+  "purpose_csl": "§P Volume.01.opening → exact.passage.evidence + discrepancy.questions ; N! choose.author.voice | overwrite.author.cosmology",
+  "inspection_contract": "Specified translated passages and specified editorial notes inspected. Original-language manuscripts not independently collated. No complete ancient book marked fully read.",
+  "source_derived_prose_rule": "Short paraphrase only; reader notes and dossier together remain below 200 derived words per source page. No long translated extracts stored.",
+  "edition_records": [
+    {
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "title": "New American Bible, Revised Edition",
+      "version": "NABRE; 2011 revised Old Testament with 1986 New Testament",
+      "language": "English",
+      "translation_credit": "Confraternity of Christian Doctrine-sponsored scholarly translation; individual passage translators not exposed on inspected chapter pages",
+      "publisher_surfaces": [
+        "USCCB",
+        "Bible Gateway / HarperCollins Christian Publishing"
+      ],
+      "provenance_url": "https://www.usccb.org/offices/new-american-bible/revised-edition-information",
+      "provenance_locator": "Opening three paragraphs",
+      "caveat": "Web display inspected on recorded date; no immutable edition checksum or original-language critical apparatus acquired. Bible Gateway used for John and Job after USCCB direct-page retrieval failed."
+    },
+    {
+      "edition_id": "ED-BCNH-BARC-APOCRYPHON-JOHN-WEB-20260905",
+      "title": "Le Livre des secrets de Jean (NH II,1 ; IV,1)",
+      "language": "French",
+      "translator": "Bernard Barc",
+      "host": "Université Laval, Bibliothèque copte de Nag Hammadi",
+      "version": "Online PDF as inspected 2026-09-05; revision date not exposed in inspected header",
+      "provenance_url": "https://www.naghammadi.org/sites/naghammadi.org/files/uploads/traductions/nh-ii-1-livre-des-secrets-de-jean.pdf",
+      "provenance_locator": "PDF page 1 header; manuscript-range labels throughout selected pages",
+      "caveat": "Modern French translation of a Coptic work; header names NH II and IV and section labels provide BG parallels. Those other witnesses were not independently collated. Brackets and lacunae are retained as uncertainty, not filled by the novel's authority."
+    }
+  ],
+  "references": [
+    {
+      "id": "REF-PASSAGE-GENESIS1",
+      "title": "Genesis 1, NABRE",
+      "url": "https://bible.usccb.org/bible/genesis/1",
+      "locator": "1:1–31; notes [1:1–2:3], [1:2], [1:7], [1:26]",
+      "kind": "primary_passage_and_attributed_notes",
+      "checked_on": "2026-09-05",
+      "inspection": "Specified passage and notes inspected"
+    },
+    {
+      "id": "REF-PASSAGE-GENESIS2",
+      "title": "Genesis 2, NABRE",
+      "url": "https://bible.usccb.org/bible/genesis/2",
+      "locator": "2:1–25; notes [2:2], [2:4], [2:7], [2:9]",
+      "kind": "primary_passage_and_attributed_notes",
+      "checked_on": "2026-09-05",
+      "inspection": "Specified passage and notes inspected"
+    },
+    {
+      "id": "REF-PASSAGE-GENESIS3",
+      "title": "Genesis 3, NABRE",
+      "url": "https://bible.usccb.org/bible/genesis/3",
+      "locator": "3:1–24; notes [3:1], [3:5], [3:15], [3:16], [3:20]",
+      "kind": "primary_passage_and_attributed_notes",
+      "checked_on": "2026-09-05",
+      "inspection": "Specified passage and notes inspected"
+    },
+    {
+      "id": "REF-PASSAGE-JOHN1",
+      "title": "John 1:1–18, NABRE",
+      "url": "https://www.biblegateway.com/passage/?search=John+1%3A1-18&version=NABRE",
+      "locator": "1:1–18; footnotes [1:1–18], [1:1], [1:3], [1:5], [1:14], [1:18]",
+      "kind": "primary_translated_passage_and_attributed_notes",
+      "checked_on": "2026-09-05",
+      "inspection": "Full requested eighteen-verse passage inspected; not all John"
+    },
+    {
+      "id": "REF-PASSAGE-PROVERBS8",
+      "title": "Proverbs 8, NABRE",
+      "url": "https://bible.usccb.org/bible/proverbs/8",
+      "locator": "8:22–31; notes [8:1–36], [8:22–31], [8:23], [8:30]",
+      "kind": "primary_passage_and_attributed_notes",
+      "checked_on": "2026-09-05",
+      "inspection": "Specified ten-verse passage and notes inspected; not all Proverbs"
+    },
+    {
+      "id": "REF-PASSAGE-JOB38",
+      "title": "Job 38, NABRE",
+      "url": "https://www.biblegateway.com/passage/?search=Job+38&version=NABRE",
+      "locator": "38:1–41; footnotes [38:1], [38:21], [38:31–32], [38:36]",
+      "kind": "primary_translated_passage_and_attributed_notes",
+      "checked_on": "2026-09-05",
+      "inspection": "All forty-one verses of chapter 38 inspected; not all Job"
+    },
+    {
+      "id": "REF-PASSAGE-APOCRYPHON-JOHN",
+      "title": "Le Livre des secrets de Jean, Bernard Barc translation",
+      "url": "https://www.naghammadi.org/sites/naghammadi.org/files/uploads/traductions/nh-ii-1-livre-des-secrets-de-jean.pdf",
+      "locator": "NH II 2,25–7,15; PDF pages 1–3",
+      "kind": "primary_translated_passage",
+      "checked_on": "2026-09-05",
+      "inspection": "Selected continuous passage and header inspected; no full-work claim"
+    },
+    {
+      "id": "REF-NABRE-EDITION",
+      "title": "USCCB Revised Edition Information",
+      "url": "https://www.usccb.org/offices/new-american-bible/revised-edition-information",
+      "locator": "Opening three paragraphs",
+      "kind": "translation_sponsor_edition_description",
+      "checked_on": "2026-09-05",
+      "inspection": "Edition provenance inspected"
+    }
+  ],
+  "passages": [
+    {
+      "id": "PASSAGE-CREATION-GEN-01",
+      "source_id": "SRC-BIB-GENESIS",
+      "range": "Genesis 1:1–31",
+      "range_type": "chapter_verse",
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_ids": [
+        "REF-PASSAGE-GENESIS1"
+      ],
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "observed_paraphrase_csl": "✓ speech.orders.world ; light precedes luminaries ; humankind.male+female bears divine.image ; six.days → goodness.judgement.",
+      "attributed_note_csl": "✓ NABRE.notes : ruah rendered.mighty.wind + spirit/breath gloss ; six-day literary.pairing ; Priestly attribution = editorial.analysis.",
+      "discrepancy_question_csl": "Q? author.Mother-before-speech : narrator.fact ∨ attributed.counter-witness? Q? days : literal ∨ symbolic ∨ observer.sequence?",
+      "fiction_boundary_csl": "W! torus+Omnoid+Mother.priority = author.cosmology ; N! Genesis.restored.wording.claim",
+      "destinations": [
+        "01",
+        "02"
+      ],
+      "reader_note_id": "CN-01"
+    },
+    {
+      "id": "PASSAGE-CREATION-GEN-02",
+      "source_id": "SRC-BIB-GENESIS",
+      "range": "Genesis 2:1–25",
+      "range_type": "chapter_verse",
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_ids": [
+        "REF-PASSAGE-GENESIS2"
+      ],
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "observed_paraphrase_csl": "✓ seventh-day.rest ; human.from.soil+breath ; garden+tending+prohibition ; animals.named ; woman.from.man.",
+      "attributed_note_csl": "✓ NABRE [2:7] : adam/adamah wordplay ; [2:9] : knowledge.meaning disputed.",
+      "discrepancy_question_csl": "Q? different.creation.arrangements : parallel.witnesses ∨ one.fictional.sequence? Q? command.transmission : direct ∨ reported?",
+      "fiction_boundary_csl": "W! Lilith.chapter = author.addition ; N! unattested.Genesis.character insertion represented as translation",
+      "destinations": [
+        "01",
+        "02"
+      ],
+      "reader_note_id": "CN-02"
+    },
+    {
+      "id": "PASSAGE-CREATION-GEN-03",
+      "source_id": "SRC-BIB-GENESIS",
+      "range": "Genesis 3:1–24",
+      "range_type": "chapter_verse",
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_ids": [
+        "REF-PASSAGE-GENESIS3"
+      ],
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "observed_paraphrase_csl": "✓ serpent.questions.command ; couple.eats ; shame+blame ; consequences ; Eve.named ; life-tree.access blocked.",
+      "attributed_note_csl": "✓ NABRE [3:15] distinguishes serpent/offspring sense from subsequent.Christian devil+redeemer interpretation.",
+      "discrepancy_question_csl": "Q? refusal.as.virtue : which action+information+consequence? Q? serpent.identity : source.animal ∨ author.persona ∨ later.witness.reinterpretation?",
+      "fiction_boundary_csl": "W! consent.ethic explicit.author.revision ; N! critical.note equates all.later.serpent traditions",
+      "destinations": [
+        "02",
+        "12"
+      ],
+      "reader_note_id": "CN-03"
+    },
+    {
+      "id": "PASSAGE-CREATION-JOHN-01",
+      "source_id": "SRC-BIB-JOHN",
+      "range": "John 1:1–18",
+      "range_type": "chapter_verse",
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_ids": [
+        "REF-PASSAGE-JOHN1"
+      ],
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "observed_paraphrase_csl": "✓ preexistent.Word+creation+life+light ; John.testifies ; Word.incarnate ; reception+rejection ; Father.revealed.",
+      "attributed_note_csl": "✓ NABRE : 1:3–4 punctuation.variant ; 1:5 overcome/comprehend alternatives ; 1:18 witness.readings distinguished.",
+      "discrepancy_question_csl": "Q? Word+Knowing.Child : identical ∨ related ∨ contested.author.identification? Q? before.Word means narrative.reveal-order ∨ fictional.ontology?",
+      "fiction_boundary_csl": "N! merge.Logos+Sophia+Mother solely shared.creation.theme ; W! explicit.author.mapping",
+      "destinations": [
+        "01",
+        "09"
+      ],
+      "reader_note_id": "CN-04"
+    },
+    {
+      "id": "PASSAGE-CREATION-PROV-08",
+      "source_id": "SRC-BIB-PROVERBS",
+      "range": "Proverbs 8:22–31",
+      "range_type": "chapter_verse",
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_ids": [
+        "REF-PASSAGE-PROVERBS8"
+      ],
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "observed_paraphrase_csl": "✓ Wisdom.speaks.precreation.birth+presence ; delight+play join cosmic.order+human.affinity.",
+      "attributed_note_csl": "✓ NABRE [8:30] : amon disputed ; artisan / trustworthy.friend / nursling readings.",
+      "discrepancy_question_csl": "Q? Wisdom = speaker.personification ∨ discrete.fictional.person? Q? craft+play preserved when author.changes divine.genealogy?",
+      "fiction_boundary_csl": "W! poem.speaker ≠ verified.biographical.deity ; author.Mother.equivalence requires invention.label",
+      "destinations": [
+        "01",
+        "08",
+        "09"
+      ],
+      "reader_note_id": "CN-05"
+    },
+    {
+      "id": "PASSAGE-CREATION-JOB-38",
+      "source_id": "SRC-BIB-JOB",
+      "range": "Job 38:1–41",
+      "range_type": "chapter_verse",
+      "edition_id": "ED-NABRE-WEB-20260905",
+      "reference_ids": [
+        "REF-PASSAGE-JOB38"
+      ],
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "observed_paraphrase_csl": "✓ divine.storm.speech questions human.knowledge ; earth.foundation+sea.birth+weather+stars+animals ; ironic.age.challenge.",
+      "attributed_note_csl": "✓ NABRE : Mazzaroth uncertain ; 38:36 animal.rendering uncertain.",
+      "discrepancy_question_csl": "Q? cosmic.wonder and speaker.power : vindication ∨ evasion ∨ deliberately.contested? Q? measurement.imagery : metaphor ∨ changed.fictional.physics?",
+      "fiction_boundary_csl": "N! poetic.measurement⇒modern.cosmological.equation ; W! rhetorical.speaker ≠ neutral.scientific.report",
+      "destinations": [
+        "01",
+        "07",
+        "11"
+      ],
+      "reader_note_id": "CN-06"
+    },
+    {
+      "id": "PASSAGE-CREATION-APOCRYPHON-JOHN-01",
+      "source_id": "SRC-NH-APOCRYPHON-OF-JOHN",
+      "range": "NH II 2,25–7,15 in Bernard Barc's displayed translation",
+      "range_type": "codex_manuscript_page_line",
+      "edition_id": "ED-BCNH-BARC-APOCRYPHON-JOHN-WEB-20260905",
+      "reference_ids": [
+        "REF-PASSAGE-APOCRYPHON-JOHN"
+      ],
+      "status": "translated_passage_inspected",
+      "full_work_inspected": false,
+      "pdf_pages_one_based": [
+        1,
+        2,
+        3
+      ],
+      "observed_paraphrase_csl": "✓ invisible.first.principle beyond measurement+time ; thought.manifests.Barbelo ; Mother-Father title ; emanation+assent ; silent.production precedes word-linked.creation.",
+      "attributed_note_csl": "✓ PDF.header : Bernard.Barc ; NH.II+IV ; selected.range.labels include BG.parallels ; N! independent.witness.collation.claim.",
+      "discrepancy_question_csl": "Q? author.Mother.priority differs from passage.order: preserve dissenting.codex.voice ∨ declare fictional.reversal?",
+      "fiction_boundary_csl": "W! one.particular.text ; N! universal.Gnostic.creed | recovered.original.Genesis | author.Mother=Barbelo historically.proved",
+      "destinations": [
+        "01",
+        "09",
+        "11"
+      ],
+      "reader_note_id": "CN-07"
+    }
+  ],
+  "editorial_controls_csl": [
+    "W! source.event.order + composition.range + manuscript.date + narrator.knowledge + reader.reveal remain separate.",
+    "N! exact.creation.date derived from these.passages ; historical.composition.dates unresolved.this.dossier.",
+    "W! contradiction.kind := intentional.mystery | source.disagreement | unreliable.witness | editorial.error ; classify before repair.",
+    "W! adapted.scene records source.range + author.change + causal.consequence + reveal.limit.",
+    "R! creation.prose uses original.wording ; evidence.notes preserve translation.attribution.",
+    "W! broad.global.creation parallels remain uninspected.queues until exact.named.passages read."
+  ],
+  "counts": {
+    "passage_records": 7,
+    "distinct_ancient_work_identities": 5,
+    "new_reference_pages_checked": 8,
+    "full_ancient_works_inspected": 0
+  },
+  "validation_csl": "✓ seven.records exact.ranges+edition+translator.credit+URLs ; ✓ all.source_ids present.catalogue ; ✓ reader.note.ids unique ; W! integration.validator verifies counts+ids"
+}

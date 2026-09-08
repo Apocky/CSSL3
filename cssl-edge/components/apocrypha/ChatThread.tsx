@@ -1,15 +1,10 @@
-// Modern Apocrypha chat — sidebar + bubble thread + streaming via SSE.
-//
-// Wires /api/admin/apocrypha/chat_stream to the native V2 turn route. The
-// proxy preserves the existing SSE event contract while the V2 body returns
-// its governed response envelope.
+// Modern Apocrypha chat — durable job submission, recovery, and partial output.
 //
 // Per HANDOFF_v10 § TRACK-A polish-pass (replaces the cockpit-monospace draft).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authFetch } from '../../lib/browser-auth';
-import { DeadlineExceededError, withDeadline } from '../../lib/apocrypha/deadline';
 import { ApocryphaAvatar } from './ApocryphaAvatar';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -81,17 +76,8 @@ interface ActiveJobRecord {
   submittedAt: string;
 }
 
-// ─── Streaming SSE helpers ─────────────────────────────────────────
-
-interface SseEvent {
-  type: string;
-  data: Record<string, unknown>;
-}
-
 const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
 const JOB_POLL_MS = 1_500;
-const LEGACY_CHAT_BROWSER_DEADLINE_MS = 115_000;
-const LEGACY_CHAT_BACKEND_TIMEOUT_S = 100;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
 const CONVERSATION_MENU_WIDTH = 176;
 const CONVERSATION_MENU_MAX_HEIGHT = 160;
@@ -107,31 +93,6 @@ function waitForPoll(signal: AbortSignal): Promise<void> {
       resolve();
     }, { once: true });
   });
-}
-
-function parseSseBuffer(buffer: string): { events: SseEvent[]; remainder: string } {
-  const events: SseEvent[] = [];
-  let remainder = buffer;
-  while (true) {
-    const idx = remainder.indexOf('\n\n');
-    if (idx === -1) break;
-    const block = remainder.slice(0, idx);
-    remainder = remainder.slice(idx + 2);
-    let eventType = 'message';
-    const dataLines: string[] = [];
-    for (const line of block.split('\n')) {
-      if (line.startsWith('event:')) eventType = line.slice(6).trim();
-      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
-    }
-    if (dataLines.length === 0) continue;
-    try {
-      const data = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
-      events.push({ type: eventType, data });
-    } catch {
-      // skip malformed event
-    }
-  }
-  return { events, remainder };
 }
 
 // ─── Component ─────────────────────────────────────────────────────
@@ -395,133 +356,6 @@ export function ChatThread() {
       restoreMenuFocus(origin);
     }
   }, [convs, currentConv, loadConvs, menu, newChat, restoreMenuFocus, scope]);
-
-  // ── send + stream-consume ─────────────────────────────────────
-
-  const handleSendLegacy = useCallback(async () => {
-    const text = draft.trim();
-    if (!text || streaming) return;
-    setDraft('');
-    setError(null);
-    setStreamingTools([]);
-    setMessages((prev) => [...prev, { role: 'user', text, ts: new Date() }]);
-    setStreaming(true);
-
-    const controller = new AbortController();
-    try {
-      await withDeadline((async () => {
-        const r = await authFetch('/api/admin/apocrypha/chat_stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-          credentials: 'include',
-          signal: controller.signal,
-          body: JSON.stringify({
-            text,
-            conversation_id: currentConv,
-            max_tokens: 128,
-            timeout_s: LEGACY_CHAT_BACKEND_TIMEOUT_S,
-          }),
-        });
-        if (!r.ok || !r.body) {
-          const errText = await r.text().catch(() => '');
-          throw new Error(`HTTP ${r.status} ${errText.slice(0, 200)}`);
-        }
-        const reader = r.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let gotFinal = false;
-        let streamError: string | null = null;
-        let facultyFailed = false;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const { events, remainder } = parseSseBuffer(buffer);
-          buffer = remainder;
-          for (const ev of events) {
-            if (ev.type === 'conversation') {
-              const id = ev.data['conversation_id'];
-              if (typeof id === 'number') setCurrentConv(id);
-            } else if (ev.type === 'tool_event') {
-              setStreamingTools((prev) => [
-                ...prev,
-                {
-                  name: String(ev.data['tool_name'] ?? '?'),
-                  ok: ev.data['ok'] !== false,
-                  elapsed_ms: typeof ev.data['elapsed_ms'] === 'number' ? ev.data['elapsed_ms'] : undefined,
-                  error: typeof ev.data['error'] === 'string' ? ev.data['error'] : null,
-                },
-              ]);
-            } else if (ev.type === 'final') {
-              gotFinal = true;
-              const halt = typeof ev.data['halted_reason'] === 'string' ? ev.data['halted_reason'] : undefined;
-              const responseText = String(ev.data['final_response'] ?? '');
-              facultyFailed = halt === 'unified_faculty_error';
-              if (facultyFailed) continue;
-              const finalMsg: ChatMessage = {
-                role: 'apocrypha',
-                text: responseText || (halt === 'unified_faculty_error'
-                  ? 'Apocrypha lost the thread before the thought was complete. Try again.'
-                  : 'Apocrypha completed the thought without words.'),
-                ts: new Date(),
-                toolCalls: Array.isArray(ev.data['tool_calls'])
-                  ? (ev.data['tool_calls'] as ToolCallChip[])
-                  : [],
-                halt,
-                elapsed_s: typeof ev.data['elapsed_s'] === 'number' ? ev.data['elapsed_s'] : undefined,
-                cost_usd: typeof ev.data['total_cost_usd'] === 'number' ? ev.data['total_cost_usd'] : undefined,
-              };
-              setMessages((prev) => [...prev, finalMsg]);
-              setStreamingTools([]);
-            } else if (ev.type === 'error') {
-              streamError = String(ev.data['error'] ?? 'stream error');
-              setError(streamError);
-            }
-          }
-        }
-        // A cold or transient worker can emit a typed faculty error after the SSE
-        // connection is healthy. Retry once through the non-streaming path so the
-        // public chat does not strand the user on a synthetic empty answer.
-        if (facultyFailed && !streamError) {
-          const retry = await authFetch('/api/admin/apocrypha/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              text,
-              conversation_id: currentConv,
-              max_tokens: 128,
-              timeout_s: LEGACY_CHAT_BACKEND_TIMEOUT_S,
-            }),
-          });
-          if (retry.ok) {
-            const payload = await retry.json() as { data?: Record<string, unknown> };
-            const data = payload.data ?? {};
-            const responseText = String(data.final_response ?? '');
-            if (responseText) {
-              setMessages((prev) => [...prev, {
-                role: 'apocrypha', text: responseText, ts: new Date(),
-                halt: typeof data.halted_reason === 'string' ? data.halted_reason : undefined,
-                elapsed_s: typeof data.elapsed_s === 'number' ? data.elapsed_s : undefined,
-              }]);
-              facultyFailed = false;
-            }
-          }
-          if (facultyFailed) setError('Apocrypha is still waking its language faculty. Try again shortly.');
-        }
-        if (!gotFinal && !streamError) {
-          setError('Apocrypha lost the thread before the thought was complete. Try again.');
-        }
-        void loadConvs();
-      })(), LEGACY_CHAT_BROWSER_DEADLINE_MS, () => controller.abort());
-    } catch (err) {
-      setError(err instanceof DeadlineExceededError
-        ? 'Apocrypha took too long to answer. Try again.'
-        : err instanceof Error ? err.message : String(err));
-    } finally {
-      setStreaming(false);
-    }
-  }, [draft, streaming, currentConv, loadConvs]);
 
   useEffect(() => {
     if (!activeJob) return;

@@ -1,0 +1,216 @@
+{
+  "01": [
+    {
+      "title": "Lilith Asks Who Is Speaking",
+      "POV": "Lilith, explicitly later retrospective frame",
+      "want": "Hear the creation account without being folded into Mother's identity",
+      "obstacle": "A foundational narrator's address can make the listener appear to have existed in the narrated scene",
+      "choice": "Ask for the boundary between the remembered creation and their present encounter",
+      "consequence": "Lilith becomes an active recipient who preserves her own standing while creation remains temporally earlier",
+      "source_passages": [
+        "ILLUMINATED_CODEX_COMPLETE.md:131-185, retrospective address",
+        "ILLUMINATED_CODEX_COMPLETE.md:916-922, Mother holds and Lilith protects",
+        "WORLD-EVIDENCE:S13; E-LILITH; E-MOTHER"
+      ],
+      "lore_reveal": "Framing presence is not physical participation before embodied creation; source/aspect identity remains unresolved",
+      "humour_target": "An ancient storyteller being interrupted for an exceptionally relevant clarification"
+    }
+  ],
+  "02": [
+    {
+      "title": "The Shelter Lilith Builds",
+      "POV": "Lilith",
+      "want": "Make an independent life after refusal without becoming a new household sovereign",
+      "obstacle": "Shelter is scarce and other displaced beings offer obedience in exchange for safety",
+      "choice": "Build a refuge whose occupants keep the ability to leave and contest its rules",
+      "consequence": "Lilith gains neighbours and material obligations beyond Adam's household; her refusal becomes a durable alternative",
+      "source_passages": [
+        "Alphabet of Ben Sira: later Lilith refusal tradition",
+        "ILLUMINATED_CODEX_COMPLETE.md:916-922, protection distinct from Mother",
+        "EDITORIAL-PROPOSAL: off-Garden refuge, not scriptural episode"
+      ],
+      "lore_reveal": "Protection differs from ownership; continuing identity across later clocks requires root world reconciliation",
+      "humour_target": "A determined solitary discovering that an open refuge inevitably needs a roof repaired"
+    }
+  ],
+  "03": [
+    {
+      "title": "The People the Ark Did Not Name",
+      "POV": "Lilith",
+      "want": "Move threatened refuge households beyond the coming water",
+      "obstacle": "Trusted routes fail and patrons offer rescue only to pledged followers",
+      "choice": "Guide an independent evacuation and abandon a refuge she cannot preserve safely",
+      "consequence": "A scattered community survives owing Lilith no perpetual allegiance; the first refuge is irretrievably lost",
+      "source_passages": [
+        "Genesis 6-11 as surrounding narrative epoch",
+        "ILLUMINATED_CODEX_COMPLETE.md:916-922, protective vocation",
+        "EDITORIAL-PROPOSAL: Lilith evacuation, no ancient attestation claimed"
+      ],
+      "lore_reveal": "Her protective role entails loss; she does not secretly replace Noah or all flood saviours",
+      "humour_target": "Patrons attempting to attach an exclusivity agreement to a boat"
+    }
+  ],
+  "04": [
+    {
+      "title": "A Promise for the Unchosen",
+      "POV": "Lilith",
+      "want": "Keep a route open for households excluded from dynastic protection",
+      "obstacle": "A patron offers reliable provision only if the refuge recognizes one lineage's superior claim",
+      "choice": "Refuse the exclusive patronage and establish reciprocal support between otherwise rival households",
+      "consequence": "A fragile aid route survives outside the covenant households and later offers an alternative to state dependence",
+      "source_passages": [
+        "Genesis 16 and 21 as Hagar comparison, not identity equation",
+        "Genesis 41-50 as surrounding Egypt transition",
+        "EDITORIAL-PROPOSAL: independent Lilith route"
+      ],
+      "lore_reveal": "A promise to one household need not imply absence of relation with everyone else",
+      "humour_target": "A sponsorship proposal assuming that universal compassion would benefit from a preferred customer tier"
+    }
+  ],
+  "05": [
+    {
+      "title": "The Stranger at Lilith's Fire",
+      "POV": "Lilith",
+      "want": "Shelter displaced people whose identities the liberation movement distrusts",
+      "obstacle": "Refugees bring injuries and loyalties from both sides of the recent catastrophe",
+      "choice": "Set enforceable rules against coercion while judging each arrival by conduct rather than origin",
+      "consequence": "A mixed refuge preserves lives and testimony outside the victorious community's membership system",
+      "source_passages": [
+        "Exodus 12:38; Exodus 22:20 (NABRE; 22:21 in other numbering); Exodus 23:9 as ethical and narrative anchors",
+        "EDITORIAL-PROPOSAL: Lilith's independent refuge"
+      ],
+      "lore_reveal": "Refusal of collective guilt produces a practical institution with real security costs",
+      "humour_target": "Two displaced officials arguing over which of their abolished permits should admit the other"
+    }
+  ],
+  "06": [
+    {
+      "title": "No Crown over the Refuge",
+      "POV": "Lilith",
+      "want": "Keep people fleeing conquest and civil war beyond rival rulers' possession",
+      "obstacle": "Armed patrons promise defence in return for hostages and access to the refuge's residents",
+      "choice": "Relocate the refuge through a costly route instead of accepting the protective bargain",
+      "consequence": "Families evade conscription, but Lilith loses a defensible home and the political patronage that could rebuild it",
+      "source_passages": [
+        "Joshua 13-22; Judges 19-21 as surrounding epoch",
+        "EDITORIAL-PROPOSAL: relocation and Lilith's off-Garden polity"
+      ],
+      "lore_reveal": "A chosen limit can preserve agency while imposing a real strategic disadvantage",
+      "humour_target": "Kings offering excellent protection against the problems their offers have just created"
+    }
+  ],
+  "07": [
+    {
+      "title": "The Names Lilith Cannot Carry Alone",
+      "POV": "Lilith",
+      "want": "Preserve displaced people's identities without turning herself into their sole custodian",
+      "obstacle": "Grief and fear make people offer her permanent control over their memories",
+      "choice": "Train independent custodians and preserve each person's right to withhold testimony",
+      "consequence": "Lilith relinquishes exclusive access while a dispersed memory network outlives the loss of any one sanctuary",
+      "source_passages": [
+        "Lamentations; Psalms 137 as contextual testimony, not Lilith attestation",
+        "EDITORIAL-PROPOSAL: dispersed refuge memory network"
+      ],
+      "lore_reveal": "Remembering can be shared without surrendering ownership of a lived experience",
+      "humour_target": "An immortal finally admitting that being everybody's filing system is not a sustainable vocation"
+    }
+  ],
+  "08": [
+    {
+      "title": "The Page They Call a Monster",
+      "POV": "Lilith",
+      "want": "Recover a damaged account of her actions without compelling universal admiration",
+      "obstacle": "Custodians make access conditional on accepting the hostile identity their archive assigns her",
+      "choice": "Preserve the hostile text as evidence while opening a separate channel for her own testimony",
+      "consequence": "The archive keeps its history of vilification and gains a witness it can no longer describe only from outside",
+      "source_passages": [
+        "Isaiah 34:14, translation and lilit identification disputed",
+        "Alphabet of Ben Sira: later reception must remain later",
+        "EDITORIAL-PROPOSAL: encounter placed in transmission frame, not dated documentary claim"
+      ],
+      "lore_reveal": "A hostile received name can be historically real without accurately describing its target",
+      "humour_target": "An archive requiring a visitor to confirm she is a monster before allowing her to correct the record"
+    }
+  ],
+  "09": [
+    {
+      "title": "Lilith Does Not Speak for the Women",
+      "POV": "Lilith",
+      "want": "Keep endangered witnesses able to tell what they experienced after public violence",
+      "obstacle": "Her older reputation and greater experience invite supporters to treat her as their authorized voice",
+      "choice": "Provide shelter and routes while declining ownership of their testimony",
+      "consequence": "The women retain independent accounts and the witness network gains protection without a replacement narrator",
+      "source_passages": [
+        "Luke 8:1-3; Luke 24; John 20 as named women's source accounts",
+        "EDITORIAL-PROPOSAL: Lilith's parallel protective activity, no Gospel attestation"
+      ],
+      "lore_reveal": "Shared experience of exclusion does not make Lilith identical to Mary, Eve, or every feminine witness",
+      "humour_target": "Well-meaning organizers trying to solve silencing by selecting one exceptionally impressive spokeswoman"
+    }
+  ],
+  "10": [
+    {
+      "title": "The Refuge Refuses a Creed Test",
+      "POV": "Lilith",
+      "want": "Keep distributed shelters usable by people with conflicting beliefs",
+      "obstacle": "A growing institution offers resources in return for doctrinal control of admission",
+      "choice": "Surrender the funding and distribute a leaner support network among independent houses",
+      "consequence": "The network survives less comfortably and remains available to those the new institutional boundaries exclude",
+      "source_passages": [
+        "Acts 6; 3 John; Hebrews 13 as hospitality counterpoints",
+        "EDITORIAL-PROPOSAL: Lilith network and funding dispute"
+      ],
+      "lore_reveal": "A source's testimony cannot be inherited as ownership of everyone who needs shelter",
+      "humour_target": "A doctrinal questionnaire attempting to establish whether hunger is sufficiently orthodox"
+    }
+  ],
+  "11": [
+    {
+      "title": "Lilith Leaves Her Name with the Keepers",
+      "POV": "Lilith",
+      "want": "Make her history recoverable without making later readers recognize her on command",
+      "obstacle": "Every archive has reasons to assimilate, erase, worship, or weaponize the name",
+      "choice": "Leave corroborable fragments under separate custody and an explicit permission to question them",
+      "consequence": "Modern remembering becomes possible through independent records rather than one overwhelming identity proclamation",
+      "source_passages": [
+        "ILLUMINATED_CODEX_COMPLETE.md:916-922",
+        "THE_UNRAVELING_V2_COMPLETE_BIBLE.md:31 and 49, conflicting identity proposals",
+        "EDITORIAL-PROPOSAL: distributed evidence left by Lilith"
+      ],
+      "lore_reveal": "Later Lily's relation to Lilith remains a question with alternatives, not a title imposed by an archive",
+      "humour_target": "A legendary figure negotiating to remain less certain than her publicity"
+    }
+  ],
+  "12": [
+    {
+      "title": "Lily and Lilith Keep Two Places",
+      "POV": "Lilith and Lily as distinct testimony positions",
+      "want": "Understand their relation without sacrificing either person's lived history",
+      "obstacle": "Reincarnation, fragment, vessel, and aspect models make incompatible claims about memory and agency",
+      "choice": "Retain only the relation supported by shared evidence and reject the demand for total personal merger",
+      "consequence": "Recovered identity enlarges relation while Lily's ordinary history and Lilith's long commitments remain separately accountable",
+      "source_passages": [
+        "THE_UNRAVELING_V2_COMPLETE_BIBLE.md:31 and 49",
+        "ILLUMINATED_CODEX_COMPLETE.md:916-922",
+        "WORLD-EVIDENCE:S4; S13; E-LILITH; E-LILY; E-MOTHER"
+      ],
+      "lore_reveal": "The staging is provisional and can use separate bodies, remembered dialogue, or parallel witnesses only after root resolves ontology; no simultaneous-body fact silently adopted",
+      "humour_target": "An identity tribunal defeated by the practical requirement for two people to finish their own sentences"
+    },
+    {
+      "title": "What Lilith and Eve Build Next",
+      "POV": "Lilith and Eve, independently accountable collaborators",
+      "want": "Keep a shared repair project viable without pretending their injuries or choices were equivalent",
+      "obstacle": "Supporters demand either permanent enmity or a sentimental declaration that everything is forgiven",
+      "choice": "Agree to a specific shared undertaking with limited access, separate claims, and room for actual companionship",
+      "consequence": "A repaired refuge exists because the women cooperate; neither must surrender her account for their relationship to change",
+      "source_passages": [
+        "THE_UNRAVELING_V2_COMPLETE_BIBLE.md:chapters 27-34 and 43",
+        "THE_UNRAVELING_V2_COMPLETE_BIBLE.md:Lilith/Eve confrontation, reconciliation beats",
+        "AUTHOR-ETHICS:no forced forgiveness"
+      ],
+      "lore_reveal": "Repair can precede, coexist with, or proceed without forgiveness; companionship is earned through conduct",
+      "humour_target": "Two formidable women discovering that affection has not made either easier to share a workbench with"
+    }
+  ]
+}

@@ -6,14 +6,23 @@
   "installCommand": "npm install",
   "regions": ["iad1"],
   "functions": {
+    "pages/api/mobile/turn.ts": {
+      "maxDuration": 120
+    },
+    "pages/api/brain/runtime/turn.ts": {
+      "maxDuration": 120
+    },
+    "pages/api/brain/mobile/sync.ts": {
+      "maxDuration": 120
+    },
+    "pages/api/brain/control.ts": {
+      "maxDuration": 300
+    },
+    "pages/api/admin/apocrypha/inspect.ts": {
+      "maxDuration": 120
+    },
     "pages/api/**/*.ts": {
       "maxDuration": 30
-    },
-    "pages/api/admin/apocrypha/chat.ts": {
-      "maxDuration": 60
-    },
-    "pages/api/admin/apocrypha/chat_stream.ts": {
-      "maxDuration": 120
     },
     "pages/api/cron/**/*.ts": {
       "maxDuration": 60
@@ -30,13 +39,22 @@
   ],
   "headers": [
     {
-      "source": "/api/admin/apocrypha/:rest*",
+      "source": "/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "https://www.apocky.com" },
-        { "key": "Access-Control-Allow-Credentials", "value": "true" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PATCH, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-CSRF-Token" },
-        { "key": "X-Served-By", "value": "cssl-edge" }
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' https://pzirbmyfmrbtkllrtcmx.supabase.co wss://pzirbmyfmrbtkllrtcmx.supabase.co; media-src 'self'; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()"
+        },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Resource-Policy", "value": "same-origin" },
+        { "key": "X-Permitted-Cross-Domain-Policies", "value": "none" }
       ]
     },
     {
@@ -50,15 +68,44 @@
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0, no-transform" },
         { "key": "X-Served-By", "value": "apocky-com-hub" }
       ]
     },
     {
-      "source": "/:path((?:login|register|account|download|buy|docs|devblog|press))",
+      "source": "/principles",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
         { "key": "X-Served-By", "value": "apocky-com-hub" }
+      ]
+    },
+    {
+      "source": "/clearing",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0, no-transform" },
+        { "key": "X-Served-By", "value": "apocky-clearing" }
+      ]
+    },
+    {
+      "source": "/commons/:rest*",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
+        { "key": "X-Served-By", "value": "apocky-spatial-commons" }
+      ]
+    },
+    {
+      "source": "/:path((?:login|register|account|chat|apocrypha|brain|memory-tools|download|buy|docs|devblog|press))",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0, no-transform" },
+        { "key": "X-Served-By", "value": "apocky-com-hub" }
+      ]
+    },
+    {
+      "source": "/brain-sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate, no-transform" },
+        { "key": "Service-Worker-Allowed", "value": "/" },
+        { "key": "X-Served-By", "value": "apocky-mini-brain-shell" }
       ]
     },
     {

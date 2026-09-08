@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.apocky.com/schemas/public-surface.v1.json",
+  "title": "Apocky public surface graph v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_href", "canonical_origin", "generated_from", "nodes", "edges"],
+  "properties": {
+    "schema": { "const": "apocky.public-surface.v1" },
+    "schema_href": { "const": "/schemas/public-surface.v1.json" },
+    "canonical_origin": { "const": "https://www.apocky.com" },
+    "generated_from": { "const": "lib/public-surface-graph.ts" },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "summary", "href", "external", "availability", "kind", "axes", "coordinates"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "href": { "type": "string", "minLength": 1 },
+        "external": { "type": "boolean" },
+        "availability": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "axes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["People", "Meaning", "Visibility", "Time"] }
+        },
+        "coordinates": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["People", "Meaning", "Visibility", "Time"],
+          "properties": {
+            "People": { "type": "string", "minLength": 1 },
+            "Meaning": { "type": "string", "minLength": 1 },
+            "Visibility": { "type": "string", "minLength": 1 },
+            "Time": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "target", "relation", "statement"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "relation": { "enum": ["opens", "features", "indexes", "defines", "supports", "hands_off_to"] },
+        "statement": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

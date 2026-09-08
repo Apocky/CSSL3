@@ -8,10 +8,14 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
-import { MNEME_CAPABILITIES, requireMnemeProfileAccess } from '@/lib/mneme/auth';
 import { getMnemeClient, memoryToPublic } from '@/lib/mneme/store';
 import { rememberPipeline } from '@/lib/mneme/pipeline-ingest';
 import { maskFromHex } from '@/lib/mneme/sigma';
+import {
+    requireStoredMnemeProfile,
+    respondMnemeMemberFailure,
+} from '@/lib/mneme/member-profile';
+import { MNEME_CAPABILITIES, requireMnemeRouteAccess } from '@/lib/mneme/route-access';
 import type {
     RememberRequest,
     RememberResponse,
@@ -20,6 +24,7 @@ import type {
 
 interface ErrorResponse {
     error:     string;
+    code?:     string;
     served_by: string;
     ts:        string;
 }
@@ -46,9 +51,9 @@ export default async function handler(
         return;
     }
 
-    const access = await requireMnemeProfileAccess(req, res, MNEME_CAPABILITIES.remember);
-    if (!access) return;
-    const profile_id = access.profileId;
+    const binding = await requireMnemeRouteAccess(req, res, MNEME_CAPABILITIES.remember);
+    if (!binding) return;
+    const profile_id = binding.profileId;
 
     const body: unknown = req.body;
     if (!isObject(body)) {
@@ -95,6 +100,11 @@ export default async function handler(
     }
 
     const sb = getMnemeClient();
+    const storageFailure = await requireStoredMnemeProfile(sb, profile_id);
+    if (storageFailure) {
+        respondMnemeMemberFailure(res, storageFailure);
+        return;
+    }
     try {
         const m = await rememberPipeline(sb, {
             profile_id,
@@ -113,10 +123,15 @@ export default async function handler(
         });
     } catch (e) {
         const env = envelope();
-        const msg = e instanceof Error ? e.message : String(e);
-        const status = e instanceof Error && /^csl invalid/i.test(msg) ? 400 : 502;
+        const rejected = e instanceof Error && /^csl invalid/i.test(e.message);
+        const status = rejected ? 400 : 502;
         // eslint-disable-next-line no-console
-        console.error(JSON.stringify({ evt: 'mneme.remember.fail', err: msg }));
-        res.status(status).json({ error: msg, served_by: env.served_by, ts: env.ts });
+        console.error(JSON.stringify({ evt: 'mneme.remember.fail', code: e instanceof Error ? e.name : 'UNKNOWN' }));
+        res.status(status).json({
+            error: rejected ? 'The memory format was rejected. Review the text and label, then try again.' : 'Private memory could not be saved. Nothing was stored.',
+            code: rejected ? 'MNEME_MEMORY_REJECTED' : 'MNEME_REMEMBER_FAILED',
+            served_by: env.served_by,
+            ts: env.ts,
+        });
     }
 }

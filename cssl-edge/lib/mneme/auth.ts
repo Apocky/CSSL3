@@ -2,7 +2,6 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { getAdminAuthorization } from '@/lib/admin-auth';
 import { envelope } from '@/lib/response';
 
 export const MNEME_CAPABILITIES = {
@@ -19,7 +18,7 @@ export const MNEME_CAPABILITIES = {
 export type MnemeCapability = typeof MNEME_CAPABILITIES[keyof typeof MNEME_CAPABILITIES];
 
 export interface MnemeAccess {
-    actor: 'owner' | 'service';
+    actor: 'service';
     capability: MnemeCapability;
     profileId: string;
 }
@@ -54,8 +53,8 @@ function secretMatches(presented: string | null, expected: string | undefined): 
     return timingSafeEqual(observed, wanted);
 }
 
-function validConfiguredProfile(name: 'MNEME_OWNER_PROFILE_ID' | 'MNEME_SERVICE_PROFILE_ID'): string | null {
-    const value = process.env[name]?.trim() ?? '';
+function validConfiguredServiceProfile(): string | null {
+    const value = process.env.MNEME_SERVICE_PROFILE_ID?.trim() ?? '';
     return PROFILE_RE.test(value) ? value : null;
 }
 
@@ -90,9 +89,10 @@ function reject<T>(
 /**
  * Default-deny authorization for every MNEME profile route.
  *
- * Owner requests require a valid Apocky owner session and may access only the
- * exact `MNEME_OWNER_PROFILE_ID`. Service requests require the exact bearer,
+ * Named-profile requests are service-only. They require the exact bearer,
  * route profile, declared header capability, and closed capability allowlist.
+ * Signed-in members use the separate, server-bound `/me` route and can never
+ * fall through this function to address a profile by name.
  * This function performs no MNEME store or model-provider construction.
  */
 export async function requireMnemeProfileAccess<T>(
@@ -108,47 +108,30 @@ export async function requireMnemeProfileAccess<T>(
     }
 
     const presentedToken = bearerToken(req.headers.authorization);
-    const rawServiceToken = process.env.MNEME_SERVICE_TOKEN?.trim();
+    if (!presentedToken) {
+        return reject(res, 401, 'MNEME_AUTH_REQUIRED', 'MNEME service authentication required.');
+    }
+
     const serviceToken = configuredServiceToken();
+    const serviceProfile = validConfiguredServiceProfile();
+    const allowedCapabilities = configuredServiceCapabilities();
+    if (!serviceToken || !serviceProfile || !allowedCapabilities) {
+        return reject(res, 503, 'MNEME_AUTH_UNCONFIGURED', 'MNEME service authorization is not configured.');
+    }
+    if (!secretMatches(presentedToken, serviceToken)) {
+        return reject(res, 401, 'MNEME_AUTH_REQUIRED', 'MNEME service authentication failed.');
+    }
+
     const presentedCapability = firstHeader(req.headers['x-mneme-capability']);
     const presentedProfile = firstHeader(req.headers['x-mneme-profile']);
-    const serviceIntent = Boolean(presentedCapability || presentedProfile)
-        || secretMatches(presentedToken, rawServiceToken);
-
-    if (serviceIntent) {
-        const serviceProfile = validConfiguredProfile('MNEME_SERVICE_PROFILE_ID');
-        const allowedCapabilities = configuredServiceCapabilities();
-        if (!serviceToken || !serviceProfile || !allowedCapabilities) {
-            return reject(res, 503, 'MNEME_AUTH_UNCONFIGURED', 'MNEME service authorization is not configured.');
-        }
-        if (!secretMatches(presentedToken, serviceToken)) {
-            return reject(res, 401, 'MNEME_AUTH_REQUIRED', 'MNEME service authentication failed.');
-        }
-        if (
-            profileId !== serviceProfile
-            || presentedProfile !== profileId
-            || presentedCapability !== capability
-            || !allowedCapabilities.has(capability)
-        ) {
-            return reject(res, 403, 'MNEME_AUTH_FORBIDDEN', 'MNEME service profile or capability is not authorized.');
-        }
-        return { actor: 'service', capability, profileId };
+    if (
+        profileId !== serviceProfile
+        || presentedProfile !== profileId
+        || presentedCapability !== capability
+        || !allowedCapabilities.has(capability)
+    ) {
+        return reject(res, 403, 'MNEME_AUTH_FORBIDDEN', 'MNEME service profile or capability is not authorized.');
     }
 
-    const owner = await getAdminAuthorization(req);
-    if (!owner.authorized || !owner.user) {
-        const status = owner.user ? 403 : 401;
-        return reject(res, status, status === 401 ? 'MNEME_AUTH_REQUIRED' : 'MNEME_AUTH_FORBIDDEN',
-            owner.reason ?? 'Apocky owner sign-in required.');
-    }
-
-    const ownerProfile = validConfiguredProfile('MNEME_OWNER_PROFILE_ID');
-    if (!ownerProfile) {
-        return reject(res, 503, 'MNEME_AUTH_UNCONFIGURED', 'MNEME owner profile authorization is not configured.');
-    }
-    if (profileId !== ownerProfile) {
-        return reject(res, 403, 'MNEME_AUTH_FORBIDDEN', 'This owner session is not authorized for the requested MNEME profile.');
-    }
-
-    return { actor: 'owner', capability, profileId };
+    return { actor: 'service', capability, profileId };
 }

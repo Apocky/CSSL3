@@ -77,31 +77,39 @@ export const CONSENT_TIERS: Record<ConsentTier, ConsentPolicy> = {
 };
 
 // ─── Event kinds (discriminator) ───────────────────────────────────────────
-// Bit-pack philosophy : keep names < 32 chars · namespaced by dot · stable-sortable.
-export type AkashicKind =
-  | 'page.view'              // route mount
-  | 'page.error'             // window.onerror
-  | 'page.unload'            // beforeunload (best-effort)
-  | 'react.error'            // ErrorBoundary catch
-  | 'promise.unhandled'      // window.onunhandledrejection
-  | 'console.error'          // console.error (consent-gated)
-  | 'console.warn'           // console.warn  (consent-gated)
-  | 'perf.lcp'               // Largest Contentful Paint
-  | 'perf.fid'               // First Input Delay
-  | 'perf.cls'               // Cumulative Layout Shift
-  | 'perf.inp'               // Interaction-to-Next-Paint
-  | 'perf.ttfb'              // Time to First Byte
-  | 'perf.fcp'               // First Contentful Paint
-  | 'perf.long_task'         // Long-Tasks ≥ 50ms
-  | 'perf.resource_slow'     // resource > 2s
-  | 'perf.resource_fail'     // failed resource (status ≥ 400 OR error)
-  | 'net.fail'               // fetch/XHR fail
-  | 'net.slow'               // fetch/XHR > 3s
-  | 'consent.granted'        // user picked tier
-  | 'consent.revoked'        // user downgraded
-  | 'consent.purge_request'  // sovereign-purge invoked
-  | 'user.flow'              // navigation breadcrumb (akashic-only)
-  | 'deploy.detected';       // dpl_id drift · stuck-deploy canary
+// This runtime catalog also reserves server-only namespaces from public ingest.
+export const AKASHIC_KINDS = [
+  'page.view',
+  'page.error',
+  'page.unload',
+  'react.error',
+  'promise.unhandled',
+  'console.error',
+  'console.warn',
+  'perf.lcp',
+  'perf.fid',
+  'perf.cls',
+  'perf.inp',
+  'perf.ttfb',
+  'perf.fcp',
+  'perf.long_task',
+  'perf.resource_slow',
+  'perf.resource_fail',
+  'net.fail',
+  'net.slow',
+  'consent.granted',
+  'consent.revoked',
+  'consent.purge_request',
+  'user.flow',
+  'deploy.detected',
+] as const;
+
+export type AkashicKind = typeof AKASHIC_KINDS[number];
+const AKASHIC_KIND_SET: ReadonlySet<string> = new Set(AKASHIC_KINDS);
+
+export function isAkashicKind(value: unknown): value is AkashicKind {
+  return typeof value === 'string' && AKASHIC_KIND_SET.has(value);
+}
 
 // ─── Event shape (the ω-field cell) ────────────────────────────────────────
 // Required-keys-only · payload-bag for kind-specific extras. cell_id uniquely

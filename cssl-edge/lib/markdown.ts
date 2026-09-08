@@ -1,14 +1,14 @@
 // cssl-edge · lib/markdown.ts
-// Minimal markdown → HTML transformer. ZERO npm-deps · runs at SSG-time.
+// Controlled escaped markdown → HTML transformer. ZERO npm-deps.
 // Supports a controlled subset : headings (h1-h3) · paragraphs · ul/ol ·
 // inline-code · code-blocks · bold · italic · links · §-glyph-aware classes.
 //
 // NOT a fully-spec-compliant CommonMark parser — by design. Just enough to
-// render the devblog posts authored as plain markdown strings.
+// render posts and bounded assistant replies authored as markdown strings.
 //
 // Output is HTML-string. Caller injects via dangerouslySetInnerHTML.
-// All inputs are STATIC (build-time devblog posts) so XSS surface is bounded
-// to authored content; we still escape angle-brackets in code-blocks.
+// Raw HTML is escaped before fixed markup is generated; links are http(s)-only.
+// Dynamic callers must bound input size and preserve raw source for copy/history.
 
 function escapeHtml(s: string): string {
   return s
@@ -20,6 +20,10 @@ function escapeHtml(s: string): string {
 
 function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/'/g, '&#39;');
+}
+
+function decodeEscapedTextOnce(s: string): string {
+  return s.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 
 interface RenderState {
@@ -48,7 +52,7 @@ function renderInline(s: string): string {
   out = out.replace(/(?<![A-Za-z0-9])\*([^*\n]+)\*(?![A-Za-z0-9])/g, (_m, t) => `<em>${t}</em>`);
   // [text](href) — http(s) only
   out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, text, href) => {
-    return `<a href="${escapeAttr(href as string)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    return `<a href="${escapeAttr(decodeEscapedTextOnce(href as string))}" target="_blank" rel="noopener noreferrer">${text}</a>`;
   });
   return out;
 }

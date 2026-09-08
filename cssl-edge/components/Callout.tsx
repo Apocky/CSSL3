@@ -12,11 +12,11 @@ interface CalloutProps {
   children: ReactNode;
 }
 
-const STYLES: Record<CalloutKind, { glyph: string; color: string; bg: string; border: string }> = {
-  note: { glyph: '§', color: '#7dd3fc', bg: 'rgba(125, 211, 252, 0.06)', border: 'rgba(125, 211, 252, 0.25)' },
-  warn: { glyph: '‼', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.06)', border: 'rgba(251, 191, 36, 0.25)' },
-  success: { glyph: '✓', color: '#34d399', bg: 'rgba(52, 211, 153, 0.06)', border: 'rgba(52, 211, 153, 0.25)' },
-  'coming-soon': { glyph: '○', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.06)', border: 'rgba(167, 139, 250, 0.25)' },
+const STYLES: Record<CalloutKind, { label: string; color: string; bg: string; border: string }> = {
+  note: { label: 'Note', color: '#7dd3fc', bg: 'rgba(125, 211, 252, 0.06)', border: 'rgba(125, 211, 252, 0.25)' },
+  warn: { label: 'Important', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.06)', border: 'rgba(251, 191, 36, 0.25)' },
+  success: { label: 'Available now', color: '#34d399', bg: 'rgba(52, 211, 153, 0.06)', border: 'rgba(52, 211, 153, 0.25)' },
+  'coming-soon': { label: 'Planned', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.06)', border: 'rgba(167, 139, 250, 0.25)' },
 };
 
 const Callout = ({ kind = 'note', title, children }: CalloutProps) => {
@@ -35,7 +35,7 @@ const Callout = ({ kind = 'note', title, children }: CalloutProps) => {
       }}
     >
       <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
-        <span style={{ color: s.color, fontWeight: 700, fontSize: '1rem', lineHeight: 1 }}>{s.glyph}</span>
+        <span style={{ color: s.color, fontWeight: 700, fontSize: '0.72rem', lineHeight: 1.4 }}>{s.label}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           {title !== undefined && title !== '' ? (
             <div style={{ fontWeight: 600, color: '#e6e6f0', marginBottom: '0.3rem' }}>{title}</div>

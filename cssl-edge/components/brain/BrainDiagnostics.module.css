@@ -1,0 +1,24 @@
+.panel { border:1px solid rgba(146,157,255,.2); border-radius:12px; background:rgba(8,10,28,.65); color:#f4f2ff; margin-top:.6rem; min-width:0; }
+.panel > summary { padding:.75rem .9rem; cursor:pointer; font-weight:600; font-size:.85rem; }
+.body { padding:0 .9rem .9rem; min-width:0; }
+.intro,.updated { color:#b4b7d2; font-size:.78rem; line-height:1.5; margin:.4rem 0; }
+.controls { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.6rem; margin:.7rem 0; }
+.controls label { display:grid; gap:.4rem; flex:1 1 150px; min-width:0; font-size:.8rem; color:#b4b7d2; }
+.controls input,.controls select { box-sizing:border-box; width:100%; min-height:42px; padding:.55rem .7rem; border:1px solid rgba(146,157,255,.25); border-radius:8px; background:#0e102a; color:#f4f2ff; min-width:0; }
+.controls button { min-height:42px; padding:.55rem 1rem; border:1px solid #62c8ff; border-radius:8px; color:#d8f3ff; background:rgba(55,138,193,.15); cursor:pointer; }
+.controls button:disabled { opacity:.55; cursor:default; }
+.panel :focus-visible { outline:2px solid #62c8ff; outline-offset:3px; }
+.failure { border-left:2px solid #f1bf70; padding:.65rem .8rem; background:rgba(241,191,112,.07); margin:.75rem 0; font-size:.85rem; overflow-wrap:anywhere; }
+.failure p { margin:.25rem 0 .6rem; }
+.failure small { display:block; margin-top:.45rem; }
+.counts { display:flex; flex-wrap:wrap; gap:1.25rem; margin:.7rem 0; }
+.counts dt { color:#b4b7d2; font-size:.75rem; }
+.counts dd { margin:.2rem 0; font-size:1.05rem; }
+.events { display:grid; gap:.4rem; max-height:300px; overflow:auto; overscroll-behavior:contain; }
+.events article { border-bottom:1px solid rgba(146,157,255,.14); padding:.65rem 0; overflow-wrap:anywhere; min-width:0; }
+.events header { display:flex; flex-wrap:wrap; gap:.35rem 1rem; justify-content:space-between; font-size:.82rem; }
+.events small,.events code { display:block; color:#b4b7d2; font-size:.73rem; margin-top:.4rem; }
+.record { margin-top:1rem; color:#b4b7d2; font-size:.8rem; }
+.record summary { cursor:pointer; padding:.5rem 0; }
+.record pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:300px; overflow:auto; overscroll-behavior:contain; padding:.7rem; background:#050612; border-radius:8px; font-size:.72rem; }
+@media(max-width:480px) { .body { padding:0 .85rem .85rem; } .controls button { flex:1 1 100%; } }

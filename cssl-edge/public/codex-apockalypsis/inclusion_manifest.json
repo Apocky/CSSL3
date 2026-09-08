@@ -1,0 +1,300 @@
+{
+  "release": "development",
+  "generatedAt": "2026-09-05T21:49:56.046812+00:00",
+  "stats": {
+    "documents": 19,
+    "novelChapters": 1,
+    "codexChapters": 1,
+    "plannedVolumes": 12,
+    "outlinedChapters": 205,
+    "sourceRecords": 260,
+    "baselineBiblicalBooks": 66,
+    "maps": 3,
+    "calibrationTreatments": 3,
+    "fullAncientWorksRead": 0,
+    "passageInspectionRecords": 7,
+    "referenceDocuments": 12,
+    "planningDocuments": 4,
+    "completedVolumes": 0
+  },
+  "includedInputs": [
+    {
+      "source": "manuscripts/calibration/VOICE_SAMPLES.md",
+      "publicFile": "files/calibration-voice-samples.md",
+      "kind": "calibration",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "manuscripts/codex/volume_01/01_The_Unanswered_Interval.md",
+      "publicFile": "files/codex-volume-01-01-the-unanswered-interval.md",
+      "kind": "codex",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "manuscripts/novel/volume_01/01_Before_Anyone_Asked.md",
+      "publicFile": "files/novel-volume-01-01-before-anyone-asked.md",
+      "kind": "novel",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/ethical_concordance.md",
+      "publicFile": "files/reference-ethical-concordance.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/narrative/CHARACTERS_AND_FACTIONS.md",
+      "publicFile": "files/reference-narrative-characters-and-factions.md",
+      "kind": "planning",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/narrative/COVERAGE_AND_CONTEXT.md",
+      "publicFile": "files/reference-narrative-coverage-and-context.md",
+      "kind": "planning",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/narrative/SERIES_GUIDE.md",
+      "publicFile": "files/reference-narrative-series-guide.md",
+      "kind": "planning",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/narrative/V2_REUSE_GUIDE.md",
+      "publicFile": "files/reference-narrative-v2-reuse-guide.md",
+      "kind": "planning",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/reading/V01-C01.md",
+      "publicFile": "files/reference-reading-v01-c01.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/sources/catalogue_guide.md",
+      "publicFile": "files/reference-sources-catalogue-guide.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/sources/creation_notes.md",
+      "publicFile": "files/reference-sources-creation-notes.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/sources/legacy_codex_crosswalk.md",
+      "publicFile": "files/reference-sources-legacy-codex-crosswalk.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/sources/lilith_notes.md",
+      "publicFile": "files/reference-sources-lilith-notes.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/sources/source_notes.md",
+      "publicFile": "files/reference-sources-source-notes.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/world/chronology.md",
+      "publicFile": "files/reference-world-chronology.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/world/creation_continuity.md",
+      "publicFile": "files/reference-world-creation-continuity.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/world/world_reference.md",
+      "publicFile": "files/reference-world-world-reference.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "atlas/README.md",
+      "publicFile": "files/atlas-readme.md",
+      "kind": "reference",
+      "transform": "Markdown with public links and unpublished-source labels"
+    },
+    {
+      "source": "reference/world/chronology.csv",
+      "publicFile": "files/reference-world-chronology.csv",
+      "kind": "reference-data"
+    },
+    {
+      "source": "specs/sources/sources.json",
+      "publicFile": "files/sources.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/sources/legacy_codex_crosswalk.json",
+      "publicFile": "files/legacy-codex-crosswalk.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/sources/chapter_source_candidates.json",
+      "publicFile": "files/chapter-source-candidates.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/sources/creation_passage_dossier.json",
+      "publicFile": "files/creation-passage-dossier.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/sources/lilith_passage_dossier.json",
+      "publicFile": "files/lilith-passage-dossier.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/narrative/narrative.json",
+      "publicFile": "files/narrative.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/narrative/dossiers.json",
+      "publicFile": "files/dossiers.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/narrative/coverage.json",
+      "publicFile": "files/coverage.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/narrative/v2_reuse_map.json",
+      "publicFile": "files/v2-reuse-map.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/narrative/lilith_chapters.json",
+      "publicFile": "files/lilith-chapters.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/world/world.json",
+      "publicFile": "files/world.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "specs/world/creation_continuity.json",
+      "publicFile": "files/creation-continuity.json",
+      "kind": "structured-reference",
+      "transform": "Local paths, source file pointers, and fingerprints omitted"
+    },
+    {
+      "source": "publication/reading-editions/Before_the_Word_Novel_Opening.pdf",
+      "publicFile": "editions/Before_the_Word_Novel_Opening.pdf",
+      "kind": "reviewed-reading-edition",
+      "transform": "Public edition rebuilt from sanitized Markdown; original working editions not published"
+    },
+    {
+      "source": "publication/reading-editions/Before_the_Word_Novel_Opening.docx",
+      "publicFile": "editions/Before_the_Word_Novel_Opening.docx",
+      "kind": "reviewed-reading-edition",
+      "transform": "Public edition rebuilt from sanitized Markdown; original working editions not published"
+    },
+    {
+      "source": "publication/reading-editions/Before_the_Word_Codex_Opening.pdf",
+      "publicFile": "editions/Before_the_Word_Codex_Opening.pdf",
+      "kind": "reviewed-reading-edition",
+      "transform": "Public edition rebuilt from sanitized Markdown; original working editions not published"
+    },
+    {
+      "source": "publication/reading-editions/Before_the_Word_Codex_Opening.docx",
+      "publicFile": "editions/Before_the_Word_Codex_Opening.docx",
+      "kind": "reviewed-reading-edition",
+      "transform": "Public edition rebuilt from sanitized Markdown; original working editions not published"
+    },
+    {
+      "source": "publication/reading-editions/The_Good_Book_Voice_Study.pdf",
+      "publicFile": "editions/The_Good_Book_Voice_Study.pdf",
+      "kind": "reviewed-reading-edition",
+      "transform": "Public edition rebuilt from sanitized Markdown; original working editions not published"
+    },
+    {
+      "source": "publication/reading-editions/The_Good_Book_Voice_Study.docx",
+      "publicFile": "editions/The_Good_Book_Voice_Study.docx",
+      "kind": "reviewed-reading-edition",
+      "transform": "Public edition rebuilt from sanitized Markdown; original working editions not published"
+    }
+  ],
+  "mapInputs": [
+    {
+      "source": "atlas/01_omnoid_topology.svg",
+      "publicFile": "maps/01_omnoid_topology.svg"
+    },
+    {
+      "source": "atlas/01_omnoid_topology.png",
+      "publicFile": "maps/01_omnoid_topology.png"
+    },
+    {
+      "source": "atlas/02_historical_geography.svg",
+      "publicFile": "maps/02_historical_geography.svg"
+    },
+    {
+      "source": "atlas/02_historical_geography.png",
+      "publicFile": "maps/02_historical_geography.png"
+    },
+    {
+      "source": "atlas/03_multitrack_chronology.svg",
+      "publicFile": "maps/03_multitrack_chronology.svg"
+    },
+    {
+      "source": "atlas/03_multitrack_chronology.png",
+      "publicFile": "maps/03_multitrack_chronology.png"
+    }
+  ],
+  "excludedCounts": {
+    "other-editorial-work": 10,
+    "reading-editions-separately-reviewed": 4,
+    "internal-programs-and-specifications": 22,
+    "private-editorial-records": 9,
+    "private-preserved-sources-and-media": 58,
+    "internal-qa-renders": 72
+  },
+  "privacyPolicy": "Private archives, author-attributed voice corpus, raw conversations, photographs, credentials, source fingerprints, local paths, and internal executable specifications are not public library content.",
+  "sourcePreservation": {
+    "checkedFiles": 43,
+    "allUnchanged": true
+  },
+  "checks": {
+    "publicLocalLinksChecked": 42,
+    "externalCitationsRetained": 63,
+    "pathFingerprintScan": "passed",
+    "issues": []
+  },
+  "readingEditions": {
+    "delivery": "Separately reviewed public copies",
+    "filenames": [
+      "Before_the_Word_Novel_Opening.pdf",
+      "Before_the_Word_Novel_Opening.docx",
+      "Before_the_Word_Codex_Opening.pdf",
+      "Before_the_Word_Codex_Opening.docx",
+      "The_Good_Book_Voice_Study.pdf",
+      "The_Good_Book_Voice_Study.docx"
+    ],
+    "includedInContentArchive": true
+  }
+}

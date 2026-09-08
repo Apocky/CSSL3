@@ -18,18 +18,18 @@ interface ContentFeedProps {
   items: ReadonlyArray<ContentItem>;
   /** When true, renders rationale-tooltip on each card (trending feed). */
   showRationale?: boolean;
-  /** Section heading shown above the feed (CSLv3 §-prefixed). */
+  /** Section heading shown above the feed. */
   heading?: string;
   /** Subtitle shown below heading. */
   subtitle?: string;
   /** Empty-state message override. */
   emptyMessage?: string;
-  /** When set, triggers infinite-scroll loadMore. Stub-mode-aware. */
+  /** When set, offers an explicit load-more action. */
   onLoadMore?: () => void;
   /** Loading indicator state. */
   loading?: boolean;
-  /** Stub-mode banner trigger. */
-  stubMode?: boolean;
+  /** Shows that the backing service is currently unavailable. */
+  unavailable?: boolean;
 }
 
 /** Pre-allocated grid template tokens for breakpoint-cache. */
@@ -44,7 +44,7 @@ const ContentFeed = ({
   emptyMessage,
   onLoadMore,
   loading = false,
-  stubMode = false,
+  unavailable = false,
 }: ContentFeedProps) => {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -73,7 +73,7 @@ const ContentFeed = ({
               margin: 0,
             }}
           >
-            {heading.startsWith('§') ? heading : `§ ${heading}`}
+            {heading}
           </h2>
           {subtitle && (
             <p
@@ -90,8 +90,8 @@ const ContentFeed = ({
         </header>
       )}
 
-      {/* stub-mode banner */}
-      {stubMode && (
+      {/* unavailable-service banner */}
+      {unavailable && (
         <div
           role="status"
           style={{
@@ -105,12 +105,12 @@ const ContentFeed = ({
             lineHeight: 1.5,
           }}
         >
-          <strong>◐ stub-mode</strong> · publish-pipeline (sibling W12-5) not yet wired ·
-          zero-state cards rendered · UI structure stable
+          <strong>Shared content is not available yet.</strong> No example or placeholder package is being
+          presented as real content.
         </div>
       )}
 
-      {items.length === 0 && !stubMode ? (
+      {items.length === 0 ? (
         <div
           style={{
             padding: '3rem 1.5rem',
@@ -121,7 +121,7 @@ const ContentFeed = ({
             borderRadius: 6,
           }}
         >
-          {emptyMessage ?? '○ no items yet'}
+          {emptyMessage ?? 'No published items yet.'}
         </div>
       ) : (
         <div
@@ -156,7 +156,7 @@ const ContentFeed = ({
               transition: 'border-color 150ms',
             }}
           >
-            {loading ? '◐ loading…' : '↓ load more'}
+            {loading ? 'Loading…' : 'Load more'}
           </button>
         </div>
       )}

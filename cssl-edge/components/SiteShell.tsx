@@ -1,88 +1,170 @@
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { SUPPORT_LINKS } from '../lib/support-links';
+import { ConsentFooterControl } from './AkashicConsent';
+import { useSiteSession } from './hub/SiteSession';
+import CommandPalette from './site/CommandPalette';
+import ContextualSynapses from './site/ContextualSynapses';
 
-// Global site chrome for apocky.com — the hub. Real things only: Apocrypha (the DI), CSSL, CSL,
-// Chaos Tarot, and Apocky's channels. Wired in _app.tsx for content pages; auth, admin, and the
-// immersive chat page render bare.
+type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean; accent?: boolean };
 
-type NavItem = { href: string; label: string; ext?: boolean };
-
-const NAV: NavItem[] = [
-  { href: '/chat', label: 'Apocrypha' },
-  { href: 'https://cssl.dev', label: 'CSSL', ext: true },
-  { href: 'https://cssl.dev/CSLv3', label: 'CSL', ext: true },
-  { href: 'https://chaos-tarot.com', label: 'Chaos Tarot', ext: true },
+const NAV: ReadonlyArray<NavItem> = [
+  { href: '/tools', label: 'Tools' },
+  { href: '/words', label: 'Words' },
+  { href: '/conversations', label: 'Thoughts' },
+  { href: '/codex-apockalypsis', label: 'Codex' },
+  { href: '/apocrypha', label: 'Apocrypha' },
 ];
 
-const SOCIAL: NavItem[] = [
-  { href: 'https://medium.com/@noneisone.oneisall', label: 'Medium', ext: true },
-  { href: 'https://ko-fi.com/oneinfinity', label: 'Ko-fi', ext: true },
-  { href: 'https://www.patreon.com/0ne1nfinity', label: 'Patreon', ext: true },
-  { href: 'https://github.com/Apocky', label: 'GitHub', ext: true },
+const EXPLORE: ReadonlyArray<NavItem> = [
+  { href: '/tools', label: 'Tools to try' },
+  { href: '/words', label: 'Words & meanings' },
+  { href: '/conversations', label: 'Thoughts & conversations' },
+  { href: '/akashic-records', label: 'Essays & writing' },
+  { href: '/codex-apockalypsis', label: 'Codex Apockalypsis' },
+  { href: '/atlas', label: 'Browse everything' },
+  { href: '/clearing', label: 'Community' },
 ];
 
-const LEGAL: NavItem[] = [
+const LEGAL: ReadonlyArray<NavItem> = [
   { href: '/legal/privacy', label: 'Privacy' },
   { href: '/legal/terms', label: 'Terms' },
-  { href: '/legal/eula', label: 'EULA' },
+  { href: 'mailto:apocky13@gmail.com', label: 'Contact', ext: true },
 ];
 
 function extProps(item: NavItem) {
-  return item.ext ? { target: '_blank' as const, rel: 'noopener noreferrer' } : {};
+  return item.ext && !item.href.startsWith('mailto:')
+    ? { target: '_blank' as const, rel: 'noopener noreferrer' }
+    : {};
+}
+
+function isActivePath(pathname: string, href: string): boolean {
+  if (!href.startsWith('/') || href.includes('#')) return false;
+  return pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
 }
 
 export default function SiteShell({ children }: { children: React.ReactNode }): JSX.Element {
   const { pathname } = useRouter();
-  const active = (h: string) => pathname === h;
+  const { authenticated } = useSiteSession();
+  const mobileMenu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if (mobileMenu.current) mobileMenu.current.open = false; }, [pathname]);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent): void => { if (mobileMenu.current && !mobileMenu.current.contains(event.target as Node)) mobileMenu.current.open = false; };
+    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape' && mobileMenu.current?.open) { mobileMenu.current.open = false; mobileMenu.current.querySelector('summary')?.focus(); } };
+    document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
+  }, []);
+
+  const navLinks = (className = 'apx-nav-link') => NAV.map((item) => {
+    const visibleLabel = className === 'apx-mobile-menu-link' ? item.label : (item.shortLabel ?? item.label);
+    return (
+      <Link
+        key={item.label}
+        href={item.href}
+        {...extProps(item)}
+        className={`${className}${item.accent ? ' apx-nav-link--support' : ''}`}
+        data-active={isActivePath(pathname, item.href) ? 'true' : undefined}
+        aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}
+        aria-label={visibleLabel === item.label ? undefined : item.label}
+      >
+        {visibleLabel}{item.ext ? <span aria-hidden="true"> ↗</span> : null}
+      </Link>
+    );
+  });
 
   return (
-    <div style={S.shell}>
-      <nav style={S.nav}>
-        <Link href="/" style={S.brand}>APOCKY</Link>
-        <div style={S.links}>
-          {NAV.map((n) => (
-            <Link key={n.label} href={n.href} {...extProps(n)} style={{ ...S.link, ...(active(n.href) ? S.linkActive : {}) }}>
-              {n.label}{n.ext ? <span style={S.arr}> ↗</span> : null}
+    <div className="apx-shell">
+      <a className="apx-skip-link" href="#main-content">Skip to main content</a>
+      <header>
+        <nav className="apx-nav" aria-label="Primary navigation">
+          <Link href="/" className="apx-brand" aria-label="Apocky home">
+            <span className="apx-brand-mark" aria-hidden="true" />
+            <span>APOCKY</span>
+          </Link>
+
+          <div className="apx-nav-links" aria-label="Explore Apocky">
+            {navLinks()}
+          </div>
+
+          <div className="apx-nav-actions">
+            <CommandPalette />
+            <Link
+              href={authenticated ? '/account' : '/login?next=%2Faccount'}
+              className="apx-nav-action apx-nav-action--primary"
+            >
+              {authenticated ? 'Account' : 'Sign in'}
             </Link>
-          ))}
-        </div>
-        <Link href="/login" style={S.signin}>Sign in</Link>
-      </nav>
+          </div>
 
-      <div style={S.body}>{children}</div>
+          <details ref={mobileMenu} className="apx-mobile-menu">
+            <summary>Menu</summary>
+            <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
+              {navLinks('apx-mobile-menu-link')}
+              <Link href="/akashic-records" className="apx-mobile-menu-link">Essays &amp; writing</Link>
+              <Link href="/clearing" className="apx-mobile-menu-link">Community</Link>
+              <Link href="/atlas" className="apx-mobile-menu-link">Browse everything</Link>
+              <Link href="/membership" className="apx-mobile-menu-link apx-nav-link--support">Membership &amp; support</Link>
+              <Link
+                href={authenticated ? '/account' : '/login?next=%2Faccount'}
+                className="apx-mobile-menu-link"
+              >
+                {authenticated ? 'Account' : 'Sign in'}
+              </Link>
+            </div>
+          </details>
+        </nav>
+        <nav className="apx-quick-nav" aria-label="Quick navigation">
+          {NAV.slice(0, 4).map(item => <Link key={item.href} href={item.href} aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}>{item.label}</Link>)}
+        </nav>
+      </header>
 
-      <footer style={S.footer}>
-        <div style={S.footRow}>
-          <span style={S.footBrand}>APOCKY</span>
-          {SOCIAL.map((s) => (
-            <Link key={s.label} href={s.href} {...extProps(s)} style={S.footLink}>{s.label}</Link>
-          ))}
-          <span style={S.sep}>·</span>
-          {LEGAL.map((l) => (
-            <Link key={l.label} href={l.href} style={S.footLink}>{l.label}</Link>
-          ))}
-          <a href="mailto:apocky13@gmail.com" style={S.footLink}>Contact</a>
+      <div id="main-content" className="apx-main" tabIndex={-1}>{children}</div>
+      <ContextualSynapses pathname={pathname} />
+
+      <footer className="apx-footer">
+        <div className="apx-footer-inner">
+          <div>
+            <Link href="/" className="apx-brand">
+              <span className="apx-brand-mark" aria-hidden="true" />
+              <span>APOCKY</span>
+            </Link>
+            <p className="apx-footer-copy">
+              Tools to try. Words to understand. Thoughts and stories to get lost in.
+            </p>
+          </div>
+          <div>
+            <h2 className="apx-footer-title">Explore</h2>
+            <div className="apx-footer-links">
+              {EXPLORE.map((item) => <Link key={item.label} href={item.href} className="apx-footer-link">{item.label}</Link>)}
+            </div>
+          </div>
+          <div className="apx-footer-support">
+            <h2 className="apx-footer-title">Support</h2>
+            <div className="apx-footer-links">
+              <Link href="/membership" className="apx-footer-link">Membership &amp; support</Link>
+              {SUPPORT_LINKS.map((item) => (
+                <a key={item.name} href={item.href} target="_blank" rel="noopener noreferrer" className="apx-footer-link">
+                  {item.label} <span aria-hidden="true">↗</span>
+                </a>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h2 className="apx-footer-title">Legal</h2>
+            <div className="apx-footer-links">
+              {LEGAL.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
+              <Link href="/docs" className="apx-footer-link">Guides</Link>
+              <Link href="/status" className="apx-footer-link">Service status</Link>
+            </div>
+          </div>
         </div>
-        <div style={S.footNote}>© {new Date().getFullYear()} Apocky</div>
+        <div className="apx-footer-bottom">
+          <span>© {new Date().getFullYear()} Apocky</span>
+          <span>Made by Shawn Apocky.</span>
+          <ConsentFooterControl />
+        </div>
       </footer>
     </div>
   );
 }
-
-const S: Record<string, React.CSSProperties> = {
-  shell: { minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#06080a', color: '#e6f0ef', fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", sans-serif' },
-  nav: { position: 'sticky', top: 0, zIndex: 50, display: 'flex', alignItems: 'center', gap: 8, padding: '0 20px', height: 54, borderBottom: '1px solid #18212a', background: 'rgba(6,8,10,0.72)', backdropFilter: 'blur(8px)' },
-  brand: { fontSize: 15, fontWeight: 700, letterSpacing: '0.24em', color: '#e6f0ef', textDecoration: 'none' },
-  links: { display: 'flex', gap: 20, marginLeft: 28, flexWrap: 'wrap', flex: 1 },
-  link: { color: '#8fb3b0', textDecoration: 'none', fontSize: 13.5 },
-  linkActive: { color: '#5fe6d6' },
-  arr: { color: '#4a5658', fontSize: 11 },
-  signin: { color: '#8fb3b0', textDecoration: 'none', fontSize: 13, whiteSpace: 'nowrap' },
-  body: { flex: 1, minWidth: 0 },
-  footer: { borderTop: '1px solid #18212a', padding: '22px 20px 30px', display: 'flex', flexDirection: 'column', gap: 10 },
-  footRow: { display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', fontSize: 12.5 },
-  footBrand: { color: '#9fb3b0', fontWeight: 700, letterSpacing: '0.22em' },
-  footLink: { color: '#6b7d80', textDecoration: 'none' },
-  sep: { color: '#2a3338' },
-  footNote: { color: '#4a5658', fontSize: 11 },
-};

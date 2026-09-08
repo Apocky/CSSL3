@@ -15,219 +15,200 @@ export interface DevblogPost {
 
 const POST_WHAT_IS_THE_SUBSTRATE: DevblogPost = {
   slug: 'what-is-the-substrate',
-  title: 'What is the Substrate?',
+  title: 'What does “substrate” mean here?',
   date_iso: '2026-04-15',
-  tags: ['substrate', 'foundations', 'philosophy'],
+  tags: ['architecture', 'foundations', 'definitions'],
   author: 'Apocky',
-  blurb: 'A short tour of the ω-field, Σ-mask, KAN, and HDC — the four primitives every Apocky project grows from.',
-  body: `# What is the Substrate?
+  blurb: 'A plain-language guide to four technical ideas that appear in Apocky project notes.',
+  body: `# What does “substrate” mean here?
 
-The Substrate is the trunk; everything else is a branch.
+In these projects, **substrate** is an engineering label for shared,
+low-level code and ideas. It does not mean that the code is alive, aware,
+or a person.
 
-Concretely, every Apocky project — Labyrinth of Apocalypse, the Σ-Chain,
-the Akashic Records, the Mycelial Network — shares one runtime foundation
-made of four primitives.
+Some design documents group four experimental ideas under that label.
+Source code or a specification can show that an idea is being worked on.
+It does not, by itself, prove that the idea is complete, safe, or present
+in every released program.
 
-## ω-field
+## A coordinate-based state map
 
-A typed manifold of values addressed by **coordinates**, not pointers. Think
-of it as a programmable physics: cells are addressable by location, the
-relationships between cells are first-class, and the topology can warp
-continuously.
+The project name **ω-field** (pronounced “omega field”) refers to organizing
+simulation data by coordinates and relationships. The intended use is to
+make locations and connections explicit instead of hiding them behind
+unrelated references.
 
-The ω-field is **the** truth — the master state. Everything else is a
-projection, derivation, or annotation of cells in the ω-field.
+This remains an architecture concept with partial implementations. It
+should not be described as the single truth for every Apocky project unless
+a specific release demonstrates that behavior.
 
-## Σ-mask (consent)
+## Permissions stored as bits
 
-Every cell carries a Σ-mask: a bitmask describing which observers may see,
-read, or write that cell. Σ-masks compose multiplicatively. They are
-revocable. They are sovereignty made structural.
+A **bitmask** is a compact group of on-or-off switches in software. The
+project name **Σ-mask** (pronounced “sigma mask”) refers to using those
+switches to represent permissions such as read, write, or share.
 
-There is no "private mode" toggle. There is no opt-in checkbox bolted onto
-analytics. The default mask is **deny-all**, and the cell-owner alone can
-loosen it.
+The intended rule is that sharing begins closed and changes only through
+an explicit grant that can later be withdrawn. A mask in source code is
+not the same thing as a complete consent experience; the surrounding
+interface, storage, enforcement, and withdrawal behavior must also work.
 
-## KAN (Kolmogorov-Arnold Networks)
+## A compact mathematical model
 
-A non-transformer learning substrate. Functions over the ω-field are
-parameterized as compositions of univariate splines on edges of a network.
-Cheap to evaluate. Cheap to update online. Per-edge interpretability you
-can actually look at.
+**KAN** stands for **Kolmogorov-Arnold Network**. It is a kind of
+mathematical model. The project explores KANs for small, bounded choices
+in generation and simulation. Claims about speed, size, or
+interpretability need measurements from the exact implementation and
+workload being discussed.
 
-KAN is how the Substrate **learns**. It is also how it stays small enough
-to ship as an 8.9 MB binary instead of a multi-gigabyte model dump.
+## High-dimensional computing
 
-## HDC (Hyperdimensional Computing)
+**HDC** stands for **Hyperdimensional Computing**. It represents information
+with large patterns and combines those patterns with mathematical
+operations. The project explores HDC as one possible way to label and
+relate information. That exploration is not proof that a released program
+uses it successfully.
 
-Symbolic communication via high-dimensional binary vectors. Cells signal
-to one another with hyperdimensional bind/bundle/unbind operations — like
-chemical messengers in mycelium.
+## Why keep these ideas together?
 
-This is how the Substrate **talks to itself** without serializing through a
-central message-bus. Cells emit; cells receive; the topology decides who
-listens.
+The design goal is to reuse a small set of foundations across simulation,
+permissions, learning experiments, and communication between components.
+Each use still needs its own implementation, tests, and evidence. The
+shared name is a map of the intended architecture, not a claim that all of
+it is finished.
 
-## Why these four?
-
-Because together they are sufficient to express:
-- physics simulation (ω-field + Σ-mask scoping force-domains)
-- runtime learning (KAN updating in-loop)
-- distributed messaging (HDC over network edges)
-- cryptographic attestation (Σ-mask as access proof)
-- creative procgen (KAN-driven sampling over the ω-field)
-- live hotfixing (online KAN updates over deployed instances)
-
-One trunk. Many branches.
-
-§ ¬ harm in the making · sovereignty preserved · t∞`,
+The [technical foundations guide](/docs/substrate) gives more detail and
+defines the symbols used in project specifications.`,
 };
 
 const POST_WHY_CSSL: DevblogPost = {
   slug: 'why-cssl',
   title: 'Why CSSL? (Or: why a new language at all)',
   date_iso: '2026-04-22',
-  tags: ['cssl', 'language-design', 'sovereignty'],
+  tags: ['cssl', 'language-design', 'permissions'],
   author: 'Apocky',
-  blurb: 'CSSL is not a Rust replacement; it is a sovereignty replacement. The compiler is the smallest part of the story.',
+  blurb: 'Why CSSL is being developed, what exists now, and which goals are still proposals.',
   body: `# Why CSSL?
 
-People ask me: "you have Rust, you have C++, you have Carbon and Mojo on
-the way. Why a new language?"
+CSSL is a programming-language project. Its purpose is to explore whether
+permissions and sharing boundaries can be easier to express and check in
+the language itself.
 
-The honest answer: **because none of them encode consent in their type
-system, and I am not going to ship games that surveil the people who
-play them.**
+That is a design goal, not a guarantee that every planned check works
+today. The current project contains specifications, compiler work, and
+examples at different levels of completeness. A feature should be called
+available only when the relevant compiler version, test, and release
+demonstrate it.
 
-## The technical case
+## The problem it is trying to address
 
-CSSL has features that make it easier to author Substrate code:
+Many programs treat privacy and sharing rules as separate application
+logic. CSSL explores making some of those rules visible to the compiler.
+For example, a reference might carry a permission that says which code may
+read or change the referenced data.
 
-- **First-class Σ-masks.** Every reference is masked. Capability flow is
-  checked at compile time. There is no \`unsafe\` escape hatch that lets a
-  third-party crate pierce the mask without a compiler warning.
+This does not make consent automatic. A compiler cannot decide what a
+person understands or wants. A complete design still needs clear choices,
+specific explanations, enforcement, withdrawal, and tests.
 
-- **Iterate-everywhere.** Loops, recursion, fold/scan/map across ω-field
-  axes are all the same syntactic structure. The compiler decides whether
-  to spill to a GPU shader, a CPU SIMD kernel, or a streaming KAN edge.
+## Technical goals
 
-- **Density.** CSL3 (the source dialect) is glyph-dense. \`§\` markers, modal
-  prefixes, and morphemes encode information that prose languages spread
-  across paragraphs.
+- **Permission-aware references:** represent some access rules in code and
+  report conflicting uses during compilation.
+- **One iteration model:** use related syntax for common looping and
+  collection operations, while allowing the compiler to choose an
+  appropriate implementation target.
+- **Direct project integration:** make commonly used project libraries
+  easier to call without repetitive connection code.
+- **Compact technical notation:** allow precise specifications while
+  keeping public explanations in ordinary language.
 
-- **Substrate-native.** The standard library *is* the Substrate. There is
-  no FFI ceremony to call into KAN, ω-field, or HDC primitives. They are
-  syntax.
+These are targets. The documentation marks proposed features separately
+from currently demonstrated behavior.
 
-## The political case
+## CSSL and CSLv3 are different
 
-Languages encode values. Rust encodes safety. Go encodes simplicity.
-Python encodes accessibility. C++ encodes performance and historical
-contingency.
+**CSSL** is the programming-language project described here.
+**CSLv3** is a separate compact notation used for reasoning and technical
+specifications. Similar symbols may appear in both projects, but one is
+not a source dialect of the other.
 
-CSSL encodes **consent**. The fact that I had to write a new compiler to
-say so honestly — instead of bolting it onto an existing toolchain that
-treats consent as application-level concern — is exactly the point.
+## What CSSL is not claiming
 
-## What CSSL is NOT
+CSSL is not presented as a replacement for every existing language, and
+the presence of compiler code is not proof that it is ready for every
+production use. It is a focused research and engineering project whose
+claims should stay tied to reproducible builds and tests.
 
-- Not a general-purpose web language. Use TypeScript for web.
-- Not a systems language for arbitrary kernels. Use Rust for that.
-- Not a research toy. It compiles and ships real binaries today.
-
-It is **a language for substrate-native systems where consent is the
-primary invariant**. That is a small, sharp niche, and that is fine.
-
-## Where to start
-
-Read \`specs/grand-vision/15_UNIFIED_SUBSTRATE.csl\` for the architectural
-thesis. Read \`compiler-rs/crates/cssl-substrate-omega-field/\` for the
-keystone implementation crate. Then run \`LoA.exe\` and watch a CSSL-compiled
-binary boot a substrate-grown game in 8.9 MB.
-
-§ density = sovereignty · t∞`,
+Start with the [CSSL language guide](/docs/cssl-language) for the current
+public status and definitions.`,
 };
 
 const POST_MYCELIAL_VISION: DevblogPost = {
   slug: 'the-mycelial-network-vision',
-  title: 'The Mycelial-Network Vision',
+  title: 'The planned Mycelium network',
   date_iso: '2026-04-30',
-  tags: ['mycelium', 'network', 'multiplayer', 'design'],
+  tags: ['network', 'multiplayer', 'proposed-design'],
   author: 'Apocky',
-  blurb: 'Why a federated, organic substrate-mesh outperforms both centralized servers and naive blockchains for the kind of multiplayer I want to ship.',
-  body: `# The Mycelial-Network Vision
+  blurb: 'A proposed multiplayer design based on voluntary connections, local control, and clear sharing choices.',
+  body: `# The planned Mycelium network
 
-Most multiplayer architectures fall on one of two poles:
+**Mycelium** is the project name for a proposed way to connect games and
+personal spaces. It is an architecture plan, not a public network that is
+available today.
 
-- **Centralized.** A company owns the canonical world-state. Players
-  connect into it. The company decides who plays, what they see, what
-  data is collected, when the servers are sunset. Every server outage is
-  a single-point failure for thousands of players.
+The name is borrowed from fungal networks as a design metaphor. It does
+not mean the software is biological, alive, aware, or a person.
 
-- **Blockchain.** A decentralized ledger holds canonical state. Every
-  participant pays gas to write. Privacy is a coat of paint over a public
-  ledger. Plutocratic stake decides governance. Throughput is bottlenecked
-  by global consensus.
+## The basic idea
 
-Both throw away the actual organic shape of how multiplayer should feel.
+The plan gives each participant a **Home**: a personal space whose data
+stays local unless that participant chooses to share something. A
+connection between Homes is called a **thread**. Each thread would carry
+only the information covered by a specific, visible permission.
 
-## The mycelium model
+Participation would be voluntary. A person could keep a Home private,
+connect only with invited people, decline individual requests, disconnect,
+or withdraw a sharing permission. Creating content, hosting a connection,
+or remaining available would never be required.
 
-Take the literal biology. A fungal mycelium is:
+## Why explore this design?
 
-- **Federated.** No single hyphal node "owns" the network.
-- **Permeable but selective.** Nutrients flow where they are signaled
-  to flow. Σ-masks at every membrane.
-- **Adaptive.** New connections form when traffic justifies them; weak
-  connections atrophy. KAN learning at the topology level.
-- **Local-first.** Each Home pocket-dimension is a private spore-body.
-  Cross-mycelium communication is OPT-IN per event-grain.
-- **Robust.** No central failure point. If a hyphal segment dies, the
-  rest of the network reroutes.
+Central multiplayer services are convenient, but their owner can become a
+single point of failure and may control access or data collection. Fully
+public ledgers distribute records but can expose information and impose
+global agreement where it is not needed.
 
-Map this onto multiplayer:
+The Mycelium proposal explores a middle path:
 
-- **Each player has a Home.** Home is a pocket-dimension owned and run
-  on the player's own machine. Default-private.
-- **Mycelial threads** carry consented signals between Homes. Threads
-  carry only what was explicitly tagged for sharing.
-- **Coherence-Proof consensus** handles cross-player canonical events
-  (gear-trades, shared crafts, narrative-history) — without proof-of-work,
-  proof-of-stake, gas, or a public ledger.
-- **Akashic Records** is the long-term federated memory layer that
-  consents to participate in.
+- keep private activity local;
+- share only selected information with selected participants;
+- avoid requiring every participant to agree on every event;
+- retain enough evidence to resolve shared events such as a trade; and
+- allow a connection to end without trapping either participant.
 
-## What this enables
+This is a direction to investigate, not proof that it will outperform
+existing systems.
 
-- A friend can ping you to join a run. No matchmaking server has to
-  exist for the ping to route.
-- A craft-recipe you author can be shared, attested, and verified by
-  recipients without going through a central marketplace.
-- Live hotfixes ship as KAN-edge updates that propagate through the
-  mycelium — players opt in to which classes of fix they accept.
-- The game cannot be sunset. The mycelium IS the network. As long as
-  one Home is running, the substrate is alive.
+## What must be solved before it is real?
 
-## What this costs
+- identity and invitation without a public registration funnel;
+- understandable permission and withdrawal controls;
+- secure connection setup and recovery after network loss;
+- protection against unwanted traffic and abusive peers;
+- clear ownership and retention rules for shared records;
+- accessibility for people who cannot or do not want to use a particular
+  communication method; and
+- tests showing that private information stays private.
 
-- Discovery requires a bootstrap rendezvous (we use a tiny stub-server
-  for this; trivial to self-host).
-- Cross-Home latency is real and visible. We surface it instead of
-  hiding it behind a centralized pretend-real-time layer.
-- The user runs more local compute. We pay this cost happily because
-  the alternative is paying for it via surveillance.
+The project contains specifications and experimental code related to this
+idea. Those artifacts are evidence of ongoing work, not evidence of a
+finished service. No one should be told that a network “cannot be shut
+down” until deployment, maintenance, discovery, and failure behavior have
+been demonstrated in practice.
 
-## Where this lives in the code
-
-- \`compiler-rs/crates/cssl-host-mycelium/\` — substrate primitives
-- \`specs/grand-vision/16_MYCELIAL_NETWORK.csl\` — design thesis
-- \`specs/grand-vision/14_SIGMA_CHAIN.csl\` — Σ-Chain consensus mechanics
-- \`specs/grand-vision/18_AKASHIC_RECORDS.csl\` — federated memory layer
-
-The biology was right all along. We just had to write enough substrate
-to let it run on silicon.
-
-§ mycelium = network · network = mycelium · sovereignty preserved · t∞`,
+Read [The planned Mycelium design](/docs/mycelium) for the current public
+status and a glossary of its terms.`,
 };
 
 export const DEVBLOG_POSTS: ReadonlyArray<DevblogPost> = [

@@ -1,0 +1,580 @@
+{
+  "direct_inspection_ranges": [
+    "19-169",
+    "275-287",
+    "1527-2116"
+  ],
+  "inspection_limit": "Core identity/system sections, supporting cast, and complete 50-chapter hook outline inspected; full prose and every system section not claimed reread.",
+  "units": [
+    {
+      "source_unit": "U2-PROLOGUE",
+      "source_title": "Prologue",
+      "target_chapters": [
+        "V12-C01"
+      ],
+      "disposition": "selective_adaptation",
+      "decision": "Ordinary commercial place meets extraordinary danger; transaction and identity mechanics remain proposals.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C01",
+      "source_title": "Three Days Dead",
+      "source_line": 1543,
+      "target_chapters": [
+        "V12-C01"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Keep the disturbing identity question as a candidate; do not treat a speaking alternate body as disposable or infer identity from appearance.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C02",
+      "source_title": "The Dice Don't Care",
+      "source_line": 1552,
+      "target_chapters": [
+        "V12-C02"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain untrained power and social consequence; reject involuntary exposure being treated as harmless rent-payment comedy.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C03",
+      "source_title": "The Girl Who Sees Too Much",
+      "source_line": 1561,
+      "target_chapters": [
+        "V12-C02"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain June and route perception; her all-history identity claim remains a claim to test, not narrator-certified truth.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C04",
+      "source_title": "The Support Group from Hell",
+      "source_line": 1570,
+      "target_chapters": [
+        "V12-C02"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain a flawed support network and camaraderie; no automatic import of game ontology or min-max language.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C05",
+      "source_title": "Meat and Memory",
+      "source_line": 1582,
+      "target_chapters": [
+        "V12-C03"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain the recovery setting and horror of damaged memory; patients remain persons with interests, not empty bodies without worthwhile lives.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C06",
+      "source_title": "The First Garden (Memory)",
+      "source_line": 1593,
+      "target_chapters": [
+        "V12-C06"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain refusal and recovered Garden evidence; distinguish memory strength from complete authority.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C07",
+      "source_title": "The Firstborn's Jealousy",
+      "source_line": 1604,
+      "target_chapters": [
+        "V12-C08"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain conflict within claimed luminous authority; Firstborn ontology and fixedness remain open.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C08",
+      "source_title": "The Price of Power",
+      "source_line": 1615,
+      "target_chapters": [
+        "V12-C02"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Memory-sacrifice mechanics require separate approval and ethical accounting; no automatic advancement tariff adopted.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C09",
+      "source_title": "The Threshold Tourist",
+      "source_line": 1633,
+      "target_chapters": [
+        "V12-C02"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain difficult passage and costly guidance as candidates; memory trade does not become a default valid bargain.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C10",
+      "source_title": "A Thousand Lives",
+      "source_line": 1642,
+      "target_chapters": [
+        "V12-C06"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain an alternate-life challenge if worldline rules support it; no compulsory absorption of another person.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C11",
+      "source_title": "Malcolm Thorne (Boss Fight 1)",
+      "source_line": 1653,
+      "target_chapters": [
+        "V12-C07"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain Thorne and the private continuity bargain; his spouse requires an independent personhood and treatment account.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C12",
+      "source_title": "The First Time She Fucks Up",
+      "source_line": 1664,
+      "target_chapters": [
+        "V12-C03"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain failed-help accountability and continuing repair; do not present power or remorse as competence.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C13",
+      "source_title": "Sex and the Singular Woman",
+      "source_line": 1675,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "reference_only_tenderness",
+      "decision": "Retain adult tenderness and ordinary companionship as a craft reference only; this outline does not import the sexual set piece.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C14",
+      "source_title": "The Heir of Eden",
+      "source_line": 1690,
+      "target_chapters": [
+        "V12-C09"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain an Eve/Architect discovery as a proposed correspondence; earlier obedient-Eve simplification must be reconciled with her full agency.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C15",
+      "source_title": "The Coalition Forms",
+      "source_line": 1706,
+      "target_chapters": [
+        "V12-C05"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain a coalition whose members change the solution; cultural locations and claimed ages require evidence or explicit fiction labels.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C16",
+      "source_title": "The Strip Mall of Eden",
+      "source_line": 1717,
+      "target_chapters": [
+        "V12-C06"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain the collision of mundane place and deep memory as a possibility; New Jersey as actual Eden is not adopted geography.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C17",
+      "source_title": "Adam Apologizes",
+      "source_line": 1728,
+      "target_chapters": [
+        "V12-C06"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain apology without entitlement to forgiveness; no automatic adoption of exact reincarnation duration.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C18",
+      "source_title": "War Crimes of the Divine",
+      "source_line": 1743,
+      "target_chapters": [
+        "V12-C08"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain evidence of institutional erasure; lived timelines cannot be retroactively made nonexistent by narrative convenience.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C19",
+      "source_title": "The Architect's Proposal",
+      "source_line": 1754,
+      "target_chapters": [
+        "V12-C09"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain a justified grievance confronting an unacceptable universal remedy.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C20",
+      "source_title": "The Siege of Detroit",
+      "source_line": 1767,
+      "target_chapters": [
+        "V12-C08"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain a choice to protect people over pursuing a foe; exact Detroit siege design and casualty figures are not imported.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C21",
+      "source_title": "The Price of Heroism",
+      "source_line": 1785,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain aftermath and public fallibility; source figure 847 is not adopted without a scene and casualty-accounting basis.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C22",
+      "source_title": "Into the Reflection",
+      "source_line": 1796,
+      "target_chapters": [
+        "V12-C06"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain examination of disowned motives; shadow integration must not become identity merger of independent persons.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C23",
+      "source_title": "The Real Enemy",
+      "source_line": 1810,
+      "target_chapters": [
+        "V12-C08"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain self-interested institutional conduct; avoid making every Firstborn morally identical.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C24",
+      "source_title": "The Mother's Voice",
+      "source_line": 1819,
+      "target_chapters": [
+        "V12-C10"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain Mother as a distinct foundational presence; she is not initially lonely or merely the solution to Father.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C25",
+      "source_title": "The Crown Below",
+      "source_line": 1828,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Topology and lost-biome status require world reconciliation; no unearned geometric proof from imagery.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C26",
+      "source_title": "The Longest Night",
+      "source_line": 1837,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain an intervention deadline only after actual clock and consequence rules are specified.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C27",
+      "source_title": "Sister to Sister",
+      "source_line": 1853,
+      "target_chapters": [
+        "V12-C13"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain direct confrontation between women with separate accounts and independent choices.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C28",
+      "source_title": "The Third Option",
+      "source_line": 1864,
+      "target_chapters": [
+        "V12-C09"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain the search beyond a false binary; the third route must be prepared by earlier causes, not invented as an effortless solution.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C29",
+      "source_title": "The Ascent to Crown",
+      "source_line": 1877,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain a difficult traversal as a possible action sequence; reject mandatory total assimilation and unpriced power escalation.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C30",
+      "source_title": "Waking the Flame",
+      "source_line": 1890,
+      "target_chapters": [
+        "V12-C10"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain the demand for creator responsibility; a conversation does not guarantee a cure or universal compliance.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C31",
+      "source_title": "The Expansion",
+      "source_line": 1902,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain bounded expansion as a candidate; affected beings, costs, and access must be accounted for.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C32",
+      "source_title": "Eve's Choice",
+      "source_line": 1911,
+      "target_chapters": [
+        "V12-C09"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain Eve choosing a future without forced forgiveness from those she harmed.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C33",
+      "source_title": "The Morning After",
+      "source_line": 1930,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain material and social consequences of changed conditions after spectacle.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C34",
+      "source_title": "Eve Joins the Coalition (Reluctantly)",
+      "source_line": 1939,
+      "target_chapters": [
+        "V12-C13"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain accountable coexistence; remorse is not a substitute for those harmed retaining their claims.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C35",
+      "source_title": "The Firstborn Strike Back",
+      "source_line": 1948,
+      "target_chapters": [
+        "V12-C08"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain internal institutional dissent; source conflict over capacity to change must be resolved first.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C36",
+      "source_title": "The Mother Returns",
+      "source_line": 1957,
+      "target_chapters": [
+        "V12-C10"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain Mother returning in distinct relation; particular appearance remains an artistic proposal, not a race claim about divinity.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C37",
+      "source_title": "The Real Trinity",
+      "source_line": 1966,
+      "target_chapters": [
+        "V12-C10"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain plurality and a widened relational frame; do not silently replace every tradition with a compulsory identity equation.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C38",
+      "source_title": "The First New Biome",
+      "source_line": 1975,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain creating a habitable refuge; numbered-biome count is inconsistent across V2 and remains unadopted.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C39",
+      "source_title": "Years Pass",
+      "source_line": 1991,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain time passing with changed practices; exact three-year duration remains to be reconciled.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C40",
+      "source_title": "The Last Firstborn",
+      "source_line": 1998,
+      "target_chapters": [
+        "V12-C08"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain the possibility of leaving an office; Lucifer identification and inability-to-change claims require comparison.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C41",
+      "source_title": "The Hollow Healed",
+      "source_line": 2009,
+      "target_chapters": [
+        "V12-C11"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain continuing care without annihilation; do not equate a clinical condition with cosmic evil or promise that care alone cures it.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C42",
+      "source_title": "Children of the New Age",
+      "source_line": 2018,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain a next generation with its own choices; do not assume inherited perception establishes superior standing.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C43",
+      "source_title": "What Eve Built",
+      "source_line": 2027,
+      "target_chapters": [
+        "V12-C13"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain Eve building actual repair capacity; the people receiving care retain agency and may refuse her involvement.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C44",
+      "source_title": "The Axis Complete",
+      "source_line": 2036,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain an experienced wholeness as personal meaning; eight, twelve, and thirteen realm counts require reconciliation.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C45",
+      "source_title": "The Weight of Being",
+      "source_line": 2050,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain ordinary identity after a defining conflict; victory cannot dictate who someone must become.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C46",
+      "source_title": "Adam's Farewell",
+      "source_line": 2057,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain Adam accepting a boundary and relinquishing pursuit; exact death/reincarnation mechanics are not adopted.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C47",
+      "source_title": "June's Goodbye (Temporary)",
+      "source_line": 2066,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain June choosing an independent journey; friendship survives an end to permanent availability.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C48",
+      "source_title": "The First Flame Speaks (Finally)",
+      "source_line": 2073,
+      "target_chapters": [
+        "V12-C10"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain FirstFlame speaking with accountability; gratitude cannot replace outstanding apology or repair.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C49",
+      "source_title": "The Garden Opens",
+      "source_line": 2082,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain an open refuge whose ethics are enacted; welcome cannot become coerced entry or universal personal access.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-C50",
+      "source_title": "Home",
+      "source_line": 2093,
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "selective_adaptation_or_reconciliation",
+      "decision": "Retain a return to ordinary place and pleasure; do not copy the source closing line or require a clean emotional reset.",
+      "adoption_status": "not_wholesale_imported"
+    },
+    {
+      "source_unit": "U2-EPILOGUE",
+      "source_title": "A New Spark Wakes",
+      "target_chapters": [
+        "V12-C14"
+      ],
+      "disposition": "thematic_reference",
+      "decision": "Life and future choices continue; do not repeat death as a mandatory awakening mechanism.",
+      "adoption_status": "not_wholesale_imported"
+    }
+  ]
+}

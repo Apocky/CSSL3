@@ -6,11 +6,18 @@
 // Bit-pack philosophy : monkey-patch once · idempotent · zero-runtime-cost
 // when consent_tier == none (gate denies before any fetch payload built).
 
-import { capture } from './client';
+import { _isInit, capture, currentTier, isTelemetryBlackoutPath } from './client';
 import { redactString } from './sigma-mask';
 
 let installed = false;
 const SLOW_MS = 3000;
+let originalFetch: typeof window.fetch | null = null;
+let wrappedFetch: typeof window.fetch | null = null;
+let xhrPrototype: typeof XMLHttpRequest.prototype | null = null;
+let originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
+let originalXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
+let wrappedXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
+let wrappedXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
 
 function isSelfRoute(url: string): boolean {
   return url.includes('/api/akashic/');
@@ -19,8 +26,9 @@ function isSelfRoute(url: string): boolean {
 // fetch tap · wraps window.fetch ; preserves return-shape.
 function installFetchTap(): void {
   if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
-  const orig = window.fetch.bind(window);
-  window.fetch = (async (
+  originalFetch = window.fetch;
+  const orig = originalFetch.bind(window);
+  wrappedFetch = (async (
     input: RequestInfo | URL,
     init?: RequestInit
   ): Promise<Response> => {
@@ -63,6 +71,7 @@ function installFetchTap(): void {
       throw err;
     }
   }) as typeof window.fetch;
+  window.fetch = wrappedFetch;
 }
 
 // XHR tap · monkey-patches send() · captures status + timing on completion.
@@ -71,8 +80,11 @@ function installXhrTap(): void {
   const proto = XMLHttpRequest.prototype;
   const origOpen = proto.open;
   const origSend = proto.send;
+  xhrPrototype = proto;
+  originalXhrOpen = origOpen;
+  originalXhrSend = origSend;
 
-  proto.open = function (
+  wrappedXhrOpen = function (
     this: XMLHttpRequest,
     method: string,
     url: string | URL,
@@ -86,9 +98,10 @@ function installXhrTap(): void {
       t0: 0,
     };
     return origOpen.call(this, method, url as string, async ?? true, user ?? null, password ?? null);
-  };
+  } as typeof proto.open;
+  proto.open = wrappedXhrOpen;
 
-  proto.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null): void {
+  wrappedXhrSend = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null): void {
     const meta = (this as XMLHttpRequest & { _akashic?: { method: string; url: string; t0: number } })._akashic;
     if (meta !== undefined && !isSelfRoute(meta.url)) {
       meta.t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -115,17 +128,46 @@ function installXhrTap(): void {
       this.addEventListener('loadend', onLoadEnd);
     }
     return origSend.call(this, body ?? null);
-  };
+  } as typeof proto.send;
+  proto.send = wrappedXhrSend;
 }
 
 export function installNetworkTap(): void {
   if (installed) return;
   if (typeof window === 'undefined') return;
+  if (!_isInit() || currentTier() === 'none' || isTelemetryBlackoutPath()) return;
   installed = true;
   installFetchTap();
   installXhrTap();
 }
 
-export function _resetNetTapForTests(): void {
+export function uninstallNetworkTap(): void {
+  if (
+    typeof window !== 'undefined' &&
+    originalFetch !== null &&
+    wrappedFetch !== null &&
+    window.fetch === wrappedFetch
+  ) {
+    window.fetch = originalFetch;
+  }
+  if (xhrPrototype !== null) {
+    if (originalXhrOpen !== null && wrappedXhrOpen !== null && xhrPrototype.open === wrappedXhrOpen) {
+      xhrPrototype.open = originalXhrOpen;
+    }
+    if (originalXhrSend !== null && wrappedXhrSend !== null && xhrPrototype.send === wrappedXhrSend) {
+      xhrPrototype.send = originalXhrSend;
+    }
+  }
+  originalFetch = null;
+  wrappedFetch = null;
+  xhrPrototype = null;
+  originalXhrOpen = null;
+  originalXhrSend = null;
+  wrappedXhrOpen = null;
+  wrappedXhrSend = null;
   installed = false;
+}
+
+export function _resetNetTapForTests(): void {
+  uninstallNetworkTap();
 }

@@ -8,7 +8,6 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
-import { MNEME_CAPABILITIES, requireMnemeProfileAccess } from '@/lib/mneme/auth';
 import { getMnemeClient } from '@/lib/mneme/store';
 import { retrievePipeline } from '@/lib/mneme/pipeline-retrieve';
 import type {
@@ -16,9 +15,15 @@ import type {
     RecallResponse,
     MemoryType,
 } from '@/lib/mneme/types';
+import {
+    requireStoredMnemeProfile,
+    respondMnemeMemberFailure,
+} from '@/lib/mneme/member-profile';
+import { MNEME_CAPABILITIES, requireMnemeRouteAccess } from '@/lib/mneme/route-access';
 
 interface ErrorResponse {
     error:     string;
+    code?:     string;
     served_by: string;
     ts:        string;
 }
@@ -45,9 +50,9 @@ export default async function handler(
         return;
     }
 
-    const access = await requireMnemeProfileAccess(req, res, MNEME_CAPABILITIES.recall);
-    if (!access) return;
-    const profile_id = access.profileId;
+    const binding = await requireMnemeRouteAccess(req, res, MNEME_CAPABILITIES.recall);
+    if (!binding) return;
+    const profile_id = binding.profileId;
 
     const body: unknown = req.body;
     if (!isObject(body)) {
@@ -83,6 +88,11 @@ export default async function handler(
     const debug = reqBody.debug === true;
 
     const sb = getMnemeClient();
+    const storageFailure = await requireStoredMnemeProfile(sb, profile_id);
+    if (storageFailure) {
+        respondMnemeMemberFailure(res, storageFailure);
+        return;
+    }
     try {
         const result = await retrievePipeline(sb, {
             profile_id,
@@ -107,9 +117,8 @@ export default async function handler(
         res.status(200).json(responseBody);
     } catch (e) {
         const env = envelope();
-        const msg = e instanceof Error ? e.message : String(e);
         // eslint-disable-next-line no-console
-        console.error(JSON.stringify({ evt: 'mneme.recall.fail', err: msg }));
-        res.status(502).json({ error: msg, served_by: env.served_by, ts: env.ts });
+        console.error(JSON.stringify({ evt: 'mneme.recall.fail', code: e instanceof Error ? e.name : 'UNKNOWN' }));
+        res.status(502).json({ error: 'Private recall could not complete. No memory was changed.', code: 'MNEME_RECALL_FAILED', served_by: env.served_by, ts: env.ts });
     }
 }

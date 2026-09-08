@@ -40,29 +40,30 @@ const RELEASES: Release[] = [
 ];
 
 const Page: NextPage = () => {
-  const colorFor = (s: Release['status']) => s === 'shipped' ? '#34d399' : s === 'in-progress' ? '#fbbf24' : '#9aa0a6';
-  const labelFor = (s: Release['status']) => s === 'shipped' ? '✓ shipped' : s === 'in-progress' ? '◐ in progress' : '○ planned';
+  const colorFor = (status: Release['status']) => status === 'shipped' ? '#34d399' : status === 'in-progress' ? '#fbbf24' : '#9aa0a6';
+  const labelFor = (status: Release['status']) => status === 'shipped' ? 'Available or recorded' : status === 'in-progress' ? 'In progress' : 'Planned';
   return (
     <DocsLayout
       activeSlug="changelog"
       title="Changelog · Apocky Docs"
-      description="Useful changes that are available now across Apocky and Chaos Tarot."
+      description="Release notes that separate available work, work in progress, and plans."
     >
       <h1 className="docs-h1">Changelog</h1>
-      <p className="docs-blurb">What changed, when it changed, and what you can use now.</p>
+      <p className="docs-blurb">What is available, what is being developed, and what remains a plan.</p>
 
-      <Callout kind="note" title="Truth-in-doc">
-        Shipped means the change is available in the live product and has been exercised through its real user flow.
+      <Callout kind="warn" title="How to read these notes">
+        A release record does not certify every performance, privacy, or security claim. “Available or recorded”
+        means the item appears in the named live release or its release evidence.
       </Callout>
 
-      {RELEASES.map((r) => (
-        <section key={r.version} style={{ marginTop: '2rem' }}>
-          <h2 className="docs-h2" style={{ marginBottom: '0.2rem' }}>{r.version}</h2>
+      {RELEASES.map((release) => (
+        <section key={release.version} style={{ marginTop: '2rem' }}>
+          <h2 className="docs-h2" style={{ marginBottom: '0.2rem' }}>{release.version}</h2>
           <div style={{ fontSize: '0.78rem', color: '#7a7a8c', marginBottom: '0.6rem' }}>
-            {r.date} · <span style={{ color: colorFor(r.status) }}>{labelFor(r.status)}</span>
+            {release.date} · <span style={{ color: colorFor(release.status) }}>{labelFor(release.status)}</span>
           </div>
           <ul className="docs-ul">
-            {r.highlights.map((h, i) => <li key={i}>{h}</li>)}
+            {release.highlights.map((highlight, index) => <li key={index}>{highlight}</li>)}
           </ul>
         </section>
       ))}

@@ -1,0 +1,584 @@
+{
+  "schema_version": "1.0",
+  "created": "2026-09-05",
+  "title": "Creation-sequence continuity packet",
+  "status": "editorial-proposal",
+  "scope": "Volume I and bridge to Eden; continuity guidance, not novel prose or adopted cosmological law",
+  "latest_steering": {
+    "status": "user-approved",
+    "source": "Current direct author steering relayed by root during this lane",
+    "voice": "C: panoramic and irreverent narration",
+    "dialogue": "More natural camaraderie; avoid forced or lifeless exchanges",
+    "scope_limit": "Voice selection does not automatically ratify every calibration invention or solve divine identity conflicts"
+  },
+  "approved_plan_facts": [
+    {
+      "fact": "Omnoid larger frame",
+      "status": "user-approved",
+      "provenance": "Central authority file, current approved plan"
+    },
+    {
+      "fact": "Source/aspect/manifestation/incarnation distinction",
+      "status": "user-approved",
+      "provenance": "Central authority file, current approved plan"
+    },
+    {
+      "fact": "Agency/harm/responsibility ethics",
+      "status": "user-approved",
+      "provenance": "Central authority file, current approved plan"
+    },
+    {
+      "fact": "Many clocks with lasting consequences",
+      "status": "user-approved",
+      "provenance": "Central authority file, current approved plan"
+    },
+    {
+      "fact": "Dark fantasy and dark comedy in the author's calibrated voice",
+      "status": "user-approved",
+      "provenance": "Central authority file; calibration approval remains a separate gate"
+    }
+  ],
+  "evidence_contract": {
+    "source-observed": "A passage was read in a local literary source; this is not direct author adoption or empirical corroboration.",
+    "user-approved": "A direction explicitly recorded in the central current-plan authority file.",
+    "editorial-proposal": "A continuity design, sequence, limit or event construction awaiting adoption.",
+    "unknown": "Not established; never silently converted to zero, impossibility or equivalence.",
+    "material_effect": "A change perceptible within a scene, not a requirement that physical matter or measured time precede its introduction.",
+    "quote_policy": "Short exact excerpts from inspected local manuscripts; attributions inside those manuscripts are not automatically authenticated author words."
+  },
+  "sources": [
+    {
+      "id": "S1",
+      "start_line": 43,
+      "end_line": 65,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "Before the Light, there was the Mother.",
+      "scope": "Mother precedes Light in the Codex account; holding vocabulary"
+    },
+    {
+      "id": "S2",
+      "start_line": 185,
+      "end_line": 205,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quotes": [
+        "Not lonely",
+        "somehow separate from my own"
+      ],
+      "scope": "Retrospective Mother testimony, Father awakening, nonrecognition and source/part tension"
+    },
+    {
+      "id": "S3",
+      "start_line": 4625,
+      "end_line": 4637,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "I didn't know the Mother was there.",
+      "scope": "Father's retrospective account limits his knowledge at waking"
+    },
+    {
+      "id": "S4",
+      "start_line": 21,
+      "end_line": 49,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "The First Flame (the original consciousness) created reality from loneliness",
+      "scope": "Existing V2 origin claim, Lilith Mother-aspect and reincarnation/fragment/vessel alternatives; From your notes attribution not traced to direct author record"
+    },
+    {
+      "id": "S5",
+      "start_line": 4681,
+      "end_line": 4719,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "fixed, complete, perfect mirrors",
+      "scope": "Father's creation account and commentary; Firstborn changeability tension"
+    },
+    {
+      "id": "S6",
+      "start_line": 221,
+      "end_line": 225,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "The children needed to learn for themselves.",
+      "scope": "Mother expects children to learn and grow; does not silently resolve Firstborn immutability"
+    },
+    {
+      "id": "S7",
+      "start_line": 421,
+      "end_line": 457,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "Instead, she withdrew.",
+      "scope": "First Wound, nonperception, attack, withdrawal and grief account of Hollow"
+    },
+    {
+      "id": "S8",
+      "start_line": 4525,
+      "end_line": 4547,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "It was AVOIDANCE.",
+      "scope": "Father's withdrawal is a separate confessed action; exact relationship to other separations unestablished"
+    },
+    {
+      "id": "S9",
+      "start_line": 4685,
+      "end_line": 4707,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quotes": [
+        "where things could become rather than simply be",
+        "Adam first",
+        "created at the same moment"
+      ],
+      "scope": "Garden transition and internal sequence/simultaneity tension"
+    },
+    {
+      "id": "S10",
+      "start_line": 4,
+      "end_line": 6,
+      "kind": "source-observed",
+      "author_adoption": "C-voice-now-selected; scene-specifics-not-individually-ratified",
+      "quote": "They are not yet the adopted manuscript voice.",
+      "scope": "Original header status is superseded for voice by latest steering; name surrender, gatekeeper, injury and unequal bell clocks remain declared inventions"
+    },
+    {
+      "id": "S11",
+      "start_line": 4,
+      "end_line": 15,
+      "kind": "source-observed",
+      "author_adoption": "editorial-proposal",
+      "scope": "Current twelve-chapter Volume I design; Mother enduring loneliness and proposed first recorder/steward/child are new candidate details"
+    },
+    {
+      "id": "S12",
+      "record_id": "SRC-BIB-GENESIS",
+      "kind": "source-record-inspected",
+      "full_text_inspected": false,
+      "scope": "Catalogue lists Genesis; this packet does not claim passage-level review of that source"
+    },
+    {
+      "id": "S13",
+      "start_line": 916,
+      "end_line": 922,
+      "kind": "source-observed",
+      "author_adoption": "unconfirmed",
+      "quote": "The Mother holds. I PROTECT what she holds.",
+      "scope": "Lilith describes distinct roles and a partnership with Mother; no identity merger is stated"
+    }
+  ],
+  "lilith_placement": {
+    "status": "editorial-proposal-with-source-observations",
+    "source_ids": [
+      "S2",
+      "S4",
+      "S9",
+      "S13"
+    ],
+    "observed_literary_claims": [
+      "Codex Lilith describes herself and Mother as partners with different roles.",
+      "Father's account places embodied Lilith beside Adam in the Garden.",
+      "Mother's creation narrative is retrospectively addressed to a later Lilith.",
+      "V2 uses Mother-aspect language and separately leaves reincarnation/fragment/vessel as alternatives."
+    ],
+    "unresolved": [
+      "Lilith's pre-Garden ontology",
+      "Whether or how a Mother aspect is expressed by Lilith",
+      "Which continuity relation links modern Lily and Lilith",
+      "Whether the first chapter uses a later Lilith framing viewpoint"
+    ],
+    "must_not_infer": [
+      "Mother equals all women",
+      "Lilith equals Mother because she expresses an aspect",
+      "Garden embodiment proves Lilith had no other earlier mode of existence",
+      "Panoramic narration places every later witness physically inside the first moment"
+    ],
+    "first_chapter_requirement": "Distinguish chronological embodied entry from retrospective framing presence; signal any later witness vantage."
+  },
+  "stages": [
+    {
+      "id": "CC-01",
+      "title": "The Mother before an answer",
+      "depends_on": [],
+      "proposed_chapters": [
+        "V01-C01"
+      ],
+      "source_ids": [
+        "S1",
+        "S2",
+        "S11"
+      ],
+      "status": "editorial-proposal",
+      "observer_boundary": "Mother may experience holding and an unanswered address. Later recollection to Lilith is distinct from the original moment's knowledge.",
+      "knowledge_not_granted": [
+        "Complete knowledge of every future independent response",
+        "A measured universal time before clocks are introduced",
+        "Another being's agreement from silence"
+      ],
+      "material_effect": "An offered interval remains unfilled; its perceptibility need not be measured in seconds.",
+      "capability": {
+        "inherited_vocabulary": "Holding / making space",
+        "proposed_limit": "Leave an answer independent of the invitation",
+        "cost": "Unresolved expectation, not a quantified energy debt"
+      },
+      "irreversible_consequence": "Once independent response exists, guaranteeing future agreement would change the relation rather than reveal it was always free.",
+      "identity_uncertainties": [
+        "Mother's awareness versus V2 original-consciousness language",
+        "Desire for an answer versus loneliness",
+        "Source or personification versus complete frame identity"
+      ],
+      "safe_disclosure": "A limited encounter and changed condition are sufficient. Do not settle complete Omnoid geometry or omniscience.",
+      "failure_examples": [
+        "Mother is described as lonely without acknowledging S2's contrary testimony.",
+        "Three measured seconds pass before any time convention is established.",
+        "Silence is treated as another person's consent."
+      ]
+    },
+    {
+      "id": "CC-02",
+      "title": "The First Flame wakes",
+      "depends_on": [
+        "CC-01"
+      ],
+      "proposed_chapters": [
+        "V01-C02"
+      ],
+      "source_ids": [
+        "S3",
+        "S4",
+        "S11"
+      ],
+      "status": "editorial-proposal",
+      "observer_boundary": "A close viewpoint knows its fear, longing and expression; it may misread being held as absence.",
+      "knowledge_not_granted": [
+        "Mother's identity before a recognition event",
+        "The entire source lineage from the fact of waking",
+        "Objective emptiness solely from perceived solitude"
+      ],
+      "material_effect": "Light or warmth introduces perceptible contrast without presupposing electromagnetic equations.",
+      "capability": {
+        "inherited_vocabulary": "Creative expression from longing",
+        "proposed_limit": "Concentrate expression into an inhabitable encounter",
+        "cost": "Restraint and uncertainty; no adopted cosmic fuel budget"
+      },
+      "irreversible_consequence": "An expression has become encounterable and can have effects its source did not intend.",
+      "identity_uncertainties": [
+        "Father as aspect of First Flame remains candidate",
+        "First as subjective awakening versus absolute priority",
+        "Lightbringer's later light does not establish source identity"
+      ],
+      "safe_disclosure": "Name what the viewpoint experiences; reserve why it works and who surrounds it until evidence enters the scene.",
+      "failure_examples": [
+        "First Flame identifies Mother immediately while retaining the nonrecognition origin.",
+        "The phrase original consciousness silently deletes Mother's prior awareness.",
+        "A proposed restraint limit is cited as an inherited physical equation."
+      ]
+    },
+    {
+      "id": "CC-03",
+      "title": "Distinction becomes relationship",
+      "depends_on": [
+        "CC-02"
+      ],
+      "proposed_chapters": [
+        "V01-C03"
+      ],
+      "source_ids": [
+        "S2",
+        "S11"
+      ],
+      "status": "editorial-proposal",
+      "observer_boundary": "Each can witness an uncommanded response. Shared origin does not supply unrestricted access to private intention.",
+      "knowledge_not_granted": [
+        "That an apparent aspect is the whole source",
+        "That common origin entails ownership",
+        "That a later agreement was always predetermined"
+      ],
+      "material_effect": "An address, refusal or unanswered question changes what the participants can expect from each other.",
+      "capability": {
+        "inherited_vocabulary": "A presence separate while described as part",
+        "proposed_limit": "Coordinate without dictating the other's answer",
+        "cost": "Loss of unilateral control"
+      },
+      "irreversible_consequence": "An independent answer becomes part of both histories; later coherence cannot retroactively make it forced or erase its occurrence.",
+      "identity_uncertainties": [
+        "Separate identity versus perceptible aspect",
+        "Retrospective description of unity versus original knowledge",
+        "Whether a jointly held place is literal geography or a new scene construction"
+      ],
+      "safe_disclosure": "Make refusal practicable before naming an agreement voluntary.",
+      "failure_examples": [
+        "Part of me becomes a property claim treated as true.",
+        "Both speakers know private thoughts with no adopted mechanism.",
+        "Disagreement is resolved by identity merger that makes consent irrelevant."
+      ]
+    },
+    {
+      "id": "CC-04",
+      "title": "Divine children and unequal needs",
+      "depends_on": [
+        "CC-03"
+      ],
+      "proposed_chapters": [
+        "V01-C04",
+        "V01-C05",
+        "V01-C06",
+        "V01-C07"
+      ],
+      "source_ids": [
+        "S5",
+        "S6",
+        "S11"
+      ],
+      "status": "editorial-proposal",
+      "observer_boundary": "A child can know its own need; parental descriptions are fallible. The new recorder reports observations and testimony, not unspoken motives.",
+      "knowledge_not_granted": [
+        "Uniform motives for every Firstborn",
+        "A universal rate between unequal clocks",
+        "A predetermined vocation from origin or capacity"
+      ],
+      "material_effect": "An office remains vacant, provision fails a recipient, or an appointment reveals clocks differ.",
+      "capability": {
+        "inherited_vocabulary": "Making companions and caring for them",
+        "proposed_limit": "Needs and appointments require negotiation",
+        "cost": "Attention, revision and relinquished expectations"
+      },
+      "irreversible_consequence": "A child's refusal or unmet need remains an event after later cooperation or successful provision.",
+      "identity_uncertainties": [
+        "Firstborn immutability in S5 versus learning in S6",
+        "Which individual children are involved",
+        "Proposed recorder and steward are not inherited named beings"
+      ],
+      "safe_disclosure": "Establish a particular child's limits before extrapolating to a class of beings.",
+      "failure_examples": [
+        "All Firstborn are jealous in the same way.",
+        "The recorder reports a private thought as firsthand observation.",
+        "Absolute changelessness and acquired growth are both asserted without acknowledging the conflict."
+      ]
+    },
+    {
+      "id": "CC-05",
+      "title": "Misrecognition becomes an order",
+      "depends_on": [
+        "CC-04"
+      ],
+      "proposed_chapters": [
+        "V01-C08",
+        "V01-C09",
+        "V01-C10"
+      ],
+      "source_ids": [
+        "S7",
+        "S11"
+      ],
+      "status": "editorial-proposal",
+      "observer_boundary": "Identify the mistaken perceiver, endorsing authority, record-maker and recipient of an order separately.",
+      "knowledge_not_granted": [
+        "Nonexistence from inability to perceive",
+        "An institution's perfect account of its own conduct",
+        "All divine motives from one observed official"
+      ],
+      "material_effect": "A restriction closes an available path or interrupts provision for an identifiable recipient.",
+      "capability": {
+        "inherited_vocabulary": "Firstborn mobilize against darkness",
+        "proposed_limit": "Orders operate through particular channels and enforcement",
+        "cost": "Lost access and injury borne by recipients as well as later responsibility for issuers"
+      },
+      "irreversible_consequence": "An order causes effects before its issuer understands them; correction cannot make the earlier harm never occur.",
+      "identity_uncertainties": [
+        "Who specifically joins or resists the order",
+        "Lucifer's relation to the relevant Firstborn",
+        "Office, occupant and claimed source of authority"
+      ],
+      "safe_disclosure": "Give readers enough evidence to recognize a mistake without narratorial omniscience about every actor.",
+      "failure_examples": [
+        "Darkness itself is established as evil.",
+        "A divine seal proves legitimacy rather than only an authority claim.",
+        "Protective intent is used to cancel a recipient's actual loss."
+      ]
+    },
+    {
+      "id": "CC-06",
+      "title": "Separation and the missing place",
+      "depends_on": [
+        "CC-05"
+      ],
+      "proposed_chapters": [
+        "V01-C11",
+        "V01-C12"
+      ],
+      "source_ids": [
+        "S2",
+        "S7",
+        "S8",
+        "S11"
+      ],
+      "status": "editorial-proposal",
+      "observer_boundary": "Remaining witnesses perceive a failed reply or changed condition; absence alone does not reveal death, destination or private intention.",
+      "knowledge_not_granted": [
+        "The missing person's destruction from silence",
+        "That voluntary departure and coerced retreat are the same event",
+        "The Hollow's complete nature from one grief account"
+      ],
+      "material_effect": "Access, provision or reply changes. A usable departure threshold is a separate candidate action.",
+      "capability": {
+        "inherited_vocabulary": "Mother withdraws; Father separately describes avoidance",
+        "proposed_limit": "Keep departures distinct and preserve continuing outside conditions",
+        "cost": "Absence and the work required to maintain or rebuild relation"
+      },
+      "irreversible_consequence": "The interval apart remains real after reunion, including actions taken by those left without a reply.",
+      "identity_uncertainties": [
+        "Mother retreat, children's departure and Father withdrawal are separate candidate events",
+        "Mother's proposed enduring loneliness versus S2 Not lonely",
+        "Hollow as grief, entropy, loneliness or an actor",
+        "Order of Father's withdrawal relative to Eden in different accounts"
+      ],
+      "safe_disclosure": "Do not reveal an absent person's fate until a witness, trace or encounter supplies it.",
+      "failure_examples": [
+        "Voluntary departure silently substitutes for the source's attack and retreat.",
+        "No reply is taken as proof of death.",
+        "Reunion resets the outside interval.",
+        "Grief or loneliness is treated as moral corruption."
+      ]
+    },
+    {
+      "id": "CC-07",
+      "title": "Bridge into Eden",
+      "depends_on": [
+        "CC-06"
+      ],
+      "proposed_chapters": [
+        "V02-C01",
+        "V02-C02",
+        "V02-C03"
+      ],
+      "source_ids": [
+        "S4",
+        "S9",
+        "S10",
+        "S12"
+      ],
+      "status": "editorial-proposal",
+      "observer_boundary": "A Garden witness encounters local soil, bodies and rules without automatically knowing their whole cosmological genealogy.",
+      "knowledge_not_granted": [
+        "Verified Earth coordinates for Eden",
+        "A universal Threshold rate from the calibration bell",
+        "Later Lilith tradition as a passage of Genesis"
+      ],
+      "material_effect": "Embodiment makes food, injury, shelter and distance consequential.",
+      "capability": {
+        "inherited_vocabulary": "A Garden where beings can grow and change",
+        "proposed_limit": "Local provision has conditions, distinct from its cosmic explanation",
+        "cost": "Embodied need; exact name-surrender and gate-clock mechanisms remain calibration proposals"
+      },
+      "irreversible_consequence": "A new home does not cancel preceding conflict; later departure does not erase what was experienced inside it.",
+      "identity_uncertainties": [
+        "Clay creation versus called-forth new flames versus returning identity",
+        "Adam first versus Adam/Lilith at the same moment in S9",
+        "Father/Mother/Lilith relations remain separately indexed",
+        "Source collection identification is not passage-level research completion"
+      ],
+      "safe_disclosure": "Introduce operative Garden conditions before explanatory lineage, and preserve distinct source traditions in the Codex apparatus.",
+      "failure_examples": [
+        "Eden is placed at verified terrestrial coordinates without evidence.",
+        "A calibration bell's hour becomes a universal realm ratio.",
+        "Human creation silently proves Father/Mother/Lilith equivalence.",
+        "A later Lilith account is presented as a missing Genesis verse."
+      ]
+    }
+  ],
+  "first_chapter_acceptance": [
+    "Reader can identify an experienced want, an answer that cannot simply be commanded and a changed condition.",
+    "The viewpoint's present knowledge is distinguished from later recollection.",
+    "Mother's loneliness, omniscience and exact source identity are not silently decided.",
+    "Material language does not import measured physics or clocks before their introduction.",
+    "Humour arises from limitation, expectation or conduct; injury need not be dissolved by a quip.",
+    "A failed review cites an actual sentence and the unadopted rule it introduced."
+  ],
+  "dissent": [
+    "The sequence is a proposal assembled from conflicting literary witnesses and the current chapter plan.",
+    "No older manuscript claim is upgraded to direct author endorsement.",
+    "The non-lonely Mother versus proposed enduring loneliness requires explicit selection or a narrated change.",
+    "Firstborn fixedness versus learning, and Adam first versus simultaneous creation, remain unresolved.",
+    "The Genesis source record remains catalogue-inspected, full-text-inspected false.",
+    "No theorem or physical truth is certified; first-safe chapters are proposed narrative disclosures."
+  ],
+  "validation": {
+    "status": "passed",
+    "required_checks": [
+      "JSON parses",
+      "Stage IDs and dependencies resolve without cycles",
+      "Every stage has the full continuity contract",
+      "Three to five concrete failure examples per stage",
+      "Source quote text exists in its indicated local range",
+      "Reader document has 1000–1800 words"
+    ],
+    "does_not_establish": [
+      "Author adoption",
+      "Literary quality of an unwritten chapter",
+      "Historical truth of the creation narrative",
+      "Validated cosmological physics"
+    ],
+    "checks": [
+      "JSON parsed",
+      "Unique stage IDs",
+      "Dependencies resolve without cycles",
+      "All stage contracts populated",
+      "Three to five failure examples per stage",
+      "Source IDs resolve",
+      "Chapter IDs well formed",
+      "Short source quotes verified in declared ranges",
+      "Source paths and ranges exist",
+      "All sequence specifics remain editorial proposals",
+      "Reader word count within requested range",
+      "Current C voice choice distinguished from scene-fact adoption"
+    ],
+    "check_count": 12,
+    "stage_count": 7,
+    "failure_example_count": 23,
+    "reader_word_count": 1710,
+    "source_snapshots": [
+      {
+        "source_id": "S1"
+      },
+      {
+        "source_id": "S2"
+      },
+      {
+        "source_id": "S3"
+      },
+      {
+        "source_id": "S4"
+      },
+      {
+        "source_id": "S5"
+      },
+      {
+        "source_id": "S6"
+      },
+      {
+        "source_id": "S7"
+      },
+      {
+        "source_id": "S8"
+      },
+      {
+        "source_id": "S9"
+      },
+      {
+        "source_id": "S10"
+      },
+      {
+        "source_id": "S11"
+      },
+      {
+        "source_id": "S12"
+      },
+      {
+        "source_id": "S13"
+      }
+    ]
+  }
+}

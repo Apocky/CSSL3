@@ -7,27 +7,38 @@
 // the ErrorBoundary catches any spore-fall in any branch · the Records remember.
 
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import 'katex/dist/katex.min.css';
+import '@/styles/apocky-system.css';
+import '@/styles/apocky-redesign.css';
 import {
   akashicInstall,
+  akashicDisable,
   AkashicErrorBoundary,
+  CONSENT_CHANGE_EVENT,
   capture,
+  capturePageView,
+  isTelemetryBlackoutPath,
 } from '@/lib/akashic-telemetry';
 import AkashicConsent from '@/components/AkashicConsent';
 import SiteShell from '@/components/SiteShell';
+import { FeedbackProvider } from '@/components/ui/Feedback';
+import { SiteSessionProvider } from '@/components/hub/SiteSession';
 
-// Auth, admin, and the immersive entity/chat pages render bare (their own chrome / clean for OAuth).
+// Auth, admin, and the live social room render bare (their own chrome / clean for OAuth).
 // Everything else gets the global nav + footer so the whole site is navigable.
 function isBare(pathname: string): boolean {
   return (
     pathname === '/login' ||
     pathname === '/register' ||
     pathname.startsWith('/auth') ||
-    pathname.startsWith('/admin') ||
     pathname === '/apocrypha' ||
-    pathname === '/chat' ||
+    pathname === '/brain' ||
+    pathname.startsWith('/admin') ||
+    pathname === '/clearing' ||
+    pathname.startsWith('/clearing/') ||
     pathname.startsWith('/shawn')
   );
 }
@@ -36,48 +47,51 @@ function isBare(pathname: string): boolean {
 // fallback layers catch errors that escape the React-tree (stage-3
 // defense-in-depth). Idempotent ; Next preserves window across navigations.
 let _global_listeners_attached = false;
+const handleGlobalError = (ev: ErrorEvent): void => {
+  capture('page.error', {
+    message: ev.message ?? 'unknown',
+    source: ev.filename ?? '',
+    line: ev.lineno ?? 0,
+    col: ev.colno ?? 0,
+    stack: ev.error instanceof Error ? (ev.error.stack ?? '').slice(0, 4000) : '',
+  });
+};
+
+const handleGlobalRejection = (ev: PromiseRejectionEvent): void => {
+  const reason = ev.reason;
+  capture('promise.unhandled', {
+    message:
+      reason instanceof Error
+        ? reason.message
+        : typeof reason === 'string'
+          ? reason
+          : JSON.stringify(reason),
+    stack: reason instanceof Error ? (reason.stack ?? '').slice(0, 4000) : '',
+  });
+};
+
 function attachGlobalErrorListeners(): void {
   if (_global_listeners_attached) return;
   if (typeof window === 'undefined') return;
   _global_listeners_attached = true;
+  window.addEventListener('error', handleGlobalError);
+  window.addEventListener('unhandledrejection', handleGlobalRejection);
+}
 
-  window.addEventListener('error', (ev: ErrorEvent) => {
-    capture('page.error', {
-      message: ev.message ?? 'unknown',
-      source: ev.filename ?? '',
-      line: ev.lineno ?? 0,
-      col: ev.colno ?? 0,
-      stack: ev.error instanceof Error ? (ev.error.stack ?? '').slice(0, 4000) : '',
-    });
-  });
-
-  window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
-    const reason = ev.reason;
-    capture('promise.unhandled', {
-      message:
-        reason instanceof Error
-          ? reason.message
-          : typeof reason === 'string'
-            ? reason
-            : JSON.stringify(reason),
-      stack: reason instanceof Error ? (reason.stack ?? '').slice(0, 4000) : '',
-    });
-  });
+function detachGlobalErrorListeners(): void {
+  if (!_global_listeners_attached) return;
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('error', handleGlobalError);
+    window.removeEventListener('unhandledrejection', handleGlobalRejection);
+  }
+  _global_listeners_attached = false;
 }
 
 export default function App({ Component, pageProps }: AppProps): JSX.Element {
   const router = useRouter();
-  const isShawnRoute = router.pathname.startsWith('/shawn');
-  const isClinical = router.pathname.startsWith('/shawn/clinical');
-  useEffect(() => {
-    // The clinical appendix is a telemetry-blackout boundary. A direct load
-    // must not initialize capture, storage, observers, or global listeners.
-    if (isClinical) return;
 
-    // Install once · idempotent. Pull build-time env-vars (Next exposes
-    // anything prefixed NEXT_PUBLIC_ to client). Vercel auto-injects
-    // VERCEL_GIT_COMMIT_SHA + we mirror it to NEXT_PUBLIC_* via next.config.
-    akashicInstall({
+  useEffect(() => {
+    const opts = {
       dpl_id:
         (typeof process !== 'undefined'
           ? process.env['NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID']
@@ -90,37 +104,104 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
         (typeof process !== 'undefined'
           ? process.env['NEXT_PUBLIC_BUILD_TIME']
           : undefined) ?? 'unknown',
-    });
-    attachGlobalErrorListeners();
+    };
 
-    // Drain any errors captured by the early-error inline-script in
-    // _document.tsx (those land in window.__akashic_pre_init).
-    try {
-      const pre = (window as unknown as { __akashic_pre_init?: Array<Record<string, unknown>> })
-        .__akashic_pre_init;
-      if (Array.isArray(pre) && pre.length > 0) {
-        for (const e of pre) {
-          capture('page.error', {
-            message: typeof e['message'] === 'string' ? e['message'] : 'pre-hydrate',
-            source: typeof e['source'] === 'string' ? e['source'] : '',
-            line: typeof e['line'] === 'number' ? e['line'] : 0,
-            col: typeof e['col'] === 'number' ? e['col'] : 0,
-            stack: typeof e['stack'] === 'string' ? e['stack'].slice(0, 4000) : '',
-            phase: 'pre-hydrate', // distinguishes from post-hydrate errors
-          });
-        }
-        (window as unknown as { __akashic_pre_init?: Array<Record<string, unknown>> })
-          .__akashic_pre_init = [];
+    type EarlyWindow = Window & {
+      __akashic_pre_init?: Array<Record<string, unknown>>;
+      __akashic_pre_init_cleanup?: () => void;
+    };
+
+    const cleanupEarlyListeners = (): void => {
+      try {
+        (window as EarlyWindow).__akashic_pre_init_cleanup?.();
+      } catch {
+        // never break user-flow on telemetry cleanup
       }
-    } catch {
-      // never break user-flow on telemetry-bridge
-    }
-  }, [isClinical]);
+    };
+
+    const clearEarlyBuffer = (): void => {
+      try {
+        (window as EarlyWindow).__akashic_pre_init = [];
+      } catch {
+        // never break user-flow on telemetry cleanup
+      }
+    };
+
+    const drainEarlyBuffer = (): void => {
+      const pre = (window as EarlyWindow).__akashic_pre_init;
+      if (!Array.isArray(pre) || pre.length === 0) return;
+      for (const e of pre) {
+        capture('page.error', {
+          message: typeof e['message'] === 'string' ? e['message'] : 'pre-hydrate',
+          source: typeof e['source'] === 'string' ? e['source'] : '',
+          line: typeof e['line'] === 'number' ? e['line'] : 0,
+          col: typeof e['col'] === 'number' ? e['col'] : 0,
+          stack: typeof e['stack'] === 'string' ? e['stack'].slice(0, 4000) : '',
+          phase: 'pre-hydrate',
+        });
+      }
+      clearEarlyBuffer();
+    };
+
+    const suspend = (): void => {
+      cleanupEarlyListeners();
+      clearEarlyBuffer();
+      detachGlobalErrorListeners();
+      akashicDisable();
+    };
+
+    const reconcile = (): boolean => {
+      cleanupEarlyListeners();
+      const active = akashicInstall(opts);
+      if (!active || isTelemetryBlackoutPath()) {
+        clearEarlyBuffer();
+        detachGlobalErrorListeners();
+        return false;
+      }
+      attachGlobalErrorListeners();
+      drainEarlyBuffer();
+      return true;
+    };
+
+    const handleRouteStart = (url: string): void => {
+      if (isTelemetryBlackoutPath(url)) suspend();
+    };
+
+    const handleRouteComplete = (url: string): void => {
+      if (reconcile()) capturePageView(url, 'client');
+    };
+
+    reconcile();
+    window.addEventListener(CONSENT_CHANGE_EVENT, reconcile);
+    router.events.on('routeChangeStart', handleRouteStart);
+    router.events.on('routeChangeComplete', handleRouteComplete);
+    router.events.on('routeChangeError', reconcile);
+
+    return () => {
+      suspend();
+      window.removeEventListener(CONSENT_CHANGE_EVENT, reconcile);
+      router.events.off('routeChangeStart', handleRouteStart);
+      router.events.off('routeChangeComplete', handleRouteComplete);
+      router.events.off('routeChangeError', reconcile);
+    };
+  }, [router.events]);
 
   const bare = isBare(router.pathname);
-  return (
-    <AkashicErrorBoundary>
-      {!isShawnRoute && <AkashicConsent />}
+  const privateBrainSurface = router.pathname === '/apocrypha' || router.pathname === '/brain';
+  const content = (
+    <>
+      {!privateBrainSurface ? (
+        <Head>
+          <link key="apocky-manifest" rel="manifest" href="/manifest.json" />
+          <meta name="application-name" content="Apocky" />
+          <meta name="theme-color" content="#000000" />
+          <meta name="mobile-web-app-capable" content="yes" />
+          <meta name="apple-mobile-web-app-capable" content="yes" />
+          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+          <meta name="apple-mobile-web-app-title" content="Apocky" />
+        </Head>
+      ) : null}
+      <AkashicConsent />
       {bare ? (
         <Component {...pageProps} />
       ) : (
@@ -128,6 +209,11 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
           <Component {...pageProps} />
         </SiteShell>
       )}
+    </>
+  );
+  return (
+    <AkashicErrorBoundary>
+      <SiteSessionProvider><FeedbackProvider>{content}</FeedbackProvider></SiteSessionProvider>
     </AkashicErrorBoundary>
   );
 }

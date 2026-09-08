@@ -10,106 +10,97 @@ const Page: NextPage = () => {
   return (
     <DocsLayout
       activeSlug="substrate"
-      title="Substrate Primitives · Apocky Docs"
-      description="The four primitives every Apocky system shares — ω-field, Σ-mask, KAN, HDC — explained for end users with concrete examples from the LoA engine."
+      title="Technical foundations · Apocky Documentation"
+      description="Plain introductions to four experimental computing ideas used in Apocky source code, followed by technical examples."
     >
-      <h1 className="docs-h1">Substrate Primitives</h1>
-      <p className="docs-blurb">§ ω-field · Σ-mask · KAN · HDC. The trunk every Apocky branch grows from.</p>
-
-      <p className="docs-p">
-        Every Apocky project — Labyrinth of Apocalypse, the Σ-Chain, the Akashic Records, the Mycelial Network —
-        shares one runtime foundation. It is made of four primitives. This page explains them in plain
-        language; the long-form architectural argument lives in the grand-vision specs (the index page links
-        them).
+      <h1 className="docs-h1">Technical foundations</h1>
+      <p className="docs-blurb">
+        Four experimental computing ideas used in project source code, explained before their technical names.
       </p>
 
-      <h2 className="docs-h2">§ ω-field · the addressable manifold</h2>
       <p className="docs-p">
-        The <strong>ω-field</strong> is a typed manifold of values addressed by coordinates rather than by
-        pointers. Think of it as a programmable physics: cells have locations, the relationships between cells
-        are first-class, and the topology can warp continuously.
-      </p>
-      <p className="docs-p">
-        The ω-field is <em>the</em> truth — the master state. Everything else (visible mesh, network sync,
-        analytics surface) is a projection or annotation of cells in the ω-field. This collapses what would
-        normally be three or four independent state stores into one.
-      </p>
-      <p className="docs-p">
-        In the LoA engine, the ω-field stamps every procgen cell at scene-genesis time. When a city in
-        NeverhomeRise spawns 4096+ NPCs, each one has an ω-field address that survives across replays from the
-        same seed.
+        In these projects, <strong>substrate</strong> is an engineering label for shared low-level code and
+        ideas. It means “the computing foundation underneath other parts of the program.” It does not mean the
+        software is a person, a living organism, or an independently operating service.
       </p>
 
-      <h2 className="docs-h2">§ Σ-mask · consent as data</h2>
-      <p className="docs-p">
-        Every cell in the ω-field carries a <strong>Σ-mask</strong>: a bitmask describing which observers may
-        see, read, or write that cell. Σ-masks compose multiplicatively. They are revocable. They are
-        sovereignty made structural.
-      </p>
-      <p className="docs-p">
-        There is no "private mode" toggle. There is no opt-in checkbox bolted onto analytics. The default mask
-        is <strong>deny-all</strong>, and the cell-owner alone can loosen it. When a cell with a deny-all mask
-        is asked to leave the machine, the answer is <code className="docs-ic">EOPNOTSUPP</code> from the cap layer
-        before the data ever reaches a serializer.
-      </p>
-
-      <Callout kind="success" title="What this means for you">
-        Nothing in LoA leaves your machine without an explicit sovereign-cap that you grant. There is no
-        analytics panel, no telemetry phone-home, no first-launch consent dialog because there is nothing to
-        consent to. See <a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>/docs/sovereignty</a>.
+      <Callout kind="warn" title="Implementation status">
+        Source code, tests, a design specification, and a released product are different forms of evidence.
+        This page explains the intended architecture. It does not claim that every item below is active in the
+        public test build or that every privacy property has been independently verified.
       </Callout>
 
-      <h2 className="docs-h2">§ KAN · the small-but-real learning substrate</h2>
+      <h2 className="docs-h2">A coordinate-based state map (ω-field)</h2>
       <p className="docs-p">
-        <strong>KAN</strong> stands for Kolmogorov-Arnold Networks. Functions over the ω-field are parameterized
-        as compositions of univariate splines on the edges of a network. This sounds abstract; it has three
-        concrete consequences:
+        The project uses <strong>ω-field</strong> as a name for an experimental way of organizing simulation
+        data by coordinates and relationships. The Greek letter ω is pronounced “omega.” A technical document
+        may call this an <em>addressable manifold</em>; in plain language, that means a structured space in
+        which each piece of data has a location.
+      </p>
+      <p className="docs-p">
+        The design aims to keep one clearly identified source of simulation state and derive displays or other
+        views from it. Whether a particular game scene uses this system is a release-specific implementation
+        question, not something the name itself proves.
+      </p>
+
+      <h2 className="docs-h2">Permissions stored as bits (Σ-mask)</h2>
+      <p className="docs-p">
+        A <strong>bitmask</strong> is a number whose individual bits act like small on-or-off switches.
+        <strong>Σ-mask</strong> (pronounced “sigma mask”) is the project name for using such switches to
+        represent permissions in code.
+      </p>
+      <p className="docs-p">
+        The design goal is to check a narrow permission before a protected read, write, or network action.
+        A mask in source code is not, by itself, evidence that a complete user-facing consent flow exists.
+      </p>
+
+      <Callout kind="note" title="Permission claims must be tested">
+        For the current distinction between website choices, LoA release statements, and planned controls, see{' '}
+        <a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>Permissions and data sharing</a>.
+      </Callout>
+
+      <h2 className="docs-h2">A compact learning method (KAN)</h2>
+      <p className="docs-p">
+        <strong>KAN</strong> stands for <strong>Kolmogorov-Arnold Network</strong>, a type of mathematical
+        model. The project explores KANs for small, bounded choices in game generation. The intended advantages
+        are:
       </p>
       <ul className="docs-ul">
-        <li>Cheap to evaluate. Fits in <em>kilobytes</em>, not gigabytes. Why LoA ships at 8.9 MB instead of needing a model dump.</li>
-        <li>Cheap to update online. The engine adapts in-loop without retraining cycles.</li>
-        <li>Per-edge interpretability. Every spline edge is a function you can graph and reason about.</li>
+        <li>Small models can be inexpensive to run.</li>
+        <li>Individual mathematical functions can be inspected and graphed.</li>
+        <li>A fixed rule can remain available when a learned choice is unavailable or rejected.</li>
       </ul>
       <p className="docs-p">
-        KAN-classifiers are wired at five "swap points" in the procgen pipeline (SP-PG-1 through SP-PG-5):
-        floor-template pick, biome-grammar tune, creature-spawn mix, loot-affix bias, city-NPC routine skew.
-        Each swap point has a <em>stage-0 always-fallback</em> table-lookup, so KAN never takes over the world —
-        it nudges the table.
+        Technical notes call those bounded choices <strong>swap points</strong>. A swap point is simply a place
+        where one selection method can be exchanged for another while keeping a fixed fallback.
       </p>
 
-      <h2 className="docs-h2">§ HDC · symbolic communication</h2>
+      <h2 className="docs-h2">High-dimensional computing (HDC)</h2>
       <p className="docs-p">
         <strong>HDC</strong> stands for Hyperdimensional Computing. Cells signal to one another with
-        high-dimensional binary vectors and the operations <em>bind</em>, <em>bundle</em>, and <em>unbind</em>.
-        Picture chemical messengers in mycelium: a cell emits, the topology decides who listens, downstream
-        cells decode by un-binding the relevant key.
+        long patterns of numbers called vectors. Operations can combine those patterns and later compare or
+        separate them. The project explores HDC as a compact way to label and relate information.
       </p>
       <p className="docs-p">
-        HDC is how the substrate <strong>talks to itself</strong> without serializing through a central
-        message-bus. It is also the layer the Mycelial-Network primitives use to carry inter-Home signals,
-        which is how multiplayer in LoA is structured — see{' '}
-        <a href="/docs/mycelium" style={{ color: '#7dd3fc' }}>/docs/mycelium</a>.
+        Architecture documents also propose using HDC in the planned Mycelium network. That proposed use is not
+        a statement that a public multiplayer network is currently running.
       </p>
 
-      <h2 className="docs-h2">§ Why these four together</h2>
+      <h2 className="docs-h2">Why the design combines them</h2>
       <p className="docs-p">
-        Because together they are sufficient to express physics simulation (ω-field + Σ-mask scoping force
-        domains), runtime learning (KAN updating in-loop), distributed messaging (HDC over network edges),
-        cryptographic attestation (Σ-mask as access proof), creative procgen (KAN-driven sampling over the
-        ω-field), and live hotfixing (online KAN updates over deployed instances).
+        The architectural goal is to combine organized simulation state, explicit permissions, bounded learning,
+        and compact representations without forcing every project into unrelated databases or services.
       </p>
       <p className="docs-p">
-        One trunk. Many branches. The substrate evolution memory note records that as of T11, eleven host-side
-        substrate crates have shipped with the keystone <code className="docs-ic">cssl-substrate-omega-field</code>{' '}
-        crate. The substrate is real today, not a future promise.
+        Several source libraries use these names. Their presence in a repository establishes that code exists;
+        it does not alone establish product integration, performance, security, or deployment.
       </p>
 
-      <h2 className="docs-h2">§ Authored in CSSL · the substrate surface</h2>
+      <h2 className="docs-h2">Technical example in CSSL</h2>
       <p className="docs-p">
-        The substrate primitives are surfaced to game-logic through CSSL <code className="docs-ic">extern "C"</code>{' '}
-        declarations against the host-side <code className="docs-ic">cssl-host-*</code> staticlibs. Below is the
-        canonical CSSL surface a scene author writes against — every primitive (ω-field cell, Σ-mask gate,
-        KAN classifier, HDC bind/unbind) is one CSSL function call away:
+        The example below shows how technical source material proposes calling host libraries from CSSL.
+        <code className="docs-ic"> extern "C"</code> means that CSSL expects a compatible function supplied by
+        another compiled library. This is reference material; you can skip it without losing the explanation above.
       </p>
 
       <CodeBlock lang="cssl" caption="The four primitives in one scene-tick · CSSL-authored">{`module com.apocky.loa.systems.substrate_demo
@@ -162,22 +153,17 @@ fn pack_addr(x: i32, y: i32, z: i32) -> u64 {
     (xu << 40) | (yu << 20) | zu
 }`}</CodeBlock>
 
-      <Callout kind="note" title="CSSL-first authoring">
-        Every scene, every system, every per-frame tick in the Engine is authored this way: a CSSL{' '}
-        <code className="docs-ic">extern "C"</code> declaration, an in-CSSL orchestration function, and the
-        host-side staticlib resolves the symbol at compile time via csslc's auto-default-link mechanism. Rust
-        is the bootstrap host for the compiler internals, never the canonical authoring surface for the
-        substrate-using game-logic above. See <a href="/docs/cssl-language" style={{ color: '#7dd3fc' }}>/docs/cssl-language</a>{' '}
-        and <code className="docs-ic">CONTRIBUTING.md § 0</code>.
+      <Callout kind="note" title="Technical scope">
+        The example demonstrates an intended interface. For an introduction to the programming language, see{' '}
+        <a href="/docs/cssl-language" style={{ color: '#7dd3fc' }}>CSSL language overview</a>.
       </Callout>
 
-      <h2 className="docs-h2">§ Where to read more</h2>
+      <h2 className="docs-h2">Where to read more</h2>
       <ul className="docs-ul">
-        <li><a href="/devblog/what-is-the-substrate" style={{ color: '#7dd3fc' }}>devblog · "What is the Substrate?"</a></li>
-        <li><a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>How the Σ-mask shows up at runtime</a></li>
-        <li><a href="/docs/mycelium" style={{ color: '#7dd3fc' }}>How HDC powers the multiplayer mesh</a></li>
-        <li>Spec · <code className="docs-ic">specs/grand-vision/15_UNIFIED_SUBSTRATE.csl</code></li>
-        <li>Spec · <code className="docs-ic">specs/30_SUBSTRATE_v2.csl</code></li>
+        <li><a href="/words" style={{ color: '#7dd3fc' }}>Definitions for technical words and symbols</a></li>
+        <li><a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>Permissions and data sharing</a></li>
+        <li><a href="/docs/mycelium" style={{ color: '#7dd3fc' }}>The planned Mycelium design</a></li>
+        <li>Technical source: <code className="docs-ic">specs/grand-vision/15_UNIFIED_SUBSTRATE.csl</code></li>
       </ul>
 
       <PrevNextNav slug="substrate" />

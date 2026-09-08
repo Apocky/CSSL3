@@ -78,7 +78,7 @@ const INTENTS: IntentRow[] = [
     variant: 'SpontaneousSeed { text }',
     tool: 'world.spontaneous_seed',
     examples: ['spontaneous a sphere', 'seed orb', 'imagine a forest'],
-    notes: '◐ Logged + classified · world-handler is a stub today; returns a "pending" status.',
+    notes: 'Partly implemented. The request is recorded and categorized, but the world-changing action is not implemented and returns "pending".',
   },
   {
     variant: 'Unknown { reason }',
@@ -98,18 +98,16 @@ const Page: NextPage = () => {
   return (
     <DocsLayout
       activeSlug="intents"
-      title="Intent Vocabulary · Apocky Docs"
-      description="The full vocabulary the chat panel and MCP intent.translate tool understand. 12 typed Intent variants, ~30 stage-0 keyword rules, every example you can paste."
+      title="How the game reads requests · Apocky Documentation"
+      description="The twelve kinds of request the current LoA test build can recognize, with phrases you can try."
     >
-      <h1 className="docs-h1">Intent Vocabulary</h1>
-      <p className="docs-blurb">§ 12 typed Intent variants · ~30 stage-0 phrase rules · examples you can paste verbatim.</p>
+      <h1 className="docs-h1">How the game reads requests</h1>
+      <p className="docs-blurb">Twelve kinds of request and examples you can type into the game.</p>
 
       <p className="docs-p">
-        The intent router is a deterministic keyword + phrase classifier (no regex, no allocator beyond the input
-        string) that maps free-form text to one of 12 typed variants of the <code className="docs-ic">Intent</code>{' '}
-        enum. Each variant routes to exactly one MCP tool. The same vocabulary applies to the in-game chat panel,
-        the MCP <code className="docs-ic">intent.translate</code> tool, and any scripted scene that calls{' '}
-        <code className="docs-ic">classify()</code> directly.
+        The game uses fixed keyword and phrase rules to place a request into one of twelve categories. In the
+        source code, a category is called an <code className="docs-ic">Intent</code> variant. The table begins
+        with the technical name and then gives ordinary phrases you can try.
       </p>
 
       <Callout kind="note" title="Source of truth">
@@ -118,12 +116,12 @@ const Page: NextPage = () => {
         re-implementation; both files are kept 1-to-1.
       </Callout>
 
-      <h2 className="docs-h2">§ All 12 variants</h2>
+      <h2 className="docs-h2">All 12 variants</h2>
       <table className="docs-table">
         <thead>
           <tr>
             <th>Variant</th>
-            <th>MCP tool</th>
+            <th>Internal action</th>
             <th>Example phrases</th>
           </tr>
         </thead>
@@ -145,7 +143,7 @@ const Page: NextPage = () => {
         </tbody>
       </table>
 
-      <h2 className="docs-h2">§ Pattern-name vocabulary</h2>
+      <h2 className="docs-h2">Pattern-name vocabulary</h2>
       <p className="docs-p">
         <code className="docs-ic">SetWallPattern</code> and <code className="docs-ic">SetFloorPattern</code> accept these
         ~22 alias-tolerant pattern names. Type either the friendly name or the numeric pattern id.
@@ -154,7 +152,7 @@ const Page: NextPage = () => {
         {PATTERN_NAMES.map((p) => <code key={p} className="docs-ic">{p}</code>)}
       </div>
 
-      <h2 className="docs-h2">§ Material-name vocabulary</h2>
+      <h2 className="docs-h2">Material-name vocabulary</h2>
       <CodeBlock lang="plain" caption="Aliases · alphabetical order is alphabetical-tolerant">{`default | plastic
 wood | oak
 metal | steel | iron
@@ -172,7 +170,7 @@ obsidian | black-glass
 vermillion-lacquer | lacquer | red-lacquer
 white-marble | carrara`}</CodeBlock>
 
-      <h2 className="docs-h2">§ Phrasing notes</h2>
+      <h2 className="docs-h2">Phrasing notes</h2>
       <ul className="docs-ul">
         <li>The classifier lowercases input and splits on whitespace + commas.</li>
         <li>Most rules tolerate filler words (<code className="docs-ic">to</code>, <code className="docs-ic">the</code>, <code className="docs-ic">on</code>, <code className="docs-ic">a</code>).</li>
@@ -181,12 +179,11 @@ white-marble | carrara`}</CodeBlock>
         <li>"go to" and "goto" both teleport.</li>
       </ul>
 
-      <h2 className="docs-h2">§ Forward-looking</h2>
-      <Callout kind="coming-soon" title="Stage-1 KAN + Stage-2 LLM">
-        ◐ Stage-1 (KAN classifier already shipped at <code className="docs-ic">cssl-kan-runtime</code>) drops in by
-        replacing <code className="docs-ic">classify()</code>; the call sites stay identical. Stage-2 (LLM-driven
-        intent extraction via MCP <code className="docs-ic">gm.parse_intent</code>) round-trips for the long-tail of
-        phrasings the rule-base + KAN both miss. Both are sovereign-cap-gated.
+      <h2 className="docs-h2">Forward-looking</h2>
+      <Callout kind="coming-soon" title="Possible later methods">
+        Architecture notes explore a compact mathematical classifier and an outside language model for phrases
+        the fixed rules do not understand. Those methods are not needed for the current list and must not be
+        presented as available without release-specific evidence and a clear network permission.
       </Callout>
 
       <PrevNextNav slug="intents" />

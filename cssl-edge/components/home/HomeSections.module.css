@@ -1,0 +1,15 @@
+/* Intro lockup: on wide stages it is transparent to layout (the identity line keeps its global
+   margins); once the stage collapses, the compact mark and identity line share one row. */
+.lockup { display: contents; }
+.identity { min-width: 0; }
+
+/* Small evidence/support links keep their type size but get a 44px hit area. */
+.textLink { display: inline-flex; align-items: center; min-height: 44px; }
+
+@media (max-width: 940px) {
+  .lockup { display: flex; align-items: center; gap: 16px; margin: 0 0 18px; }
+  .lockup .identity { margin: 0; }
+}
+@media (max-width: 660px) {
+  .lockup { gap: 14px; margin-bottom: 14px; }
+}

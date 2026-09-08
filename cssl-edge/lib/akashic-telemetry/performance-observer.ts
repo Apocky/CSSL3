@@ -9,7 +9,7 @@
 // FID + INP layered via interactive-event listener. Future : import web-vitals
 // pkg if appetite allows ; right now zero-dep.
 
-import { capture } from './client';
+import { _isInit, capture, currentTier, isTelemetryBlackoutPath } from './client';
 
 type AnyPerfEntry = PerformanceEntry & {
   value?: number;
@@ -30,6 +30,8 @@ let cls_session_first_ts = 0;
 let cls_session_last_ts = 0;
 let inp_max = 0;
 let installed = false;
+const observers: PerformanceObserver[] = [];
+const cleanups: Array<() => void> = [];
 
 function observe(types: string[], cb: (e: AnyPerfEntry) => void): PerformanceObserver | null {
   if (typeof PerformanceObserver === 'undefined') return null;
@@ -38,6 +40,7 @@ function observe(types: string[], cb: (e: AnyPerfEntry) => void): PerformanceObs
       for (const e of list.getEntries()) cb(e as AnyPerfEntry);
     });
     po.observe({ entryTypes: types });
+    observers.push(po);
     return po;
   } catch {
     return null;
@@ -62,10 +65,13 @@ function installLCP(): void {
         });
       }
     };
-    document.addEventListener('visibilitychange', () => {
+    const onVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') report();
-    });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', report);
+    cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+    cleanups.push(() => window.removeEventListener('pagehide', report));
   }
 }
 
@@ -110,10 +116,13 @@ function installCLS(): void {
         });
       }
     };
-    document.addEventListener('visibilitychange', () => {
+    const onVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') report();
-    });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', report);
+    cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+    cleanups.push(() => window.removeEventListener('pagehide', report));
   }
 }
 
@@ -149,10 +158,13 @@ function installINP(): void {
         });
       }
     };
-    document.addEventListener('visibilitychange', () => {
+    const onVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') report();
-    });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', report);
+    cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+    cleanups.push(() => window.removeEventListener('pagehide', report));
   }
 }
 
@@ -222,6 +234,7 @@ function getConnectionType(): string {
 export function installPerformanceObservers(): void {
   if (installed) return;
   if (typeof window === 'undefined') return;
+  if (!_isInit() || currentTier() === 'none' || isTelemetryBlackoutPath()) return;
   installed = true;
   installLCP();
   installFCP();
@@ -233,10 +246,18 @@ export function installPerformanceObservers(): void {
   installResourceTiming();
 }
 
-// test-only
-export function _resetPerfForTests(): void {
+export function uninstallPerformanceObservers(): void {
+  for (const observer of observers.splice(0)) observer.disconnect();
+  for (const cleanup of cleanups.splice(0)) cleanup();
   installed = false;
   cls_value = 0;
   cls_session_value = 0;
+  cls_session_first_ts = 0;
+  cls_session_last_ts = 0;
   inp_max = 0;
+}
+
+// test-only
+export function _resetPerfForTests(): void {
+  uninstallPerformanceObservers();
 }
