@@ -253,8 +253,24 @@ export class ApocryphaWorker {
       memory = await this.serializeMemoryOperation(
         () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
       );
-      this.runtime.adapterStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
-      if (memory.results.some((result) => result.state !== 'ok')) this.runtime.adapterProbeAt = null;
+      const retrievalStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
+      if (memory.results.every((result) => result.state === 'ok')) {
+        this.runtime.adapterStates = retrievalStates;
+      } else {
+        // A turn-scoped read can time out on a large corpus without making the
+        // resident faculty unavailable. Preserve the last completed operational
+        // probe for admission/readiness and surface the partial read separately.
+        const failed = memory.results
+          .filter((result) => result.state !== 'ok')
+          .map((result) => `${result.name}:${result.state}`)
+          .join(', ');
+        this.recordError('MEMORY_READ_PARTIAL', failed || 'one or more memory readers returned no records');
+        log('warn', 'worker.memory_read.partial', {
+          job_id: claim.jobId,
+          attempt_id: claim.attemptId,
+          adapter_states: retrievalStates,
+        });
+      }
       if (abortController.signal.aborted) throw abortController.signal.reason;
       this.runtime.phase = 'generating';
       let buffer = '';

@@ -13,6 +13,14 @@ export const MEM_PALACE_POLICY_PATH = fileURLToPath(
   new URL('./mempalace-read-policy.cssl', import.meta.url),
 );
 
+// MemPalace's resident HTTP process exposes a constant-time liveness route.
+// The immutable Chroma corpus is several gigabytes and its native FTS query
+// can legitimately exceed the worker's short readiness budget.  Readiness
+// must answer whether the resident reader is reachable; a later bounded query
+// still reports its own timeout and never turns that liveness check into a
+// false outage for every other memory faculty.
+const MEM_PALACE_HEALTH_URL = 'http://127.0.0.1:8766/healthz';
+
 export function nativeMemPalaceProcessArgs(): string[] {
   return ['framed', '--policy', MEM_PALACE_POLICY_PATH];
 }
@@ -245,17 +253,16 @@ class NativeMemPalaceAdapter implements ReadOnlyAdapter {
       return { state: 'unavailable', detail: 'native reader, database, or privacy partition absent' };
     }
     try {
-      const payload = await this.search(probeRequest(this.config), signal) as Record<string, unknown>;
-      return nativeMemPalaceResultHealthy(payload)
-        ? {
-            state: 'ready',
-            detail: String(payload.status ?? '').toLowerCase() === 'empty'
-              ? 'immutable native query verified with zero records'
-              : 'immutable native query verified',
-          }
-        : { state: 'unavailable', detail: 'immutable native query returned degraded state' };
+      const response = await fetch(MEM_PALACE_HEALTH_URL, {
+        method: 'GET',
+        headers: { accept: 'text/plain' },
+        signal,
+      });
+      return response.ok
+        ? { state: 'ready', detail: 'resident MemPalace HTTP reader liveness verified' }
+        : { state: 'unavailable', detail: `resident MemPalace health HTTP ${response.status}` };
     } catch {
-      return { state: 'unavailable', detail: 'immutable native query failed' };
+      return { state: 'unavailable', detail: 'resident MemPalace HTTP reader liveness failed' };
     }
   }
 }
@@ -450,7 +457,11 @@ function probeRequest(config: GatewayConfig): SearchRequest {
 
 export function createAdapters(config: GatewayConfig): Map<AdapterName, ReadOnlyAdapter> {
   const result = new Map<AdapterName, ReadOnlyAdapter>();
-  const federatorGate = new SerialReadGate();
+  // The federator is a short-lived, one-request-per-child executable. Keep
+  // the slow Chroma path from queueing the independent observer faculties;
+  // each gate still serializes its own native reader class.
+  const memPalaceGate = new SerialReadGate();
+  const observeGate = new SerialReadGate();
   const brain = config.native;
   const brainConfigured = Boolean(brain.brainmonsoonExecutable && brain.brainmonsoonExecutableSha256
     && brain.brainmonsoonRegistry && brain.brainmonsoonRegistrySha256
@@ -468,7 +479,7 @@ export function createAdapters(config: GatewayConfig): Map<AdapterName, ReadOnly
   result.set('mempalace', config.upstreams.mempalace
     ? new UpstreamAdapter('mempalace', config.upstreams.mempalace, config.limits.responseBytes * 4)
     : config.native.federatorExecutable && config.native.mempalaceDb && config.native.privacyPartition
-      ? new NativeMemPalaceAdapter(config, federatorGate) : new UnconfiguredAdapter('mempalace'));
+      ? new NativeMemPalaceAdapter(config, memPalaceGate) : new UnconfiguredAdapter('mempalace'));
   result.set('graphify', config.upstreams.graphify
     ? new UpstreamAdapter('graphify', config.upstreams.graphify, config.limits.responseBytes * 4)
     : config.native.graphExecutable && config.native.graphPath && config.native.graphCsl && config.native.graphNil && config.native.graphCssl
@@ -477,7 +488,7 @@ export function createAdapters(config: GatewayConfig): Map<AdapterName, ReadOnly
     result.set(name, config.upstreams[name]
       ? new UpstreamAdapter(name, config.upstreams[name] as NonNullable<GatewayConfig['upstreams'][AdapterName]>, config.limits.responseBytes * 4)
       : config.native.federatorExecutable && config.native.federatorConfig && config.native.ownerId && config.native.privacyPartition
-        ? new NativeObserveAdapter(name, config, federatorGate) : new UnconfiguredAdapter(name));
+        ? new NativeObserveAdapter(name, config, observeGate) : new UnconfiguredAdapter(name));
   }
   return result;
 }
