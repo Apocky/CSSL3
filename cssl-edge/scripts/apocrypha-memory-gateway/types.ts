@@ -56,6 +56,8 @@ export interface GatewayConfig {
   token: string;
   allowedTenants: ReadonlySet<string>;
   allowedPrincipals: ReadonlySet<string>;
+  allowedOwnerScopes: ReadonlySet<string>;
+  allowedDynamicMemberScopes: ReadonlySet<string>;
   allowedCapabilities: ReadonlySet<string>;
   limits: GatewayLimits;
   native: {

@@ -49,7 +49,10 @@ class FixtureAdapter implements ReadOnlyAdapter {
 function config(timeoutMs = 150): GatewayConfig {
   return {
     host: '127.0.0.1', port: 19_127, token: 'test-gateway-token-with-at-least-32-bytes',
-    allowedTenants: new Set(['tenant-1']), allowedPrincipals: new Set(['principal-1']),
+    allowedTenants: new Set(['chaos-tenant', 'owner-tenant']),
+    allowedPrincipals: new Set(['legacy-principal', 'owner-principal']),
+    allowedOwnerScopes: new Set(['owner-tenant\0owner-principal']),
+    allowedDynamicMemberScopes: new Set(['chaos-tenant\0chaos_tarot_reading']),
     allowedCapabilities: new Set(['apocky_owner_chat', 'chaos_tarot_reading']),
     limits: { bodyBytes: 4_096, queryBytes: 128, responseBytes: 2_048, recordChars: 300, totalChars: 400, maxRecords: 8, timeoutMs },
     native: {}, upstreams: {},
@@ -59,7 +62,7 @@ function config(timeoutMs = 150): GatewayConfig {
 function requestBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     operation: 'search', read_only: true, query: 'Tower and Star', limit: 4,
-    tenant_id: 'tenant-1', principal_id: 'principal-1', capability: 'apocky_owner_chat',
+    tenant_id: 'owner-tenant', principal_id: 'owner-principal', capability: 'apocky_owner_chat',
     memory_manifest_hash: 'a'.repeat(64), ...overrides,
   };
 }
@@ -91,6 +94,36 @@ async function main(): Promise<void> {
     });
   } catch { configRejected = true; }
   assert(configRejected, 'wildcard tenant list admitted');
+  const parsedConfig = loadGatewayConfig({
+    NODE_ENV: 'test',
+    APOCRYPHA_MEMORY_GATEWAY_TOKEN: 'x'.repeat(32),
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS: 'chaos-tenant,owner-tenant',
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_PRINCIPALS: 'legacy-principal,owner-principal',
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_CAPABILITIES: 'apocky_owner_chat,chaos_tarot_reading',
+    APOCRYPHA_MEMORY_GATEWAY_OWNER_SCOPES: 'owner-tenant:owner-principal',
+    APOCRYPHA_MEMORY_GATEWAY_DYNAMIC_MEMBER_SCOPES: 'chaos-tenant:chaos_tarot_reading',
+  });
+  assert(parsedConfig.allowedOwnerScopes.has('owner-tenant\0owner-principal'), 'exact owner scope was not parsed');
+  assert(parsedConfig.allowedDynamicMemberScopes.has('chaos-tenant\0chaos_tarot_reading'),
+    'exact dynamic member scope was not parsed');
+  const chaosOnlyConfig = loadGatewayConfig({
+    NODE_ENV: 'test',
+    APOCRYPHA_MEMORY_GATEWAY_TOKEN: 'x'.repeat(32),
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS: 'chaos-tenant',
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_PRINCIPALS: 'legacy-principal',
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_CAPABILITIES: 'chaos_tarot_reading',
+    APOCRYPHA_MEMORY_GATEWAY_DYNAMIC_MEMBER_SCOPES: 'chaos-tenant:chaos_tarot_reading',
+  });
+  assert(chaosOnlyConfig.allowedOwnerScopes.size === 0, 'unused owner scope was required');
+  const ownerOnlyConfig = loadGatewayConfig({
+    NODE_ENV: 'test',
+    APOCRYPHA_MEMORY_GATEWAY_TOKEN: 'x'.repeat(32),
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS: 'owner-tenant',
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_PRINCIPALS: 'owner-principal',
+    APOCRYPHA_MEMORY_GATEWAY_ALLOWED_CAPABILITIES: 'apocky_owner_chat',
+    APOCRYPHA_MEMORY_GATEWAY_OWNER_SCOPES: 'owner-tenant:owner-principal',
+  });
+  assert(ownerOnlyConfig.allowedDynamicMemberScopes.size === 0, 'unused dynamic-member scope was required');
 
   const adapters = new Map<AdapterName, ReadOnlyAdapter>();
   for (const name of ['mempalace', 'brainmonsoon', 'anamnesis', 'graphify', 'mneme', 'metaharness'] as const) {
@@ -107,7 +140,7 @@ async function main(): Promise<void> {
     const tenant = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({ tenant_id: 'other' })) });
     assert(tenant.status === 403, 'foreign tenant was not denied');
     const publicMember = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
-      principal_id: '40000000-0000-4000-8000-000000000099', capability: 'chaos_tarot_reading',
+      tenant_id: 'chaos-tenant', principal_id: '40000000-0000-4000-8000-000000000099', capability: 'chaos_tarot_reading',
     })) });
     assert(publicMember.status === 200, 'admitted Chaos tenant UUID principal was denied');
     const publicMemberForeignTenant = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
@@ -115,13 +148,25 @@ async function main(): Promise<void> {
     })) });
     assert(publicMemberForeignTenant.status === 403, 'dynamic principal escaped the admitted tenant');
     const malformedPublicMember = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
-      principal_id: 'public-user', capability: 'chaos_tarot_reading',
+      tenant_id: 'chaos-tenant', principal_id: 'public-user', capability: 'chaos_tarot_reading',
     })) });
     assert(malformedPublicMember.status === 403, 'non-UUID dynamic principal was admitted');
     const ownerOnlyDynamic = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
       principal_id: '40000000-0000-4000-8000-000000000099', capability: 'apocky_owner_chat',
     })) });
     assert(ownerOnlyDynamic.status === 403, 'dynamic principal reached owner-only capability');
+    const crossedOwner = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
+      tenant_id: 'chaos-tenant', principal_id: 'owner-principal', capability: 'apocky_owner_chat',
+    })) });
+    assert(crossedOwner.status === 403, 'owner principal crossed into a different admitted tenant');
+    const legacyOwner = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
+      tenant_id: 'chaos-tenant', principal_id: 'legacy-principal', capability: 'apocky_owner_chat',
+    })) });
+    assert(legacyOwner.status === 403, 'legacy Chaos principal retained owner memory authority');
+    const dynamicInOwnerTenant = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
+      tenant_id: 'owner-tenant', principal_id: '40000000-0000-4000-8000-000000000099', capability: 'chaos_tarot_reading',
+    })) });
+    assert(dynamicInOwnerTenant.status === 403, 'dynamic Chaos principal reached the owner tenant');
     const write = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({ operation: 'write', read_only: false })) });
     assert(write.status === 403, 'write-shaped operation was not denied');
     const extra = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({ method: 'refresh' })) });

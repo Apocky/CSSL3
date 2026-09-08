@@ -15,9 +15,18 @@ const REQUEST_FIELDS = new Set([
 const DYNAMIC_MEMBER_CAPABILITIES = new Set(['chaos_tarot_reading']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-function principalAdmitted(principalId: string, capability: string, config: GatewayConfig): boolean {
-  if (config.allowedPrincipals.has(principalId)) return true;
-  return DYNAMIC_MEMBER_CAPABILITIES.has(capability) && UUID.test(principalId);
+function principalAdmitted(
+  tenantId: string,
+  principalId: string,
+  capability: string,
+  config: GatewayConfig,
+): boolean {
+  if (DYNAMIC_MEMBER_CAPABILITIES.has(capability)) {
+    return config.allowedDynamicMemberScopes.has(`${tenantId}\0${capability}`)
+      && UUID.test(principalId);
+  }
+  return config.allowedPrincipals.has(principalId)
+    && config.allowedOwnerScopes.has(`${tenantId}\0${principalId}`);
 }
 
 export function isLoopbackAddress(address: string | undefined): boolean {
@@ -58,7 +67,7 @@ export function validateSearchRequest(value: unknown, config: GatewayConfig): Se
   const capability = body.capability as string;
   if (!config.allowedTenants.has(tenantId)) throw new GatewayError(403, 'TENANT_DENIED');
   if (!config.allowedCapabilities.has(capability)) throw new GatewayError(403, 'CAPABILITY_DENIED');
-  if (!principalAdmitted(principalId, capability, config)) throw new GatewayError(403, 'PRINCIPAL_DENIED');
+  if (!principalAdmitted(tenantId, principalId, capability, config)) throw new GatewayError(403, 'PRINCIPAL_DENIED');
   if (body.memory_manifest_hash !== undefined
     && (typeof body.memory_manifest_hash !== 'string' || !/^[a-f0-9]{64}$/u.test(body.memory_manifest_hash))) {
     throw new GatewayError(400, 'MANIFEST_HASH_INVALID');

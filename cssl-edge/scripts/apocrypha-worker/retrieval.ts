@@ -316,7 +316,9 @@ export async function retrieveMemory(
   const records = results.flatMap((result) => result.records).slice(0, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),
-    probedAt: completedProbeAt(config, env, results),
+    // A job exercises only its own tenant/principal scope. It cannot certify
+    // every configured readiness scope for the resident node.
+    probedAt: null,
   };
 }
 
@@ -325,32 +327,55 @@ export async function probeMemoryAdapters(
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle | null> {
-  if (!config.memoryProbeTenantId) return null;
-  const job: ClaimedJob = {
-    jobId: '00000000-0000-4000-8000-000000000000',
-    attemptId: '00000000-0000-4000-8000-000000000000',
-    attemptNo: 0,
-    leaseEpoch: 0,
-    leaseToken: '',
-    leaseExpiresAt: new Date(0).toISOString(),
-    tenantId: config.memoryProbeTenantId,
-    ownerPrincipalId: config.memoryProbePrincipalId,
-    kind: 'operational_probe',
-    capability: config.memoryProbeCapability,
-    request: { retrieval_query: 'resident adapter operational health' },
-    modelAlias: config.modelAlias,
-    profileHash: config.profileHash,
-    toolRegistryVersion: config.toolRegistryVersion,
-    memoryManifestHash: config.memoryManifestHash,
-  };
-  const query = queryFromJob(job);
-  const settled = await invokeAdaptersBounded(config,
-    (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1));
-  const results = settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
-    name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
-    state: 'error', durationMs: 0, records: [],
-    detail: result.reason instanceof Error ? result.reason.message : 'adapter probe failed',
-  }));
+  const scopes = [
+    ...(config.memoryProbeTenantId ? [{
+      tenantId: config.memoryProbeTenantId,
+      principalId: config.memoryProbePrincipalId,
+      capability: config.memoryProbeCapability,
+    }] : []),
+    ...(config.memoryAdditionalProbeScopes ?? []),
+  ];
+  if (scopes.length === 0) return null;
+  const scopedResults: RetrievalAdapterResult[][] = [];
+  for (const [scopeIndex, scope] of scopes.entries()) {
+    const job: ClaimedJob = {
+      jobId: '00000000-0000-4000-8000-000000000000',
+      attemptId: '00000000-0000-4000-8000-000000000000',
+      attemptNo: 0,
+      leaseEpoch: 0,
+      leaseToken: '',
+      leaseExpiresAt: new Date(0).toISOString(),
+      tenantId: scope.tenantId,
+      ownerPrincipalId: scope.principalId,
+      kind: 'operational_probe',
+      capability: scope.capability,
+      request: { retrieval_query: 'resident adapter operational health' },
+      modelAlias: config.modelAlias,
+      profileHash: config.profileHash,
+      toolRegistryVersion: config.toolRegistryVersion,
+      memoryManifestHash: config.memoryManifestHash,
+    };
+    const query = queryFromJob(job);
+    const settled = await invokeAdaptersBounded(config,
+      (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1));
+    scopedResults.push(settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
+      name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
+      state: 'error', durationMs: 0, records: [],
+      detail: `probe scope ${scopeIndex + 1}: ${result.reason instanceof Error ? result.reason.message : 'adapter probe failed'}`,
+    })));
+  }
+  const results = config.manifest.memory.adapters.map((adapter, index): RetrievalAdapterResult => {
+    const scoped = scopedResults.map((items) => items[index]).filter((item): item is RetrievalAdapterResult => Boolean(item));
+    const failure = scoped.find((item) => item.state !== 'ok');
+    return {
+      name: adapter.name,
+      state: failure?.state ?? 'ok',
+      durationMs: scoped.reduce((total, item) => total + item.durationMs, 0),
+      records: scoped.flatMap((item) => item.records).slice(0, 2),
+      ...(failure?.detail ? { detail: failure.detail } : {}),
+    };
+  });
+  const query = 'resident adapter operational health';
   const records = results.flatMap((result) => result.records).slice(0, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),

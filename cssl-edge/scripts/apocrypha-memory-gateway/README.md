@@ -35,11 +35,12 @@ existing worker envelope:
 ```
 
 The closed tenant and capability lists remain mandatory. Owner-only requests
-also require an exact principal allowlist match. `chaos_tarot_reading` admits a
-canonical UUID principal inside the admitted Chaos tenant so new members do not
-require a gateway restart. Native request identifiers bind an opaque digest of
-tenant, principal, and capability; raw identities are never placed on child
-process command lines or returned in records.
+also require an exact `tenant_id:principal_id` scope pair and principal
+allowlist match. Dynamic `chaos_tarot_reading` members require a canonical UUID
+principal plus an exact `tenant_id:capability` scope, so a member cannot cross
+from the Chaos tenant into another admitted tenant. Native request identifiers
+bind an opaque digest of tenant, principal, and capability; raw identities are
+never placed on child process command lines or returned in records.
 
 Responses contain only bounded `records` with opaque provenance, text, and
 allowlisted scalar metadata. They always state `authority: none`,

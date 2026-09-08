@@ -3,9 +3,9 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { loadManifest, memoryManifestHash } from '../scripts/apocrypha-worker/config';
+import { loadConfig, loadManifest, memoryManifestHash } from '../scripts/apocrypha-worker/config';
 import { AttemptJournal } from '../scripts/apocrypha-worker/journal';
-import { probeMemoryAdapters } from '../scripts/apocrypha-worker/retrieval';
+import { probeMemoryAdapters, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
 import { ApocryphaWorker } from '../scripts/apocrypha-worker/worker';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
@@ -102,10 +102,22 @@ function claimedJob(workerConfig: WorkerConfig): ClaimedJob {
 }
 
 async function main(): Promise<void> {
+  const parsedConfig = loadConfig({
+    NODE_ENV: 'test',
+    APOCRYPHA_CONTROL_PLANE_URL: 'https://example.test',
+    APOCRYPHA_WORKER_NODE_ID: '55555555-5555-4555-8555-555555555555',
+    APOCRYPHA_WORKER_TOKEN: 'test-worker-token',
+    APOCRYPHA_MEMORY_ADDITIONAL_PROBE_SCOPES:
+      '66666666-6666-4666-8666-666666666666:77777777-7777-4777-8777-777777777777:apocky_owner_chat',
+  }, []);
+  assert(parsedConfig.memoryAdditionalProbeScopes?.[0]?.capability === 'apocky_owner_chat',
+    'loadConfig did not parse the additional owner readiness scope');
   const journalDir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-test-'));
   const qwenRequests: Array<Record<string, unknown>> = [];
   let activeMemoryRequests = 0;
   let peakMemoryRequests = 0;
+  const memoryScopesSeen = new Set<string>();
+  let denyOwnerProbeScope = false;
   const output = 'The Tower names the break already underway; the Star asks what remains worth carrying through it. '.repeat(5);
   const qwen = await listen(async (request, response) => {
     if (request.url === '/health') return json(response, 200, { status: 'ok' });
@@ -115,10 +127,16 @@ async function main(): Promise<void> {
       peakMemoryRequests = Math.max(peakMemoryRequests, activeMemoryRequests);
       const received = await body(request);
       assert(received.read_only === true, 'memory request was not read-only');
+      memoryScopesSeen.add(`${String(received.tenant_id)}:${String(received.principal_id)}:${String(received.capability)}`);
       assert([
         '30000000-0000-4000-8000-000000000001',
         '11111111-1111-4111-8111-111111111111',
+        '33333333-3333-4333-8333-333333333333',
       ].includes(String(received.tenant_id)), 'memory request lost tenant boundary');
+      if (denyOwnerProbeScope && received.tenant_id === '33333333-3333-4333-8333-333333333333') {
+        activeMemoryRequests -= 1;
+        return json(response, 403, { error: 'TENANT_DENIED', read_only: true });
+      }
       await new Promise((resolve) => setTimeout(resolve, 20));
       activeMemoryRequests -= 1;
       return json(response, 200, { records: [{ id: 'tarot:tower-star', text: 'The Tower and Star pair disruption with chosen renewal.' }] });
@@ -231,11 +249,31 @@ async function main(): Promise<void> {
 
     const probeEnv: NodeJS.ProcessEnv = { ...env };
     for (const adapter of workerConfig.manifest.memory.adapters) probeEnv[adapter.urlEnv] = `${qwen.url}/memory`;
-    const operationalProbe = await probeMemoryAdapters(workerConfig, probeEnv);
+    const dualScopeConfig: WorkerConfig = {
+      ...workerConfig,
+      memoryAdditionalProbeScopes: [{
+        tenantId: '33333333-3333-4333-8333-333333333333',
+        principalId: '44444444-4444-4444-8444-444444444444',
+        capability: 'apocky_owner_chat',
+      }],
+    };
+    const successfulChaosRead = await retrieveMemory(dualScopeConfig, claimedJob(workerConfig), probeEnv);
+    assert(successfulChaosRead.results.every((result) => result.state === 'ok') && successfulChaosRead.probedAt === null,
+      'successful single-scope Chaos job minted global adapter freshness');
+    const operationalProbe = await probeMemoryAdapters(dualScopeConfig, probeEnv);
     assert(operationalProbe?.probedAt !== null, 'five real adapter reads did not mint probe freshness');
     assert(operationalProbe?.results.length === 5 && operationalProbe.results.every((result) => result.state === 'ok'),
       'periodic adapter probe did not report all five runtime states');
     assert(peakMemoryRequests === 1, 'bounded adapter scheduler allowed overlapping memory reads');
+    assert(memoryScopesSeen.has('11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:chaos_tarot_reading'),
+      'primary Chaos readiness scope was not probed');
+    assert(memoryScopesSeen.has('33333333-3333-4333-8333-333333333333:44444444-4444-4444-8444-444444444444:apocky_owner_chat'),
+      'additional Apocky owner readiness scope was not probed');
+    denyOwnerProbeScope = true;
+    const deniedOwnerProbe = await probeMemoryAdapters(dualScopeConfig, probeEnv);
+    assert(deniedOwnerProbe?.probedAt === null && deniedOwnerProbe?.results.every((result) => result.state === 'denied'),
+      'denied Apocky owner scope left the memory rail falsely healthy');
+    denyOwnerProbeScope = false;
     const failedProbeEnv = { ...probeEnv, APOCRYPHA_GRAPHIFY_READ_URL: `${qwen.url}/unconfigured` };
     const failedProbe = await probeMemoryAdapters(workerConfig, failedProbeEnv);
     assert(failedProbe?.probedAt === null, 'failed adapter result minted fresh operational evidence');

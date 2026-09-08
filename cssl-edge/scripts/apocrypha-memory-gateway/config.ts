@@ -26,6 +26,62 @@ function allowlist(env: NodeJS.ProcessEnv, name: string): ReadonlySet<string> {
   return new Set(values);
 }
 
+function ownerScopes(
+  env: NodeJS.ProcessEnv,
+  allowedTenants: ReadonlySet<string>,
+  allowedPrincipals: ReadonlySet<string>,
+  allowedCapabilities: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const name = 'APOCRYPHA_MEMORY_GATEWAY_OWNER_SCOPES';
+  if (!env[name]?.trim()) {
+    if (allowedCapabilities.has('apocky_owner_chat')) throw new Error(`${name} is required`);
+    return new Set();
+  }
+  const scopes = allowlist(env, name);
+  const result = new Set<string>();
+  for (const scope of scopes) {
+    const parts = scope.split(':');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      throw new Error(`${name} entries must use tenant_id:principal_id`);
+    }
+    const [tenantId, principalId] = parts as [string, string];
+    if (!allowedTenants.has(tenantId) || !allowedPrincipals.has(principalId)) {
+      throw new Error(`${name} entries must reference admitted tenants and principals`);
+    }
+    result.add(`${tenantId}\0${principalId}`);
+  }
+  return result;
+}
+
+function dynamicMemberScopes(
+  env: NodeJS.ProcessEnv,
+  allowedTenants: ReadonlySet<string>,
+  allowedCapabilities: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const name = 'APOCRYPHA_MEMORY_GATEWAY_DYNAMIC_MEMBER_SCOPES';
+  if (!env[name]?.trim()) {
+    if (allowedCapabilities.has('chaos_tarot_reading')) throw new Error(`${name} is required`);
+    return new Set();
+  }
+  const scopes = allowlist(env, name);
+  const result = new Set<string>();
+  for (const scope of scopes) {
+    const parts = scope.split(':');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      throw new Error(`${name} entries must use tenant_id:capability`);
+    }
+    const [tenantId, capability] = parts as [string, string];
+    if (!allowedTenants.has(tenantId) || !allowedCapabilities.has(capability)) {
+      throw new Error(`${name} entries must reference admitted tenants and capabilities`);
+    }
+    if (capability !== 'chaos_tarot_reading') {
+      throw new Error(`${name} may only admit the Chaos member capability`);
+    }
+    result.add(`${tenantId}\0${capability}`);
+  }
+  return result;
+}
+
 function absolutePath(env: NodeJS.ProcessEnv, name: string): string | undefined {
   const raw = env[name]?.trim();
   if (!raw) return undefined;
@@ -85,13 +141,18 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     const value = env[name]?.trim();
     if (value && (value.length > 160 || /[\r\n\0]/u.test(value))) throw new Error(`${name} is invalid`);
   }
+  const allowedTenants = allowlist(env, 'APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS');
+  const allowedPrincipals = allowlist(env, 'APOCRYPHA_MEMORY_GATEWAY_ALLOWED_PRINCIPALS');
+  const allowedCapabilities = allowlist(env, 'APOCRYPHA_MEMORY_GATEWAY_ALLOWED_CAPABILITIES');
   return {
     host,
     port: integer(env, 'APOCRYPHA_MEMORY_GATEWAY_PORT', 19_127, 1_024, 65_535),
     token,
-    allowedTenants: allowlist(env, 'APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS'),
-    allowedPrincipals: allowlist(env, 'APOCRYPHA_MEMORY_GATEWAY_ALLOWED_PRINCIPALS'),
-    allowedCapabilities: allowlist(env, 'APOCRYPHA_MEMORY_GATEWAY_ALLOWED_CAPABILITIES'),
+    allowedTenants,
+    allowedPrincipals,
+    allowedOwnerScopes: ownerScopes(env, allowedTenants, allowedPrincipals, allowedCapabilities),
+    allowedDynamicMemberScopes: dynamicMemberScopes(env, allowedTenants, allowedCapabilities),
+    allowedCapabilities,
     limits: {
       bodyBytes: integer(env, 'APOCRYPHA_MEMORY_GATEWAY_BODY_BYTES', 32_768, 1_024, 131_072),
       queryBytes: integer(env, 'APOCRYPHA_MEMORY_GATEWAY_QUERY_BYTES', 4_000, 64, 8_192),

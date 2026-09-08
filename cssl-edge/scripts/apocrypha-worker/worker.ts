@@ -198,7 +198,7 @@ export class ApocryphaWorker {
       this.runtime.phase = 'retrieving';
       memory = await retrieveMemory(this.config, claim, this.env, this.fetchImpl);
       this.runtime.adapterStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
-      this.runtime.adapterProbeAt = memory.probedAt;
+      if (memory.results.some((result) => result.state !== 'ok')) this.runtime.adapterProbeAt = null;
       if (abortController.signal.aborted) throw abortController.signal.reason;
       this.runtime.phase = 'generating';
       const request = composeQwenRequest(this.config, claim, memory);

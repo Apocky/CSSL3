@@ -84,6 +84,12 @@ export interface MemoryAdapterManifest {
   requiredCapabilities?: string[];
 }
 
+export interface MemoryProbeScope {
+  tenantId: string;
+  principalId: string;
+  capability: string;
+}
+
 export interface WorkerConfig {
   controlPlaneUrl: string;
   nodeId: string;
@@ -115,6 +121,7 @@ export interface WorkerConfig {
   memoryProbeTenantId: string | null;
   memoryProbePrincipalId: string;
   memoryProbeCapability: string;
+  memoryAdditionalProbeScopes?: ReadonlyArray<MemoryProbeScope>;
   once: boolean;
   probeOnly: boolean;
   recoverOnly: boolean;

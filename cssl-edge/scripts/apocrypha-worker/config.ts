@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sha256, stableJson } from './crypto';
-import type { WorkerConfig, WorkerManifest } from './types';
+import type { MemoryProbeScope, WorkerConfig, WorkerManifest } from './types';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +32,34 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
 
 function firstCsv(value: string | undefined): string | null {
   return value?.split(',').map((item) => item.trim()).find(Boolean) ?? null;
+}
+
+function additionalProbeScopes(
+  env: NodeJS.ProcessEnv,
+  manifest: WorkerManifest,
+): ReadonlyArray<MemoryProbeScope> {
+  const name = 'APOCRYPHA_MEMORY_ADDITIONAL_PROBE_SCOPES';
+  const raw = env[name]?.trim();
+  if (!raw) return [];
+  const result: MemoryProbeScope[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw.split(',').map((item) => item.trim()).filter(Boolean)) {
+    const parts = entry.split(':');
+    if (parts.length !== 3 || parts.some((part) => !part || /[\r\n\0]/u.test(part))) {
+      throw new Error(`${name} entries must use tenant_id:principal_id:capability`);
+    }
+    const [tenantId, principalId, capability] = parts as [string, string, string];
+    if (tenantId.length > 160 || principalId.length > 160 || capability.length > 128) {
+      throw new Error(`${name} contains an overlong value`);
+    }
+    if (!manifest.capabilities.includes(capability)) {
+      throw new Error(`${name} capability is not admitted by the worker manifest`);
+    }
+    if (seen.has(entry)) continue;
+    seen.add(entry);
+    result.push({ tenantId, principalId, capability });
+  }
+  return result;
 }
 
 function safeUrl(raw: string, label: string, allowLoopbackHttp: boolean): string {
@@ -113,6 +141,7 @@ export function loadConfig(
     memoryProbePrincipalId: env.APOCRYPHA_MEMORY_PROBE_PRINCIPAL_ID?.trim() || required(env, 'APOCRYPHA_WORKER_NODE_ID'),
     memoryProbeCapability: env.APOCRYPHA_MEMORY_PROBE_CAPABILITY?.trim()
       || (manifest.capabilities.includes('chaos_tarot_reading') ? 'chaos_tarot_reading' : manifest.capabilities[0] as string),
+    memoryAdditionalProbeScopes: additionalProbeScopes(env, manifest),
     once: argv.includes('--once'),
     probeOnly: argv.includes('--probe'),
     recoverOnly: argv.includes('--recover-only'),

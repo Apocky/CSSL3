@@ -41,10 +41,12 @@ does not change the admitted faculty, authority, response bound, or manifest;
 it only allows a known local reader enough time to finish.
 
 Every heartbeat performs a bounded live Qwen probe. While idle, the worker
-also performs all five read-only adapter requests at least every 30 seconds.
+also performs all five read-only adapter requests for the primary and every
+additional admitted readiness scope at least every 30 seconds.
 The control plane receives `qwen_healthy`, `qwen_probe_at`, the five exact
 adapter states, and `adapter_probe_at`; the adapter timestamp advances only
-after all five URLs were actually called. Generation heartbeats publish the
+after every adapter returned successfully for every configured scope.
+Generation heartbeats publish the
 bounded generation deadline so readiness can preserve a live long response
 without accepting stale idle evidence.
 
