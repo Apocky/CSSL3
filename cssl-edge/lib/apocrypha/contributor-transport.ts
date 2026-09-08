@@ -16,7 +16,7 @@ import {
   type LeaseInput,
   type PublicKeyInput,
   type ResultEnvelope,
-} from '../../contributor-node/src/runtime.js';
+} from '../../contributor-node/src/runtime';
 
 /**
  * Authenticated controller transport for the local contributor-node runtime.
