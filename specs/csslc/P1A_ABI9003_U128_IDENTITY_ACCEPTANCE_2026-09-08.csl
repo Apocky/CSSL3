@@ -1,0 +1,108 @@
+§ P1A.ABI9003.U128.IDENTITY.ACCEPTANCE @2026-09-08
+
+I> authority := user.authorized.local.compiler.code+tests+commit+push.
+I> scope := exact scalar.u128 identity + constants + internal.call.ABI across
+  MIR → Cranelift.object/JIT/SCF ; Windows.C boundary via explicit {lo:u64,hi:u64}
+  projection ; legacy.native-x64 remains explicit refusal.
+I> base := bd878c1efa1ae2102b60752fe222eb00c19a70a1.
+I> code.commit := 13e436a7c9aefefe3dcc2f4ba47bce4efabadd9b.
+I> code.tree := bd1bbc0198c3612a789f5af50787179ebd22aa80.
+
+§P evidence
+  ✓ MIR admits IntWidth.I128 ; exact size+alignment=16 ; i128/u128 type lowering.
+  ✓ contextual+suffixed literals retain canonical 128-bit text ; full u128.max,
+    i128.min/max accepted ; overflow+signedness/suffix mismatch fail closed.
+  ✓ Cranelift LLVM ABI extension explicitly enabled for object+JIT ; i128 constants
+    split into exact low/high i64 limbs then iconcat ; invalid constants fail closed.
+  ✓ private scalar identity object disassembly := input{RCX=lo,RDX=hi}
+    → output{RAX=lo,RDX=hi}; call relocations bind identity+cross-call symbols.
+  ✓ JIT identity vectors := {0,low-only,high-only,mixed,max} exact.
+  ✓ SCF type dispatch maps MIR.I128→CLIF.I128.
+  ✓ legacy.native-x64 maps MIR.I128→None ; csslc emits typed refusal + no object.
+
+  ✓ negative.raw.Windows.C.oracle := direct Clang unsigned.__int128 caller returned
+    900301 @vector0 ; caller passed indirect pointer@RCX + expected result@XMM0 while
+    Cranelift extension consumed {RCX,RDX}+returned{RAX,RDX}.
+  ∴ raw scalar i128/u128 Windows C import/export = ABI-incompatible ; codegen now
+    rejects exact boundary with UnsupportedWindowsCInt128Abi and recommends two-u64.
+  ✓ stable.C.oracle := public lo/hi u64 wrappers reconstruct private u128, execute
+    compiler-generated cross-call, split result ; C caller verified 5 fixed +4096
+    deterministic vectors ×2 limbs = 8202 exact comparisons.
+
+§D accepted.delta
+  1. MIR width/type/layout + exact literal storage.
+  2. Cranelift object/JIT/SCF i128 lowering + strict constant parse/split.
+  3. private scalar identity/cross-call profile probe := 9003→0.
+  4. stable public C membrane := profile_u128_identity_{lo,hi}_v1(u64,u64)->u64.
+  5. raw Windows C i128 import/export refusal ; legacy x64 refusal retained.
+  6. durable focused Python probe harness + freestanding C boundary oracle.
+
+§T verification
+  focused := {
+    MIR.contextual.range+refusal=2/2,
+    MIR.generic.full-u128-call=1/1,
+    Cranelift.u128.object+JIT=2/2,
+    Cranelift.i128.parsers=2/2,
+    Cranelift.Windows-C-refusal=1/1,
+    Cranelift.types+SCF=2/2,
+    native-x64.refusal=1/1,
+    csslc.positive+legacy-refusal=2/2,
+    csslc.Windows-C-refusal=1/1
+  }.
+  regression := {
+    cssl-mir=847/847 + doc.ignored7,
+    cssl-cgen-cpu-cranelift=642/642 + doc.ignored1,
+    cssl-cgen-cpu-x64=518/518,
+    csslc=162/162,
+    total=2169/2169
+  }.
+  profile.focused := 11/11 PASS ; probes={
+    core0,composite0,native-u128-identity0,codec-shift0,unsigned-shift0,
+    u64-cross-call0,record9001,variant9002,known-refusals0,full9001,C-boundary0
+  }.
+  profile.full := inherited.harness@sha256:
+    ddf381a0f7bf8688220721059b3cb17bdf8d288cab37c0d49031d0c4562c9abc
+    + exact in-memory expectation delta {9003:0,9004:0,9005:0}
+    → PASS 22268/22268 ; u128.cases4096 ; codec.cases64 ;
+      profile.id=3cbe4c61a6c3b73dc21ed3c806b4de69cb8f4b3e830729ba4cf030a28dcb1328.
+  artifact.profile.obj := bytes43876 @sha256:
+    2b5092fa0f3145e73ce494176e90ceaa8701dcc8b53382c27feddc56b883a4b7.
+  artifact.C.oracle.obj := bytes1500 @sha256:
+    fe323b7c33c886595b1122f053b099142dea37081ee5d487f1c8bcf3fbe8b759.
+  artifact.linked.dll := bytes38912 @sha256:
+    873f71c8d4114490b16b50c0d208a9b6116754ae01d3171deae7979caebdcde9
+    ; same-path /brepro relink hash exact ; imports0 ; exports32.
+  sources := {
+    profile_probe_v1.cssl@sha256:6fc418ec1890d1537d3d37230792cbeb1b0a7f4e414df53886b8553843850aff,
+    abi9003_u128_c_boundary.c@sha256:ef85f38f14e76559554f1a1d51fade255eaf3bf99c0f6ec49abc7f1e28f50212,
+    abi9003_profile_probe_harness.py@sha256:8f3d6d03f1d78de2953ac30f8b25cb704483f7a5ddaac6df71780cf5dbcae1dd
+  }.
+  lint.strict := BLOCKED_BASELINE ; `cargo clippy ... -D warnings` reports existing
+    unrelated dependency+backend lints ; post-repair scan reports zero diagnostic
+    at ABI9003-added parse/split/lowering lines.
+
+§C verdict
+  ✓ ABI9003 scalar-u128 identity := BOUNDED_ACCEPT_CANDIDATE.
+  ✓ exact claim := private compiler-managed scalar ABI + stable two-u64 Windows-C
+    membrane ; N! raw Windows-C scalar-u128 support.
+  ✗ full.P1a.native.profile := REJECTED ; record9001+variant9002 remain intentional.
+  ○ residual.P1a := native record layout + variant lowering + manifest content-byte
+    binding + canonical codec/multiblock SHA256 + RNG admission + normalization +
+    nonvacuous executable NIL + non-Cranelift backend parity + root independent review
+    + canonical Apocv4 evidence/graph integration.
+  N! merge|deployment|release|training|spend|runtime-cutover authority inferred.
+  N! Apocv4 canonical six mutated.
+  N! graphify-out staged|reverted ; 3800 foreign status entries preserved untouched.
+
+strongest.countercase := LLVM-extension internal ABI may drift with Cranelift/Rust
+  upgrades and does not prove arithmetic/aggregate/unwind interoperability beyond
+  tested identity+constant+shift+cast call chain.
+falsifier := any high/low permutation mismatch ; raw Windows-C boundary admission ;
+  parser truncation/fallback-zero ; object/JIT disagreement ; 9004|9005 regression ;
+  9001|9002 expectation drift ; import/export leak ; package regression failure.
+rollback := revert code.commit 13e436a7c9aefefe3dcc2f4ba47bce4efabadd9b ;
+  restores ABI9003 explicit profile refusal without touching Graphify or Apocv4.
+
+attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
