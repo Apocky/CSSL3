@@ -10,20 +10,11 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(`assert failed : ${message}`);
 }
 
-export function testConversationLifecycleSurface(): void {
-  for (const token of [
-    'onContextMenu',
-    'aria-haspopup="menu"',
-    'handleMenuKeyDown',
-    'menuTriggerRef',
-    'restoreMenuFocus',
-    'Conversation actions for',
-    "'pin'",
-    "'archive'",
-    "'trash'",
-    "'restore'",
-  ]) {
-    assert(source.includes(token), `conversation lifecycle control missing: ${token}`);
+export function testSupportedConversationSurface(): void {
+  assert(source.includes("/api/admin/apocrypha/conversations?scope=active"), 'durable active history remains visible');
+  assert(source.includes('onClick={() => void loadConv(c.id)}'), 'saved conversations remain selectable');
+  for (const token of ['onContextMenu', 'aria-haspopup="menu"', 'mutateConversation', "method: 'PATCH'", "'archived'", "'trash'"]) {
+    assert(!source.includes(token), `unsupported conversation control must stay hidden: ${token}`);
   }
 }
 
@@ -85,7 +76,7 @@ export function testSettingsSurfaceIsGatedAndPresentationOnly(): void {
   assert(source.includes('model, authority, and security policy remain server-controlled'), 'settings boundary must be explicit');
 }
 
-testConversationLifecycleSurface();
+testSupportedConversationSurface();
 testResponsiveSidebarContract();
 testChatAccessibilityContract();
 testCognitionResponsiveAccessibilityContract();

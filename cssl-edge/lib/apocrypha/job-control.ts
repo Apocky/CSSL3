@@ -51,6 +51,7 @@ export interface ApocryphaJobRow {
   status: ApocryphaJobStatus;
   request: Record<string, unknown>;
   current_attempt_id: string | null;
+  terminal_revision_id?: string | null;
   model_alias: string;
   profile_hash: string;
   tool_registry_version: string;
@@ -60,6 +61,53 @@ export interface ApocryphaJobRow {
   completed_at: string | null;
   error_code: string | null;
   error_detail: string | null;
+}
+
+export interface OwnerChatToolCall {
+  name: string;
+  ok: boolean;
+  elapsed_ms?: number;
+  error?: string | null;
+}
+
+export interface OwnerChatMessage {
+  id: string;
+  role: 'user' | 'apocrypha';
+  text: string;
+  ts_iso: string;
+  tool_trace: OwnerChatToolCall[];
+  truncated?: boolean;
+}
+
+export interface OwnerChatConversationSummary {
+  id: string;
+  title: string;
+  last_active_iso: string;
+  message_count: number;
+  message_count_is_lower_bound: boolean;
+  state: 'active';
+}
+
+export interface OwnerChatConversationList {
+  conversations: OwnerChatConversationSummary[];
+  truncated: boolean;
+  maximum_conversations: number;
+}
+
+export interface OwnerChatConversation {
+  conversation: OwnerChatConversationSummary;
+  messages: OwnerChatMessage[];
+  history_window: {
+    truncated: boolean;
+    row_window_truncated: boolean;
+    maximum_jobs: number;
+    maximum_bytes: number;
+  };
+}
+
+export interface OwnerChatIdempotentJob {
+  job: ApocryphaJobRow;
+  request: Record<string, unknown>;
 }
 
 let serviceClient: SupabaseClient | null | undefined;
@@ -300,6 +348,389 @@ export async function readApocryphaJob(jobId: string, identity: JobIdentity) {
     revisions: revisionsResult.data ?? [],
     events: [...(eventsResult.data ?? [])].reverse(),
   };
+}
+
+const OWNER_CHAT_CONVERSATION_LIMIT = 256;
+const OWNER_CHAT_DETAIL_JOB_LIMIT = 64;
+const OWNER_CHAT_DETAIL_BYTES = 512 * 1024;
+const OWNER_CHAT_HISTORY_MESSAGES = 20;
+const OWNER_CHAT_HISTORY_MESSAGE_BYTES = 10_000;
+const OWNER_CHAT_HISTORY_BYTES = 128 * 1024;
+const OWNER_CHAT_RESPONSE_BYTES = 65_536;
+const OWNER_CHAT_REVISION_QUERY_CHUNK = 8;
+const OWNER_CHAT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+interface OwnerChatJobProjection {
+  id: string;
+  status: ApocryphaJobStatus;
+  request: Record<string, unknown>;
+  terminal_revision_id: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+interface OwnerChatJobRead {
+  jobs: OwnerChatJobProjection[];
+  rowWindowTruncated: boolean;
+}
+
+interface OwnerChatRevisionProjection {
+  id: string;
+  job_id: string;
+  content: string;
+  content_truncated: boolean;
+  provenance: Record<string, unknown> | null;
+  usage: Record<string, unknown> | null;
+  created_at: string;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function ownerChatConversationId(value: unknown): string | null {
+  return typeof value === 'string' && OWNER_CHAT_ID.test(value) ? value.toLowerCase() : null;
+}
+
+function ownerChatJobConversationId(job: Pick<OwnerChatJobProjection, 'id' | 'request'>): string | null {
+  return ownerChatConversationId(job.request.conversation_id) ?? ownerChatConversationId(job.id);
+}
+
+function ownerChatPrompt(request: Record<string, unknown>): string | null {
+  return typeof request.prompt === 'string' && request.prompt.trim()
+    ? request.prompt.trim().slice(0, 32_000)
+    : null;
+}
+
+function utf8Prefix(value: string, maximumBytes: number): string {
+  if (Buffer.byteLength(value, 'utf8') <= maximumBytes) return value;
+  let result = '';
+  let used = 0;
+  for (const character of value) {
+    const bytes = Buffer.byteLength(character, 'utf8');
+    if (used + bytes > maximumBytes) break;
+    result += character;
+    used += bytes;
+  }
+  return result;
+}
+
+function ownerChatToolTrace(value: unknown): OwnerChatToolCall[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 64).flatMap((item): OwnerChatToolCall[] => {
+    const tool = record(item);
+    if (typeof tool.name !== 'string' || !tool.name.trim() || typeof tool.ok !== 'boolean') return [];
+    return [{
+      name: tool.name.trim().slice(0, 160),
+      ok: tool.ok,
+      ...(typeof tool.elapsed_ms === 'number' && Number.isFinite(tool.elapsed_ms)
+        ? { elapsed_ms: Math.max(0, tool.elapsed_ms) }
+        : {}),
+      ...(typeof tool.error === 'string' ? { error: tool.error.slice(0, 500) } : {}),
+    }];
+  });
+}
+
+async function readOwnerChatJobRows(
+  identity: JobIdentity,
+  conversationId: string,
+): Promise<OwnerChatJobRead> {
+  const client = getApocryphaServiceClient();
+  const query = () => client
+    .from('apocrypha_job')
+    .select('id,status,request_prompt:request->>prompt,request_conversation_id:request->>conversation_id,terminal_revision_id,created_at,updated_at,completed_at')
+    .eq('tenant_id', identity.tenantId)
+    .eq('owner_principal_id', identity.principalId)
+    .eq('kind', 'apocky_chat')
+    .eq('capability', 'apocky_owner_chat');
+  const results = await Promise.all([
+    query()
+      .eq('request->>conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(OWNER_CHAT_DETAIL_JOB_LIMIT + 1),
+    query().eq('id', conversationId).limit(1),
+  ]);
+  const failed = results.find((result) => result.error)?.error;
+  if (failed) throw new Error(`OWNER_HISTORY_READ_FAILED:${failed.code ?? 'unknown'}`);
+  const projectRows = (items: unknown[]): OwnerChatJobProjection[] => items.flatMap((item): OwnerChatJobProjection[] => {
+    const row = record(item);
+    const storedRequest = record(row.request);
+    const request = {
+      prompt: typeof row.request_prompt === 'string' ? row.request_prompt : storedRequest.prompt,
+      conversation_id: typeof row.request_conversation_id === 'string'
+        ? row.request_conversation_id
+        : storedRequest.conversation_id,
+    };
+    if (typeof row.id !== 'string'
+      || typeof row.status !== 'string'
+      || typeof row.created_at !== 'string'
+      || typeof row.updated_at !== 'string'
+      || !ownerChatConversationId(row.id)) return [];
+    return [{
+      id: row.id,
+      status: row.status as ApocryphaJobStatus,
+      request,
+      terminal_revision_id: typeof row.terminal_revision_id === 'string' ? row.terminal_revision_id : null,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: typeof row.completed_at === 'string' ? row.completed_at : null,
+    }];
+  });
+  const primaryRows = projectRows(results[0]?.data ?? [])
+    .sort((left, right) => (
+      right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id)
+    ));
+  const legacyRows = projectRows(results[1]?.data ?? []);
+  const primaryIds = new Set(primaryRows.map((job) => job.id));
+  const distinctLegacyRows = legacyRows.filter((job) => !primaryIds.has(job.id)).slice(0, 1);
+  const primaryLimit = OWNER_CHAT_DETAIL_JOB_LIMIT - distinctLegacyRows.length;
+  const rowWindowTruncated = primaryRows.length > primaryLimit;
+  const jobs = [...primaryRows.slice(0, primaryLimit), ...distinctLegacyRows];
+  return { jobs, rowWindowTruncated };
+}
+
+async function readOwnerChatRevisionRows(
+  _identity: JobIdentity,
+  jobs: OwnerChatJobProjection[],
+): Promise<Map<string, OwnerChatRevisionProjection>> {
+  const terminalJobs = jobs.filter((job): job is OwnerChatJobProjection & { terminal_revision_id: string } => (
+    Boolean(job.terminal_revision_id)
+  ));
+  if (terminalJobs.length === 0) return new Map();
+  const client = getApocryphaServiceClient();
+  const revisions = new Map<string, OwnerChatRevisionProjection>();
+  for (let index = 0; index < terminalJobs.length; index += OWNER_CHAT_REVISION_QUERY_CHUNK) {
+    const chunk = terminalJobs.slice(index, index + OWNER_CHAT_REVISION_QUERY_CHUNK);
+    const expectedJobs = new Map(chunk.map((job) => [job.terminal_revision_id, job.id]));
+    const result = await client.rpc('apocrypha_project_owner_chat_revisions', {
+      p_tenant_id: _identity.tenantId,
+      p_owner_principal_id: _identity.principalId,
+      p_job_ids: chunk.map((job) => job.id),
+      p_revision_ids: chunk.map((job) => job.terminal_revision_id),
+    });
+    if (result.error) throw new Error(`OWNER_HISTORY_REVISIONS_FAILED:${result.error.code ?? 'unknown'}`);
+    for (const item of result.data ?? []) {
+      const row = record(item);
+      if (typeof row.id !== 'string'
+        || typeof row.job_id !== 'string'
+        || typeof row.content !== 'string'
+        || typeof row.created_at !== 'string'
+        || expectedJobs.get(row.id) !== row.job_id) continue;
+      revisions.set(row.id, {
+        id: row.id,
+        job_id: row.job_id,
+        content: utf8Prefix(row.content, OWNER_CHAT_RESPONSE_BYTES),
+        content_truncated: row.content_truncated === true
+          || Buffer.byteLength(row.content, 'utf8') > OWNER_CHAT_RESPONSE_BYTES,
+        provenance: Object.keys(record(row.provenance)).length ? record(row.provenance) : null,
+        usage: Object.keys(record(row.usage)).length ? record(row.usage) : null,
+        created_at: row.created_at,
+      });
+    }
+  }
+  return revisions;
+}
+
+function orderedOwnerChatJobs(
+  conversationId: string,
+  jobs: OwnerChatJobProjection[],
+): OwnerChatJobProjection[] {
+  return jobs
+    .filter((job) => ownerChatJobConversationId(job) === conversationId)
+    .sort((left, right) => left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id));
+}
+
+function summarizeOwnerChatConversation(
+  conversationId: string,
+  jobs: OwnerChatJobProjection[],
+  messageCountIsLowerBound = false,
+): OwnerChatConversationSummary | null {
+  const ordered = orderedOwnerChatJobs(conversationId, jobs);
+  if (ordered.length === 0) return null;
+  const firstPrompt = ordered.map((job) => ownerChatPrompt(job.request)).find(Boolean) ?? 'New conversation';
+  const lastActive = ordered.reduce(
+    (latest, job) => latest.localeCompare(job.updated_at) >= 0 ? latest : job.updated_at,
+    ordered[0]?.updated_at ?? ordered[0]?.created_at ?? new Date(0).toISOString(),
+  );
+  return {
+    id: conversationId,
+    title: firstPrompt.replace(/\s+/g, ' ').slice(0, 80),
+    last_active_iso: lastActive,
+    message_count: ordered.reduce((count, job) => (
+      count + (ownerChatPrompt(job.request) ? 1 : 0)
+        + (job.status === 'succeeded' && job.terminal_revision_id ? 1 : 0)
+    ), 0),
+    message_count_is_lower_bound: messageCountIsLowerBound,
+    state: 'active',
+  };
+}
+
+function boundedOwnerChatMessages(
+  conversation: OwnerChatConversationSummary,
+  messages: OwnerChatMessage[],
+  rowWindowTruncated: boolean,
+): { messages: OwnerChatMessage[]; history_window: OwnerChatConversation['history_window'] } {
+  const historyWindow = {
+    truncated: rowWindowTruncated,
+    row_window_truncated: rowWindowTruncated,
+    maximum_jobs: OWNER_CHAT_DETAIL_JOB_LIMIT,
+    maximum_bytes: OWNER_CHAT_DETAIL_BYTES,
+  };
+  const selected: OwnerChatMessage[] = [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = [messages[index]!, ...selected];
+    const projected = { conversation, messages: candidate, history_window: historyWindow };
+    if (Buffer.byteLength(JSON.stringify(projected), 'utf8') > OWNER_CHAT_DETAIL_BYTES) break;
+    selected.unshift(messages[index]!);
+  }
+  if (selected[0]?.role === 'apocrypha') selected.shift();
+  historyWindow.truncated = historyWindow.truncated || selected.length < messages.length;
+  return { messages: selected, history_window: historyWindow };
+}
+
+function projectOwnerChatConversation(
+  conversationId: string,
+  jobs: OwnerChatJobProjection[],
+  revisions: Map<string, OwnerChatRevisionProjection>,
+  rowWindowTruncated: boolean,
+): OwnerChatConversation | null {
+  const ordered = orderedOwnerChatJobs(conversationId, jobs);
+  if (ordered.length === 0) return null;
+  const messages: OwnerChatMessage[] = [];
+  for (const job of ordered) {
+    const prompt = ownerChatPrompt(job.request);
+    if (prompt) messages.push({
+      id: `${job.id}:user`, role: 'user', text: prompt, ts_iso: job.created_at, tool_trace: [],
+    });
+    const revision = job.status === 'succeeded' && job.terminal_revision_id
+      ? revisions.get(job.terminal_revision_id)
+      : undefined;
+    if (revision?.content) messages.push({
+      id: `${job.id}:apocrypha`,
+      role: 'apocrypha',
+      text: revision.content,
+      ts_iso: revision.created_at || job.completed_at || job.updated_at,
+      tool_trace: ownerChatToolTrace(revision.provenance?.tool_calls),
+      truncated: revision.content_truncated,
+    });
+  }
+  const conversation = summarizeOwnerChatConversation(conversationId, ordered, rowWindowTruncated);
+  if (!conversation) return null;
+  const bounded = boundedOwnerChatMessages(conversation, messages, rowWindowTruncated);
+  return {
+    conversation,
+    ...bounded,
+  };
+}
+
+export async function listOwnerChatConversations(identity: JobIdentity): Promise<OwnerChatConversationList> {
+  const client = getApocryphaServiceClient();
+  const { data, error } = await client.rpc('apocrypha_list_owner_chat_conversations', {
+    p_tenant_id: identity.tenantId,
+    p_owner_principal_id: identity.principalId,
+    p_limit: OWNER_CHAT_CONVERSATION_LIMIT + 1,
+  });
+  if (error) throw new Error(`OWNER_HISTORY_LIST_FAILED:${error.code ?? 'unknown'}`);
+  const projected = (data ?? []).flatMap((item: unknown): OwnerChatConversationSummary[] => {
+    const row = record(item);
+    const id = ownerChatConversationId(row.conversation_id);
+    if (!id || typeof row.last_active_iso !== 'string') return [];
+    const rawCount = Number(row.message_count);
+    return [{
+      id,
+      title: typeof row.title === 'string' && row.title.trim()
+        ? row.title.replace(/\s+/g, ' ').slice(0, 80)
+        : 'New conversation',
+      last_active_iso: row.last_active_iso,
+      message_count: Number.isSafeInteger(rawCount) && rawCount >= 0 ? rawCount : 0,
+      message_count_is_lower_bound: false,
+      state: 'active',
+    }];
+  });
+  return {
+    conversations: projected.slice(0, OWNER_CHAT_CONVERSATION_LIMIT),
+    truncated: projected.length > OWNER_CHAT_CONVERSATION_LIMIT,
+    maximum_conversations: OWNER_CHAT_CONVERSATION_LIMIT,
+  };
+}
+
+export async function readOwnerChatIdempotentJob(
+  identity: JobIdentity,
+  conversationId: string,
+  idempotencyKey: string,
+): Promise<OwnerChatIdempotentJob | null> {
+  const normalized = ownerChatConversationId(conversationId);
+  if (!normalized) throw new Error('OWNER_CONVERSATION_ID_INVALID');
+  const client = getApocryphaServiceClient();
+  const { data, error } = await client
+    .from('apocrypha_job')
+    .select('*')
+    .eq('tenant_id', identity.tenantId)
+    .eq('owner_principal_id', identity.principalId)
+    .eq('kind', 'apocky_chat')
+    .eq('capability', 'apocky_owner_chat')
+    .eq('idempotency_scope', `owner-chat:${normalized}`)
+    .eq('idempotency_key', idempotencyKey)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`OWNER_IDEMPOTENCY_READ_FAILED:${error.code ?? 'unknown'}`);
+  if (!data) return null;
+  const job = data as ApocryphaJobRow;
+  return { job, request: record(job.request) };
+}
+
+export async function readOwnerChatConversation(
+  identity: JobIdentity,
+  conversationId: string,
+): Promise<OwnerChatConversation | null> {
+  const normalized = ownerChatConversationId(conversationId);
+  if (!normalized) throw new Error('OWNER_CONVERSATION_ID_INVALID');
+  const { jobs, rowWindowTruncated } = await readOwnerChatJobRows(identity, normalized);
+  const selectedJobs = jobs.filter((job) => ownerChatJobConversationId(job) === normalized);
+  const revisions = await readOwnerChatRevisionRows(identity, selectedJobs);
+  return projectOwnerChatConversation(normalized, selectedJobs, revisions, rowWindowTruncated);
+}
+
+export async function readOwnerChatConversationHistory(
+  identity: JobIdentity,
+  conversationId: string,
+): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
+  const normalized = ownerChatConversationId(conversationId);
+  if (!normalized) throw new Error('OWNER_CONVERSATION_ID_INVALID');
+  const { jobs } = await readOwnerChatJobRows(identity, normalized);
+  const selectedJobs = jobs.filter((job) => ownerChatJobConversationId(job) === normalized);
+  const revisions = await readOwnerChatRevisionRows(identity, selectedJobs);
+  const candidates: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  for (const job of orderedOwnerChatJobs(normalized, selectedJobs)) {
+    const prompt = ownerChatPrompt(job.request);
+    if (prompt) candidates.push({
+      role: 'user',
+      content: utf8Prefix(prompt, OWNER_CHAT_HISTORY_MESSAGE_BYTES),
+    });
+    const revision = job.status === 'succeeded' && job.terminal_revision_id
+      ? revisions.get(job.terminal_revision_id)
+      : undefined;
+    if (revision?.content) candidates.push({
+      role: 'assistant',
+      content: utf8Prefix(revision.content, OWNER_CHAT_HISTORY_MESSAGE_BYTES),
+    });
+  }
+  const recentCandidates = candidates.slice(-OWNER_CHAT_HISTORY_MESSAGES);
+  const selected: typeof recentCandidates = [];
+  let serializedBytes = 2;
+  for (let index = recentCandidates.length - 1; index >= 0; index -= 1) {
+    const candidate = recentCandidates[index]!;
+    const additionalBytes = Buffer.byteLength(JSON.stringify(candidate), 'utf8') + (selected.length ? 1 : 0);
+    if (serializedBytes + additionalBytes > OWNER_CHAT_HISTORY_BYTES) break;
+    selected.unshift(candidate);
+    serializedBytes += additionalBytes;
+  }
+  if (selected[0]?.role === 'assistant') selected.shift();
+  return selected;
 }
 
 const EXTERNAL_JOB_PAGE_SIZE = 256;

@@ -17,6 +17,7 @@ interface ToolCallChip {
 }
 
 interface ChatMessage {
+  id?: string;
   role: 'user' | 'apocrypha';
   text: string;
   ts: Date;
@@ -26,22 +27,17 @@ interface ChatMessage {
   cost_usd?: number;
 }
 
-type ConversationAction = 'pin' | 'unpin' | 'archive' | 'unarchive' | 'trash' | 'restore';
-type ConversationScope = 'active' | 'archived' | 'trash';
-
 interface ConvSummary {
-  id: number;
+  id: string;
   title: string | null;
   last_active_iso: string;
-  version?: number;
-  pinned?: boolean;
-  state?: string;
+  message_count?: number;
 }
 
 interface ConvMessagesResponse {
-  conversation: { id: number; title: string | null; last_active_iso: string };
+  conversation: { id: string; title: string | null; last_active_iso: string };
   messages: Array<{
-    id: number;
+    id: string;
     role: string;
     text: string;
     ts_iso: string;
@@ -59,6 +55,7 @@ interface JobSnapshotResponse {
   job?: {
     id: string;
     status: 'queued' | 'leased' | 'running' | 'cancel_requested' | 'succeeded' | 'failed' | 'cancelled';
+    request?: { conversation_id?: string | null };
     error_code?: string | null;
     error_detail?: string | null;
   };
@@ -74,15 +71,14 @@ interface ActiveJobRecord {
   id: string;
   prompt: string;
   submittedAt: string;
+  conversationId?: string;
 }
 
 const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
 const JOB_POLL_MS = 1_500;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
-const CONVERSATION_MENU_WIDTH = 176;
-const CONVERSATION_MENU_MAX_HEIGHT = 160;
-const VIEWPORT_GUTTER = 8;
 const MUTED_TEXT = '#85859a';
+const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function waitForPoll(signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -99,8 +95,7 @@ function waitForPoll(signal: AbortSignal): Promise<void> {
 
 export function ChatThread() {
   const [convs, setConvs] = useState<ConvSummary[]>([]);
-  const [scope, setScope] = useState<ConversationScope>('active');
-  const [currentConv, setCurrentConv] = useState<number | null>(null);
+  const [currentConv, setCurrentConv] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -113,13 +108,13 @@ export function ChatThread() {
   const [compactViewport, setCompactViewport] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
-  const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const newChatButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  const restoredInitialConversationRef = useRef(false);
+  const hydratedActiveJobRef = useRef<string | null>(null);
+  const activeHydrationRef = useRef<{ jobId: string; promise: Promise<boolean> } | null>(null);
 
   useEffect(() => {
     try {
@@ -128,6 +123,9 @@ export function ChatThread() {
       const recovered = JSON.parse(raw) as ActiveJobRecord;
       if (!recovered?.id || !recovered?.prompt) return;
       setActiveJob(recovered);
+      if (recovered.conversationId && CONVERSATION_ID.test(recovered.conversationId)) {
+        setCurrentConv(recovered.conversationId.toLowerCase());
+      }
       setMessages([{ role: 'user', text: recovered.prompt, ts: new Date(recovered.submittedAt) }]);
       setStreaming(true);
       setStreamingPhase('Reconnected. Apocrypha is continuing this answer…');
@@ -150,31 +148,57 @@ export function ChatThread() {
 
   // ── data loading ──────────────────────────────────────────────
 
-  const loadConvs = useCallback(async (requestedScope: ConversationScope = scope) => {
+  const loadConvs = useCallback(async () => {
     try {
-      const r = await authFetch(`/api/admin/apocrypha/conversations?scope=${requestedScope}`);
+      const r = await authFetch('/api/admin/apocrypha/conversations?scope=active');
+      if (!r.ok) throw new Error(`Conversation history returned ${r.status}.`);
       const env = (await r.json()) as ApocryphaEnvelope<{ conversations: ConvSummary[] }>;
       setConvs(env.data?.conversations ?? []);
-    } catch {
-      /* silent ; sidebar empty is fine */
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Conversation history is unavailable.');
     }
-  }, [scope]);
+  }, []);
 
-  useEffect(() => {
-    void loadConvs();
-  }, [loadConvs]);
-
-  const loadConv = useCallback(async (id: number) => {
+  const loadConv = useCallback(async (id: string, recoveringJob?: ActiveJobRecord) => {
     try {
       const r = await authFetch(`/api/admin/apocrypha/conversations?id=${id}`);
+      if (!r.ok) throw new Error(`Conversation history returned ${r.status}.`);
       const env = (await r.json()) as ApocryphaEnvelope<ConvMessagesResponse>;
       const msgs: ChatMessage[] = (env.data?.messages ?? []).map((m) => ({
+        id: m.id,
         role: m.role === 'apocrypha' ? ('apocrypha' as const) : ('user' as const),
         text: m.text,
         ts: new Date(m.ts_iso),
         toolCalls: m.tool_trace ?? [],
       }));
-      setMessages(msgs);
+      const recoveredPromptId = recoveringJob ? `${recoveringJob.id}:user` : null;
+      const hydratedMessages = recoveringJob && recoveredPromptId
+        && !msgs.some((message) => message.id === recoveredPromptId)
+        ? [...msgs, {
+            id: recoveredPromptId,
+            role: 'user' as const,
+            text: recoveringJob.prompt,
+            ts: new Date(recoveringJob.submittedAt),
+          }]
+        : msgs;
+      setMessages((previous) => {
+        if (!recoveringJob) return hydratedMessages;
+        const activeIds = new Set([
+          `${recoveringJob.id}:user`,
+          `${recoveringJob.id}:apocrypha`,
+        ]);
+        const activeMessagesById = new Map(previous.flatMap((message) => (
+          message.id && activeIds.has(message.id) ? [[message.id, message] as const] : []
+        )));
+        const mergedMessages = hydratedMessages.map((message) => (
+          message.id ? activeMessagesById.get(message.id) ?? message : message
+        ));
+        const knownIds = new Set(mergedMessages.flatMap((message) => message.id ? [message.id] : []));
+        const activeMessagesMissingFromSnapshot = previous.filter((message) => (
+          Boolean(message.id) && activeIds.has(message.id!) && !knownIds.has(message.id!)
+        ));
+        return [...mergedMessages, ...activeMessagesMissingFromSnapshot];
+      });
       setCurrentConv(id);
       setStreamingTools([]);
       setError(null);
@@ -182,10 +206,42 @@ export function ChatThread() {
         setSidebarOpen(false);
         requestAnimationFrame(() => textareaRef.current?.focus());
       }
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     }
   }, [compactViewport]);
+
+  const hydrateActiveConversation = useCallback((conversationId: string, job: ActiveJobRecord): Promise<boolean> => {
+    if (hydratedActiveJobRef.current === job.id) return Promise.resolve(true);
+    if (activeHydrationRef.current?.jobId === job.id) return activeHydrationRef.current.promise;
+    const promise = loadConv(conversationId, { ...job, conversationId }).then((loaded) => {
+      if (loaded) hydratedActiveJobRef.current = job.id;
+      return loaded;
+    }).finally(() => {
+      if (activeHydrationRef.current?.jobId === job.id) activeHydrationRef.current = null;
+    });
+    activeHydrationRef.current = { jobId: job.id, promise };
+    return promise;
+  }, [loadConv]);
+
+  useEffect(() => {
+    void loadConvs();
+  }, [loadConvs]);
+
+  useEffect(() => {
+    if (restoredInitialConversationRef.current || activeJob || currentConv || convs.length === 0) return;
+    restoredInitialConversationRef.current = true;
+    void loadConv(convs[0]!.id);
+  }, [activeJob, convs, currentConv, loadConv]);
+
+  useEffect(() => {
+    if (!activeJob || hydratedActiveJobRef.current === activeJob.id) return;
+    const conversationId = activeJob.conversationId;
+    if (!conversationId || !CONVERSATION_ID.test(conversationId)) return;
+    void hydrateActiveConversation(conversationId.toLowerCase(), activeJob);
+  }, [activeJob, hydrateActiveConversation]);
 
   const newChat = useCallback(() => {
     setMessages([]);
@@ -209,64 +265,6 @@ export function ChatThread() {
     t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
   }, [draft]);
 
-  const restoreMenuFocus = useCallback((origin: HTMLButtonElement | null = menuTriggerRef.current) => {
-    requestAnimationFrame(() => {
-      if (origin?.isConnected) {
-        origin.focus();
-      } else if (newChatButtonRef.current?.isConnected) {
-        newChatButtonRef.current.focus();
-      } else {
-        textareaRef.current?.focus();
-      }
-    });
-  }, []);
-
-  const closeMenu = useCallback((restoreFocus: boolean) => {
-    setMenu(null);
-    if (restoreFocus) restoreMenuFocus();
-  }, [restoreMenuFocus]);
-
-  const openConversationMenu = useCallback((
-    id: number,
-    trigger: HTMLButtonElement,
-    point?: { x: number; y: number },
-  ) => {
-    const rect = trigger.getBoundingClientRect();
-    const desiredX = point?.x ?? rect.right - CONVERSATION_MENU_WIDTH;
-    const desiredY = point?.y ?? rect.bottom + 4;
-    menuTriggerRef.current = trigger;
-    setMenu({
-      id,
-      x: Math.max(VIEWPORT_GUTTER, Math.min(desiredX, window.innerWidth - CONVERSATION_MENU_WIDTH - VIEWPORT_GUTTER)),
-      y: Math.max(VIEWPORT_GUTTER, Math.min(desiredY, window.innerHeight - CONVERSATION_MENU_MAX_HEIGHT - VIEWPORT_GUTTER)),
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!menu) return;
-    const focusFirstItem = requestAnimationFrame(() => {
-      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-    });
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (menuRef.current?.contains(target) || menuTriggerRef.current?.contains(target)) return;
-      closeMenu(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      closeMenu(true);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      cancelAnimationFrame(focusFirstItem);
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [closeMenu, menu]);
-
   const closeCompactSidebar = useCallback(() => {
     setSidebarOpen(false);
     requestAnimationFrame(() => sidebarToggleRef.current?.focus());
@@ -276,7 +274,7 @@ export function ChatThread() {
     if (!compactViewport || !sidebarOpen) return;
     const focusFirstControl = requestAnimationFrame(() => newChatButtonRef.current?.focus());
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || menuRef.current) return;
+      if (event.key !== 'Escape') return;
       event.preventDefault();
       closeCompactSidebar();
     };
@@ -287,32 +285,8 @@ export function ChatThread() {
     };
   }, [closeCompactSidebar, compactViewport, sidebarOpen]);
 
-  const handleMenuKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
-    if (items.length === 0) return;
-    const current = Math.max(0, items.indexOf(document.activeElement as HTMLButtonElement));
-    let next: number | null = null;
-    if (event.key === 'ArrowDown') next = (current + 1) % items.length;
-    else if (event.key === 'ArrowUp') next = (current - 1 + items.length) % items.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = items.length - 1;
-    else if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      closeMenu(true);
-      return;
-    } else if (event.key === 'Tab') {
-      event.preventDefault();
-      closeMenu(true);
-      return;
-    }
-    if (next == null) return;
-    event.preventDefault();
-    items[next]?.focus();
-  }, [closeMenu]);
-
   const handleSidebarKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-    if (!compactViewport || event.key !== 'Tab' || menuRef.current) return;
+    if (!compactViewport || event.key !== 'Tab') return;
     const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
       'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
     )).filter((control) => control.getClientRects().length > 0);
@@ -327,35 +301,6 @@ export function ChatThread() {
       first?.focus();
     }
   }, [compactViewport]);
-
-  const mutateConversation = useCallback(async (action: ConversationAction) => {
-    if (!menu) return;
-    const target = convs.find((c) => c.id === menu.id);
-    const origin = menuTriggerRef.current;
-    if (!target || target.version == null) {
-      setError('Conversation state is stale; reload the list and try again.');
-      setMenu(null);
-      restoreMenuFocus(origin);
-      return;
-    }
-    setMenu(null);
-    try {
-      const r = await authFetch('/api/admin/apocrypha/conversations', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, expected_version: target.version }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      await loadConvs(scope);
-      if (action === 'archive' || action === 'trash' || action === 'restore' || action === 'unarchive') {
-        if (currentConv === target.id) newChat();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      restoreMenuFocus(origin);
-    }
-  }, [convs, currentConv, loadConvs, menu, newChat, restoreMenuFocus, scope]);
 
   useEffect(() => {
     if (!activeJob) return;
@@ -380,8 +325,20 @@ export function ChatThread() {
             .join('');
           const revision = snapshot.revisions?.[0];
           const visibleText = revision?.content || partial;
+          const snapshotConversationId = activeJob.conversationId
+            ?? snapshot.job.request?.conversation_id
+            ?? snapshot.job.id;
+          const normalizedConversationId = snapshotConversationId && CONVERSATION_ID.test(snapshotConversationId)
+            ? snapshotConversationId.toLowerCase()
+            : null;
           if (!disposed) {
             setError(null);
+            if (normalizedConversationId) {
+              setCurrentConv(normalizedConversationId);
+              if (snapshot.job.status !== 'succeeded') {
+                void hydrateActiveConversation(normalizedConversationId, activeJob);
+              }
+            }
             setStreamingText(visibleText);
             setStreamingPhase(snapshot.job.status === 'queued'
               ? 'Accepted. Waiting for the local Qwen node…'
@@ -392,15 +349,25 @@ export function ChatThread() {
                   : 'Apocrypha is composing the answer…');
           }
           if (snapshot.job.status === 'succeeded') {
+            if (normalizedConversationId && !disposed) {
+              const hydrated = await hydrateActiveConversation(normalizedConversationId, activeJob);
+              if (!hydrated) await hydrateActiveConversation(normalizedConversationId, activeJob);
+            }
             if (!disposed) {
-              setMessages((previous) => [...previous, {
-                role: 'apocrypha',
-                text: visibleText || 'Apocrypha completed the thought without words.',
-                ts: new Date(),
-                toolCalls: revision?.provenance?.tool_calls ?? [],
-                elapsed_s: revision?.usage?.elapsed_s,
-                cost_usd: revision?.usage?.total_cost_usd,
-              }]);
+              setMessages((previous) => {
+                const completed: ChatMessage = {
+                  id: `${activeJob.id}:apocrypha`,
+                  role: 'apocrypha',
+                  text: visibleText || 'Apocrypha completed the thought without words.',
+                  ts: new Date(),
+                  toolCalls: revision?.provenance?.tool_calls ?? [],
+                  elapsed_s: revision?.usage?.elapsed_s,
+                  cost_usd: revision?.usage?.total_cost_usd,
+                };
+                const existingIndex = previous.findIndex((message) => message.id === completed.id);
+                if (existingIndex < 0) return [...previous, completed];
+                return previous.map((message, index) => index === existingIndex ? completed : message);
+              });
               setStreamingText('');
               setStreamingTools([]);
               setStreaming(false);
@@ -436,7 +403,7 @@ export function ChatThread() {
       disposed = true;
       controller.abort();
     };
-  }, [activeJob, loadConvs]);
+  }, [activeJob, hydrateActiveConversation, loadConvs]);
 
   const handleSend = useCallback(async () => {
     const text = draft.trim();
@@ -449,6 +416,7 @@ export function ChatThread() {
     setStreaming(true);
     setStreamingPhase('Saving your message…');
     try {
+      const conversationId = currentConv ?? window.crypto.randomUUID();
       const idempotencyKey = window.crypto.randomUUID();
       const response = await authFetch('/api/admin/apocrypha/jobs', {
         method: 'POST',
@@ -456,16 +424,28 @@ export function ChatThread() {
         credentials: 'include',
         body: JSON.stringify({
           prompt: text,
-          conversation_id: currentConv == null ? null : String(currentConv),
+          conversation_id: conversationId,
           output_budget: 2048,
           response_mode: text.length > 1200 ? 'deep' : 'standard',
           idempotency_key: idempotencyKey,
         }),
       });
-      const payload = await response.json().catch(() => null) as { job?: { id?: string }; error?: string } | null;
-      if (!response.ok || !payload?.job?.id) throw new Error(payload?.error ?? `Request was not accepted (${response.status}).`);
-      const record: ActiveJobRecord = { id: payload.job.id, prompt: text, submittedAt: new Date().toISOString() };
+      const payload = await response.json().catch(() => null) as {
+        conversation_id?: string;
+        job?: { id?: string };
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.job?.id || payload.conversation_id !== conversationId) {
+        throw new Error(payload?.error ?? `Request was not accepted (${response.status}).`);
+      }
+      const record: ActiveJobRecord = {
+        id: payload.job.id,
+        prompt: text,
+        submittedAt: new Date().toISOString(),
+        conversationId,
+      };
       window.localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(record));
+      setCurrentConv(conversationId);
       setActiveJob(record);
       setStreamingPhase('Accepted. Waiting for the local Qwen node…');
     } catch (sendError) {
@@ -493,15 +473,6 @@ export function ChatThread() {
       void handleSend();
     }
   }, [handleSend]);
-
-  const menuTarget = menu ? convs.find((conversation) => conversation.id === menu.id) : undefined;
-  const menuActions: ConversationAction[] = !menuTarget
-    ? []
-    : scope === 'active'
-      ? [menuTarget.pinned ? 'unpin' : 'pin', 'archive', 'trash']
-      : scope === 'archived'
-        ? ['unarchive', 'trash']
-        : ['restore'];
 
   // ─── render ─────────────────────────────────────────────────
 
@@ -556,24 +527,6 @@ export function ChatThread() {
               <span style={{ fontWeight: 500 }}>+ New chat</span>
               <span style={{ color: '#7a7a8c', fontSize: '0.75rem' }}>⌘N</span>
             </button>
-            <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.5rem' }}>
-              {(['active', 'archived', 'trash'] as ConversationScope[]).map((candidate) => (
-                <button
-                  key={candidate}
-                  type="button"
-                  className="chat-scope-button"
-                  aria-pressed={scope === candidate}
-                  onClick={() => setScope(candidate)}
-                  style={{
-                  flex: 1, padding: '0.3rem 0.2rem', borderRadius: 5,
-                  border: scope === candidate ? '1px solid #8b7cff' : '1px solid #2a2a3a',
-                  background: scope === candidate ? 'rgba(139,124,255,.16)' : 'transparent',
-                  color: scope === candidate ? '#dcd7ff' : '#7a7a8c',
-                  cursor: 'pointer', fontSize: '0.68rem', fontFamily: 'inherit',
-                  }}
-                >{candidate}</button>
-              ))}
-            </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.4rem' }}>
             {convs.length === 0 && (
@@ -588,10 +541,6 @@ export function ChatThread() {
                   className="chat-conversation-select"
                   aria-current={c.id === currentConv ? 'true' : undefined}
                   onClick={() => void loadConv(c.id)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    openConversationMenu(c.id, event.currentTarget, { x: event.clientX, y: event.clientY });
-                  }}
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -614,43 +563,9 @@ export function ChatThread() {
                     {new Date(c.last_active_iso).toLocaleString()}
                   </span>
                 </button>
-                <button
-                  type="button"
-                  className="chat-conversation-action"
-                  aria-label={`Conversation actions for ${c.title || `Conversation ${c.id}`}`}
-                  aria-haspopup="menu"
-                  aria-expanded={menu?.id === c.id}
-                  aria-controls={menu?.id === c.id ? `conversation-menu-${c.id}` : undefined}
-                  onClick={(event) => openConversationMenu(c.id, event.currentTarget)}
-                >
-                  ⋯
-                </button>
               </div>
             ))}
           </div>
-          {menu && (
-            <div
-              id={`conversation-menu-${menu.id}`}
-              ref={menuRef}
-              role="menu"
-              aria-label="Conversation lifecycle actions"
-              onKeyDown={handleMenuKeyDown}
-              style={{
-                position: 'fixed', left: menu.x, top: menu.y, zIndex: 20,
-                width: CONVERSATION_MENU_WIDTH, padding: '0.3rem', background: '#181824',
-                border: '1px solid #3a3a50', borderRadius: 8,
-                boxShadow: '0 10px 30px rgba(0,0,0,.45)',
-              }}
-            >
-              {menuActions.map((action) => (
-                <button key={action} type="button" role="menuitem" onClick={() => void mutateConversation(action)} style={{
-                  display: 'block', width: '100%', minHeight: 44, padding: '0.45rem 0.6rem',
-                  background: 'transparent', border: 0, color: '#d8d8e8',
-                  textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-                }}>{action}</button>
-              ))}
-            </div>
-          )}
         </aside>
       )}
 
@@ -939,11 +854,9 @@ export function ChatThread() {
           padding: .9rem 1rem 1.4rem;
         }
         .chat-new-button,
-        .chat-scope-button,
         .chat-icon-button,
         .chat-settings-button,
-        .chat-conversation-select,
-        .chat-conversation-action { min-height: 44px; }
+        .chat-conversation-select { min-height: 44px; }
         .chat-icon-button { min-width: 44px; }
         .chat-conversation-row {
           display: flex;
@@ -952,21 +865,6 @@ export function ChatThread() {
           width: 100%;
           margin-bottom: 2px;
         }
-        .chat-conversation-action {
-          flex: 0 0 44px;
-          width: 44px;
-          padding: 0;
-          border: 1px solid transparent;
-          border-radius: 6px;
-          color: #a9a9bc;
-          background: transparent;
-          cursor: pointer;
-          font-family: inherit;
-          font-size: 1.1rem;
-          font-weight: 700;
-          line-height: 1;
-        }
-        .chat-conversation-action:hover { background: rgba(192, 132, 252, .1); }
         .chat-shell button:focus-visible,
         .chat-shell textarea:focus-visible,
         .chat-shell input:focus-visible {

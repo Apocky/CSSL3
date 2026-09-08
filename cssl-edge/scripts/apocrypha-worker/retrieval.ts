@@ -144,6 +144,10 @@ export function queryFromJob(job: ClaimedJob): string {
   if (typeof explicit === 'string' && explicit.trim()) return explicit.trim().slice(0, 4_000);
 
   const question = safeText(request.question).trim();
+  const legacyPrompt = [request.prompt, request.query, request.text, request.content, request.oracle_prompt]
+    .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+    ?.trim() ?? '';
+  const currentPrompt = (question || legacyPrompt).slice(0, 4_000);
   const reading = canonicalReadingQuery(request.canonical_reading);
   const source = safeText(request.source_text).trim().slice(0, 1_800);
   const structured = boundedJson(request.structured_context, 1_000);
@@ -157,11 +161,9 @@ export function queryFromJob(job: ClaimedJob): string {
         .join('\n')
         .slice(0, 1_000)
     : '';
-  const chaosQuery = [question, reading, history, source, structured].filter(Boolean).join('\n');
-  if (chaosQuery) return chaosQuery.slice(0, 4_000);
+  const taskQuery = [currentPrompt, reading, history, source, structured].filter(Boolean).join('\n');
+  if (taskQuery) return taskQuery.slice(0, 4_000);
 
-  const legacy = request.query ?? request.prompt ?? request.text ?? request.content ?? request.oracle_prompt;
-  if (typeof legacy === 'string' && legacy.trim()) return legacy.trim().slice(0, 4_000);
   const messages = request.messages;
   if (Array.isArray(messages)) {
     const joined = messages

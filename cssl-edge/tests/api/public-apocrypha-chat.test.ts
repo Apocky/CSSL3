@@ -549,7 +549,11 @@ async function main(): Promise<void> {
     readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
   ) as { functions?: Record<string, { maxDuration?: number }> };
   assert(primaryPage.includes('AccountChat'), 'exact /apocrypha exposes the new authenticated account conversation surface');
-  assert(!primaryPage.includes('requireBrainOwner'), 'public account entry must not remain owner-gated');
+  assert(primaryPage.includes('requireBrainOwner'), 'the shared route verifies the owner before selecting the privileged conversation');
+  assert(
+    /showOwner \?[\s\S]*?<ChatThread \/>[\s\S]*?:[\s\S]*?<AccountChat/.test(primaryPage),
+    'non-owner accounts still enter AccountChat',
+  );
   assert(!primaryPage.includes('PublicChat'), 'exact /apocrypha must not revive the retired member chat');
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
   assert(component.includes('training_consent === false'), 'browser verifies no training consent');

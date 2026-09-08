@@ -1,4 +1,4 @@
-import { MEMORY_READINESS_QUERY, probeMemoryAdapters, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
+import { MEMORY_READINESS_QUERY, probeMemoryAdapters, queryFromJob, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -87,6 +87,37 @@ function response(status: number, body: unknown): Response {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function currentPromptPrecedesLegacyHistory(): void {
+  const ownerJob: ClaimedJob = {
+    ...job,
+    kind: 'apocky_chat',
+    capability: 'apocky_owner_chat',
+    request: {
+      prompt: 'CURRENT_OWNER_PROMPT',
+      conversation_history: [
+        { role: 'user', content: 'OLDER_OWNER_PROMPT' },
+        { role: 'assistant', content: 'Older answer.' },
+      ],
+    },
+  };
+  const query = queryFromJob(ownerJob);
+  assert(query.startsWith('CURRENT_OWNER_PROMPT'), 'legacy owner history displaced the current prompt');
+  assert(query.indexOf('CURRENT_OWNER_PROMPT') < query.indexOf('OLDER_OWNER_PROMPT'),
+    'legacy owner history preceded the current prompt');
+  assert(query.length <= 4_000, 'owner retrieval query exceeded its character bound');
+
+  const oversized = queryFromJob({
+    ...ownerJob,
+    request: {
+      prompt: `CURRENT_BOUNDARY ${'c'.repeat(5_000)}`,
+      conversation_history: [{ role: 'user', content: `STALE_BOUNDARY ${'h'.repeat(2_000)}` }],
+    },
+  });
+  assert(oversized.startsWith('CURRENT_BOUNDARY'), 'bounded query lost current-prompt precedence');
+  assert(oversized.length === 4_000, 'oversized current prompt did not use the deterministic query bound');
+  assert(!oversized.includes('STALE_BOUNDARY'), 'legacy history displaced bytes from an oversized current prompt');
 }
 
 async function transientServerErrorRecovers(): Promise<void> {
@@ -239,6 +270,7 @@ async function operationalProbeAvoidsSelfContention(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  currentPromptPrecedesLegacyHistory();
   await transientServerErrorRecovers();
   await timeoutRecovers();
   await finalFailureRemainsVisible();
@@ -246,7 +278,7 @@ async function main(): Promise<void> {
   await exhaustedTimeoutStaysBounded();
   await readinessUsesTaskShapedRecall();
   await operationalProbeAvoidsSelfContention();
-  console.log('apocrypha-worker-retrieval.test : OK · bounded transient retries preserve final adapter truth');
+  console.log('apocrypha-worker-retrieval.test : OK · current prompt precedence and bounded transient retries preserve final adapter truth');
 }
 
 void main();

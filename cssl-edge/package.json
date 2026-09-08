@@ -71,7 +71,7 @@
     "test:admin-chat-ui": "node --import tsx tests/pages/admin-chat-ui.test.ts",
     "test:chat-presence": "node --import tsx tests/pages/chat-presence.test.ts",
     "test:apocrypha-deadline": "node --import tsx tests/lib/apocrypha-deadline.test.ts",
-    "test:apocrypha-jobs": "node --import tsx tests/apocrypha-jobs.test.ts",
+    "test:apocrypha-jobs": "node --import tsx tests/apocrypha-jobs.test.ts && node --import tsx tests/api/apocrypha-owner-history-migration.test.ts && node --import tsx tests/api/apocrypha-owner-history.test.ts && node --import tsx tests/pages/apocrypha-owner-history.test.ts",
     "test:apocrypha-ma": "node --import tsx tests/pages/apocrypha-ma.test.ts",
     "test:apocrypha-v2-vision": "node --import tsx tests/api/apocrypha-v2-vision.test.ts",
     "test:public-apocrypha": "node --import tsx tests/api/public-apocrypha-chat.test.ts && node --import tsx tests/pages/public-apocrypha-interactions.test.ts",

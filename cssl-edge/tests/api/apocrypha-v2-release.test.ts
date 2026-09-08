@@ -437,12 +437,10 @@ async function main(): Promise<void> {
     'client accepts a stable empty telemetry page',
   );
 
-  const hiddenHistory = reqRes('GET');
-  await conversationsHandler(hiddenHistory.req, hiddenHistory.res);
-  equal(hiddenHistory.out.statusCode, 200, 'history boundary is explicit');
-  const hiddenHistoryBody = hiddenHistory.out.body as Record<string, unknown>;
-  equal(hiddenHistoryBody.available, false, 'legacy history is not exposed');
-  equal(hiddenHistoryBody.reason_code, 'native_v2_history_projection_absent', 'history gap is named');
+  const deniedHistory = reqRes('GET', { owner: false });
+  await conversationsHandler(deniedHistory.req, deniedHistory.res);
+  equal(deniedHistory.out.statusCode, 401, 'durable owner history is owner-only');
+  assertPrivateHeaders(deniedHistory.out);
 
   const retired = reqRes('POST');
   await retiredStreamHandler(retired.req, retired.res);
