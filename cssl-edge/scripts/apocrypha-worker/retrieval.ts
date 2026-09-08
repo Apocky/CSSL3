@@ -10,6 +10,15 @@ import type {
 
 type Fetch = typeof fetch;
 
+const MAX_ADAPTER_ATTEMPTS = 2;
+const ADAPTER_RETRY_DELAY_MS = 200;
+const ADAPTER_RETRY_GRACE_MS = 1_000;
+
+interface AdapterAttemptOutcome {
+  result: RetrievalAdapterResult;
+  retryable: boolean;
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
@@ -164,31 +173,20 @@ export function queryFromJob(job: ClaimedJob): string {
   return `${job.kind} ${job.capability}`;
 }
 
-async function invokeAdapter(
+async function invokeAdapterAttempt(
   adapter: MemoryAdapterManifest,
   job: ClaimedJob,
   query: string,
-  env: NodeJS.ProcessEnv,
+  rawUrl: string,
+  token: string | undefined,
+  timeoutMs: number,
   fetchImpl: Fetch,
   limit = 8,
-): Promise<RetrievalAdapterResult> {
+): Promise<AdapterAttemptOutcome> {
   const started = Date.now();
-  const rawUrl = env[adapter.urlEnv]?.trim();
-  if (!rawUrl) return { name: adapter.name, state: 'unconfigured', durationMs: 0, records: [] };
-  if (!isSafeAdapterUrl(rawUrl)) {
-    return { name: adapter.name, state: 'denied', durationMs: 0, records: [], detail: 'adapter URL must use HTTPS or loopback HTTP' };
-  }
-  if (adapter.requiredCapabilities?.length && !adapter.requiredCapabilities.includes(job.capability)) {
-    return { name: adapter.name, state: 'denied', durationMs: 0, records: [], detail: 'capability not admitted' };
-  }
   const controller = new AbortController();
-  const timeoutOverride = Number(env[`APOCRYPHA_${adapter.name.toUpperCase()}_READ_TIMEOUT_MS`]?.trim());
-  const timeoutMs = Number.isInteger(timeoutOverride) && timeoutOverride >= 250 && timeoutOverride <= 60_000
-    ? timeoutOverride
-    : adapter.timeoutMs ?? 3_500;
   const timer = setTimeout(() => controller.abort(new Error('retrieval timeout')), timeoutMs);
   try {
-    const token = adapter.tokenEnv ? env[adapter.tokenEnv]?.trim() : undefined;
     const response = await fetchImpl(rawUrl, {
       method: 'POST',
       headers: {
@@ -220,11 +218,16 @@ async function invokeAdapter(
             ? 'unconfigured'
             : 'error';
       return {
-        name: adapter.name,
-        state,
-        durationMs: Date.now() - started,
-        records: [],
-        detail: upstream?.cause ?? code ?? `HTTP ${response.status}`,
+        result: {
+          name: adapter.name,
+          state,
+          durationMs: Date.now() - started,
+          records: [],
+          detail: upstream?.cause ?? code ?? `HTTP ${response.status}`,
+        },
+        retryable: state === 'timeout'
+          || (state === 'error' && (response.status === 408 || response.status === 425
+            || response.status === 429 || response.status >= 500)),
       };
     }
     const bounded = await boundedResponseText(response);
@@ -235,22 +238,66 @@ async function invokeAdapter(
       // A bounded text response is still useful read-only context.
     }
     return {
-      name: adapter.name,
-      state: 'ok',
-      durationMs: Date.now() - started,
-      records: normalizeRecords(adapter.name, payload, adapter.maxChars ?? 7_000),
+      result: {
+        name: adapter.name,
+        state: 'ok',
+        durationMs: Date.now() - started,
+        records: normalizeRecords(adapter.name, payload, adapter.maxChars ?? 7_000),
+      },
+      retryable: false,
     };
   } catch (error) {
     return {
-      name: adapter.name,
-      state: controller.signal.aborted ? 'timeout' : 'error',
-      durationMs: Date.now() - started,
-      records: [],
-      detail: error instanceof Error ? error.message.slice(0, 300) : 'retrieval failed',
+      result: {
+        name: adapter.name,
+        state: controller.signal.aborted ? 'timeout' : 'error',
+        durationMs: Date.now() - started,
+        records: [],
+        detail: error instanceof Error ? error.message.slice(0, 300) : 'retrieval failed',
+      },
+      retryable: true,
     };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function invokeAdapter(
+  adapter: MemoryAdapterManifest,
+  job: ClaimedJob,
+  query: string,
+  env: NodeJS.ProcessEnv,
+  fetchImpl: Fetch,
+  limit = 8,
+): Promise<RetrievalAdapterResult> {
+  const started = Date.now();
+  const rawUrl = env[adapter.urlEnv]?.trim();
+  if (!rawUrl) return { name: adapter.name, state: 'unconfigured', durationMs: 0, records: [] };
+  if (!isSafeAdapterUrl(rawUrl)) {
+    return { name: adapter.name, state: 'denied', durationMs: 0, records: [], detail: 'adapter URL must use HTTPS or loopback HTTP' };
+  }
+  if (adapter.requiredCapabilities?.length && !adapter.requiredCapabilities.includes(job.capability)) {
+    return { name: adapter.name, state: 'denied', durationMs: 0, records: [], detail: 'capability not admitted' };
+  }
+  const timeoutOverride = Number(env[`APOCRYPHA_${adapter.name.toUpperCase()}_READ_TIMEOUT_MS`]?.trim());
+  const timeoutMs = Number.isInteger(timeoutOverride) && timeoutOverride >= 250 && timeoutOverride <= 60_000
+    ? timeoutOverride
+    : adapter.timeoutMs ?? 3_500;
+  const token = adapter.tokenEnv ? env[adapter.tokenEnv]?.trim() : undefined;
+  const deadlineAt = started + timeoutMs + ADAPTER_RETRY_GRACE_MS;
+  let finalResult: RetrievalAdapterResult | null = null;
+  for (let attempt = 1; attempt <= MAX_ADAPTER_ATTEMPTS; attempt += 1) {
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) break;
+    const attemptTimeoutMs = Math.max(1, Math.min(timeoutMs, remainingMs));
+    const outcome = await invokeAdapterAttempt(adapter, job, query, rawUrl, token, attemptTimeoutMs, fetchImpl, limit);
+    finalResult = { ...outcome.result, durationMs: Date.now() - started };
+    if (!outcome.retryable || attempt === MAX_ADAPTER_ATTEMPTS) return finalResult;
+    const delayMs = Math.min(ADAPTER_RETRY_DELAY_MS, Math.max(0, deadlineAt - Date.now()));
+    if (delayMs <= 0) return finalResult;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return finalResult ?? { name: adapter.name, state: 'error', durationMs: Date.now() - started, records: [], detail: 'retrieval failed' };
 }
 
 async function invokeAdaptersBounded(
