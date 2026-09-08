@@ -1,0 +1,57 @@
+§ P1A.BOOLEAN.LOGICAL_NOT.ACCEPTANCE @2026-09-08
+
+I> authority := user.authorized.local.compiler.code+tests+commit+push.
+I> branch := codex/p1a-bool-not-20260908.
+I> code.commit := 94b57c1a8d0324d22e3281d01cc3c95d06f9b2fd.
+I> verified.head := a0cd4e6dc741fa697fbf0289215d6129bc30ccf0.
+I> verified.tree := 023c8f76f455d060b59a18fa3ce8e78c825454fc.
+I> scope := exact CSSL scalar logical-not + boolean literal object/JIT lowering.
+
+§P defect
+  ✓ prior `!bool`→`arith.xori_not`→Cranelift `bnot.i8`.
+  ✓ native counterexample := {!false=255,!true=254} ; both truthy @branch.
+  ✓ integer `!` has legacy bitwise-complement semantics ; conflating bool+integer fix breaks accepted source.
+
+§D repair
+  bool.!x := cmp.eq(x,0) → canonical i8∈{0,1}.
+  integer.!x := bitwise.complement(x).
+  integer.~x := bitwise.complement(x).
+  unsupported.!type := structural typed refusal.
+  object.bool.literal := {false|0→0,true|1→1,other→error}.
+  jit.bool.literal := {false|0→0,true|1→1,other→error}.
+  ✓ known-bad dormant vector inversion removed by child correction a0cd4e6 ; branch head N! retain 694b defect.
+
+§T verification
+  cargo.tests := {
+    cssl-mir=854/854 ; ignored=7,
+    cssl-cgen-cpu-cranelift=644/644 ; ignored=1,
+    cssl-cgen-cpu-x64=518/518,
+    csslc=163/163,
+    total=2179/2179 ; failures=0
+  }.
+  cargo.check := PASS {cssl-mir,cssl-cgen-cpu-cranelift,cssl-cgen-cpu-x64,csslc}.
+  native.object := sha256:1ac9cb39d2388ea80f5072ef7eefe30459fd1025368261c81bcf5e6668f8fb38 ; bytes=395.
+  native.dll.same_path_brepro := sha256:405885b89c163ec8a7a186b5928aab1a04ace6066d5003b8385975d7fdd00bc0 ; bytes=1536 ; rebuild=exact.
+  native.oracle := 10/10 {
+    identity(0)=0,identity(1)=1,
+    not(0)=1,not(1)=0,
+    branch(0)=11,branch(1)=22,
+    literal.true=1,literal.false=0,
+    bitnot.u8(0)=255,bitnot.u8(1)=254
+  }.
+  ✓ generated.object unchanged after vector-only correction.
+  △ first aggregate test attempt invalidated by host.disk.exhaustion ; regenerable completed-lane targets reclaimed ; clean rerun PASS.
+
+§C verdict
+  ◐ ACCEPT_BOUNDED_EXACT_SCALAR_BOOL_NOT.
+  admitted := {CSSL scalar bool `!`,bool literals,Cranelift object+JIT canonical constants,native Windows-x64 oracle}.
+  excluded := {aggregate/vector truth semantics,non-Cranelift parity,foreign ABI bool normalization,untrusted noncanonical bool ingress,production cutover}.
+  strongest.countercase := external ABI may supply bool bytes outside {0,1}; current logical-not treats zero=false + any nonzero=true but identity preserves noncanonical byte.
+  falsifier := any canonical input yields result ∉{0,1} ; false/true inversion mismatch ; integer `!` ceases bitwise complement ; object/JIT invalid bool spelling silently accepted.
+  next := independent exact-head audit → clean ABI+unsigned+vector+bool integration branch → full combined replay.
+  rollback := revert evidence commit then a0cd4e6 then 94b57c1.
+  effects := 0 ; deployment=false ; runtime.cutover=false.
+
+attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
