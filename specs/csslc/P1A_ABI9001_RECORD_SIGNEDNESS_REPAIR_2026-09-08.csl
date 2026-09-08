@@ -1,0 +1,168 @@
+§ P1A.ABI9001.RECORD.SIGNEDNESS.REPAIR @2026-09-08
+
+I> authority := user.authorized.CSSLv3.compiler+tests+evidence+commit+push.
+I> base := 42ebcc20a2559e33f8a4d15db2ae4de656ab7000
+  @tree:fbc803c97000d0aab49a3188666132610bc08aa1.
+I> branch := codex/p1a-record-signedness-20260908.
+I> code.commit := 213531ff8702187733090a75401059eb17a9d02d
+  @tree:fe29b0d7347e7f56302e89d63be04919c9b7bbb7.
+I> remote.ref := refs/heads/codex/p1a-record-signedness-20260908.
+I> scope := ABI9001.named.natural.integer|bool record signedness only
+  + CSSLv3.HIR→MIR→Cranelift.{object,JIT} + focused.native witnesses.
+N! Apocv4 | canonical.profile-six | Graphify | deploy | merge mutated.
+
+§P defect
+  ✓ MIR integer types erase source signedness.
+  ✓ ABI9001 layout retained width+offset but not signedness.
+  ✓ constructor therefore admitted same-width iN↔uN substitutions.
+  ✓ projection returned signless MIR without reseeding canonical
+    `integer_unsigned_values`; cast|shift|division|remainder|ordered-relation
+    could select signed lowering for projected unsigned high-bit values.
+  ✓ direct-MIR metadata previously admitted self-consistent overlapping layout.
+
+§D repair
+  1. `MirStructLayout.field_integer_unsigned` parallels declaration-order fields:
+     Int→Some(true=unsigned|false=signed) ; Bool→None ; invalid shape→refusal.
+  2. HIR named-layout construction stores declared width+signedness.
+  3. record constructor requires exact field name+MirType+signedness provenance;
+     contextual integer literal receives declared type; mismatch|unknown refuses.
+  4. constructor MIR carries exact `field_signedness` CSV.
+  5. projection resolves registered field, emits `field_signedness`, and restores
+     Int provenance into `integer_unsigned_values`.
+  6. integer cast|right-shift|ordered-relation consume restored provenance.
+  7. integer division|remainder now require exact equal widths+signedness and
+     select {divsi,divui,remsi,remui}; unknown|mixed contracts fail closed.
+  8. Cranelift object+JIT validate operation metadata against registered nominal
+     layout: identity, field names/count, natural offsets, widths, signedness,
+     storage, byte order, operand/result types, projection-operand nominal type.
+  9. direct-MIR numeric `named(...)` without signedness rejects; forged Bool
+     signedness rejects; raw scalar projection cannot spoof nominal identity.
+
+§D refusal.contract
+  MIR.codes += {
+    ABI9001-SIGNEDNESS-CONTRACT-UNVERIFIED,
+    ABI9001-FIELD-SIGNEDNESS-CONTRACT-UNVERIFIED,
+    ABI9001-FIELD-SIGNEDNESS-MISMATCH
+  }.
+  MIR.op += `cssl.integer.divrem.contract.unverified`.
+  backend.code := ABI9001-MALFORMED-METADATA.
+  ✓ i8↔u8 + i16↔u16 + i32↔u32 + i64↔u64 constructor flips refuse.
+  ✓ Bool admits only field.type=Bool + integer.contract=None.
+  ✓ unregistered|pathless|overlap|nonnatural|metadata-sign-flip|scalar-spoof refuse.
+  ✓ nested|float|pointer|size3|size>8 remain outside ABI9001 admission.
+  ✓ legacy.native-x64 nominal-record refusal remains; backend parity N! claimed.
+
+§T compiler.verification
+  cwd := compiler-rs.
+  command := `cargo test -p cssl-mir -p cssl-cgen-cpu-cranelift
+    -p cssl-cgen-cpu-x64 -p csslc --locked`.
+  result := {
+    cssl-mir=875/875,
+    cssl-cgen-cpu-cranelift=671/671 {lib647,runtime6,integration18},
+    cssl-cgen-cpu-x64=521/521,
+    csslc=174/174,
+    total=2241/2241,
+    docs.ignored=8
+  }.
+  focused.ABI9001 := {cssl-mir=16/16,Cranelift.JIT=8/8,
+    Cranelift.object=10/10,csslc=5/5}.
+  command.check := `cargo check -p cssl-mir -p cssl-cgen-cpu-cranelift
+    -p cssl-cgen-cpu-x64 -p csslc --locked` → PASS.
+  command.diff := `git diff --check -- <8-owned-code+fixture-paths>` → PASS.
+  formatting.note := direct `rustfmt --check` observes inherited whole-file
+    formatting drift beyond owned hunks ; N! bulk rewrite ; functional gates green.
+
+§T projected.unsigned.native
+  source := compiler-rs/crates/csslc/tests/fixtures/
+    abi9001_record_signedness_native.cssl
+    @sha256:c609b4d7f0d52b869607d6320d9a0281feb6ab114c0b4729357e76c37d94ef90.
+  harness := compiler-rs/crates/csslc/tests/fixtures/
+    abi9001_record_signedness_native_harness.py
+    @sha256:a763d981417d1aaddd5d188cf43bd2f5f4479ed508b75dffbefd685333b94e1d.
+  build := `target/debug/csslc.exe build
+    crates/csslc/tests/fixtures/abi9001_record_signedness_native.cssl
+    --emit=object --backend=cranelift
+    -o target/abi9001-record-signedness-native/abi9001_record_signedness_native.obj`.
+  link := `lld-link.exe /dll /noentry /machine:x64 /nodefaultlib /brepro
+    /out:target/abi9001-record-signedness-native/abi9001_record_signedness_native.dll
+    /export:abi9001_projected_u8_cast_v1
+    /export:abi9001_projected_u64_shift_v1
+    /export:abi9001_projected_u64_div_v1
+    /export:abi9001_projected_u64_rem_v1
+    /export:abi9001_projected_u64_gt_v1
+    target/abi9001-record-signedness-native/abi9001_record_signedness_native.obj`.
+  run := `python
+    crates/csslc/tests/fixtures/abi9001_record_signedness_native_harness.py
+    target/abi9001-record-signedness-native/abi9001_record_signedness_native.dll`.
+  result := PASS16679/16679 ; coverage={u8.all256,
+    u64.fixed.edges9+seeded4096,each×{shr7,div3,rem3,ugt}+3.order.edges}.
+  object := bytes465
+    @sha256:706ea5d408bfc672c6b79302d15d0205112d3a385ec9e692883cbb582591399e.
+  DLL := bytes1536
+    @sha256:bd592d527d4f07703e074b4e3e51335e0e815552dcc8dad87b1c9cc571400ac1
+    ; COFF.x86-64 ; exports5 ; imports0.
+
+§T full.profile+stable.C.oracle
+  profile.harness := compiler-rs/crates/csslc/tests/fixtures/
+    p1a_language_profile_full_harness.py
+    @sha256:29e7cb6cad2d1326ac7a261b0df4b529be8065b189d17d9becd813a9c7fd7102.
+  build := `target/debug/csslc.exe build
+    ../compiler-cssl/profile/language_profile_v1.cssl
+    --module-path=../compiler-cssl/profile/profile_codec_v1.cssl
+    --module-path=../compiler-cssl/profile/profile_vectors_v1.cssl
+    --module-path=../compiler-cssl/profile/profile_probe_v1.cssl
+    --emit=object --backend=cranelift
+    -o target/abi9001-record-signedness-native/language_profile_full.obj`.
+  C.build := `clang-cl.exe /nologo /c /O2 /GS- /Zl
+    /Fo:target/abi9001-record-signedness-native/abi9001_record_c_boundary.obj
+    crates/csslc/tests/fixtures/abi9001_record_c_boundary.c`.
+  link.algorithm := llvm-nm.`--defined-only` profile.obj
+    → select exact `T` symbols69
+    → lld-link.{/dll,/noentry,/machine:x64,/nodefaultlib,/brepro,
+      /export:<each-T>,/export:abi9001_record_c_boundary_status_v1,
+      profile.obj,C.obj}.
+  run.profile := `python
+    crates/csslc/tests/fixtures/p1a_language_profile_full_harness.py
+    target/abi9001-record-signedness-native/language_profile_full.dll`.
+  result.profile := PASS22268/22268 ; codec.cases64 ; u128.cases4096 ;
+    probes10/10=status0 ; profile.id=
+    3cbe4c61a6c3b73dc21ed3c806b4de69cb8f4b3e830729ba4cf030a28dcb1328 ;
+    mutated.id=fbd9004f62ea578aedad488e7c8f98cd713ba75261c790533e36f2a33499577a.
+  result.C := `abi9001_record_c_boundary_status_v1()`=0
+    ⇒ fixed5+seeded4096 records ×2 u32 fields =8202 comparisons.
+  profile.object := bytes43943
+    @sha256:964015c0112bc3feecab0b0876d774e97f94e5025cc396feae880046533ac93c.
+  C.object := bytes1575
+    @sha256:9ef6aeed8ba72695a5cefdc07549352020012083aee5ea04e4557a15993fbbdc.
+  linked.DLL := bytes40448
+    @sha256:0e3ea2390f42b606ff0e1112c40fb31cb1646fb3b8cbad9030834a2bbf9b8653
+    ; COFF.x86-64 ; exports70 ; imports0 ; clang-cl+lld-link22.1.3.
+
+§C verdict
+  ✓ record.signedness := BOUNDED_ACCEPT_CANDIDATE.
+  ✓ exact.claim := CSSLC-produced named declaration-backed natural scalar
+    integer|Bool records size∈{1,2,4,8}: exact constructor signedness,
+    projection provenance restoration, signedness-correct native
+    cast|shift|div|rem|ordered-relation, Cranelift.object+JIT metadata checks.
+  N! arbitrary direct-MIR source-signedness assertions authenticated.
+  N! broad aggregate | nested aggregate | float|pointer record | mutable field |
+    aliasing | packed/custom layout | byref|sret | size>8 | Windows.unwind |
+    non-Windows.C ABI | native-x64 parity accepted.
+  N! broad.P1a completion | canonical-six content correctness | public symbol
+    visibility beyond explicit linked exports claimed.
+
+strongest.countercase := `u64::MAX` projected from a one-field nominal record:
+  signed default yields arithmetic-shift all-ones, signed-div≈0, signed-rem=-1,
+  signed-order false against `0x7fff_ffff_ffff_ffff`; native oracle observes exact
+  unsigned {shr,div,rem,ugt} for fixed edges9 + seeded high/low-bit values4096.
+residual.gate := arbitrary-direct-MIR provenance authentication + remaining
+  aggregates/backends/platform ABIs + Windows unwind + root integration oracle.
+falsifier := any same-width sign flip constructs ; projected high-bit mismatch ;
+  missing|forged metadata emits object/JIT ; scalar spoofs nominal projection ;
+  Bool carries integer sign ; package/profile/C-oracle failure.
+rollback := revert 213531ff8702187733090a75401059eb17a9d02d ;
+  preserves Apocv4+canonical-six+Graphify and restores base refusal surface.
+
+attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
