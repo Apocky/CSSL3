@@ -79,8 +79,10 @@ assert.equal(middleware(new NextRequest('https://apocky.com/api/mobile/config'))
 assert.equal(middleware(new NextRequest('https://apocky.com/download/apocrypha')).status, 200);
 const accountCsp = middleware(new NextRequest('https://www.apocky.com/apocrypha')).headers.get('content-security-policy') ?? '';
 assert.match(accountCsp, /connect-src 'self' https:\/\/pzirbmyfmrbtkllrtcmx\.supabase\.co;/, 'account auth refresh may reach only the pinned Supabase HTTPS project');
-assert.match(accountCsp, /script-src 'self' 'nonce-[^']+' 'strict-dynamic'/, 'public account shell retains nonce-bound script execution');
+assert.match(accountCsp, /script-src 'self' 'nonce-[^']+' 'sha256-[^']+'/,
+  'public account shell admits same-origin hydration and only the exact inline bootstrap');
 const brainCsp = middleware(new NextRequest('https://www.apocky.com/brain')).headers.get('content-security-policy') ?? '';
 assert.match(brainCsp, /connect-src 'self';/, 'private Brain CSP remains unchanged');
-assert.equal(middleware(new NextRequest('https://apocky.com/api/apocrypha/chat')).status, 404, 'native config cannot reopen retired public chat');
+assert.equal(middleware(new NextRequest('https://apocky.com/api/apocrypha/chat')).status, 200,
+  'the authenticated member chat BFF reaches its own authorization handler');
 console.log('mobile config: public-key allowlist, secret non-disclosure, method/security headers, unchanged retirement passed');

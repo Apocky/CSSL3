@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { AKASHIC_PRE_HYDRATION_CSP_SHA256 } from '@/lib/akashic-telemetry/pre-hydration';
 
 const RETIRED_EXACT_PATHS = new Set([
   '/apoc',
@@ -66,9 +67,9 @@ function makeCsp(nonce: string, accountSurface = false): string {
   const isDev = process.env.NODE_ENV === 'development';
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
-    // The existing Pages-Router site uses React style attributes. Script
-    // execution remains nonce-bound; styles cannot execute JavaScript.
+    `script-src 'self' 'nonce-${nonce}' 'sha256-${AKASHIC_PRE_HYDRATION_CSP_SHA256}'${isDev ? " 'unsafe-eval'" : ''}`,
+    // The Pages Router emits same-origin bundles and one byte-stable bootstrap.
+    // Static pages have no request nonce, so the bootstrap is hash-bound.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self' data:",
