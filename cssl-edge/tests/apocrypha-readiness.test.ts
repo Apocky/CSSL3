@@ -66,6 +66,11 @@ assert(ready.worker.ready_nodes === 1, 'operational worker count was wrong');
 assert(ready.operational.qwen_healthy && ready.operational.memory_ready, 'operational readiness was not projected');
 assert(ready.operational.generation_ready, 'generation readiness was not projected');
 assert(ready.configuration.observed?.model_alias === expected.model_alias, 'model alias was not projected');
+assert(ready.vault_memory.schema_version === 'apocrypha.obsidian-vault.v1', 'vault contract schema was not projected');
+assert(ready.vault_memory.vault_commit === 'b18e3e9ec49f6fde86427d7c26de527e9f0f692e', 'vault commit identity drifted');
+assert(ready.vault_memory.readable_map.node_paths_verified === ready.vault_memory.readable_map.nodes, 'vault map path coverage was not exact');
+assert(ready.vault_memory.privacy.payloads_embedded === false, 'vault payloads were admitted into the hosted projection');
+assert(ready.vault_memory.privacy.private_paths_exposed === false, 'vault private paths were exposed');
 const serialized = JSON.stringify(ready);
 for (const forbidden of ['private-node-id', 'private-node-key', 'private-display-name', 'private-token-hash', 'private_host_detail']) {
   assert(!serialized.includes(forbidden), `readiness projection leaked ${forbidden}`);

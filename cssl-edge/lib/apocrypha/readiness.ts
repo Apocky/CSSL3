@@ -1,3 +1,5 @@
+import { APOCRYPHA_VAULT_MEMORY_ORGAN } from '@/lib/apocrypha/vault-memory';
+
 export const APOCRYPHA_WORKER_FRESHNESS_MS = 90_000;
 export const APOCRYPHA_MEMORY_IDLE_FRESHNESS_MS = 90_000;
 export const APOCRYPHA_GENERATION_DEADLINE_MAX_MS = 7_200_000;
@@ -93,6 +95,8 @@ export interface ApocryphaReadinessProjection {
     required_memory_adapters: readonly ApocryphaRequiredMemoryAdapter[];
     adapter_states: Record<ApocryphaRequiredMemoryAdapter, string | null>;
   };
+  /** Public-safe release identity; note bodies and private paths never leave the vault. */
+  vault_memory: typeof APOCRYPHA_VAULT_MEMORY_ORGAN;
   worker: {
     active_nodes: number;
     capable_nodes: number;
@@ -325,6 +329,7 @@ export function projectApocryphaReadiness(input: {
         APOCRYPHA_REQUIRED_MEMORY_ADAPTERS.map((name) => [name, null]),
       ) as Record<ApocryphaRequiredMemoryAdapter, string | null>,
     },
+    vault_memory: APOCRYPHA_VAULT_MEMORY_ORGAN,
     worker: {
       active_nodes: active.length,
       capable_nodes: capable.length,
