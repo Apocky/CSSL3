@@ -1,0 +1,144 @@
+§ P1A.ABI9001.NOMINAL.RECORD.ACCEPTANCE @2026-09-08
+
+I> authority := user.authorized.local.compiler.code+tests+commit+push.
+I> scope := declaration-backed.natural-layout.integer-record construction
+  + projection + identity across CSSLv3.HIR → MIR → Cranelift.{object,JIT}
+  + exact Windows.x64.C aggregate boundary ; unsupported cases fail typed.
+I> base := 41de8b1e3c5909b536e9f1625636613dc0a00c52.
+I> code.commit := 845814e3dde1ac55a78957e962aa5bae8fa82bb5.
+I> code.tree := 55afcc4e3a78c50dea5d1f836781208be85f8d4e.
+I> remote.ref := refs/heads/codex/p1a-abi9001-20260908.
+
+§P root.cause
+  ✓ MIR record constructor previously emitted opaque `cssl.struct`.
+  ✓ Cranelift.object allocated every multi-field record as N×8-byte stack storage.
+  ✓ `cssl.field` forwarded aggregate address instead of extracting field value.
+  ✓ signature resolver independently scalarized ≤8-byte nominal records.
+  ∴ function-boundary carrier and body construction/projection disagreed ; profile
+    observed address-like projection instead of `{tag:u32,value:u32}` bits.
+
+§D accepted.delta
+  1. MirStructLayout retains exact declaration field names + natural byte offsets
+     + size/alignment ; duplicate bare identities become pathless sentinels.
+  2. production csslc root+aux lowering supplies one exact struct-layout table to
+     ordinary + direct-call body lowering ; legacy no-table MIR API remains intact.
+  3. admission requires named+unique+declaration-backed fields ; field types belong
+     to {bool,i8,u8,i16,u16,i32,u32,i64,u64} ; recomputed natural layout matches.
+  4. admitted total byte size ∈ {1,2,4,8} ; carrier width ∈ {8,16,32,64}.
+  5. constructor source order canonicalizes to declaration order ; shorthand fields
+     resolve exact bindings ; MIR records names+offsets+widths+carrier+little-endian.
+  6. projection resolves declaration field and emits typed shift+reduce metadata.
+  7. Cranelift.object+JIT pack fields by zero-extension+shift+OR and project by
+     logical shift+reduction ; malformed metadata fails before object/JIT execution.
+  8. private compiler-managed param+return uses exact scalar carrier identity.
+  9. Windows.x64 public C import/export admits only exact natural aggregate sizes
+     1|2|4|8 ; profile `{u32,u32}` raw by-value parameter+return verified.
+  10. profile ABI9001 status changes 9001→0 without widening ABI9002..ABI9005.
+
+§D refusal.contract
+  typed.MIR := `cssl.nominal_record.error` {code,detail,source_loc}.
+  codes := {
+    ABI9001-UNRESOLVED-PATH, ABI9001-MISSING-LAYOUT,
+    ABI9001-PATHLESS-LAYOUT, ABI9001-UNSUPPORTED-LAYOUT,
+    ABI9001-FIELD-SET-MISMATCH, ABI9001-DUPLICATE-FIELD,
+    ABI9001-FIELD-TYPE-MISMATCH, ABI9001-UNSUPPORTED-FIELD,
+    ABI9001-UNKNOWN-FIELD, ABI9001-MALFORMED-METADATA,
+    ABI9001-WINDOWS-C-UNSUPPORTED-LAYOUT
+  }.
+  refused.layout := {empty,tuple|pathless,duplicate-name,unresolved,
+    float,pointer,nested-record,nonnatural-offset,size3|5|6|7|>8}.
+  ✓ legacy.native-x64 signature refusal remains `X64-0001` + no object.
+  ✓ legacy.native-x64 nominal-op refusal remains `X64-0015` + no object.
+  ✓ legacy private/pathless direct-MIR signature behavior remains unchanged unless
+    exact ABI9001 production layout-aware path or public Windows-C validator applies.
+
+§T verification
+  focused := {
+    cssl-mir=11/11,
+    cssl-cgen-cpu-cranelift={JIT4,object-integration4}=8/8,
+    cssl-cgen-cpu-x64=2/2,
+    csslc=5/5,
+    total=26/26
+  }.
+  regression := {
+    cssl-mir=862/862 + doc.ignored7,
+    cssl-cgen-cpu-cranelift=659/659 + doc.ignored1,
+    cssl-cgen-cpu-x64=521/521,
+    csslc=173/173,
+    total=2215/2215 + ignored8
+  }.
+  check := cargo.check.{cssl-mir,cssl-cgen-cpu-cranelift,
+    cssl-cgen-cpu-x64,csslc}=PASS.
+  x64.harness.anomaly := first.default-parallel.run observed unrelated shared-temp
+    executable collision (`abs(-1)` received45) ; isolated test PASS ; full serial
+    PASS521/521 ; fresh full default-parallel retry PASS521/521 ; no compiler change.
+
+  profile.focused := 13/13 PASS ; values={
+    ABI9001.C-boundary0,ABI9003.C-boundary0,record-native0,record-probe0,
+    variant-native0,variant-probe0,u128-composite0,native-u1280,codec-shift0,
+    unsigned-shift0,u64-cross-call0,known-refusals0,profile-all0
+  }.
+  profile.full := inherited.harness@sha256:
+    ddf381a0f7bf8688220721059b3cb17bdf8d288cab37c0d49031d0c4562c9abc
+    + exact in-memory expectation delta {9001:0,9002:0,9003:0,9004:0,9005:0}
+    → PASS22268/22268 ; codec.cases64 ; u128.cases4096 ;
+      profile.id=3cbe4c61a6c3b73dc21ed3c806b4de69cb8f4b3e830729ba4cf030a28dcb1328 ;
+      mutated.id=fbd9004f62ea578aedad488e7c8f98cd713ba75261c790533e36f2a33499577a.
+  ABI9001.C.oracle := 5 fixed +4096 deterministic records ×2 u32 fields
+    =8202 exact comparisons ; status0.
+  ABI9003.C.oracle := inherited stable two-u64 boundary ; status0.
+  aggregate.oracle.evidence := full.profile.22268 assertions + independent
+    ABI9001.8202 field comparisons =30470 checks ; categories remain distinct.
+
+  artifact.profile.obj := bytes43951 @sha256:
+    8615af983ffdda0280020ea5e285c877eb01b734f15cb9f3da8cb640c14268ec.
+  artifact.ABI9001.C.obj := bytes1623 @sha256:
+    d92b73a41fc9fe278944247ff5f3ca7714e2a874f983bee0380a466376760d73.
+  artifact.ABI9003.C.obj := bytes1834 @sha256:
+    9346891e74143bf914b38ab7744187471c2f367eec725790030e0317cf196c5d.
+  artifact.linked.dll := bytes39936 @sha256:
+    eec70fcc8bdea613379b250559fb7b7b7859737cf219d5aa53d2f142bfb55286
+    ; clang-cl22.1.3 + lld-link22.1.3./brepro ; same-path relink exact ;
+      COFF.x86-64 ; imports0 ; exports34.
+  sources := {
+    language_profile_v1.cssl@sha256:60b33122ed82c2023657c31decfba5ec1a1ddf7c9335752972327f10a23c324c,
+    profile_probe_v1.cssl@sha256:3dc4f0708d7bff156a928235bd71d97e5f79787dbc0289a94b4b2c36bdde228e,
+    abi9001_record_c_boundary.c@sha256:2a27cbc9fb4fee1469f6d3f974769946b30c3a4486961407d1cab230f035fbbc,
+    abi9003_u128_c_boundary.c@sha256:ef85f38f14e76559554f1a1d51fade255eaf3bf99c0f6ec49abc7f1e28f50212
+  }.
+  ✓ current-source rebuild reproduced exact profile.obj+linked.dll hashes after
+    documentation-only correction ; tested binary identity preserved.
+
+§C verdict
+  ✓ ABI9001 := BOUNDED_ACCEPT_CANDIDATE.
+  ✓ exact claim := named declaration-backed natural integer/bool records of exact
+    size1|2|4|8 across layout-aware CSSLv3 MIR + Cranelift object/JIT construction,
+    read-only projection, compiler-managed identity ; Windows.x64 raw-C proof exact
+    for `{u32,u32}` by-value parameter+return.
+  N! mutable record update | address identity | aliasing | nested aggregate |
+    float|pointer field | packed/custom layout | size>8 | byref|sret | unwind |
+    non-Windows raw-C ABI | non-Cranelift backend parity promoted.
+  ✗ full.P1a.native.profile := INCOMPLETE despite sentinels9001..9005=0.
+  ○ residual.P1a := manifest content-byte binding + canonical codec/multiblock SHA256
+    + RNG admission + normalization + nonvacuous executable NIL
+    + non-Cranelift backend parity + root independent review
+    + canonical Apocv4 evidence/graph integration.
+  N! unsigned-comparison lane touched|depended-on ; dependency.conflict=none.
+  N! merge|deployment|release|training|spend|runtime-cutover authority inferred.
+  N! Apocv4 canonical six mutated.
+  N! graphify-out staged|reverted ; foreign generated state preserved.
+
+strongest.countercase := scalar-carrier lowering proves exact admitted bit layouts,
+  but raw C aggregate evidence covers one Windows.x64 8-byte two-u32 record only ;
+  other admitted shapes remain compiler-managed until independent C oracles exist.
+falsifier := any declaration/source-order mismatch ; field-bit loss ; address-like
+  projection ; unsupported layout emits object ; public size3 admitted ; malformed
+  metadata falls back ; native-x64 stops refusing ; ABI9002|9003|9004|9005 regresses ;
+  import leak ; nondeterministic link ; package regression failure.
+rollback := revert code.commit 845814e3dde1ac55a78957e962aa5bae8fa82bb5 ;
+  restores explicit profile ABI9001 refusal without touching Graphify, unsigned lane,
+  or Apocv4.
+
+attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
