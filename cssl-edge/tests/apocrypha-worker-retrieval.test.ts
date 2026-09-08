@@ -196,6 +196,48 @@ async function readinessUsesTaskShapedRecall(): Promise<void> {
   assert(bundle.probedAt !== null, 'successful task-shaped recall was not marked complete');
 }
 
+async function operationalProbeAvoidsSelfContention(): Promise<void> {
+  const adapters = ['mempalace', 'brainmonsoon', 'anamnesis'] as const;
+  const probeConfig: WorkerConfig = {
+    ...config,
+    memoryReadConcurrency: 3,
+    memoryProbeTenantId: job.tenantId,
+    memoryProbePrincipalId: job.ownerPrincipalId,
+    manifest: {
+      ...config.manifest,
+      memory: {
+        ...config.manifest.memory,
+        adapters: adapters.map((name) => ({
+          name,
+          urlEnv: `APOCRYPHA_${name.toUpperCase()}_READ_URL`,
+          timeoutMs: 250,
+          maxChars: 1_000,
+        })),
+      },
+    },
+  };
+  const probeEnv: NodeJS.ProcessEnv = { NODE_ENV: 'test' };
+  for (const adapter of probeConfig.manifest.memory.adapters) probeEnv[adapter.urlEnv] = adapterUrl;
+  let active = 0;
+  let peak = 0;
+  const fetchImpl = (async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    active -= 1;
+    return response(200, { records: [] });
+  }) as typeof fetch;
+
+  const probe = await probeMemoryAdapters(probeConfig, probeEnv, fetchImpl);
+  assert(probe?.probedAt !== null, 'bounded operational probe did not complete');
+  assert(peak === 2, `operational probe used ${peak} concurrent local readers instead of two`);
+
+  peak = 0;
+  const retrieval = await retrieveMemory(probeConfig, job, probeEnv, fetchImpl);
+  assert(retrieval.results.every((result) => result.state === 'ok'), 'live retrieval failed after probe fanout bound');
+  assert(peak === 3, 'live retrieval lost its configured concurrency');
+}
+
 async function main(): Promise<void> {
   await transientServerErrorRecovers();
   await timeoutRecovers();
@@ -203,6 +245,7 @@ async function main(): Promise<void> {
   await permanentFailureDoesNotRetry();
   await exhaustedTimeoutStaysBounded();
   await readinessUsesTaskShapedRecall();
+  await operationalProbeAvoidsSelfContention();
   console.log('apocrypha-worker-retrieval.test : OK · bounded transient retries preserve final adapter truth');
 }
 

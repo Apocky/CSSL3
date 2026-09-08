@@ -116,6 +116,8 @@ async function main(): Promise<void> {
   const qwenRequests: Array<Record<string, unknown>> = [];
   let activeMemoryRequests = 0;
   let peakMemoryRequests = 0;
+  let firstMemoryCompletionAt = 0;
+  let firstHeartbeatAt = 0;
   const memoryScopesSeen = new Set<string>();
   let denyOwnerProbeScope = false;
   const output = 'The Tower names the break already underway; the Star asks what remains worth carrying through it. '.repeat(5);
@@ -139,6 +141,7 @@ async function main(): Promise<void> {
       }
       await new Promise((resolve) => setTimeout(resolve, 80));
       activeMemoryRequests -= 1;
+      if (firstMemoryCompletionAt === 0) firstMemoryCompletionAt = Date.now();
       return json(response, 200, { records: [{ id: 'tarot:tower-star', text: 'The Tower and Star pair disruption with chosen renewal.' }] });
     }
     if (request.url === '/unconfigured') {
@@ -196,7 +199,10 @@ async function main(): Promise<void> {
         memory_manifest_hash: workerConfig.memoryManifestHash,
       }] } : { ok: true, data: [] });
     }
-    if (request.url === '/api/apocrypha/worker/heartbeat') return json(response, 200, { ok: true });
+    if (request.url === '/api/apocrypha/worker/heartbeat') {
+      if (firstHeartbeatAt === 0) firstHeartbeatAt = Date.now();
+      return json(response, 200, { ok: true });
+    }
     assert(received.node_id === 'test-node', 'worker node identity missing');
     assert(received.lease_token === 'lease-token-secret', 'fence token missing');
     if (request.url === '/api/apocrypha/worker/lease') {
@@ -239,6 +245,8 @@ async function main(): Promise<void> {
     worker.stop('test complete');
 
     assert(worker.runtime.completedJobs === 1, 'worker did not complete claimed job');
+    assert(firstHeartbeatAt > 0 && firstHeartbeatAt < firstMemoryCompletionAt,
+      'adapter probe blocked publication of the worker heartbeat');
     assert(completed !== null, 'completion was not delivered');
     const completion = completed as Record<string, unknown>;
     assert(completion.content === output, 'completion content differs from streamed Qwen output');

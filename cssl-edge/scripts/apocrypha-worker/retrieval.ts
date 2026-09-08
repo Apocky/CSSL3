@@ -305,6 +305,7 @@ async function invokeAdapter(
 async function invokeAdaptersBounded(
   config: WorkerConfig,
   operation: (adapter: MemoryAdapterManifest) => Promise<RetrievalAdapterResult>,
+  concurrency = config.memoryReadConcurrency,
 ): Promise<Array<PromiseSettledResult<RetrievalAdapterResult>>> {
   const adapters = config.manifest.memory.adapters;
   const settled = new Array<PromiseSettledResult<RetrievalAdapterResult>>(adapters.length);
@@ -322,7 +323,7 @@ async function invokeAdaptersBounded(
     }
   };
   await Promise.all(Array.from(
-    { length: Math.min(config.memoryReadConcurrency, Math.max(1, adapters.length)) },
+    { length: Math.min(Math.max(1, concurrency), Math.max(1, adapters.length)) },
     () => runner(),
   ));
   return settled;
@@ -405,8 +406,11 @@ export async function probeMemoryAdapters(
       memoryManifestHash: config.memoryManifestHash,
     };
     const query = queryFromJob(job);
-    const settled = await invokeAdaptersBounded(config,
-      (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1));
+    const settled = await invokeAdaptersBounded(
+      config,
+      (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1),
+      Math.min(2, config.memoryReadConcurrency),
+    );
     scopedResults.push(settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
       name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
       state: 'error', durationMs: 0, records: [],

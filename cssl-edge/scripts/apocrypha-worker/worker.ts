@@ -62,6 +62,7 @@ export class ApocryphaWorker {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private heartbeatRetryAt = 0;
   private heartbeatInFlight = false;
+  private memoryProbeInFlight = false;
   private memoryOperationTail: Promise<void> = Promise.resolve();
 
   constructor(config: WorkerConfig, dependencies: Dependencies = {}) {
@@ -432,6 +433,24 @@ export class ApocryphaWorker {
     }
   }
 
+  private startMemoryProbe(): void {
+    if (this.memoryProbeInFlight || this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return;
+    this.memoryProbeInFlight = true;
+    void this.serializeMemoryOperation(async () => {
+      if (this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return null;
+      return probeMemoryAdapters(this.config, this.env, this.fetchImpl);
+    }).then((memoryProbe) => {
+      if (!memoryProbe) return;
+      this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
+      this.runtime.adapterProbeAt = memoryProbe.probedAt;
+    }).catch((error) => {
+      this.recordError('MEMORY_PROBE_FAILED', boundedError(error));
+      log('warn', 'worker.memory_probe.failed', { detail: boundedError(error) });
+    }).finally(() => {
+      this.memoryProbeInFlight = false;
+    });
+  }
+
   private startHeartbeat(): void {
     const send = async (): Promise<void> => {
       if (this.heartbeatInFlight || Date.now() < this.heartbeatRetryAt || this.stopController.signal.aborted) return;
@@ -442,14 +461,9 @@ export class ApocryphaWorker {
           ? Date.now() - Date.parse(this.runtime.adapterProbeAt)
           : Number.POSITIVE_INFINITY;
         if (this.runtime.phase === 'idle' && probeAge >= 30_000) {
-          const memoryProbe = await this.serializeMemoryOperation(async () => {
-            if (this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return null;
-            return probeMemoryAdapters(this.config, this.env, this.fetchImpl);
-          });
-          if (memoryProbe) {
-            this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
-            this.runtime.adapterProbeAt = memoryProbe.probedAt;
-          }
+          // Publish the last completed adapter evidence while the next bounded
+          // probe runs. Its timestamp still expires normally if the probe stalls.
+          this.startMemoryProbe();
         }
         const supported = await this.controlPlane.heartbeat(this.runtime, {
           qwenHealthy: probe.healthy,

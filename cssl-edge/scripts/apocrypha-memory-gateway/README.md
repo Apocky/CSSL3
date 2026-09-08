@@ -55,7 +55,10 @@ endpoints require the same bearer token and loopback caller.
 ## Native and upstream sources
 
 MemPalace uses the existing native federator's `framed` immutable SQLite
-reader. Graphify uses the native graph organ's sealed JSONL query service.
+reader. Its gateway policy preserves the native result, candidate, content,
+concurrency, and immutable-source bounds while allowing the request deadline to
+use the native 30-second hard cap under host-wide CPU or disk pressure.
+Graphify uses the native graph organ's sealed JSONL query service.
 3MNEME and MetaHarness use the federator's zero-state `observe` command; the
 gateway cannot open their sealed capabilities itself. Those child processes
 receive closed environments and bounded JSONL over stdin, so private queries

@@ -9,6 +9,14 @@ import { runBoundedJsonl, utf8Prefix } from './process';
 export const MEMORY_READINESS_QUERY =
   'current Apocrypha and Chaos Tarot Oracle production memory recall readiness';
 
+export const MEM_PALACE_POLICY_PATH = fileURLToPath(
+  new URL('./mempalace-read-policy.cssl', import.meta.url),
+);
+
+export function nativeMemPalaceProcessArgs(): string[] {
+  return ['framed', '--policy', MEM_PALACE_POLICY_PATH];
+}
+
 export class SerialReadGate {
   private tail: Promise<void> = Promise.resolve();
 
@@ -200,7 +208,7 @@ class NativeMemPalaceAdapter implements ReadOnlyAdapter {
   async search(request: SearchRequest, signal: AbortSignal): Promise<unknown> {
     const native = this.config.native;
     const frames = await this.gate.run(signal, () => runBoundedJsonl(
-      native.federatorExecutable as string, ['framed'], [{
+      native.federatorExecutable as string, nativeMemPalaceProcessArgs(), [{
         op: 'query',
         request_id: scopedRequestId('gateway-mem', request),
         db_path: native.mempalaceDb,
@@ -217,7 +225,11 @@ class NativeMemPalaceAdapter implements ReadOnlyAdapter {
     return payload;
   }
   async probe(signal: AbortSignal): Promise<AdapterProbe> {
-    if (!await regularFiles([this.config.native.federatorExecutable, this.config.native.mempalaceDb])
+    if (!await regularFiles([
+      this.config.native.federatorExecutable,
+      this.config.native.mempalaceDb,
+      MEM_PALACE_POLICY_PATH,
+    ])
       || !this.config.native.privacyPartition) {
       return { state: 'unavailable', detail: 'native reader, database, or privacy partition absent' };
     }

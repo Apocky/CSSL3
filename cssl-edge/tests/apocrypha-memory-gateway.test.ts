@@ -9,9 +9,11 @@ import { createGatewayServer } from '../scripts/apocrypha-memory-gateway/gateway
 import {
   brainmonsoonRecords,
   canonicalGraphQuery,
+  MEM_PALACE_POLICY_PATH,
   SerialReadGate,
   nativeErrorCode,
   nativeMemPalaceResultHealthy,
+  nativeMemPalaceProcessArgs,
 } from '../scripts/apocrypha-memory-gateway/adapters';
 import { isLoopbackUrl, loadGatewayConfig } from '../scripts/apocrypha-memory-gateway/config';
 import { runBoundedJsonl } from '../scripts/apocrypha-memory-gateway/process';
@@ -103,6 +105,13 @@ async function main(): Promise<void> {
   assert(nativeMemPalaceResultHealthy({ status: 'ok', records: [] }), 'normal MemPalace result was rejected');
   assert(!nativeMemPalaceResultHealthy({ status: 'empty', code: 'MEM_QUERY_FAILED' }),
     'failed MemPalace empty result was admitted');
+  const memPalacePolicy = await readFile(MEM_PALACE_POLICY_PATH, 'utf8');
+  assert(nativeMemPalaceProcessArgs().join('\0') === ['framed', '--policy', MEM_PALACE_POLICY_PATH].join('\0'),
+    'MemPalace native reader did not bind the gateway policy');
+  assert(memPalacePolicy.includes('max_deadline_ms := 30000') && memPalacePolicy.includes('immutable := true'),
+    'MemPalace gateway policy lost its pressure budget or immutable source guard');
+  assert(memPalacePolicy.includes('max_candidates := 160') && memPalacePolicy.includes('max_total_document_bytes := 65536'),
+    'MemPalace gateway policy widened evidence bounds');
   assert(isLoopbackUrl('http://127.0.0.1:8787/search'), 'loopback URL rejected');
   assert(!isLoopbackUrl('https://example.com/search'), 'remote upstream admitted');
   let configRejected = false;

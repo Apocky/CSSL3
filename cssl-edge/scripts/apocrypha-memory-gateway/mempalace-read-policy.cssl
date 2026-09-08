@@ -1,0 +1,19 @@
+§ APOCRYPHA.MEMORY.HOTPATH.GATEWAY_POLICY.V1
+
+policy_id := trinity-memory-hotpath-gateway-v1
+collection_name := mempalace_drawers
+required_partition_prefix := owner:
+default_results := 6
+max_results := 20
+max_candidates := 160
+max_document_bytes := 16384
+max_total_document_bytes := 65536
+max_query_bytes := 768
+max_terms := 24
+min_token_chars := 3
+default_deadline_ms := 2500
+max_deadline_ms := 30000
+sample_bytes := 65536
+max_concurrent_queries := 4
+allow_empty_query := false
+immutable := true
