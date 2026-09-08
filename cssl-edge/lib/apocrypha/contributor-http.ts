@@ -15,6 +15,11 @@ import {
 } from '@/lib/apocrypha/contributor-transport';
 import {
   createSupabaseContributorTransportStore,
+  type ContributorTransportAtomicEnrollmentInput,
+  type ContributorTransportAtomicLeaseInput,
+  type ContributorTransportAtomicOperations,
+  type ContributorTransportAtomicResultInput,
+  type ContributorTransportAtomicRevokeInput,
   type ContributorTransportStoreAvailability,
 } from '@/lib/apocrypha/contributor-transport-supabase';
 import { CONTRIBUTOR_NODE_MANIFEST } from '@/lib/apocrypha/contributor-node';
@@ -50,9 +55,36 @@ export interface ContributorRateLimiter {
   check(input: ContributorRateLimitRequest): ContributorRateLimitDecision | Promise<ContributorRateLimitDecision>;
 }
 
+/**
+ * Controller preparation is deliberately explicit: the RPC adapter persists
+ * an already-validated, controller-signed operation envelope.  This seam is
+ * the only place allowed to turn an HTTP request into one of those envelopes.
+ * The default production resolver never invents a preparer or a key.
+ */
+export interface ContributorAtomicRouteController {
+  readonly atomicRpcCapable: true;
+  /** True only when the adapter also has a generic callback transaction. */
+  readonly genericTransactionCapable: boolean;
+  readonly controllerSigningConfigured: boolean;
+  readonly operatorConfigured: boolean;
+  readonly operations: ContributorTransportAtomicOperations;
+  readonly prepare: {
+    enrollment(value: unknown): Promise<ContributorTransportAtomicEnrollmentInput>;
+    lease(value: unknown): Promise<ContributorTransportAtomicLeaseInput>;
+    result(value: unknown): Promise<ContributorTransportAtomicResultInput>;
+    revoke(value: unknown): Promise<ContributorTransportAtomicRevokeInput>;
+  };
+}
+
 export interface ContributorRouteDependencies {
   /** Test seam only; never populated by the default production resolver. */
   readonly controller?: ContributorTransportController;
+  /**
+   * Test seam or a separately-bound production controller.  The controller
+   * must prepare/sign each request and call the operation-level Supabase RPC;
+   * a generic transaction wrapper is not accepted as an atomic substitute.
+   */
+  readonly atomicController?: ContributorAtomicRouteController;
   /** Test seam or a real externally-owned abuse-control adapter. */
   readonly rateLimiter?: ContributorRateLimiter;
   /** SHA-256 of the internal controller bearer token; raw token is never read from this field. */
@@ -87,6 +119,10 @@ export interface ContributorStatusPayload {
   readonly transport_state: 'closed' | 'configured';
   readonly controller_signing_configured: boolean;
   readonly transactional_store_configured: boolean;
+  /** Supabase client exposes the operation-RPC surface; migration/function
+   * existence is not claimed until a real operation call succeeds. */
+  readonly atomic_rpc_capable: boolean;
+  readonly atomic_controller_configured: boolean;
   readonly controller_auth_configured: boolean;
   readonly operator_revocation_configured: boolean;
   readonly rate_limiter_configured: boolean;
@@ -95,9 +131,11 @@ export interface ContributorStatusPayload {
 }
 
 interface ConfiguredController {
-  readonly controller: ContributorTransportController;
+  readonly controller?: ContributorTransportController;
+  readonly atomicController?: ContributorAtomicRouteController;
   readonly operatorConfigured: boolean;
   readonly transactionalStore: boolean;
+  readonly atomicRpcCapable: boolean;
 }
 
 class ContributorHttpError extends Error {
@@ -334,6 +372,7 @@ function configuredController(): ConfiguredController | null {
       controller,
       operatorConfigured: Boolean(operatorKeyId && operatorPublicKey),
       transactionalStore: true,
+      atomicRpcCapable: false,
     };
   } catch {
     return null;
@@ -344,11 +383,44 @@ function configuredControllerForRoute(
   endpoint: ContributorEndpoint,
   dependencies: ContributorRouteDependencies,
 ): ConfiguredController {
+  if (dependencies.atomicController) {
+    if (!dependencies.atomicController.controllerSigningConfigured) {
+      throw new ContributorHttpError(
+        503,
+        'transport_unconfigured',
+        'contributor atomic controller signing is not configured',
+        { retryAfterSeconds: 60 },
+      );
+    }
+    if (!dependencies.atomicController.atomicRpcCapable) {
+      throw new ContributorHttpError(
+        503,
+        'transport_unconfigured',
+        'contributor atomic RPC persistence is not configured',
+        { retryAfterSeconds: 60 },
+      );
+    }
+    if (endpoint === 'revoke' && !dependencies.atomicController.operatorConfigured) {
+      throw new ContributorHttpError(
+        503,
+        'transport_unconfigured',
+        'contributor operator revocation key is not configured',
+        { retryAfterSeconds: 60 },
+      );
+    }
+    return {
+      atomicController: dependencies.atomicController,
+      operatorConfigured: dependencies.atomicController.operatorConfigured,
+      transactionalStore: dependencies.atomicController.genericTransactionCapable,
+      atomicRpcCapable: true,
+    };
+  }
   if (dependencies.controller) {
     return {
       controller: dependencies.controller,
       operatorConfigured: true,
       transactionalStore: true,
+      atomicRpcCapable: false,
     };
   }
   const resolved = configuredController();
@@ -474,22 +546,56 @@ function respondError(
   res.status(mapped.status).json(body);
 }
 
+interface ContributorStoreCapabilities {
+  readonly genericTransactionCapable: boolean;
+  readonly atomicRpcCapable: boolean;
+}
+
+/**
+ * Capability observation is intentionally side-effect free.  Supabase's
+ * client always exposes `rpc`; this reports only that client surface, not
+ * that migration 0054 is applied or that any operation RPC has succeeded.
+ */
+function productionStoreCapabilities(): ContributorStoreCapabilities {
+  const availability = createSupabaseContributorTransportStore();
+  if (!availability.ok) {
+    return { genericTransactionCapable: false, atomicRpcCapable: false };
+  }
+  return {
+    genericTransactionCapable: availability.store.transactional,
+    atomicRpcCapable: availability.store.atomicRpcCapable,
+  };
+}
+
 function statusPayload(dependencies: ContributorRouteDependencies): ContributorStatusPayload {
+  const storeCapabilities = productionStoreCapabilities();
+  const atomicController = dependencies.atomicController;
   const controllerKeyConfigured = Boolean(
     envKeyId('APOCRYPHA_CONTRIBUTOR_CONTROLLER_KEY_ID')
     && readEd25519PrivateKey('APOCRYPHA_CONTRIBUTOR_CONTROLLER_PRIVATE_KEY_PEM'),
-  ) || Boolean(dependencies.controller);
+  ) || Boolean(dependencies.controller) || Boolean(atomicController?.controllerSigningConfigured);
   const operatorConfigured = Boolean(
     envKeyId('APOCRYPHA_CONTRIBUTOR_OPERATOR_KEY_ID')
     && readEd25519PublicKey('APOCRYPHA_CONTRIBUTOR_OPERATOR_PUBLIC_KEY_PEM'),
-  ) || Boolean(dependencies.controller);
-  const storeConfigured = Boolean(
-    (process.env.APOCKY_HUB_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL)
-    && process.env.SUPABASE_SERVICE_ROLE_KEY,
-  ) && Boolean(dependencies.controller);
+  ) || Boolean(dependencies.controller) || Boolean(atomicController?.operatorConfigured);
+  const storeConfigured = Boolean(dependencies.controller) || storeCapabilities.genericTransactionCapable;
+  const atomicRpcCapable = Boolean(atomicController?.atomicRpcCapable) || storeCapabilities.atomicRpcCapable;
+  const atomicControllerConfigured = Boolean(
+    atomicController?.atomicRpcCapable
+    && atomicController.controllerSigningConfigured,
+  );
   const tokenConfigured = Boolean(controllerTokenDigest(dependencies));
   const limiterConfigured = Boolean(dependencies.rateLimiter);
-  const enabled = Boolean(dependencies.controller && dependencies.rateLimiter);
+  // Keep the injected generic controller as a unit-test-only compatibility
+  // seam.  Production mutating capability requires an atomic controller plus
+  // the external limiter and internal controller bearer configuration.
+  const legacyTestEnabled = Boolean(dependencies.controller && dependencies.rateLimiter);
+  const atomicEnabled = Boolean(
+    atomicControllerConfigured
+    && dependencies.rateLimiter
+    && tokenConfigured,
+  );
+  const enabled = legacyTestEnabled || atomicEnabled;
   return {
     schema_version: CONTRIBUTOR_HTTP_ROUTE_SCHEMA,
     release_state: CONTRIBUTOR_NODE_MANIFEST.release_state,
@@ -497,6 +603,8 @@ function statusPayload(dependencies: ContributorRouteDependencies): ContributorS
     transport_state: enabled ? 'configured' : 'closed',
     controller_signing_configured: controllerKeyConfigured,
     transactional_store_configured: storeConfigured,
+    atomic_rpc_capable: atomicRpcCapable,
+    atomic_controller_configured: atomicControllerConfigured,
     controller_auth_configured: tokenConfigured,
     operator_revocation_configured: operatorConfigured,
     rate_limiter_configured: limiterConfigured,
@@ -537,6 +645,34 @@ async function dispatchEndpoint(
   const body = await readBoundedJsonBody(req);
   await enforceRateLimit(endpoint, req, dependencies);
   const configured = configuredControllerForRoute(endpoint, dependencies);
+  if (configured.atomicController) {
+    if (endpoint === 'enroll') {
+      return configured.atomicController.operations.atomicEnroll(
+        await configured.atomicController.prepare.enrollment(body),
+      );
+    }
+    if (endpoint === 'lease') {
+      return configured.atomicController.operations.atomicIssueLease(
+        await configured.atomicController.prepare.lease(body),
+      );
+    }
+    if (endpoint === 'result') {
+      return configured.atomicController.operations.atomicAcceptResult(
+        await configured.atomicController.prepare.result(body),
+      );
+    }
+    return configured.atomicController.operations.atomicRevoke(
+      await configured.atomicController.prepare.revoke(body),
+    );
+  }
+  if (!configured.controller) {
+    throw new ContributorHttpError(
+      503,
+      'transport_unconfigured',
+      'contributor transport controller is not configured',
+      { retryAfterSeconds: 60 },
+    );
+  }
   if (endpoint === 'enroll') return configured.controller.enroll(body);
   if (endpoint === 'lease') return configured.controller.issueLease(body);
   if (endpoint === 'result') return configured.controller.acceptResult(body);
@@ -574,4 +710,3 @@ export function createContributorRouteHandler(
     }
   };
 }
-
