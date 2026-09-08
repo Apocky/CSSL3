@@ -1,45 +1,56 @@
 § P1A.VEC.INDEX.BOUNDS.REPAIR @2026-09-08
 
 I> authority := user.authorized.local.compiler.code+tests+commit+push.
-I> base := 8020b3b25b23961bde9d7890291c3c9b9e6a9f8a.
-I> scope := dormant `cssl-mir::vec_abi` expansion semantics only.
+I> base := 694b029ef1abd336fbe6e81f32292d2a4164c43c.
+I> scope := dormant `cssl-mir::vec_abi` index-guard shape only.
 
-§P observed.defect
-  ✓ prior expansion admitted `%i < %len` using signed comparison without `%i≥0`.
-  ✓ negative i64 therefore satisfied upper-bound check and reached negative byte offset.
-  ✓ prior OOB inversion was `arith.xori(%in_bounds,%in_bounds)` = false ∀ input.
-  ✓ csslc canonical pipeline does not invoke VecAbiPass today.
-  ✓ raw Cranelift `cssl.vec.index` fallback returns typed zero and does not materialize backing data.
-  ∴ defect is promotion-blocking correctness+safety debt ; N! current runtime memory-safety exploit claim.
+§P observed.defects
+  ✓ pre-694b expansion admitted signed `%i < %len` without `%i≥0`.
+  ✓ pre-694b OOB inversion `arith.xori(%in_bounds,%in_bounds)` = false ∀ input.
+  ✓ 694b replaced self-XOR with `arith.xori_not(%in_bounds)`.
+  ✓ `arith.xori_not` lowers through Cranelift `bnot` ; `MirType::Bool` lowers to i8.
+  ✓ exact native counterexample := `!false→255` + `!true→254` ; both truthy @`brif`.
+  ∴ 694b inversion would route every expanded index into panic branch.
+  ✓ csslc canonical pipeline does not invoke VecAbiPass.
+  ✓ raw Cranelift `cssl.vec.index` fallback returns typed zero ; no backing-data load.
+  ∴ runtime vector semantics remain promotion-blocking ; current exploit claim unsupported because repaired pass remains dormant.
 
-§D repair
-  %non_negative := cmp.sge(%i,0i64).
-  %below_len := cmp.slt(%i,%len).
-  %in_bounds := and(%non_negative,%below_len).
-  %oob := not(%in_bounds).
+§D corrected.dormant.shape
+  %negative := cmp.slt(%i,0i64).
+  %at_or_above := cmp.sge(%i,%len).
+  %oob := or(%negative,%at_or_above).
   scf.if(%oob)→cssl.panic ; else→continue.
   W! result address/load remains after guard sequence.
+  N! bool inversion dependency.
 
-§T root.verification
-  focused.vec.index := 4/4.
-  cssl-mir.full := 852/852.
-  cssl-cgen-cpu-cranelift.full := 628/628.
-  csslc.full.pre-delta-equivalent := 108/108.
-  ✓ structure asserts {sge0,slt.len,and,unary.not,scf.if consumes oob,self-xor absent}.
+§T verification
+  exact.compiler := sha256:0f471c178afe9d2f6409136f2fe5d29238da777195117352ede205de5c990898 ; bytes=124019286.
+  focused.vec.index := 5/5.
+  cssl-mir.full := 853/853.
+  cssl-cgen-cpu-cranelift.full := 642/642.
+  csslc.full := 162/162.
+  ✓ structure := {slt(i,0),sge(i,len),ori,scf.if consumes ori,self-xor absent,xori_not absent}.
+  ✓ signed.truth-table := 10/10 incl {i64.MIN,-1,0,len-1,len,len+1,i64.MAX,zero-len,negative-len}.
+  ✓ canonical.object := sha256:65621aaba4558e8086d39fd27d2c30fb6f08ece5a863cf2254c7ee8afb7f2d4a ; bytes=260.
+  ✓ canonical.object.text := sha256:29e9967bc552c3997f011e3ece4cb58b29c6bbdd97200d6a702d29a54bd2757a ; bytes=79 ; relocations=0 ; undefined.externals=0.
+  ✓ canonical.vec.results := {round_trip=0,read[-1]=0,read[0]=0,read[i64.MAX]=0}.
+  ✓ separate.bool_not.results := {false=255,true=254}.
 
 §C verdict
-  ◐ STRUCTURAL_REPAIR_CANDIDATE ; N! production promotion.
+  ◐ PARTIAL_ACCEPT_CORRECTED_DORMANT_SHAPE.
+  ✗ RUNTIME_PROMOTION.
   blockers := {
     canonical pipeline insertion,
     fail-closed cssl.panic object+JIT lowering,
     real backing-data threading instead of typed-zero fallback,
     negative|equal-len|greater-len|max-i64|corrupt-len native behavioral oracle,
-    allocation-lifetime+overflow+unwind proof,
-    independent audit
+    allocation-lifetime+offset-overflow+unwind proof,
+    independent post-commit audit
   }.
-  strongest.countercase := corrected dormant expansion cannot protect canonical object output while raw vec.index remains typed-zero fallback.
-  falsifier := any self-XOR ; missing negative guard ; OOB reaches ptr.offset ; canonical build claims semantic success through typed-zero fallback.
-  rollback := revert this lane commit ; restores prior dormant expansion only.
+  separate.compiler.defect := logical `!bool` miscompiles through bitwise i8 complement ; N! vector-shape acceptance.
+  strongest.countercase := corrected dormant shape cannot protect canonical output while raw vec.index remains typed-zero fallback.
+  falsifier := any missing direct OOB predicate|edge ; any OOB reaches ptr.offset ; canonical build claims semantic success through typed-zero fallback.
+  rollback := revert correction commit → restore 694b dormant inversion defect only.
   effects := 0 ; deployment=false ; runtime.cutover=false.
 
 attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
