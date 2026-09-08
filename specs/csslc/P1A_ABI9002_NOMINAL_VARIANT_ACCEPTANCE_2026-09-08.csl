@@ -1,0 +1,138 @@
+§ P1A.ABI9002.NOMINAL.UNIT.VARIANT.ACCEPTANCE @2026-09-08
+
+I> authority := user.authorized.local.compiler.code+tests+commit+push.
+I> scope := declaration-backed.payload-free.nominal-enum identity across
+  CSSLv3.HIR → MIR → Cranelift.{object,JIT,SCF} ; source-arm order independent
+  from declaration discriminant ; unsupported identity paths fail typed.
+I> base := 7c518f1094b5f258409c1e285aa3ceeb5417a292.
+I> code.commits := {
+  0d77505ff833bf152b6b341a0dcec4465ee11bd7,
+  82a249fe2f48c1f83769ff521fc3113518791b64
+}.
+I> code.tree := 80e831703f95f5466bff325a7c0c7876a204c854.
+I> remote.ref := refs/heads/codex/p1a-abi9002-20260908.
+I> remote.readback := commit.82a249fe2f48c1f83769ff521fc3113518791b64
+  + tree.80e831703f95f5466bff325a7c0c7876a204c854 + ahead0/behind0.
+
+§P root.cause
+  ✓ HIR `Enum::Variant` path previously became unresolved `cssl.path_ref`.
+  ✓ Cranelift.object materialized unresolved path-ref as typed zero.
+  ✓ MIR match discarded pattern identity.
+  ✓ object match assumed source-arm-index = declaration discriminant.
+  ✓ JIT had no match admission.
+  ∴ every constructor appeared tag0 ; reversed source arms dispatched incorrectly.
+
+§D accepted.delta
+  1. MirEnumLayout retains exact declaration-order variant names + tag lookup.
+  2. csslc root+aux builds collect layouts before body lowering ; duplicate bare
+     enum identities become pathless instead of insertion-order selected.
+  3. exact `Enum::Variant` constructor emits unsigned scalar discriminant
+     width={i8@count≤256,i16@count≤65536,i32@larger} + nominal provenance.
+  4. nominal match requires qualified.payload-free.unique.total arms + identical
+     MIR yields ; records exact source-arm→declaration-tag vector.
+  5. SCF validator requires nonempty enum identity + exact arm/region count
+     + total discriminant bijection.
+  6. Cranelift object+JIT build declaration-tag→source-arm jump table.
+  7. generic function specializations receive same exact nominal layout table ;
+     pathless constructors inside specialization preserve typed refusal.
+  8. profile arm order reversed intentionally ; ABI9002 status becomes 9002→0.
+
+§D refusal.contract
+  ✓ typed MIR op := cssl.nominal_variant.error {code,detail,source_loc}.
+  ✓ object/JIT preserve code+detail as NominalVariantFailure.
+  codes := {
+    ABI9002-PATHLESS-CONSTRUCTOR, ABI9002-PATHLESS-PATTERN,
+    ABI9002-PATHLESS-LAYOUT, ABI9002-PAYLOAD-ENUM,
+    ABI9002-PAYLOAD-CONSTRUCTOR, ABI9002-PAYLOAD-PATTERN,
+    ABI9002-UNSUPPORTED-PATTERN, ABI9002-FOREIGN-PATTERN,
+    ABI9002-UNKNOWN-VARIANT, ABI9002-DUPLICATE-PATTERN,
+    ABI9002-NONEXHAUSTIVE-MATCH, ABI9002-ARM-TYPE-MISMATCH,
+    ABI9002-MALFORMED-DISPATCH, ABI9002-MALFORMED-REGION
+  }.
+  ✓ legacy.native-x64 remains explicit UnsupportedOp.scf.match + writes no object.
+  ✓ JIT generic/non-nominal scf.match remains explicit UnsupportedMirOp.
+  ✓ object generic-match historical path remains unchanged.
+
+§T verification
+  focused := {
+    cssl-mir=4/4,
+    cssl-cgen-cpu-cranelift={SCF2,object3,JIT4}=9/9,
+    cssl-cgen-cpu-x64=1/1,
+    csslc={positive1,pathless1,legacy-x64-refusal1,duplicate-identity1,
+      generic-positive1,generic-pathless-refusal1}=6/6,
+    total=20/20
+  }.
+  regression := {
+    cssl-mir=851/851 + doc.ignored7,
+    cssl-cgen-cpu-cranelift=651/651 + doc.ignored1,
+    cssl-cgen-cpu-x64=519/519,
+    csslc=168/168,
+    total=2189/2189 + ignored8
+  }.
+  check := cargo.check.{cssl-mir,cssl-cgen-cpu-cranelift,
+    cssl-cgen-cpu-x64,csslc}=PASS.
+  baseline.profile.focused := ABI9003-delivered.DLL → {
+    core0,u128-composite0,native-u1280,codec-shift0,unsigned-shift0,
+    u64-cross-call0,record9001,variant9002,known-refusals0,full9001
+  }.
+  profile.focused := 12/12 PASS ; probes={
+    core0,u128-composite0,native-u1280,codec-shift0,unsigned-shift0,
+    u64-cross-call0,record9001,variant0,known-refusals0,full9001,
+    direct-variant0,ABI9003-C-boundary0
+  }.
+  profile.full := inherited.harness@sha256:
+    ddf381a0f7bf8688220721059b3cb17bdf8d288cab37c0d49031d0c4562c9abc
+    + exact in-memory expectation delta {9002:0,9003:0,9004:0,9005:0}
+    → PASS 22268/22268 ; u128.cases4096 ; codec.cases64 ;
+      profile.id=3cbe4c61a6c3b73dc21ed3c806b4de69cb8f4b3e830729ba4cf030a28dcb1328.
+  stable.C.oracle := 5 fixed +4096 deterministic u128 vectors ×2 limbs
+    =8202 exact ABI9003 comparisons ; status0.
+  artifact.profile.obj := bytes43844 @sha256:
+    34a42818edd98c446739beec85e8ac085fd5b64e3f6ed110e5be2568481d8a3c.
+  artifact.C.oracle.obj := bytes1834 @sha256:
+    bd218a837a690603bebf9134f20f3a04e73912e03371b48e3cc82f1639264aa0.
+  artifact.linked.dll := bytes39424 @sha256:
+    76d3f097290fcdfa2c2c826cdfec693232368df2e05611b6c8ae96a598894ed7
+    ; lld-link22.1.3./brepro.same-path.relink=exact ; imports0 ; exports32.
+  sources := {
+    language_profile_v1.cssl@sha256:2ca26771555df1b6e0b92c175a73332267d3f132027b1e1ce45034dd22cd8e8e,
+    profile_probe_v1.cssl@sha256:b49f5f5e96d81b48dc1ac056401d6bedeb3e93a224cea7f07e2727f8433bd907,
+    abi9002_profile_probe_harness.py@sha256:41d4b953357265c621e0416f03ddaad693ddf74159c1929733b5e61d13dc9717,
+    abi9003_u128_c_boundary.c@sha256:ef85f38f14e76559554f1a1d51fade255eaf3bf99c0f6ec49abc7f1e28f50212
+  }.
+
+§C verdict
+  ✓ ABI9002 := BOUNDED_ACCEPT_CANDIDATE.
+  ✓ exact claim := implicit declaration-order discriminants + payload-free nominal
+    constructors + exhaustive qualified matches on csslc Cranelift object/JIT paths
+    + generic-function specialization preservation.
+  N! explicit discriminants | payload variants | wildcard/binding patterns |
+    partial matches | generic-enum type specialization | invalid external tag behavior
+    | raw public C enum ABI promoted.
+  N! profile oracle crosses i32 status only ; no enum value crosses C boundary.
+  ✗ full.P1a.native.profile := REJECTED ; record9001 remains intentional.
+  ○ residual.P1a := native record layout + manifest content-byte binding
+    + canonical codec/multiblock SHA256 + RNG admission + normalization
+    + nonvacuous executable NIL + non-Cranelift backend parity
+    + root independent review + canonical Apocv4 evidence/graph integration.
+  N! merge|deployment|release|training|spend|runtime-cutover authority inferred.
+  N! Apocv4 canonical six mutated.
+  N! graphify-out staged|reverted ; foreign generated state preserved.
+
+strongest.countercase := declaration-backed unit tags prove nominal identity only
+  inside admitted compiler paths ; generic-enum type specialization, payload layout,
+  explicit source discriminants, invalid external tags, unwind, and cross-language
+  enum ABI remain outside proof.
+falsifier := any tag/arm permutation mismatch ; fallback-zero for known nominal path ;
+  unsupported case emits object ; generic JIT match becomes admitted ; native-x64
+  stops refusing ; ABI9003|9004|9005 regresses ; ABI9001 changes ; import leak ;
+  package regression failure.
+rollback := revert code.commits in reverse {
+  82a249fe2f48c1f83769ff521fc3113518791b64,
+  0d77505ff833bf152b6b341a0dcec4465ee11bd7
+} ;
+  restores explicit profile ABI9002 refusal without touching Graphify or Apocv4.
+
+attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
