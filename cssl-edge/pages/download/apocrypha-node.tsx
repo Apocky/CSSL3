@@ -11,9 +11,40 @@ interface Props {
   readonly manifest: ContributorNodeManifest;
 }
 
+function formatState(value: string): string {
+  return value.split('_').join(' ');
+}
+
+export function canOfferContributorArtifact(
+  manifest: ContributorNodeManifest,
+  platform: ContributorNodeManifest['platforms'][number],
+): boolean {
+  return (manifest.release_state === 'PARTIAL' || manifest.release_state === 'READY')
+    && manifest.release_gate === 'OPEN'
+    && manifest.contract.production_eligible
+    && manifest.contract.status === 'native_release'
+    && manifest.contract.transport === 'signed_native_transport'
+    && platform.state === 'READY'
+    && platform.artifact !== null
+    && manifest.artifact_policy.detached_signature === 'required'
+    && manifest.artifact_policy.pinned_signer === 'required'
+    && manifest.artifact_policy.unsigned_candidate_download === 'blocked';
+}
+
 const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
   const desktop = manifest.platforms.filter((platform) => platform.category === 'desktop');
   const mobile = manifest.platforms.filter((platform) => platform.category === 'mobile');
+  const publicRelease = manifest.release_state === 'PARTIAL' || manifest.release_state === 'READY';
+  const gateRows = [
+    ['SHA-256 digest', manifest.artifact_policy.sha256],
+    ['Detached signature', manifest.artifact_policy.detached_signature],
+    ['Pinned release signer', manifest.artifact_policy.pinned_signer],
+    ['Reproducible build', manifest.artifact_policy.reproducible_build],
+    ['Malware scan', manifest.artifact_policy.malware_scan],
+    ['Install smoke', manifest.artifact_policy.install_smoke],
+    ['Rollback proof', manifest.artifact_policy.rollback],
+    ['Unsigned candidate download', manifest.artifact_policy.unsigned_candidate_download],
+  ] as const;
   return (
     <>
       <Head>
@@ -28,6 +59,7 @@ const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
           content="A future sovereign, opt-in contributor node for public Apocrypha workloads."
         />
         <link rel="canonical" href="https://www.apocky.com/download/apocrypha-node" />
+        <link rel="alternate" type="application/json" href="/api/apocrypha/contributor/manifest" />
       </Head>
       <main className="contributor-page" id="main-content">
         <div className="contributor-wrap">
@@ -43,15 +75,16 @@ const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
                 <h1>Contribute compute, on your terms.</h1>
                 <p className="lead">One release surface for the future desktop and mobile contributor node.</p>
               </div>
-              <span className="state-badge" role="status" aria-live="polite">
-                {manifest.release_state.replace('_', ' ')}
+              <span className="state-badge" role="status" aria-live="polite" data-release-state={manifest.release_state}>
+                {formatState(manifest.release_state)}
               </span>
             </div>
             <div className="notice" role="note">
-              <strong>Downloads are not enabled yet.</strong>
+              <strong>{publicRelease ? 'Verified packages are listed below.' : 'Downloads are not enabled yet.'}</strong>
               <p>
-                The current Apocrypha node is a local candidate contract, not a live worker. No executable,
-                listener, background job, or processing-power contribution starts from this page.
+                {publicRelease
+                  ? 'Only platform entries with a verified artifact link can be installed. This page never starts a worker or grants processing authority.'
+                  : 'The current Apocrypha node is a local candidate contract, not a live worker. No executable, listener, background job, or processing-power contribution starts from this page.'}
               </p>
             </div>
           </header>
@@ -62,14 +95,19 @@ const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
                 <p className="eyebrow">Release gate</p>
                 <h2 id="release-status-heading">{manifest.version}</h2>
               </div>
-              <span className="closed">{manifest.release_gate}</span>
+              <span className="closed" data-release-gate={manifest.release_gate}>{manifest.release_gate}</span>
             </div>
             <p className="copy">{manifest.summary}</p>
             <p className="copy small">
-              A package appears only after native transport, signed artifacts, reproducible-source checks,
-              malware scanning, isolated install smoke, and rollback are independently verified.
+              A package appears only after every required gate below is independently verified. A listed
+              requirement is a release condition, not proof that the current candidate has passed it.
             </p>
-            <a className="manifest-link" href="/api/apocrypha/contributor/manifest">
+            <a
+              className="manifest-link"
+              href="/api/apocrypha/contributor/manifest"
+              rel="alternate"
+              type="application/json"
+            >
               View machine-readable manifest →
             </a>
           </section>
@@ -86,11 +124,11 @@ const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
                 <article className="platform-card" key={platform.target}>
                   <div className="platform-topline">
                     <span className="platform-kind">{platform.category}</span>
-                    <span className="platform-state">{platform.state.replace('_', ' ')}</span>
+                    <span className="platform-state" data-platform-state={platform.state}>{formatState(platform.state)}</span>
                   </div>
                   <h3>{platform.label}</h3>
                   <p>{platform.availability_note}</p>
-                  {platform.artifact ? (
+                  {canOfferContributorArtifact(manifest, platform) && platform.artifact ? (
                     <a className="download-button" href={platform.artifact.href} download>
                       Download verified package <span aria-hidden="true">↓</span>
                     </a>
@@ -107,6 +145,37 @@ const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
                 </article>
               ))}
             </div>
+          </section>
+
+          <section className="verification-card" aria-labelledby="verification-heading">
+            <div className="section-heading compact">
+              <div>
+                <p className="eyebrow">Candidate gates</p>
+                <h2 id="verification-heading">What must pass before download</h2>
+              </div>
+            </div>
+            <div className="gate-grid">
+              {gateRows.map(([label, state]) => (
+                <div className="gate-row" key={label}>
+                  <span>{label}</span>
+                  <code data-gate-state={state}>{formatState(state)}</code>
+                </div>
+              ))}
+            </div>
+            <p className="copy small">
+              The current manifest is {formatState(manifest.release_state)} / {manifest.release_gate}.
+              The unsigned-candidate rule is {formatState(manifest.artifact_policy.unsigned_candidate_download)};
+              no candidate package is linked while the gate is closed.
+            </p>
+            <details className="verify-help">
+              <summary>How to verify a future package</summary>
+              <ol>
+                <li>Open the machine-readable manifest and confirm the platform state is <code>READY</code> and the release gate is <code>OPEN</code>.</li>
+                <li>Compare the downloaded file with the manifest’s full <code>sha256</code> value: <code>Get-FileHash .\PACKAGE.zip -Algorithm SHA256</code>.</li>
+                <li>Verify the detached signature with the release verifier and pinned public key named by <code>signing_key_id</code>. If either is missing, do not install.</li>
+                <li>Keep the local node paused until you have reviewed the package’s scope, resource caps, privacy boundary, and pause/revoke/uninstall controls.</li>
+              </ol>
+            </details>
           </section>
 
           <section className="details-grid" aria-label="Contribution safeguards">
@@ -174,10 +243,20 @@ const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
         .notice p { margin: 6px 0 0; }
         .release-card { margin: 26px 0 44px; padding: 24px; }
         .copy { max-width: 70ch; color: #bac3d2; line-height: 1.65; margin: 14px 0 0; }
-        .copy.small { font-size: .9rem; color: #8f9bad; }
-        .manifest-link { margin-top: 16px; }
-        .compact { margin-bottom: 14px; }
-        .platform-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+         .copy.small { font-size: .9rem; color: #8f9bad; }
+         .manifest-link { margin-top: 16px; }
+         .compact { margin-bottom: 14px; }
+         .verification-card { margin-top: 44px; padding: 24px; background: #161c2a; border: 1px solid #364052; border-radius: 16px; }
+         .gate-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; margin-top: 18px; }
+         .gate-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 44px; border-top: 1px solid #364052; color: #bac3d2; font-size: .86rem; }
+         .gate-row code { color: #f6d487; font: 600 .72rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-transform: uppercase; text-align: right; }
+         .gate-row code[data-gate-state="blocked"] { color: #f6d487; }
+         .verify-help { margin-top: 18px; border-top: 1px solid #364052; color: #bac3d2; }
+         .verify-help summary { cursor: pointer; min-height: 48px; padding: 12px 0; color: #f2eee5; }
+         .verify-help ol { margin: 8px 0 0; padding-left: 22px; line-height: 1.7; }
+         .verify-help li + li { margin-top: 8px; }
+         .verify-help code { color: #f6d487; overflow-wrap: anywhere; }
+         .platform-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
         .platform-card { min-height: 260px; padding: 18px; display: flex; flex-direction: column; }
         .platform-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
         .platform-kind { border: 0; padding: 0; color: #91d5dc; text-transform: uppercase; font-size: 10px; }
@@ -199,7 +278,7 @@ const ApocryphaContributorNodeDownload: NextPage<Props> = ({ manifest }) => {
         .footer-links { display: flex; flex-wrap: wrap; gap: 6px 20px; border-top: 1px solid #364052; margin-top: 40px; padding-top: 8px; }
         a:focus-visible { outline: 2px solid #91d5dc; outline-offset: 4px; }
         @media (max-width: 940px) { .platform-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-        @media (max-width: 680px) { .contributor-page { padding: 16px 16px 40px; } .return-nav { margin-bottom: 28px; } .title-row, .section-heading { display: block; } .state-badge, .closed { display: inline-flex; margin-top: 16px; } .platform-grid, .details-grid { grid-template-columns: 1fr; } .policy-list { grid-template-columns: repeat(2, 1fr); } h1 { font-size: 2.65rem; } }
+         @media (max-width: 680px) { .contributor-page { padding: 16px 16px 40px; } .return-nav { margin-bottom: 28px; } .title-row, .section-heading { display: block; } .state-badge, .closed { display: inline-flex; margin-top: 16px; } .platform-grid, .details-grid { grid-template-columns: 1fr; } .gate-grid { grid-template-columns: 1fr; } .policy-list { grid-template-columns: repeat(2, 1fr); } h1 { font-size: 2.65rem; } }
       `}</style>
     </>
   );

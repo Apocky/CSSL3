@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import handler from '@/pages/api/apocrypha/contributor/manifest';
+import { canOfferContributorArtifact } from '@/pages/download/apocrypha-node';
 import {
   CONTRIBUTOR_NODE_MANIFEST,
   parseContributorNodeManifest,
@@ -74,7 +75,37 @@ export function testLandingPageCannotOfferCandidateArtifact(): void {
   assert.match(page, /manifest\.release_state/);
   assert.match(page, /No verified package available/);
   assert.match(page, /Downloads are not enabled yet/);
+  assert.match(page, /canOfferContributorArtifact/);
+  assert.match(page, /data-release-gate/);
+  assert.match(page, /Candidate gates/);
+  assert.match(page, /Get-FileHash \.\\PACKAGE\.zip -Algorithm SHA256/);
+  assert.match(page, /detached signature/);
+  assert.match(page, /href="\/api\/apocrypha\/contributor\/manifest"/);
   assert.doesNotMatch(page, /Mycelium-v0\.1\.0-alpha-windows-x64\.exe\.placeholder/);
+}
+
+export function testCandidateArtifactLinkPredicateFailsClosed(): void {
+  const candidate = structuredClone(CONTRIBUTOR_NODE_MANIFEST) as ContributorNodeManifest;
+  const platform = candidate.platforms[0]!;
+  assert.equal(canOfferContributorArtifact(candidate, platform), false);
+
+  const candidateWithUnsignedArtifact = {
+    ...candidate,
+    platforms: candidate.platforms.map((item, index) => index === 0 ? {
+      ...item,
+      state: 'READY' as const,
+      artifact: {
+        href: '/downloads/apocrypha-node/candidate.zip',
+        filename: 'candidate.zip',
+        sha256: 'a'.repeat(64),
+        detached_signature: '',
+        signing_key_id: '',
+        bytes: 1,
+        provenance: 'candidate-only',
+      },
+    } : item),
+  } as unknown as ContributorNodeManifest;
+  assert.equal(canOfferContributorArtifact(candidateWithUnsignedArtifact, candidateWithUnsignedArtifact.platforms[0]!), false);
 }
 
 export async function testGetReturnsTypedManifest(): Promise<void> {
@@ -99,9 +130,10 @@ async function runAll(): Promise<void> {
   testCandidateManifestIsFailClosed();
   testReadyWithoutNativeReleaseIsRejected();
   testLandingPageCannotOfferCandidateArtifact();
+  testCandidateArtifactLinkPredicateFailsClosed();
   await testGetReturnsTypedManifest();
   await testNonGetRefuses();
-  console.log('apocrypha-contributor-node.test : OK · 5 tests passed');
+  console.log('apocrypha-contributor-node.test : OK · 6 tests passed');
 }
 
 declare const require: { main?: unknown } | undefined;
