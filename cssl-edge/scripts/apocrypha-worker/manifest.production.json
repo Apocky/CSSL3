@@ -47,6 +47,13 @@
         "tokenEnv": "APOCRYPHA_MNEME_READ_TOKEN",
         "timeoutMs": 3500,
         "maxChars": 7000
+      },
+      {
+        "name": "metaharness",
+        "urlEnv": "APOCRYPHA_METAHARNESS_READ_URL",
+        "tokenEnv": "APOCRYPHA_METAHARNESS_READ_TOKEN",
+        "timeoutMs": 3500,
+        "maxChars": 7000
       }
     ]
   },

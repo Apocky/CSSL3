@@ -33,7 +33,7 @@ Only one worker process can own a journal directory. `worker.lock` prevents dupl
 
 ## Memory and tools
 
-`manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, and MNEME. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. The resident defaults to one bounded adapter call at a time so native readers cannot collide during process startup; `APOCRYPHA_MEMORY_READ_CONCURRENCY` can admit up to five only after a host benchmark. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen beyond its declared timeout.
+`manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, MNEME, and MetaHarness. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. The resident defaults to one bounded adapter call at a time so native readers cannot collide during process startup; `APOCRYPHA_MEMORY_READ_CONCURRENCY` can admit up to six only after a host benchmark. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen beyond its declared timeout.
 
 An individual resident can raise a slow local adapter's deadline with
 `APOCRYPHA_<ADAPTER>_READ_TIMEOUT_MS` (250 through 60000). This runtime dial
@@ -41,9 +41,9 @@ does not change the admitted faculty, authority, response bound, or manifest;
 it only allows a known local reader enough time to finish.
 
 Every heartbeat performs a bounded live Qwen probe. While idle, the worker
-also performs all five read-only adapter requests for the primary and every
+also performs all six read-only adapter requests for the primary and every
 additional admitted readiness scope at least every 30 seconds.
-The control plane receives `qwen_healthy`, `qwen_probe_at`, the five exact
+The control plane receives `qwen_healthy`, `qwen_probe_at`, the six exact
 adapter states, and `adapter_probe_at`; the adapter timestamp advances only
 after every adapter returned successfully for every configured scope.
 Generation heartbeats publish the

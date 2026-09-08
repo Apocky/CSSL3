@@ -29,6 +29,7 @@ const healthyAdapters = {
   anamnesis: 'ok',
   graphify: 'ok',
   mneme: 'ok',
+  metaharness: 'ok',
 };
 const healthyOperations = {
   qwen_healthy: true,

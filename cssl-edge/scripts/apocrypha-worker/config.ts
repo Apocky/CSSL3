@@ -135,7 +135,7 @@ export function loadConfig(
     healthPort: integerEnv(env, 'APOCRYPHA_WORKER_HEALTH_PORT', 19_126, 1_024, 65_535),
     heartbeatIntervalMs: integerEnv(env, 'APOCRYPHA_WORKER_HEARTBEAT_MS', 15_000, 5_000, 300_000),
     heartbeatEnabled: boolEnv(env, 'APOCRYPHA_WORKER_HEARTBEAT_ENABLED', true),
-    memoryReadConcurrency: integerEnv(env, 'APOCRYPHA_MEMORY_READ_CONCURRENCY', 1, 1, 5),
+    memoryReadConcurrency: integerEnv(env, 'APOCRYPHA_MEMORY_READ_CONCURRENCY', 1, 1, 6),
     memoryProbeTenantId: env.APOCRYPHA_MEMORY_PROBE_TENANT_ID?.trim()
       || firstCsv(env.APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS),
     memoryProbePrincipalId: env.APOCRYPHA_MEMORY_PROBE_PRINCIPAL_ID?.trim() || required(env, 'APOCRYPHA_WORKER_NODE_ID'),

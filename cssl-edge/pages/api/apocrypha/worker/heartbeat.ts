@@ -4,7 +4,7 @@ import { assertWorkerRequest, getApocryphaServiceClient, publicJobError } from '
 import { methodNotAllowed, noStore, objectField } from '@/lib/apocrypha/job-http';
 import { required, workerDatabaseError } from '@/lib/apocrypha/worker-http';
 
-const ADAPTERS = ['mempalace', 'brainmonsoon', 'anamnesis', 'graphify', 'mneme'] as const;
+const ADAPTERS = ['mempalace', 'brainmonsoon', 'anamnesis', 'graphify', 'mneme', 'metaharness'] as const;
 const ADAPTER_STATES = new Set(['ok', 'unconfigured', 'timeout', 'error', 'denied']);
 
 function operationalAdapterStates(value: unknown): Record<string, string> {

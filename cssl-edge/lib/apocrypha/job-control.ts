@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 export const APOCRYPHA_MODEL_ALIAS = process.env.APOCRYPHA_MODEL_ALIAS ?? 'qwen35-35b-a3b-q4';
 export const APOCRYPHA_PROFILE_HASH = process.env.APOCRYPHA_PROFILE_HASH ?? '5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9';
 export const APOCRYPHA_TOOL_REGISTRY_VERSION = process.env.APOCRYPHA_TOOL_REGISTRY_VERSION ?? 'apocrypha-readonly-v1';
-export const APOCRYPHA_MEMORY_MANIFEST_HASH = process.env.APOCRYPHA_MEMORY_MANIFEST_HASH ?? '681b1dc6e1c61e0dd9883533b8fb04e28e90f4060161613ca1628f0a500d8b0e';
+export const APOCRYPHA_MEMORY_MANIFEST_HASH = process.env.APOCRYPHA_MEMORY_MANIFEST_HASH ?? '307a86ce2ec83a37ad30f86327195e47259167728cf32e4276af377f08988273';
 
 export type ApocryphaJobKind =
   | 'apocky_chat'

@@ -8,6 +8,7 @@ export const APOCRYPHA_REQUIRED_MEMORY_ADAPTERS = [
   'anamnesis',
   'graphify',
   'mneme',
+  'metaharness',
 ] as const;
 
 export type ApocryphaRequiredMemoryAdapter = typeof APOCRYPHA_REQUIRED_MEMORY_ADAPTERS[number];

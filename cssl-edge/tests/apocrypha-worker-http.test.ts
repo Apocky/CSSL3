@@ -165,7 +165,7 @@ async function testHeartbeatAuthenticatesAtDatabaseBeforeUpdate(): Promise<void>
     adapter_probe_at: '2026-09-07T11:59:55.000Z',
     generation_deadline_ms: 2_700_000,
     adapter_states: {
-      mempalace: 'ok', brainmonsoon: 'unconfigured', anamnesis: 'unconfigured', graphify: 'ok', mneme: 'unconfigured',
+      mempalace: 'ok', brainmonsoon: 'unconfigured', anamnesis: 'unconfigured', graphify: 'ok', mneme: 'unconfigured', metaharness: 'ok',
     },
   }), res);
 
@@ -184,7 +184,7 @@ async function testHeartbeatAuthenticatesAtDatabaseBeforeUpdate(): Promise<void>
   assert(profiles.adapter_probe_at === '2026-09-07T11:59:55.000Z', 'heartbeat omitted adapter probe timestamp');
   assert(profiles.generation_deadline_ms === 2_700_000, 'heartbeat omitted bounded generation deadline');
   const adapterStates = profiles.adapter_states as Record<string, unknown>;
-  assert(adapterStates.mempalace === 'ok' && adapterStates.graphify === 'ok', 'heartbeat omitted operational adapter states');
+  assert(adapterStates.mempalace === 'ok' && adapterStates.graphify === 'ok' && adapterStates.metaharness === 'ok', 'heartbeat omitted operational adapter states');
 }
 
 async function testHeartbeatDatabaseAuthenticationFailureIs401(): Promise<void> {

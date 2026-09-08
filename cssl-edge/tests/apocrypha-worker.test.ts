@@ -261,9 +261,9 @@ async function main(): Promise<void> {
     assert(successfulChaosRead.results.every((result) => result.state === 'ok') && successfulChaosRead.probedAt === null,
       'successful single-scope Chaos job minted global adapter freshness');
     const operationalProbe = await probeMemoryAdapters(dualScopeConfig, probeEnv);
-    assert(operationalProbe?.probedAt !== null, 'five real adapter reads did not mint probe freshness');
-    assert(operationalProbe?.results.length === 5 && operationalProbe.results.every((result) => result.state === 'ok'),
-      'periodic adapter probe did not report all five runtime states');
+    assert(operationalProbe?.probedAt !== null, 'six real adapter reads did not mint probe freshness');
+    assert(operationalProbe?.results.length === 6 && operationalProbe.results.every((result) => result.state === 'ok'),
+      'periodic adapter probe did not report all six runtime states');
     assert(peakMemoryRequests === 1, 'bounded adapter scheduler allowed overlapping memory reads');
     assert(memoryScopesSeen.has('11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:chaos_tarot_reading'),
       'primary Chaos readiness scope was not probed');
