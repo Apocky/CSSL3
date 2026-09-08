@@ -144,7 +144,10 @@ impl CallSignatureTable {
 /// Source signedness for scalar integer declarations only. References and
 /// other wrappers are deliberately excluded: their ABI may currently share
 /// an integer carrier, but they are not integer-literal parameter contracts.
-fn declared_scalar_integer_unsigned(interner: &Interner, ty: &HirType) -> Option<bool> {
+pub(crate) fn declared_scalar_integer_unsigned(
+    interner: &Interner,
+    ty: &HirType,
+) -> Option<bool> {
     match &ty.kind {
         HirTypeKind::Path { path, .. } if path.len() == 1 => {
             match interner.resolve(path[0]).as_str() {
@@ -1430,6 +1433,8 @@ fn lower_field(
                     || layout.field_offsets.len() != layout.fields.len()
                 {
                     "ABI9001-PATHLESS-LAYOUT"
+                } else if !layout.has_exact_field_signedness_contracts() {
+                    "ABI9001-SIGNEDNESS-CONTRACT-UNVERIFIED"
                 } else {
                     "ABI9001-UNSUPPORTED-LAYOUT"
                 };
@@ -1442,7 +1447,9 @@ fn lower_field(
                     ),
                 );
             };
-            let Some((_, field_ty, field_offset)) = layout.named_field(&field_name) else {
+            let Some((_, field_ty, field_offset, field_integer_unsigned)) =
+                layout.named_field(&field_name)
+            else {
                 return emit_nominal_record_error(
                     ctx,
                     span,
@@ -1460,6 +1467,11 @@ fn lower_field(
             };
             let field_ty = field_ty.clone();
             let id = ctx.fresh_value_id();
+            let field_signedness =
+                nominal_record_field_signedness(&field_ty, field_integer_unsigned);
+            if let Some(unsigned) = field_integer_unsigned {
+                ctx.integer_unsigned_values.insert(id, unsigned);
+            }
             ctx.ops.push(
                 MirOp::std("cssl.nominal_record.project")
                     .with_operand(obj_id)
@@ -1468,6 +1480,7 @@ fn lower_field(
                     .with_attribute("field_name", field_name)
                     .with_attribute("field_offset", field_offset.to_string())
                     .with_attribute("field_bits", field_bits.to_string())
+                    .with_attribute("field_signedness", field_signedness)
                     .with_attribute("storage_bits", storage_bits.to_string())
                     .with_attribute("byte_order", "little")
                     .with_attribute("source_loc", format!("{span:?}")),
@@ -1510,6 +1523,18 @@ fn nominal_record_field_bits(ty: &MirType) -> Option<u16> {
         MirType::Int(IntWidth::I32) => Some(32),
         MirType::Int(IntWidth::I64) => Some(64),
         _ => None,
+    }
+}
+
+fn nominal_record_field_signedness(
+    ty: &MirType,
+    integer_unsigned: Option<bool>,
+) -> &'static str {
+    match (ty, integer_unsigned) {
+        (MirType::Bool, None) => "bool",
+        (MirType::Int(_), Some(true)) => "unsigned",
+        (MirType::Int(_), Some(false)) => "signed",
+        _ => "unverified",
     }
 }
 
@@ -1702,6 +1727,18 @@ fn emit_compound_op(
     } else {
         None
     };
+    let integer_divrem = if !is_float && matches!(op, HirBinOp::Div | HirBinOp::Rem) {
+        match exact_integer_divrem_op(ctx, op, lhs_id, elem_ty, rhs_id, elem_ty) {
+            Ok(contract) => Some(contract),
+            Err(reason) => {
+                return Err(emit_integer_divrem_contract_refusal(
+                    ctx, lhs_id, elem_ty, rhs_id, elem_ty, reason, span,
+                ));
+            }
+        }
+    } else {
+        None
+    };
     let op_name = match (op, is_float) {
         (HirBinOp::Add, false) => "arith.addi",
         (HirBinOp::Add, true) => "arith.addf",
@@ -1709,9 +1746,13 @@ fn emit_compound_op(
         (HirBinOp::Sub, true) => "arith.subf",
         (HirBinOp::Mul, false) => "arith.muli",
         (HirBinOp::Mul, true) => "arith.mulf",
-        (HirBinOp::Div, false) => "arith.divsi",
+        (HirBinOp::Div, false) => integer_divrem
+            .map(|(name, _)| name)
+            .expect("integer div/rem was checked above"),
         (HirBinOp::Div, true) => "arith.divf",
-        (HirBinOp::Rem, false) => "arith.remsi",
+        (HirBinOp::Rem, false) => integer_divrem
+            .map(|(name, _)| name)
+            .expect("integer div/rem was checked above"),
         (HirBinOp::Rem, true) => "arith.remf",
         // Bitwise / logical compounds : these aren't standard `+=`-shape but
         // appear in some HIR shapes. Map to integer-bitwise ops ; the cgen
@@ -1736,7 +1777,7 @@ fn emit_compound_op(
             .with_result(result_id, elem_ty.clone())
             .with_attribute("source_loc", format!("{span:?}")),
     );
-    if let Some((_, unsigned)) = right_shift {
+    if let Some((_, unsigned)) = right_shift.or(integer_divrem) {
         ctx.integer_unsigned_values.insert(result_id, unsigned);
     }
     Ok(result_id)
@@ -1887,6 +1928,8 @@ fn lower_struct_expr(
             || layout.field_offsets.len() != layout.fields.len()
         {
             "ABI9001-PATHLESS-LAYOUT"
+        } else if !layout.has_exact_field_signedness_contracts() {
+            "ABI9001-SIGNEDNESS-CONTRACT-UNVERIFIED"
         } else {
             "ABI9001-UNSUPPORTED-LAYOUT"
         };
@@ -1915,6 +1958,7 @@ fn lower_struct_expr(
     let mut operand_ids = Vec::with_capacity(fields.len());
     let mut field_offsets = Vec::with_capacity(fields.len());
     let mut field_bits = Vec::with_capacity(fields.len());
+    let mut field_signedness = Vec::with_capacity(fields.len());
     for (decl_index, declared_name) in layout.field_names.iter().enumerate() {
         let mut matches = fields.iter().filter(|field| {
             ctx.interner.resolve(field.name) == *declared_name
@@ -1935,12 +1979,22 @@ fn lower_struct_expr(
                 format!("nominal record `{struct_name}` repeats field `{declared_name}`"),
             );
         }
+        let expected_ty = &layout.fields[decl_index];
+        let expected_integer_unsigned = layout.field_integer_unsigned[decl_index];
         let (field_id, actual_ty) = match &field.value {
-            Some(value) => lower_expr(ctx, value)
-                .unwrap_or((ctx.fresh_value_id(), MirType::None)),
+            Some(value) => {
+                let contextual = expected_integer_unsigned.and_then(|unsigned| {
+                    lower_contextual_integer_literal(ctx, value, expected_ty, unsigned)
+                });
+                match contextual {
+                    Some(Ok(value)) => value,
+                    Some(Err(id)) => return (id, MirType::None),
+                    None => lower_expr(ctx, value)
+                        .unwrap_or((ctx.fresh_value_id(), MirType::None)),
+                }
+            }
             None => lower_path(ctx, &[field.name], field.span),
         };
-        let expected_ty = &layout.fields[decl_index];
         if &actual_ty != expected_ty {
             return emit_nominal_record_error(
                 ctx,
@@ -1950,6 +2004,43 @@ fn lower_struct_expr(
                     "field `{struct_name}.{declared_name}` requires `{expected_ty}`, got `{actual_ty}`"
                 ),
             );
+        }
+        if matches!(expected_ty, MirType::Int(_)) {
+            let Some(expected_unsigned) = expected_integer_unsigned else {
+                return emit_nominal_record_error(
+                    ctx,
+                    field.span,
+                    "ABI9001-FIELD-SIGNEDNESS-CONTRACT-UNVERIFIED",
+                    format!(
+                        "field `{struct_name}.{declared_name}` has no exact declared integer signedness"
+                    ),
+                );
+            };
+            match ctx.integer_unsigned_values.get(&field_id).copied() {
+                Some(actual_unsigned) if actual_unsigned == expected_unsigned => {}
+                Some(actual_unsigned) => {
+                    let expected = if expected_unsigned { "unsigned" } else { "signed" };
+                    let actual = if actual_unsigned { "unsigned" } else { "signed" };
+                    return emit_nominal_record_error(
+                        ctx,
+                        field.span,
+                        "ABI9001-FIELD-SIGNEDNESS-MISMATCH",
+                        format!(
+                            "field `{struct_name}.{declared_name}` requires {expected}, got {actual}"
+                        ),
+                    );
+                }
+                None => {
+                    return emit_nominal_record_error(
+                        ctx,
+                        field.span,
+                        "ABI9001-FIELD-SIGNEDNESS-CONTRACT-UNVERIFIED",
+                        format!(
+                            "field `{struct_name}.{declared_name}` initializer signedness is unverified"
+                        ),
+                    );
+                }
+            }
         }
         let Some(bits) = nominal_record_field_bits(expected_ty) else {
             return emit_nominal_record_error(
@@ -1962,6 +2053,10 @@ fn lower_struct_expr(
         operand_ids.push(field_id);
         field_offsets.push(layout.field_offsets[decl_index]);
         field_bits.push(bits);
+        field_signedness.push(nominal_record_field_signedness(
+            expected_ty,
+            expected_integer_unsigned,
+        ));
     }
 
     let id = ctx.fresh_value_id();
@@ -1987,6 +2082,7 @@ fn lower_struct_expr(
                 .collect::<Vec<_>>()
                 .join(","),
         )
+        .with_attribute("field_signedness", field_signedness.join(","))
         .with_attribute("storage_bits", storage_bits.to_string())
         .with_attribute("byte_order", "little")
         .with_attribute("source_loc", format!("{span:?}"));
@@ -3371,6 +3467,8 @@ fn lower_binary(
             | HirBinOp::BitXor
             | HirBinOp::Shl
             | HirBinOp::Shr
+            | HirBinOp::Div
+            | HirBinOp::Rem
             | HirBinOp::Lt
             | HirBinOp::Le
             | HirBinOp::Gt
@@ -3447,6 +3545,19 @@ fn lower_binary(
     } else {
         None
     };
+    let integer_divrem = if !is_float && matches!(op, HirBinOp::Div | HirBinOp::Rem) {
+        match exact_integer_divrem_op(ctx, op, lhs_id, &lhs_ty, rhs_id, &rhs_ty) {
+            Ok(contract) => Some(contract),
+            Err(reason) => {
+                let id = emit_integer_divrem_contract_refusal(
+                    ctx, lhs_id, &lhs_ty, rhs_id, &rhs_ty, reason, span,
+                );
+                return Some((id, MirType::None));
+            }
+        }
+    } else {
+        None
+    };
     let op_name = match (op, is_float) {
         (HirBinOp::Add, false) => "arith.addi",
         (HirBinOp::Add, true) => "arith.addf",
@@ -3454,9 +3565,13 @@ fn lower_binary(
         (HirBinOp::Sub, true) => "arith.subf",
         (HirBinOp::Mul, false) => "arith.muli",
         (HirBinOp::Mul, true) => "arith.mulf",
-        (HirBinOp::Div, false) => "arith.divsi",
+        (HirBinOp::Div, false) => integer_divrem
+            .map(|(name, _)| name)
+            .expect("integer div/rem was checked above"),
         (HirBinOp::Div, true) => "arith.divf",
-        (HirBinOp::Rem, false) => "arith.remsi",
+        (HirBinOp::Rem, false) => integer_divrem
+            .map(|(name, _)| name)
+            .expect("integer div/rem was checked above"),
         (HirBinOp::Rem, true) => "arith.remf",
         // § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION : float comparisons must use
         // `arith.cmpf_o*` (ordered-predicate) variants so the cgen-cpu-cranelift
@@ -3497,7 +3612,7 @@ fn lower_binary(
     };
     let id = ctx.fresh_value_id();
     if matches!(&result_ty, MirType::Int(_)) {
-        if let Some((_, unsigned)) = right_shift {
+        if let Some((_, unsigned)) = right_shift.or(integer_divrem) {
             ctx.integer_unsigned_values.insert(id, unsigned);
         } else if let (Some(left), Some(right)) = (ctx.integer_unsigned_values.get(&lhs_id), ctx.integer_unsigned_values.get(&rhs_id)) {
             // § Existing backend sign-extends signed integer pairs. Unsigned mixed-width arithmetic remains unproved.
@@ -3515,6 +3630,65 @@ fn lower_binary(
     );
     let _ = span;
     Some((id, result_ty))
+}
+
+/// Select integer division/remainder only from exact source provenance. MIR
+/// integer widths are signless, so a signed default would silently corrupt
+/// projected unsigned fields and any other unsigned value.
+fn exact_integer_divrem_op(
+    ctx: &BodyLowerCtx<'_>,
+    op: HirBinOp,
+    lhs_id: ValueId,
+    lhs_ty: &MirType,
+    rhs_id: ValueId,
+    rhs_ty: &MirType,
+) -> Result<(&'static str, bool), &'static str> {
+    if !matches!(lhs_ty, MirType::Int(_)) || !matches!(rhs_ty, MirType::Int(_)) {
+        return Err("integer division/remainder requires two integer operands");
+    }
+    if lhs_ty != rhs_ty {
+        return Err("integer division/remainder operand widths must match exactly");
+    }
+    let Some(lhs_unsigned) = ctx.integer_unsigned_values.get(&lhs_id).copied() else {
+        return Err("integer division/remainder lhs signedness is unverified");
+    };
+    let Some(rhs_unsigned) = ctx.integer_unsigned_values.get(&rhs_id).copied() else {
+        return Err("integer division/remainder rhs signedness is unverified");
+    };
+    if lhs_unsigned != rhs_unsigned {
+        return Err("integer division/remainder operand signedness must match exactly");
+    }
+    let name = match (op, lhs_unsigned) {
+        (HirBinOp::Div, false) => "arith.divsi",
+        (HirBinOp::Div, true) => "arith.divui",
+        (HirBinOp::Rem, false) => "arith.remsi",
+        (HirBinOp::Rem, true) => "arith.remui",
+        _ => return Err("operator is not integer division/remainder"),
+    };
+    Ok((name, lhs_unsigned))
+}
+
+fn emit_integer_divrem_contract_refusal(
+    ctx: &mut BodyLowerCtx<'_>,
+    lhs_id: ValueId,
+    lhs_ty: &MirType,
+    rhs_id: ValueId,
+    rhs_ty: &MirType,
+    reason: &str,
+    span: Span,
+) -> ValueId {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.integer.divrem.contract.unverified")
+            .with_operand(lhs_id)
+            .with_operand(rhs_id)
+            .with_result(id, MirType::None)
+            .with_attribute("lhs_ty", lhs_ty.to_string())
+            .with_attribute("rhs_ty", rhs_ty.to_string())
+            .with_attribute("reason", reason)
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    id
 }
 
 /// Select relational integer semantics only from exact source contracts. MIR
@@ -8109,6 +8283,128 @@ mod tests {
     }
 
     #[test]
+    fn abi9001_nominal_record_rejects_bidirectional_integer_signedness_mismatch() {
+        for source in [
+            "struct SignedCell { value: i8 }\n\
+             fn make(value: u8) -> SignedCell { SignedCell { value: value } }",
+            "struct UnsignedCell { value: u8 }\n\
+             fn make(value: i8) -> UnsignedCell { UnsignedCell { value: value } }",
+            "struct SignedCell { value: i16 }\n\
+             fn make(value: u16) -> SignedCell { SignedCell { value: value } }",
+            "struct UnsignedCell { value: u16 }\n\
+             fn make(value: i16) -> UnsignedCell { UnsignedCell { value: value } }",
+            "struct SignedCell { value: i32 }\n\
+             fn make(value: u32) -> SignedCell { SignedCell { value: value } }",
+            "struct UnsignedCell { value: u32 }\n\
+             fn make(value: i32) -> UnsignedCell { UnsignedCell { value: value } }",
+            "struct SignedCell { value: i64 }\n\
+             fn make(value: u64) -> SignedCell { SignedCell { value: value } }",
+            "struct UnsignedCell { value: u64 }\n\
+             fn make(value: i64) -> UnsignedCell { UnsignedCell { value: value } }",
+        ] {
+            let function = lower_named_with_all_layouts(source, "make");
+            let ops = &function.body.entry().unwrap().ops;
+            assert!(ops.iter().any(|op| {
+                op.name == "cssl.nominal_record.error"
+                    && op.attributes.iter().any(|(name, value)| {
+                        name == "code" && value == "ABI9001-FIELD-SIGNEDNESS-MISMATCH"
+                    })
+            }), "{source}");
+            assert!(!ops.iter().any(|op| op.name == "cssl.nominal_record.construct"), "{source}");
+        }
+    }
+
+    #[test]
+    fn abi9001_projection_restores_integer_signedness_for_exact_operations() {
+        for (source, expected_op, expected_signedness) in [
+            (
+                "struct Byte { value: u8 } fn probe(record: Byte) -> u64 { record.value as u64 }",
+                "arith.extui",
+                "unsigned",
+            ),
+            (
+                "struct SignedByte { value: i8 } fn probe(record: SignedByte) -> i64 { record.value as i64 }",
+                "arith.extsi",
+                "signed",
+            ),
+            (
+                "struct Word { value: u64 } fn probe(record: Word) -> u64 { record.value >> 7u64 }",
+                "arith.shrui",
+                "unsigned",
+            ),
+            (
+                "struct SignedWord { value: i64 } fn probe(record: SignedWord) -> i64 { record.value >> 7i64 }",
+                "arith.shrsi",
+                "signed",
+            ),
+            (
+                "struct Word { value: u64 } fn probe(record: Word) -> u64 { record.value / 3u64 }",
+                "arith.divui",
+                "unsigned",
+            ),
+            (
+                "struct Word { value: u64 } fn probe(record: Word) -> u64 { record.value % 3u64 }",
+                "arith.remui",
+                "unsigned",
+            ),
+            (
+                "struct Word { value: u64 } fn probe(record: Word) -> bool { record.value > 1u64 }",
+                "arith.cmpi_ugt",
+                "unsigned",
+            ),
+        ] {
+            let function = lower_named_with_all_layouts(source, "probe");
+            let ops = &function.body.entry().unwrap().ops;
+            let projection = ops
+                .iter()
+                .find(|op| op.name == "cssl.nominal_record.project")
+                .expect(source);
+            assert!(projection.attributes.iter().any(|(name, value)| {
+                name == "field_signedness" && value == expected_signedness
+            }), "{source}");
+            assert!(ops.iter().any(|op| op.name == expected_op), "{source}: {:?}", op_names(&function));
+            assert!(!ops.iter().any(|op| op.name.ends_with("contract.unverified")), "{source}");
+        }
+    }
+
+    #[test]
+    fn abi9001_bool_field_accepts_only_bool_value_and_none_integer_contract() {
+        let accepted = lower_named_with_all_layouts(
+            "struct Flag { value: bool } fn make(value: bool) -> Flag { Flag { value: value } }",
+            "make",
+        );
+        let construct = accepted
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|op| op.name == "cssl.nominal_record.construct")
+            .expect("Bool field with Bool value is admissible");
+        assert!(construct.attributes.iter().any(|(name, value)| {
+            name == "field_signedness" && value == "bool"
+        }));
+
+        let refused = lower_named_with_all_layouts(
+            "struct Flag { value: bool } fn make(value: i8) -> Flag { Flag { value: value } }",
+            "make",
+        );
+        assert!(refused.body.entry().unwrap().ops.iter().any(|op| {
+            op.name == "cssl.nominal_record.error"
+                && op.attributes.iter().any(|(name, value)| {
+                    name == "code" && value == "ABI9001-FIELD-TYPE-MISMATCH"
+                })
+        }));
+        assert!(!refused
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .any(|op| op.name == "cssl.nominal_record.construct"));
+    }
+
+    #[test]
     fn abi9001_noninteger_record_layout_is_typed_failure() {
         let function = lower_named_with_all_layouts(
             "struct FloatPair { x: f32, y: f32 }\n\
@@ -8897,6 +9193,52 @@ mod tests {
                 "arith.cmpi_slt" | "arith.cmpi_sle" | "arith.cmpi_sgt" | "arith.cmpi_sge" |
                 "arith.cmpi_ult" | "arith.cmpi_ule" | "arith.cmpi_ugt" | "arith.cmpi_uge"
             )), "{source}: {names:?}");
+        }
+    }
+
+    #[test]
+    fn integer_divrem_selects_exact_signedness_and_refuses_hostile_contracts() {
+        for (ty, div, rem) in [
+            ("u8", "arith.divui", "arith.remui"),
+            ("u16", "arith.divui", "arith.remui"),
+            ("u32", "arith.divui", "arith.remui"),
+            ("u64", "arith.divui", "arith.remui"),
+            ("i8", "arith.divsi", "arith.remsi"),
+            ("i16", "arith.divsi", "arith.remsi"),
+            ("i32", "arith.divsi", "arith.remsi"),
+            ("i64", "arith.divsi", "arith.remsi"),
+        ] {
+            for (token, expected) in [("/", div), ("%", rem)] {
+                let source = format!(
+                    "fn compute(left: {ty}, right: {ty}) -> {ty} {{ left {token} right }}"
+                );
+                let (function, _) = lower_one(&source);
+                let names = op_names(&function);
+                assert!(names.contains(&expected), "{source}: {names:?}");
+                assert!(
+                    !names.contains(&"cssl.integer.divrem.contract.unverified"),
+                    "{source}: {names:?}"
+                );
+            }
+        }
+
+        for source in [
+            "fn mixed(left: u64, right: i64) -> u64 { left / right }",
+            "fn unknown(left: u64) -> u64 { left % not_declared() }",
+        ] {
+            let (function, _) = lower_one(source);
+            let names = op_names(&function);
+            assert!(
+                names.contains(&"cssl.integer.divrem.contract.unverified"),
+                "{source}: {names:?}"
+            );
+            assert!(
+                !names.iter().any(|name| matches!(
+                    *name,
+                    "arith.divsi" | "arith.divui" | "arith.remsi" | "arith.remui"
+                )),
+                "{source}: {names:?}"
+            );
         }
     }
 

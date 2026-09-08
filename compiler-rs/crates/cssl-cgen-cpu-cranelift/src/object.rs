@@ -198,6 +198,7 @@ pub fn emit_object_module_with_format(
 ) -> Result<Vec<u8>, ObjectError> {
     reject_unsupported_windows_c_int128_boundaries(module)?;
     reject_unsupported_windows_c_nominal_record_boundaries(module)?;
+    validate_exact_nominal_record_ops(module)?;
 
     // § 1. Build host ISA via cranelift_native.
     let mut flag_builder = settings::builder();
@@ -307,6 +308,246 @@ pub fn emit_object_module_with_format(
         fn_name: "<module>".to_string(),
         detail: format!("ObjectProduct.emit : {e}"),
     })
+}
+
+/// Validate compiler-emitted nominal-record metadata against the registered
+/// declaration layout before any machine code is emitted. This closes the
+/// unregistered direct-MIR overlap/identity gap for object modules: a
+/// self-consistent CSV is insufficient unless it names and exactly reproduces
+/// one admitted layout. It does not authenticate an arbitrary MIR producer's
+/// source-signedness assertions; that producer remains outside acceptance.
+fn validate_exact_nominal_record_ops(module: &MirModule) -> Result<(), ObjectError> {
+    fn field_bits(ty: &cssl_mir::MirType) -> Option<u16> {
+        Some(match ty {
+            cssl_mir::MirType::Bool
+            | cssl_mir::MirType::Int(IntWidth::I1 | IntWidth::I8) => 8,
+            cssl_mir::MirType::Int(IntWidth::I16) => 16,
+            cssl_mir::MirType::Int(IntWidth::I32) => 32,
+            cssl_mir::MirType::Int(IntWidth::I64) => 64,
+            _ => return None,
+        })
+    }
+
+    fn signedness(ty: &cssl_mir::MirType, unsigned: Option<bool>) -> Option<&'static str> {
+        match (ty, unsigned) {
+            (cssl_mir::MirType::Bool, None) => Some("bool"),
+            (cssl_mir::MirType::Int(_), Some(true)) => Some("unsigned"),
+            (cssl_mir::MirType::Int(_), Some(false)) => Some("signed"),
+            _ => None,
+        }
+    }
+
+    fn nominal_name(ty: &cssl_mir::MirType) -> Option<&str> {
+        let cssl_mir::MirType::Opaque(name) = ty else {
+            return None;
+        };
+        Some(name.strip_prefix("!cssl.struct.").unwrap_or(name))
+    }
+
+    fn collect_value_types(
+        blocks: &[cssl_mir::MirBlock],
+        value_types: &mut HashMap<ValueId, cssl_mir::MirType>,
+    ) {
+        for block in blocks {
+            for argument in &block.args {
+                value_types.insert(argument.id, argument.ty.clone());
+            }
+            for op in &block.ops {
+                for result in &op.results {
+                    value_types.insert(result.id, result.ty.clone());
+                }
+                for region in &op.regions {
+                    collect_value_types(&region.blocks, value_types);
+                }
+            }
+        }
+    }
+
+    fn validate_op(
+        op: &MirOp,
+        layouts: &BTreeMap<String, MirStructLayout>,
+        value_types: &HashMap<ValueId, cssl_mir::MirType>,
+        fn_name: &str,
+    ) -> Result<(), ObjectError> {
+        if op.name == "cssl.nominal_record.construct" {
+            let (_, offsets, widths) = validate_nominal_record_metadata(op, fn_name)?;
+            let struct_name = nominal_record_attr(op, "struct_name").ok_or_else(|| {
+                nominal_record_object_failure(fn_name, "missing `struct_name`")
+            })?;
+            let layout = layouts.get(struct_name).ok_or_else(|| {
+                nominal_record_object_failure(
+                    fn_name,
+                    format!("nominal record `{struct_name}` has no registered layout"),
+                )
+            })?;
+            let storage_bits = layout.nominal_integer_storage_bits().ok_or_else(|| {
+                nominal_record_object_failure(
+                    fn_name,
+                    format!("registered nominal record `{struct_name}` is not admissible"),
+                )
+            })?;
+            let declared_count = nominal_record_attr(op, "field_count")
+                .ok_or_else(|| nominal_record_object_failure(fn_name, "missing `field_count`"))?
+                .parse::<usize>()
+                .map_err(|error| nominal_record_object_failure(fn_name, error.to_string()))?;
+            let names: Vec<&str> = nominal_record_attr(op, "field_names")
+                .ok_or_else(|| nominal_record_object_failure(fn_name, "missing `field_names`"))?
+                .split(',')
+                .collect();
+            let signs: Vec<&str> = nominal_record_attr(op, "field_signedness")
+                .ok_or_else(|| {
+                    nominal_record_object_failure(fn_name, "missing `field_signedness`")
+                })?
+                .split(',')
+                .collect();
+            let expected_widths: Option<Vec<u16>> = layout.fields.iter().map(field_bits).collect();
+            let expected_signs: Option<Vec<&str>> = layout
+                .fields
+                .iter()
+                .zip(&layout.field_integer_unsigned)
+                .map(|(ty, unsigned)| signedness(ty, *unsigned))
+                .collect();
+            let actual_storage = nominal_record_attr(op, "storage_bits")
+                .and_then(|value| value.parse::<u16>().ok());
+            if declared_count != layout.fields.len()
+                || names != layout.field_names.iter().map(String::as_str).collect::<Vec<_>>()
+                || offsets != layout.field_offsets
+                || Some(widths) != expected_widths
+                || Some(signs) != expected_signs
+                || actual_storage != Some(storage_bits)
+            {
+                return Err(nominal_record_object_failure(
+                    fn_name,
+                    format!(
+                        "nominal record `{struct_name}` metadata differs from registered natural layout"
+                    ),
+                ));
+            }
+            if op.results.len() != 1
+                || op
+                    .operands
+                    .iter()
+                    .zip(&layout.fields)
+                    .any(|(operand, expected)| value_types.get(operand) != Some(expected))
+            {
+                return Err(nominal_record_object_failure(
+                    fn_name,
+                    format!(
+                        "nominal record `{struct_name}` operand/result types differ from registered layout"
+                    ),
+                ));
+            }
+            let result_name = op
+                .results
+                .first()
+                .and_then(|result| match &result.ty {
+                    cssl_mir::MirType::Opaque(name) => {
+                        Some(name.strip_prefix("!cssl.struct.").unwrap_or(name))
+                    }
+                    _ => None,
+                });
+            if result_name != Some(struct_name) {
+                return Err(nominal_record_object_failure(
+                    fn_name,
+                    "record constructor result nominal identity differs from `struct_name`",
+                ));
+            }
+        } else if op.name == "cssl.nominal_record.project" {
+            if op.operands.len() != 1
+                || op.results.len() != 1
+                || nominal_record_attr(op, "byte_order") != Some("little")
+            {
+                return Err(nominal_record_object_failure(
+                    fn_name,
+                    "record projection requires one operand, one result, and little-endian metadata",
+                ));
+            }
+            let struct_name = nominal_record_attr(op, "struct_name").ok_or_else(|| {
+                nominal_record_object_failure(fn_name, "missing `struct_name`")
+            })?;
+            let field_name = nominal_record_attr(op, "field_name")
+                .ok_or_else(|| nominal_record_object_failure(fn_name, "missing `field_name`"))?;
+            let layout = layouts.get(struct_name).ok_or_else(|| {
+                nominal_record_object_failure(
+                    fn_name,
+                    format!("nominal record `{struct_name}` has no registered layout"),
+                )
+            })?;
+            let storage_bits = layout.nominal_integer_storage_bits().ok_or_else(|| {
+                nominal_record_object_failure(fn_name, "registered record layout is not admissible")
+            })?;
+            let Some((_, field_ty, expected_offset, unsigned)) = layout.named_field(field_name)
+            else {
+                return Err(nominal_record_object_failure(
+                    fn_name,
+                    format!("unknown registered field `{struct_name}.{field_name}`"),
+                ));
+            };
+            let expected_bits = field_bits(field_ty).ok_or_else(|| {
+                nominal_record_object_failure(fn_name, "registered field width is unsupported")
+            })?;
+            let expected_sign = signedness(field_ty, unsigned).ok_or_else(|| {
+                nominal_record_object_failure(fn_name, "registered field signedness is unverified")
+            })?;
+            let actual_offset = nominal_record_attr(op, "field_offset")
+                .and_then(|value| value.parse::<u32>().ok());
+            let actual_bits = nominal_record_attr(op, "field_bits")
+                .and_then(|value| value.parse::<u16>().ok());
+            let actual_storage = nominal_record_attr(op, "storage_bits")
+                .and_then(|value| value.parse::<u16>().ok());
+            let operand_name = op
+                .operands
+                .first()
+                .and_then(|operand| value_types.get(operand))
+                .and_then(nominal_name);
+            if operand_name != Some(struct_name)
+                || actual_offset != Some(expected_offset)
+                || actual_bits != Some(expected_bits)
+                || nominal_record_attr(op, "field_signedness") != Some(expected_sign)
+                || actual_storage != Some(storage_bits)
+                || op.results.first().map(|result| &result.ty) != Some(field_ty)
+            {
+                return Err(nominal_record_object_failure(
+                    fn_name,
+                    format!(
+                        "projection `{struct_name}.{field_name}` metadata differs from registered natural layout"
+                    ),
+                ));
+            }
+        }
+        for region in &op.regions {
+            for block in &region.blocks {
+                for inner in &block.ops {
+                    validate_op(inner, layouts, value_types, fn_name)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    for layout in module.struct_layouts.values() {
+        if !layout.field_names.is_empty()
+            && !layout.has_exact_field_signedness_contracts()
+        {
+            return Err(nominal_record_object_failure(
+                "<module>",
+                format!(
+                    "named layout `{}` has no exact field signedness contract",
+                    layout.name
+                ),
+            ));
+        }
+    }
+    for function in &module.funcs {
+        let mut value_types = HashMap::new();
+        collect_value_types(&function.body.blocks, &mut value_types);
+        for block in &function.body.blocks {
+            for op in &block.ops {
+                validate_op(op, &module.struct_layouts, &value_types, &function.name)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Reject raw 128-bit integer signatures at Windows C import/export seams.
