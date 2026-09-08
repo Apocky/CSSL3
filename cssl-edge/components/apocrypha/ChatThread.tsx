@@ -59,6 +59,28 @@ interface ApocryphaEnvelope<T> {
   data: T;
 }
 
+interface JobSnapshotResponse {
+  ok: boolean;
+  job?: {
+    id: string;
+    status: 'queued' | 'leased' | 'running' | 'cancel_requested' | 'succeeded' | 'failed' | 'cancelled';
+    error_code?: string | null;
+    error_detail?: string | null;
+  };
+  chunks?: Array<{ seq: number; delta: string }>;
+  revisions?: Array<{
+    content: string;
+    provenance?: { tool_calls?: ToolCallChip[] };
+    usage?: { elapsed_s?: number; total_cost_usd?: number };
+  }>;
+}
+
+interface ActiveJobRecord {
+  id: string;
+  prompt: string;
+  submittedAt: string;
+}
+
 // ─── Streaming SSE helpers ─────────────────────────────────────────
 
 interface SseEvent {
@@ -66,13 +88,26 @@ interface SseEvent {
   data: Record<string, unknown>;
 }
 
-const CHAT_BROWSER_DEADLINE_MS = 115_000;
-const CHAT_BACKEND_TIMEOUT_S = 100;
+const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
+const JOB_POLL_MS = 1_500;
+const LEGACY_CHAT_BROWSER_DEADLINE_MS = 115_000;
+const LEGACY_CHAT_BACKEND_TIMEOUT_S = 100;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
 const CONVERSATION_MENU_WIDTH = 176;
 const CONVERSATION_MENU_MAX_HEIGHT = 160;
 const VIEWPORT_GUTTER = 8;
 const MUTED_TEXT = '#85859a';
+
+function waitForPoll(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = window.setTimeout(resolve, JOB_POLL_MS);
+    signal.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
 
 function parseSseBuffer(buffer: string): { events: SseEvent[]; remainder: string } {
   const events: SseEvent[] = [];
@@ -108,6 +143,9 @@ export function ChatThread() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
+  const [streamingPhase, setStreamingPhase] = useState('Preparing your place in the queue…');
+  const [activeJob, setActiveJob] = useState<ActiveJobRecord | null>(null);
   const [streamingTools, setStreamingTools] = useState<ToolCallChip[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -121,6 +159,21 @@ export function ChatThread() {
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const newChatButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(ACTIVE_JOB_KEY);
+      if (!raw) return;
+      const recovered = JSON.parse(raw) as ActiveJobRecord;
+      if (!recovered?.id || !recovered?.prompt) return;
+      setActiveJob(recovered);
+      setMessages([{ role: 'user', text: recovered.prompt, ts: new Date(recovered.submittedAt) }]);
+      setStreaming(true);
+      setStreamingPhase('Reconnected. Apocrypha is continuing this answer…');
+    } catch {
+      window.localStorage.removeItem(ACTIVE_JOB_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia(COMPACT_CHAT_QUERY);
@@ -345,7 +398,7 @@ export function ChatThread() {
 
   // ── send + stream-consume ─────────────────────────────────────
 
-  const handleSend = useCallback(async () => {
+  const handleSendLegacy = useCallback(async () => {
     const text = draft.trim();
     if (!text || streaming) return;
     setDraft('');
@@ -366,7 +419,7 @@ export function ChatThread() {
             text,
             conversation_id: currentConv,
             max_tokens: 128,
-            timeout_s: CHAT_BACKEND_TIMEOUT_S,
+            timeout_s: LEGACY_CHAT_BACKEND_TIMEOUT_S,
           }),
         });
         if (!r.ok || !r.body) {
@@ -438,7 +491,7 @@ export function ChatThread() {
               text,
               conversation_id: currentConv,
               max_tokens: 128,
-              timeout_s: CHAT_BACKEND_TIMEOUT_S,
+              timeout_s: LEGACY_CHAT_BACKEND_TIMEOUT_S,
             }),
           });
           if (retry.ok) {
@@ -460,7 +513,7 @@ export function ChatThread() {
           setError('Apocrypha lost the thread before the thought was complete. Try again.');
         }
         void loadConvs();
-      })(), CHAT_BROWSER_DEADLINE_MS, () => controller.abort());
+      })(), LEGACY_CHAT_BROWSER_DEADLINE_MS, () => controller.abort());
     } catch (err) {
       setError(err instanceof DeadlineExceededError
         ? 'Apocrypha took too long to answer. Try again.'
@@ -469,6 +522,136 @@ export function ChatThread() {
       setStreaming(false);
     }
   }, [draft, streaming, currentConv, loadConvs]);
+
+  useEffect(() => {
+    if (!activeJob) return;
+    const controller = new AbortController();
+    let disposed = false;
+    void (async () => {
+      while (!controller.signal.aborted) {
+        try {
+          const response = await authFetch(`/api/admin/apocrypha/jobs/${encodeURIComponent(activeJob.id)}`, {
+            cache: 'no-store',
+            credentials: 'include',
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(response.status === 404
+            ? 'The accepted job could not be found.'
+            : `Status service returned ${response.status}.`);
+          const snapshot = await response.json() as JobSnapshotResponse;
+          if (!snapshot.job) throw new Error('The job status response was incomplete.');
+          const partial = [...(snapshot.chunks ?? [])]
+            .sort((left, right) => left.seq - right.seq)
+            .map((chunk) => chunk.delta)
+            .join('');
+          const revision = snapshot.revisions?.[0];
+          const visibleText = revision?.content || partial;
+          if (!disposed) {
+            setError(null);
+            setStreamingText(visibleText);
+            setStreamingPhase(snapshot.job.status === 'queued'
+              ? 'Accepted. Waiting for the local Qwen node…'
+              : snapshot.job.status === 'leased'
+                ? 'The Qwen node has claimed this thought…'
+                : snapshot.job.status === 'cancel_requested'
+                  ? 'Stopping after the current safe boundary…'
+                  : 'Apocrypha is composing the answer…');
+          }
+          if (snapshot.job.status === 'succeeded') {
+            if (!disposed) {
+              setMessages((previous) => [...previous, {
+                role: 'apocrypha',
+                text: visibleText || 'Apocrypha completed the thought without words.',
+                ts: new Date(),
+                toolCalls: revision?.provenance?.tool_calls ?? [],
+                elapsed_s: revision?.usage?.elapsed_s,
+                cost_usd: revision?.usage?.total_cost_usd,
+              }]);
+              setStreamingText('');
+              setStreamingTools([]);
+              setStreaming(false);
+              setActiveJob(null);
+              window.localStorage.removeItem(ACTIVE_JOB_KEY);
+              void loadConvs();
+            }
+            return;
+          }
+          if (snapshot.job.status === 'failed' || snapshot.job.status === 'cancelled') {
+            if (!disposed) {
+              setError(snapshot.job.status === 'cancelled'
+                ? 'This answer was cancelled.'
+                : 'The model attempt failed and was preserved. Retry sends a fresh attempt without losing this request.');
+              setStreaming(false);
+              setStreamingText(partial);
+              setActiveJob(null);
+              window.localStorage.removeItem(ACTIVE_JOB_KEY);
+            }
+            return;
+          }
+        } catch (pollError) {
+          if (controller.signal.aborted) return;
+          if (!disposed) {
+            setStreamingPhase('Connection interrupted. The job is safe; reconnecting…');
+            setError(pollError instanceof Error ? pollError.message : 'Connection interrupted.');
+          }
+        }
+        await waitForPoll(controller.signal);
+      }
+    })();
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
+  }, [activeJob, loadConvs]);
+
+  const handleSend = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || streaming) return;
+    setDraft('');
+    setError(null);
+    setStreamingTools([]);
+    setStreamingText('');
+    setMessages((previous) => [...previous, { role: 'user', text, ts: new Date() }]);
+    setStreaming(true);
+    setStreamingPhase('Saving your message…');
+    try {
+      const idempotencyKey = window.crypto.randomUUID();
+      const response = await authFetch('/api/admin/apocrypha/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          prompt: text,
+          conversation_id: currentConv == null ? null : String(currentConv),
+          output_budget: 2048,
+          response_mode: text.length > 1200 ? 'deep' : 'standard',
+          idempotency_key: idempotencyKey,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { job?: { id?: string }; error?: string } | null;
+      if (!response.ok || !payload?.job?.id) throw new Error(payload?.error ?? `Request was not accepted (${response.status}).`);
+      const record: ActiveJobRecord = { id: payload.job.id, prompt: text, submittedAt: new Date().toISOString() };
+      window.localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(record));
+      setActiveJob(record);
+      setStreamingPhase('Accepted. Waiting for the local Qwen node…');
+    } catch (sendError) {
+      setStreaming(false);
+      setError(sendError instanceof Error ? sendError.message : String(sendError));
+    }
+  }, [currentConv, draft, streaming]);
+
+  const cancelActiveJob = useCallback(async () => {
+    if (!activeJob) return;
+    try {
+      await authFetch(`/api/admin/apocrypha/jobs/${encodeURIComponent(activeJob.id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      setStreamingPhase('Cancellation requested…');
+    } catch {
+      setError('Cancellation could not be delivered. The job remains recoverable.');
+    }
+  }, [activeJob]);
 
   const handleKey = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -762,6 +945,9 @@ export function ChatThread() {
               {messages.map((m, i) => (
                 <MessageBubble key={i} msg={m} showTrace={showTrace} />
               ))}
+              {streamingText && (
+                <MessageBubble msg={{ role: 'apocrypha', text: streamingText, ts: new Date() }} showTrace={showTrace} />
+              )}
             </div>
 
             {streaming && (
@@ -797,7 +983,15 @@ export function ChatThread() {
                   gap: '0.4rem',
                 }}>
                   <PulsingDot />
-                  <span>Apocrypha is thinking…</span>
+                  <span>{streamingPhase}</span>
+                  {activeJob && (
+                    <button type="button" onClick={() => void cancelActiveJob()} style={{
+                      marginLeft: '0.5rem', border: '1px solid #4a4058', borderRadius: 999,
+                      padding: '0.3rem 0.55rem', color: '#c5bfd0', background: 'transparent', cursor: 'pointer',
+                    }}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </div>
             )}

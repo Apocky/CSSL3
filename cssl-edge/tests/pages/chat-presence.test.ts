@@ -20,7 +20,14 @@ for (const forbidden of ['/api/chat/send', "from('chat_turn')", "from('chat_chun
 }
 assert(!existsSync(resolve(process.cwd(), 'pages/api/chat/send.ts')), 'dead queue endpoint still exists');
 assert(!existsSync(resolve(process.cwd(), 'lib/chat-relay.ts')), 'dead queue relay still exists');
-assert(thread.includes('Apocrypha is thinking…'), 'human thinking status is missing');
+for (const token of [
+  "ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1'",
+  "authFetch('/api/admin/apocrypha/jobs'",
+  'Accepted. Waiting for the local Qwen node',
+  'Connection interrupted. The job is safe; reconnecting',
+]) {
+  assert(thread.includes(token), `durable chat status or recovery contract is missing: ${token}`);
+}
 assert(!thread.includes('auto-invokes tools'), 'bootstrap UI must not claim unpromoted tool execution');
 assert(!thread.includes('living intelligence'), 'bootstrap UI must not claim unproven aliveness');
 assert(thread.includes('instruments remain governed by Apocrypha'), 'governed-instrument copy is missing');
