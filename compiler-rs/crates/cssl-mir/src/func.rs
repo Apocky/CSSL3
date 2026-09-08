@@ -95,6 +95,7 @@ impl MirStructLayout {
                 MT::Int(IntWidth::I16) => (2, 2),
                 MT::Int(IntWidth::I32) => (4, 4),
                 MT::Int(IntWidth::I64) => (8, 8),
+                MT::Int(IntWidth::I128) => (16, 16),
                 MT::Int(IntWidth::Index) => (8, 8),
                 MT::Float(FloatWidth::F16) => (2, 2),
                 MT::Float(FloatWidth::Bf16) => (2, 2),

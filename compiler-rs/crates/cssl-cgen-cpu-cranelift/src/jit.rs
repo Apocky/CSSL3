@@ -126,6 +126,27 @@ pub struct JitFn {
 }
 
 impl JitFn {
+    /// Call an internal scalar-`u128` function through Cranelift's
+    /// LLVM-compatible x64 ABI. This is an in-process compiler/JIT contract,
+    /// not a promise that Windows C exposes a standard raw-`u128` ABI.
+    ///
+    /// # Errors
+    /// Returns [`JitError::SignatureMismatch`] unless the MIR signature is
+    /// exactly `(i128) -> i128`; see [`Self::call_i64_i64_to_i64`] for the
+    /// finalized-module and code-address errors.
+    pub fn call_u128_to_u128(&self, value: u128, module: &JitModule) -> Result<u128, JitError> {
+        self.check_sig(
+            &[MirType::Int(IntWidth::I128)],
+            MirType::Int(IntWidth::I128),
+        )?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: the signature check binds one i128 param/result and the JIT
+        // ISA enables the same LLVM ABI extension used by this Rust compiler.
+        // `module` owns the executable allocation for the duration of the call.
+        let f: fn(u128) -> u128 = unsafe { std::mem::transmute(addr) };
+        Ok(f(value))
+    }
+
     /// Call as `fn(i64, i64) -> i64`. Validates the MIR signature matches.
     ///
     /// # Errors
@@ -606,6 +627,11 @@ impl JitModule {
         // Enable position-independent code (required on some platforms).
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
+        // § P1a-ABI9003 — admit non-truncating x64 i128 params/results using
+        // Cranelift's LLVM-compatible two-i64 ABI, identical to object mode.
+        flag_builder
+            .set("enable_llvm_abi_extensions", "true")
+            .unwrap();
         let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
             panic!("cranelift native isa unavailable : {msg}");
         });
@@ -1033,6 +1059,7 @@ fn mir_to_cl_type(mir: &MirType) -> Option<cranelift_codegen::ir::Type> {
             IntWidth::I16 => cl_types::I16,
             IntWidth::I32 => cl_types::I32,
             IntWidth::I64 | IntWidth::Index => cl_types::I64,
+            IntWidth::I128 => cl_types::I128,
         }),
         MirType::Float(w) => Some(match w {
             FloatWidth::F16 | FloatWidth::Bf16 => return None, // not yet in stable CLIF
@@ -1085,6 +1112,17 @@ fn lower_op_to_cl(
             } else if cl_ty == cl_types::F64 {
                 let f: f64 = value_str.parse().unwrap_or(0.0);
                 builder.ins().f64const(f)
+            } else if cl_ty == cl_types::I128 {
+                let bits = parse_i128_constant_bits(value_str).map_err(|detail| {
+                    JitError::LoweringFailed {
+                        fn_name: fn_name.to_string(),
+                        detail,
+                    }
+                })?;
+                let (lo_bits, hi_bits) = split_i128_constant_bits(bits);
+                let lo = builder.ins().iconst(cl_types::I64, lo_bits);
+                let hi = builder.ins().iconst(cl_types::I64, hi_bits);
+                builder.ins().iconcat(lo, hi)
             } else {
                 // T11-D141 : recognize boolean keywords for `arith.constant`
                 // ops produced by HirLiteralKind::Bool lowering. Without this,
@@ -1277,6 +1315,30 @@ fn lower_op_to_cl(
             op_name: other.to_string(),
         }),
     }
+}
+
+/// Parse a canonical MIR integer attribute into its exact 128-bit bit-pattern.
+/// Positive text may occupy the full unsigned range; negative text uses signed
+/// two's-complement representation. Invalid text is a typed lowering failure.
+fn parse_i128_constant_bits(raw: &str) -> Result<u128, String> {
+    if raw.starts_with('-') {
+        raw.parse::<i128>()
+            .map(|value| value as u128)
+            .map_err(|_| format!("invalid signed i128 constant `{raw}`"))
+    } else {
+        raw.parse::<u128>()
+            .map_err(|_| format!("invalid unsigned u128 constant `{raw}`"))
+    }
+}
+
+fn split_i128_constant_bits(bits: u128) -> (i64, i64) {
+    let lo = u64::try_from(bits & u128::from(u64::MAX))
+        .expect("masked low i128 limb fits u64");
+    let hi = u64::try_from(bits >> 64).expect("shifted high i128 limb fits u64");
+    (
+        i64::from_ne_bytes(lo.to_ne_bytes()),
+        i64::from_ne_bytes(hi.to_ne_bytes()),
+    )
 }
 
 fn emit_binary<F>(
@@ -2223,7 +2285,10 @@ fn jit_lower_closure_call_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{transcendental_callee_key, JitError, JitModule};
+    use super::{
+        parse_i128_constant_bits, split_i128_constant_bits, transcendental_callee_key, JitError,
+        JitModule,
+    };
     use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirOp, MirType, MirValue, ValueId};
 
     fn i32_ty() -> MirType {
@@ -2232,6 +2297,10 @@ mod tests {
 
     fn i64_ty() -> MirType {
         MirType::Int(IntWidth::I64)
+    }
+
+    fn i128_ty() -> MirType {
+        MirType::Int(IntWidth::I128)
     }
 
     fn f32_ty() -> MirType {
@@ -2350,6 +2419,48 @@ mod tests {
             h.call_i64_i64_to_i64(100_000_000_000, 23, &m).unwrap(),
             100_000_000_023
         );
+    }
+
+    #[test]
+    fn scalar_u128_identity_jit_roundtrip_preserves_both_halves() {
+        let mut f = MirFunc::new("identity_u128", vec![i128_ty()], vec![i128_ty()]);
+        f.body
+            .entry_mut()
+            .unwrap()
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = JitModule::new();
+        let handle = module.compile(&f).expect("compile scalar u128 identity");
+        module.finalize().expect("finalize scalar u128 identity");
+        for value in [
+            0,
+            0x0123_4567_89ab_cdef,
+            0xfedc_ba98_7654_3210_u128 << 64,
+            0xfedc_ba98_7654_3210_0123_4567_89ab_cdef,
+            u128::MAX,
+        ] {
+            assert_eq!(handle.call_u128_to_u128(value, &module).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn scalar_i128_constant_parser_is_exact_and_fail_closed() {
+        assert_eq!(parse_i128_constant_bits("0").unwrap(), 0);
+        assert_eq!(
+            parse_i128_constant_bits("340282366920938463463374607431768211455").unwrap(),
+            u128::MAX
+        );
+        assert_eq!(
+            parse_i128_constant_bits("-170141183460469231731687303715884105728").unwrap(),
+            1_u128 << 127
+        );
+        assert_eq!(split_i128_constant_bits(u128::MAX), (-1, -1));
+        assert_eq!(
+            split_i128_constant_bits(0xfedc_ba98_7654_3210_0123_4567_89ab_cdef),
+            (0x0123_4567_89ab_cdef, -0x0123_4567_89ab_cdf0)
+        );
+        assert!(parse_i128_constant_bits("340282366920938463463374607431768211456").is_err());
+        assert!(parse_i128_constant_bits("not-an-integer").is_err());
     }
 
     #[test]

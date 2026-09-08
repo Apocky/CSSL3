@@ -66,6 +66,7 @@ impl<'a> LowerCtx<'a> {
                         "i16" | "u16" => MirType::Int(IntWidth::I16),
                         "i32" | "u32" => MirType::Int(IntWidth::I32),
                         "i64" | "u64" | "isize" | "usize" => MirType::Int(IntWidth::I64),
+                        "i128" | "u128" => MirType::Int(IntWidth::I128),
                         "char" => MirType::Int(IntWidth::I32),
                         "f16" => MirType::Float(FloatWidth::F16),
                         "bf16" => MirType::Float(FloatWidth::Bf16),

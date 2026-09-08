@@ -148,8 +148,8 @@ fn declared_scalar_integer_unsigned(interner: &Interner, ty: &HirType) -> Option
     match &ty.kind {
         HirTypeKind::Path { path, .. } if path.len() == 1 => {
             match interner.resolve(path[0]).as_str() {
-                "u8" | "u16" | "u32" | "u64" | "usize" => Some(true),
-                "i8" | "i16" | "i32" | "i64" | "isize" => Some(false),
+                "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => Some(true),
+                "i8" | "i16" | "i32" | "i64" | "i128" | "isize" => Some(false),
                 _ => None,
             }
         }
@@ -609,6 +609,7 @@ fn lower_hir_type_light(interner: &Interner, t: &HirType) -> MirType {
                 "i16" | "u16" => MirType::Int(IntWidth::I16),
                 "i32" | "u32" | "isize" | "usize" => MirType::Int(IntWidth::I32),
                 "i64" | "u64" => MirType::Int(IntWidth::I64),
+                "i128" | "u128" => MirType::Int(IntWidth::I128),
                 "f16" => MirType::Float(FloatWidth::F16),
                 "bf16" => MirType::Float(FloatWidth::Bf16),
                 "f32" => MirType::Float(FloatWidth::F32),
@@ -793,8 +794,8 @@ fn lower_contextual_integer_literal(
 ) -> Option<Result<(ValueId, MirType), ValueId>> {
     let (literal_span, negative) = integer_literal_span(expr)?;
     let MirType::Int(width) = target else { return None; };
-    let bits = match width { IntWidth::I1 => 1, IntWidth::I8 => 8, IntWidth::I16 => 16, IntWidth::I32 => 32, IntWidth::I64 | IntWidth::Index => 64 };
-    let parsed = (|| -> Result<i64, &'static str> {
+    let bits = match width { IntWidth::I1 => 1, IntWidth::I8 => 8, IntWidth::I16 => 16, IntWidth::I32 => 32, IntWidth::I64 | IntWidth::Index => 64, IntWidth::I128 => 128 };
+    let parsed = (|| -> Result<String, &'static str> {
         let raw = ctx.source.and_then(|source| source.slice(literal_span.start, literal_span.end))
             .ok_or("integer literal source unavailable")?.trim();
         let digits = strip_int_type_suffix(raw);
@@ -811,12 +812,28 @@ fn lower_contextual_integer_literal(
             else { (10, cleaned.as_str()) };
         let magnitude = u128::from_str_radix(body, radix).map_err(|_| "invalid or oversized integer literal")?;
         if unsigned {
-            if negative || magnitude > ((1_u128 << bits) - 1) { return Err("integer literal outside declared unsigned range"); }
-            Ok((magnitude as u64) as i64)
+            let max = if bits == 128 { u128::MAX } else { (1_u128 << bits) - 1 };
+            if negative || magnitude > max { return Err("integer literal outside declared unsigned range"); }
+            Ok(if bits == 128 {
+                magnitude.to_string()
+            } else {
+                let narrowed = u64::try_from(magnitude)
+                    .map_err(|_| "integer literal outside MIR scalar storage range")?;
+                i64::from_ne_bytes(narrowed.to_ne_bytes()).to_string()
+            })
         } else {
             let limit = 1_u128 << (bits - 1);
             if (negative && magnitude > limit) || (!negative && magnitude >= limit) { return Err("integer literal outside declared signed range"); }
-            Ok(if negative { -(magnitude as i128) as i64 } else { magnitude as i64 })
+            Ok(if bits == 128 {
+                if negative { format!("-{magnitude}") } else { magnitude.to_string() }
+            } else {
+                let signed_magnitude = i128::try_from(magnitude)
+                    .map_err(|_| "integer literal outside MIR scalar storage range")?;
+                let signed = if negative { -signed_magnitude } else { signed_magnitude };
+                i64::try_from(signed)
+                    .map_err(|_| "integer literal outside MIR scalar storage range")?
+                    .to_string()
+            })
         }
     })();
     let id = ctx.fresh_value_id();
@@ -824,7 +841,7 @@ fn lower_contextual_integer_literal(
         Ok(value) => {
             ctx.integer_unsigned_values.insert(id, unsigned);
             ctx.ops.push(MirOp::std("arith.constant").with_result(id, target.clone())
-                .with_attribute("value", value.to_string()).with_attribute("source_loc", format!("{:?}", expr.span)));
+                .with_attribute("value", value).with_attribute("source_loc", format!("{:?}", expr.span)));
             Some(Ok((id, target.clone())))
         }
         Err(reason) => {
@@ -1200,7 +1217,7 @@ fn lower_field(
 // § Track source sign at checked memory ingress; broader unsigned arithmetic stays a separate gate.
 fn hir_integer_unsigned(interner: &Interner, ty: &HirType) -> bool {
     match &ty.kind {
-        HirTypeKind::Path { path, .. } if path.len() == 1 => matches!(interner.resolve(path[0]).as_str(), "u8" | "u16" | "u32" | "u64" | "usize" | "char"),
+        HirTypeKind::Path { path, .. } if path.len() == 1 => matches!(interner.resolve(path[0]).as_str(), "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "char"),
         HirTypeKind::Refined { base, .. } => hir_integer_unsigned(interner, base),
         _ => false,
     }
@@ -2635,7 +2652,7 @@ fn strip_int_type_suffix(raw: &str) -> &str {
 /// error for the caller to materialize in MIR.
 fn parse_suffixed_integer_literal(
     raw: &str,
-) -> Option<Result<(MirType, bool, i64), &'static str>> {
+) -> Option<Result<(MirType, bool, String), &'static str>> {
     let digits = strip_int_type_suffix(raw);
     if digits == raw {
         return None;
@@ -2655,6 +2672,7 @@ fn parse_suffixed_integer_literal(
         16 => IntWidth::I16,
         32 => IntWidth::I32,
         64 => IntWidth::I64,
+        128 => IntWidth::I128,
         _ => return Some(Err("integer literal suffix width is not supported by MIR")),
     };
     let cleaned: String = digits
@@ -2684,21 +2702,29 @@ fn parse_suffixed_integer_literal(
         Err(_) => return Some(Err("invalid or oversized integer literal")),
     };
     if unsigned {
-        let max = (1_u128 << bits) - 1;
+        let max = if bits == 128 { u128::MAX } else { (1_u128 << bits) - 1 };
         if magnitude > max {
             return Some(Err("integer literal outside declared unsigned range"));
         }
         Some(Ok((
             MirType::Int(width),
             true,
-            (magnitude as u64) as i64,
+            if bits == 128 {
+                magnitude.to_string()
+            } else {
+                let narrowed = match u64::try_from(magnitude) {
+                    Ok(value) => value,
+                    Err(_) => return Some(Err("integer literal outside MIR scalar storage range")),
+                };
+                i64::from_ne_bytes(narrowed.to_ne_bytes()).to_string()
+            },
         )))
     } else {
         let max = (1_u128 << (bits - 1)) - 1;
         if magnitude > max {
             return Some(Err("integer literal outside declared signed range"));
         }
-        Some(Ok((MirType::Int(width), false, magnitude as i64)))
+        Some(Ok((MirType::Int(width), false, magnitude.to_string())))
     }
 }
 
@@ -4301,6 +4327,7 @@ fn stage0_heuristic_size_of(t: &MirType) -> i64 {
         MirType::Int(IntWidth::I16) => 2,
         MirType::Int(IntWidth::I32) => 4,
         MirType::Int(IntWidth::I64 | IntWidth::Index) => 8,
+        MirType::Int(IntWidth::I128) => 16,
         MirType::Float(FloatWidth::F16 | FloatWidth::Bf16) => 2,
         MirType::Float(FloatWidth::F32) => 4,
         MirType::Float(FloatWidth::F64) => 8,
@@ -4331,6 +4358,7 @@ fn stage0_heuristic_align_of(t: &MirType) -> i64 {
         MirType::Int(IntWidth::I1 | IntWidth::I8) | MirType::Bool => 1,
         MirType::Int(IntWidth::I16) | MirType::Float(FloatWidth::F16 | FloatWidth::Bf16) => 2,
         MirType::Int(IntWidth::I32) | MirType::Float(FloatWidth::F32) => 4,
+        MirType::Int(IntWidth::I128) => 16,
         MirType::Int(IntWidth::I64 | IntWidth::Index)
         | MirType::Float(FloatWidth::F64)
         | MirType::Ptr
@@ -7264,6 +7292,9 @@ mod tests {
             ("u64", "18446744073709551615", IntWidth::I64, "-1"),
             ("i64", "-9223372036854775808", IntWidth::I64, "-9223372036854775808"),
             ("i64", "9223372036854775807i64", IntWidth::I64, "9223372036854775807"),
+            ("u128", "340282366920938463463374607431768211455", IntWidth::I128, "340282366920938463463374607431768211455"),
+            ("i128", "-170141183460469231731687303715884105728", IntWidth::I128, "-170141183460469231731687303715884105728"),
+            ("i128", "170141183460469231731687303715884105727i128", IntWidth::I128, "170141183460469231731687303715884105727"),
         ] {
             let source = format!("fn exact() -> {ty} {{ let mut value: {ty} = {literal}; value }}");
             let (f, _) = lower_one(&source);
@@ -7280,6 +7311,10 @@ mod tests {
             ("i8", "128"), ("i8", "-129"), ("u8", "-1"), ("u8", "256"),
             ("i64", "9223372036854775808"), ("i64", "-9223372036854775809"),
             ("u64", "18446744073709551616"), ("i64", "0u64"), ("u64", "0i64"), ("u8", "0u16"),
+            ("u128", "340282366920938463463374607431768211456"),
+            ("i128", "170141183460469231731687303715884105728"),
+            ("i128", "-170141183460469231731687303715884105729"),
+            ("i128", "0u128"), ("u128", "0i128"),
         ] {
             let (f, _) = lower_one(&format!("fn invalid() -> {ty} {{ let mut value: {ty} = {literal}; value }}"));
             let names = op_names(&f);
@@ -7501,6 +7536,24 @@ mod tests {
                 .any(|(key, value)| key == "value" && value == "stage0_int")
         }));
         assert!(!op_names(&f).contains(&"cssl.integer.literal.contract.unverified"));
+    }
+
+    #[test]
+    fn generic_call_literal_preserves_full_declared_u128_bits() {
+        let source = "fn identity(value: u128) -> u128 { value }\n\
+                      fn caller() -> u128 { identity(0xfedcba98765432100123456789abcdefu128) }";
+        let function = lower_named_with_call_signatures(source, "caller", true);
+        let ops = &function.body.entry().expect("entry").ops;
+        let call = ops.iter().find(|op| op.name == "func.call").expect("declared call");
+        let producer = ops
+            .iter()
+            .find(|op| op.results.iter().any(|result| result.id == call.operands[0]))
+            .expect("u128 call operand producer");
+        assert_eq!(producer.results[0].ty, MirType::Int(IntWidth::I128));
+        assert!(producer.attributes.iter().any(|(key, value)| {
+            key == "value" && value == "338770000845734292516042252062085074415"
+        }));
+        assert!(!op_names(&function).contains(&"cssl.integer.literal.contract.unverified"));
     }
 
     #[test]

@@ -95,11 +95,44 @@ pub fn profile_probe_u128_composite_v1() -> i32 {
     u128_composite_status_v1()
 }
 
-// Direct MIR u128 scalars are not admitted by this compiler revision. This is
-// an explicit capability refusal, not a simulated u128 execution; a separate
-// compile-negative fixture is required before this status may become zero.
+// § P1a-ABI9003 — exact scalar u128 identity across a direct native boundary
+// and one compiler-generated cross-function call. High and low halves are
+// varied independently so a truncating or half-swapped lowering cannot pass.
+fn profile_u128_identity_v1(value: u128) -> u128 {
+    value
+}
+
+fn profile_u128_identity_cross_call_v1(value: u128) -> u128 {
+    profile_u128_identity_v1(value)
+}
+
+// Stable C-boundary projection: callers supply and receive two u64 limbs;
+// scalar u128 exists only inside the compiler-generated call chain. Windows
+// C has no standard scalar-u128 ABI, so raw u128 symbols stay private.
+pub fn profile_u128_identity_lo_v1(lo: u64, hi: u64) -> u64 {
+    let value: u128 = (hi as u128) << 64u128 | (lo as u128);
+    let observed: u128 = profile_u128_identity_cross_call_v1(value);
+    observed as u64
+}
+
+pub fn profile_u128_identity_hi_v1(lo: u64, hi: u64) -> u64 {
+    let value: u128 = (hi as u128) << 64u128 | (lo as u128);
+    let observed: u128 = profile_u128_identity_cross_call_v1(value);
+    (observed >> 64u128) as u64
+}
+
 pub fn profile_probe_native_u128_scalar_v1() -> i32 {
-    9003i32
+    let zero: u128 = 0u128;
+    let low: u128 = 0x00000000000000000123456789abcdefu128;
+    let high: u128 = 0xfedcba98765432100000000000000000u128;
+    let mixed: u128 = 0xfedcba98765432100123456789abcdefu128;
+    let max: u128 = 0xffffffffffffffffffffffffffffffffu128;
+    if profile_u128_identity_cross_call_v1(zero) != zero { return 9003i32; }
+    if profile_u128_identity_cross_call_v1(low) != low { return 9003i32; }
+    if profile_u128_identity_cross_call_v1(high) != high { return 9003i32; }
+    if profile_u128_identity_cross_call_v1(mixed) != mixed { return 9003i32; }
+    if profile_u128_identity_cross_call_v1(max) != max { return 9003i32; }
+    0i32
 }
 
 pub fn profile_probe_u64_cross_call_v1() -> i32 {
@@ -231,7 +264,7 @@ pub fn profile_probe_known_refusals_v1() -> i32 {
     if profile_probe_record_v1() != 9001i32 { return 9021i32; }
     if profile_probe_variant_v1() != 9002i32 { return 9022i32; }
     if profile_probe_u128_composite_v1() != 0i32 { return 9023i32; }
-    if profile_probe_native_u128_scalar_v1() != 9003i32 { return 9024i32; }
+    if profile_probe_native_u128_scalar_v1() != 0i32 { return 9024i32; }
     if profile_probe_unsigned_shift_semantics_v1() != 0i32 { return 9025i32; }
     if profile_probe_u64_cross_call_v1() != 0i32 { return 9026i32; }
     0i32
@@ -244,6 +277,8 @@ pub fn profile_probe_all_v1() -> i32 {
     if u128_status != 0i32 { return u128_status; }
     let shift_status = profile_probe_codec_shift_v1();
     if shift_status != 0i32 { return shift_status; }
+    let native_u128_status = profile_probe_native_u128_scalar_v1();
+    if native_u128_status != 0i32 { return native_u128_status; }
     let record_status = profile_probe_record_v1();
     if record_status != 0i32 { return record_status; }
     let variant_status = profile_probe_variant_v1();

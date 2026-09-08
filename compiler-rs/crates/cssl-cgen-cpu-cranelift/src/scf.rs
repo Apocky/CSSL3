@@ -187,6 +187,7 @@ pub fn mir_to_cl(ty: &MirType) -> Option<Type> {
             IntWidth::I16 => cl_types::I16,
             IntWidth::I32 => cl_types::I32,
             IntWidth::I64 | IntWidth::Index => cl_types::I64,
+            IntWidth::I128 => cl_types::I128,
         }),
         MirType::Float(w) => Some(match w {
             FloatWidth::F16 | FloatWidth::Bf16 => return None,
@@ -1090,6 +1091,10 @@ mod tests {
         assert_eq!(mir_to_cl(&MirType::Int(IntWidth::I16)), Some(cl_types::I16));
         assert_eq!(mir_to_cl(&MirType::Int(IntWidth::I32)), Some(cl_types::I32));
         assert_eq!(mir_to_cl(&MirType::Int(IntWidth::I64)), Some(cl_types::I64));
+        assert_eq!(
+            mir_to_cl(&MirType::Int(IntWidth::I128)),
+            Some(cl_types::I128)
+        );
     }
 
     #[test]

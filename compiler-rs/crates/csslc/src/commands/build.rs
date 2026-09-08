@@ -735,6 +735,51 @@ mod tests {
     }
 
     #[test]
+    fn build_scalar_u128_identity_emits_cranelift_object() {
+        let src = "fn identity(value: u128) -> u128 { value }\n\
+                   pub fn caller_lo() -> u64 { identity(0xfedcba98765432100123456789abcdefu128) as u64 }\n\
+                   pub fn caller_hi() -> u64 { (identity(0xfedcba98765432100123456789abcdefu128) >> 64u128) as u64 }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9003_positive_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9003_positive.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9003_positive.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
+        assert!(tmp_out.exists(), "scalar u128 must emit a Cranelift object");
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn build_raw_u128_export_is_explicitly_refused_by_windows_c_abi() {
+        let src = "pub fn identity(value: u128) -> u128 { value }\n";
+        let tmp_out = std::env::temp_dir().join(format!(
+            "csslc_abi9003_windows_c_refusal_{}.obj",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9003_windows_c_refusal.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9003_windows_c_refusal.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "raw Windows C u128 refusal wrote output");
+    }
+
+    #[test]
+    fn build_scalar_u128_identity_is_explicitly_refused_by_legacy_x64() {
+        let src = "fn identity(value: u128) -> u128 { value }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9003_x64_refusal_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args_native_x64("abi9003_x64_refusal.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9003_x64_refusal.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "legacy x64 refusal must not write an object");
+    }
+
+    #[test]
     fn build_generic_call_refuses_range_suffix_or_arity_mismatch() {
         for (case, call) in [
             ("range", "take(18446744073709551616u64)"),

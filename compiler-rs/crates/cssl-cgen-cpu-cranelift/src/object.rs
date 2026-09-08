@@ -15,7 +15,7 @@
 //!     to materialize the object file's bytes.
 //!
 //! § SUBSET HANDLED  (S6-A3, expanded by S6-B+)
-//!   - Const : `arith.constant` (i32 / i64 / f32 / f64).
+//!   - Const : `arith.constant` (i32 / i64 / i128 / f32 / f64).
 //!   - Return : `func.return` with operand list.
 //!   - Arith  : `arith.addi` / `subi` / `muli` / `addf` / `subf` / `mulf` / `divf`.
 //!   - Heap (S6-B1, T11-D57) : `cssl.heap.alloc` / `cssl.heap.dealloc` /
@@ -108,6 +108,19 @@ pub enum ObjectError {
         ty: String,
     },
 
+    /// Windows' public C ABI does not define raw scalar i128/u128 the same
+    /// way as Cranelift's LLVM-compatible internal extension. Crossing that
+    /// boundary would silently rearrange argument and return locations.
+    #[error(
+        "fn `{fn_name}` exposes raw 128-bit integer through Windows C {linkage} ABI at {position} #{slot} ; unsupported ; project as two u64 limbs"
+    )]
+    UnsupportedWindowsCInt128Abi {
+        fn_name: String,
+        linkage: String,
+        position: &'static str,
+        slot: usize,
+    },
+
     /// Cranelift reported a codegen / declaration error.
     #[error("fn `{fn_name}` cranelift error : {detail}")]
     LoweringFailed { fn_name: String, detail: String },
@@ -177,6 +190,8 @@ pub fn emit_object_module_with_format(
     module: &MirModule,
     _format: crate::abi::ObjectFormat,
 ) -> Result<Vec<u8>, ObjectError> {
+    reject_unsupported_windows_c_int128_boundaries(module)?;
+
     // § 1. Build host ISA via cranelift_native.
     let mut flag_builder = settings::builder();
     flag_builder
@@ -184,6 +199,15 @@ pub fn emit_object_module_with_format(
         .map_err(|e| ObjectError::NoIsa(format!("flag set : {e}")))?;
     flag_builder
         .set("is_pic", "false")
+        .map_err(|e| ObjectError::NoIsa(format!("flag set : {e}")))?;
+    // § P1a-ABI9003 — Cranelift's x64 ABI lowers scalar i128 as two i64
+    // register/stack slots only under its LLVM-compatible ABI extension.
+    // Without this explicit setting Cranelift panics during signature
+    // legalization. This extension is exact for private compiler-managed
+    // calls, but it is not Windows C's raw `unsigned __int128` convention;
+    // `reject_unsupported_windows_c_int128_boundaries` seals that boundary.
+    flag_builder
+        .set("enable_llvm_abi_extensions", "true")
         .map_err(|e| ObjectError::NoIsa(format!("flag set : {e}")))?;
     let isa_builder =
         cranelift_native::builder().map_err(|msg| ObjectError::NoIsa(msg.to_string()))?;
@@ -276,6 +300,59 @@ pub fn emit_object_module_with_format(
         fn_name: "<module>".to_string(),
         detail: format!("ObjectProduct.emit : {e}"),
     })
+}
+
+/// Reject raw 128-bit integer signatures at Windows C import/export seams.
+/// Private functions remain legal because all callers and callees share the
+/// same Cranelift LLVM-extension convention. Stable external APIs must project
+/// the value into two u64 limbs (or a future explicitly specified aggregate).
+fn reject_unsupported_windows_c_int128_boundaries(
+    module: &MirModule,
+) -> Result<(), ObjectError> {
+    if !cfg!(target_os = "windows") {
+        return Ok(());
+    }
+
+    for mir_fn in &module.funcs {
+        let linkage = mir_fn
+            .attributes
+            .iter()
+            .find_map(|(key, value)| (key == "linkage").then_some(value.as_str()));
+        let crosses_c_boundary = match linkage {
+            Some("export") => true,
+            Some("import") => mir_fn
+                .attributes
+                .iter()
+                .any(|(key, value)| key == "abi" && value == "C"),
+            _ => false,
+        };
+        if !crosses_c_boundary {
+            continue;
+        }
+
+        for (slot, ty) in mir_fn.params.iter().enumerate() {
+            if matches!(ty, MirType::Int(IntWidth::I128)) {
+                return Err(ObjectError::UnsupportedWindowsCInt128Abi {
+                    fn_name: mir_fn.name.clone(),
+                    linkage: linkage.unwrap_or("unknown").to_owned(),
+                    position: "parameter",
+                    slot,
+                });
+            }
+        }
+        for (slot, ty) in mir_fn.results.iter().enumerate() {
+            if matches!(ty, MirType::Int(IntWidth::I128)) {
+                return Err(ObjectError::UnsupportedWindowsCInt128Abi {
+                    fn_name: mir_fn.name.clone(),
+                    linkage: linkage.unwrap_or("unknown").to_owned(),
+                    position: "result",
+                    slot,
+                });
+            }
+        }
+    }
+
+    Ok(())
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -1675,6 +1752,17 @@ fn lower_one_op(
                 builder
                     .ins()
                     .f64const(value_str.parse::<f64>().unwrap_or(0.0))
+            } else if cl_ty == cl_types::I128 {
+                let bits = parse_i128_constant_bits(value_str).map_err(|detail| {
+                    ObjectError::LoweringFailed {
+                        fn_name: fn_name.to_string(),
+                        detail,
+                    }
+                })?;
+                let (lo_bits, hi_bits) = split_i128_constant_bits(bits);
+                let lo = builder.ins().iconst(cl_types::I64, lo_bits);
+                let hi = builder.ins().iconst(cl_types::I64, hi_bits);
+                builder.ins().iconcat(lo, hi)
             } else {
                 builder
                     .ins()
@@ -4636,6 +4724,7 @@ fn mir_type_to_cl_with_layouts(
     match t {
         MirType::Int(IntWidth::I32) => Some(cl_types::I32),
         MirType::Int(IntWidth::I64) => Some(cl_types::I64),
+        MirType::Int(IntWidth::I128) => Some(cl_types::I128),
         MirType::Int(IntWidth::I16) => Some(cl_types::I16),
         MirType::Int(IntWidth::I8) => Some(cl_types::I8),
         MirType::Int(IntWidth::I1) => Some(cl_types::I8), // align with Bool below
@@ -4660,6 +4749,30 @@ fn mir_type_to_cl_with_layouts(
         MirType::Memref { .. } | MirType::Tuple(_) | MirType::Function { .. } => Some(ptr_ty),
         _ => None,
     }
+}
+
+/// Parse a canonical MIR integer attribute into its exact 128-bit bit-pattern.
+/// Positive text may occupy the full unsigned range; negative text uses signed
+/// two's-complement representation. No fallback-to-zero is permitted.
+fn parse_i128_constant_bits(raw: &str) -> Result<u128, String> {
+    if raw.starts_with('-') {
+        raw.parse::<i128>()
+            .map(|value| value as u128)
+            .map_err(|_| format!("invalid signed i128 constant `{raw}`"))
+    } else {
+        raw.parse::<u128>()
+            .map_err(|_| format!("invalid unsigned u128 constant `{raw}`"))
+    }
+}
+
+fn split_i128_constant_bits(bits: u128) -> (i64, i64) {
+    let lo = u64::try_from(bits & u128::from(u64::MAX))
+        .expect("masked low i128 limb fits u64");
+    let hi = u64::try_from(bits >> 64).expect("shifted high i128 limb fits u64");
+    (
+        i64::from_ne_bytes(lo.to_ne_bytes()),
+        i64::from_ne_bytes(hi.to_ne_bytes()),
+    )
 }
 
 /// Stage-0 ABI-class → cranelift `Type` mapping for a struct.
@@ -4758,6 +4871,7 @@ fn resolve_aggregate_opaque(
         "i16" | "u16" => return Some(cl_types::I16),
         "i32" | "u32" | "char" => return Some(cl_types::I32),
         "i64" | "u64" | "isize" | "usize" => return Some(cl_types::I64),
+        "i128" | "u128" => return Some(cl_types::I128),
         "f32" => return Some(cl_types::F32),
         "f64" => return Some(cl_types::F64),
         "bool" => return Some(cl_types::I8),
@@ -4941,6 +5055,87 @@ mod tests {
         module.push_func(main);
         let bytes = emit_object_module(&module).expect("emit ok");
         assert!(!bytes.is_empty());
+    }
+
+    #[test]
+    fn emit_scalar_u128_identity_and_max_constant_succeeds() {
+        let ty = MirType::Int(IntWidth::I128);
+        let mut identity = MirFunc::new("identity_u128", vec![ty.clone()], vec![ty.clone()]);
+        identity.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+
+        let mut maximum = MirFunc::new("maximum_u128", vec![], vec![ty.clone()]);
+        maximum.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", u128::MAX.to_string())
+                .with_result(ValueId(0), ty),
+        );
+        maximum.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+
+        let mut module = MirModule::new();
+        module.push_func(identity);
+        module.push_func(maximum);
+        let bytes = emit_object_module(&module).expect("scalar u128 object emission");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn raw_int128_export_and_c_import_are_refused_at_windows_boundary() {
+        let ty = MirType::Int(IntWidth::I128);
+
+        let mut exported = MirFunc::new("exported_u128", vec![ty.clone()], vec![ty.clone()]);
+        exported
+            .attributes
+            .push(("linkage".to_owned(), "export".to_owned()));
+        exported.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut export_module = MirModule::new();
+        export_module.push_func(exported);
+        assert!(matches!(
+            emit_object_module(&export_module),
+            Err(ObjectError::UnsupportedWindowsCInt128Abi {
+                position: "parameter",
+                slot: 0,
+                ..
+            })
+        ));
+
+        let mut imported = MirFunc::new("imported_u128", vec![], vec![ty]);
+        imported
+            .attributes
+            .push(("linkage".to_owned(), "import".to_owned()));
+        imported
+            .attributes
+            .push(("abi".to_owned(), "C".to_owned()));
+        let mut import_module = MirModule::new();
+        import_module.push_func(imported);
+        assert!(matches!(
+            emit_object_module(&import_module),
+            Err(ObjectError::UnsupportedWindowsCInt128Abi {
+                position: "result",
+                slot: 0,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn scalar_i128_constant_parser_is_exact_and_fail_closed() {
+        assert_eq!(parse_i128_constant_bits("0").unwrap(), 0);
+        assert_eq!(
+            parse_i128_constant_bits("340282366920938463463374607431768211455").unwrap(),
+            u128::MAX
+        );
+        assert_eq!(
+            parse_i128_constant_bits("-170141183460469231731687303715884105728").unwrap(),
+            1_u128 << 127
+        );
+        assert_eq!(split_i128_constant_bits(u128::MAX), (-1, -1));
+        assert_eq!(
+            split_i128_constant_bits(0xfedc_ba98_7654_3210_0123_4567_89ab_cdef),
+            (0x0123_4567_89ab_cdef, -0x0123_4567_89ab_cdf0)
+        );
+        assert!(parse_i128_constant_bits("340282366920938463463374607431768211456").is_err());
+        assert!(parse_i128_constant_bits("not-an-integer").is_err());
     }
 
     #[test]

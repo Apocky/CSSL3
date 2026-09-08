@@ -16,6 +16,8 @@ pub enum ClifType {
     I32,
     /// CLIF `i64`.
     I64,
+    /// CLIF `i128` — represented by the active ISA as a non-truncating two-register value.
+    I128,
     /// CLIF `b1` — boolean-width.
     B1,
     /// CLIF `f16` (not uniformly supported ; accepted as attribute at stage-0).
@@ -37,6 +39,7 @@ impl ClifType {
             Self::I16 => "i16",
             Self::I32 => "i32",
             Self::I64 => "i64",
+            Self::I128 => "i128",
             Self::B1 => "b1",
             Self::F16 => "f16",
             Self::F32 => "f32",
@@ -53,6 +56,7 @@ impl ClifType {
             Self::I16 | Self::F16 => 2,
             Self::I32 | Self::F32 => 4,
             Self::I64 | Self::F64 | Self::R64 => 8,
+            Self::I128 => 16,
         }
     }
 }
@@ -69,6 +73,7 @@ pub fn clif_type_for(mir: &MirType) -> Option<ClifType> {
             IntWidth::I16 => ClifType::I16,
             IntWidth::I32 => ClifType::I32,
             IntWidth::I64 => ClifType::I64,
+            IntWidth::I128 => ClifType::I128,
             IntWidth::Index => ClifType::I64,
         }),
         MirType::Float(w) => Some(match w {
@@ -105,6 +110,7 @@ mod tests {
     #[test]
     fn clif_type_names() {
         assert_eq!(ClifType::I32.as_str(), "i32");
+        assert_eq!(ClifType::I128.as_str(), "i128");
         assert_eq!(ClifType::F32.as_str(), "f32");
         assert_eq!(ClifType::B1.as_str(), "b1");
     }
@@ -114,6 +120,7 @@ mod tests {
         assert_eq!(ClifType::I8.byte_size(), 1);
         assert_eq!(ClifType::I32.byte_size(), 4);
         assert_eq!(ClifType::I64.byte_size(), 8);
+        assert_eq!(ClifType::I128.byte_size(), 16);
         assert_eq!(ClifType::F64.byte_size(), 8);
     }
 
@@ -130,6 +137,10 @@ mod tests {
         assert_eq!(
             clif_type_for(&MirType::Int(IntWidth::I1)),
             Some(ClifType::B1)
+        );
+        assert_eq!(
+            clif_type_for(&MirType::Int(IntWidth::I128)),
+            Some(ClifType::I128)
         );
     }
 

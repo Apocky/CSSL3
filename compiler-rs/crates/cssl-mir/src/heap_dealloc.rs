@@ -115,6 +115,7 @@ pub const fn dealloc_size_for(t: &MirType) -> i64 {
         MirType::Int(IntWidth::I16) => 2,
         MirType::Int(IntWidth::I32) => 4,
         MirType::Int(IntWidth::I64 | IntWidth::Index) => 8,
+        MirType::Int(IntWidth::I128) => 16,
         MirType::Float(FloatWidth::F16 | FloatWidth::Bf16) => 2,
         MirType::Float(FloatWidth::F32) => 4,
         MirType::Float(FloatWidth::F64) => 8,
@@ -148,6 +149,7 @@ pub const fn dealloc_align_for(t: &MirType) -> i64 {
         MirType::Int(IntWidth::I1 | IntWidth::I8) | MirType::Bool => 1,
         MirType::Int(IntWidth::I16) | MirType::Float(FloatWidth::F16 | FloatWidth::Bf16) => 2,
         MirType::Int(IntWidth::I32) | MirType::Float(FloatWidth::F32) => 4,
+        MirType::Int(IntWidth::I128) => 16,
         MirType::Int(IntWidth::I64 | IntWidth::Index)
         | MirType::Float(FloatWidth::F64)
         | MirType::Ptr

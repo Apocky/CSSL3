@@ -36,7 +36,7 @@ impl MirValue {
 /// plus structured variants for common cases that need manipulation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MirType {
-    /// Integer type : `"i8"`, `"i16"`, `"i32"`, `"i64"`, `"index"`, …
+    /// Integer type : `"i8"`, `"i16"`, `"i32"`, `"i64"`, `"i128"`, `"index"`, …
     Int(IntWidth),
     /// Float type : `"f16"`, `"f32"`, `"f64"`, `"bf16"`.
     Float(FloatWidth),
@@ -84,6 +84,7 @@ pub enum IntWidth {
     I16,
     I32,
     I64,
+    I128,
     Index,
 }
 
@@ -97,6 +98,7 @@ impl IntWidth {
             Self::I16 => "i16",
             Self::I32 => "i32",
             Self::I64 => "i64",
+            Self::I128 => "i128",
             Self::Index => "index",
         }
     }
@@ -111,6 +113,7 @@ impl IntWidth {
             Self::I16 => 2,
             Self::I32 => 4,
             Self::I64 | Self::Index => 8,
+            Self::I128 => 16,
         }
     }
 }

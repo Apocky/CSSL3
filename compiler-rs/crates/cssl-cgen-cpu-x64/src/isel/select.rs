@@ -232,7 +232,8 @@ pub fn mir_to_x64_width(ty: &MirType) -> Option<X64Width> {
         MirType::Float(FloatWidth::F64) => Some(X64Width::F64),
         MirType::Ptr | MirType::Handle => Some(X64Width::Ptr),
         // Half-floats + non-scalars deferred — caller surfaces a typed error.
-        MirType::Float(FloatWidth::F16 | FloatWidth::Bf16)
+        MirType::Int(IntWidth::I128)
+        | MirType::Float(FloatWidth::F16 | FloatWidth::Bf16)
         | MirType::None
         | MirType::Tuple(_)
         | MirType::Function { .. }
@@ -1257,7 +1258,7 @@ fn parse_fp_cmp(s: &str) -> Option<FpCmpKind> {
 // ════════════════════════════════════════════════════════════════════════
 #[cfg(test)]
 mod tests {
-    use super::{select_function, select_module, SelectError};
+    use super::{mir_to_x64_width, select_function, select_module, SelectError};
     use crate::isel::display::format_func;
     use cssl_mir::{
         validate_and_mark, FloatWidth, IntWidth, MirFunc, MirModule, MirOp, MirRegion, MirType,
@@ -1269,6 +1270,11 @@ mod tests {
     }
     fn i64_ty() -> MirType {
         MirType::Int(IntWidth::I64)
+    }
+
+    #[test]
+    fn legacy_x64_explicitly_refuses_scalar_i128_width() {
+        assert_eq!(mir_to_x64_width(&MirType::Int(IntWidth::I128)), None);
     }
     fn f32_ty() -> MirType {
         MirType::Float(FloatWidth::F32)
