@@ -6,7 +6,12 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGatewayServer } from '../scripts/apocrypha-memory-gateway/gateway';
-import { brainmonsoonRecords, canonicalGraphQuery, nativeErrorCode } from '../scripts/apocrypha-memory-gateway/adapters';
+import {
+  brainmonsoonRecords,
+  canonicalGraphQuery,
+  nativeErrorCode,
+  nativeMemPalaceResultHealthy,
+} from '../scripts/apocrypha-memory-gateway/adapters';
 import { isLoopbackUrl, loadGatewayConfig } from '../scripts/apocrypha-memory-gateway/config';
 import { runBoundedJsonl } from '../scripts/apocrypha-memory-gateway/process';
 import type {
@@ -81,6 +86,11 @@ async function main(): Promise<void> {
     'Graphify query retained forbidden controls or exceeded its native bound');
   assert(nativeErrorCode({ ok: false, error: { code: 'APOC_GRAPH_QUERY_INVALID' } }, 'NATIVE_GRAPH_UNAVAILABLE')
     === 'APOC_GRAPH_QUERY_INVALID', 'nested native Graphify error code was lost');
+  assert(nativeMemPalaceResultHealthy({ status: 'empty', code: 'MEM_EMPTY', records: [] }),
+    'exit-zero MemPalace empty result was treated as an outage');
+  assert(nativeMemPalaceResultHealthy({ status: 'ok', records: [] }), 'normal MemPalace result was rejected');
+  assert(!nativeMemPalaceResultHealthy({ status: 'empty', code: 'MEM_QUERY_FAILED' }),
+    'failed MemPalace empty result was admitted');
   assert(isLoopbackUrl('http://127.0.0.1:8787/search'), 'loopback URL rejected');
   assert(!isLoopbackUrl('https://example.com/search'), 'remote upstream admitted');
   let configRejected = false;

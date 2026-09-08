@@ -93,7 +93,7 @@ function claimedJob(workerConfig: WorkerConfig): ClaimedJob {
     ownerPrincipalId: '40000000-0000-4000-8000-000000000001',
     kind: 'chaos_oracle',
     capability: 'chaos_tarot_reading',
-    request: { prompt: 'Interpret the Tower crossing the Star with practical specificity.', max_tokens: 512 },
+    request: { prompt: 'PROMPT_MARKER Interpret the Tower crossing the Star with practical specificity.', output_budget: 384 },
     modelAlias: workerConfig.modelAlias,
     profileHash: workerConfig.profileHash,
     toolRegistryVersion: workerConfig.toolRegistryVersion,
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
         activeMemoryRequests -= 1;
         return json(response, 403, { error: 'TENANT_DENIED', read_only: true });
       }
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 80));
       activeMemoryRequests -= 1;
       return json(response, 200, { records: [{ id: 'tarot:tower-star', text: 'The Tower and Star pair disruption with chosen renewal.' }] });
     }
@@ -151,6 +151,9 @@ async function main(): Promise<void> {
     if (request.url === '/v1/chat/completions') {
       const received = await body(request);
       qwenRequests.push(received);
+      if (qwenRequests.length === 1) {
+        return json(response, 400, { error: { message: 'request exceeds the available context window token limit' } });
+      }
       response.statusCode = 200;
       response.setHeader('content-type', 'text/event-stream');
       for (const delta of [output.slice(0, 90), output.slice(90, 260), output.slice(260)]) {
@@ -174,6 +177,7 @@ async function main(): Promise<void> {
     const received = await body(request);
     if (request.url === '/api/apocrypha/worker/claim') {
       claims += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
       return json(response, 200, claims === 1 ? { ok: true, data: [{
         job_id: claimedJob(workerConfig).jobId,
         attempt_id: claimedJob(workerConfig).attemptId,
@@ -192,6 +196,7 @@ async function main(): Promise<void> {
         memory_manifest_hash: workerConfig.memoryManifestHash,
       }] } : { ok: true, data: [] });
     }
+    if (request.url === '/api/apocrypha/worker/heartbeat') return json(response, 200, { ok: true });
     assert(received.node_id === 'test-node', 'worker node identity missing');
     assert(received.lease_token === 'lease-token-secret', 'fence token missing');
     if (request.url === '/api/apocrypha/worker/lease') {
@@ -214,7 +219,11 @@ async function main(): Promise<void> {
   });
 
   try {
-    workerConfig = config(control.url, qwen.url, journalDir);
+    workerConfig = {
+      ...config(control.url, qwen.url, journalDir),
+      heartbeatEnabled: true,
+      heartbeatIntervalMs: 60_000,
+    };
     const env = {
       ...process.env,
       APOCRYPHA_MEMPALACE_READ_URL: `${qwen.url}/memory`,
@@ -227,6 +236,7 @@ async function main(): Promise<void> {
     };
     const worker = new ApocryphaWorker(workerConfig, { env });
     await worker.run();
+    worker.stop('test complete');
 
     assert(worker.runtime.completedJobs === 1, 'worker did not complete claimed job');
     assert(completed !== null, 'completion was not delivered');
@@ -236,12 +246,17 @@ async function main(): Promise<void> {
     assert([...chunks.values()].join('') === output, 'buffered chunks do not reconstruct the final output');
     assert([...chunks.values()].every((value) => value.length <= 64), 'chunk exceeded configured buffer size');
     assert(authorizations.every((value) => value === 'Bearer test-node-token-never-log'), 'worker bearer authentication missing');
-    assert(qwenRequests.length === 1, 'Qwen was invoked more than once');
-    const qwenRequest = qwenRequests[0] as Record<string, unknown>;
+    assert(qwenRequests.length === 2, 'context rejection did not cause exactly one bounded retry');
+    const qwenRequest = qwenRequests[1] as Record<string, unknown>;
     assert(qwenRequest.model === 'qwen35-35b-a3b-q4', 'worker did not use accepted Qwen alias');
+    assert(qwenRequests.every((request) => request.max_tokens === 384), 'worker ignored the claimed output_budget');
     assert((qwenRequest.chat_template_kwargs as Record<string, unknown>).enable_thinking === false, 'ordinary reading left model thinking enabled');
     const messages = qwenRequest.messages as Array<{ role: string; content: string }>;
     assert(messages[0]?.content.includes('tarot:tower-star'), 'admitted memory provenance was not supplied to Qwen');
+    assert(messages.some((message) => message.content.includes('PROMPT_MARKER')), 'overflow retry lost the user prompt');
+    const firstBytes = Buffer.byteLength(JSON.stringify(qwenRequests[0]?.messages), 'utf8');
+    const retryBytes = Buffer.byteLength(JSON.stringify(qwenRequests[1]?.messages), 'utf8');
+    assert(retryBytes < firstBytes, 'context retry did not use a smaller deterministic prompt');
     assert(worker.runtime.adapterStates.brainmonsoon === 'unconfigured', 'gateway unconfigured state was flattened to a generic error');
     assert(worker.runtime.adapterStates.anamnesis === 'timeout', 'per-adapter timeout override was not enforced');
     assert(worker.runtime.adapterProbeAt === null, 'partial adapter configuration minted fresh operational evidence');
@@ -264,7 +279,7 @@ async function main(): Promise<void> {
     assert(operationalProbe?.probedAt !== null, 'six real adapter reads did not mint probe freshness');
     assert(operationalProbe?.results.length === 6 && operationalProbe.results.every((result) => result.state === 'ok'),
       'periodic adapter probe did not report all six runtime states');
-    assert(peakMemoryRequests === 1, 'bounded adapter scheduler allowed overlapping memory reads');
+    assert(peakMemoryRequests === 1, 'heartbeat probe overlapped job retrieval or bounded adapter reads');
     assert(memoryScopesSeen.has('11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:chaos_tarot_reading'),
       'primary Chaos readiness scope was not probed');
     assert(memoryScopesSeen.has('33333333-3333-4333-8333-333333333333:44444444-4444-4444-8444-444444444444:apocky_owner_chat'),
@@ -297,7 +312,7 @@ async function main(): Promise<void> {
     await rm(encryptedDir, { recursive: true, force: true });
   }
 
-  console.log('apocrypha-worker.test : OK · authenticated claim, tenant-scoped memory, Qwen stream, bounded chunks, terminal ack, encrypted journal');
+  console.log('apocrypha-worker.test : OK · serialized memory, bounded Qwen retry, output budget, durable chunks, encrypted journal');
 }
 
 void main();

@@ -61,6 +61,11 @@ function extractContent(payload: unknown): string {
         : '';
 }
 
+export function isQwenContextOverflow(status: number, detail: string): boolean {
+  if (![400, 413, 422].includes(status)) return false;
+  return /(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit).{0,80}(?:context|token|prompt)|(?:context|token|prompt).{0,80}(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit)/iu.test(detail);
+}
+
 export class QwenClient {
   private readonly config: WorkerConfig;
   private readonly fetchImpl: Fetch;
@@ -143,6 +148,9 @@ export class QwenClient {
       });
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 1_000);
+        if (isQwenContextOverflow(response.status, detail)) {
+          throw new QwenError(`Qwen rejected the composed context: ${detail}`, 'QWEN_CONTEXT_OVERFLOW', true);
+        }
         throw new QwenError(`Qwen HTTP ${response.status}: ${detail}`, `QWEN_HTTP_${response.status}`, response.status >= 500 || response.status === 429);
       }
       resetIdle();
