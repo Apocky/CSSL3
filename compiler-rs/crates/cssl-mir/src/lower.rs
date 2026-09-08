@@ -311,7 +311,7 @@ pub fn build_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> MirStructLayout
             let (size, align) = MirStructLayout::compute_size_align(&fields);
             MirStructLayout::new(name, fields, size, align)
         }
-        HirStructBody::Named(decls) => MirStructLayout::named(
+        HirStructBody::Named(decls) => MirStructLayout::named_with_integer_contracts(
             name,
             decls
                 .iter()
@@ -322,6 +322,10 @@ pub fn build_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> MirStructLayout
                             .map(|symbol| ctx.interner.resolve(symbol))
                             .unwrap_or_default(),
                         ctx.lower_type(&field.ty),
+                        crate::body_lower::declared_scalar_integer_unsigned(
+                            ctx.interner,
+                            &field.ty,
+                        ),
                     )
                 })
                 .collect(),

@@ -714,10 +714,13 @@ impl JitModule {
                     .field_names
                     .iter()
                     .any(|name| !unique_names.insert(name));
+            let signedness_unverified = !layout.has_exact_field_signedness_contracts();
             return Err(JitError::NominalRecordFailure {
                 fn_name: "<module>".to_string(),
                 code: if pathless {
                     "ABI9001-PATHLESS-LAYOUT"
+                } else if signedness_unverified {
+                    "ABI9001-SIGNEDNESS-CONTRACT-UNVERIFIED"
                 } else {
                     "ABI9001-UNSUPPORTED-LAYOUT"
                 }
@@ -744,6 +747,7 @@ impl JitModule {
         if self.finalized {
             return Err(JitError::AlreadyFinalized);
         }
+        validate_exact_nominal_record_jit_ops(primal, &self.struct_layouts)?;
 
         // T11-D30 : multi-result fns are lowered via out-params. The cranelift
         // signature appends one pointer-param per excess result ; the body's
@@ -1224,6 +1228,244 @@ where
             })
         })
         .collect()
+}
+
+/// Require every nominal-record op to reproduce one registered declaration
+/// layout exactly before JIT codegen. Direct MIR without a registered nominal
+/// identity therefore remains outside the ABI9001 acceptance boundary. This
+/// does not authenticate an arbitrary producer's source-signedness assertions.
+fn validate_exact_nominal_record_jit_ops(
+    function: &MirFunc,
+    layouts: &BTreeMap<String, MirStructLayout>,
+) -> Result<(), JitError> {
+    fn field_bits(ty: &MirType) -> Option<u16> {
+        Some(match ty {
+            MirType::Bool | MirType::Int(IntWidth::I1 | IntWidth::I8) => 8,
+            MirType::Int(IntWidth::I16) => 16,
+            MirType::Int(IntWidth::I32) => 32,
+            MirType::Int(IntWidth::I64) => 64,
+            _ => return None,
+        })
+    }
+
+    fn signedness(ty: &MirType, unsigned: Option<bool>) -> Option<&'static str> {
+        match (ty, unsigned) {
+            (MirType::Bool, None) => Some("bool"),
+            (MirType::Int(_), Some(true)) => Some("unsigned"),
+            (MirType::Int(_), Some(false)) => Some("signed"),
+            _ => None,
+        }
+    }
+
+    fn nominal_name(ty: &MirType) -> Option<&str> {
+        let MirType::Opaque(name) = ty else {
+            return None;
+        };
+        Some(name.strip_prefix("!cssl.struct.").unwrap_or(name))
+    }
+
+    fn collect_value_types(
+        blocks: &[cssl_mir::MirBlock],
+        value_types: &mut HashMap<ValueId, MirType>,
+    ) {
+        for block in blocks {
+            for argument in &block.args {
+                value_types.insert(argument.id, argument.ty.clone());
+            }
+            for op in &block.ops {
+                for result in &op.results {
+                    value_types.insert(result.id, result.ty.clone());
+                }
+                for region in &op.regions {
+                    collect_value_types(&region.blocks, value_types);
+                }
+            }
+        }
+    }
+
+    fn validate_op(
+        op: &MirOp,
+        layouts: &BTreeMap<String, MirStructLayout>,
+        value_types: &HashMap<ValueId, MirType>,
+        fn_name: &str,
+    ) -> Result<(), JitError> {
+        if op.name == "cssl.nominal_record.construct" {
+            if nominal_record_jit_attr(op, "byte_order") != Some("little") {
+                return Err(nominal_record_jit_failure(fn_name, "invalid `byte_order`"));
+            }
+            let storage_bits = nominal_record_jit_attr(op, "storage_bits")
+                .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `storage_bits`"))?
+                .parse::<u16>()
+                .map_err(|error| nominal_record_jit_failure(fn_name, error.to_string()))?;
+            if nominal_record_jit_storage_type(storage_bits).is_none() {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    format!("unsupported {storage_bits}-bit carrier"),
+                ));
+            }
+            let offsets: Vec<u32> =
+                parse_nominal_record_jit_csv(op, "field_offsets", fn_name)?;
+            let widths: Vec<u16> = parse_nominal_record_jit_csv(op, "field_bits", fn_name)?;
+            if op.operands.is_empty()
+                || offsets.len() != widths.len()
+                || offsets.len() != op.operands.len()
+            {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    "record constructor metadata/operand count mismatch",
+                ));
+            }
+            let struct_name = nominal_record_jit_attr(op, "struct_name")
+                .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `struct_name`"))?;
+            let layout = layouts.get(struct_name).ok_or_else(|| {
+                nominal_record_jit_failure(
+                    fn_name,
+                    format!("nominal record `{struct_name}` has no registered layout"),
+                )
+            })?;
+            let expected_storage = layout.nominal_integer_storage_bits().ok_or_else(|| {
+                nominal_record_jit_failure(
+                    fn_name,
+                    format!("registered nominal record `{struct_name}` is not admissible"),
+                )
+            })?;
+            let declared_count = nominal_record_jit_attr(op, "field_count")
+                .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `field_count`"))?
+                .parse::<usize>()
+                .map_err(|error| nominal_record_jit_failure(fn_name, error.to_string()))?;
+            let names: Vec<&str> = nominal_record_jit_attr(op, "field_names")
+                .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `field_names`"))?
+                .split(',')
+                .collect();
+            let signs: Vec<&str> = nominal_record_jit_attr(op, "field_signedness")
+                .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `field_signedness`"))?
+                .split(',')
+                .collect();
+            let expected_widths: Option<Vec<u16>> = layout.fields.iter().map(field_bits).collect();
+            let expected_signs: Option<Vec<&str>> = layout
+                .fields
+                .iter()
+                .zip(&layout.field_integer_unsigned)
+                .map(|(ty, unsigned)| signedness(ty, *unsigned))
+                .collect();
+            if storage_bits != expected_storage
+                || declared_count != layout.fields.len()
+                || names != layout.field_names.iter().map(String::as_str).collect::<Vec<_>>()
+                || offsets != layout.field_offsets
+                || Some(widths) != expected_widths
+                || Some(signs) != expected_signs
+            {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    format!(
+                        "nominal record `{struct_name}` metadata differs from registered natural layout"
+                    ),
+                ));
+            }
+            if op.results.len() != 1
+                || op
+                    .operands
+                    .iter()
+                    .zip(&layout.fields)
+                    .any(|(operand, expected)| value_types.get(operand) != Some(expected))
+            {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    format!(
+                        "nominal record `{struct_name}` operand/result types differ from registered layout"
+                    ),
+                ));
+            }
+            let result_name = op.results.first().and_then(|result| match &result.ty {
+                MirType::Opaque(name) => Some(name.strip_prefix("!cssl.struct.").unwrap_or(name)),
+                _ => None,
+            });
+            if result_name != Some(struct_name) {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    "record constructor result nominal identity differs from `struct_name`",
+                ));
+            }
+        } else if op.name == "cssl.nominal_record.project" {
+            if op.operands.len() != 1
+                || op.results.len() != 1
+                || nominal_record_jit_attr(op, "byte_order") != Some("little")
+            {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    "record projection requires one operand, one result, and little-endian metadata",
+                ));
+            }
+            let struct_name = nominal_record_jit_attr(op, "struct_name")
+                .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `struct_name`"))?;
+            let field_name = nominal_record_jit_attr(op, "field_name")
+                .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `field_name`"))?;
+            let layout = layouts.get(struct_name).ok_or_else(|| {
+                nominal_record_jit_failure(
+                    fn_name,
+                    format!("nominal record `{struct_name}` has no registered layout"),
+                )
+            })?;
+            let storage_bits = layout.nominal_integer_storage_bits().ok_or_else(|| {
+                nominal_record_jit_failure(fn_name, "registered record layout is not admissible")
+            })?;
+            let Some((_, field_ty, expected_offset, unsigned)) = layout.named_field(field_name)
+            else {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    format!("unknown registered field `{struct_name}.{field_name}`"),
+                ));
+            };
+            let expected_bits = field_bits(field_ty).ok_or_else(|| {
+                nominal_record_jit_failure(fn_name, "registered field width is unsupported")
+            })?;
+            let expected_sign = signedness(field_ty, unsigned).ok_or_else(|| {
+                nominal_record_jit_failure(fn_name, "registered field signedness is unverified")
+            })?;
+            let actual_offset = nominal_record_jit_attr(op, "field_offset")
+                .and_then(|value| value.parse::<u32>().ok());
+            let actual_bits = nominal_record_jit_attr(op, "field_bits")
+                .and_then(|value| value.parse::<u16>().ok());
+            let actual_storage = nominal_record_jit_attr(op, "storage_bits")
+                .and_then(|value| value.parse::<u16>().ok());
+            let operand_name = op
+                .operands
+                .first()
+                .and_then(|operand| value_types.get(operand))
+                .and_then(nominal_name);
+            if operand_name != Some(struct_name)
+                || actual_offset != Some(expected_offset)
+                || actual_bits != Some(expected_bits)
+                || nominal_record_jit_attr(op, "field_signedness") != Some(expected_sign)
+                || actual_storage != Some(storage_bits)
+                || op.results.first().map(|result| &result.ty) != Some(field_ty)
+            {
+                return Err(nominal_record_jit_failure(
+                    fn_name,
+                    format!(
+                        "projection `{struct_name}.{field_name}` metadata differs from registered natural layout"
+                    ),
+                ));
+            }
+        }
+        for region in &op.regions {
+            for block in &region.blocks {
+                for inner in &block.ops {
+                    validate_op(inner, layouts, value_types, fn_name)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    let mut value_types = HashMap::new();
+    collect_value_types(&function.body.blocks, &mut value_types);
+    for block in &function.body.blocks {
+        for op in &block.ops {
+            validate_op(op, layouts, &value_types, &function.name)?;
+        }
+    }
+    Ok(())
 }
 
 fn jit_lower_nominal_record_construct(
@@ -2824,11 +3066,11 @@ mod tests {
     }
 
     fn abi9001_pair_layout() -> MirStructLayout {
-        MirStructLayout::named(
+        MirStructLayout::named_with_integer_contracts(
             "Pair",
             vec![
-                ("tag".to_string(), i32_ty()),
-                ("value".to_string(), i32_ty()),
+                ("tag".to_string(), i32_ty(), Some(false)),
+                ("value".to_string(), i32_ty(), Some(false)),
             ],
         )
     }
@@ -2877,8 +3119,12 @@ mod tests {
                 .with_operand(ValueId(0))
                 .with_operand(ValueId(1))
                 .with_result(ValueId(2), record_ty)
+                .with_attribute("struct_name", "Pair")
+                .with_attribute("field_count", "2")
+                .with_attribute("field_names", "tag,value")
                 .with_attribute("field_offsets", "0,4")
                 .with_attribute("field_bits", "32,32")
+                .with_attribute("field_signedness", "signed,signed")
                 .with_attribute("storage_bits", "64")
                 .with_attribute("byte_order", "little"),
         );
@@ -2886,13 +3132,19 @@ mod tests {
             MirOp::std("cssl.nominal_record.project")
                 .with_operand(ValueId(2))
                 .with_result(ValueId(3), i32_ty())
+                .with_attribute("struct_name", "Pair")
+                .with_attribute("field_name", "value")
                 .with_attribute("field_offset", "4")
                 .with_attribute("field_bits", "32")
+                .with_attribute("field_signedness", "signed")
                 .with_attribute("storage_bits", "64")
                 .with_attribute("byte_order", "little"),
         );
         function.push_op(MirOp::std("func.return").with_operand(ValueId(3)));
         let mut module = JitModule::new();
+        module
+            .register_struct_layout(abi9001_pair_layout())
+            .expect("register exact record layout");
         let handle = module.compile(&function).expect("compile record projection");
         module.finalize().expect("finalize record projection");
         for (tag, value) in [
@@ -2924,10 +3176,103 @@ mod tests {
         );
         function.push_op(MirOp::std("func.return"));
         let mut module = JitModule::new();
+        module
+            .register_struct_layout(abi9001_pair_layout())
+            .expect("register exact record layout");
         assert!(matches!(
             module.compile(&function),
             Err(JitError::NominalRecordFailure { code, detail, .. })
                 if code == "ABI9001-MALFORMED-METADATA" && detail.contains("byte_order")
+        ));
+    }
+
+    #[test]
+    fn abi9001_jit_rejects_overlapping_record_metadata() {
+        let mut function = MirFunc::new("abi9001_overlap", vec![i32_ty(), i32_ty()], vec![]);
+        function.push_op(
+            MirOp::std("cssl.nominal_record.construct")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), MirType::Opaque("!cssl.struct.Pair".to_string()))
+                .with_attribute("struct_name", "Pair")
+                .with_attribute("field_count", "2")
+                .with_attribute("field_names", "tag,value")
+                .with_attribute("field_offsets", "0,0")
+                .with_attribute("field_bits", "32,32")
+                .with_attribute("field_signedness", "unsigned,unsigned")
+                .with_attribute("storage_bits", "64")
+                .with_attribute("byte_order", "little"),
+        );
+        function.push_op(MirOp::std("func.return"));
+        let mut module = JitModule::new();
+        module
+            .register_struct_layout(abi9001_pair_layout())
+            .expect("register exact record layout");
+        assert!(matches!(
+            module.compile(&function),
+            Err(JitError::NominalRecordFailure { code, detail, .. })
+                if code == "ABI9001-MALFORMED-METADATA" && detail.contains("natural")
+        ));
+    }
+
+    #[test]
+    fn abi9001_jit_requires_registered_nominal_identity() {
+        let mut function = MirFunc::new("abi9001_unregistered", vec![i32_ty()], vec![]);
+        function.push_op(
+            MirOp::std("cssl.nominal_record.construct")
+                .with_operand(ValueId(0))
+                .with_result(
+                    ValueId(1),
+                    MirType::Opaque("!cssl.struct.Unregistered".to_string()),
+                )
+                .with_attribute("struct_name", "Unregistered")
+                .with_attribute("field_count", "1")
+                .with_attribute("field_names", "value")
+                .with_attribute("field_offsets", "0")
+                .with_attribute("field_bits", "32")
+                .with_attribute("field_signedness", "signed")
+                .with_attribute("storage_bits", "32")
+                .with_attribute("byte_order", "little"),
+        );
+        function.push_op(MirOp::std("func.return"));
+        let mut module = JitModule::new();
+        assert!(matches!(
+            module.compile(&function),
+            Err(JitError::NominalRecordFailure { code, detail, .. })
+                if code == "ABI9001-MALFORMED-METADATA"
+                    && detail.contains("no registered layout")
+        ));
+    }
+
+    #[test]
+    fn abi9001_jit_projection_operand_requires_nominal_identity() {
+        let mut function = MirFunc::new(
+            "abi9001_scalar_spoof_projection",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![i32_ty()],
+        );
+        function.push_op(
+            MirOp::std("cssl.nominal_record.project")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), i32_ty())
+                .with_attribute("struct_name", "Pair")
+                .with_attribute("field_name", "value")
+                .with_attribute("field_offset", "4")
+                .with_attribute("field_bits", "32")
+                .with_attribute("field_signedness", "signed")
+                .with_attribute("storage_bits", "64")
+                .with_attribute("byte_order", "little"),
+        );
+        function.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = JitModule::new();
+        module
+            .register_struct_layout(abi9001_pair_layout())
+            .expect("register exact record layout");
+        assert!(matches!(
+            module.compile(&function),
+            Err(JitError::NominalRecordFailure { code, detail, .. })
+                if code == "ABI9001-MALFORMED-METADATA"
+                    && detail.contains("registered natural layout")
         ));
     }
 
@@ -2944,6 +3289,20 @@ mod tests {
             module.register_struct_layout(pathless),
             Err(JitError::NominalRecordFailure { code, .. })
                 if code == "ABI9001-PATHLESS-LAYOUT"
+        ));
+    }
+
+    #[test]
+    fn abi9001_jit_refuses_direct_mir_layout_without_signedness() {
+        let mut module = JitModule::new();
+        let legacy = MirStructLayout::named(
+            "LegacyCell",
+            vec![("value".to_string(), i32_ty())],
+        );
+        assert!(matches!(
+            module.register_struct_layout(legacy),
+            Err(JitError::NominalRecordFailure { code, .. })
+                if code == "ABI9001-SIGNEDNESS-CONTRACT-UNVERIFIED"
         ));
     }
 

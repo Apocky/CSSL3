@@ -1,0 +1,29 @@
+module tests.abi9001_record_signedness_native
+
+pub struct Abi9001UnsignedByte { value: u8 }
+pub struct Abi9001UnsignedWord { value: u64 }
+
+pub fn abi9001_projected_u8_cast_v1(value: u8) -> u64 {
+    let record: Abi9001UnsignedByte = Abi9001UnsignedByte { value: value };
+    record.value as u64
+}
+
+pub fn abi9001_projected_u64_shift_v1(value: u64) -> u64 {
+    let record: Abi9001UnsignedWord = Abi9001UnsignedWord { value: value };
+    record.value >> 7u64
+}
+
+pub fn abi9001_projected_u64_div_v1(value: u64) -> u64 {
+    let record: Abi9001UnsignedWord = Abi9001UnsignedWord { value: value };
+    record.value / 3u64
+}
+
+pub fn abi9001_projected_u64_rem_v1(value: u64) -> u64 {
+    let record: Abi9001UnsignedWord = Abi9001UnsignedWord { value: value };
+    record.value % 3u64
+}
+
+pub fn abi9001_projected_u64_gt_v1(value: u64, threshold: u64) -> i32 {
+    let record: Abi9001UnsignedWord = Abi9001UnsignedWord { value: value };
+    if record.value > threshold { 1i32 } else { 0i32 }
+}

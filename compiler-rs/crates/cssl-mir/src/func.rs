@@ -51,6 +51,12 @@ pub struct MirStructLayout {
     /// Field types in declaration order. `Vec<MirType>` rather than
     /// `Vec<(String, MirType)>` because stage-0 ABI is positional.
     pub fields: Vec<MirType>,
+    /// Exact source integer signedness in declaration order. `Some(true)` is
+    /// unsigned, `Some(false)` is signed, and `None` is valid only for Bool or
+    /// for legacy/direct-MIR producers that are deliberately not ABI9001
+    /// admissible. MIR integer types are signless, so this parallel contract
+    /// must travel with the nominal layout.
+    pub field_integer_unsigned: Vec<Option<bool>>,
     /// Exact source field names in declaration order. Empty means the layout
     /// came from a legacy/signature-only producer or is positional/pathless;
     /// nominal record construction/projection must then refuse admission.
@@ -80,6 +86,7 @@ impl MirStructLayout {
         Self {
             name: name.into(),
             fields,
+            field_integer_unsigned: Vec::new(),
             field_names: Vec::new(),
             field_offsets,
             size_bytes,
@@ -87,16 +94,45 @@ impl MirStructLayout {
         }
     }
 
-    /// Construct a declaration-backed named layout using the canonical
-    /// natural scalar layout. This is the only constructor that supplies the
-    /// nominal identity needed by ABI9001 record construction/projection.
+    /// Construct a named natural layout without source integer signedness.
+    /// Kept for legacy/direct-MIR callers; numeric layouts built through this
+    /// constructor are deliberately outside ABI9001 acceptance.
     #[must_use]
     pub fn named(name: impl Into<String>, fields: Vec<(String, MirType)>) -> Self {
         let (field_names, field_types): (Vec<_>, Vec<_>) = fields.into_iter().unzip();
+        let field_integer_unsigned = vec![None; field_types.len()];
+        Self::named_parts(name, field_names, field_types, field_integer_unsigned)
+    }
+
+    /// Construct an exact declaration-backed named layout using the canonical
+    /// natural scalar layout plus the source integer signedness contract.
+    #[must_use]
+    pub fn named_with_integer_contracts(
+        name: impl Into<String>,
+        fields: Vec<(String, MirType, Option<bool>)>,
+    ) -> Self {
+        let mut field_names = Vec::with_capacity(fields.len());
+        let mut field_types = Vec::with_capacity(fields.len());
+        let mut field_integer_unsigned = Vec::with_capacity(fields.len());
+        for (field_name, field_type, integer_unsigned) in fields {
+            field_names.push(field_name);
+            field_types.push(field_type);
+            field_integer_unsigned.push(integer_unsigned);
+        }
+        Self::named_parts(name, field_names, field_types, field_integer_unsigned)
+    }
+
+    fn named_parts(
+        name: impl Into<String>,
+        field_names: Vec<String>,
+        field_types: Vec<MirType>,
+        field_integer_unsigned: Vec<Option<bool>>,
+    ) -> Self {
         let (field_offsets, size_bytes, align_bytes) = Self::compute_layout(&field_types);
         Self {
             name: name.into(),
             fields: field_types,
+            field_integer_unsigned,
             field_names,
             field_offsets,
             size_bytes,
@@ -167,15 +203,38 @@ impl MirStructLayout {
     /// Exact named-field lookup. Duplicate/pathless metadata is rejected;
     /// callers must never select a field by insertion order alone.
     #[must_use]
-    pub fn named_field(&self, name: &str) -> Option<(usize, &MirType, u32)> {
+    pub fn named_field(&self, name: &str) -> Option<(usize, &MirType, u32, Option<bool>)> {
         if self.field_names.len() != self.fields.len()
             || self.field_offsets.len() != self.fields.len()
+            || self.field_integer_unsigned.len() != self.fields.len()
             || self.field_names.iter().filter(|candidate| *candidate == name).count() != 1
         {
             return None;
         }
         let index = self.field_names.iter().position(|candidate| candidate == name)?;
-        Some((index, &self.fields[index], self.field_offsets[index]))
+        Some((
+            index,
+            &self.fields[index],
+            self.field_offsets[index],
+            self.field_integer_unsigned[index],
+        ))
+    }
+
+    /// Whether every scalar field carries the only valid source signedness
+    /// shape: integers require `Some`, Bool requires `None`, and other field
+    /// kinds carry no integer contract. This does not itself admit aggregates.
+    #[must_use]
+    pub fn has_exact_field_signedness_contracts(&self) -> bool {
+        self.field_integer_unsigned.len() == self.fields.len()
+            && self
+                .fields
+                .iter()
+                .zip(&self.field_integer_unsigned)
+                .all(|(field, unsigned)| match field {
+                    MirType::Int(_) => unsigned.is_some(),
+                    MirType::Bool => unsigned.is_none(),
+                    _ => unsigned.is_none(),
+                })
     }
 
     /// Width of the exact integer-only scalar carrier admitted by ABI9001.
@@ -188,6 +247,7 @@ impl MirStructLayout {
         if self.fields.is_empty()
             || self.field_names.len() != self.fields.len()
             || self.field_offsets.len() != self.fields.len()
+            || !self.has_exact_field_signedness_contracts()
             || self.field_names.iter().any(String::is_empty)
         {
             return None;
@@ -203,12 +263,18 @@ impl MirStructLayout {
         if self.field_names.iter().any(|name| !unique.insert(name)) {
             return None;
         }
-        for (field, &offset) in self.fields.iter().zip(&self.field_offsets) {
+        for ((field, &offset), integer_unsigned) in self
+            .fields
+            .iter()
+            .zip(&self.field_offsets)
+            .zip(&self.field_integer_unsigned)
+        {
             let width_bytes = match field {
-                MT::Bool | MT::Int(IntWidth::I1 | IntWidth::I8) => 1,
-                MT::Int(IntWidth::I16) => 2,
-                MT::Int(IntWidth::I32) => 4,
-                MT::Int(IntWidth::I64) => 8,
+                MT::Bool if integer_unsigned.is_none() => 1,
+                MT::Int(IntWidth::I1 | IntWidth::I8) if integer_unsigned.is_some() => 1,
+                MT::Int(IntWidth::I16) if integer_unsigned.is_some() => 2,
+                MT::Int(IntWidth::I32) if integer_unsigned.is_some() => 4,
+                MT::Int(IntWidth::I64) if integer_unsigned.is_some() => 8,
                 _ => return None,
             };
             if offset.checked_add(width_bytes)? > self.size_bytes {
@@ -564,11 +630,11 @@ mod tests {
 
     #[test]
     fn abi9001_named_layout_keeps_exact_natural_offsets() {
-        let layout = MirStructLayout::named(
+        let layout = MirStructLayout::named_with_integer_contracts(
             "Padded",
             vec![
-                ("flag".to_string(), MirType::Int(IntWidth::I8)),
-                ("value".to_string(), MirType::Int(IntWidth::I32)),
+                ("flag".to_string(), MirType::Int(IntWidth::I8), Some(true)),
+                ("value".to_string(), MirType::Int(IntWidth::I32), Some(true)),
             ],
         );
         assert_eq!(layout.field_names, vec!["flag", "value"]);
@@ -578,7 +644,7 @@ mod tests {
         assert_eq!(layout.nominal_integer_storage_bits(), Some(64));
         assert_eq!(
             layout.named_field("value"),
-            Some((1, &MirType::Int(IntWidth::I32), 4))
+            Some((1, &MirType::Int(IntWidth::I32), 4, Some(true)))
         );
     }
 
@@ -592,11 +658,11 @@ mod tests {
         );
         assert_eq!(pathless.nominal_integer_storage_bits(), None);
 
-        let duplicate = MirStructLayout::named(
+        let duplicate = MirStructLayout::named_with_integer_contracts(
             "Duplicate",
             vec![
-                ("value".to_string(), MirType::Int(IntWidth::I32)),
-                ("value".to_string(), MirType::Int(IntWidth::I32)),
+                ("value".to_string(), MirType::Int(IntWidth::I32), Some(false)),
+                ("value".to_string(), MirType::Int(IntWidth::I32), Some(false)),
             ],
         );
         assert_eq!(duplicate.nominal_integer_storage_bits(), None);
@@ -604,12 +670,37 @@ mod tests {
     }
 
     #[test]
+    fn abi9001_direct_mir_numeric_layout_requires_explicit_signedness() {
+        let legacy = MirStructLayout::named(
+            "LegacyCell",
+            vec![("value".to_string(), MirType::Int(IntWidth::I32))],
+        );
+        assert_eq!(legacy.field_integer_unsigned, vec![None]);
+        assert_eq!(legacy.nominal_integer_storage_bits(), None);
+    }
+
+    #[test]
+    fn abi9001_bool_layout_admits_only_the_bool_contract() {
+        let exact = MirStructLayout::named_with_integer_contracts(
+            "Flag",
+            vec![("value".to_string(), MirType::Bool, None)],
+        );
+        assert_eq!(exact.nominal_integer_storage_bits(), Some(8));
+
+        let forged = MirStructLayout::named_with_integer_contracts(
+            "ForgedFlag",
+            vec![("value".to_string(), MirType::Bool, Some(true))],
+        );
+        assert_eq!(forged.nominal_integer_storage_bits(), None);
+    }
+
+    #[test]
     fn abi9001_unresolved_member_makes_layout_size_unknown() {
-        let layout = MirStructLayout::named(
+        let layout = MirStructLayout::named_with_integer_contracts(
             "Nested",
             vec![
-                ("tag".to_string(), MirType::Int(IntWidth::I32)),
-                ("child".to_string(), MirType::Opaque("Child".to_string())),
+                ("tag".to_string(), MirType::Int(IntWidth::I32), Some(false)),
+                ("child".to_string(), MirType::Opaque("Child".to_string()), None),
             ],
         );
         assert_eq!(layout.size_bytes, 0);
@@ -618,12 +709,12 @@ mod tests {
 
     #[test]
     fn abi9001_three_byte_record_is_not_a_windows_x64_scalar_aggregate() {
-        let layout = MirStructLayout::named(
+        let layout = MirStructLayout::named_with_integer_contracts(
             "ThreeBytes",
             vec![
-                ("a".to_string(), MirType::Int(IntWidth::I8)),
-                ("b".to_string(), MirType::Int(IntWidth::I8)),
-                ("c".to_string(), MirType::Int(IntWidth::I8)),
+                ("a".to_string(), MirType::Int(IntWidth::I8), Some(true)),
+                ("b".to_string(), MirType::Int(IntWidth::I8), Some(true)),
+                ("c".to_string(), MirType::Int(IntWidth::I8), Some(true)),
             ],
         );
         assert_eq!(layout.size_bytes, 3);
