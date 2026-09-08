@@ -45,11 +45,13 @@ query, so a fast synthetic health lookup cannot conceal a production-query
 timeout.
 
 Every heartbeat performs a bounded live Qwen probe. While idle, the worker
-also performs all six read-only adapter requests for the primary and every
-additional admitted readiness scope at least every 30 seconds. Operational
-probes cap those local readers at two so the probe reduces host-wide CPU and
-disk pressure while still completing inside the idle freshness window; live
-job retrieval retains its configured concurrency.
+also calls the authenticated resident memory gateway `/ready` route at least
+every 30 seconds. That route runs each faculty's bounded liveness check in
+parallel; it does not issue a multi-gigabyte corpus search merely to decide
+whether the resident reader is alive. Standalone hosts without the gateway
+readiness variables retain the task-shaped recall probe and use the configured
+read concurrency. Live job retrieval always retains its configured
+concurrency.
 The heartbeat publishes the last completed adapter result while a new probe is
 in flight. Its timestamp continues to age normally, so a stalled probe cannot
 manufacture fresh readiness or block worker liveness publication.

@@ -261,7 +261,7 @@ async function operationalProbeAvoidsSelfContention(): Promise<void> {
 
   const probe = await probeMemoryAdapters(probeConfig, probeEnv, fetchImpl);
   assert(probe?.probedAt !== null, 'bounded operational probe did not complete');
-  assert(peak === 2, `operational probe used ${peak} concurrent local readers instead of two`);
+  assert(peak === 3, `standalone operational probe used ${peak} concurrent local readers instead of configured concurrency`);
 
   peak = 0;
   const retrieval = await retrieveMemory(probeConfig, job, probeEnv, fetchImpl);

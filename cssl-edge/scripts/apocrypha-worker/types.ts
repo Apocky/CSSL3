@@ -118,6 +118,9 @@ export interface WorkerConfig {
   heartbeatIntervalMs: number;
   heartbeatEnabled: boolean;
   memoryReadConcurrency: number;
+  /** Authenticated resident gateway readiness; optional for standalone test/legacy hosts. */
+  memoryReadinessUrl?: string | null;
+  memoryReadinessToken?: string | null;
   memoryProbeTenantId: string | null;
   memoryProbePrincipalId: string;
   memoryProbeCapability: string;

@@ -304,6 +304,86 @@ async function invokeAdapter(
   return finalResult ?? { name: adapter.name, state: 'error', durationMs: Date.now() - started, records: [], detail: 'retrieval failed' };
 }
 
+function readinessState(value: unknown): RetrievalAdapterResult['state'] {
+  if (value === 'ready') return 'ok';
+  if (value === 'unconfigured') return 'unconfigured';
+  if (value === 'unavailable') return 'timeout';
+  return 'error';
+}
+
+async function probeResidentGateway(
+  config: WorkerConfig,
+  fetchImpl: Fetch,
+): Promise<RetrievalBundle | null> {
+  const url = config.memoryReadinessUrl;
+  const token = config.memoryReadinessToken;
+  if (!url || !token) return null;
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('resident gateway readiness timeout')), 15_000);
+  try {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    const text = await boundedResponseText(response, 128_000);
+    let body: Record<string, unknown> = {};
+    try { body = record(JSON.parse(text)); } catch { /* preserve bounded transport failure below */ }
+    const adapters = record(body.adapters);
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => {
+      const entry = record(adapters[adapter.name]);
+      const state = readinessState(entry.state);
+      return {
+        name: adapter.name,
+        state,
+        durationMs: Date.now() - started,
+        records: [],
+        ...(typeof entry.detail === 'string' ? { detail: entry.detail.slice(0, 300) } : {}),
+      };
+    });
+    const ready = response.ok && body.status === 'ready'
+      && results.length === config.manifest.memory.adapters.length
+      && results.every((result) => result.state === 'ok');
+    const probedAt = ready ? new Date().toISOString() : null;
+    const capabilityProbes: NonNullable<RetrievalBundle['capabilityProbes']> = {};
+    for (const scope of [
+      { capability: config.memoryProbeCapability },
+      ...(config.memoryAdditionalProbeScopes ?? []),
+    ]) {
+      capabilityProbes[scope.capability] = {
+        results: results.map((result) => ({ ...result })),
+        probedAt,
+      };
+    }
+    return {
+      query: MEMORY_READINESS_QUERY,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt,
+      capabilityProbes,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.slice(0, 300) : 'resident gateway readiness failed';
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => ({
+      name: adapter.name, state: 'timeout', durationMs: Date.now() - started, records: [], detail,
+    }));
+    return {
+      query: MEMORY_READINESS_QUERY,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt: null,
+      capabilityProbes: Object.fromEntries(config.manifest.capabilities.map((capability) => [capability, {
+        results: results.map((result) => ({ ...result })), probedAt: null,
+      }])),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function invokeAdaptersBounded(
   config: WorkerConfig,
   operation: (adapter: MemoryAdapterManifest) => Promise<RetrievalAdapterResult>,
@@ -396,6 +476,11 @@ export async function probeMemoryAdapters(
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle | null> {
+  // The resident gateway already owns bounded, per-faculty liveness probes.
+  // Calling its readiness route avoids turning a multi-gigabyte recall query
+  // into an operational health check while preserving full retrieval below.
+  const resident = await probeResidentGateway(config, fetchImpl);
+  if (resident) return resident;
   const scopes = [
     ...(config.memoryProbeTenantId ? [{
       tenantId: config.memoryProbeTenantId,
@@ -431,7 +516,7 @@ export async function probeMemoryAdapters(
     const settled = await invokeAdaptersBounded(
       config,
       (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1),
-      Math.min(2, config.memoryReadConcurrency),
+      config.memoryReadConcurrency,
     );
     scopedResults.push({
       scope,

@@ -132,6 +132,12 @@ export function loadConfig(
   const defaultProfilePath = 'D:\\Apocrypha\\models\\Qwen3.5-35B-A3B-Q4\\runtime-profile.json';
   const profilePathRaw = env.APOCRYPHA_QWEN_RUNTIME_PROFILE_PATH?.trim()
     || (existsSync(defaultProfilePath) ? defaultProfilePath : '');
+  const gatewayHost = env.APOCRYPHA_MEMORY_GATEWAY_HOST?.trim() || '127.0.0.1';
+  const gatewayPort = env.APOCRYPHA_MEMORY_GATEWAY_PORT?.trim();
+  const readinessUrlRaw = env.APOCRYPHA_MEMORY_READINESS_URL?.trim()
+    || (gatewayPort ? `http://${gatewayHost}:${gatewayPort}/ready` : '');
+  const readinessToken = env.APOCRYPHA_MEMORY_READINESS_TOKEN?.trim()
+    || env.APOCRYPHA_MEMORY_GATEWAY_TOKEN?.trim() || null;
 
   const config: WorkerConfig = {
     controlPlaneUrl: safeUrl(required(env, 'APOCRYPHA_CONTROL_PLANE_URL'), 'APOCRYPHA_CONTROL_PLANE_URL', false),
@@ -161,6 +167,9 @@ export function loadConfig(
     heartbeatIntervalMs: integerEnv(env, 'APOCRYPHA_WORKER_HEARTBEAT_MS', 15_000, 5_000, 300_000),
     heartbeatEnabled: boolEnv(env, 'APOCRYPHA_WORKER_HEARTBEAT_ENABLED', true),
     memoryReadConcurrency: integerEnv(env, 'APOCRYPHA_MEMORY_READ_CONCURRENCY', 1, 1, 6),
+    memoryReadinessUrl: readinessUrlRaw
+      ? safeUrl(readinessUrlRaw, 'APOCRYPHA_MEMORY_READINESS_URL', true) : null,
+    memoryReadinessToken: readinessToken,
     memoryProbeTenantId: env.APOCRYPHA_MEMORY_PROBE_TENANT_ID?.trim()
       || firstCsv(env.APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS),
     memoryProbePrincipalId: env.APOCRYPHA_MEMORY_PROBE_PRINCIPAL_ID?.trim() || required(env, 'APOCRYPHA_WORKER_NODE_ID'),
