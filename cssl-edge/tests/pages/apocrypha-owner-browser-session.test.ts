@@ -50,12 +50,15 @@ export async function main(root: string): Promise<void> {
   function children(value: unknown): Tree[] {
     if (Array.isArray(value)) return value.flatMap(children);
     if (!value || typeof value !== 'object' || !('props' in value)) return [];
-    const node = value as Tree; return [node, ...children(node.props.children)];
+    const node = value as Tree;
+    const rendered = typeof node.type === 'function' ? (node.type as (props: Record<string, unknown>) => Tree)(node.props) : null;
+    return [node, ...children(rendered), ...children(node.props.children)];
   }
   function surface(tree: Tree): string {
     const nodes = children(tree);
     if (nodes.some(node => node.type === 'OwnerConversation')) return 'owner';
     if (nodes.some(node => node.type === 'AccountConversation')) return 'account';
+    if (nodes.some(node => node.type === 'main' && node.props.className === 'page' && children(node).some(child => child.props.role === 'alert'))) return 'session-error';
     if (nodes.some(node => node.type === 'main' && node.props.role === 'status')) return 'checking';
     throw new Error('Page has no expected conversation surface.');
   }
@@ -67,7 +70,7 @@ export async function main(root: string): Promise<void> {
     const effects: Array<{ dependencies: readonly unknown[]; cleanup?: () => void }> = [];
     let scheduled: Array<() => void> = [];
     const pageExports: Record<string, any> = {};
-    runInNewContext(pageSource, { exports: pageExports, require(name: string) {
+    runInNewContext(pageSource, { exports: pageExports, setTimeout: (callback: () => void, delay: number) => setTimeout(callback, Math.min(delay, 10)), clearTimeout, require(name: string) {
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name === 'react') return {
         useState(initial: unknown) { const slot = cursor++; if (!(slot in cells)) cells[slot] = initial; return [cells[slot], (next: unknown) => { cells[slot] = typeof next === 'function' ? next(cells[slot]) : next; }]; },
@@ -84,6 +87,8 @@ export async function main(root: string): Promise<void> {
       if (name === '@/components/brain/BrainExperience') return { default: 'OwnerConversation' };
       if (name === '@/components/apocrypha/ChatThread') return { ChatThread: 'OwnerConversation' };
       if (name === '@/components/apocrypha/AccountChat') return { default: 'AccountConversation' };
+      if (name === 'next/link') return { default: 'Link' };
+      if (name === '@/styles/AccountChat.module.css') return { default: { page: 'page', header: 'header', brand: 'brand', roomTitle: 'roomTitle', welcome: 'welcome', eyebrow: 'eyebrow', welcomeActions: 'welcomeActions', primary: 'primary', secondary: 'secondary', phoneLink: 'phoneLink' } };
       return {};
     } });
     function render(): Tree { cursor = 0; effectCursor = 0; scheduled = []; const tree = pageExports.default({ ownerConversation: ssr }) as Tree; for (const effect of scheduled) effect(); return tree; }
@@ -135,6 +140,11 @@ export async function main(root: string): Promise<void> {
   equal(surface(signedOut.render()), 'account', 'stale SSR admission does not outlive sign out');
   const checking = harness({ access: 'checking', ownerConversation: false, authenticated: false, subjectKey: null }, async () => null, true);
   equal(surface(checking.render()), 'account', 'checking identity remains inside the public account controller instead of rendering private contents');
+  await new Promise(resolve => setTimeout(resolve, 20));
+  tree = checking.render();
+  equal(surface(tree), 'session-error', 'never-resolving Supabase auth/session state reaches a visible terminal error before the browser watchdog');
+  const recoveryLinks = children(tree).filter(node => node.type === 'Link').map(node => node.props.href);
+  equal(recoveryLinks.includes('/login?next=%2Fapocrypha'), true, 'terminal account error exposes the sign-in recovery path');
 
   let resolveOld: (value: unknown) => void = () => undefined;
   const oldRead = new Promise<unknown>(resolve => { resolveOld = resolve; });

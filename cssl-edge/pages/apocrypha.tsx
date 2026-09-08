@@ -1,12 +1,15 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { openAccountPendingJournal } from '@/lib/mobile/chat-contract';
 import { withDeadline } from '@/lib/apocrypha/deadline';
 import { useSiteSession } from '@/components/hub/SiteSession';
 import AccountChat from '@/components/apocrypha/AccountChat';
 import { ChatThread } from '@/components/apocrypha/ChatThread';
+import styles from '@/styles/AccountChat.module.css';
 
 export const ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS = 4_000;
+export const ACCOUNT_SESSION_VISIBLE_DEADLINE_MS = 4_000;
 
 function loadPendingAccountTurn(account: string): Promise<unknown> {
   return withDeadline(
@@ -15,13 +18,42 @@ function loadPendingAccountTurn(account: string): Promise<unknown> {
   );
 }
 
+function AccountResolutionUnavailable(): JSX.Element {
+  return <main id="main-content" className={styles.page}>
+    <header className={styles.header}>
+      <Link href="/" className={styles.brand} aria-label="Apocky home"><span className="apx-brand-mark" aria-hidden="true" /></Link>
+      <div className={styles.roomTitle}><h1>Apocrypha</h1><p>Room to think</p></div>
+      <nav aria-label="Apocrypha navigation"><Link href="/download/apocrypha">Get the app</Link><Link href="/login?next=%2Fapocrypha">Sign in</Link></nav>
+    </header>
+    <section className={styles.welcome} role="alert" aria-labelledby="account-check-title">
+      <span className={styles.eyebrow}>APOCRYPHA</span>
+      <h2 id="account-check-title">Account check took too long.</h2>
+      <p>Your conversation is still safe. Sign in again to reconnect, or create an account to begin.</p>
+      <div className={styles.welcomeActions}>
+        <Link href="/login?next=%2Fapocrypha" className={styles.primary}>Sign in to chat</Link>
+        <Link href="/register?next=%2Fapocrypha" className={styles.secondary}>Create an account</Link>
+      </div>
+      <Link className={styles.phoneLink} href="/download/apocrypha">Apocrypha for iPhone and Android →</Link>
+    </section>
+  </main>;
+}
+
 export default function ApocryphaPage(): JSX.Element {
   const session = useSiteSession();
+  const [sessionTimedOut, setSessionTimedOut] = useState(false);
   const displayOwner = session.ownerConversation === true;
   const account = session.authenticated ? session.subjectKey : null;
   const [pendingCheck, setPendingCheck] = useState<{ account: string; status: 'clear' | 'pending' | 'unavailable' } | null>(null);
   const controller = useRef<{ account: string; choice: 'owner' | 'account' } | null>(null);
   const [, redraw] = useState(0);
+  useEffect(() => {
+    if (session.access !== 'checking') {
+      setSessionTimedOut(false);
+      return undefined;
+    }
+    const deadline = setTimeout(() => { setSessionTimedOut(true); }, ACCOUNT_SESSION_VISIBLE_DEADLINE_MS);
+    return () => { clearTimeout(deadline); };
+  }, [session.access]);
   if (!account) controller.current = null;
   else if (controller.current?.account !== account) controller.current = { account, choice: displayOwner ? 'owner' : 'account' };
   useEffect(() => {
@@ -54,7 +86,8 @@ export default function ApocryphaPage(): JSX.Element {
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>
-    {checkingSaved ? <main id="main-content" role="status"><p>Opening your saved conversation…</p></main>
+    {session.access === 'checking' && sessionTimedOut ? <AccountResolutionUnavailable />
+      : checkingSaved ? <main id="main-content" role="status"><p>Opening your saved conversation…</p></main>
       : showOwner ? <main id="main-content" aria-label="Apocrypha owner conversation" style={{ height: '100dvh', minHeight: 480, overflow: 'hidden' }}><ChatThread /></main> : <AccountChat onPendingChange={pending => {
         if (account && controller.current?.account === account) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
       }} />}
