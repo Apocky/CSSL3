@@ -36,7 +36,7 @@
 //!   - Break-with-label targeting — `scf.br` / `scf.continue` emission.
 //!   - Pattern-matching arm-guard lowering + exhaustiveness-checking.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use cssl_ast::{SourceFile, Span};
 use cssl_hir::{
@@ -68,6 +68,10 @@ pub struct CallParamContract {
 pub struct CallSignatureTable {
     entries: BTreeMap<String, Vec<CallParamContract>>,
     results: BTreeMap<String, CallParamContract>,
+    /// Every top-level declaration or explicit import binding that owns a
+    /// root spelling. Syntactic intrinsic recognizers consult this set before
+    /// treating `root::member` as a privileged standard/host operation.
+    declared_roots: BTreeSet<String>,
 }
 
 impl CallSignatureTable {
@@ -76,19 +80,28 @@ impl CallSignatureTable {
         Self {
             entries: BTreeMap::new(),
             results: BTreeMap::new(),
+            declared_roots: BTreeSet::new(),
         }
     }
 
     /// Add all regular + extern top-level function declarations from one HIR
     /// module. Repeated names replace the prior entry, matching the
     /// stage-0 MIR module's existing name-based resolution behavior.
-    pub fn extend_hir_module(
-        &mut self,
-        module: &HirModule,
-        interner: &Interner,
-    ) {
+    pub fn extend_hir_module(&mut self, module: &HirModule, interner: &Interner) {
         let lower_ctx = crate::lower::LowerCtx::new(interner);
         for item in &module.items {
+            if let Some(name) = item.name() {
+                self.declared_roots.insert(interner.resolve(name));
+            }
+            if let HirItem::Use(import) = item {
+                for binding in &import.bindings {
+                    if !binding.is_glob {
+                        if let Some(name) = binding.alias.or_else(|| binding.path.last().copied()) {
+                            self.declared_roots.insert(interner.resolve(name));
+                        }
+                    }
+                }
+            }
             let (name, params, return_ty) = match item {
                 HirItem::Fn(function) => {
                     (function.name, &function.params, function.return_ty.as_ref())
@@ -138,6 +151,11 @@ impl CallSignatureTable {
     #[must_use]
     pub fn result(&self, callee: &str) -> Option<&CallParamContract> {
         self.results.get(callee)
+    }
+
+    #[must_use]
+    pub fn declares_root(&self, root: &str) -> bool {
+        self.declared_roots.contains(root)
     }
 }
 
@@ -3945,6 +3963,26 @@ fn lower_call(
         }
     }
 
+    // Privileged syntactic recognizers are valid only while their namespace
+    // root remains unowned by source code. HIR stage-0 cannot resolve members
+    // of a local/imported root; silently ignoring the suffix previously let a
+    // matching local callable turn `fs::open` or `std::vec::vec_index` into a
+    // host/checked-vector MIR op. Refuse before every recognizer so syntax can
+    // never manufacture semantic builtin identity.
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() > 1
+            && is_privileged_intrinsic_root(ctx, segments[0])
+            && qualified_root_is_source_owned(ctx, segments[0])
+        {
+            let target = segments
+                .iter()
+                .map(|segment| ctx.interner.resolve(*segment))
+                .collect::<Vec<_>>()
+                .join(".");
+            return Some(emit_qualified_path_identity_refusal(ctx, &target, span));
+        }
+    }
+
     // § T11-D99 — Trait-dispatch fast-path : if callee is `Field { obj, name }`
     //   and we have a trait-impl table attached, attempt to resolve the method
     //   via the table BEFORE falling through to opaque indirect-call. This is
@@ -4199,8 +4237,16 @@ fn lower_call(
     //     the source still compiles (the panic("...deferred") body in
     //     stdlib/vec.cssl still serves as the fallback).
     if let HirExprKind::Path { segments, .. } = &callee.kind {
-        if segments.len() == 1 {
-            let name = ctx.interner.resolve(segments[0]);
+        let canonical_qualified_vec_index = segments.len() == 3
+            && ctx.interner.resolve(segments[0]) == "std"
+            && ctx.interner.resolve(segments[1]) == "vec"
+            && ctx.interner.resolve(segments[2]) == "vec_index";
+        if segments.len() == 1 || canonical_qualified_vec_index {
+            let name = if canonical_qualified_vec_index {
+                "vec_index".to_string()
+            } else {
+                ctx.interner.resolve(segments[0])
+            };
             match (name.as_str(), args.len()) {
                 ("vec_drop", 1) => {
                     if let Some(result) = try_lower_vec_drop(ctx, &args[0], type_args, span) {
@@ -4587,6 +4633,55 @@ fn lower_call(
     ctx.ops.push(mir_op);
     let _ = span;
     Some((id, result_ty))
+}
+
+fn is_privileged_intrinsic_root(ctx: &BodyLowerCtx<'_>, root: Symbol) -> bool {
+    matches!(
+        ctx.interner.resolve(root).as_str(),
+        "std"
+            | "Vec"
+            | "Box"
+            | "fs"
+            | "net"
+            | "time"
+            | "window"
+            | "input"
+            | "gpu"
+            | "audio"
+            | "thread"
+            | "mutex"
+            | "atomic"
+    )
+}
+
+fn qualified_root_is_source_owned(ctx: &BodyLowerCtx<'_>, root: Symbol) -> bool {
+    ctx.param_vars.contains_key(&root)
+        || ctx.vec_param_vars.contains_key(&root)
+        || ctx.local_vars.contains_key(&root)
+        || ctx.local_cells.contains_key(&root)
+        || ctx.call_signatures.is_some_and(|table| {
+            let root = ctx.interner.resolve(root);
+            table.declares_root(&root)
+        })
+}
+
+fn emit_qualified_path_identity_refusal(
+    ctx: &mut BodyLowerCtx<'_>,
+    target: &str,
+    span: Span,
+) -> (ValueId, MirType) {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.qualified_path.identity.unresolved")
+            .with_result(id, MirType::None)
+            .with_attribute("callee", target)
+            .with_attribute(
+                "reason",
+                "privileged namespace root is owned by a source declaration or binding",
+            )
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (id, MirType::None)
 }
 
 /// Emit a structural refusal instead of an admitted `func.call`. Object/JIT
@@ -5386,9 +5481,9 @@ fn try_lower_result_err(
 //     once auto_monomorph threads cap-known sites separately.
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Resolve the first turbofish type-argument to a `TypedMemrefElem`. Returns
-/// `None` if no type-arg is present OR the type-arg lowers to a composite /
-/// unsupported MIR-type (caller declines the recognizer in that case).
+/// Resolve the sole turbofish type-argument to a `TypedMemrefElem`. Returns
+/// `None` unless exactly one type-arg is present, or when that type lowers to
+/// a composite / unsupported MIR-type (caller declines the recognizer).
 ///
 /// § SAWYER-EFFICIENCY
 ///   - Single LUT-style match via `from_mir_type` ; no allocation on the
@@ -5399,7 +5494,9 @@ fn resolve_typed_memref_elem(
     ctx: &BodyLowerCtx<'_>,
     type_args: &[HirType],
 ) -> Option<crate::memref_typed::TypedMemrefElem> {
-    let t = type_args.first()?;
+    let [t] = type_args else {
+        return None;
+    };
     let mir_ty = lower_hir_type_light(ctx.interner, t);
     crate::memref_typed::TypedMemrefElem::from_mir_type(&mir_ty)
 }
@@ -12856,6 +12953,130 @@ mod tests {
             .find(|(k, _)| k == "origin")
             .map_or("", |(_, v)| v.as_str());
         assert_eq!(origin, "vec_index");
+    }
+
+    #[test]
+    fn canonical_qualified_vec_index_emits_same_checked_op() {
+        let src = r"
+            fn read_at(v : i64, i : i64) -> i32 {
+                std::vec::vec_index::<i32>(v, i)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().expect("entry");
+        let idx_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.vec.index")
+            .expect("canonical qualified vec_index must lower to cssl.vec.index");
+        assert_eq!(idx_op.operands.len(), 2);
+        assert!(idx_op
+            .attributes
+            .iter()
+            .any(|(key, value)| key == "bounds_check" && value == "panic"));
+    }
+
+    #[test]
+    fn source_owned_std_root_cannot_mint_qualified_vec_intrinsic() {
+        let function = lower_named_with_call_signatures(
+            "fn std(value: i64, index: i64) -> i32 { 0 }\n\
+             fn read_at(value: i64, index: i64) -> i32 {\n\
+                 std::vec::vec_index::<i32>(value, index)\n\
+             }",
+            "read_at",
+            true,
+        );
+        let names = op_names(&function);
+        assert!(!names.iter().any(|name| name == &"cssl.vec.index"));
+        assert!(names
+            .iter()
+            .any(|name| name == &"cssl.qualified_path.identity.unresolved"));
+    }
+
+    #[test]
+    fn source_owned_fs_roots_cannot_mint_host_intrinsic() {
+        for source in [
+            "fn fs(path: String, flags: i64) -> i64 { 0 }\n\
+             fn read_file() -> i64 { fs::open(\"x\", 1) }",
+            "use external::fs\nfn read_file() -> i64 { fs::open(\"x\", 1) }",
+            "module fs { fn marker() -> i64 { 0 } }\n\
+             fn read_file() -> i64 { fs::open(\"x\", 1) }",
+        ] {
+            let function = lower_named_with_call_signatures(source, "read_file", true);
+            let names = op_names(&function);
+            assert!(
+                !names.iter().any(|name| name == &"cssl.fs.open"),
+                "source-owned fs root minted host op: {source}"
+            );
+            assert!(
+                names
+                    .iter()
+                    .any(|name| name == &"cssl.qualified_path.identity.unresolved"),
+                "source-owned fs root did not refuse: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_lambda_root_cannot_mint_host_intrinsic() {
+        let (function, _) = lower_one(
+            "fn read_file() -> i64 {\n\
+                 let fs = |path: String, flags: i64| { 0 };\n\
+                 fs::open(\"x\", 1)\n\
+             }",
+        );
+        let names = op_names(&function);
+        assert!(!names.iter().any(|name| name == &"cssl.fs.open"));
+        assert!(names
+            .iter()
+            .any(|name| name == &"cssl.qualified_path.identity.unresolved"));
+    }
+
+    #[test]
+    fn noncanonical_qualified_vec_index_does_not_claim_intrinsic() {
+        let src = r"
+            fn read_at(v : i64, i : i64) -> i32 {
+                other::vec::vec_index::<i32>(v, i)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(!names.iter().any(|name| name == &"cssl.vec.index"));
+        assert!(names.iter().any(|name| name == &"func.call"));
+    }
+
+    #[test]
+    fn qualified_vec_index_requires_exactly_one_type_argument() {
+        for src in [
+            r"fn read_at(v : i64, i : i64) -> i32 {
+                std::vec::vec_index(v, i)
+            }",
+            r"fn read_at(v : i64, i : i64) -> i32 {
+                std::vec::vec_index::<i32, i64>(v, i)
+            }",
+        ] {
+            let (f, _) = lower_one(src);
+            let names = op_names(&f);
+            assert!(!names.iter().any(|name| name == &"cssl.vec.index"));
+            assert!(names.iter().any(|name| name == &"func.call"));
+        }
+    }
+
+    #[test]
+    fn qualified_generic_vec_index_stays_unclaimed_until_body_type_substitution() {
+        // Current auto-monomorphization substitutes generic signatures but
+        // not type arguments embedded in function bodies. Refuse to mint a
+        // falsely concrete vector op from unresolved `T`; the generic call is
+        // an explicit promotion blocker until body substitution is wired.
+        let src = r"
+            fn read_at<T>(v : i64, i : i64) -> T {
+                std::vec::vec_index::<T>(v, i)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(!names.iter().any(|name| name == &"cssl.vec.index"));
+        assert!(names.iter().any(|name| name == &"func.call"));
     }
 
     #[test]

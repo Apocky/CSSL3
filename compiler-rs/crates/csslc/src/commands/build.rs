@@ -999,6 +999,28 @@ mod tests {
     }
 
     #[test]
+    fn build_imported_enum_alias_equivalence_reaches_artifact_emission() {
+        let src = "use std::gpu::GpuError\n\
+                   use std::gpu::GpuError as Fault\n\
+                   fn preserve<T>(value: GpuError) -> Fault { value }\n\
+                   pub fn probe() -> u32 { 7u32 }\n";
+        let tmp_out = std::env::temp_dir().join(format!(
+            "csslc_imported_alias_identity_{}.obj",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("imported_alias_identity.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("imported_alias_identity.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
+        assert!(
+            tmp_out.exists(),
+            "alias-equivalent imported enum must not block artifact emission"
+        );
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
     fn abi9002_build_generic_pathless_constructor_is_explicitly_refused() {
         let src = "enum Kind { Alpha, Beta }\n\
                    fn select<T>() -> Kind { Beta }\n\
@@ -1381,6 +1403,63 @@ mod tests {
             "fn invalid() -> bool { 2 }",
             "fn invalid(value: u8) -> bool { value }",
             "fn invalid(value: u8) -> bool { value as bool }",
+            "struct Option { value: u8 } fn invalid(value: Option) -> bool { value }",
+            "struct Result { value: u8 } fn invalid(value: Result) -> bool { value }",
+            "struct Vec { value: u8 } fn invalid(value: Vec) -> bool { value }",
+            "use external::Option\nstruct Option { value: u8 } fn invalid(value: Option) -> bool { value }",
+            "fn invalid() -> bool { Some(1u8) }",
+            "fn invalid() -> bool { None }",
+            "fn invalid() -> bool { Ok(1u8) }",
+            "fn invalid() -> bool { Err(1u8) }",
+            "fn invalid() -> Option<u8> { Some(true) }",
+            "fn invalid() -> Result<u8, u8> { Err(true) }",
+            "fn invalid(value: Option<u8>) -> Vec<u8> { value }",
+            "fn invalid(value: Vec<u8>) -> Option<u8> { value }",
+            "module inner { fn byte_value() -> u8 { 1u8 } }\n\
+             fn invalid() -> bool { inner::byte_value() }",
+            "module inner { use external::opaque fn valid() -> bool { true } }\n\
+             fn invalid() -> bool { opaque() }",
+            "use external::opaque\nmodule opaque { fn value() -> u8 { 1u8 } }\nfn invalid() -> bool { opaque() }",
+            "fn invalid() -> bool { definitely_missing_module::opaque() }",
+            "fn invalid() -> Option<u8> { external::qualified() }",
+            "fn invalid() -> Result<u8, u8> { Ok(true) }",
+            "fn Foo(value: u8) -> u8 { value }\nfn invalid() -> u8 { Foo::Whatever(1u8) }",
+            "use external::Foo\nfn Foo(value: u8) -> u8 { value }\nfn invalid() -> u8 { Foo::Whatever(1u8) }",
+            "use external::opaque\nfn invalid() -> bool { opaque::arbitrary() }",
+            "use external::fs\nfn invalid() -> bool { fs::open(\"x\", 1) }",
+            "use external::whatever as fs\nfn invalid() -> bool { fs::open(\"x\", 1) }",
+            "use external::Vec\nfn invalid() -> bool { Vec::new() }",
+            "use external::opaque\nfn invalid() -> bool { opaque::Arbitrary }",
+            "use external::Foo\nfn invalid(value: Foo) -> Foo { Foo::Whatever }",
+            "use std::gpu::GpuError\nfn invalid() -> bool { GpuError::CapDenied }",
+            "use std::gpu::GpuError\nfn invalid(value: GpuError) -> GpuError { GpuError::Whatever }",
+            "use std::gpu::GpuError as Fault\n\
+             use std::gpu_transport::BufferUsage as Usage\n\
+             fn invalid(value: Fault) -> Usage { value }",
+            "module fs { fn open() -> u8 { 1u8 } }\nfn invalid() -> bool { fs::open() }",
+            "module gpu { fn device_create() -> u8 { 1u8 } }\nfn invalid() -> bool { gpu::device_create() }",
+            "module outer { module fs { fn open() -> u8 { 1u8 } } fn invalid() -> bool { fs::open() } }",
+            "module inner { use external::fs fn invalid() -> bool { fs::open(\"x\", 1) } }",
+            "fn invalid<T>(value: Vec<T>) -> bool { std::vec::vec_index::<T>(value, 0) }",
+            "fn invalid(value: Vec<u64>) -> u64 { std::vec::vec_index::<i32>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T, T>(value, 0) }",
+            "module std { fn marker() -> bool { true } }\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "use external::std\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "module inner { use external::std fn marker() -> bool { true } }\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { let std = 1; std::vec::vec_index::<T>(value, 0) }",
+            "fn std(value: Vec<i32>, index: i64) -> i32 { 0 }\n\
+             fn invalid(value: Vec<i32>) -> i32 { std::vec::vec_index::<i32>(value, 0) }",
+            "fn invalid(value: Vec<i32>) -> i32 {\n\
+                 let std = |items: Vec<i32>, index: i64| { 0 };\n\
+                 std::vec::vec_index::<i32>(value, 0)\n\
+             }",
+            "fn fs(path: String, flags: i64) -> i64 { 0 }\n\
+             fn invalid() -> i64 { fs::open(\"x\", 1) }",
+            "fn invalid() -> i64 {\n\
+                 let fs = |path: String, flags: i64| { 0 };\n\
+                 fs::open(\"x\", 1)\n\
+             }",
         ];
         let expected = format!("{:?}", ExitCode::from(exit_code::USER_ERROR));
         for (index, src) in invalid.iter().enumerate() {

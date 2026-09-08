@@ -159,4 +159,172 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn locally_knowable_names_cannot_escape_through_opaque_type_holes() {
+        let invalid = [
+            "struct Option { value: u8 } fn invalid(value: Option) -> bool { value }",
+            "struct Result { value: u8 } fn invalid(value: Result) -> bool { value }",
+            "struct Vec { value: u8 } fn invalid(value: Vec) -> bool { value }",
+            "use external::Option\nstruct Option { value: u8 } fn invalid(value: Option) -> bool { value }",
+            "fn invalid() -> bool { Some(1u8) }",
+            "fn invalid() -> bool { None }",
+            "fn invalid() -> bool { Ok(1u8) }",
+            "fn invalid() -> bool { Err(1u8) }",
+            "fn invalid() -> Option<u8> { Some(true) }",
+            "fn invalid() -> Result<u8, u8> { Err(true) }",
+            "fn invalid(value: Option<u8>) -> Vec<u8> { value }",
+            "fn invalid(value: Vec<u8>) -> Option<u8> { value }",
+            "module inner { fn byte_value() -> u8 { 1u8 } }\n\
+             fn invalid() -> bool { inner::byte_value() }",
+            "module inner { use external::opaque fn valid() -> bool { true } }\n\
+             fn invalid() -> bool { opaque() }",
+            "use external::opaque\nmodule opaque { fn value() -> u8 { 1u8 } }\nfn invalid() -> bool { opaque() }",
+            "fn invalid() -> bool { definitely_missing_module::opaque() }",
+            "fn invalid() -> Option<u8> { external::qualified() }",
+            "fn invalid() -> Result<u8, u8> { Ok(true) }",
+            "fn Foo(value: u8) -> u8 { value }\nfn invalid() -> u8 { Foo::Whatever(1u8) }",
+            "use external::Foo\nfn Foo(value: u8) -> u8 { value }\nfn invalid() -> u8 { Foo::Whatever(1u8) }",
+        ];
+        let expected = format!("{:?}", ExitCode::from(exit_code::USER_ERROR));
+        for (index, src) in invalid.iter().enumerate() {
+            let code = run_with_source(Path::new("local_opaque_escape.cssl"), src);
+            assert_eq!(
+                format!("{code:?}"),
+                expected,
+                "case {index} accepted: {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn top_level_untyped_import_is_declared_opacity_boundary() {
+        for src in [
+            "use external::opaque\nfn bounded() -> bool { opaque() }",
+            "use external::opaque as known\nfn bounded() -> bool { known() }",
+            "use std::gpu::GpuError\nfn bounded(value: GpuError) -> GpuError { GpuError::CapDenied }",
+            "use std::gpu::GpuError as err\nfn bounded(value: err) -> err { err::CapDenied }",
+            "use std::gpu::GpuError\n\
+             use std::gpu::GpuError as Fault\n\
+             fn preserve(value: GpuError) -> Fault { value }\n\
+             fn construct() -> GpuError { Fault::CapDenied }",
+            "fn preserve<Vec>(value: Vec) -> Vec { value }",
+        ] {
+            let code = run_with_source(Path::new("declared_opacity.cssl"), src);
+            assert_eq!(
+                format!("{code:?}"),
+                format!("{:?}", ExitCode::from(exit_code::SUCCESS)),
+                "declared stage-0 opacity boundary rejected: {src}"
+            );
+        }
+
+        let invalid = [
+            "fn invalid() -> bool { opaque() }",
+            "module inner { use external::opaque fn valid() -> bool { true } }\n\
+             fn invalid() -> bool { opaque() }",
+            "fn invalid() -> bool { missing::opaque() }",
+            "use external::opaque as known\nfn invalid() -> bool { opaque() }",
+            "use external::opaque\nfn invalid() -> bool { opaque::arbitrary() }",
+            "use external::fs\nfn invalid() -> bool { fs::open(\"x\", 1) }",
+            "use external::whatever as fs\nfn invalid() -> bool { fs::open(\"x\", 1) }",
+            "use external::Vec\nfn invalid() -> bool { Vec::new() }",
+            "use external::opaque\nfn invalid() -> bool { opaque::Arbitrary }",
+            "use external::Foo\nfn invalid(value: Foo) -> Foo { Foo::Whatever }",
+            "use std::gpu::GpuError\nfn invalid() -> bool { GpuError::CapDenied }",
+            "use std::gpu::GpuError\nfn invalid(value: GpuError) -> GpuError { GpuError::Whatever }",
+            "use std::gpu::GpuError as Fault\n\
+             use std::gpu_transport::BufferUsage as Usage\n\
+             fn invalid(value: Fault) -> Usage { value }",
+        ];
+        let expected = format!("{:?}", ExitCode::from(exit_code::USER_ERROR));
+        for src in invalid {
+            let code = run_with_source(Path::new("undeclared_opacity.cssl"), src);
+            assert_eq!(
+                format!("{code:?}"),
+                expected,
+                "undeclared or out-of-scope opacity boundary accepted: {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn exact_qualified_vec_index_is_typed_and_bounded() {
+        let valid = "fn bounded<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }";
+        let code = run_with_source(Path::new("qualified_vec_index.cssl"), valid);
+        assert_eq!(
+            format!("{code:?}"),
+            format!("{:?}", ExitCode::from(exit_code::SUCCESS))
+        );
+
+        for src in [
+            "fn invalid<T>(value: Vec<T>) -> bool { std::vec::vec_index::<T>(value, 0) }",
+            "fn invalid(value: Vec<u64>) -> u64 { std::vec::vec_index::<i32>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T, T>(value, 0) }",
+            "module std { fn marker() -> bool { true } }\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "use external::std\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "module inner { use external::std fn marker() -> bool { true } }\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { let std = 1; std::vec::vec_index::<T>(value, 0) }",
+            "fn std(value: Vec<i32>, index: i64) -> i32 { 0 }\n\
+             fn invalid(value: Vec<i32>) -> i32 { std::vec::vec_index::<i32>(value, 0) }",
+            "fn invalid(value: Vec<i32>) -> i32 {\n\
+                 let std = |items: Vec<i32>, index: i64| { 0 };\n\
+                 std::vec::vec_index::<i32>(value, 0)\n\
+             }",
+            "fn invalid<T>(value: Vec<T>) -> T { other::vec::vec_index::<T>(value, 0) }",
+        ] {
+            let code = run_with_source(Path::new("invalid_qualified_vec_index.cssl"), src);
+            assert_eq!(
+                format!("{code:?}"),
+                format!("{:?}", ExitCode::from(exit_code::USER_ERROR))
+            );
+        }
+    }
+
+    #[test]
+    fn exact_stage0_host_intrinsics_are_declared_opacity_boundaries() {
+        for src in [
+            "fn bounded() -> i64 { fs::open(\"x\", 1) }",
+            "fn bounded() -> i64 { net::socket(1) }",
+            "fn bounded() -> i64 { time::monotonic_ns() }",
+            "fn bounded() -> i64 { window::spawn(1, 2, 3, 4, 5) }",
+            "fn bounded() -> i32 { input::keyboard_state(1, 2, 3) }",
+            "fn bounded() -> i64 { gpu::device_create(1, 2) }",
+            "fn bounded() -> i64 { audio::stream_open(1, 2, 3, 4) }",
+            "fn bounded() -> i64 { thread::spawn(1, 2) }",
+            "fn bounded() -> i64 { mutex::create() }",
+            "fn bounded() -> i64 { atomic::load_u64(1, 2) }",
+        ] {
+            let code = run_with_source(Path::new("known_host_intrinsic.cssl"), src);
+            assert_eq!(
+                format!("{code:?}"),
+                format!("{:?}", ExitCode::from(exit_code::SUCCESS)),
+                "known host intrinsic rejected: {src}"
+            );
+        }
+
+        let expected = format!("{:?}", ExitCode::from(exit_code::USER_ERROR));
+        for src in [
+            "fn invalid() -> i64 { gpu::definitely_missing() }",
+            "fn invalid() -> i64 { missing::device_create(1, 2) }",
+            "module fs { fn open() -> u8 { 1u8 } }\nfn invalid() -> bool { fs::open() }",
+            "module gpu { fn device_create() -> u8 { 1u8 } }\nfn invalid() -> bool { gpu::device_create() }",
+            "module outer { module fs { fn open() -> u8 { 1u8 } } fn invalid() -> bool { fs::open() } }",
+            "module inner { use external::fs fn invalid() -> bool { fs::open(\"x\", 1) } }",
+            "fn fs(path: String, flags: i64) -> i64 { 0 }\n\
+             fn invalid() -> i64 { fs::open(\"x\", 1) }",
+            "fn invalid() -> i64 {\n\
+                 let fs = |path: String, flags: i64| { 0 };\n\
+                 fs::open(\"x\", 1)\n\
+             }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::definitely_missing::<T>(value, 0) }",
+        ] {
+            let code = run_with_source(Path::new("unknown_host_intrinsic.cssl"), src);
+            assert_eq!(
+                format!("{code:?}"),
+                expected,
+                "unknown host intrinsic accepted: {src}"
+            );
+        }
+    }
 }

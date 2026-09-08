@@ -45,6 +45,86 @@ use crate::ty::{HirEffectArg, HirEffectRow, HirType, HirTypeKind};
 use crate::typing::{ArrayLen, EffectInstance, Row, Scheme, Subst, Ty, TyCtx, TyVar, TypeMap};
 use crate::unify::{unify, unify_rows, UnifyError};
 
+#[derive(Debug, Clone, Copy)]
+enum ImportedStandardEnum {
+    BufferUsage,
+    GpuBackend,
+    GpuError,
+    IdxKind,
+    MemKind,
+    ShaderIrKind,
+    ShaderStage,
+    SurfaceFormat,
+}
+
+impl ImportedStandardEnum {
+    /// Stable stage-0 nominal identity for declarations whose defining module
+    /// is not loaded into this single-file checker. Identity follows the
+    /// canonical declaration, never the local import spelling or alias.
+    fn nominal_def(self) -> DefId {
+        let offset = match self {
+            Self::BufferUsage => 4,
+            Self::GpuBackend => 5,
+            Self::GpuError => 6,
+            Self::IdxKind => 7,
+            Self::MemKind => 8,
+            Self::ShaderIrKind => 9,
+            Self::ShaderStage => 10,
+            Self::SurfaceFormat => 11,
+        };
+        DefId(u32::MAX - offset)
+    }
+
+    fn nominal_type(self) -> Ty {
+        Ty::Named {
+            def: self.nominal_def(),
+            args: Vec::new(),
+        }
+    }
+
+    fn admits_unit_variant(self, name: &str) -> bool {
+        match self {
+            Self::BufferUsage => matches!(
+                name,
+                "Vertex" | "Index" | "Uniform" | "Storage" | "Indirect" | "Staging"
+            ),
+            Self::GpuBackend => {
+                matches!(name, "D3D12" | "Vulkan" | "Metal" | "WebGPU" | "LevelZero")
+            }
+            Self::GpuError => matches!(
+                name,
+                "InvalidInput"
+                    | "DeviceCreateFailed"
+                    | "SwapchainFailed"
+                    | "PipelineCompileFailed"
+                    | "Timeout"
+                    | "OutOfMemory"
+                    | "DeviceLost"
+                    | "SurfaceLost"
+                    | "CapDenied"
+                    | "NotSupported"
+            ),
+            Self::IdxKind => matches!(name, "U16" | "U32"),
+            Self::MemKind => matches!(name, "DeviceLocal" | "HostVisible" | "HostCoherent"),
+            Self::ShaderIrKind => matches!(name, "Spirv" | "Dxil" | "Metal"),
+            Self::ShaderStage => {
+                matches!(
+                    name,
+                    "Vertex" | "Fragment" | "Compute" | "Mesh" | "Amplification"
+                )
+            }
+            Self::SurfaceFormat => matches!(
+                name,
+                "Bgra8UnormSrgb"
+                    | "Rgba8UnormSrgb"
+                    | "Rgba16Float"
+                    | "Rgb10A2Unorm"
+                    | "Rgba16FloatHdr10"
+            ),
+        }
+    }
+}
+
 /// Inference context — threaded through every `synth_*` / `check_*` method.
 #[derive(Debug)]
 pub struct InferCtx<'a> {
@@ -58,22 +138,53 @@ pub struct InferCtx<'a> {
     current_row: Option<Row>,
     /// The current function's return type — `return` / trailing-expr unify with this.
     current_return: Option<Ty>,
+    /// Syntactic loop nesting used to reject free `break` / `continue`.
+    loop_depth: usize,
     /// Active generic-param map while lowering a fn signature : maps each
     /// generic-param symbol to the fresh [`TyVar`] allocated for it. Outside
     /// a fn-sig lowering this is empty. T3-D17 : replaces the brittle
     /// "single-cap identifier" skolem heuristic with a real fresh-var scheme.
     generics_map: std::collections::HashMap<Symbol, TyVar>,
-    /// Names explicitly imported from modules whose bodies are not present in
-    /// this single-module stage-0 check. They remain type-opaque rather than
-    /// being misreported as local unresolved-name errors.
+    /// Exact non-glob names explicitly imported at this module's root while
+    /// their declarations are absent from this single-module stage-0 check.
+    /// Imported callables remain a declared unknown-external boundary
+    /// (`Ty::Error` suppresses cascades). A separate exact standard-enum map
+    /// models only known unit variants with rigid nominal identity.
     imports: HashSet<Symbol>,
+    /// Exact imported standard enum declarations whose locally known unit
+    /// variants may be checked without granting arbitrary external members.
+    imported_standard_enums: HashMap<Symbol, ImportedStandardEnum>,
+    /// Every declared local module name. Stage-0 lacks lexical module-scope
+    /// typing, so this conservative global blocker prevents any local module
+    /// from being mistaken for a host namespace.
+    local_module_roots: HashSet<Symbol>,
+    /// Names introduced only by nested imports. They never become root
+    /// opacity grants, but must still block same-spelled host namespaces.
+    nested_import_roots: HashSet<Symbol>,
     /// Generic arity for locally declared nominal types. Struct/enum literals
     /// use fresh arguments of this arity so `Record<T>` does not collapse to
     /// an incompatible bare `Record` during body checking.
     nominal_arities: HashMap<DefId, usize>,
+    /// Exact top-level enum membership. Qualified `Enum::Variant` expressions
+    /// resolve through this declaration map instead of treating `Enum` alone
+    /// as the value and silently discarding the member suffix.
+    local_enum_variants: HashMap<Symbol, HashMap<Symbol, DefId>>,
 }
 
 impl<'a> InferCtx<'a> {
+    const SYNTHETIC_VEC_DEF: DefId = DefId(u32::MAX - 1);
+    const SYNTHETIC_OPTION_DEF: DefId = DefId(u32::MAX - 2);
+    const SYNTHETIC_RESULT_DEF: DefId = DefId(u32::MAX - 3);
+
+    fn synthetic_standard_container_def(name: &str) -> Option<DefId> {
+        match name {
+            "Vec" => Some(Self::SYNTHETIC_VEC_DEF),
+            "Option" => Some(Self::SYNTHETIC_OPTION_DEF),
+            "Result" => Some(Self::SYNTHETIC_RESULT_DEF),
+            _ => None,
+        }
+    }
+
     /// Read-only accessor for the inner typing-env — used by test helpers
     /// that need to inspect item-sig schemes after `collect_item_signatures`.
     #[cfg(test)]
@@ -93,9 +204,14 @@ impl<'a> InferCtx<'a> {
             diagnostics: Vec::new(),
             current_row: None,
             current_return: None,
+            loop_depth: 0,
             generics_map: std::collections::HashMap::new(),
             imports: HashSet::new(),
+            imported_standard_enums: HashMap::new(),
+            local_module_roots: HashSet::new(),
+            nested_import_roots: HashSet::new(),
             nominal_arities: HashMap::new(),
+            local_enum_variants: HashMap::new(),
         }
     }
 
@@ -108,6 +224,151 @@ impl<'a> InferCtx<'a> {
 
     fn record(&mut self, id: HirId, t: Ty) {
         self.type_map.insert(id, t);
+    }
+
+    /// True only for the exact two-segment host-operation spellings that the
+    /// stage-0 MIR lowerer recognizes. Their signatures are not available to
+    /// this isolated HIR pass, so they remain an explicitly bounded opacity
+    /// boundary; an arbitrary namespace or verb must still fail closed.
+    fn is_stage0_host_intrinsic_path(&self, segments: &[Symbol]) -> bool {
+        if segments.len() != 2 {
+            return false;
+        }
+        let namespace = self.interner.resolve(segments[0]);
+        let operation = self.interner.resolve(segments[1]);
+        match namespace.as_str() {
+            "fs" => matches!(operation.as_str(), "open" | "read" | "write" | "close"),
+            "net" => matches!(
+                operation.as_str(),
+                "socket"
+                    | "listen"
+                    | "accept"
+                    | "connect"
+                    | "send"
+                    | "recv"
+                    | "sendto"
+                    | "recvfrom"
+                    | "close"
+            ),
+            "time" => matches!(
+                operation.as_str(),
+                "monotonic_ns" | "wall_unix_ns" | "sleep_ns" | "deadline_until"
+            ),
+            "window" => matches!(
+                operation.as_str(),
+                "spawn" | "pump" | "request_close" | "destroy" | "raw_handle" | "get_dims"
+            ),
+            "input" => matches!(
+                operation.as_str(),
+                "keyboard_state" | "mouse_state" | "mouse_delta" | "gamepad_state"
+            ),
+            "gpu" => matches!(
+                operation.as_str(),
+                "device_create"
+                    | "device_destroy"
+                    | "swapchain_create"
+                    | "swapchain_acquire"
+                    | "swapchain_present"
+                    | "pipeline_compile"
+                    | "cmd_buf_record_stub"
+                    | "cmd_buf_submit_stub"
+                    | "buffer_create"
+                    | "buffer_destroy"
+                    | "buffer_map"
+                    | "buffer_unmap"
+                    | "buffer_upload"
+                    | "cmd_buf_begin"
+                    | "cmd_buf_end"
+                    | "cmd_buf_bind_pipeline"
+                    | "cmd_buf_bind_vbuf"
+                    | "cmd_buf_bind_ibuf"
+                    | "cmd_buf_bind_descriptor"
+                    | "cmd_buf_push_constants"
+                    | "cmd_buf_draw_indexed"
+                    | "cmd_buf_draw_indirect"
+                    | "cmd_buf_dispatch"
+                    | "cmd_buf_submit_v2"
+            ),
+            "audio" => matches!(
+                operation.as_str(),
+                "stream_open" | "stream_write" | "stream_read" | "stream_close"
+            ),
+            "thread" => matches!(operation.as_str(), "spawn" | "join"),
+            "mutex" => matches!(operation.as_str(), "create" | "lock" | "unlock" | "destroy"),
+            "atomic" => matches!(operation.as_str(), "load_u64" | "store_u64" | "cas_u64"),
+            _ => false,
+        }
+    }
+
+    /// Exact canonical qualified spelling used by `stdlib/vec_mut.cssl`.
+    /// This is deliberately narrower than generic qualified-path opacity: it
+    /// has a locally modeled signature and the MIR lowerer recognizes the same
+    /// three-segment path as `cssl.vec.index`.
+    fn is_qualified_vec_index_path(&self, segments: &[Symbol]) -> bool {
+        segments.len() == 3
+            && self.interner.resolve(segments[0]) == "std"
+            && self.interner.resolve(segments[1]) == "vec"
+            && self.interner.resolve(segments[2]) == "vec_index"
+    }
+
+    fn is_unshadowed_qualified_vec_index_path(&self, segments: &[Symbol]) -> bool {
+        self.is_qualified_vec_index_path(segments)
+            && self.env.lookup(segments[0]).is_none()
+            && self.env.item_def(segments[0]).is_none()
+            && !self.local_module_roots.contains(&segments[0])
+            && !self.nested_import_roots.contains(&segments[0])
+            && !self.imports.contains(&segments[0])
+    }
+
+    fn classify_standard_enum_import(&self, path: &[Symbol]) -> Option<ImportedStandardEnum> {
+        if path.len() != 3 || self.interner.resolve(path[0]) != "std" {
+            return None;
+        }
+        let module = self.interner.resolve(path[1]);
+        let name = self.interner.resolve(path[2]);
+        match (module.as_str(), name.as_str()) {
+            ("gpu", "GpuBackend") => Some(ImportedStandardEnum::GpuBackend),
+            ("gpu", "GpuError") => Some(ImportedStandardEnum::GpuError),
+            ("gpu", "ShaderIRKind") => Some(ImportedStandardEnum::ShaderIrKind),
+            ("gpu", "ShaderStage") => Some(ImportedStandardEnum::ShaderStage),
+            ("gpu", "SurfaceFormat") => Some(ImportedStandardEnum::SurfaceFormat),
+            ("gpu_transport", "BufferUsage") => Some(ImportedStandardEnum::BufferUsage),
+            ("gpu_transport", "IdxKind") => Some(ImportedStandardEnum::IdxKind),
+            ("gpu_transport", "MemKind") => Some(ImportedStandardEnum::MemKind),
+            _ => None,
+        }
+    }
+
+    /// Preserve exact scalar spelling inside `Vec<T>` even though the broad
+    /// stage-0 scalar lattice currently coalesces integer widths. This rigid
+    /// element identity prevents an explicit `vec_index::<i32>` from being
+    /// accepted against `Vec<u64>` while leaving scalar arithmetic unchanged.
+    fn lower_vector_element_type(&mut self, t: &HirType) -> Ty {
+        if let HirTypeKind::Path { path, def, .. } = &t.kind {
+            if path.len() == 1 && def.is_none() {
+                let name = self.interner.resolve(path[0]);
+                if matches!(
+                    name.as_str(),
+                    "i8" | "i16"
+                        | "i32"
+                        | "i64"
+                        | "i128"
+                        | "isize"
+                        | "u8"
+                        | "u16"
+                        | "u32"
+                        | "u64"
+                        | "u128"
+                        | "usize"
+                        | "f16"
+                        | "f32"
+                        | "f64"
+                ) {
+                    return Ty::Param(path[0]);
+                }
+            }
+        }
+        self.lower_hir_type(t)
     }
 
     fn try_unify(&mut self, a: &Ty, b: &Ty, span: Span, context: &str) {
@@ -173,45 +434,72 @@ impl<'a> InferCtx<'a> {
                         "str" | "String" => return Ty::Str,
                         "()" => return Ty::Unit,
                         "Never" | "!" => return Ty::Never,
-                        // Stage-0 standard container. Keep a stable synthetic
-                        // nominal identity until the standard-library resolver
-                        // supplies a concrete DefId.
-                        "Vec" => {
-                            return Ty::Named {
-                                def: DefId::UNRESOLVED,
-                                args: type_args
-                                    .iter()
-                                    .map(|arg| self.lower_hir_type(arg))
-                                    .collect(),
-                            };
-                        }
-                        // Prelude constructors are resolved by the standard-
-                        // library/module layer, which is not loaded by this
-                        // single-module stage-0 pass.
-                        "Option" | "Result" => return Ty::Error,
                         _ => {}
                     }
-                    // T3-D17 : consult the active generics-map — a path that
-                    // matches a registered generic-param symbol resolves to
-                    // the fresh ty-var allocated for that param at fn-sig
-                    // entry. Falls back to `Ty::Param` for the legacy skolem
-                    // path only when the generics-map is empty (no active
-                    // fn-sig lowering) — this keeps existing tests that hand-
-                    // construct types via fresh-var reuse working.
+                    // A declared generic parameter owns its spelling before
+                    // synthetic prelude containers are considered. In
+                    // particular, `fn f<Vec>(value: Vec) -> Vec` is one
+                    // coherent type variable, not the built-in `Vec<_>`.
                     if let Some(var) = self.generics_map.get(&path[0]).copied() {
                         return Ty::Var(var);
                     }
-                    if name.chars().next().is_some_and(char::is_uppercase) && name.len() <= 2 {
+                    match name.as_str() {
+                        // Stage-0 standard containers keep a stable synthetic
+                        // nominal identity only when no local definition won
+                        // resolution. Ty::Error here would unify with Bool and
+                        // silently erase locally knowable type mismatches.
+                        "Vec" | "Option" | "Result"
+                            if def.is_none()
+                                && !self.imports.contains(&path[0])
+                                && !self.nested_import_roots.contains(&path[0]) =>
+                        {
+                            return Ty::Named {
+                                def: Self::synthetic_standard_container_def(&name)
+                                    .expect("matched standard container"),
+                                args: if name == "Vec" {
+                                    type_args
+                                        .iter()
+                                        .map(|arg| self.lower_vector_element_type(arg))
+                                        .collect()
+                                } else {
+                                    type_args
+                                        .iter()
+                                        .map(|arg| self.lower_hir_type(arg))
+                                        .collect()
+                                },
+                            };
+                        }
+                        _ => {}
+                    }
+                    // T3-D17 : unresolved one/two-character Title identifiers
+                    // retain the legacy skolem fallback only after declared
+                    // generic parameters and standard nominals were resolved.
+                    if def.is_none()
+                        && name.chars().next().is_some_and(char::is_uppercase)
+                        && name.len() <= 2
+                    {
                         return Ty::Param(path[0]);
                     }
                 }
                 // Nominal reference.
                 let args: Vec<Ty> = type_args.iter().map(|a| self.lower_hir_type(a)).collect();
-                if path.len() == 1 && self.imports.contains(&path[0]) {
-                    return Ty::Error;
-                }
                 match def {
                     Some(d) => Ty::Named { def: *d, args },
+                    None if path.len() == 1
+                        && self.imported_standard_enums.contains_key(&path[0]) =>
+                    {
+                        if args.is_empty() {
+                            self.imported_standard_enums[&path[0]].nominal_type()
+                        } else {
+                            self.emit(
+                                "generic imported nominal requires a resolved declaration"
+                                    .to_string(),
+                                t.span,
+                            );
+                            Ty::Error
+                        }
+                    }
+                    None if path.len() == 1 && self.imports.contains(&path[0]) => Ty::Error,
                     None => {
                         // Unresolved — emit a diagnostic at T3.4 level (identifier undefined).
                         self.emit(
@@ -311,11 +599,26 @@ impl<'a> InferCtx<'a> {
 
     fn collect_module_metadata(&mut self, module: &HirModule) {
         for item in &module.items {
-            self.collect_item_metadata(item);
+            // Only imports declared in this checked module may be opaque at
+            // its root. Imports inside a nested module must not leak into the
+            // parent module's value/type namespace.
+            if let HirItem::Use(item) = item {
+                for binding in &item.bindings {
+                    if !binding.is_glob {
+                        if let Some(name) = binding.alias.or_else(|| binding.path.last().copied()) {
+                            self.imports.insert(name);
+                            if let Some(kind) = self.classify_standard_enum_import(&binding.path) {
+                                self.imported_standard_enums.insert(name, kind);
+                            }
+                        }
+                    }
+                }
+            }
+            self.collect_item_metadata(item, false);
         }
     }
 
-    fn collect_item_metadata(&mut self, item: &HirItem) {
+    fn collect_item_metadata(&mut self, item: &HirItem, nested: bool) {
         match item {
             HirItem::Struct(item) => {
                 let arity = item
@@ -334,20 +637,30 @@ impl<'a> InferCtx<'a> {
                     .filter(|param| matches!(param.kind, crate::item::HirGenericParamKind::Type))
                     .count();
                 self.nominal_arities.insert(item.def, arity);
-            }
-            HirItem::Use(item) => {
-                for binding in &item.bindings {
-                    if !binding.is_glob {
-                        if let Some(name) = binding.alias.or_else(|| binding.path.last().copied()) {
-                            self.imports.insert(name);
-                        }
-                    }
+                if !nested {
+                    self.local_enum_variants.insert(
+                        item.name,
+                        item.variants
+                            .iter()
+                            .map(|variant| (variant.name, variant.def))
+                            .collect(),
+                    );
                 }
             }
             HirItem::Module(item) => {
+                self.local_module_roots.insert(item.name);
                 if let Some(items) = &item.items {
                     for item in items {
-                        self.collect_item_metadata(item);
+                        self.collect_item_metadata(item, true);
+                    }
+                }
+            }
+            HirItem::Use(item) if nested => {
+                for binding in &item.bindings {
+                    if !binding.is_glob {
+                        if let Some(name) = binding.alias.or_else(|| binding.path.last().copied()) {
+                            self.nested_import_roots.insert(name);
+                        }
                     }
                 }
             }
@@ -745,15 +1058,50 @@ impl<'a> InferCtx<'a> {
                 HirLiteralKind::Unit => Ty::Unit,
             },
             HirExprKind::Path { segments, def } => {
-                if let Some(d) = def {
-                    // T3-D17 : item-sigs are now stored as Scheme ;
-                    // instantiate with fresh vars per call-site so generic
-                    // fns get independent ty-vars at each use-site.
-                    if let Some(scheme) = self.env.item_scheme(*d).cloned() {
-                        return scheme.instantiate(&mut self.tcx);
+                if segments.len() == 1 {
+                    if let Some(d) = def {
+                        // T3-D17 : item-sigs are now stored as Scheme ;
+                        // instantiate with fresh vars per call-site so generic
+                        // fns get independent ty-vars at each use-site.
+                        if let Some(scheme) = self.env.item_scheme(*d).cloned() {
+                            return scheme.instantiate(&mut self.tcx);
+                        }
                     }
                 }
                 if let Some(&first) = segments.first() {
+                    if segments.len() == 2 {
+                        if let Some(variants) = self.local_enum_variants.get(&first) {
+                            if let Some(variant_def) = variants.get(&segments[1]) {
+                                if let Some(scheme) = self.env.item_scheme(*variant_def).cloned() {
+                                    return scheme.instantiate(&mut self.tcx);
+                                }
+                            }
+                            self.emit(
+                                "qualified local enum path names an unknown variant".to_string(),
+                                e.span,
+                            );
+                            return Ty::Error;
+                        }
+                    }
+                    // A multi-segment path is never the value bound to its
+                    // first segment. Stage-0 cannot resolve members of local
+                    // values/items yet, so consuming the first symbol's
+                    // callable scheme would erase the suffix and can convert
+                    // `fs::open` or `std::vec::vec_index` into privileged
+                    // intrinsics. Fail closed until the full member resolver
+                    // supplies an exact declaration identity.
+                    if segments.len() > 1
+                        && (self.env.lookup_local_scheme(first).is_some()
+                            || self.env.item_def(first).is_some()
+                            || self.env.lookup(first).is_some())
+                    {
+                        self.emit(
+                            "qualified path root resolves to a local binding; member resolution is required"
+                                .to_string(),
+                            e.span,
+                        );
+                        return Ty::Error;
+                    }
                     // T3-D15 : if the local is bound to a polymorphic scheme,
                     // instantiate with fresh vars per use-site. Monomorphic
                     // schemes pass through unchanged (Scheme::instantiate is
@@ -772,7 +1120,38 @@ impl<'a> InferCtx<'a> {
                     if let Some(t) = self.env.lookup(first).cloned() {
                         return t;
                     }
+                    if self.local_module_roots.contains(&first) {
+                        self.emit(
+                            "local module paths require resolved members and are not callable values"
+                                .to_string(),
+                            e.span,
+                        );
+                        return Ty::Error;
+                    }
+                    if self.nested_import_roots.contains(&first) {
+                        self.emit(
+                            "nested imports do not grant root opacity or host-namespace authority"
+                                .to_string(),
+                            e.span,
+                        );
+                        return Ty::Error;
+                    }
                     if self.imports.contains(&first) {
+                        if segments.len() == 2 {
+                            if let Some(kind) = self.imported_standard_enums.get(&first).copied() {
+                                let variant = self.interner.resolve(segments[1]);
+                                if kind.admits_unit_variant(&variant) {
+                                    return kind.nominal_type();
+                                }
+                            }
+                        }
+                        if segments.len() != 1 {
+                            self.emit(
+                                "qualified descendants of an opaque import require a resolved signature"
+                                    .to_string(),
+                                e.span,
+                            );
+                        }
                         return Ty::Error;
                     }
                 }
@@ -788,7 +1167,7 @@ impl<'a> InferCtx<'a> {
                     return Ty::Fn {
                         params: Vec::new(),
                         return_ty: Box::new(Ty::Named {
-                            def: DefId::UNRESOLVED,
+                            def: Self::SYNTHETIC_VEC_DEF,
                             args: vec![elem],
                         }),
                         effect_row: Row::pure(),
@@ -810,16 +1189,37 @@ impl<'a> InferCtx<'a> {
                             effect_row: Row::pure(),
                         };
                     }
-                    if matches!(name.as_str(), "Ok" | "Err") {
-                        return Ty::Error;
+                    if matches!(name.as_str(), "Ok" | "Err" | "Some") {
+                        let payload = self.tcx.fresh_ty();
+                        let other = self.tcx.fresh_ty();
+                        let args = if name == "Some" {
+                            vec![payload.clone()]
+                        } else if name == "Ok" {
+                            vec![payload.clone(), other]
+                        } else {
+                            vec![other, payload.clone()]
+                        };
+                        return Ty::Fn {
+                            params: vec![payload],
+                            return_ty: Box::new(Ty::Named {
+                                def: if name == "Some" {
+                                    Self::SYNTHETIC_OPTION_DEF
+                                } else {
+                                    Self::SYNTHETIC_RESULT_DEF
+                                },
+                                args,
+                            }),
+                            effect_row: Row::pure(),
+                        };
+                    }
+                    if name == "None" {
+                        return Ty::Named {
+                            def: Self::SYNTHETIC_OPTION_DEF,
+                            args: vec![self.tcx.fresh_ty()],
+                        };
                     }
                 }
-                // Qualified paths may name an external module whose body is
-                // intentionally absent from this stage-0 compilation unit.
-                // Cross-module resolution owns their exact signature; keep
-                // them opaque here while still rejecting unresolved local
-                // single-segment names.
-                if segments.len() > 1 {
+                if self.is_stage0_host_intrinsic_path(segments) {
                     return Ty::Error;
                 }
                 self.emit(
@@ -834,8 +1234,42 @@ impl<'a> InferCtx<'a> {
                 );
                 Ty::Error
             }
-            HirExprKind::Call { callee, args, .. } => {
-                let callee_ty = self.synth_expr(callee);
+            HirExprKind::Call {
+                callee,
+                args,
+                type_args,
+            } => {
+                let qualified_vec_index = matches!(
+                    &callee.kind,
+                    HirExprKind::Path { segments, .. }
+                        if self.is_unshadowed_qualified_vec_index_path(segments)
+                );
+                let callee_ty = if qualified_vec_index {
+                    if type_args.len() == 1 {
+                        let vector_elem = self.lower_vector_element_type(&type_args[0]);
+                        let result_elem = self.lower_hir_type(&type_args[0]);
+                        Ty::Fn {
+                            params: vec![
+                                Ty::Named {
+                                    def: Self::SYNTHETIC_VEC_DEF,
+                                    args: vec![vector_elem],
+                                },
+                                Ty::Int,
+                            ],
+                            return_ty: Box::new(result_elem),
+                            effect_row: Row::pure(),
+                        }
+                    } else {
+                        self.emit(
+                            "std::vec::vec_index requires exactly one explicit type argument"
+                                .to_string(),
+                            e.span,
+                        );
+                        Ty::Error
+                    }
+                } else {
+                    self.synth_expr(callee)
+                };
                 let callee_ty = self.subst.apply(&callee_ty);
                 let arg_tys: Vec<Ty> = args.iter().map(|a| self.synth_call_arg(a)).collect();
                 // Unify callee with fn(arg_tys) → fresh_ret / fresh_row.
@@ -901,7 +1335,14 @@ impl<'a> InferCtx<'a> {
                 if let Some(else_e) = else_branch {
                     let else_ty = self.synth_expr(else_e);
                     self.try_unify(&then_ty, &else_ty, e.span, "if branches");
-                    then_ty
+                    let then_ty = self.subst.apply(&then_ty);
+                    let else_ty = self.subst.apply(&else_ty);
+                    match (&then_ty, &else_ty) {
+                        (Ty::Never, Ty::Never) => Ty::Never,
+                        (Ty::Never, _) => else_ty,
+                        (_, Ty::Never) => then_ty,
+                        _ => then_ty,
+                    }
                 } else {
                     // else-less if evaluates to unit.
                     self.try_unify(&Ty::Unit, &then_ty, then_branch.span, "if without else");
@@ -929,19 +1370,27 @@ impl<'a> InferCtx<'a> {
                 let elem_var = self.tcx.fresh_ty();
                 self.env.enter();
                 self.bind_pattern(pat, &elem_var);
+                self.loop_depth += 1;
                 let _body_ty = self.synth_block(body);
+                self.loop_depth -= 1;
                 self.env.leave();
                 Ty::Unit
             }
             HirExprKind::While { cond, body } => {
                 let ct = self.synth_expr(cond);
                 self.try_unify(&Ty::Bool, &ct, cond.span, "while condition");
+                self.loop_depth += 1;
                 let _ = self.synth_block(body);
+                self.loop_depth -= 1;
                 Ty::Unit
             }
             HirExprKind::Loop { body } => {
+                self.loop_depth += 1;
                 let _ = self.synth_block(body);
-                Ty::Never
+                self.loop_depth -= 1;
+                // Stage-0 has no break-target/value analysis. Conservatively
+                // refuse to use `loop` as proof of a non-unit function result.
+                Ty::Unit
             }
             HirExprKind::Return { value } => {
                 if let Some(v) = value {
@@ -955,12 +1404,20 @@ impl<'a> InferCtx<'a> {
                 Ty::Never
             }
             HirExprKind::Break { value, .. } => {
+                if self.loop_depth == 0 {
+                    self.emit("`break` outside loop".to_string(), e.span);
+                }
                 if let Some(v) = value {
                     let _ = self.synth_expr(v);
                 }
                 Ty::Never
             }
-            HirExprKind::Continue { .. } => Ty::Never,
+            HirExprKind::Continue { .. } => {
+                if self.loop_depth == 0 {
+                    self.emit("`continue` outside loop".to_string(), e.span);
+                }
+                Ty::Never
+            }
             HirExprKind::Lambda {
                 params,
                 return_ty,
@@ -1277,6 +1734,34 @@ impl<'a> InferCtx<'a> {
         }
     }
 
+    fn block_definitely_returns(b: &HirBlock) -> bool {
+        if let Some(trailing) = &b.trailing {
+            return Self::expr_definitely_returns(trailing);
+        }
+        b.stmts.last().is_some_and(|stmt| match &stmt.kind {
+            HirStmtKind::Expr(expr) => Self::expr_definitely_returns(expr),
+            HirStmtKind::Let { .. } | HirStmtKind::Item(_) => false,
+        })
+    }
+
+    fn expr_definitely_returns(e: &HirExpr) -> bool {
+        match &e.kind {
+            HirExprKind::Return { .. } => true,
+            HirExprKind::Block(block)
+            | HirExprKind::Region { body: block, .. }
+            | HirExprKind::With { body: block, .. } => Self::block_definitely_returns(block),
+            HirExprKind::If {
+                then_branch,
+                else_branch: Some(else_branch),
+                ..
+            } => {
+                Self::block_definitely_returns(then_branch)
+                    && Self::expr_definitely_returns(else_branch)
+            }
+            _ => false,
+        }
+    }
+
     fn synth_block(&mut self, b: &HirBlock) -> Ty {
         self.env.enter();
         for stmt in &b.stmts {
@@ -1284,6 +1769,7 @@ impl<'a> InferCtx<'a> {
         }
         let t = match &b.trailing {
             Some(e) => self.synth_expr(e),
+            None if Self::block_definitely_returns(b) => Ty::Never,
             None => Ty::Unit,
         };
         self.record(b.id, t.clone());
@@ -1391,6 +1877,80 @@ mod tests {
     fn comparison_returns_bool() {
         let (_types, diags) = infer("fn f(a : i32, b : i32) -> bool { a < b }");
         assert_eq!(diags, 0);
+    }
+
+    #[test]
+    fn terminal_return_statement_is_divergent_block_tail() {
+        let (_types, diags) = infer("fn f() -> i32 { return 7; }");
+        assert_eq!(diags, 0);
+    }
+
+    #[test]
+    fn terminal_all_returning_if_else_is_divergent_block_tail() {
+        let (_types, diags) =
+            infer("fn f(flag : bool) -> i32 { if flag { return 7; } else { return 9; }; }");
+        assert_eq!(diags, 0);
+    }
+
+    #[test]
+    fn one_sided_return_then_arm_does_not_make_if_divergent() {
+        let (_types, diags) =
+            infer("fn f(flag : bool) -> i32 { if flag { return 7; } else { 9; }; }");
+        assert!(diags >= 1);
+    }
+
+    #[test]
+    fn one_sided_return_else_arm_does_not_make_if_divergent() {
+        let (_types, diags) =
+            infer("fn f(flag : bool) -> i32 { if flag { 7; } else { return 9; }; }");
+        assert!(diags >= 1);
+    }
+
+    #[test]
+    fn partial_return_match_does_not_make_function_divergent() {
+        let (_types, diags) =
+            infer("fn f(flag : bool) -> i32 { match flag { true => return 7, false => false } }");
+        assert!(diags >= 1);
+    }
+
+    #[test]
+    fn partial_return_match_reverse_order_does_not_make_function_divergent() {
+        let (_types, diags) =
+            infer("fn f(flag : bool) -> i32 { match flag { true => false, false => return 7 } }");
+        assert!(diags >= 1);
+    }
+
+    #[test]
+    fn breaking_loop_does_not_satisfy_nonunit_function_return() {
+        let (_types, diags) = infer("fn f() -> i32 { loop { break; } }");
+        assert!(diags >= 1);
+    }
+
+    #[test]
+    fn early_break_before_return_does_not_make_loop_divergent() {
+        let (_types, diags) = infer("fn f() -> i32 { loop { break; return 7; } }");
+        assert!(diags >= 1);
+    }
+
+    #[test]
+    fn conditional_break_before_return_does_not_make_loop_divergent() {
+        let (_types, diags) =
+            infer("fn f(flag : bool) -> i32 { loop { if flag { break; } return 7; } }");
+        assert!(diags >= 1);
+    }
+
+    #[test]
+    fn free_break_and_continue_are_rejected() {
+        let (_types, break_diags) = infer("fn f() { break; }");
+        let (_types, continue_diags) = infer("fn f() { continue; }");
+        assert!(break_diags >= 1);
+        assert!(continue_diags >= 1);
+    }
+
+    #[test]
+    fn terminal_nondiverging_expression_statement_remains_unit() {
+        let (_types, diags) = infer("fn f() -> i32 { 7; }");
+        assert!(diags >= 1);
     }
 
     #[test]
@@ -1647,6 +2207,198 @@ mod tests {
         ] {
             let (_, diags) = infer(src);
             assert!(diags > 0, "noncanonical bool source accepted: {src}");
+        }
+    }
+
+    #[test]
+    fn locally_knowable_nominals_modules_and_prelude_values_are_not_error_holes() {
+        for src in [
+            "struct Option { value: u8 } fn invalid(value: Option) -> bool { value }",
+            "struct Result { value: u8 } fn invalid(value: Result) -> bool { value }",
+            "struct Vec { value: u8 } fn invalid(value: Vec) -> bool { value }",
+            "use external::Option\nstruct Option { value: u8 } fn invalid(value: Option) -> bool { value }",
+            "fn invalid() -> bool { Some(1u8) }",
+            "fn invalid() -> bool { None }",
+            "fn invalid() -> bool { Ok(1u8) }",
+            "fn invalid() -> bool { Err(1u8) }",
+            "fn invalid() -> Option<u8> { Some(true) }",
+            "fn invalid() -> Result<u8, u8> { Err(true) }",
+            "fn invalid(value: Option<u8>) -> Vec<u8> { value }",
+            "fn invalid(value: Vec<u8>) -> Option<u8> { value }",
+            "module inner { fn byte_value() -> u8 { 1u8 } }\n\
+             fn invalid() -> bool { inner::byte_value() }",
+            "module inner { use external::opaque fn valid() -> bool { true } }\n\
+             fn invalid() -> bool { opaque() }",
+            "use external::opaque\nmodule opaque { fn value() -> u8 { 1u8 } }\nfn invalid() -> bool { opaque() }",
+            "fn invalid() -> bool { definitely_missing_module::opaque() }",
+            "fn invalid() -> Option<u8> { external::qualified() }",
+            "fn invalid() -> Result<u8, u8> { Ok(true) }",
+        ] {
+            let (_, diags) = infer(src);
+            assert!(diags > 0, "locally knowable type error accepted: {src}");
+        }
+    }
+
+    #[test]
+    fn top_level_untyped_import_is_declared_opacity_boundary() {
+        for src in [
+            "use external::opaque\nfn bounded() -> bool { opaque() }",
+            "use external::opaque as known\nfn bounded() -> bool { known() }",
+            "use std::gpu::GpuError\nfn bounded(value: GpuError) -> GpuError { GpuError::CapDenied }",
+            "use std::gpu::GpuError as err\nfn bounded(value: err) -> err { err::CapDenied }",
+        ] {
+            let (_, diags) = infer(src);
+            assert_eq!(
+                diags, 0,
+                "declared stage-0 opacity boundary rejected: {src}"
+            );
+        }
+
+        for src in [
+            "fn invalid() -> bool { opaque() }",
+            "module inner { use external::opaque fn valid() -> bool { true } }\n\
+             fn invalid() -> bool { opaque() }",
+            "fn invalid() -> bool { missing::opaque() }",
+            "use external::opaque as known\nfn invalid() -> bool { opaque() }",
+            "use external::opaque\nfn invalid() -> bool { opaque::arbitrary() }",
+            "use external::fs\nfn invalid() -> bool { fs::open(\"x\", 1) }",
+            "use external::whatever as fs\nfn invalid() -> bool { fs::open(\"x\", 1) }",
+            "use external::Vec\nfn invalid() -> bool { Vec::new() }",
+            "use external::opaque\nfn invalid() -> bool { opaque::Arbitrary }",
+            "use external::Foo\nfn invalid(value: Foo) -> Foo { Foo::Whatever }",
+            "use std::gpu::GpuError\nfn invalid() -> bool { GpuError::CapDenied }",
+            "use std::gpu::GpuError\nfn invalid(value: GpuError) -> GpuError { GpuError::Whatever }",
+        ] {
+            let (_, diags) = infer(src);
+            assert!(
+                diags > 0,
+                "undeclared or out-of-scope opacity boundary accepted: {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn imported_standard_enum_aliases_share_canonical_nominal_identity() {
+        let (_, diags) = infer(
+            "use std::gpu::GpuError\n\
+             use std::gpu::GpuError as Fault\n\
+             fn preserve(value: GpuError) -> Fault { value }\n\
+             fn construct() -> GpuError { Fault::CapDenied }",
+        );
+        assert_eq!(
+            diags, 0,
+            "an import alias changed the enum's nominal identity"
+        );
+
+        let (_, diags) = infer(
+            "use std::gpu::GpuError as Fault\n\
+             use std::gpu_transport::BufferUsage as Usage\n\
+             fn invalid(value: Fault) -> Usage { value }",
+        );
+        assert!(diags > 0, "distinct imported enums lost nominal separation");
+    }
+
+    #[test]
+    fn standard_container_spelling_does_not_steal_generic_identity() {
+        use super::InferCtx;
+        use crate::{lower_module, Ty};
+
+        let source = "fn preserve<Vec>(value: Vec) -> Vec { value }";
+        let file = SourceFile::new(SourceId::first(), "<t>", source, Surface::RustHybrid);
+        let tokens = cssl_lex::lex(&file);
+        let (cst, parse_bag) = cssl_parse::parse(&file, &tokens);
+        assert_eq!(parse_bag.error_count(), 0);
+        let (hir, interner, lower_bag) = lower_module(&file, &cst);
+        assert_eq!(lower_bag.error_count(), 0);
+        let mut ctx = InferCtx::new(&interner);
+        ctx.collect_item_signatures(&hir);
+        let symbol = interner.intern("preserve");
+        let def = ctx
+            .env_for_tests()
+            .item_def(symbol)
+            .expect("preserve not registered");
+        let scheme = ctx
+            .env_for_tests()
+            .item_scheme(def)
+            .expect("preserve has no scheme");
+        assert_eq!(scheme.ty_vars.len(), 1);
+        let Ty::Fn {
+            params, return_ty, ..
+        } = &scheme.body
+        else {
+            panic!("expected function scheme, got {:?}", scheme.body);
+        };
+        assert!(matches!(params.as_slice(), [Ty::Var(_)]));
+        assert_eq!(&params[0], &**return_ty);
+    }
+
+    #[test]
+    fn qualified_paths_never_fall_back_to_callable_first_segment() {
+        for src in [
+            "fn Foo(value: u8) -> u8 { value }\nfn invalid() -> u8 { Foo::Whatever(1u8) }",
+            "use external::Foo\nfn Foo(value: u8) -> u8 { value }\nfn invalid() -> u8 { Foo::Whatever(1u8) }",
+            "fn fs(path: String, flags: i64) -> i64 { 0 }\nfn invalid() -> i64 { fs::open(\"x\", 1) }",
+            "fn std(value: Vec<i32>, index: i64) -> i32 { 0 }\nfn invalid(value: Vec<i32>) -> i32 { std::vec::vec_index::<i32>(value, 0) }",
+            "fn invalid() -> i64 { let fs = |path: String, flags: i64| { 0 }; fs::open(\"x\", 1) }",
+            "fn invalid(value: Vec<i32>) -> i32 { let std = |items: Vec<i32>, index: i64| { 0 }; std::vec::vec_index::<i32>(value, 0) }",
+        ] {
+            let (_, diags) = infer(src);
+            assert!(diags > 0, "qualified suffix was stolen through first root: {src}");
+        }
+    }
+
+    #[test]
+    fn exact_qualified_vec_index_has_typed_signature() {
+        let (_, diags) =
+            infer("fn bounded<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }");
+        assert_eq!(diags, 0);
+
+        for src in [
+            "fn invalid<T>(value: Vec<T>) -> bool { std::vec::vec_index::<T>(value, 0) }",
+            "fn invalid(value: Vec<u64>) -> u64 { std::vec::vec_index::<i32>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T, T>(value, 0) }",
+            "module std { fn marker() -> bool { true } }\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "use external::std\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "module inner { use external::std fn marker() -> bool { true } }\nfn invalid<T>(value: Vec<T>) -> T { std::vec::vec_index::<T>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { let std = 1; std::vec::vec_index::<T>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::definitely_missing::<T>(value, 0) }",
+            "fn invalid<T>(value: Vec<T>) -> T { other::vec::vec_index::<T>(value, 0) }",
+        ] {
+            let (_, diags) = infer(src);
+            assert!(diags > 0, "untyped qualified vector path accepted: {src}");
+        }
+    }
+
+    #[test]
+    fn exact_stage0_host_intrinsics_are_declared_opacity_boundaries() {
+        for src in [
+            "fn bounded() -> i64 { fs::open(\"x\", 1) }",
+            "fn bounded() -> i64 { net::socket(1) }",
+            "fn bounded() -> i64 { time::monotonic_ns() }",
+            "fn bounded() -> i64 { window::spawn(1, 2, 3, 4, 5) }",
+            "fn bounded() -> i32 { input::keyboard_state(1, 2, 3) }",
+            "fn bounded() -> i64 { gpu::device_create(1, 2) }",
+            "fn bounded() -> i64 { audio::stream_open(1, 2, 3, 4) }",
+            "fn bounded() -> i64 { thread::spawn(1, 2) }",
+            "fn bounded() -> i64 { mutex::create() }",
+            "fn bounded() -> i64 { atomic::load_u64(1, 2) }",
+        ] {
+            let (_, diags) = infer(src);
+            assert_eq!(diags, 0, "known host intrinsic rejected: {src}");
+        }
+
+        for src in [
+            "fn invalid() -> i64 { gpu::definitely_missing() }",
+            "fn invalid() -> i64 { missing::device_create(1, 2) }",
+            "module fs { fn open() -> u8 { 1u8 } }\nfn invalid() -> bool { fs::open() }",
+            "module gpu { fn device_create() -> u8 { 1u8 } }\nfn invalid() -> bool { gpu::device_create() }",
+            "module outer { module fs { fn open() -> u8 { 1u8 } } fn invalid() -> bool { fs::open() } }",
+            "module inner { use external::fs fn invalid() -> bool { fs::open(\"x\", 1) } }",
+            "fn invalid<T>(value: Vec<T>) -> T { std::vec::definitely_missing::<T>(value, 0) }",
+        ] {
+            let (_, diags) = infer(src);
+            assert!(diags > 0, "unknown host intrinsic accepted: {src}");
         }
     }
 }
