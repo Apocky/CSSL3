@@ -30,7 +30,7 @@
 //!     propagated (T3.4-phase-2).
 
 use cssl_ast::{Diagnostic, Span};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::arena::{DefId, HirId};
 use crate::env::TypingEnv;
@@ -63,6 +63,14 @@ pub struct InferCtx<'a> {
     /// a fn-sig lowering this is empty. T3-D17 : replaces the brittle
     /// "single-cap identifier" skolem heuristic with a real fresh-var scheme.
     generics_map: std::collections::HashMap<Symbol, TyVar>,
+    /// Names explicitly imported from modules whose bodies are not present in
+    /// this single-module stage-0 check. They remain type-opaque rather than
+    /// being misreported as local unresolved-name errors.
+    imports: HashSet<Symbol>,
+    /// Generic arity for locally declared nominal types. Struct/enum literals
+    /// use fresh arguments of this arity so `Record<T>` does not collapse to
+    /// an incompatible bare `Record` during body checking.
+    nominal_arities: HashMap<DefId, usize>,
 }
 
 impl<'a> InferCtx<'a> {
@@ -86,6 +94,8 @@ impl<'a> InferCtx<'a> {
             current_row: None,
             current_return: None,
             generics_map: std::collections::HashMap::new(),
+            imports: HashSet::new(),
+            nominal_arities: HashMap::new(),
         }
     }
 
@@ -156,13 +166,29 @@ impl<'a> InferCtx<'a> {
                 if path.len() == 1 {
                     let name = self.interner.resolve(path[0]);
                     match name.as_str() {
-                        "i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32" | "u64"
-                        | "usize" => return Ty::Int,
+                        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32"
+                        | "u64" | "u128" | "usize" => return Ty::Int,
                         "f16" | "f32" | "f64" => return Ty::Float,
                         "bool" => return Ty::Bool,
                         "str" | "String" => return Ty::Str,
                         "()" => return Ty::Unit,
                         "Never" | "!" => return Ty::Never,
+                        // Stage-0 standard container. Keep a stable synthetic
+                        // nominal identity until the standard-library resolver
+                        // supplies a concrete DefId.
+                        "Vec" => {
+                            return Ty::Named {
+                                def: DefId::UNRESOLVED,
+                                args: type_args
+                                    .iter()
+                                    .map(|arg| self.lower_hir_type(arg))
+                                    .collect(),
+                            };
+                        }
+                        // Prelude constructors are resolved by the standard-
+                        // library/module layer, which is not loaded by this
+                        // single-module stage-0 pass.
+                        "Option" | "Result" => return Ty::Error,
                         _ => {}
                     }
                     // T3-D17 : consult the active generics-map — a path that
@@ -181,6 +207,9 @@ impl<'a> InferCtx<'a> {
                 }
                 // Nominal reference.
                 let args: Vec<Ty> = type_args.iter().map(|a| self.lower_hir_type(a)).collect();
+                if path.len() == 1 && self.imports.contains(&path[0]) {
+                    return Ty::Error;
+                }
                 match def {
                     Some(d) => Ty::Named { def: *d, args },
                     None => {
@@ -274,8 +303,55 @@ impl<'a> InferCtx<'a> {
     // ─ Phase 1 : collect item signatures ────────────────────────────────────
 
     fn collect_item_signatures(&mut self, module: &HirModule) {
+        self.collect_module_metadata(module);
         for item in &module.items {
             self.collect_item(item);
+        }
+    }
+
+    fn collect_module_metadata(&mut self, module: &HirModule) {
+        for item in &module.items {
+            self.collect_item_metadata(item);
+        }
+    }
+
+    fn collect_item_metadata(&mut self, item: &HirItem) {
+        match item {
+            HirItem::Struct(item) => {
+                let arity = item
+                    .generics
+                    .params
+                    .iter()
+                    .filter(|param| matches!(param.kind, crate::item::HirGenericParamKind::Type))
+                    .count();
+                self.nominal_arities.insert(item.def, arity);
+            }
+            HirItem::Enum(item) => {
+                let arity = item
+                    .generics
+                    .params
+                    .iter()
+                    .filter(|param| matches!(param.kind, crate::item::HirGenericParamKind::Type))
+                    .count();
+                self.nominal_arities.insert(item.def, arity);
+            }
+            HirItem::Use(item) => {
+                for binding in &item.bindings {
+                    if !binding.is_glob {
+                        if let Some(name) = binding.alias.or_else(|| binding.path.last().copied()) {
+                            self.imports.insert(name);
+                        }
+                    }
+                }
+            }
+            HirItem::Module(item) => {
+                if let Some(items) = &item.items {
+                    for item in items {
+                        self.collect_item_metadata(item);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -696,6 +772,55 @@ impl<'a> InferCtx<'a> {
                     if let Some(t) = self.env.lookup(first).cloned() {
                         return t;
                     }
+                    if self.imports.contains(&first) {
+                        return Ty::Error;
+                    }
+                }
+                // Stage-0 standard-library constructor. Method/member paths
+                // otherwise resolve after HIR inference; model `Vec::new`
+                // directly so the canonical accepted Vec surface remains
+                // checkable without weakening unresolved-name diagnostics.
+                if segments.len() == 2
+                    && self.interner.resolve(segments[0]) == "Vec"
+                    && self.interner.resolve(segments[1]) == "new"
+                {
+                    let elem = self.tcx.fresh_ty();
+                    return Ty::Fn {
+                        params: Vec::new(),
+                        return_ty: Box::new(Ty::Named {
+                            def: DefId::UNRESOLVED,
+                            args: vec![elem],
+                        }),
+                        effect_row: Row::pure(),
+                    };
+                }
+                if segments.len() == 1 {
+                    let name = self.interner.resolve(segments[0]);
+                    let signature = match name.as_str() {
+                        "qbind" | "qentangle" => Some((vec![Ty::Int, Ty::Int], Ty::Int)),
+                        "qsuperpose" => Some((vec![Ty::Int, Ty::Int, Ty::Float], Ty::Int)),
+                        "qmeasure" => Some((vec![Ty::Int], Ty::Int)),
+                        "panic" => Some((vec![Ty::Str], Ty::Never)),
+                        _ => None,
+                    };
+                    if let Some((params, return_ty)) = signature {
+                        return Ty::Fn {
+                            params,
+                            return_ty: Box::new(return_ty),
+                            effect_row: Row::pure(),
+                        };
+                    }
+                    if matches!(name.as_str(), "Ok" | "Err") {
+                        return Ty::Error;
+                    }
+                }
+                // Qualified paths may name an external module whose body is
+                // intentionally absent from this stage-0 compilation unit.
+                // Cross-module resolution owns their exact signature; keep
+                // them opaque here while still rejecting unresolved local
+                // single-segment names.
+                if segments.len() > 1 {
+                    return Ty::Error;
                 }
                 self.emit(
                     format!(
@@ -879,8 +1004,23 @@ impl<'a> InferCtx<'a> {
                 Ty::Unit
             }
             HirExprKind::Cast { expr, ty } => {
-                let _ = self.synth_expr(expr);
-                self.lower_hir_type(ty)
+                let synthesized_source = self.synth_expr(expr);
+                let source_ty = self.subst.apply(&synthesized_source);
+                let target_ty = self.lower_hir_type(ty);
+                if matches!(target_ty, Ty::Bool)
+                    && !matches!(source_ty, Ty::Bool | Ty::Never | Ty::Error)
+                {
+                    self.emit(
+                        format!(
+                            "cast to `bool` requires a `bool` operand; found {source_ty:?}. \
+                             Integer-to-bool casts are noncanonical; use an explicit comparison"
+                        ),
+                        e.span,
+                    );
+                    Ty::Error
+                } else {
+                    target_ty
+                }
             }
             HirExprKind::Range { lo, hi, .. } => {
                 let lo_ty = lo
@@ -996,14 +1136,21 @@ impl<'a> InferCtx<'a> {
                 match def {
                     Some(d) => Ty::Named {
                         def: *d,
-                        args: Vec::new(),
+                        args: (0..self.nominal_arities.get(d).copied().unwrap_or(0))
+                            .map(|_| self.tcx.fresh_ty())
+                            .collect(),
                     },
                     None => {
                         if path.len() == 1 {
+                            if self.imports.contains(&path[0]) {
+                                return Ty::Error;
+                            }
                             if let Some(d) = self.env.item_def(path[0]) {
                                 return Ty::Named {
                                     def: d,
-                                    args: Vec::new(),
+                                    args: (0..self.nominal_arities.get(&d).copied().unwrap_or(0))
+                                        .map(|_| self.tcx.fresh_ty())
+                                        .collect(),
                                 };
                             }
                         }
@@ -1075,14 +1222,34 @@ impl<'a> InferCtx<'a> {
                 self.try_unify(&num, &t, operand.span, "unary `-`");
                 num
             }
-            HirUnOp::Not => {
-                self.try_unify(&Ty::Bool, &t, operand.span, "unary `!`");
-                Ty::Bool
-            }
-            HirUnOp::BitNot => {
-                self.try_unify(&Ty::Int, &t, operand.span, "unary `~`");
-                Ty::Int
-            }
+            // CSSLv3 preserves the established overloaded spelling:
+            // `!bool` is logical-not while `!integer` is bitwise-not. MIR
+            // lowering selects the operation from the concrete operand type.
+            HirUnOp::Not => match self.subst.apply(&t) {
+                Ty::Bool => Ty::Bool,
+                Ty::Int => Ty::Int,
+                Ty::Never => Ty::Never,
+                Ty::Error => Ty::Error,
+                actual => {
+                    self.emit(
+                        format!("unary `!` requires a `bool` or integer operand; found {actual:?}"),
+                        operand.span,
+                    );
+                    Ty::Error
+                }
+            },
+            HirUnOp::BitNot => match self.subst.apply(&t) {
+                Ty::Int => Ty::Int,
+                Ty::Never => Ty::Never,
+                Ty::Error => Ty::Error,
+                actual => {
+                    self.emit(
+                        format!("unary `~` requires an integer operand; found {actual:?}"),
+                        operand.span,
+                    );
+                    Ty::Error
+                }
+            },
             HirUnOp::Ref => Ty::Ref {
                 mutable: false,
                 inner: Box::new(t),
@@ -1445,5 +1612,41 @@ mod tests {
             "expected rank-0, got rank-{}",
             scheme.rank()
         );
+    }
+
+    #[test]
+    fn unary_not_preserves_boolean_and_integer_domains() {
+        for src in [
+            "fn invert(value : bool) -> bool { !value }",
+            "fn bang(value : u32) -> u32 { !value }",
+            "fn complement(value : u32) -> u32 { ~value }",
+        ] {
+            let (_, diags) = infer(src);
+            assert_eq!(diags, 0, "valid unary contract rejected: {src}");
+        }
+    }
+
+    #[test]
+    fn unary_not_rejects_invalid_concrete_domains() {
+        for src in [
+            "fn invalid(value : bool) -> bool { ~value }",
+            "fn invalid(value : f32) -> bool { !value }",
+            "fn invalid(value : String) -> bool { !value }",
+        ] {
+            let (_, diags) = infer(src);
+            assert!(diags > 0, "invalid unary contract accepted: {src}");
+        }
+    }
+
+    #[test]
+    fn noncanonical_bool_sources_are_rejected() {
+        for src in [
+            "fn invalid() -> bool { 2 }",
+            "fn invalid(value : u8) -> bool { value }",
+            "fn invalid(value : u8) -> bool { value as bool }",
+        ] {
+            let (_, diags) = infer(src);
+            assert!(diags > 0, "noncanonical bool source accepted: {src}");
+        }
     }
 }
