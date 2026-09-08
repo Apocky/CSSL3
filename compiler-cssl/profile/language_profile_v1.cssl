@@ -1,0 +1,196 @@
+module apocrypha.v2.profile.language_profile_v1
+
+extern "C" fn profile_id_byte_v1(
+    index: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i64;
+
+// § Trinity-native nominal surface. No effects, allocation, persistence, or RNG draw.
+pub struct U128 { lo: u64, hi: u64 }
+pub struct Counter128 { value: U128 }
+pub struct Digest256 {
+    w0: u32, w1: u32, w2: u32, w3: u32,
+    w4: u32, w5: u32, w6: u32, w7: u32
+}
+pub struct ProfileID { digest: Digest256 }
+pub struct LanguageProfileV1 {
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+}
+pub struct BootstrapManifestV1 {
+    language_profile: LanguageProfileV1,
+    profile_id: ProfileID,
+    compiler: Digest256,
+    linker: Digest256,
+    operating_system: Digest256,
+    driver: Digest256,
+    firmware: Digest256,
+    accelerator: Digest256
+}
+pub struct ProfileRecordSentinel { tag: u32, value: u32 }
+pub enum ProfileVectorKind { Current, Mutated }
+
+pub fn profile_validate_v1(
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32 {
+    if csl != 0x00030002 { return 101i32; }
+    if nil != 0x00020000 { return 102i32; }
+    if cssl != 0x00030000 { return 103i32; }
+    if codec != 0x00010000 { return 104i32; }
+    if abi != 1u32 { return 105i32; }
+    if numeric != 1u32 { return 106i32; }
+    if rng != 0u32 { return 107i32; }
+    if normalization != 0u32 { return 108i32; }
+    if endianness != 1u32 { return 109i32; }
+    if versions != 0x00010000 { return 110i32; }
+    0i32
+}
+
+// Structurally canonical current profile is not bootstrap-admissible while RNG
+// and Unicode-normalization selections remain explicitly closed.
+pub fn profile_bootstrap_status_v1(
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32 {
+    let structural = profile_validate_v1(
+        csl, nil, cssl, codec, abi, numeric, rng, normalization,
+        endianness, versions
+    );
+    if structural != 0i32 { return structural; }
+    if rng == 0u32 { return 7001i32; }
+    if normalization == 0u32 { return 7002i32; }
+    0i32
+}
+
+fn profile_manifest_profile_id_byte_status_v1(
+    profile_id: &[u8; 32], index: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32 {
+    let expected = profile_id_byte_v1(
+        index, csl, nil, cssl, codec, abi, numeric, rng,
+        normalization, endianness, versions
+    );
+    if (profile_id[index] as i64) != expected { return 7108i32; }
+    0i32
+}
+
+pub fn profile_bootstrap_manifest_status_v1(
+    profile_id: &[u8; 32], profile_id_count: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32,
+    compiler_count: i64, linker_count: i64,
+    operating_system_count: i64, driver_count: i64,
+    firmware_count: i64, accelerator_count: i64
+) -> i32 {
+    let structural = profile_validate_v1(
+        csl, nil, cssl, codec, abi, numeric, rng, normalization,
+        endianness, versions
+    );
+    if structural != 0i32 { return structural; }
+    if profile_id_count != 32i64 { return 7101i32; }
+    if compiler_count != 32i64 { return 7102i32; }
+    if linker_count != 32i64 { return 7103i32; }
+    if operating_system_count != 32i64 { return 7104i32; }
+    if driver_count != 32i64 { return 7105i32; }
+    if firmware_count != 32i64 { return 7106i32; }
+    if accelerator_count != 32i64 { return 7107i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 0i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 1i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 2i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 3i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 4i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 5i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 6i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 7i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 8i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 9i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 10i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 11i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 12i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 13i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 14i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 15i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 16i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 17i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 18i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 19i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 20i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 21i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 22i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 23i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 24i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 25i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 26i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 27i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 28i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 29i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 30i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if profile_manifest_profile_id_byte_status_v1(profile_id, 31i64, csl, nil, cssl, codec, abi, numeric, rng, normalization, endianness, versions) != 0i32 { return 7108i32; }
+    if rng == 0u32 { return 7001i32; }
+    if normalization == 0u32 { return 7002i32; }
+    0i32
+}
+
+// Native nominal-record support is fail-closed until field projection is correct.
+// The status-only ABI prevents the known projection defect from exposing an
+// address-like value as if it were a record field.
+pub fn profile_record_native_status_v1(tag: u32, value: u32) -> i32 {
+    let record: ProfileRecordSentinel = ProfileRecordSentinel { tag: tag, value: value };
+    if record.tag != tag { return 9001i32; }
+    if record.value != value { return 9001i32; }
+    0i32
+}
+
+// Native nominal-variant support is independently observable from the record
+// path; a record refusal can no longer mask the mutated-discriminant refusal.
+pub fn profile_variant_native_status_v1() -> i32 {
+    let current: ProfileVectorKind = ProfileVectorKind::Current;
+    let current_tag = match current {
+        ProfileVectorKind::Current => 0u32,
+        ProfileVectorKind::Mutated => 1u32,
+    };
+    if current_tag != 0u32 { return 9002i32; }
+    let mutated: ProfileVectorKind = ProfileVectorKind::Mutated;
+    let mutated_tag = match mutated {
+        ProfileVectorKind::Current => 0u32,
+        ProfileVectorKind::Mutated => 1u32,
+    };
+    if mutated_tag != 1u32 { return 9002i32; }
+    0i32
+}
+
+// Canonical scalar wire sentinels remain executable even while native nominal
+// record/variant lowering is refused. Passing them does not promote the nominal ABI.
+pub fn profile_record_wire_byte_v1(tag: u32, value: u32, index: i64) -> u32 {
+    if index < 0i64 { return 0xffffffffu32; }
+    if index >= 8i64 { return 0xffffffffu32; }
+    if index == 0i64 { return tag & 255u32; }
+    if index == 1i64 { return (tag >> 8u32) & 255u32; }
+    if index == 2i64 { return (tag >> 16u32) & 255u32; }
+    if index == 3i64 { return (tag >> 24u32) & 255u32; }
+    if index == 4i64 { return value & 255u32; }
+    if index == 5i64 { return (value >> 8u32) & 255u32; }
+    if index == 6i64 { return (value >> 16u32) & 255u32; }
+    if index == 7i64 { return (value >> 24u32) & 255u32; }
+    0xffffffffu32
+}
+
+pub fn profile_variant_wire_byte_v1(select: u32, index: i64) -> u32 {
+    if select > 1u32 { return 0xffffffffu32; }
+    if index < 0i64 { return 0xffffffffu32; }
+    if index >= 4i64 { return 0xffffffffu32; }
+    if index == 0i64 {
+        if select == 0u32 { return 0u32; }
+        return 1u32;
+    }
+    0u32
+}

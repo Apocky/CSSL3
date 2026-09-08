@@ -1,0 +1,215 @@
+module apocrypha.v2.profile.profile_probe_v1
+
+// § Cross-module executable probe. No effects; nonzero identifies first failed class.
+extern "C" fn profile_validate_v1(
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32;
+extern "C" fn profile_bootstrap_status_v1(
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32;
+extern "C" fn profile_canonical_byte_v1(
+    index: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> u32;
+extern "C" fn profile_id_word_v1(
+    wanted: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> u32;
+extern "C" fn profile_current_id_word_v1(index: i64) -> u32;
+extern "C" fn profile_mutated_id_word_v1(index: i64) -> u32;
+extern "C" fn profile_expected_byte_v1(index: i64) -> u32;
+extern "C" fn profile_shift_field_v1(index: i64) -> u32;
+extern "C" fn profile_shift_id_word_v1(index: i64) -> u32;
+extern "C" fn profile_shift_expected_byte_v1(index: i64) -> u32;
+extern "C" fn profile_record_expected_byte_v1(index: i64) -> u32;
+extern "C" fn profile_variant_expected_byte_v1(select: u32, index: i64) -> u32;
+extern "C" fn u128_add_lo_v1(left_lo: u64, right_lo: u64) -> u64;
+extern "C" fn u128_add_hi_v1(
+    left_lo: u64, left_hi: u64, right_lo: u64, right_hi: u64
+) -> u64;
+extern "C" fn u128_add_status_v1(
+    left_lo: u64, left_hi: u64, right_lo: u64, right_hi: u64
+) -> i32;
+extern "C" fn u128_le_byte_v1(lo: u64, hi: u64, index: i64) -> i64;
+extern "C" fn u128_composite_status_v1() -> i32;
+extern "C" fn u64_cross_call_status_v1() -> i32;
+extern "C" fn profile_digest_length_status_v1(count: i64) -> i32;
+extern "C" fn profile_record_native_status_v1(tag: u32, value: u32) -> i32;
+extern "C" fn profile_variant_native_status_v1() -> i32;
+extern "C" fn profile_record_wire_byte_v1(tag: u32, value: u32, index: i64) -> u32;
+extern "C" fn profile_variant_wire_byte_v1(select: u32, index: i64) -> u32;
+
+pub fn profile_probe_core_v1() -> i32 {
+    let structural = profile_validate_v1(
+        0x00030002u32, 0x00020000u32, 0x00030000u32, 0x00010000u32,
+        1u32, 1u32, 0u32, 0u32, 1u32, 0x00010000u32
+    );
+    if structural != 0i32 { return 1i32; }
+    let bootstrap = profile_bootstrap_status_v1(
+        0x00030002u32, 0x00020000u32, 0x00030000u32, 0x00010000u32,
+        1u32, 1u32, 0u32, 0u32, 1u32, 0x00010000u32
+    );
+    if bootstrap != 7001i32 { return 2i32; }
+
+    let mut index: i64 = 0i64;
+    while index < 48i64 {
+        let actual = profile_canonical_byte_v1(
+            index, 0x00030002u32, 0x00020000u32, 0x00030000u32,
+            0x00010000u32, 1u32, 1u32, 0u32, 0u32, 1u32, 0x00010000u32
+        );
+        if actual != profile_expected_byte_v1(index) { return 3i32; }
+        index = index + 1;
+    }
+
+    index = 0i64;
+    while index < 8i64 {
+        let current = profile_id_word_v1(
+            index, 0x00030002u32, 0x00020000u32, 0x00030000u32,
+            0x00010000u32, 1u32, 1u32, 0u32, 0u32, 1u32, 0x00010000u32
+        );
+        if current != profile_current_id_word_v1(index) { return 4i32; }
+        let mutated = profile_id_word_v1(
+            index, 0x00030002u32, 0x00020000u32, 0x00030000u32,
+            0x00010001u32, 1u32, 1u32, 0u32, 0u32, 1u32, 0x00010000u32
+        );
+        if mutated != profile_mutated_id_word_v1(index) { return 5i32; }
+        index = index + 1;
+    }
+
+    if profile_digest_length_status_v1(31i64) == 0i32 { return 6i32; }
+    if profile_digest_length_status_v1(32i64) != 0i32 { return 7i32; }
+    if profile_digest_length_status_v1(33i64) == 0i32 { return 8i32; }
+
+    0i32
+}
+
+pub fn profile_probe_u128_composite_v1() -> i32 {
+    u128_composite_status_v1()
+}
+
+// Direct MIR u128 scalars are not admitted by this compiler revision. This is
+// an explicit capability refusal, not a simulated u128 execution; a separate
+// compile-negative fixture is required before this status may become zero.
+pub fn profile_probe_native_u128_scalar_v1() -> i32 {
+    9003i32
+}
+
+pub fn profile_probe_u64_cross_call_v1() -> i32 {
+    u64_cross_call_status_v1()
+}
+
+fn profile_shift_actual_byte_v1(index: i64) -> u32 {
+    profile_canonical_byte_v1(
+        index,
+        profile_shift_field_v1(0i64), profile_shift_field_v1(1i64),
+        profile_shift_field_v1(2i64), profile_shift_field_v1(3i64),
+        profile_shift_field_v1(4i64), profile_shift_field_v1(5i64),
+        profile_shift_field_v1(6i64), profile_shift_field_v1(7i64),
+        profile_shift_field_v1(8i64), profile_shift_field_v1(9i64)
+    )
+}
+
+fn profile_shift_actual_id_word_v1(index: i64) -> u32 {
+    profile_id_word_v1(
+        index,
+        profile_shift_field_v1(0i64), profile_shift_field_v1(1i64),
+        profile_shift_field_v1(2i64), profile_shift_field_v1(3i64),
+        profile_shift_field_v1(4i64), profile_shift_field_v1(5i64),
+        profile_shift_field_v1(6i64), profile_shift_field_v1(7i64),
+        profile_shift_field_v1(8i64), profile_shift_field_v1(9i64)
+    )
+}
+
+pub fn profile_probe_codec_shift_v1() -> i32 {
+    if profile_shift_actual_byte_v1(8i64) != profile_shift_expected_byte_v1(8i64) { return 9004i32; }
+    if profile_shift_actual_byte_v1(9i64) != profile_shift_expected_byte_v1(9i64) { return 9004i32; }
+    if profile_shift_actual_byte_v1(10i64) != profile_shift_expected_byte_v1(10i64) { return 9004i32; }
+    if profile_shift_actual_byte_v1(11i64) != profile_shift_expected_byte_v1(11i64) { return 9004i32; }
+    if profile_shift_actual_byte_v1(44i64) != profile_shift_expected_byte_v1(44i64) { return 9004i32; }
+    if profile_shift_actual_byte_v1(45i64) != profile_shift_expected_byte_v1(45i64) { return 9004i32; }
+    if profile_shift_actual_byte_v1(46i64) != profile_shift_expected_byte_v1(46i64) { return 9004i32; }
+    if profile_shift_actual_byte_v1(47i64) != profile_shift_expected_byte_v1(47i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(0i64) != profile_shift_id_word_v1(0i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(1i64) != profile_shift_id_word_v1(1i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(2i64) != profile_shift_id_word_v1(2i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(3i64) != profile_shift_id_word_v1(3i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(4i64) != profile_shift_id_word_v1(4i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(5i64) != profile_shift_id_word_v1(5i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(6i64) != profile_shift_id_word_v1(6i64) { return 9004i32; }
+    if profile_shift_actual_id_word_v1(7i64) != profile_shift_id_word_v1(7i64) { return 9004i32; }
+    0i32
+}
+
+// Exercise the primitive unsigned shift separately from the codec's safe
+// mask-after-shift pattern. The pinned compiler lowers this as signed and must
+// therefore expose 9004 until the primitive semantics are repaired.
+pub fn profile_probe_unsigned_shift_semantics_v1() -> i32 {
+    let value: u32 = 0x80000000u32;
+    let amount: u32 = 1u32;
+    if (value >> amount) != 0x40000000u32 { return 9004i32; }
+    0i32
+}
+
+pub fn profile_probe_record_v1() -> i32 {
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 0i64) != profile_record_expected_byte_v1(0i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 1i64) != profile_record_expected_byte_v1(1i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 2i64) != profile_record_expected_byte_v1(2i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 3i64) != profile_record_expected_byte_v1(3i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 4i64) != profile_record_expected_byte_v1(4i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 5i64) != profile_record_expected_byte_v1(5i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 6i64) != profile_record_expected_byte_v1(6i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0x11223344u32, 0xaabbccddu32, 7i64) != profile_record_expected_byte_v1(7i64) { return 9011i32; }
+    if profile_record_wire_byte_v1(0u32, 0u32, 0i64 - 1i64) != 0xffffffffu32 {
+        return 9011i32;
+    }
+    if profile_record_wire_byte_v1(0u32, 0u32, 8i64) != 0xffffffffu32 {
+        return 9011i32;
+    }
+    profile_record_native_status_v1(0x11223344u32, 0xaabbccddu32)
+}
+
+pub fn profile_probe_variant_v1() -> i32 {
+    if profile_variant_wire_byte_v1(0u32, 0i64) != profile_variant_expected_byte_v1(0u32, 0i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(0u32, 1i64) != profile_variant_expected_byte_v1(0u32, 1i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(0u32, 2i64) != profile_variant_expected_byte_v1(0u32, 2i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(0u32, 3i64) != profile_variant_expected_byte_v1(0u32, 3i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(1u32, 0i64) != profile_variant_expected_byte_v1(1u32, 0i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(1u32, 1i64) != profile_variant_expected_byte_v1(1u32, 1i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(1u32, 2i64) != profile_variant_expected_byte_v1(1u32, 2i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(1u32, 3i64) != profile_variant_expected_byte_v1(1u32, 3i64) { return 9012i32; }
+    if profile_variant_wire_byte_v1(2u32, 0i64) != 0xffffffffu32 { return 9012i32; }
+    if profile_variant_wire_byte_v1(0u32, 4i64) != 0xffffffffu32 { return 9012i32; }
+    profile_variant_native_status_v1()
+}
+
+pub fn profile_probe_known_refusals_v1() -> i32 {
+    if profile_probe_record_v1() != 9001i32 { return 9021i32; }
+    if profile_probe_variant_v1() != 9002i32 { return 9022i32; }
+    if profile_probe_u128_composite_v1() != 0i32 { return 9023i32; }
+    if profile_probe_native_u128_scalar_v1() != 9003i32 { return 9024i32; }
+    if profile_probe_unsigned_shift_semantics_v1() != 9004i32 { return 9025i32; }
+    if profile_probe_u64_cross_call_v1() != 9005i32 { return 9026i32; }
+    0i32
+}
+
+pub fn profile_probe_all_v1() -> i32 {
+    let core = profile_probe_core_v1();
+    if core != 0i32 { return core; }
+    let u128_status = profile_probe_u128_composite_v1();
+    if u128_status != 0i32 { return u128_status; }
+    let shift_status = profile_probe_codec_shift_v1();
+    if shift_status != 0i32 { return shift_status; }
+    let record_status = profile_probe_record_v1();
+    if record_status != 0i32 { return record_status; }
+    let variant_status = profile_probe_variant_v1();
+    if variant_status != 0i32 { return variant_status; }
+    0i32
+}

@@ -1,0 +1,127 @@
+module apocrypha.v2.profile.profile_vectors_v1
+
+// § Immutable public synthetic vectors. Functions avoid mutable/global storage.
+pub fn profile_current_field_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0x00030002; }
+    if index == 1i64 { return 0x00020000; }
+    if index == 2i64 { return 0x00030000; }
+    if index == 3i64 { return 0x00010000; }
+    if index == 4i64 { return 1u32; }
+    if index == 5i64 { return 1u32; }
+    if index == 6i64 { return 0u32; }
+    if index == 7i64 { return 0u32; }
+    if index == 8i64 { return 1u32; }
+    if index == 9i64 { return 0x00010000; }
+    0u32
+}
+
+pub fn profile_mutated_field_v1(index: i64) -> u32 {
+    if index == 3i64 { return 0x00010001; }
+    profile_current_field_v1(index)
+}
+
+pub fn profile_current_id_word_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0x3cbe4c61; }
+    if index == 1i64 { return 0xa6c3b73d; }
+    if index == 2i64 { return 0xc21ed3c8; }
+    if index == 3i64 { return 0x06b4de69; }
+    if index == 4i64 { return 0xcb8f4b3e; }
+    if index == 5i64 { return 0x830729ba; }
+    if index == 6i64 { return 0x4cf030a2; }
+    if index == 7i64 { return 0x8dcb1328; }
+    0u32
+}
+
+pub fn profile_mutated_id_word_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0xfbd9004f; }
+    if index == 1i64 { return 0x62ea578a; }
+    if index == 2i64 { return 0xedad488e; }
+    if index == 3i64 { return 0x7c8f98cd; }
+    if index == 4i64 { return 0x713ba752; }
+    if index == 5i64 { return 0x61c79053; }
+    if index == 6i64 { return 0x3e36f2a3; }
+    if index == 7i64 { return 0x3499577a; }
+    0u32
+}
+
+pub fn profile_expected_byte_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0x41u32; }
+    if index == 1i64 { return 0x50u32; }
+    if index == 2i64 { return 0x58u32; }
+    if index == 3i64 { return 0x4cu32; }
+    if index == 4i64 { return 0x50u32; }
+    if index == 5i64 { return 0x52u32; }
+    if index == 6i64 { return 0x46u32; }
+    if index == 7i64 { return 0x31u32; }
+    if index < 8i64 { return 0xffffffffu32; }
+    if index >= 48i64 { return 0xffffffffu32; }
+    let field_index = (index - 8i64) / 4i64;
+    let byte_index = (((index - 8i64) % 4i64) * 8i64) as u32;
+    let field = profile_current_field_v1(field_index);
+    (field >> byte_index) & 255u32
+}
+
+// High-bit vector makes the codec's masked u32 right-shift behavior directly
+// observable instead of relying only on low-valued language selectors.
+pub fn profile_shift_field_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0x80ff7f01u32; }
+    if index == 1i64 { return 0xdeadbeefu32; }
+    if index == 2i64 { return 0x80000000u32; }
+    if index == 3i64 { return 0xffffffffu32; }
+    if index == 4i64 { return 0x89abcdefu32; }
+    if index == 5i64 { return 0xfedcba98u32; }
+    if index == 6i64 { return 0xaaaaaaaau32; }
+    if index == 7i64 { return 0x55555555u32; }
+    if index == 8i64 { return 0xc0000001u32; }
+    if index == 9i64 { return 0x7fffffffu32; }
+    0u32
+}
+
+pub fn profile_shift_id_word_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0x4252a13bu32; }
+    if index == 1i64 { return 0xfeb064dfu32; }
+    if index == 2i64 { return 0x68d300a7u32; }
+    if index == 3i64 { return 0x45867249u32; }
+    if index == 4i64 { return 0x874c4ccfu32; }
+    if index == 5i64 { return 0x6c979dffu32; }
+    if index == 6i64 { return 0xb843be54u32; }
+    if index == 7i64 { return 0xff4f1f80u32; }
+    0u32
+}
+
+pub fn profile_shift_expected_byte_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0x41u32; }
+    if index == 1i64 { return 0x50u32; }
+    if index == 2i64 { return 0x58u32; }
+    if index == 3i64 { return 0x4cu32; }
+    if index == 4i64 { return 0x50u32; }
+    if index == 5i64 { return 0x52u32; }
+    if index == 6i64 { return 0x46u32; }
+    if index == 7i64 { return 0x31u32; }
+    if index < 8i64 { return 0xffffffffu32; }
+    if index >= 48i64 { return 0xffffffffu32; }
+    let field_index = (index - 8i64) / 4i64;
+    let byte_index = (((index - 8i64) % 4i64) * 8i64) as u32;
+    let field = profile_shift_field_v1(field_index);
+    (field >> byte_index) & 255u32
+}
+
+pub fn profile_record_expected_byte_v1(index: i64) -> u32 {
+    if index == 0i64 { return 0x44u32; }
+    if index == 1i64 { return 0x33u32; }
+    if index == 2i64 { return 0x22u32; }
+    if index == 3i64 { return 0x11u32; }
+    if index == 4i64 { return 0xddu32; }
+    if index == 5i64 { return 0xccu32; }
+    if index == 6i64 { return 0xbbu32; }
+    if index == 7i64 { return 0xaau32; }
+    0xffffffffu32
+}
+
+pub fn profile_variant_expected_byte_v1(select: u32, index: i64) -> u32 {
+    if select > 1u32 { return 0xffffffffu32; }
+    if index < 0i64 { return 0xffffffffu32; }
+    if index >= 4i64 { return 0xffffffffu32; }
+    if index == 0i64 { return select; }
+    0u32
+}

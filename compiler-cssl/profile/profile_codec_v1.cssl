@@ -1,0 +1,1021 @@
+module apocrypha.v2.profile.profile_codec_v1
+
+extern "C" fn profile_validate_v1(
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32;
+
+// § Fixed 48-byte profile codec + one-block SHA-256 + numeric sentinels.
+// No allocation, mutable external storage, effects, persistence, or RNG draw.
+
+fn sha_rotr2(x: u32) -> u32 { ((x >> 2u32) & 0x3fffffffu32) | (x << 30u32) }
+fn sha_rotr6(x: u32) -> u32 { ((x >> 6u32) & 0x03ffffffu32) | (x << 26u32) }
+fn sha_rotr7(x: u32) -> u32 { ((x >> 7u32) & 0x01ffffffu32) | (x << 25u32) }
+fn sha_rotr11(x: u32) -> u32 { ((x >> 11u32) & 0x001fffffu32) | (x << 21u32) }
+fn sha_rotr13(x: u32) -> u32 { ((x >> 13u32) & 0x0007ffffu32) | (x << 19u32) }
+fn sha_rotr17(x: u32) -> u32 { ((x >> 17u32) & 0x00007fffu32) | (x << 15u32) }
+fn sha_rotr18(x: u32) -> u32 { ((x >> 18u32) & 0x00003fffu32) | (x << 14u32) }
+fn sha_rotr19(x: u32) -> u32 { ((x >> 19u32) & 0x00001fffu32) | (x << 13u32) }
+fn sha_rotr22(x: u32) -> u32 { ((x >> 22u32) & 0x000003ffu32) | (x << 10u32) }
+fn sha_rotr25(x: u32) -> u32 { ((x >> 25u32) & 0x0000007fu32) | (x << 7u32) }
+
+fn sha_small0(x: u32) -> u32 {
+    sha_rotr7(x) ^ sha_rotr18(x) ^ ((x >> 3u32) & 0x1fffffffu32)
+}
+
+fn sha_small1(x: u32) -> u32 {
+    sha_rotr17(x) ^ sha_rotr19(x) ^ ((x >> 10u32) & 0x003fffffu32)
+}
+
+fn sha_big0(x: u32) -> u32 {
+    sha_rotr2(x) ^ sha_rotr13(x) ^ sha_rotr22(x)
+}
+
+fn sha_big1(x: u32) -> u32 {
+    sha_rotr6(x) ^ sha_rotr11(x) ^ sha_rotr25(x)
+}
+
+fn sha_choose(x: u32, y: u32, z: u32) -> u32 {
+    (x & y) ^ ((!x) & z)
+}
+
+fn sha_majority(x: u32, y: u32, z: u32) -> u32 {
+    (x & y) ^ (x & z) ^ (y & z)
+}
+
+fn sha_bswap32(x: u32) -> u32 {
+    ((x & 0x000000ffu32) << 24u32)
+    | ((x & 0x0000ff00u32) << 8u32)
+    | (((x & 0x00ff0000u32) >> 8u32) & 0x0000ff00u32)
+    | (((x & 0xff000000u32) >> 24u32) & 0x000000ffu32)
+}
+
+pub fn profile_canonical_byte_v1(
+    index: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> u32 {
+    if index < 0i64 { return 0xffffffffu32; }
+    if index >= 48i64 { return 0xffffffffu32; }
+    if index == 0i64 { return 0x41u32; }
+    if index == 1i64 { return 0x50u32; }
+    if index == 2i64 { return 0x58u32; }
+    if index == 3i64 { return 0x4cu32; }
+    if index == 4i64 { return 0x50u32; }
+    if index == 5i64 { return 0x52u32; }
+    if index == 6i64 { return 0x46u32; }
+    if index == 7i64 { return 0x31u32; }
+    let field_index = (index - 8i64) / 4i64;
+    let shift = (((index - 8i64) % 4i64) * 8i64) as u32;
+    let mut field: u32 = csl;
+    if field_index == 1i64 { field = nil; }
+    if field_index == 2i64 { field = cssl; }
+    if field_index == 3i64 { field = codec; }
+    if field_index == 4i64 { field = abi; }
+    if field_index == 5i64 { field = numeric; }
+    if field_index == 6i64 { field = rng; }
+    if field_index == 7i64 { field = normalization; }
+    if field_index == 8i64 { field = endianness; }
+    if field_index == 9i64 { field = versions; }
+    let shifted = field >> shift;
+    shifted & 255u32
+}
+
+pub fn profile_id_word_v1(
+    wanted: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> u32 {
+    let w0: u32 = 0x4150584cu32;
+    let w1: u32 = 0x50524631u32;
+    let w2 = sha_bswap32(csl);
+    let w3 = sha_bswap32(nil);
+    let w4 = sha_bswap32(cssl);
+    let w5 = sha_bswap32(codec);
+    let w6 = sha_bswap32(abi);
+    let w7 = sha_bswap32(numeric);
+    let w8 = sha_bswap32(rng);
+    let w9 = sha_bswap32(normalization);
+    let w10 = sha_bswap32(endianness);
+    let w11 = sha_bswap32(versions);
+    let w12: u32 = 0x80000000u32;
+    let w13: u32 = 0u32;
+    let w14: u32 = 0u32;
+    let w15: u32 = 384u32;
+    let w16 = sha_small1(w14) + w9 + sha_small0(w1) + w0;
+    let w17 = sha_small1(w15) + w10 + sha_small0(w2) + w1;
+    let w18 = sha_small1(w16) + w11 + sha_small0(w3) + w2;
+    let w19 = sha_small1(w17) + w12 + sha_small0(w4) + w3;
+    let w20 = sha_small1(w18) + w13 + sha_small0(w5) + w4;
+    let w21 = sha_small1(w19) + w14 + sha_small0(w6) + w5;
+    let w22 = sha_small1(w20) + w15 + sha_small0(w7) + w6;
+    let w23 = sha_small1(w21) + w16 + sha_small0(w8) + w7;
+    let w24 = sha_small1(w22) + w17 + sha_small0(w9) + w8;
+    let w25 = sha_small1(w23) + w18 + sha_small0(w10) + w9;
+    let w26 = sha_small1(w24) + w19 + sha_small0(w11) + w10;
+    let w27 = sha_small1(w25) + w20 + sha_small0(w12) + w11;
+    let w28 = sha_small1(w26) + w21 + sha_small0(w13) + w12;
+    let w29 = sha_small1(w27) + w22 + sha_small0(w14) + w13;
+    let w30 = sha_small1(w28) + w23 + sha_small0(w15) + w14;
+    let w31 = sha_small1(w29) + w24 + sha_small0(w16) + w15;
+    let w32 = sha_small1(w30) + w25 + sha_small0(w17) + w16;
+    let w33 = sha_small1(w31) + w26 + sha_small0(w18) + w17;
+    let w34 = sha_small1(w32) + w27 + sha_small0(w19) + w18;
+    let w35 = sha_small1(w33) + w28 + sha_small0(w20) + w19;
+    let w36 = sha_small1(w34) + w29 + sha_small0(w21) + w20;
+    let w37 = sha_small1(w35) + w30 + sha_small0(w22) + w21;
+    let w38 = sha_small1(w36) + w31 + sha_small0(w23) + w22;
+    let w39 = sha_small1(w37) + w32 + sha_small0(w24) + w23;
+    let w40 = sha_small1(w38) + w33 + sha_small0(w25) + w24;
+    let w41 = sha_small1(w39) + w34 + sha_small0(w26) + w25;
+    let w42 = sha_small1(w40) + w35 + sha_small0(w27) + w26;
+    let w43 = sha_small1(w41) + w36 + sha_small0(w28) + w27;
+    let w44 = sha_small1(w42) + w37 + sha_small0(w29) + w28;
+    let w45 = sha_small1(w43) + w38 + sha_small0(w30) + w29;
+    let w46 = sha_small1(w44) + w39 + sha_small0(w31) + w30;
+    let w47 = sha_small1(w45) + w40 + sha_small0(w32) + w31;
+    let w48 = sha_small1(w46) + w41 + sha_small0(w33) + w32;
+    let w49 = sha_small1(w47) + w42 + sha_small0(w34) + w33;
+    let w50 = sha_small1(w48) + w43 + sha_small0(w35) + w34;
+    let w51 = sha_small1(w49) + w44 + sha_small0(w36) + w35;
+    let w52 = sha_small1(w50) + w45 + sha_small0(w37) + w36;
+    let w53 = sha_small1(w51) + w46 + sha_small0(w38) + w37;
+    let w54 = sha_small1(w52) + w47 + sha_small0(w39) + w38;
+    let w55 = sha_small1(w53) + w48 + sha_small0(w40) + w39;
+    let w56 = sha_small1(w54) + w49 + sha_small0(w41) + w40;
+    let w57 = sha_small1(w55) + w50 + sha_small0(w42) + w41;
+    let w58 = sha_small1(w56) + w51 + sha_small0(w43) + w42;
+    let w59 = sha_small1(w57) + w52 + sha_small0(w44) + w43;
+    let w60 = sha_small1(w58) + w53 + sha_small0(w45) + w44;
+    let w61 = sha_small1(w59) + w54 + sha_small0(w46) + w45;
+    let w62 = sha_small1(w60) + w55 + sha_small0(w47) + w46;
+    let w63 = sha_small1(w61) + w56 + sha_small0(w48) + w47;
+
+    let mut a: u32 = 0x6a09e667u32;
+    let mut b: u32 = 0xbb67ae85u32;
+    let mut c: u32 = 0x3c6ef372u32;
+    let mut d: u32 = 0xa54ff53au32;
+    let mut e: u32 = 0x510e527fu32;
+    let mut f: u32 = 0x9b05688cu32;
+    let mut g: u32 = 0x1f83d9abu32;
+    let mut h: u32 = 0x5be0cd19u32;
+    let mut t1: u32 = 0u32;
+    let mut t2: u32 = 0u32;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x428a2f98u32 + w0) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x71374491u32 + w1) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xb5c0fbcfu32 + w2) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xe9b5dba5u32 + w3) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x3956c25bu32 + w4) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x59f111f1u32 + w5) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x923f82a4u32 + w6) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xab1c5ed5u32 + w7) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xd807aa98u32 + w8) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x12835b01u32 + w9) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x243185beu32 + w10) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x550c7dc3u32 + w11) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x72be5d74u32 + w12) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x80deb1feu32 + w13) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x9bdc06a7u32 + w14) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xc19bf174u32 + w15) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xe49b69c1u32 + w16) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xefbe4786u32 + w17) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x0fc19dc6u32 + w18) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x240ca1ccu32 + w19) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x2de92c6fu32 + w20) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x4a7484aau32 + w21) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x5cb0a9dcu32 + w22) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x76f988dau32 + w23) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x983e5152u32 + w24) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xa831c66du32 + w25) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xb00327c8u32 + w26) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xbf597fc7u32 + w27) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xc6e00bf3u32 + w28) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xd5a79147u32 + w29) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x06ca6351u32 + w30) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x14292967u32 + w31) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x27b70a85u32 + w32) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x2e1b2138u32 + w33) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x4d2c6dfcu32 + w34) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x53380d13u32 + w35) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x650a7354u32 + w36) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x766a0abbu32 + w37) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x81c2c92eu32 + w38) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x92722c85u32 + w39) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xa2bfe8a1u32 + w40) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xa81a664bu32 + w41) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xc24b8b70u32 + w42) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xc76c51a3u32 + w43) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xd192e819u32 + w44) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xd6990624u32 + w45) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xf40e3585u32 + w46) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x106aa070u32 + w47) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x19a4c116u32 + w48) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x1e376c08u32 + w49) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x2748774cu32 + w50) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x34b0bcb5u32 + w51) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x391c0cb3u32 + w52) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x4ed8aa4au32 + w53) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x5b9cca4fu32 + w54) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x682e6ff3u32 + w55) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x748f82eeu32 + w56) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x78a5636fu32 + w57) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x84c87814u32 + w58) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x8cc70208u32 + w59) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0x90befffau32 + w60) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xa4506cebu32 + w61) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xbef9a3f7u32 + w62) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    t1 = (h + sha_big1(e) + sha_choose(e, f, g) + 0xc67178f2u32 + w63) as u32;
+    t2 = (sha_big0(a) + sha_majority(a, b, c)) as u32;
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+
+    let out0 = 0x6a09e667u32 + a;
+    let out1 = 0xbb67ae85u32 + b;
+    let out2 = 0x3c6ef372u32 + c;
+    let out3 = 0xa54ff53au32 + d;
+    let out4 = 0x510e527fu32 + e;
+    let out5 = 0x9b05688cu32 + f;
+    let out6 = 0x1f83d9abu32 + g;
+    let out7 = 0x5be0cd19u32 + h;
+    if wanted == 0i64 { return out0; }
+    if wanted == 1i64 { return out1; }
+    if wanted == 2i64 { return out2; }
+    if wanted == 3i64 { return out3; }
+    if wanted == 4i64 { return out4; }
+    if wanted == 5i64 { return out5; }
+    if wanted == 6i64 { return out6; }
+    if wanted == 7i64 { return out7; }
+    0u32
+}
+
+pub fn profile_id_byte_v1(
+    index: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i64 {
+    if index < 0i64 { return 0i64 - 1i64; }
+    if index >= 32i64 { return 0i64 - 1i64; }
+    let word_index = index / 4i64;
+    let byte_index = (index % 4i64) as u32;
+    let shift = (3u32 - byte_index) * 8u32;
+    let word = profile_id_word_v1(
+        word_index, csl, nil, cssl, codec, abi, numeric, rng,
+        normalization, endianness, versions
+    );
+    ((word >> shift) & 255u32) as i64
+}
+
+pub fn profile_digest_length_status_v1(count: i64) -> i32 {
+    if count != 32i64 { return 2001i32; }
+    0i32
+}
+
+pub fn profile_bytes_status_v1(
+    src: &[u8; 48], count: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32 {
+    let structural = profile_validate_v1(
+        csl, nil, cssl, codec, abi, numeric, rng, normalization,
+        endianness, versions
+    );
+    if structural != 0i32 { return structural; }
+    if count != 48i64 { return 2002i32; }
+    let mut index: i64 = 0i64;
+    while index < 48i64 {
+        let expected = profile_canonical_byte_v1(
+            index, csl, nil, cssl, codec, abi, numeric, rng,
+            normalization, endianness, versions
+        );
+        if (src[index] as u32) != expected { return 2003i32; }
+        index = index + 1;
+    }
+    0i32
+}
+
+pub fn profile_resume_status_v1(
+    saved: &[u8; 32], count: i64,
+    csl: u32, nil: u32, cssl: u32, codec: u32, abi: u32,
+    numeric: u32, rng: u32, normalization: u32,
+    endianness: u32, versions: u32
+) -> i32 {
+    if count != 32i64 { return 2001i32; }
+    let mut index: i64 = 0i64;
+    while index < 32i64 {
+        let expected = profile_id_byte_v1(
+            index, csl, nil, cssl, codec, abi, numeric, rng,
+            normalization, endianness, versions
+        );
+        if (saved[index] as i64) != expected { return 3002i32; }
+        index = index + 1;
+    }
+    let structural = profile_validate_v1(
+        csl, nil, cssl, codec, abi, numeric, rng, normalization,
+        endianness, versions
+    );
+    if structural != 0i32 { return structural; }
+    0i32
+}
+
+pub fn u128_add_lo_v1(left_lo: u64, right_lo: u64) -> u64 {
+    left_lo + right_lo
+}
+
+pub fn u128_add_hi_v1(
+    left_lo: u64, left_hi: u64, right_lo: u64, right_hi: u64
+) -> u64 {
+    let low = left_lo + right_lo;
+    let mut carry: u64 = 0u64;
+    let low_carry_bits = (left_lo & right_lo) | ((left_lo | right_lo) & (!low));
+    if (low_carry_bits as i64) < 0i64 { carry = 1u64; }
+    left_hi + right_hi + carry
+}
+
+pub fn u128_add_status_v1(
+    left_lo: u64, left_hi: u64, right_lo: u64, right_hi: u64
+) -> i32 {
+    let low = left_lo + right_lo;
+    let mut carry: u64 = 0u64;
+    let low_carry_bits = (left_lo & right_lo) | ((left_lo | right_lo) & (!low));
+    if (low_carry_bits as i64) < 0i64 { carry = 1u64; }
+    let high_base = left_hi + right_hi;
+    let high_base_carry_bits = (left_hi & right_hi) | ((left_hi | right_hi) & (!high_base));
+    if (high_base_carry_bits as i64) < 0i64 { return 4001i32; }
+    let high = high_base + carry;
+    let high_carry_bits = (high_base & carry) | ((high_base | carry) & (!high));
+    if (high_carry_bits as i64) < 0i64 { return 4001i32; }
+    0i32
+}
+
+pub fn u128_le_byte_v1(lo: u64, hi: u64, index: i64) -> i64 {
+    if index < 0i64 { return 0i64 - 1i64; }
+    if index >= 16i64 { return 0i64 - 1i64; }
+    if index < 8i64 {
+        let shift = (index as u64) * 8u64;
+        return ((lo >> shift) & 255u64) as i64;
+    }
+    let shift = ((index - 8i64) as u64) * 8u64;
+    ((hi >> shift) & 255u64) as i64
+}
+
+// Inline two-u64 composite semantics are distinct from native scalar u128 and
+// from the pinned compiler's cross-function u64-call defect.
+pub fn u128_composite_status_v1() -> i32 {
+    let left_lo: u64 = 0xffffffffffffffffu64;
+    let right_lo: u64 = 1u64;
+    let low = left_lo + right_lo;
+    if low != 0u64 { return 9013i32; }
+    let high = 0u64 + 0u64 + 1u64;
+    if high != 1u64 { return 9013i32; }
+    0i32
+}
+
+// Separate typed defect: compiler-generated cross-function u64 argument calls
+// disagree with the same exported helpers exercised through the C ABI.
+pub fn u64_cross_call_status_v1() -> i32 {
+    if u128_add_lo_v1(0xffffffffffffffffu64, 1u64) != 0u64 { return 9005i32; }
+    if u128_add_hi_v1(0xffffffffffffffffu64, 0u64, 1u64, 0u64) != 1u64 { return 9005i32; }
+    0i32
+}
