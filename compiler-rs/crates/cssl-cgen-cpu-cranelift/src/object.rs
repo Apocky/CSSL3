@@ -1828,9 +1828,19 @@ fn lower_one_op(
                 let hi = builder.ins().iconst(cl_types::I64, hi_bits);
                 builder.ins().iconcat(lo, hi)
             } else {
-                builder
-                    .ins()
-                    .iconst(cl_ty, value_str.parse::<i64>().unwrap_or(0))
+                let integer = if matches!(r.ty, MirType::Bool) {
+                    match value_str {
+                        "true" | "1" => Ok(1),
+                        "false" | "0" => Ok(0),
+                        other => Err(ObjectError::LoweringFailed {
+                            fn_name: fn_name.to_string(),
+                            detail: format!("invalid boolean constant `{other}`"),
+                        }),
+                    }
+                } else {
+                    Ok(value_str.parse::<i64>().unwrap_or(0))
+                }?;
+                builder.ins().iconst(cl_ty, integer)
             };
             value_map.insert(r.id, v);
             Ok(false)
@@ -5459,6 +5469,37 @@ mod tests {
         module.push_func(maximum);
         let bytes = emit_object_module(&module).expect("scalar u128 object emission");
         assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn boolean_constants_accept_only_canonical_values() {
+        for raw in ["false", "0", "true", "1"] {
+            let mut function = MirFunc::new("bool_constant", vec![], vec![MirType::Bool]);
+            function.push_op(
+                MirOp::std("arith.constant")
+                    .with_attribute("value", raw)
+                    .with_result(ValueId(0), MirType::Bool),
+            );
+            function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+            let mut module = MirModule::new();
+            module.push_func(function);
+            assert!(emit_object_module(&module).is_ok(), "canonical bool `{raw}` refused");
+        }
+
+        let mut function = MirFunc::new("bad_bool_constant", vec![], vec![MirType::Bool]);
+        function.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "truthy")
+                .with_result(ValueId(0), MirType::Bool),
+        );
+        function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(function);
+        assert!(matches!(
+            emit_object_module(&module),
+            Err(ObjectError::LoweringFailed { detail, .. })
+                if detail.contains("invalid boolean constant")
+        ));
     }
 
     #[cfg(target_os = "windows")]
