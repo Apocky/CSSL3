@@ -22,6 +22,12 @@ export function nativeErrorCode(payload: Record<string, unknown> | undefined, fa
   return typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/u.test(code) ? code : fallback;
 }
 
+export function nativeMemPalaceResultHealthy(payload: Record<string, unknown> | undefined): boolean {
+  if (!payload) return false;
+  const status = String(payload.status ?? '').toLowerCase();
+  return status === 'ok' || (status === 'empty' && nativeErrorCode(payload, '') === 'MEM_EMPTY');
+}
+
 function boundedScalar(value: unknown, maximum = 512): string {
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
     ? String(value).replace(/\s+/gu, ' ').trim().slice(0, maximum) : '';
@@ -173,7 +179,7 @@ class NativeMemPalaceAdapter implements ReadOnlyAdapter {
       include_sample_digest: false,
     }], signal, this.config.limits.responseBytes * 4);
     const payload = frames[0] as Record<string, unknown> | undefined;
-    if (!payload || String(payload.status ?? '').toLowerCase() !== 'ok') throw new Error('NATIVE_MEMPALACE_UNAVAILABLE');
+    if (!nativeMemPalaceResultHealthy(payload)) throw new Error('NATIVE_MEMPALACE_UNAVAILABLE');
     return payload;
   }
   async probe(signal: AbortSignal): Promise<AdapterProbe> {
@@ -183,8 +189,13 @@ class NativeMemPalaceAdapter implements ReadOnlyAdapter {
     }
     try {
       const payload = await this.search(probeRequest(this.config), signal) as Record<string, unknown>;
-      return String(payload.status ?? '').toLowerCase() === 'ok'
-        ? { state: 'ready', detail: 'immutable native query verified' }
+      return nativeMemPalaceResultHealthy(payload)
+        ? {
+            state: 'ready',
+            detail: String(payload.status ?? '').toLowerCase() === 'empty'
+              ? 'immutable native query verified with zero records'
+              : 'immutable native query verified',
+          }
         : { state: 'unavailable', detail: 'immutable native query returned degraded state' };
     } catch {
       return { state: 'unavailable', detail: 'immutable native query failed' };

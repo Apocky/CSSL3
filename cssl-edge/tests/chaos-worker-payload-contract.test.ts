@@ -1,4 +1,8 @@
-import { composeQwenRequest } from '../scripts/apocrypha-worker/prompt';
+import {
+  composeQwenRequest,
+  qwenPromptByteBudget,
+  qwenPromptBytes,
+} from '../scripts/apocrypha-worker/prompt';
 import { queryFromJob } from '../scripts/apocrypha-worker/retrieval';
 import type { ClaimedJob, RetrievalBundle, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
@@ -78,4 +82,61 @@ const legacyJob = { ...job, request: { prompt: 'Preserve this legacy prompt.' } 
 const legacy = composeQwenRequest(config, legacyJob, memory);
 assert(legacy.messages.at(-1)?.content === 'Preserve this legacy prompt.', 'legacy prompt shape changed');
 
-console.log('chaos-worker-payload-contract.test: OK');
+const constrainedConfig = {
+  ...config,
+  contextWindowTokens: 4_096,
+  maxOutputTokens: 2_048,
+} as WorkerConfig;
+const oversizedMemory: RetrievalBundle = {
+  query: 'context bound test',
+  results: [{ name: 'mempalace', state: 'ok', durationMs: 1, records: [] }],
+  records: [{
+    source: 'mempalace',
+    provenanceId: 'PROVENANCE_MARKER',
+    text: `MEMORY_MARKER ${'bounded evidence '.repeat(2_000)}`,
+  }],
+  digest: 'd'.repeat(64),
+  probedAt: null,
+};
+const oversizedJob: ClaimedJob = {
+  ...job,
+  request: {
+    ...job.request,
+    output_budget: 2_048,
+    question: `QUESTION_MARKER What remains useful? ${'question detail '.repeat(2_000)}`,
+    canonical_reading: {
+      ...job.request.canonical_reading as Record<string, unknown>,
+      items: [
+        { name: 'CARD_MARKER The Tower', is_reversed: false, position: { name: 'Pressure' } },
+        ...Array.from({ length: 80 }, (_, index) => ({ name: `Card ${index}`, position: { name: `Position ${index}` } })),
+      ],
+    },
+    conversation_history: [
+      { role: 'user', content: `OLD_CONTEXT ${'old '.repeat(2_000)}` },
+      { role: 'assistant', content: `RECENT_CONTEXT_MARKER ${'recent '.repeat(2_000)}` },
+    ],
+    source_text: `SOURCE_MARKER ${'saved source '.repeat(2_000)}`,
+  },
+};
+const constrained = composeQwenRequest(constrainedConfig, oversizedJob, oversizedMemory);
+const constrainedText = constrained.messages.map((message) => message.content).join('\n');
+assert(constrained.generation.maxTokens === 2_048, 'top-level output_budget was ignored');
+assert(qwenPromptBytes(constrained.messages) <= qwenPromptByteBudget(constrainedConfig, 2_048),
+  'composed prompt exceeded the conservative 4096-context input bound');
+assert(constrainedText.includes('QUESTION_MARKER'), 'context compaction removed the user question');
+assert(constrainedText.includes('CARD_MARKER'), 'context compaction removed cards and positions');
+assert(constrainedText.includes('RECENT_CONTEXT_MARKER'), 'context compaction removed recent conversation context');
+assert(constrainedText.includes(job.memoryManifestHash) && constrainedText.includes(oversizedMemory.digest),
+  'context compaction removed admitted-memory provenance');
+
+const overflowRetry = composeQwenRequest(constrainedConfig, oversizedJob, oversizedMemory, { overflowRetry: true });
+const retryText = overflowRetry.messages.map((message) => message.content).join('\n');
+assert(qwenPromptBytes(overflowRetry.messages) <= qwenPromptByteBudget(constrainedConfig, 2_048, true),
+  'overflow retry exceeded its stricter prompt bound');
+assert(qwenPromptBytes(overflowRetry.messages) < qwenPromptBytes(constrained.messages),
+  'overflow retry did not deterministically reduce the prompt');
+assert(retryText.includes('QUESTION_MARKER') && retryText.includes('CARD_MARKER')
+  && retryText.includes('RECENT_CONTEXT_MARKER') && retryText.includes(job.memoryManifestHash),
+  'overflow retry discarded required question, cards, context, or provenance');
+
+console.log('chaos-worker-payload-contract.test: OK · structured payload, output budget, conservative 4096-context compaction');

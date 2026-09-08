@@ -9,6 +9,7 @@ import type {
   ClaimedJob,
   FailurePayload,
   OutputChunk,
+  QwenResult,
   RetrievalBundle,
   WorkerConfig,
   WorkerRuntimeState,
@@ -61,6 +62,7 @@ export class ApocryphaWorker {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private heartbeatRetryAt = 0;
   private heartbeatInFlight = false;
+  private memoryOperationTail: Promise<void> = Promise.resolve();
 
   constructor(config: WorkerConfig, dependencies: Dependencies = {}) {
     this.config = config;
@@ -196,15 +198,17 @@ export class ApocryphaWorker {
       const probe = await this.qwen.probe(abortController.signal);
       if (!probe.healthy) throw new QwenError(`Qwen is not ready: ${probe.detail}`, 'QWEN_NOT_READY', true);
       this.runtime.phase = 'retrieving';
-      memory = await retrieveMemory(this.config, claim, this.env, this.fetchImpl);
+      memory = await this.serializeMemoryOperation(
+        () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
+      );
       this.runtime.adapterStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
       if (memory.results.some((result) => result.state !== 'ok')) this.runtime.adapterProbeAt = null;
       if (abortController.signal.aborted) throw abortController.signal.reason;
       this.runtime.phase = 'generating';
-      const request = composeQwenRequest(this.config, claim, memory);
       let buffer = '';
       let seq = state.lastAcknowledgedSeq + 1;
       let lastFlushAt = Date.now();
+      let streamed = false;
       const flush = async (force = false): Promise<void> => {
         while (buffer.length >= this.config.chunkMaxChars || (force && buffer.length > 0)) {
           const size = force ? Math.min(buffer.length, this.config.chunkMaxChars) : this.config.chunkMaxChars;
@@ -223,14 +227,31 @@ export class ApocryphaWorker {
           this.runtime.phase = 'generating';
         }
       };
-      const result = await this.qwen.generate(request.messages, request.generation, async (delta) => {
+      const onDelta = async (delta: string): Promise<void> => {
         if (abortController.signal.aborted) throw abortController.signal.reason;
+        streamed = true;
         buffer += delta;
         if (buffer.length >= this.config.chunkMaxChars || Date.now() - lastFlushAt >= this.config.chunkFlushMs) {
           await flush(false);
           if (buffer.length > 0 && Date.now() - lastFlushAt >= this.config.chunkFlushMs) await flush(true);
         }
-      }, abortController.signal);
+      };
+      const generate = async (overflowRetry = false): Promise<QwenResult> => {
+        const request = composeQwenRequest(this.config, claim, memory as RetrievalBundle, { overflowRetry });
+        return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);
+      };
+      let result: QwenResult;
+      try {
+        result = await generate();
+      } catch (error) {
+        if (!(error instanceof QwenError) || error.code !== 'QWEN_CONTEXT_OVERFLOW' || streamed) throw error;
+        log('warn', 'worker.qwen.context_retry', {
+          job_id: claim.jobId,
+          attempt_id: claim.attemptId,
+          detail: boundedError(error),
+        });
+        result = await generate(true);
+      }
       await flush(true);
       await lease.stop();
       if (abortController.signal.aborted) throw abortController.signal.reason;
@@ -399,6 +420,18 @@ export class ApocryphaWorker {
     this.runtime.lastError = { code, detail, at: new Date().toISOString() };
   }
 
+  private async serializeMemoryOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.memoryOperationTail;
+    let release!: () => void;
+    this.memoryOperationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
   private startHeartbeat(): void {
     const send = async (): Promise<void> => {
       if (this.heartbeatInFlight || Date.now() < this.heartbeatRetryAt || this.stopController.signal.aborted) return;
@@ -409,7 +442,10 @@ export class ApocryphaWorker {
           ? Date.now() - Date.parse(this.runtime.adapterProbeAt)
           : Number.POSITIVE_INFINITY;
         if (this.runtime.phase === 'idle' && probeAge >= 30_000) {
-          const memoryProbe = await probeMemoryAdapters(this.config, this.env, this.fetchImpl);
+          const memoryProbe = await this.serializeMemoryOperation(async () => {
+            if (this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return null;
+            return probeMemoryAdapters(this.config, this.env, this.fetchImpl);
+          });
           if (memoryProbe) {
             this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
             this.runtime.adapterProbeAt = memoryProbe.probedAt;
