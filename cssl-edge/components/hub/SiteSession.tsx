@@ -2,6 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { getAuthClient } from '../../lib/auth';
 import { authFetch } from '../../lib/browser-auth';
+import { withDeadline } from '../../lib/apocrypha/deadline';
+
+export const SITE_SESSION_RESOLUTION_DEADLINE_MS = 4_000;
 
 export type SiteAccessState = 'checking' | 'signed-out' | 'member' | 'owner' | 'unavailable';
 
@@ -21,7 +24,7 @@ interface ResolvedSiteSession {
   ownerConversation?: boolean;
 }
 
-async function resolveSiteAccess(): Promise<ResolvedSiteSession> {
+async function resolveSiteAccessUnchecked(): Promise<ResolvedSiteSession> {
   let browserAuthenticated = false;
   const client = getAuthClient();
 
@@ -63,6 +66,16 @@ async function resolveSiteAccess(): Promise<ResolvedSiteSession> {
   }
 }
 
+export async function resolveSiteAccess(
+  deadlineMs = SITE_SESSION_RESOLUTION_DEADLINE_MS,
+): Promise<ResolvedSiteSession> {
+  try {
+    return await withDeadline(resolveSiteAccessUnchecked(), deadlineMs);
+  } catch {
+    return { access: 'unavailable', subjectKey: null };
+  }
+}
+
 export function SiteSessionProvider({ children }: { children: React.ReactNode }): JSX.Element {
   const [session, setSession] = useState<ResolvedSiteSession>({ access: 'checking', subjectKey: null });
 
@@ -81,8 +94,20 @@ export function SiteSessionProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     const client = getAuthClient();
     if (!client) return undefined;
-    const { data } = client.auth.onAuthStateChange(() => { void refresh(); });
-    return () => data.subscription.unsubscribe();
+    let queuedRefresh: ReturnType<typeof setTimeout> | null = null;
+    const { data } = client.auth.onAuthStateChange(() => {
+      // Supabase dispatches this callback while its auth state is locked. Defer
+      // the read so refresh() cannot wait on the callback that invoked it.
+      if (queuedRefresh !== null) return;
+      queuedRefresh = setTimeout(() => {
+        queuedRefresh = null;
+        void refresh();
+      }, 0);
+    });
+    return () => {
+      if (queuedRefresh !== null) clearTimeout(queuedRefresh);
+      data.subscription.unsubscribe();
+    };
   }, [refresh]);
 
   const value = useMemo<SiteSessionValue>(() => ({

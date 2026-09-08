@@ -1,9 +1,19 @@
 import Head from 'next/head';
 import { useEffect, useRef, useState } from 'react';
 import { openAccountPendingJournal } from '@/lib/mobile/chat-contract';
+import { withDeadline } from '@/lib/apocrypha/deadline';
 import { useSiteSession } from '@/components/hub/SiteSession';
 import AccountChat from '@/components/apocrypha/AccountChat';
 import { ChatThread } from '@/components/apocrypha/ChatThread';
+
+export const ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS = 4_000;
+
+function loadPendingAccountTurn(account: string): Promise<unknown> {
+  return withDeadline(
+    openAccountPendingJournal().then(store => store.load(account)),
+    ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS,
+  );
+}
 
 export default function ApocryphaPage(): JSX.Element {
   const session = useSiteSession();
@@ -17,7 +27,7 @@ export default function ApocryphaPage(): JSX.Element {
   useEffect(() => {
     let active = true;
     if (!account) return;
-    void openAccountPendingJournal().then(store => store.load(account)).then(pending => {
+    void loadPendingAccountTurn(account).then(pending => {
       if (active) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
     }, () => { if (active) setPendingCheck({ account, status: 'unavailable' }); });
     return () => { active = false; };
@@ -29,7 +39,7 @@ export default function ApocryphaPage(): JSX.Element {
   const returnToOwner = async () => {
     if (!account || !displayOwner) return;
     try {
-      const pending = await (await openAccountPendingJournal()).load(account);
+      const pending = await loadPendingAccountTurn(account);
       if (controller.current?.account !== account) return;
       setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
       if (!pending) { controller.current.choice = 'owner'; redraw(value => value + 1); }

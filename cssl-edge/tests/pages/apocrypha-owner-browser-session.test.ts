@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { withDeadline } from '@/lib/apocrypha/deadline';
 
 // § Actual session admission + actual page controller ; async hook harness ≠ browser/auth runtime proof
 export async function main(root: string): Promise<void> {
@@ -13,13 +14,16 @@ export async function main(root: string): Promise<void> {
   const equal = (actual: unknown, expected: unknown, message: string): void => { assert.equal(actual, expected, message); checks += 1; };
   let account: Record<string, unknown> = { user: { id: 'owner' }, owner_conversation: true };
   let authorized = true;
+  let hangSiteFetch = false;
   const sessionExports: Record<string, any> = {};
-  runInNewContext(compile(readFileSync(join(root, 'components/hub/SiteSession.tsx'), 'utf8')
-    + '\nexport { resolveSiteAccess };'), { exports: sessionExports, require(name: string) {
+  runInNewContext(compile(readFileSync(join(root, 'components/hub/SiteSession.tsx'), 'utf8')), { exports: sessionExports, require(name: string) {
       if (name === 'react') return { createContext: () => ({}) };
       if (name.endsWith('/auth')) return { getAuthClient: () => ({ auth: { getSession: async () => ({ data: { session: {} } }) } }) };
-      if (name.endsWith('/browser-auth')) return { authFetch: async (url: string) => ({ ok: true,
-        json: async () => url === '/api/auth/me' ? account : { authorized } }) };
+      if (name.endsWith('/browser-auth')) return { authFetch: async (url: string) => {
+        if (hangSiteFetch) return new Promise<never>(() => undefined);
+        return { ok: true, json: async () => url === '/api/auth/me' ? account : { authorized } };
+      } };
+      if (name.endsWith('/apocrypha/deadline')) return { withDeadline };
       return {};
     } });
   let session = await sessionExports.resolveSiteAccess();
@@ -31,6 +35,12 @@ export async function main(root: string): Promise<void> {
   equal((await sessionExports.resolveSiteAccess()).ownerConversation, false, 'capability requires authenticated identity');
   account = { user: { id: 'owner' }, owner_conversation: true }; authorized = false;
   equal((await sessionExports.resolveSiteAccess()).ownerConversation, false, 'failed admin admission stays closed');
+  hangSiteFetch = true;
+  const deadlineStarted = Date.now();
+  session = await sessionExports.resolveSiteAccess(10);
+  equal(session.access, 'unavailable', 'hung session admission terminates in an explicit unavailable state');
+  equal(Date.now() - deadlineStarted < 100, true, 'hung session admission settles before the outer browser watchdog');
+  hangSiteFetch = false;
 
   type Tree = { type: unknown; props: Record<string, any> };
   type Session = { access: string; ownerConversation: boolean; authenticated: boolean; subjectKey: string | null };
@@ -70,7 +80,9 @@ export async function main(root: string): Promise<void> {
       };
       if (name === '@/components/hub/SiteSession') return { useSiteSession: () => currentSession };
       if (name === '@/lib/mobile/chat-contract') return { openAccountPendingJournal: async () => ({ load }) };
+      if (name === '@/lib/apocrypha/deadline') return { withDeadline: (operation: PromiseLike<unknown>, deadlineMs: number) => withDeadline(operation, Math.min(deadlineMs, 10)) };
       if (name === '@/components/brain/BrainExperience') return { default: 'OwnerConversation' };
+      if (name === '@/components/apocrypha/ChatThread') return { ChatThread: 'OwnerConversation' };
       if (name === '@/components/apocrypha/AccountChat') return { default: 'AccountConversation' };
       return {};
     } });
@@ -103,6 +115,13 @@ export async function main(root: string): Promise<void> {
   equal(surface(tree), 'account', 'unavailable journal preserves account recovery surface');
   equal(handoff(tree).props.disabled, true, 'unverified journal cannot authorize owner handoff');
 
+  const hangingJournal = harness(ownerSession, async () => new Promise<never>(() => undefined));
+  equal(surface(hangingJournal.render()), 'checking', 'owner journal starts in a bounded checking state');
+  await new Promise(resolve => setTimeout(resolve, 20));
+  tree = hangingJournal.render();
+  equal(surface(tree), 'account', 'hung owner journal terminates on the account recovery surface');
+  equal(handoff(tree).props.disabled, true, 'timed-out journal cannot authorize owner handoff');
+
   saved = pendingRecord; const reappeared = harness(ownerSession, async () => saved);
   reappeared.render(); tree = await reappeared.flush();
   accountView(tree).props.onPendingChange(false); tree = reappeared.render();
@@ -115,7 +134,7 @@ export async function main(root: string): Promise<void> {
   const signedOut = harness({ access: 'signed-out', ownerConversation: false, authenticated: false, subjectKey: null }, async () => null, true);
   equal(surface(signedOut.render()), 'account', 'stale SSR admission does not outlive sign out');
   const checking = harness({ access: 'checking', ownerConversation: false, authenticated: false, subjectKey: null }, async () => null, true);
-  equal(surface(checking.render()), 'checking', 'SSR owner waits for browser identity instead of rendering private contents');
+  equal(surface(checking.render()), 'account', 'checking identity remains inside the public account controller instead of rendering private contents');
 
   let resolveOld: (value: unknown) => void = () => undefined;
   const oldRead = new Promise<unknown>(resolve => { resolveOld = resolve; });
