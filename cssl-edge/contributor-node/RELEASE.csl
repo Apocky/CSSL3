@@ -1,0 +1,57 @@
+§ APOCRYPHA.CONTRIBUTOR.NODE.CANDIDATE.RELEASE.v1 ‼
+
+status := CANDIDATE.NOT_DEPLOYABLE
+network := disabled
+transport := absent.external_controller
+artifact := source+reproducible-build only ; no signed.public.download
+
+§P GAP
+  need := opt-in contributor execution unit with hard local boundaries
+  reuse := {Apocrypha worker vocabulary, Mycelium sovereignty controls,
+            Sigma Ed25519 envelope semantics}
+  selected.form := standalone Node.js process + pure runtime library
+  runner-up := native Rust multi-platform installer
+  reject.runner-up := installer/toolchain/platform matrix unverified @ this lane
+
+§D CONTRACT
+  input := one controller-signed `apocrypha.contributor.lease.v1`
+  task := vector_dot(left,right)
+  output := one node-signed `apocrypha.contributor.result.v1`
+  signing := Ed25519 required @ controller ingress + node egress
+  replay := lease_id cache ≤512 ; duplicate ⇒ reject
+  execution := one active lease ; starts paused ; explicit `--opt-in`
+  caps := {lease≤128KiB,task≤64KiB,result≤64KiB,elements≤4096,
+           operations≤2e6,wall≤2s,lease_ttl≤5m}
+  controls := {pause=immediate local stop,
+               revoke=key clear+replay clear+terminal,
+               uninstall=state clear+terminal}
+  privacy := {raw_conversation=false,raw_memory=false,vault_payloads=false,
+              credentials=false,filesystem_traversal=false,telemetry=false}
+
+§T ACCEPTANCE
+  ✓ valid lease executes deterministic dot product
+  ✓ real Ed25519 signature verification+result signing
+  ✓ invalid signature|replay|node mismatch|expiry|TTL rejected
+  ✓ task schema|input|operation|wall|result limits enforced
+  ✓ pause|revoke|uninstall state transitions tested
+  ✓ no network/process/filesystem/sensitive-field paths in runtime
+  ✓ build+pack candidate reproducible without runtime dependencies
+
+§C PROMOTION.GATES
+  N! release := ¬ signed_artifact ∨ ¬ controller_transport ∨ ¬ authenticated
+                               contribution_oracle ∨ ¬ platform_install_smoke
+                               ∨ ¬ malware_scan ∨ ¬ rollback_proof
+  N! public.page links artifact while state=NOT_DEPLOYABLE
+  owner := integration agent controls any deployment/alias effect
+
+§R ROLLBACK
+  source := revert candidate commit
+  runtime := no persistent state or alias changed by this lane
+  artifact := do not publish unsigned candidate archive
+
+§OPEN
+  controller endpoint+lease service; publisher key custody; platform-native
+  packaging; signed artifact; device/installer tests; authenticated end-to-end
+  contribution receipt; legal/license review; live rollback bytes
+
+∎

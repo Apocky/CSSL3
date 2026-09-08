@@ -5572,9 +5572,9 @@ t∞ : ¬ harm @ in-the-Mycelium-build · sovereignty-preserved · ¬ data-exfil
   {
     slug: "26_APOCRYPHA_CONTRIBUTOR_NODE_DOWNLOAD",
     filename: "26_APOCRYPHA_CONTRIBUTOR_NODE_DOWNLOAD.csl",
-    title: "APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v1 ‼",
-    body: `§ APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v1 ‼
-# status := SCAFFOLD.PUBLIC_METADATA.NOT_DEPLOYED
+    title: "APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v2 ‼",
+    body: `§ APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v2 ‼
+# status := CANDIDATE.NOT_DEPLOYABLE
 # authority := user-requested implementation lane ∩ CSSL-edge source+tests
 # production := no executable artifact | no worker | no alias mutation in this slice
 
@@ -5589,11 +5589,12 @@ t∞ : ¬ harm @ in-the-Mycelium-build · sovereignty-preserved · ¬ data-exfil
   current.fact := existing Apocv4 node has no production transport/listener
                   ; existing Mycelium placeholder is ¬ runnable release
   selected.form := public static landing + read-only JSON manifest
+                    + local-only Node.js worker candidate
 
 §D PUBLIC.CONTRACT
   route := /download/apocrypha-node
   api := GET /api/apocrypha/contributor/manifest
-  state := NOT_DEPLOYED ∧ release_gate=CLOSED
+  state := NOT_DEPLOYABLE ∧ release_gate=CLOSED
   artifact := null ∀ platform
   platforms := {windows-x64,macos-arm64,linux-x64,android,ios}
   promotion := native_transport ∧ signed_artifact ∧ SHA256 ∧ detached_signature
@@ -5621,11 +5622,23 @@ t∞ : ¬ harm @ in-the-Mycelium-build · sovereignty-preserved · ¬ data-exfil
   telemetry := disabled_by_default
   N! Vault|Obsidian content baked into package or sent to worker
 
+§WORKER.CANDIDATE
+  package := cssl-edge/contributor-node
+  process := one signed lease stdin → one signed result stdout
+  task := deterministic vector_dot(left,right)
+  network := disabled ; no filesystem traversal|shell|spawn|git|chat|MCP
+  caps := {lease≤128KiB,task≤64KiB,result≤64KiB,elements≤4096,
+           operations≤2e6,wall≤2s,lease_ttl≤5m}
+  signing := Ed25519 controller ingress + node egress ; key generated locally
+  controls := pause|revoke|uninstall ; replay cache ≤512 ; concurrency=1
+  candidate := reproducible source/build + local tests ; unsigned artifact absent
+
 §T ACCEPTANCE
   ✓ manifest parser rejects unknown keys, missing platforms, unsafe hrefs,
     missing hashes/signatures, candidate→READY promotion, and contract mismatch
   ✓ API GET returns public-safe manifest + no-store; non-GET=405+Allow
   ✓ page renders unavailable state with no executable link
+  ✓ worker valid lease/result, signature, replay, cap, privacy, and controls tests
   ○ production deploy only after integration owner cherry-pick + source/build
     proof + live route oracle
 
