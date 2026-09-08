@@ -9,6 +9,7 @@ import { createGatewayServer } from '../scripts/apocrypha-memory-gateway/gateway
 import {
   brainmonsoonRecords,
   canonicalGraphQuery,
+  SerialReadGate,
   nativeErrorCode,
   nativeMemPalaceResultHealthy,
 } from '../scripts/apocrypha-memory-gateway/adapters';
@@ -73,6 +74,17 @@ function requestBody(overrides: Record<string, unknown> = {}): Record<string, un
 }
 
 async function main(): Promise<void> {
+  const serialGate = new SerialReadGate();
+  let activeFederatorReads = 0;
+  let maximumFederatorReads = 0;
+  await Promise.all([1, 2, 3].map((index) => serialGate.run(new AbortController().signal, async () => {
+    activeFederatorReads += 1;
+    maximumFederatorReads = Math.max(maximumFederatorReads, activeFederatorReads);
+    await new Promise((resolve) => setTimeout(resolve, 10 + index));
+    activeFederatorReads -= 1;
+  })));
+  assert(maximumFederatorReads === 1, 'shared native federator reads overlapped');
+
   const brainRecords = brainmonsoonRecords({ native_response: { result: { batch: { input: {
     claims: [{ claim_ref: 'claim:1', kind: 'observation', actor: 'The Tower', confidence: 0.8 }],
     relations: [{ subject: 'Tower', predicate: 'crosses', object: 'Star' }],

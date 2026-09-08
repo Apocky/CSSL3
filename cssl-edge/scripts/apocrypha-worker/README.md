@@ -33,12 +33,16 @@ Only one worker process can own a journal directory. `worker.lock` prevents dupl
 
 ## Memory and tools
 
-`manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, MNEME, and MetaHarness. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. The resident defaults to one bounded adapter call at a time so native readers cannot collide during process startup; `APOCRYPHA_MEMORY_READ_CONCURRENCY` can admit up to six only after a host benchmark. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen beyond its declared timeout.
+`manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, MNEME, and MetaHarness. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. The current host profile admits three concurrent reads after task-shaped recall testing; `APOCRYPHA_MEMORY_READ_CONCURRENCY` remains adjustable from one through six for other hosts. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen beyond its declared timeout.
 
 An individual resident can raise a slow local adapter's deadline with
 `APOCRYPHA_<ADAPTER>_READ_TIMEOUT_MS` (250 through 60000). This runtime dial
 does not change the admitted faculty, authority, response bound, or manifest;
 it only allows a known local reader enough time to finish.
+
+Resident readiness uses a representative Apocrypha and Chaos Tarot recall
+query, so a fast synthetic health lookup cannot conceal a production-query
+timeout.
 
 Every heartbeat performs a bounded live Qwen probe. While idle, the worker
 also performs all six read-only adapter requests for the primary and every

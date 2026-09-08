@@ -47,9 +47,10 @@ allowlisted scalar metadata. They always state `authority: none`,
 `execution_authorized: false`, and `read_only: true`. Raw queries, bearer
 tokens, capability files, and absolute source paths are not returned or logged.
 
-`GET /health` reports truthful per-faculty states. `GET /ready` returns 200 only
-when at least one faculty has a verified read-only native or upstream health
-surface. Both endpoints require the same bearer token and loopback caller.
+`GET /health` reports per-faculty states using a representative Apocrypha and
+Chaos Tarot recall query. `GET /ready` returns 200 only when at least one
+faculty has a verified read-only native or upstream recall surface. Both
+endpoints require the same bearer token and loopback caller.
 
 ## Native and upstream sources
 

@@ -13,6 +13,8 @@ type Fetch = typeof fetch;
 const MAX_ADAPTER_ATTEMPTS = 2;
 const ADAPTER_RETRY_DELAY_MS = 200;
 const ADAPTER_RETRY_GRACE_MS = 1_000;
+export const MEMORY_READINESS_QUERY =
+  'current Apocrypha and Chaos Tarot Oracle production memory recall readiness';
 
 interface AdapterAttemptOutcome {
   result: RetrievalAdapterResult;
@@ -396,7 +398,7 @@ export async function probeMemoryAdapters(
       ownerPrincipalId: scope.principalId,
       kind: 'operational_probe',
       capability: scope.capability,
-      request: { retrieval_query: 'resident adapter operational health' },
+      request: { retrieval_query: MEMORY_READINESS_QUERY },
       modelAlias: config.modelAlias,
       profileHash: config.profileHash,
       toolRegistryVersion: config.toolRegistryVersion,
@@ -422,7 +424,7 @@ export async function probeMemoryAdapters(
       ...(failure?.detail ? { detail: failure.detail } : {}),
     };
   });
-  const query = 'resident adapter operational health';
+  const query = MEMORY_READINESS_QUERY;
   const records = results.flatMap((result) => result.records).slice(0, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),

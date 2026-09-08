@@ -1,4 +1,4 @@
-import { retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
+import { MEMORY_READINESS_QUERY, probeMemoryAdapters, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -175,12 +175,34 @@ async function exhaustedTimeoutStaysBounded(): Promise<void> {
   assert(elapsed <= 1_500, 'exhausted timeout exceeded configured timeout plus bounded retry grace');
 }
 
+async function readinessUsesTaskShapedRecall(): Promise<void> {
+  const observed: string[] = [];
+  const probeConfig: WorkerConfig = {
+    ...config,
+    memoryProbeTenantId: job.tenantId,
+    memoryProbePrincipalId: job.ownerPrincipalId,
+  };
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    observed.push(String(body.query ?? ''));
+    return response(200, { records: [] });
+  }) as typeof fetch;
+
+  const bundle = await probeMemoryAdapters(probeConfig, env, fetchImpl);
+  assert(bundle !== null, 'configured readiness probe did not run');
+  assert(bundle.query === MEMORY_READINESS_QUERY, 'readiness bundle lost its task-shaped query');
+  assert(observed.length === 1 && observed[0] === MEMORY_READINESS_QUERY,
+    'readiness sent a synthetic health lookup instead of the representative recall query');
+  assert(bundle.probedAt !== null, 'successful task-shaped recall was not marked complete');
+}
+
 async function main(): Promise<void> {
   await transientServerErrorRecovers();
   await timeoutRecovers();
   await finalFailureRemainsVisible();
   await permanentFailureDoesNotRetry();
   await exhaustedTimeoutStaysBounded();
+  await readinessUsesTaskShapedRecall();
   console.log('apocrypha-worker-retrieval.test : OK · bounded transient retries preserve final adapter truth');
 }
 

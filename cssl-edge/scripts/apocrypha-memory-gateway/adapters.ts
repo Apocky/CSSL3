@@ -6,6 +6,37 @@ import type {
 } from './types';
 import { runBoundedJsonl, utf8Prefix } from './process';
 
+export const MEMORY_READINESS_QUERY =
+  'current Apocrypha and Chaos Tarot Oracle production memory recall readiness';
+
+export class SerialReadGate {
+  private tail: Promise<void> = Promise.resolve();
+
+  async run<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+    const previous = this.tail;
+    let release = (): void => undefined;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.tail = previous.then(() => current);
+    let onAbort = (): void => undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(signal.reason instanceof Error
+        ? signal.reason : new Error('NATIVE_FEDERATOR_WAIT_ABORTED'));
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    });
+    try {
+      await Promise.race([previous, aborted]);
+      if (signal.aborted) {
+        throw signal.reason instanceof Error ? signal.reason : new Error('NATIVE_FEDERATOR_WAIT_ABORTED');
+      }
+      return await operation();
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+      release();
+    }
+  }
+}
+
 function scopedRequestId(prefix: string, request: SearchRequest): string {
   const scope = [request.tenant_id, request.principal_id, request.capability].join('\0');
   return `${prefix}-${Date.now().toString(36)}-${createHash('sha256').update(scope).digest('hex').slice(0, 20)}`;
@@ -165,21 +196,24 @@ class UpstreamAdapter implements ReadOnlyAdapter {
 
 class NativeMemPalaceAdapter implements ReadOnlyAdapter {
   readonly name = 'mempalace' as const;
-  constructor(private readonly config: GatewayConfig) {}
+  constructor(private readonly config: GatewayConfig, private readonly gate: SerialReadGate) {}
   async search(request: SearchRequest, signal: AbortSignal): Promise<unknown> {
     const native = this.config.native;
-    const frames = await runBoundedJsonl(native.federatorExecutable as string, ['framed'], [{
-      op: 'query',
-      request_id: scopedRequestId('gateway-mem', request),
-      db_path: native.mempalaceDb,
-      privacy_partition: native.privacyPartition,
-      query: request.query,
-      limit: request.limit,
-      deadline_ms: innerDeadline(this.config.limits.timeoutMs),
-      include_sample_digest: false,
-    }], signal, this.config.limits.responseBytes * 4);
+    const frames = await this.gate.run(signal, () => runBoundedJsonl(
+      native.federatorExecutable as string, ['framed'], [{
+        op: 'query',
+        request_id: scopedRequestId('gateway-mem', request),
+        db_path: native.mempalaceDb,
+        privacy_partition: native.privacyPartition,
+        query: request.query,
+        limit: request.limit,
+        deadline_ms: innerDeadline(this.config.limits.timeoutMs),
+        include_sample_digest: false,
+      }], signal, this.config.limits.responseBytes * 4));
     const payload = frames[0] as Record<string, unknown> | undefined;
-    if (!nativeMemPalaceResultHealthy(payload)) throw new Error('NATIVE_MEMPALACE_UNAVAILABLE');
+    if (!nativeMemPalaceResultHealthy(payload)) {
+      throw new Error(nativeErrorCode(payload, 'NATIVE_MEMPALACE_UNAVAILABLE'));
+    }
     return payload;
   }
   async probe(signal: AbortSignal): Promise<AdapterProbe> {
@@ -247,13 +281,18 @@ class NativeGraphAdapter implements ReadOnlyAdapter {
 }
 
 class NativeObserveAdapter implements ReadOnlyAdapter {
-  constructor(readonly name: 'mneme' | 'metaharness', private readonly config: GatewayConfig) {}
+  constructor(
+    readonly name: 'mneme' | 'metaharness',
+    private readonly config: GatewayConfig,
+    private readonly gate: SerialReadGate,
+  ) {}
   async search(request: SearchRequest, signal: AbortSignal): Promise<unknown> {
     const native = this.config.native;
     const query = utf8Prefix(request.query.replace(/\s+/gu, ' ').trim(), 768);
     const owner = native.ownerId as string;
     const partition = native.privacyPartition as string;
-    const frames = await runBoundedJsonl(native.federatorExecutable as string,
+    const frames = await this.gate.run(signal, () => runBoundedJsonl(
+      native.federatorExecutable as string,
       ['observe', '--config', native.federatorConfig as string], [{
         schema_version: 'apocrypha.memory.remote-observe-request.v1',
         request_id: scopedRequestId(`gateway-${this.name}`, request),
@@ -263,14 +302,14 @@ class NativeObserveAdapter implements ReadOnlyAdapter {
         deadline_ms: innerDeadline(Math.min(this.config.limits.timeoutMs, 12_000)),
         expected_owner_sha256: createHash('sha256').update(owner).digest('hex'),
         expected_privacy_partition_sha256: createHash('sha256').update(partition).digest('hex'),
-      }], signal, this.config.limits.responseBytes * 4);
+      }], signal, this.config.limits.responseBytes * 4));
     const payload = frames[0] as Record<string, unknown> | undefined;
     const region = payload && Array.isArray(payload.regions) ? payload.regions[0] as Record<string, unknown> | undefined : undefined;
     const status = String(region?.status ?? '').toLowerCase();
     const code = String(region?.code ?? '');
     const admitted = ['ok', 'ready'].includes(status) || (status === 'empty' && code === 'FED_OBSERVE_OK');
     if (!payload || !region || !admitted) {
-      throw new Error('NATIVE_OBSERVER_UNAVAILABLE');
+      throw new Error(nativeErrorCode(region, 'NATIVE_OBSERVER_UNAVAILABLE'));
     }
     return payload;
   }
@@ -377,7 +416,7 @@ class NativeBrainmonsoonAdapter implements ReadOnlyAdapter {
 
 function probeRequest(config: GatewayConfig): SearchRequest {
   return {
-    operation: 'search', read_only: true, query: 'gateway health', limit: 1,
+    operation: 'search', read_only: true, query: MEMORY_READINESS_QUERY, limit: 1,
     tenant_id: config.allowedTenants.values().next().value ?? '',
     principal_id: config.allowedPrincipals.values().next().value ?? '',
     capability: config.allowedCapabilities.values().next().value ?? '',
@@ -386,6 +425,7 @@ function probeRequest(config: GatewayConfig): SearchRequest {
 
 export function createAdapters(config: GatewayConfig): Map<AdapterName, ReadOnlyAdapter> {
   const result = new Map<AdapterName, ReadOnlyAdapter>();
+  const federatorGate = new SerialReadGate();
   const brain = config.native;
   const brainConfigured = Boolean(brain.brainmonsoonExecutable && brain.brainmonsoonExecutableSha256
     && brain.brainmonsoonRegistry && brain.brainmonsoonRegistrySha256
@@ -403,7 +443,7 @@ export function createAdapters(config: GatewayConfig): Map<AdapterName, ReadOnly
   result.set('mempalace', config.upstreams.mempalace
     ? new UpstreamAdapter('mempalace', config.upstreams.mempalace, config.limits.responseBytes * 4)
     : config.native.federatorExecutable && config.native.mempalaceDb && config.native.privacyPartition
-      ? new NativeMemPalaceAdapter(config) : new UnconfiguredAdapter('mempalace'));
+      ? new NativeMemPalaceAdapter(config, federatorGate) : new UnconfiguredAdapter('mempalace'));
   result.set('graphify', config.upstreams.graphify
     ? new UpstreamAdapter('graphify', config.upstreams.graphify, config.limits.responseBytes * 4)
     : config.native.graphExecutable && config.native.graphPath && config.native.graphCsl && config.native.graphNil && config.native.graphCssl
@@ -412,7 +452,7 @@ export function createAdapters(config: GatewayConfig): Map<AdapterName, ReadOnly
     result.set(name, config.upstreams[name]
       ? new UpstreamAdapter(name, config.upstreams[name] as NonNullable<GatewayConfig['upstreams'][AdapterName]>, config.limits.responseBytes * 4)
       : config.native.federatorExecutable && config.native.federatorConfig && config.native.ownerId && config.native.privacyPartition
-        ? new NativeObserveAdapter(name, config) : new UnconfiguredAdapter(name));
+        ? new NativeObserveAdapter(name, config, federatorGate) : new UnconfiguredAdapter(name));
   }
   return result;
 }
