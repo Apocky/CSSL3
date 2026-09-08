@@ -36,13 +36,13 @@
 //!   - Break-with-label targeting — `scf.br` / `scf.continue` emission.
 //!   - Pattern-matching arm-guard lowering + exhaustiveness-checking.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use cssl_ast::{SourceFile, Span};
 use cssl_hir::{
-    HirBinOp, HirBlock, HirCallArg, HirCompoundOp, HirExpr, HirExprKind, HirFn, HirLambdaParam,
-    HirLiteral, HirLiteralKind, HirStmt, HirStmtKind, HirStructFieldInit, HirType, HirTypeKind,
-    HirUnOp, Interner, Symbol,
+    HirBinOp, HirBlock, HirCallArg, HirCompoundOp, HirExpr, HirExprKind, HirFn, HirItem,
+    HirLambdaParam, HirLiteral, HirLiteralKind, HirModule, HirStmt, HirStmtKind,
+    HirStructFieldInit, HirType, HirTypeKind, HirUnOp, Interner, Symbol,
 };
 
 use crate::block::{MirBlock, MirOp, MirRegion};
@@ -50,6 +50,84 @@ use crate::func::MirFunc;
 use crate::op::CsslOp;
 use crate::trait_dispatch::TraitImplTable;
 use crate::value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
+
+/// Declared source-level contract for one direct-call parameter.
+///
+/// MIR integers are signless, so `unsigned` preserves the source distinction
+/// needed to parse integer literals without routing values above `i64::MAX`
+/// through the generic `stage0_int` placeholder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallParamContract {
+    pub ty: MirType,
+    pub unsigned: Option<bool>,
+}
+
+/// Deterministic direct-callee parameter table used by generic `func.call`
+/// lowering. Entries use the same source-form symbol names as `MirFunc.name`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CallSignatureTable {
+    entries: BTreeMap<String, Vec<CallParamContract>>,
+}
+
+impl CallSignatureTable {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+        }
+    }
+
+    /// Add all regular + extern top-level function declarations from one HIR
+    /// module. Repeated names replace the prior entry, matching the
+    /// stage-0 MIR module's existing name-based resolution behavior.
+    pub fn extend_hir_module(
+        &mut self,
+        module: &HirModule,
+        interner: &Interner,
+    ) {
+        let lower_ctx = crate::lower::LowerCtx::new(interner);
+        for item in &module.items {
+            let (name, params) = match item {
+                HirItem::Fn(function) => (function.name, &function.params),
+                HirItem::ExternFn(function) => (function.name, &function.params),
+                _ => continue,
+            };
+            let contracts = params
+                .iter()
+                .map(|param| {
+                    let ty = lower_ctx.lower_type(&param.ty);
+                    let unsigned = matches!(ty, MirType::Int(_))
+                        .then(|| declared_scalar_integer_unsigned(interner, &param.ty))
+                        .flatten();
+                    CallParamContract { ty, unsigned }
+                })
+                .collect();
+            self.entries.insert(interner.resolve(name), contracts);
+        }
+    }
+
+    #[must_use]
+    pub fn get(&self, callee: &str) -> Option<&[CallParamContract]> {
+        self.entries.get(callee).map(Vec::as_slice)
+    }
+}
+
+/// Source signedness for scalar integer declarations only. References and
+/// other wrappers are deliberately excluded: their ABI may currently share
+/// an integer carrier, but they are not integer-literal parameter contracts.
+fn declared_scalar_integer_unsigned(interner: &Interner, ty: &HirType) -> Option<bool> {
+    match &ty.kind {
+        HirTypeKind::Path { path, .. } if path.len() == 1 => {
+            match interner.resolve(path[0]).as_str() {
+                "u8" | "u16" | "u32" | "u64" | "usize" => Some(true),
+                "i8" | "i16" | "i32" | "i64" | "isize" => Some(false),
+                _ => None,
+            }
+        }
+        HirTypeKind::Refined { base, .. } => declared_scalar_integer_unsigned(interner, base),
+        _ => None,
+    }
+}
 
 /// Per-fn lowering context.
 ///
@@ -70,6 +148,9 @@ pub struct BodyLowerCtx<'a> {
     /// `lower_call` consults this for any field-callee call BEFORE
     /// falling through to `cssl.field` + opaque indirect-call.
     pub trait_impl_table: Option<&'a TraitImplTable>,
+    /// Declared direct-call parameter contracts for generic `func.call`
+    /// lowering. Recognizer-owned intrinsics remain unchanged.
+    pub call_signatures: Option<&'a CallSignatureTable>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
     /// § Source unsignedness for checked indices; signless MIR width alone cannot select extension.
@@ -178,6 +259,7 @@ impl<'a> BodyLowerCtx<'a> {
             interner,
             source: None,
             trait_impl_table: None,
+            call_signatures: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
             checked_alias_types: HashMap::new(),
@@ -201,6 +283,7 @@ impl<'a> BodyLowerCtx<'a> {
             interner,
             source: Some(source),
             trait_impl_table: None,
+            call_signatures: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
             checked_alias_types: HashMap::new(),
@@ -263,6 +346,7 @@ impl<'a> BodyLowerCtx<'a> {
             interner: self.interner,
             source: self.source,
             trait_impl_table: self.trait_impl_table,
+            call_signatures: self.call_signatures,
             param_vars: self.param_vars.clone(),
             index_unsigned_vars: self.index_unsigned_vars.clone(),
             checked_alias_types: self.checked_alias_types.clone(),
@@ -302,7 +386,7 @@ pub fn lower_fn_body(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
-    lower_fn_body_with_table(interner, source, None, hir_fn, mir_fn);
+    lower_fn_body_with_tables(interner, source, None, None, hir_fn, mir_fn);
 }
 
 /// T11-D99 — lower with an optional trait-impl table threaded in.
@@ -319,6 +403,37 @@ pub fn lower_fn_body_with_table(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
+    lower_fn_body_with_tables(interner, source, table, None, hir_fn, mir_fn);
+}
+
+/// Lower with declared direct-callee parameter contracts available to the
+/// generic call path. Integer literals are emitted directly at the callee's
+/// declared width + signedness; invalid range/suffix/arity contracts refuse.
+pub fn lower_fn_body_with_call_signatures(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    call_signatures: &CallSignatureTable,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
+    lower_fn_body_with_tables(
+        interner,
+        source,
+        None,
+        Some(call_signatures),
+        hir_fn,
+        mir_fn,
+    );
+}
+
+fn lower_fn_body_with_tables<'a>(
+    interner: &'a Interner,
+    source: Option<&'a SourceFile>,
+    table: Option<&'a TraitImplTable>,
+    call_signatures: Option<&'a CallSignatureTable>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
     let Some(body) = &hir_fn.body else {
         return;
     };
@@ -329,6 +444,7 @@ pub fn lower_fn_body_with_table(
     if let Some(t) = table {
         ctx.trait_impl_table = Some(t);
     }
+    ctx.call_signatures = call_signatures;
     // Entry-block args = flat-scalarized fn params. Each vec2/vec3/vec4 param
     // occupies N consecutive entry-block ids (matches the flat signature emitted
     // by `lower_function_signature`) ; everything else occupies one id. The
@@ -3243,18 +3359,68 @@ fn lower_call(
     if let Some(result) = try_lower_thread_call(ctx, callee, args, span) {
         return Some(result);
     }
+    // § P1a-ABI9005 — generic direct calls inherit the declared callee
+    // parameter contracts. This is intentionally after every recognizer:
+    // intrinsic-owned call shapes retain their established lowering, while
+    // ordinary `func.call` literals now bypass the signless i32/
+    // `stage0_int` fallback. Clone the small contract vector so lowering can
+    // mutate `ctx` while iterating.
+    let declared_params = ctx
+        .call_signatures
+        .and_then(|table| table.get(&target))
+        .map(<[CallParamContract]>::to_vec);
+    if let Some(params) = &declared_params {
+        if params.len() != args.len() {
+            return Some(emit_call_contract_refusal(
+                ctx,
+                &target,
+                "declared callee arity differs from call argument count",
+                params.len(),
+                args.len(),
+                span,
+            ));
+        }
+    }
+
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
     let mut operand_tys: Vec<MirType> = Vec::with_capacity(args.len());
-    for arg in args {
+    for (arg_index, arg) in args.iter().enumerate() {
         let a_expr = match arg {
             HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
         };
-        if let Some((id, ty)) = lower_expr(ctx, a_expr) {
-            operand_ids.push(id);
-            operand_tys.push(ty);
-        }
+        let lowered = if let Some(contract) = declared_params
+            .as_ref()
+            .and_then(|params| params.get(arg_index))
+        {
+            if let Some(unsigned) = contract.unsigned {
+                match lower_contextual_integer_literal(ctx, a_expr, &contract.ty, unsigned) {
+                    Some(Ok(value)) => Some(value),
+                    Some(Err(id)) => return Some((id, MirType::None)),
+                    None => lower_expr(ctx, a_expr),
+                }
+            } else {
+                lower_expr(ctx, a_expr)
+            }
+        } else {
+            lower_expr(ctx, a_expr)
+        };
+        let Some((id, ty)) = lowered else {
+            if let Some(params) = &declared_params {
+                return Some(emit_call_contract_refusal(
+                    ctx,
+                    &target,
+                    "declared call argument failed to lower",
+                    params.len(),
+                    args.len(),
+                    span,
+                ));
+            }
+            continue;
+        };
+        operand_ids.push(id);
+        operand_tys.push(ty);
     }
     // Emit `func.call @target` op. For known-intrinsic math callees
     // (min/max/abs/sqrt/sin/cos/exp/log), infer the result type from the
@@ -3278,6 +3444,30 @@ fn lower_call(
     ctx.ops.push(mir_op);
     let _ = span;
     Some((id, result_ty))
+}
+
+/// Emit a structural refusal instead of an admitted `func.call`. Object/JIT
+/// backends reject this op as unsupported, so the compiler cannot reach the
+/// historical argument padding/truncation adapter for a known declaration.
+fn emit_call_contract_refusal(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &str,
+    reason: &str,
+    expected_arity: usize,
+    actual_arity: usize,
+    span: Span,
+) -> (ValueId, MirType) {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.call.contract.unverified")
+            .with_result(id, MirType::None)
+            .with_attribute("callee", callee)
+            .with_attribute("reason", reason)
+            .with_attribute("expected_arity", expected_arity.to_string())
+            .with_attribute("actual_arity", actual_arity.to_string())
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (id, MirType::None)
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -6678,7 +6868,7 @@ fn _unused(_: MirValue) {}
 
 #[cfg(test)]
 mod tests {
-    use super::lower_fn_body;
+    use super::{lower_fn_body, lower_fn_body_with_call_signatures, CallSignatureTable};
     use crate::lower::{lower_function_signature, LowerCtx};
     use crate::value::IntWidth;
     use crate::value::MirType;
@@ -6708,6 +6898,40 @@ mod tests {
         let mut mf = lower_function_signature(&ctx, f);
         lower_fn_body(&interner, Some(&source), f, &mut mf);
         (mf, interner)
+    }
+
+    /// Lower one named function with the module's declared direct-call
+    /// signatures threaded through the generic call path.
+    fn lower_named_with_call_signatures(
+        src: &str,
+        name: &str,
+        with_source: bool,
+    ) -> crate::func::MirFunc {
+        let (hir, interner, source) = hir_from(src);
+        let ctx = LowerCtx::new(&interner);
+        let mut signatures = CallSignatureTable::new();
+        signatures.extend_hir_module(&hir, &interner);
+        let f = hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                cssl_hir::HirItem::Fn(function)
+                    if interner.resolve(function.name) == name =>
+                {
+                    Some(function)
+                }
+                _ => None,
+            })
+            .expect("expected named fn item");
+        let mut mf = lower_function_signature(&ctx, f);
+        lower_fn_body_with_call_signatures(
+            &interner,
+            with_source.then_some(&source),
+            &signatures,
+            f,
+            &mut mf,
+        );
+        mf
     }
 
     /// Lower the first fn without threading a source file — used to assert
@@ -6808,6 +7032,96 @@ mod tests {
             assert!(names.contains(&"cssl.integer.literal.contract.unverified"), "{ty}: {literal}");
             assert!(!names.contains(&"cssl.local.alloca") && !names.contains(&"memref.store"), "{ty}: {literal}");
         }
+    }
+
+    #[test]
+    fn generic_call_literals_inherit_declared_u64_parameter_bits() {
+        let source = "fn add_wrap(left: u64, right: u64) -> u64 { left + right }\n\
+                      fn caller() -> u64 { add_wrap(0xffffffffffffffffu64, 1u64) }";
+        let f = lower_named_with_call_signatures(source, "caller", true);
+        let ops = &f.body.entry().expect("entry").ops;
+        let call = ops
+            .iter()
+            .find(|op| op.name == "func.call")
+            .expect("declared call");
+        assert_eq!(call.operands.len(), 2);
+        let values: Vec<_> = call
+            .operands
+            .iter()
+            .map(|operand| {
+                ops.iter()
+                    .find(|op| op.results.iter().any(|result| result.id == *operand))
+                    .expect("call operand producer")
+            })
+            .collect();
+        assert!(values.iter().all(|op| {
+            op.name == "arith.constant"
+                && op.results[0].ty == MirType::Int(IntWidth::I64)
+        }));
+        assert!(values[0]
+            .attributes
+            .iter()
+            .any(|(key, value)| key == "value" && value == "-1"));
+        assert!(values[1]
+            .attributes
+            .iter()
+            .any(|(key, value)| key == "value" && value == "1"));
+        assert!(!ops.iter().any(|op| {
+            op.attributes
+                .iter()
+                .any(|(key, value)| key == "value" && value == "stage0_int")
+        }));
+        assert!(!op_names(&f).contains(&"cssl.integer.literal.contract.unverified"));
+    }
+
+    #[test]
+    fn generic_call_literal_range_suffix_or_source_failure_refuses_before_call() {
+        for (literal, with_source) in [
+            ("18446744073709551616u64", true),
+            ("1i64", true),
+            ("0xffffffffffffffffu64", false),
+        ] {
+            let source = format!(
+                "fn take(value: u64) -> u64 {{ value }} fn caller() -> u64 {{ take({literal}) }}"
+            );
+            let f = lower_named_with_call_signatures(&source, "caller", with_source);
+            let names = op_names(&f);
+            assert!(
+                names.contains(&"cssl.integer.literal.contract.unverified"),
+                "{literal}; with_source={with_source}"
+            );
+            assert!(!names.contains(&"func.call"), "{literal}");
+            assert!(!f.body.entry().expect("entry").ops.iter().any(|op| {
+                op.attributes
+                    .iter()
+                    .any(|(key, value)| key == "value" && value == "stage0_int")
+            }));
+        }
+    }
+
+    #[test]
+    fn generic_call_declared_arity_mismatch_refuses_without_padding_or_truncation() {
+        for call in ["take()", "take(1u64, 2u64)"] {
+            let source = format!(
+                "fn take(value: u64) -> u64 {{ value }} fn caller() -> u64 {{ {call} }}"
+            );
+            let f = lower_named_with_call_signatures(&source, "caller", true);
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.call.contract.unverified"), "{call}");
+            assert!(!names.contains(&"func.call"), "{call}");
+        }
+    }
+
+    #[test]
+    fn unknown_generic_call_preserves_existing_unresolved_fallback() {
+        let f = lower_named_with_call_signatures(
+            "fn caller() -> i32 { not_declared(7) }",
+            "caller",
+            true,
+        );
+        let names = op_names(&f);
+        assert!(names.contains(&"func.call"));
+        assert!(!names.contains(&"cssl.call.contract.unverified"));
     }
 
     #[test]

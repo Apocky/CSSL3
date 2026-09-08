@@ -142,6 +142,16 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     let _obligations = cssl_hir::collect_refinement_obligations(&hir_mod, &interner);
 
     // ── MIR ───────────────────────────────────────────────────────────
+    // § P1a-ABI9005 — collect declared direct-callee parameter contracts
+    // before any body is lowered. The shared table covers the root + every
+    // auxiliary source module so cross-function integer literals inherit the
+    // callee's exact width/signedness instead of the generic i32 fallback.
+    let mut call_signatures = cssl_mir::CallSignatureTable::new();
+    call_signatures.extend_hir_module(&hir_mod, &interner);
+    for (aux_hir, aux_interner) in &aux_hirs {
+        call_signatures.extend_hir_module(aux_hir, aux_interner);
+    }
+
     let lower_ctx = cssl_mir::LowerCtx::new(&interner);
     let mut mir_mod = cssl_mir::MirModule::new();
     // T11-W17-A · stage-0 struct-FFI codegen — populate the struct-layout
@@ -173,7 +183,13 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
-            cssl_mir::lower_fn_body(&interner, Some(&file), f, &mut mf);
+            cssl_mir::lower_fn_body_with_call_signatures(
+                &interner,
+                Some(&file),
+                &call_signatures,
+                f,
+                &mut mf,
+            );
             mir_mod.push_func(mf);
         }
     }
@@ -211,7 +227,13 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         for item in &aux_hir.items {
             if let cssl_hir::HirItem::Fn(f) = item {
                 let mut mf = cssl_mir::lower_function_signature(&aux_lower_ctx, f);
-                cssl_mir::lower_fn_body(aux_interner, Some(aux_file), f, &mut mf);
+                cssl_mir::lower_fn_body_with_call_signatures(
+                    aux_interner,
+                    Some(aux_file),
+                    &call_signatures,
+                    f,
+                    &mut mf,
+                );
                 mir_mod.push_func(mf);
             }
         }
@@ -695,6 +717,43 @@ mod tests {
             &written[..written.len().min(8)],
         );
         let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn build_generic_call_accepts_exact_max_u64_literal_bits() {
+        let src = "fn add_wrap(left: u64, right: u64) -> u64 { left + right }\n\
+                   pub fn caller() -> u64 { add_wrap(0xffffffffffffffffu64, 1u64) }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9005_positive_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9005_positive.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9005_positive.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
+        assert!(tmp_out.exists(), "exact max-u64 call must emit an object");
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn build_generic_call_refuses_range_suffix_or_arity_mismatch() {
+        for (case, call) in [
+            ("range", "take(18446744073709551616u64)"),
+            ("suffix", "take(1i64)"),
+            ("arity_missing", "take()"),
+            ("arity_excess", "take(1u64, 2u64)"),
+        ] {
+            let src = format!(
+                "fn take(value: u64) -> u64 {{ value }} pub fn caller() -> u64 {{ {call} }}\n"
+            );
+            let tmp_out = std::env::temp_dir()
+                .join(format!("csslc_abi9005_{case}_{}.obj", std::process::id()));
+            let _ = std::fs::remove_file(&tmp_out);
+            let args = build_args("abi9005_negative.cssl", tmp_out.to_str().unwrap());
+            let code = run_with_source(Path::new("abi9005_negative.cssl"), &src, &args);
+            let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+            assert_eq!(format!("{code:?}"), format!("{err:?}"), "{case}");
+            assert!(!tmp_out.exists(), "refused call wrote output: {case}");
+        }
     }
 
     #[test]
