@@ -1,0 +1,142 @@
+§ P1A.CANONICAL.LOCAL.TYPECHECK.ACCEPTANCE @2026-09-08
+
+I> authority := user.authorized.local.compiler.code+tests+commit+push.
+I> base := 42ebcc20a2559e33f8a4d15db2ae4de656ab7000
+  @tree:fbc803c97000d0aab49a3188666132610bc08aa1.
+I> branch := codex/p1a-canonical-typecheck-20260908.
+I> code.commit := 58f961af8b66feb91eefef67b01734b7c629316f
+  @tree:7bc512369208cb79cd3b61c541f5fbe04de7ddf2.
+I> scope := CSSL3 local concrete-type gate for csslc.check+build main+all aux modules.
+
+§P observed.defect
+  ✓ `cssl_hir::check_module` existed but csslc.check+build stopped after HIR lowering.
+  ✓ parseable type-invalid programs reached build lowering/artifact paths.
+  ✓ audit counterexamples included `~bool`, integer literal|u8 return→bool,
+    `u8 as bool`, and concrete invalid `!` domains.
+  W! legacy CSSL integer `!` = bitwise complement ; N! silently change accepted code.
+
+§D admitted.delta
+  check := lex→parse→HIR-lower→HIR-check→typed diagnostic→success|USER_ERROR.
+  build.main := same gate before aux+MIR+artifact emission.
+  build.aux := ∀ `--module-path`, independent lower+check gate before MIR+artifact emission.
+  diagnostic := real source line+column + stable `[TYPECHECK]` class + actionable message.
+  unary := {
+    `!bool`→bool.logical-not,
+    `!integer`→integer.bitwise-complement,
+    `~integer`→integer.bitwise-complement,
+    `~bool`|`!float`|`!String`→fatal.type-error
+  }.
+  bool.ingress.local := {
+    literal.integer→bool.return=reject,
+    u8→bool.return=reject,
+    u8-as-bool=reject+explicit-comparison guidance
+  }.
+  compatibility := {
+    i128|u128 primitive recognition,
+    Vec nominal+Vec.new,
+    quantum intrinsics+panic,
+    local generic nominal arity,
+    external|prelude opacity boundaries below
+  }.
+
+§T verification
+  baseline.exact-base.csslc := 174/174 ; failures=0.
+  committed-tree.tests := {
+    cssl-hir=242/242,
+    csslc=181/181,
+    cssl-mir=869/869 ; ignored=7,
+    cssl-cgen-cpu-cranelift=661/661 ; ignored=1,
+    cssl-cgen-cpu-x64=521/521,
+    total=2474/2474 ; failures=0
+  }.
+  cargo.check := PASS {
+    cssl-hir,cssl-mir,cssl-cgen-cpu-cranelift,cssl-cgen-cpu-x64,csslc
+  }.
+  focused.positive := PASS {`!bool`,`!u32`,`~u32`}.
+  focused.negative := PASS {
+    `~bool`,`!f32`,`!String`,literal-int→bool,u8→bool,u8-as-bool
+  }.
+  guard.tests := PASS {
+    unknown.unqualified.local→fatal,
+    imported+qualified+Option|Result present ∧ local.u8→bool→fatal,
+    imported+qualified+Option|Result present ∧ local.`~bool`→fatal
+  }.
+  artifact.refusal := PASS {
+    invalid.main.cases=4→USER_ERROR+no-new-object,
+    invalid.aux.cases=1→USER_ERROR+no-new-object
+  }.
+  diagnostic.samples := {
+    `invalid_type.cssl:1:36 [TYPECHECK] unary ~ requires integer; found Bool`,
+    `invalid_type.cssl:1:33 [TYPECHECK] cast to bool requires bool; found Int`
+  }.
+
+  language.profile.build := PASS {
+    main=language_profile_v1.cssl,
+    aux={profile_codec_v1.cssl,profile_vectors_v1.cssl,profile_probe_v1.cssl},
+    MIR.functions=94,
+    object.bytes=43943,
+    object.sha256=964015c0112bc3feecab0b0876d774e97f94e5025cc396feae880046533ac93c,
+    dll.bytes=37888,
+    dll.sha256=511136def2b54739c657df784d9eac445adcf04ed446ff8e7d750396635bb83a,
+    same-path.rebuild={object:exact,dll./brepro:exact}
+  }.
+  language.profile.native.oracle := PASS 22268/22268 {
+    codec.cases=64,u128.cases=4096,probes=10/10,
+    profile.id=3cbe4c61a6c3b73dc21ed3c806b4de69cb8f4b3e830729ba4cf030a28dcb1328
+  }.
+  bool.native.oracle := PASS 10/10 {
+    object.bytes=395,
+    object.sha256=1ac9cb39d2388ea80f5072ef7eefe30459fd1025368261c81bcf5e6668f8fb38,
+    dll.bytes=1536,
+    dll.sha256=0d238aeb2cdd876d02e6da865e37f5d0c3559eb2282a265b906c3638250fb65a,
+    same-path.rebuild={object:exact,dll./brepro:exact},
+    values={!false:1,!true:0,false:0,true:1,!u8(0):255,!u8(1):254,
+      branch.false:11,branch.true:22,identity.false:0,identity.true:1}
+  }.
+  corrected.vector.base := {
+    sequence.commit=4bff8d9,correction.commit=8cc601a,
+    current.change.vector.delta=0,
+    full.MIR+CGEN+LanguageProfile regressions=PASS
+  }.
+
+§C verdict
+  ◐ ACCEPT_BOUNDED_LOCAL_CONCRETE_TYPECHECK_GATE.
+  ✓ csslc.check+build now reject proven local concrete type errors before new artifact emission.
+  ✓ valid bool `!` + legacy integer `!`|`~` + LanguageProfile remain accepted.
+  N! global.type.soundness.claim.
+  OPEN resolver.boundary := {
+    imported bindings→Ty.Error opacity,
+    qualified external paths→Ty.Error opacity,
+    Option|Result|Ok|Err prelude surfaces→Ty.Error opacity,
+    external signatures+cross-module unification=unresolved
+  }.
+  strongest.counterexample := `use external::opaque ; fn f() -> bool { opaque() }`
+    may pass local gate because imported result domain is unknown/Ty.Error ; N! proven Bool.
+  ✓ countercase.containment := unknown unqualified local name remains fatal ; any concrete
+    local Bool violation remains fatal even when opaque imports+qualified paths coexist.
+  OPEN artifact.identity := pre-existing output path remains untouched on refusal ; callers
+    must N! treat stale artifact as current build output.
+  excluded := {
+    full imported|qualified|prelude resolution,
+    full Bool-domain|foreign-ABI normalization,
+    non-Cranelift Bool backend parity,
+    vector runtime promotion,
+    deployment|release|cutover
+  }.
+  falsifier := any concrete local negative above returns success|writes new object ; any
+    accepted unary contract changes ; any main|aux bypasses check_module ; diagnostic lacks
+    source coordinate ; LanguageProfile|native oracle|package regression fails.
+  provenance := {
+    infer.rs@sha256:4927cd63fac472827901ddf9ad8e42bd44ad0f3e4e6ea10ab640a39948fc364a,
+    build.rs@sha256:4472dd792cd00a2f9bc335e28019fa5bc7413bb12af3e8796e241d65ea3a0e5e,
+    check.rs@sha256:a51717d54eb4d57330dfe113fb0cba41d0eb46b9103f60d7bda0c9195e68ad2e,
+    diag.rs@sha256:61a2401ad1bfb4298ff72b4c283a3826b272706748499aae1458f9902aa11610
+  }.
+  ownership := {CSSL3.compiler+tests+this.evidence}; Apocv4.delta=0 ; canonical-six.delta=0.
+  graphify-out := foreign.hook.churn.preserved+unstaged+excluded.
+  rollback := revert evidence.commit then 58f961af8b66feb91eefef67b01734b7c629316f.
+  effects := 0 ; deployment=false ; runtime.cutover=false.
+
+attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
