@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { decryptJournal, encryptJournal, type EncryptedEnvelope } from './crypto';
 import type {
@@ -72,12 +72,32 @@ export class AttemptJournal {
     const write = previous.catch(() => undefined).then(async () => {
       const envelope = encryptJournal(plaintext, this.nodeToken, this.nodeId);
       const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-      await writeFile(temporary, JSON.stringify(envelope), { encoding: 'utf8', mode: 0o600, flag: 'w' });
+      const temporaryHandle = await open(temporary, 'w', 0o600);
+      try {
+        await temporaryHandle.writeFile(JSON.stringify(envelope), { encoding: 'utf8' });
+        await temporaryHandle.sync();
+      } finally {
+        await temporaryHandle.close();
+      }
       await rename(temporary, path);
       try {
+        const directoryHandle = await open(this.root, 'r');
+        try {
+          await directoryHandle.sync();
+        } finally {
+          await directoryHandle.close();
+        }
+      } catch {
+        // Directory fsync is unavailable on Windows. The file itself was
+        // flushed before the atomic replacement and remains process-safe.
+      }
+      try {
         const handle = await open(path, 'r+');
-        await handle.chmod(0o600);
-        await handle.close();
+        try {
+          await handle.chmod(0o600);
+        } finally {
+          await handle.close();
+        }
       } catch {
         // Windows ACLs are inherited from the protected journal directory.
       }

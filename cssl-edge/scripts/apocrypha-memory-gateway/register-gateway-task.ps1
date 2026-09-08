@@ -12,7 +12,7 @@ if ($edgeRoot.Contains('"') -or $EnvFile.Contains('"') -or $node.Contains('"')) 
 $arguments = "--env-file=`"$EnvFile`" --import tsx scripts/apocrypha-memory-gateway/server.ts"
 $action = New-ScheduledTaskAction -Execute $node -Argument $arguments -WorkingDirectory $edgeRoot
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -StartWhenAvailable
+$settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -StartWhenAvailable -Hidden
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null

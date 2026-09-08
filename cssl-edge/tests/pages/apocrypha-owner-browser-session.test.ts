@@ -4,6 +4,14 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { withDeadline } from '@/lib/apocrypha/deadline';
+import { readMemberChatPending, type MemberChatPendingSubmission, type MemberChatStorage } from '@/lib/apocrypha/member-chat-client';
+
+class MemoryStorage implements MemberChatStorage {
+  private readonly values = new Map<string, string>();
+  getItem(key: string): string | null { return this.values.get(key) ?? null; }
+  setItem(key: string, value: string): void { this.values.set(key, value); }
+  removeItem(key: string): void { this.values.delete(key); }
+}
 
 // § Actual session admission + actual page controller ; async hook harness ≠ browser/auth runtime proof
 export async function main(root: string): Promise<void> {
@@ -64,13 +72,18 @@ export async function main(root: string): Promise<void> {
   }
   function accountView(tree: Tree): Tree { const node = children(tree).find(node => node.type === 'AccountConversation'); assert.ok(node); return node; }
   function handoff(tree: Tree): Tree { const node = children(tree).find(node => node.type === 'button' && node.props.children === 'Open your main conversation'); assert.ok(node); return node; }
-  function harness(initialSession: Session, load: (subject: string) => Promise<unknown>, ssr = false) {
+  function harness(
+    initialSession: Session,
+    load: (subject: string, storage: MemberChatStorage) => unknown | PromiseLike<unknown>,
+    ssr = false,
+    storage: MemberChatStorage = new MemoryStorage(),
+  ) {
     let currentSession = initialSession;
     const cells: unknown[] = []; let cursor = 0; let effectCursor = 0;
     const effects: Array<{ dependencies: readonly unknown[]; cleanup?: () => void }> = [];
     let scheduled: Array<() => void> = [];
     const pageExports: Record<string, any> = {};
-    runInNewContext(pageSource, { exports: pageExports, setTimeout: (callback: () => void, delay: number) => setTimeout(callback, Math.min(delay, 10)), clearTimeout, require(name: string) {
+    runInNewContext(pageSource, { exports: pageExports, window: { localStorage: storage }, setTimeout: (callback: () => void, delay: number) => setTimeout(callback, Math.min(delay, 10)), clearTimeout, require(name: string) {
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name === 'react') return {
         useState(initial: unknown) { const slot = cursor++; if (!(slot in cells)) cells[slot] = initial; return [cells[slot], (next: unknown) => { cells[slot] = typeof next === 'function' ? next(cells[slot]) : next; }]; },
@@ -82,7 +95,7 @@ export async function main(root: string): Promise<void> {
         },
       };
       if (name === '@/components/hub/SiteSession') return { useSiteSession: () => currentSession };
-      if (name === '@/lib/mobile/chat-contract') return { openAccountPendingJournal: async () => ({ load }) };
+      if (name === '@/lib/apocrypha/member-chat-client') return { readMemberChatPending: load };
       if (name === '@/lib/apocrypha/deadline') return { withDeadline: (operation: PromiseLike<unknown>, deadlineMs: number) => withDeadline(operation, Math.min(deadlineMs, 10)) };
       if (name === '@/components/brain/BrainExperience') return { default: 'OwnerConversation' };
       if (name === '@/components/apocrypha/ChatThread') return { ChatThread: 'OwnerConversation' };
@@ -109,6 +122,22 @@ export async function main(root: string): Promise<void> {
   pending.render(); let tree = await pending.flush();
   equal(surface(tree), 'account', 'existing saved account message retains the account controller');
   equal(handoff(tree).props.disabled, true, 'pending reply disables owner handoff');
+
+  const ownerReloadStorage = new MemoryStorage();
+  const ownerReloadPending: MemberChatPendingSubmission = {
+    conversation_id: 'f1000000-0000-4000-8000-000000000001',
+    request_id: 'f1000000-0000-4000-8000-000000000099',
+    message: 'A saved fixture message.',
+    created_at: '2026-09-08T12:00:00.000Z',
+  };
+  ownerReloadStorage.setItem(
+    `apocky.member-chat.pending.v1.${encodeURIComponent(ownerSession.subjectKey!)}`,
+    JSON.stringify(ownerReloadPending),
+  );
+  const ownerReload = harness(ownerSession, readMemberChatPending, false, ownerReloadStorage);
+  ownerReload.render();
+  equal(surface(await ownerReload.flush()), 'account', 'reloaded durable member submission keeps the owner on the account recovery surface');
+
   saved = null; accountView(tree).props.onPendingChange(false); tree = pending.render();
   equal(surface(tree), 'account', 'resolution alone never swaps the active controller');
   equal(handoff(tree).props.disabled, false, 'resolution makes an explicit owner handoff available');

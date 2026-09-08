@@ -458,6 +458,7 @@ export async function cancelApocryphaJob(jobId: string, identity: JobIdentity, r
 export function publicJobError(error: unknown): { status: number; code: string; message: string } {
   const raw = error instanceof Error ? error.message : String(error);
   if (raw.includes('UNAUTHORIZED')) return { status: 401, code: 'UNAUTHORIZED', message: 'Authentication failed.' };
+  if (raw.includes('WORKER_FENCE_LOST')) return { status: 409, code: 'STALE_FENCE', message: 'This worker lease is no longer active.' };
   if (raw.includes('IDEMPOTENCY_CONFLICT')) return { status: 409, code: 'IDEMPOTENCY_CONFLICT', message: 'This request key was already used for different content.' };
   if (raw.includes('UNCONFIGURED')) return { status: 503, code: 'CONTROL_PLANE_UNAVAILABLE', message: 'Apocrypha cannot accept work right now.' };
   return { status: 503, code: 'APOCRYPHA_JOB_ERROR', message: 'Apocrypha could not update this request. It is safe to retry.' };

@@ -1,6 +1,6 @@
 # Apocrypha outbound Qwen worker
 
-This resident worker gives Apocky.com and Chaos Tarot one durable local inference rail without exposing the local machine to inbound traffic. It polls the HTTPS control plane, claims one fenced attempt, retrieves admitted read-only context, streams the exact accepted Qwen profile, and commits Qwen's answer as the primary revision.
+This resident worker gives Apocky.com owner chat, signed-in member chat, and Chaos Tarot one durable local inference rail without exposing the local machine to inbound traffic. It polls the HTTPS control plane, claims one fenced attempt, retrieves admitted read-only context, streams the exact accepted Qwen profile, and commits Qwen's answer as the primary revision.
 
 ## Production contract
 
@@ -33,7 +33,7 @@ Only one worker process can own a journal directory. `worker.lock` prevents dupl
 
 ## Memory and tools
 
-`manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, MNEME, and MetaHarness. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. The current host profile admits three concurrent reads after task-shaped recall testing; `APOCRYPHA_MEMORY_READ_CONCURRENCY` remains adjustable from one through six for other hosts. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen beyond its declared timeout.
+`manifest.production.json` admits exactly `apocky_owner_chat`, `chaos_tarot_reading`, and `apocky_member_chat` on one exact Qwen profile, read-only tool registry, and memory manifest. The six faculties are MemPalace, Brainmonsoon, Anamnesis, Graphify, MNEME, and MetaHarness. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. The current host profile admits three concurrent reads after task-shaped recall testing; `APOCRYPHA_MEMORY_READ_CONCURRENCY` remains adjustable from one through six for other hosts. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen beyond its declared timeout.
 
 An individual resident can raise a slow local adapter's deadline with
 `APOCRYPHA_<ADAPTER>_READ_TIMEOUT_MS` (250 through 60000). This runtime dial
@@ -54,13 +54,23 @@ The heartbeat publishes the last completed adapter result while a new probe is
 in flight. Its timestamp continues to age normally, so a stalled probe cannot
 manufacture fresh readiness or block worker liveness publication.
 The control plane receives `qwen_healthy`, `qwen_probe_at`, the six exact
-adapter states, and `adapter_probe_at`; the adapter timestamp advances only
-after every adapter returned successfully for every configured scope.
+aggregate adapter states, and per-capability adapter states and timestamps.
+Member readiness requires fresh `apocky_member_chat` evidence from all six
+adapters and cannot inherit owner or Chaos evidence. The aggregate timestamp
+advances only after every adapter returned successfully for every configured
+scope.
 Generation heartbeats publish the
 bounded generation deadline so readiness can preserve a live long response
 without accepting stale idle evidence.
 
 Every retrieval request includes the job's tenant, principal, capability, and memory-manifest hash. Retrieved text is placed in a data-only boundary and cannot grant instructions or tool authority. Brainmonsoon writes and every other mutation remain outside this worker.
+
+Before starting this manifest, provision the active `apocky-members` tenant,
+append its UUID plus the worker node UUID canary to
+`APOCRYPHA_MEMORY_ADDITIONAL_PROBE_SCOPES`, and admit the database worker node
+to the exact three-capability list. Heartbeats compare the submitted manifest
+with the database authorization and fail closed; they never grant capabilities
+to their own node.
 
 ## Run and verify
 
@@ -87,6 +97,7 @@ Tests:
 
 ```powershell
 node --import tsx tests/apocrypha-worker-http.test.ts
+node --import tsx tests/apocrypha-member-runtime.test.ts
 node --import tsx tests/apocrypha-worker.test.ts
 node --import tsx tests/apocrypha-worker-recovery.test.ts
 npx tsc --noEmit --pretty false

@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { loadConfig, loadManifest, memoryManifestHash } from '../scripts/apocrypha-worker/config';
+import { ControlPlaneError } from '../scripts/apocrypha-worker/control-plane';
 import { AttemptJournal } from '../scripts/apocrypha-worker/journal';
 import { probeMemoryAdapters, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
+import { QwenClient, QwenError } from '../scripts/apocrypha-worker/qwen';
 import { ApocryphaWorker } from '../scripts/apocrypha-worker/worker';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
@@ -107,17 +109,25 @@ async function main(): Promise<void> {
     APOCRYPHA_CONTROL_PLANE_URL: 'https://example.test',
     APOCRYPHA_WORKER_NODE_ID: '55555555-5555-4555-8555-555555555555',
     APOCRYPHA_WORKER_TOKEN: 'test-worker-token',
+    APOCRYPHA_MEMORY_PROBE_TENANT_ID: '11111111-1111-4111-8111-111111111111',
+    APOCRYPHA_MEMORY_PROBE_PRINCIPAL_ID: '22222222-2222-4222-8222-222222222222',
+    APOCRYPHA_MEMORY_PROBE_CAPABILITY: 'chaos_tarot_reading',
     APOCRYPHA_MEMORY_ADDITIONAL_PROBE_SCOPES:
-      '66666666-6666-4666-8666-666666666666:77777777-7777-4777-8777-777777777777:apocky_owner_chat',
+      '66666666-6666-4666-8666-666666666666:77777777-7777-4777-8777-777777777777:apocky_owner_chat,'
+      + '88888888-8888-4888-8888-888888888888:99999999-9999-4999-8999-999999999999:apocky_member_chat',
   }, []);
   assert(parsedConfig.memoryAdditionalProbeScopes?.[0]?.capability === 'apocky_owner_chat',
     'loadConfig did not parse the additional owner readiness scope');
+  assert(parsedConfig.memoryAdditionalProbeScopes?.[1]?.capability === 'apocky_member_chat',
+    'loadConfig did not parse the member readiness scope');
   const journalDir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-test-'));
   const qwenRequests: Array<Record<string, unknown>> = [];
   let activeMemoryRequests = 0;
   let peakMemoryRequests = 0;
   let firstMemoryCompletionAt = 0;
   let firstHeartbeatAt = 0;
+  let qwenStreamFinishedAt = 0;
+  let firstChunkAcknowledgedAt = 0;
   const memoryScopesSeen = new Set<string>();
   let denyOwnerProbeScope = false;
   const output = 'The Tower names the break already underway; the Star asks what remains worth carrying through it. '.repeat(5);
@@ -165,6 +175,7 @@ async function main(): Promise<void> {
       }
       response.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 80, total_tokens: 180 } })}\n\n`);
       response.end('data: [DONE]\n\n');
+      qwenStreamFinishedAt = Date.now();
       return;
     }
     json(response, 404, { error: 'not_found' });
@@ -214,6 +225,8 @@ async function main(): Promise<void> {
       const existing = chunks.get(seq);
       assert(existing === undefined || existing === delta, 'idempotent chunk sequence changed content');
       chunks.set(seq, delta);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      if (firstChunkAcknowledgedAt === 0) firstChunkAcknowledgedAt = Date.now();
       return json(response, 200, { chunk_id: seq + 1 });
     }
     if (request.url === '/api/apocrypha/worker/complete') {
@@ -253,6 +266,8 @@ async function main(): Promise<void> {
     assert(completion.revision_role === 'primary', 'Qwen completion was not committed as primary');
     assert([...chunks.values()].join('') === output, 'buffered chunks do not reconstruct the final output');
     assert([...chunks.values()].every((value) => value.length <= 64), 'chunk exceeded configured buffer size');
+    assert(qwenStreamFinishedAt > 0 && firstChunkAcknowledgedAt > qwenStreamFinishedAt,
+      'slow control-plane chunk delivery blocked Qwen generation');
     assert(authorizations.every((value) => value === 'Bearer test-node-token-never-log'), 'worker bearer authentication missing');
     assert(qwenRequests.length === 2, 'context rejection did not cause exactly one bounded retry');
     const qwenRequest = qwenRequests[1] as Record<string, unknown>;
@@ -305,6 +320,295 @@ async function main(): Promise<void> {
     await rm(journalDir, { recursive: true, force: true });
   }
 
+  const deliveryJoinDir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-delivery-join-test-'));
+  try {
+    const deliveryJoinConfig = {
+      ...config('http://127.0.0.1:1', 'http://127.0.0.1:2', deliveryJoinDir),
+      leaseRenewIntervalMs: 60_000,
+    };
+    const journal = new AttemptJournal(
+      deliveryJoinDir,
+      deliveryJoinConfig.nodeToken,
+      deliveryJoinConfig.nodeId,
+    );
+    await journal.initialize();
+    let releaseAppend!: () => void;
+    const appendGate = new Promise<void>((resolve) => { releaseAppend = resolve; });
+    let appendStarted = false;
+    let failureDelivered = false;
+    let qwenPassedDelta = false;
+    const controlPlane = {
+      appendChunk: async () => {
+        appendStarted = true;
+        await appendGate;
+        return {};
+      },
+      fail: async () => {
+        failureDelivered = true;
+        return {};
+      },
+      renew: async () => ({
+        leaseExpiresAt: new Date(Date.now() + 180_000).toISOString(),
+        cancelRequested: false,
+      }),
+    };
+    const qwenClient = {
+      probe: async () => ({ healthy: true, model: deliveryJoinConfig.modelAlias, detail: 'ok' }),
+      generate: async (
+        _messages: unknown,
+        _generation: unknown,
+        onDelta: (delta: string) => Promise<void>,
+      ) => {
+        await onDelta('x'.repeat(deliveryJoinConfig.chunkMaxChars));
+        qwenPassedDelta = true;
+        throw new QwenError('forced generation failure', 'QWEN_HTTP_500', true);
+      },
+    };
+    const worker = new ApocryphaWorker(deliveryJoinConfig, {
+      controlPlane: controlPlane as never,
+      qwen: qwenClient as never,
+      journal,
+      env: { NODE_ENV: 'test' },
+    });
+    let processSettled = false;
+    const processPromise = (worker as unknown as { processClaim: (claim: ClaimedJob) => Promise<void> })
+      .processClaim(claimedJob(deliveryJoinConfig))
+      .finally(() => { processSettled = true; });
+    for (let attempt = 0; attempt < 50 && !appendStarted; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    assert(appendStarted, 'in-flight chunk delivery was not reached');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert(qwenPassedDelta, 'slow chunk delivery blocked Qwen after its delta callback');
+    assert(!processSettled, 'worker crossed the terminal boundary before joining chunk delivery');
+    assert(!failureDelivered, 'worker delivered failure before the in-flight chunk settled');
+    assert(await journal.pendingCount() === 1, 'in-flight chunk was not durably journaled');
+    releaseAppend();
+    await processPromise;
+    assert(failureDelivered, 'worker did not deliver failure after joining chunk delivery');
+    assert(await journal.pendingCount() === 0, 'late chunk acknowledgement resurrected the terminal journal');
+  } finally {
+    await rm(deliveryJoinDir, { recursive: true, force: true });
+  }
+
+  const deliveryFenceDir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-delivery-fence-test-'));
+  try {
+    const deliveryFenceConfig = {
+      ...config('http://127.0.0.1:1', 'http://127.0.0.1:2', deliveryFenceDir),
+      leaseRenewIntervalMs: 60_000,
+    };
+    const journal = new AttemptJournal(deliveryFenceDir, deliveryFenceConfig.nodeToken, deliveryFenceConfig.nodeId);
+    await journal.initialize();
+    let secondDeltaAccepted = false;
+    let failureDelivered = false;
+    const fenceControlPlane = {
+      appendChunk: async () => {
+        throw new ControlPlaneError('stale delivery fence', {
+          status: 409,
+          code: 'STALE_FENCE',
+          fenceLost: true,
+        });
+      },
+      fail: async () => {
+        failureDelivered = true;
+        return {};
+      },
+      renew: async () => ({
+        leaseExpiresAt: new Date(Date.now() + 180_000).toISOString(),
+        cancelRequested: false,
+      }),
+    };
+    const fenceAwareQwen = {
+      probe: async () => ({ healthy: true, model: deliveryFenceConfig.modelAlias, detail: 'ok' }),
+      generate: async (
+        _messages: unknown,
+        _generation: unknown,
+        onDelta: (delta: string) => Promise<void>,
+        signal: AbortSignal,
+      ) => {
+        await onDelta('x'.repeat(deliveryFenceConfig.chunkMaxChars));
+        for (let attempt = 0; attempt < 50 && !signal.aborted; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        assert(signal.aborted, 'definitive stale fence did not abort Qwen');
+        await onDelta('must not be accepted');
+        secondDeltaAccepted = true;
+        throw new Error('unreachable');
+      },
+    };
+    const worker = new ApocryphaWorker(deliveryFenceConfig, {
+      controlPlane: fenceControlPlane as never,
+      qwen: fenceAwareQwen as never,
+      journal,
+      env: { NODE_ENV: 'test' },
+    });
+    await (worker as unknown as { processClaim: (claim: ClaimedJob) => Promise<void> })
+      .processClaim(claimedJob(deliveryFenceConfig));
+    assert(!secondDeltaAccepted, 'Qwen accepted output after definitive fence loss');
+    assert(!failureDelivered, 'stale-fenced attempt was sent through ordinary failure');
+    assert(await journal.pendingCount() === 0, 'stale-fenced attempt remained in active recovery journal');
+  } finally {
+    await rm(deliveryFenceDir, { recursive: true, force: true });
+  }
+
+  const completionRecoveryDir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-completion-recovery-test-'));
+  try {
+    const recoveryConfig = {
+      ...config('http://127.0.0.1:1', 'http://127.0.0.1:2', completionRecoveryDir),
+      leaseRenewIntervalMs: 60_000,
+    };
+    const journal = new AttemptJournal(completionRecoveryDir, recoveryConfig.nodeToken, recoveryConfig.nodeId);
+    await journal.initialize();
+    let completionJournaled = false;
+    const setCompletion = journal.setCompletion.bind(journal);
+    journal.setCompletion = async (state, payload) => {
+      await setCompletion(state, payload);
+      completionJournaled = true;
+    };
+    const recoveryOutput = 'A completed Oracle answer must survive a slow or unavailable delivery boundary. '.repeat(3);
+    let releaseFailedAppend!: () => void;
+    const failedAppendGate = new Promise<void>((resolve) => { releaseFailedAppend = resolve; });
+    let appendStarted = false;
+    let originalSettled = false;
+    let unexpectedFailure = false;
+    const firstControlPlane = {
+      appendChunk: async () => {
+        appendStarted = true;
+        await failedAppendGate;
+        throw new Error('forced append outage');
+      },
+      fail: async () => {
+        unexpectedFailure = true;
+        return {};
+      },
+      renew: async () => ({
+        leaseExpiresAt: new Date(Date.now() + 180_000).toISOString(),
+        cancelRequested: false,
+      }),
+    };
+    const completingQwen = {
+      probe: async () => ({ healthy: true, model: recoveryConfig.modelAlias, detail: 'ok' }),
+      generate: async (
+        _messages: unknown,
+        _generation: unknown,
+        onDelta: (delta: string) => Promise<void>,
+      ) => {
+        await onDelta(recoveryOutput);
+        return {
+          content: recoveryOutput,
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+          model: recoveryConfig.modelAlias,
+          firstTokenMs: 1,
+          durationMs: 2,
+        };
+      },
+    };
+    const firstWorker = new ApocryphaWorker(recoveryConfig, {
+      controlPlane: firstControlPlane as never,
+      qwen: completingQwen as never,
+      journal,
+      env: { NODE_ENV: 'test' },
+    });
+    const firstProcess = (firstWorker as unknown as { processClaim: (claim: ClaimedJob) => Promise<void> })
+      .processClaim(claimedJob(recoveryConfig))
+      .finally(() => { originalSettled = true; });
+    for (let attempt = 0; attempt < 500 && !(appendStarted && completionJournaled); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    const savedBeforeDelivery = (await journal.list())[0]?.state;
+    assert(appendStarted, 'completion recovery never reached the blocked append');
+    assert(savedBeforeDelivery?.terminal?.kind === 'complete', 'completed Qwen answer was not journaled before delivery');
+    assert(savedBeforeDelivery.terminal.payload.content === recoveryOutput, 'journaled completion changed Qwen output');
+    assert(savedBeforeDelivery.pendingChunks.length > 0, 'completion recovery fixture has no pending chunks');
+    assert(!originalSettled, 'worker completed while its delivery boundary was still blocked');
+    releaseFailedAppend();
+    await firstProcess;
+    assert(!unexpectedFailure, 'delivery outage replaced a completed answer with failure');
+    assert(await journal.pendingCount() === 1, 'delivery outage discarded the recoverable completed answer');
+
+    const replayedChunks: Array<{ seq: number; delta: string }> = [];
+    let replayedCompletionContent: unknown = null;
+    let recoveryRenewals = 0;
+    let latestRecoveryLeaseExpiry = 0;
+    const recoveryControlPlane = {
+      renew: async () => {
+        recoveryRenewals += 1;
+        latestRecoveryLeaseExpiry = Date.now() + 300;
+        return {
+          leaseExpiresAt: new Date(latestRecoveryLeaseExpiry).toISOString(),
+          cancelRequested: false,
+        };
+      },
+      appendChunk: async (_fence: unknown, chunk: { seq: number; delta: string }) => {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        replayedChunks.push({ seq: chunk.seq, delta: chunk.delta });
+        return {};
+      },
+      complete: async (_fence: unknown, completion: Record<string, unknown>) => {
+        assert(Date.now() < latestRecoveryLeaseExpiry, 'recovery committed after its latest lease expired');
+        replayedCompletionContent = completion.content;
+        return {};
+      },
+      fail: async () => { throw new Error('recovery must not fail a completed answer'); },
+    };
+    const recoveryWorker = new ApocryphaWorker({ ...recoveryConfig, leaseRenewIntervalMs: 50 }, {
+      controlPlane: recoveryControlPlane as never,
+      qwen: completingQwen as never,
+      journal,
+      env: { NODE_ENV: 'test' },
+    });
+    await recoveryWorker.recoverPendingAttempts();
+    assert(replayedChunks.map((chunk) => chunk.seq).join(',') === '0,1,2,3', 'recovery did not replay chunks in exact order');
+    assert(replayedChunks.map((chunk) => chunk.delta).join('') === recoveryOutput, 'recovery changed the completed output bytes');
+    assert(replayedCompletionContent === recoveryOutput, 'recovery did not commit the exact saved completion');
+    assert(recoveryRenewals > 1, 'long recovery replay did not renew its lease');
+    assert(await journal.pendingCount() === 0, 'recovered completion journal remained after acknowledgement');
+
+    const ambiguousState = await journal.create(claimedJob(recoveryConfig));
+    await journal.setCompletion(ambiguousState, {
+      content: 'already committed remotely',
+      revisionRole: 'primary',
+    });
+    let ambiguousReplayCount = 0;
+    const ambiguousWorker = new ApocryphaWorker(recoveryConfig, {
+      controlPlane: {
+        renew: async () => { throw new Error('terminal attempt cannot renew'); },
+        complete: async () => {
+          ambiguousReplayCount += 1;
+          return {};
+        },
+      } as never,
+      qwen: completingQwen as never,
+      journal,
+      env: { NODE_ENV: 'test' },
+    });
+    await ambiguousWorker.recoverPendingAttempts();
+    assert(ambiguousReplayCount === 1, 'ambiguous terminal acknowledgement was not replayed exactly once');
+    assert(await journal.pendingCount() === 0, 'acknowledged ambiguous terminal journal was not removed');
+
+    const pendingState = await journal.create(claimedJob(recoveryConfig));
+    await journal.addPendingChunk(pendingState, { seq: 0, chunkKind: 'token', delta: 'must remain pending' });
+    await journal.setCompletion(pendingState, { content: 'must remain recoverable', revisionRole: 'primary' });
+    let unsafeTerminalReplay = false;
+    const pendingRenewalWorker = new ApocryphaWorker(recoveryConfig, {
+      controlPlane: {
+        renew: async () => { throw new Error('transient renewal outage'); },
+        complete: async () => {
+          unsafeTerminalReplay = true;
+          return {};
+        },
+      } as never,
+      qwen: completingQwen as never,
+      journal,
+      env: { NODE_ENV: 'test' },
+    });
+    await pendingRenewalWorker.recoverPendingAttempts();
+    assert(!unsafeTerminalReplay, 'terminal replay bypassed undelivered pending chunks');
+    assert(await journal.pendingCount() === 1, 'renewal outage discarded pending completed output');
+  } finally {
+    await rm(completionRecoveryDir, { recursive: true, force: true });
+  }
+
   const encryptedDir = await mkdtemp(join(tmpdir(), 'apocrypha-journal-test-'));
   try {
     const workerConfig2 = config('http://127.0.0.1:1', 'http://127.0.0.1:2', encryptedDir);
@@ -320,7 +624,36 @@ async function main(): Promise<void> {
     await rm(encryptedDir, { recursive: true, force: true });
   }
 
-  console.log('apocrypha-worker.test : OK · serialized memory, bounded Qwen retry, output budget, durable chunks, encrypted journal');
+  const boundedConfig = config('http://127.0.0.1:1', 'http://127.0.0.1:2', tmpdir());
+  boundedConfig.maxOutputTokens = 64;
+  const oversizedDelta = 'x'.repeat(4_097);
+  const oversizedStream = `data: ${JSON.stringify({ choices: [{ delta: { content: oversizedDelta } }] })}\n\ndata: [DONE]\n\n`;
+  const boundedQwen = new QwenClient(boundedConfig, (async () => new Response(oversizedStream, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })) as typeof fetch);
+  let outputLimitCode = '';
+  try {
+    await boundedQwen.generate([], { maxTokens: 64 }, () => undefined);
+  } catch (error) {
+    outputLimitCode = error instanceof QwenError ? error.code : String(error);
+  }
+  assert(outputLimitCode === 'QWEN_OUTPUT_LIMIT_EXCEEDED', 'malformed Qwen stream bypassed the bounded output limit');
+
+  const unterminatedTransport = 'data: ' + 'x'.repeat(65_537);
+  const rawBoundedQwen = new QwenClient(boundedConfig, (async () => new Response(unterminatedTransport, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })) as typeof fetch);
+  let transportLimitCode = '';
+  try {
+    await rawBoundedQwen.generate([], { maxTokens: 64 }, () => undefined);
+  } catch (error) {
+    transportLimitCode = error instanceof QwenError ? error.code : String(error);
+  }
+  assert(transportLimitCode === 'QWEN_TRANSPORT_LIMIT_EXCEEDED', 'unterminated Qwen stream bypassed the raw transport limit');
+
+  console.log('apocrypha-worker.test : OK · serialized memory, bounded Qwen retry/output, durable ordered recovery, encrypted journal');
 }
 
 void main();

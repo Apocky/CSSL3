@@ -36,9 +36,10 @@ existing worker envelope:
 
 The closed tenant and capability lists remain mandatory. Owner-only requests
 also require an exact `tenant_id:principal_id` scope pair and principal
-allowlist match. Dynamic `chaos_tarot_reading` members require a canonical UUID
-principal plus an exact `tenant_id:capability` scope, so a member cannot cross
-from the Chaos tenant into another admitted tenant. Native request identifiers
+allowlist match. Dynamic `chaos_tarot_reading` and `apocky_member_chat` members
+require a canonical UUID principal plus an exact `tenant_id:capability` scope,
+so a member cannot cross between the Chaos, Apocky-member, or owner tenants.
+Native request identifiers
 bind an opaque digest of tenant, principal, and capability; raw identities are
 never placed on child process command lines or returned in records.
 
@@ -101,3 +102,9 @@ Point every `APOCRYPHA_*_READ_URL` in the worker environment at its gateway URL
 and set every corresponding worker token to the gateway token. Rollback is to
 stop this process and remove those worker URL/token bindings. No source memory
 or derived state is changed.
+
+For member admission, append the active tenant UUID whose database slug is
+`apocky-members` to `APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS`, append
+`apocky_member_chat` to the capability list, and append the exact
+`tenant_id:apocky_member_chat` dynamic scope. Existing owner and Chaos entries
+remain required.

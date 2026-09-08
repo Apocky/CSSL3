@@ -1,6 +1,8 @@
 import { isAbsolute, resolve } from 'node:path';
 import { ADAPTER_NAMES, type AdapterName, type GatewayConfig } from './types';
 
+const DYNAMIC_MEMBER_CAPABILITIES = new Set(['chaos_tarot_reading', 'apocky_member_chat']);
+
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
@@ -60,7 +62,9 @@ function dynamicMemberScopes(
 ): ReadonlySet<string> {
   const name = 'APOCRYPHA_MEMORY_GATEWAY_DYNAMIC_MEMBER_SCOPES';
   if (!env[name]?.trim()) {
-    if (allowedCapabilities.has('chaos_tarot_reading')) throw new Error(`${name} is required`);
+    if ([...DYNAMIC_MEMBER_CAPABILITIES].some((capability) => allowedCapabilities.has(capability))) {
+      throw new Error(`${name} is required`);
+    }
     return new Set();
   }
   const scopes = allowlist(env, name);
@@ -74,8 +78,8 @@ function dynamicMemberScopes(
     if (!allowedTenants.has(tenantId) || !allowedCapabilities.has(capability)) {
       throw new Error(`${name} entries must reference admitted tenants and capabilities`);
     }
-    if (capability !== 'chaos_tarot_reading') {
-      throw new Error(`${name} may only admit the Chaos member capability`);
+    if (!DYNAMIC_MEMBER_CAPABILITIES.has(capability)) {
+      throw new Error(`${name} may only admit a dynamic member capability`);
     }
     result.add(`${tenantId}\0${capability}`);
   }

@@ -59,6 +59,7 @@
   },
   "capabilities": [
     "apocky_owner_chat",
-    "chaos_tarot_reading"
+    "chaos_tarot_reading",
+    "apocky_member_chat"
   ]
 }

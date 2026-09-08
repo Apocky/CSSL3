@@ -5,6 +5,15 @@ import { sha256, stableJson } from './crypto';
 import type { MemoryProbeScope, WorkerConfig, WorkerManifest } from './types';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
+const EXACT_MODEL_ALIAS = 'qwen35-35b-a3b-q4';
+const EXACT_PROFILE_HASH = '5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9';
+const EXACT_TOOL_REGISTRY_VERSION = 'apocrypha-readonly-v1';
+const EXACT_MEMORY_MANIFEST_HASH = '307a86ce2ec83a37ad30f86327195e47259167728cf32e4276af377f08988273';
+const EXACT_MEMORY_ADAPTERS = [
+  'mempalace', 'brainmonsoon', 'anamnesis', 'graphify', 'mneme', 'metaharness',
+] as const;
+const EXACT_CAPABILITIES = ['apocky_owner_chat', 'chaos_tarot_reading', 'apocky_member_chat'] as const;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function integerEnv(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number, max: number): number {
   const raw = env[name];
@@ -85,6 +94,22 @@ export function loadManifest(path = join(moduleDir, 'manifest.production.json'))
   if (!Array.isArray(manifest.capabilities) || manifest.capabilities.length === 0) {
     throw new Error('worker manifest needs at least one capability');
   }
+  if (manifest.model.alias !== EXACT_MODEL_ALIAS || manifest.model.profileHash.toLowerCase() !== EXACT_PROFILE_HASH) {
+    throw new Error('worker manifest differs from the exact accepted Qwen profile');
+  }
+  if (manifest.tools.registryVersion !== EXACT_TOOL_REGISTRY_VERSION) {
+    throw new Error('worker manifest differs from the exact accepted read-only tool registry');
+  }
+  const adapterNames = manifest.memory.adapters.map((adapter) => adapter.name);
+  if (adapterNames.length !== EXACT_MEMORY_ADAPTERS.length
+    || adapterNames.some((name, index) => name !== EXACT_MEMORY_ADAPTERS[index])
+    || memoryManifestHash(manifest) !== EXACT_MEMORY_MANIFEST_HASH) {
+    throw new Error('worker manifest differs from the exact accepted six-adapter memory manifest');
+  }
+  if (manifest.capabilities.length !== EXACT_CAPABILITIES.length
+    || manifest.capabilities.some((capability, index) => capability !== EXACT_CAPABILITIES[index])) {
+    throw new Error('worker manifest differs from the exact accepted runtime capabilities');
+  }
   return manifest;
 }
 
@@ -159,6 +184,20 @@ export function loadConfig(
   }
   if (!manifest.capabilities.includes(config.memoryProbeCapability)) {
     throw new Error('memory probe capability is not admitted by the worker manifest');
+  }
+  const memberProbeScopes = [
+    ...(config.memoryProbeTenantId && config.memoryProbeCapability === 'apocky_member_chat' ? [{
+      tenantId: config.memoryProbeTenantId,
+      principalId: config.memoryProbePrincipalId,
+      capability: config.memoryProbeCapability,
+    }] : []),
+    ...(config.memoryAdditionalProbeScopes ?? []).filter((scope) => scope.capability === 'apocky_member_chat'),
+  ];
+  if (manifest.capabilities.includes('apocky_member_chat') && memberProbeScopes.length === 0) {
+    throw new Error('APOCRYPHA_MEMORY_ADDITIONAL_PROBE_SCOPES must include an apocky_member_chat tenant and principal');
+  }
+  if (memberProbeScopes.some((scope) => !UUID.test(scope.tenantId) || !UUID.test(scope.principalId))) {
+    throw new Error('apocky_member_chat probe tenant and principal must be canonical UUIDs');
   }
   if (config.profileHash !== manifest.model.profileHash.toLowerCase()) {
     throw new Error('configured model profile hash differs from worker manifest');

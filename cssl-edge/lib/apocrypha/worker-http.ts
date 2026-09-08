@@ -14,6 +14,19 @@ class WorkerDatabaseError extends Error {
   }
 }
 
+function isWorkerFenceFailure(code: string, message: string): boolean {
+  if (code === '40001') return message.includes('stale or invalid worker lease fence');
+  if (code === '55000') {
+    return message.includes('attempt is no longer active')
+      || message.includes('job is no longer executable');
+  }
+  if (code === '57014') {
+    return message.includes('worker lease expired')
+      || message.includes('job cancellation requested');
+  }
+  return false;
+}
+
 export function workerDatabaseError(
   error: { code?: string | null; message?: string | null },
   operation = 'WORKER_RPC_FAILED',
@@ -24,8 +37,13 @@ export function workerDatabaseError(
     message.includes('worker authentication failed')
     || message.includes('worker is not admitted for this operation')
   );
+  const workerFenceFailure = isWorkerFenceFailure(code, message);
   return new WorkerDatabaseError(
-    workerAuthFailure ? 'WORKER_UNAUTHORIZED' : `${operation}:${code}`,
+    workerAuthFailure
+      ? 'WORKER_UNAUTHORIZED'
+      : workerFenceFailure
+        ? 'WORKER_FENCE_LOST'
+        : `${operation}:${code}`,
     operation,
     code,
   );

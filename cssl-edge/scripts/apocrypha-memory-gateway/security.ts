@@ -12,7 +12,7 @@ const REQUEST_FIELDS = new Set([
   'operation', 'read_only', 'query', 'limit', 'tenant_id', 'principal_id', 'capability', 'memory_manifest_hash',
 ]);
 
-const DYNAMIC_MEMBER_CAPABILITIES = new Set(['chaos_tarot_reading']);
+const DYNAMIC_MEMBER_CAPABILITIES = new Set(['chaos_tarot_reading', 'apocky_member_chat']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function principalAdmitted(

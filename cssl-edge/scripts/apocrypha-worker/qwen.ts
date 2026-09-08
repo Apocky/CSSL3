@@ -43,6 +43,25 @@ function parseUsage(raw: unknown): QwenUsage {
   };
 }
 
+async function readResponseTextBounded(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new QwenError('Qwen response exceeded the bounded transport size', 'QWEN_TRANSPORT_LIMIT_EXCEEDED', false);
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 function extractContent(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '';
   const root = payload as Record<string, unknown>;
@@ -108,6 +127,9 @@ export class QwenClient {
     signal?: AbortSignal,
   ): Promise<QwenResult> {
     const started = Date.now();
+    const outputTokenLimit = Math.min(options.maxTokens ?? this.config.maxOutputTokens, this.config.maxOutputTokens);
+    const maxAcceptedOutputBytes = Math.max(4_096, outputTokenLimit * 16);
+    const maxTransportBytes = Math.max(65_536, outputTokenLimit * 256);
     const controller = new AbortController();
     let callbackError: unknown;
     let idleTimer: NodeJS.Timeout | null = null;
@@ -131,7 +153,7 @@ export class QwenClient {
         messages,
         stream: true,
         stream_options: { include_usage: true },
-        max_tokens: Math.min(options.maxTokens ?? this.config.maxOutputTokens, this.config.maxOutputTokens),
+        max_tokens: outputTokenLimit,
         temperature: options.temperature ?? 0.65,
         top_p: options.topP ?? 0.9,
         top_k: options.topK ?? 40,
@@ -147,7 +169,7 @@ export class QwenClient {
         signal: controller.signal,
       });
       if (!response.ok) {
-        const detail = (await response.text()).slice(0, 1_000);
+        const detail = (await readResponseTextBounded(response, maxTransportBytes)).slice(0, 1_000);
         if (isQwenContextOverflow(response.status, detail)) {
           throw new QwenError(`Qwen rejected the composed context: ${detail}`, 'QWEN_CONTEXT_OVERFLOW', true);
         }
@@ -156,8 +178,11 @@ export class QwenClient {
       resetIdle();
       const contentType = response.headers.get('content-type') ?? '';
       if (!response.body || contentType.includes('application/json')) {
-        const payload = await response.json() as Record<string, unknown>;
+        const payload = JSON.parse(await readResponseTextBounded(response, maxTransportBytes)) as Record<string, unknown>;
         const content = extractContent(payload);
+        if (Buffer.byteLength(content, 'utf8') > maxAcceptedOutputBytes) {
+          throw new QwenError('Qwen exceeded the bounded output transport size', 'QWEN_OUTPUT_LIMIT_EXCEEDED', false);
+        }
         if (content) await onDelta(content);
         return {
           content,
@@ -175,6 +200,8 @@ export class QwenClient {
       let usage: QwenUsage = {};
       let model = this.config.modelAlias;
       let firstTokenMs: number | undefined;
+      let transportBytes = 0;
+      let acceptedOutputBytes = 0;
       const consumeLine = async (line: string): Promise<void> => {
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) return;
@@ -191,6 +218,10 @@ export class QwenClient {
         if (typeof payload.model === 'string') model = payload.model;
         const delta = extractContent(payload);
         if (delta) {
+          acceptedOutputBytes += Buffer.byteLength(delta, 'utf8');
+          if (acceptedOutputBytes > maxAcceptedOutputBytes) {
+            throw new QwenError('Qwen exceeded the bounded output transport size', 'QWEN_OUTPUT_LIMIT_EXCEEDED', false);
+          }
           if (firstTokenMs === undefined) firstTokenMs = Date.now() - started;
           content += delta;
           try {
@@ -204,6 +235,11 @@ export class QwenClient {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        transportBytes += value.byteLength;
+        if (transportBytes > maxTransportBytes) {
+          await reader.cancel().catch(() => undefined);
+          throw new QwenError('Qwen response exceeded the bounded transport size', 'QWEN_TRANSPORT_LIMIT_EXCEEDED', false);
+        }
         resetIdle();
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split(/\r?\n/);

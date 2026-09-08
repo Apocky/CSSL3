@@ -1,19 +1,34 @@
 import Head from 'next/head';
 import Link from 'next/link';
+import type { GetServerSideProps, NextApiRequest } from 'next';
 import { useEffect, useRef, useState } from 'react';
-import { openAccountPendingJournal } from '@/lib/mobile/chat-contract';
 import { withDeadline } from '@/lib/apocrypha/deadline';
+import { readMemberChatPending } from '@/lib/apocrypha/member-chat-client';
 import { useSiteSession } from '@/components/hub/SiteSession';
 import AccountChat from '@/components/apocrypha/AccountChat';
 import { ChatThread } from '@/components/apocrypha/ChatThread';
+import { requireBrainOwner } from '@/lib/brain/owner';
+import { usesOwnerRuntime } from '@/lib/mobile/owner-runtime';
 import styles from '@/styles/AccountChat.module.css';
 
 export const ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS = 4_000;
 export const ACCOUNT_SESSION_VISIBLE_DEADLINE_MS = 4_000;
 
+interface ApocryphaPageProps { readonly ownerConversation: boolean }
+
+export const getServerSideProps: GetServerSideProps<ApocryphaPageProps> = async ({ req, res }) => {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Vary', 'Cookie, Authorization');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  const owner = await requireBrainOwner(req as NextApiRequest);
+  return { props: { ownerConversation: owner.ok && usesOwnerRuntime(owner.user) } };
+};
+
 function loadPendingAccountTurn(account: string): Promise<unknown> {
   return withDeadline(
-    openAccountPendingJournal().then(store => store.load(account)),
+    Promise.resolve().then(() => readMemberChatPending(account, window.localStorage)),
     ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS,
   );
 }
@@ -38,10 +53,11 @@ function AccountResolutionUnavailable(): JSX.Element {
   </main>;
 }
 
-export default function ApocryphaPage(): JSX.Element {
+export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps): JSX.Element {
   const session = useSiteSession();
   const [sessionTimedOut, setSessionTimedOut] = useState(false);
-  const displayOwner = session.ownerConversation === true;
+  const displayOwner = session.ownerConversation === true
+    && (ownerConversation || session.access === 'owner');
   const account = session.authenticated ? session.subjectKey : null;
   const [pendingCheck, setPendingCheck] = useState<{ account: string; status: 'clear' | 'pending' | 'unavailable' } | null>(null);
   const controller = useRef<{ account: string; choice: 'owner' | 'account' } | null>(null);

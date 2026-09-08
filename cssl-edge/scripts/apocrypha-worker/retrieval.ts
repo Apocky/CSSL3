@@ -344,6 +344,23 @@ function completedProbeAt(
     : null;
 }
 
+function aggregateProbeResults(
+  config: WorkerConfig,
+  scopedResults: RetrievalAdapterResult[][],
+): RetrievalAdapterResult[] {
+  return config.manifest.memory.adapters.map((adapter, index): RetrievalAdapterResult => {
+    const scoped = scopedResults.map((items) => items[index]).filter((item): item is RetrievalAdapterResult => Boolean(item));
+    const failure = scoped.find((item) => item.state !== 'ok');
+    return {
+      name: adapter.name,
+      state: failure?.state ?? 'ok',
+      durationMs: scoped.reduce((total, item) => total + item.durationMs, 0),
+      records: scoped.flatMap((item) => item.records).slice(0, 2),
+      ...(failure?.detail ? { detail: failure.detail } : {}),
+    };
+  });
+}
+
 export async function retrieveMemory(
   config: WorkerConfig,
   job: ClaimedJob,
@@ -386,7 +403,10 @@ export async function probeMemoryAdapters(
     ...(config.memoryAdditionalProbeScopes ?? []),
   ];
   if (scopes.length === 0) return null;
-  const scopedResults: RetrievalAdapterResult[][] = [];
+  const scopedResults: Array<{
+    scope: { tenantId: string; principalId: string; capability: string };
+    results: RetrievalAdapterResult[];
+  }> = [];
   for (const [scopeIndex, scope] of scopes.entries()) {
     const job: ClaimedJob = {
       jobId: '00000000-0000-4000-8000-000000000000',
@@ -411,28 +431,33 @@ export async function probeMemoryAdapters(
       (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1),
       Math.min(2, config.memoryReadConcurrency),
     );
-    scopedResults.push(settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
-      name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
-      state: 'error', durationMs: 0, records: [],
-      detail: `probe scope ${scopeIndex + 1}: ${result.reason instanceof Error ? result.reason.message : 'adapter probe failed'}`,
-    })));
+    scopedResults.push({
+      scope,
+      results: settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
+        name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
+        state: 'error', durationMs: 0, records: [],
+        detail: `probe scope ${scopeIndex + 1}: ${result.reason instanceof Error ? result.reason.message : 'adapter probe failed'}`,
+      })),
+    });
   }
-  const results = config.manifest.memory.adapters.map((adapter, index): RetrievalAdapterResult => {
-    const scoped = scopedResults.map((items) => items[index]).filter((item): item is RetrievalAdapterResult => Boolean(item));
-    const failure = scoped.find((item) => item.state !== 'ok');
-    return {
-      name: adapter.name,
-      state: failure?.state ?? 'ok',
-      durationMs: scoped.reduce((total, item) => total + item.durationMs, 0),
-      records: scoped.flatMap((item) => item.records).slice(0, 2),
-      ...(failure?.detail ? { detail: failure.detail } : {}),
+  const results = aggregateProbeResults(config, scopedResults.map((item) => item.results));
+  const capabilityProbes: NonNullable<RetrievalBundle['capabilityProbes']> = {};
+  for (const capability of new Set(scopes.map((scope) => scope.capability))) {
+    const capabilityResults = aggregateProbeResults(
+      config,
+      scopedResults.filter((item) => item.scope.capability === capability).map((item) => item.results),
+    );
+    capabilityProbes[capability] = {
+      results: capabilityResults,
+      probedAt: completedProbeAt(config, env, capabilityResults),
     };
-  });
+  }
   const query = MEMORY_READINESS_QUERY;
   const records = results.flatMap((result) => result.records).slice(0, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),
     probedAt: completedProbeAt(config, env, results),
+    capabilityProbes,
   };
 }
 
