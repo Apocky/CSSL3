@@ -251,7 +251,12 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     let _resolved = cssl_mir::resolve_call_result_types(&mut mir_mod);
 
     // ── monomorphization quartet (D38..D50) ───────────────────────────
-    let mono_report = cssl_mir::auto_monomorphize(&hir_mod, &interner, Some(&file));
+    let mono_report = cssl_mir::auto_monomorphize_with_enum_layouts(
+        &hir_mod,
+        &interner,
+        Some(&file),
+        &nominal_enum_layouts,
+    );
     for spec in &mono_report.specializations {
         mir_mod.push_func(spec.clone());
     }
@@ -841,6 +846,38 @@ mod tests {
         assert_eq!(format!("{code:?}"), format!("{ok:?}"));
         assert!(tmp_out.exists(), "nominal unit variant match must emit an object");
         let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn abi9002_build_generic_specialization_retains_nominal_identity() {
+        let src = "enum Kind { Alpha, Beta }\n\
+                   fn select<T>() -> u32 { let value: Kind = Kind::Beta; match value {\n\
+                   Kind::Beta => 20u32, Kind::Alpha => 10u32, } }\n\
+                   pub fn probe() -> u32 { select::<i32>() }\n";
+        let tmp_out = std::env::temp_dir()
+            .join(format!("csslc_abi9002_generic_positive_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9002_generic_positive.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9002_generic_positive.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
+        assert!(tmp_out.exists(), "generic specialization lost nominal identity");
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn abi9002_build_generic_pathless_constructor_is_explicitly_refused() {
+        let src = "enum Kind { Alpha, Beta }\n\
+                   fn select<T>() -> Kind { Beta }\n\
+                   pub fn probe() -> Kind { select::<i32>() }\n";
+        let tmp_out = std::env::temp_dir()
+            .join(format!("csslc_abi9002_generic_refusal_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9002_generic_refusal.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9002_generic_refusal.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "generic pathless refusal wrote output");
     }
 
     #[test]

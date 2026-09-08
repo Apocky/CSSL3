@@ -54,7 +54,7 @@
 //! assert_eq!(mir_fn.params, vec![MirType::Int(IntWidth::I32)]);
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use cssl_ast::SourceFile;
 use cssl_hir::{
@@ -62,8 +62,8 @@ use cssl_hir::{
     HirTypeKind, Interner, Symbol,
 };
 
-use crate::body_lower::lower_fn_body;
-use crate::func::MirFunc;
+use crate::body_lower::{lower_fn_body, lower_fn_body_with_enum_layouts};
+use crate::func::{MirEnumLayout, MirFunc};
 use crate::lower::{lower_function_signature, LowerCtx};
 use crate::value::{FloatWidth, IntWidth, MirType};
 
@@ -290,6 +290,28 @@ pub fn specialize_generic_fn(
     hir_fn: &HirFn,
     subst: &TypeSubst,
 ) -> MirFunc {
+    specialize_generic_fn_inner(interner, source, hir_fn, subst, None)
+}
+
+/// Specialize a generic function while retaining declaration-backed nominal
+/// enum identities in its lowered body.
+pub fn specialize_generic_fn_with_enum_layouts(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    hir_fn: &HirFn,
+    subst: &TypeSubst,
+    enum_layouts: &BTreeMap<String, MirEnumLayout>,
+) -> MirFunc {
+    specialize_generic_fn_inner(interner, source, hir_fn, subst, Some(enum_layouts))
+}
+
+fn specialize_generic_fn_inner(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    hir_fn: &HirFn,
+    subst: &TypeSubst,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
+) -> MirFunc {
     // § Build a specialized copy of the HIR fn with substituted types.
     let specialized_fn = substitute_fn_signature(hir_fn, interner, subst);
 
@@ -301,7 +323,11 @@ pub fn specialize_generic_fn(
     // § Apply the mangled name + lower the body.
     let base_name = interner.resolve(hir_fn.name);
     mir_fn.name = mangle_specialization_name(&base_name, interner, subst);
-    lower_fn_body(interner, source, &specialized_fn, &mut mir_fn);
+    if let Some(layouts) = enum_layouts {
+        lower_fn_body_with_enum_layouts(interner, source, layouts, &specialized_fn, &mut mir_fn);
+    } else {
+        lower_fn_body(interner, source, &specialized_fn, &mut mir_fn);
+    }
 
     mir_fn
 }

@@ -52,7 +52,7 @@
 //! // `report.specializations` contains a MirFunc for `id_i32`.
 //! ```
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use cssl_ast::SourceFile;
 use cssl_hir::{
@@ -61,10 +61,11 @@ use cssl_hir::{
     HirTypeKind, Interner, Symbol,
 };
 
-use crate::func::{MirFunc, MirModule};
+use crate::func::{MirEnumLayout, MirFunc, MirModule};
 use crate::monomorph::{
     mangle_enum_specialization_name, mangle_specialization_name, mangle_struct_specialization_name,
-    specialize_generic_enum, specialize_generic_fn, specialize_generic_impl,
+    specialize_generic_enum, specialize_generic_fn, specialize_generic_fn_with_enum_layouts,
+    specialize_generic_impl,
     specialize_generic_struct, TypeSubst,
 };
 
@@ -117,6 +118,27 @@ pub fn auto_monomorphize(
     interner: &Interner,
     source: Option<&SourceFile>,
 ) -> AutoMonomorphReport {
+    auto_monomorphize_inner(module, interner, source, None)
+}
+
+/// Auto-specialize generic functions with exact nominal enum layouts threaded
+/// into every specialized body.
+#[must_use]
+pub fn auto_monomorphize_with_enum_layouts(
+    module: &HirModule,
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    enum_layouts: &BTreeMap<String, MirEnumLayout>,
+) -> AutoMonomorphReport {
+    auto_monomorphize_inner(module, interner, source, Some(enum_layouts))
+}
+
+fn auto_monomorphize_inner(
+    module: &HirModule,
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
+) -> AutoMonomorphReport {
     let mut report = AutoMonomorphReport::default();
 
     // § Index generic fns by name. Non-generic fns are ignored (call sites
@@ -163,7 +185,13 @@ pub fn auto_monomorphize(
 
         if seen.insert(mangled.clone()) {
             // First occurrence — emit the specialization.
-            let specialized = specialize_generic_fn(interner, source, fn_decl, &subst);
+            let specialized = if let Some(layouts) = enum_layouts {
+                specialize_generic_fn_with_enum_layouts(
+                    interner, source, fn_decl, &subst, layouts,
+                )
+            } else {
+                specialize_generic_fn(interner, source, fn_decl, &subst)
+            };
             report.specializations.push(specialized);
         }
     }
