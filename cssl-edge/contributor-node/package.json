@@ -1,0 +1,21 @@
+{
+  "name": "@apocky/apocrypha-contributor-node-candidate",
+  "version": "0.1.0-candidate",
+  "private": true,
+  "description": "Local-only, opt-in, resource-capped Apocrypha contributor-node candidate.",
+  "type": "module",
+  "bin": {
+    "apocrypha-contributor-node": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "RELEASE.csl",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx ../tests/contributor-node/runtime.test.ts",
+    "pack:candidate": "npm run build && npm pack --ignore-scripts --pack-destination candidate-dist"
+  }
+}

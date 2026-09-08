@@ -28,9 +28,11 @@ function invoke(method: string): { req: NextApiRequest; res: NextApiResponse; ou
 export function testCandidateManifestIsFailClosed(): void {
   const parsed = parseContributorNodeManifest(CONTRIBUTOR_NODE_MANIFEST);
   assert.ok(parsed);
-  assert.equal(parsed.release_state, 'NOT_DEPLOYED');
+  assert.equal(parsed.release_state, 'NOT_DEPLOYABLE');
   assert.equal(parsed.release_gate, 'CLOSED');
   assert.equal(parsed.contract.status, 'candidate_only');
+  assert.equal(parsed.contract.transport, 'local_only');
+  assert.equal(parsed.contract.network, 'disabled');
   assert.equal(parsed.contract.production_eligible, false);
   assert.equal(parsed.execution.default_mode, 'paused');
   assert.equal(parsed.execution.opt_in_required, true);
@@ -82,7 +84,7 @@ export async function testGetReturnsTypedManifest(): Promise<void> {
   assert.equal(out.headers['cache-control'], 'no-store');
   const body = out.body as { ok: boolean; manifest: ContributorNodeManifest };
   assert.equal(body.ok, true);
-  assert.equal(body.manifest.release_state, 'NOT_DEPLOYED');
+  assert.equal(body.manifest.release_state, 'NOT_DEPLOYABLE');
 }
 
 export async function testNonGetRefuses(): Promise<void> {

@@ -7,7 +7,7 @@
  * a signed artifact and an independently verified native runtime.
  */
 
-export type ContributorNodeReleaseState = 'NOT_DEPLOYED' | 'PARTIAL' | 'READY';
+export type ContributorNodeReleaseState = 'NOT_DEPLOYED' | 'NOT_DEPLOYABLE' | 'PARTIAL' | 'READY';
 export type ContributorNodePlatformState = 'NOT_DEPLOYED' | 'READY';
 export type ContributorNodeTarget =
   | 'windows-x64'
@@ -45,7 +45,8 @@ export interface ContributorNodeManifest {
   readonly summary: string;
   readonly contract: {
     readonly status: 'candidate_only' | 'native_release';
-    readonly transport: 'external_adapter_only' | 'signed_native_transport';
+    readonly transport: 'local_only' | 'external_adapter_only' | 'signed_native_transport';
+    readonly network: 'disabled' | 'signed_outbound_only';
     readonly inbound_listener: false;
     readonly production_eligible: boolean;
     readonly mobile_background_compute: false;
@@ -108,13 +109,14 @@ export const CONTRIBUTOR_NODE_MANIFEST: ContributorNodeManifest = {
   schema_version: 'apocrypha.mycelial-contributor-node.v1',
   product: 'Apocrypha Mycelial Contributor Node',
   version: '0.1.0-candidate',
-  release_state: 'NOT_DEPLOYED',
+  release_state: 'NOT_DEPLOYABLE',
   release_gate: 'CLOSED',
   summary:
-    'A future opt-in, resource-capped contributor node for public Apocrypha workloads. No downloadable release is available yet.',
+    'A bounded local contributor-node candidate exists, but its production transport and signed public artifact are not verified. No download is enabled.',
   contract: {
     status: 'candidate_only',
-    transport: 'external_adapter_only',
+    transport: 'local_only',
+    network: 'disabled',
     inbound_listener: false,
     production_eligible: false,
     mobile_background_compute: false,
@@ -314,9 +316,10 @@ export function parseContributorNodeManifest(value: unknown): ContributorNodeMan
   const contract = asRecord(source.contract);
   if (
     !contract ||
-    !exactKeys(contract, ['status', 'transport', 'inbound_listener', 'production_eligible', 'mobile_background_compute']) ||
+    !exactKeys(contract, ['status', 'transport', 'network', 'inbound_listener', 'production_eligible', 'mobile_background_compute']) ||
     !['candidate_only', 'native_release'].includes(String(contract.status)) ||
-    !['external_adapter_only', 'signed_native_transport'].includes(String(contract.transport)) ||
+    !['local_only', 'external_adapter_only', 'signed_native_transport'].includes(String(contract.transport)) ||
+    !['disabled', 'signed_outbound_only'].includes(String(contract.network)) ||
     contract.inbound_listener !== false ||
     typeof contract.production_eligible !== 'boolean' ||
     contract.mobile_background_compute !== false
@@ -411,11 +414,16 @@ export function parseContributorNodeManifest(value: unknown): ContributorNodeMan
   if (new Set(targets).size !== TARGETS.length || TARGETS.some((target) => !targets.includes(target))) return null;
   const readyCount = parsedPlatforms.filter((item) => item.state === 'READY').length;
   const expectedState: ContributorNodeReleaseState =
-    readyCount === 0 ? 'NOT_DEPLOYED' : readyCount === parsedPlatforms.length ? 'READY' : 'PARTIAL';
+    readyCount === 0
+      ? source.release_state === 'NOT_DEPLOYABLE' ? 'NOT_DEPLOYABLE' : 'NOT_DEPLOYED'
+      : readyCount === parsedPlatforms.length ? 'READY' : 'PARTIAL';
   if (source.release_state !== expectedState) return null;
   if (source.release_gate !== (readyCount === 0 ? 'CLOSED' : 'OPEN')) return null;
   if (readyCount === 0) {
-    if (contract.status !== 'candidate_only' || contract.transport !== 'external_adapter_only' || contract.production_eligible !== false) return null;
+    if (contract.status !== 'candidate_only'
+      || !['local_only', 'external_adapter_only'].includes(String(contract.transport))
+      || contract.production_eligible !== false
+      || (source.release_state === 'NOT_DEPLOYABLE' && (contract.transport !== 'local_only' || contract.network !== 'disabled'))) return null;
     if (resource.status !== 'proposed_default') return null;
   } else {
     if (contract.status !== 'native_release' || contract.transport !== 'signed_native_transport' || contract.production_eligible !== true) return null;
