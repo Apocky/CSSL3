@@ -3,6 +3,7 @@ param(
     [ValidateSet('Plan', 'Install', 'Uninstall')]
     [string]$Operation = 'Install',
     [string]$TaskName = 'Apocky-MetaHarness-MCP-Direct',
+    [string]$RenewalTaskName = 'Apocky-MetaHarness-Capability-Renewal',
     [string]$LegacyTaskName = 'Apocky-MetaHarness-MCP',
     [string]$MetaHarnessRoot = 'C:\Users\Apocky\source\repos\MetaHarness',
     [string]$EnvFile = 'C:\Users\Apocky\Documents\Tarot\Chaos\New\chaos-tarot\.env.local',
@@ -17,13 +18,25 @@ $credentialName = 'APOCKY_METAHARNESS_MCP_TOKEN'
 $expectedEndpoint = 'http://127.0.0.1:8765/mcp'
 $expectedEntropy = 'Apocrypha.MetaHarness.observer-capability.v1'
 $tokenPattern = '^[A-Za-z0-9_-]{43}$'
+$capabilityTtlMs = 900000
+$renewalIntervalMinutes = 5
+$managedTaskPath = '\'
 
 function Assert-TaskName {
     param([string]$Candidate)
     if ([string]::IsNullOrWhiteSpace($Candidate) -or $Candidate.Length -gt 120 -or
-        $Candidate -match '[\\/\x00-\x1f]' -or $Candidate -ceq $LegacyTaskName) {
-        throw 'The direct task name is invalid or aliases the disabled legacy task.'
+        $Candidate -match '[\\/\x00-\x1f]' -or
+        [StringComparer]::OrdinalIgnoreCase.Equals($Candidate, $LegacyTaskName)) {
+        throw 'A managed task name is invalid or aliases the disabled legacy task.'
     }
+}
+
+function Quote-TaskArgument {
+    param([string]$Value, [string]$Label)
+    if ([string]::IsNullOrWhiteSpace($Value) -or $Value -match '["\x00-\x1f]') {
+        throw "$Label cannot be represented safely in a direct task action."
+    }
+    return '"' + $Value + '"'
 }
 
 function Resolve-RegularFile {
@@ -118,8 +131,24 @@ function Get-FileSha256 {
 function Assert-FederatorBootstrapContract {
     param([string]$Executable)
     $help = & $Executable 'bootstrap-metaharness-capability' '--help' 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0 -or $help -notmatch '(?s)bootstrap-metaharness-capability.*--output.*--owner-id.*--endpoint') {
+    if ($LASTEXITCODE -ne 0 -or $help -notmatch '(?s)bootstrap-metaharness-capability.*--output.*--owner-id.*--endpoint.*--ttl-ms') {
         throw 'Configured memory executable lacks the required MetaHarness capability-bootstrap contract.'
+    }
+}
+
+function Start-AndVerifyRenewalTask {
+    param([string]$Name)
+    $notBefore = (Get-Date).AddSeconds(-2)
+    Start-ScheduledTask -TaskName $Name -TaskPath $managedTaskPath
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+    do {
+        Start-Sleep -Milliseconds 200
+        $task = Get-ScheduledTask -TaskName $Name -TaskPath $managedTaskPath
+        $info = Get-ScheduledTaskInfo -TaskName $Name -TaskPath $managedTaskPath
+        $complete = $task.State -ne 'Running' -and $info.LastRunTime -ge $notBefore
+    } while (-not $complete -and [DateTimeOffset]::UtcNow -lt $deadline)
+    if (-not $complete -or [uint32]$info.LastTaskResult -ne 0) {
+        throw 'The direct MetaHarness capability renewal task did not complete successfully.'
     }
 }
 
@@ -180,6 +209,10 @@ function Test-UnauthenticatedDenial {
 }
 
 Assert-TaskName $TaskName
+Assert-TaskName $RenewalTaskName
+if ([StringComparer]::OrdinalIgnoreCase.Equals($TaskName, $RenewalTaskName)) {
+    throw 'Observer and renewal task names must be distinct.'
+}
 $root = Resolve-RegularDirectory $MetaHarnessRoot 'MetaHarness root'
 if (-not (Test-Path -LiteralPath (Join-Path $root 'PRIME_DIRECTIVE.md') -PathType Leaf) -or
     -not (Test-Path -LiteralPath (Join-Path $root 'pyproject.toml') -PathType Leaf)) {
@@ -207,30 +240,6 @@ $basePython = Resolve-RegularFile (Join-Path $Matches[1] 'python.exe') 'MetaHarn
 $taskExecutable = $venvPython
 $taskArguments = '-m meta_harness.mcp_server'
 
-if ($Operation -eq 'Uninstall') {
-    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($null -ne $existing) {
-        $execute = [string]$existing.Actions[0].Execute
-        $arguments = [string]$existing.Actions[0].Arguments
-        if (-not [StringComparer]::OrdinalIgnoreCase.Equals($execute, $taskExecutable) -or $arguments -cne $taskArguments) {
-            throw 'Refusing to remove a task whose executable is not the canonical MetaHarness observer.'
-        }
-        if ($PSCmdlet.ShouldProcess($TaskName, 'stop and unregister direct MetaHarness observer task')) {
-            Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-        }
-    }
-    [ordered]@{
-        schema = 'apocrypha.metaharness-resident.result.v1'
-        operation = 'uninstall'
-        task_name = $TaskName
-        legacy_task_name = $LegacyTaskName
-        legacy_untouched = $true
-        credential_preserved = $true
-    } | ConvertTo-Json -Depth 5
-    exit 0
-}
-
 $dotenv = Read-DotEnv $EnvFile
 $federatorExecutable = Resolve-RegularFile ([string]$dotenv.Values['APOCRYPHA_MEMORY_FEDERATOR_EXE']) 'Memory federator executable'
 if ([IO.Path]::GetExtension($federatorExecutable) -cne '.exe') {
@@ -248,6 +257,85 @@ if ($null -eq $federation.metaharness -or $federation.metaharness.endpoint -cne 
 $bundlePath = [string]$federation.metaharness.capability.bundle_path
 if ([string]::IsNullOrWhiteSpace($bundlePath) -or -not [IO.Path]::IsPathRooted($bundlePath)) {
     throw 'MetaHarness capability bundle path must be absolute.'
+}
+$null = Resolve-RegularDirectory ([IO.Path]::GetDirectoryName($bundlePath)) 'MetaHarness capability directory'
+if (Test-Path -LiteralPath $bundlePath) {
+    $null = Resolve-RegularFile $bundlePath 'MetaHarness capability bundle'
+}
+$renewalWorkingDirectory = Resolve-RegularDirectory ([IO.Path]::GetDirectoryName($federatorExecutable)) 'Memory federator directory'
+$quotedBundle = Quote-TaskArgument $bundlePath 'MetaHarness capability bundle path'
+$quotedOwner = Quote-TaskArgument $ownerId 'MetaHarness capability owner'
+$quotedEndpoint = Quote-TaskArgument $expectedEndpoint 'MetaHarness capability endpoint'
+$renewalTaskArguments = "bootstrap-metaharness-capability --output $quotedBundle --owner-id $quotedOwner --endpoint $quotedEndpoint --ttl-ms $capabilityTtlMs"
+
+if ($Operation -eq 'Uninstall') {
+    $managed = @(
+        [pscustomobject]@{ Name = $TaskName; Execute = $taskExecutable; Arguments = $taskArguments; WorkingDirectory = $root; Label = 'observer' },
+        [pscustomobject]@{ Name = $RenewalTaskName; Execute = $federatorExecutable; Arguments = $renewalTaskArguments; WorkingDirectory = $renewalWorkingDirectory; Label = 'capability renewal' }
+    )
+    $validatedManaged = @()
+    foreach ($expected in $managed) {
+        $existingManaged = Get-ScheduledTask -TaskName $expected.Name -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
+        if ($null -eq $existingManaged) { continue }
+        if (@($existingManaged.Actions).Count -ne 1) {
+            throw "Refusing to remove a task that does not have exactly one canonical MetaHarness $($expected.Label) action."
+        }
+        $execute = [string]$existingManaged.Actions[0].Execute
+        $arguments = [string]$existingManaged.Actions[0].Arguments
+        $workingDirectory = [string]$existingManaged.Actions[0].WorkingDirectory
+        if (-not [StringComparer]::OrdinalIgnoreCase.Equals($execute, $expected.Execute) -or
+            -not [StringComparer]::OrdinalIgnoreCase.Equals($workingDirectory, $expected.WorkingDirectory) -or
+            $arguments -cne $expected.Arguments) {
+            throw "Refusing to remove a task whose action is not the canonical MetaHarness $($expected.Label) action."
+        }
+        $validatedManaged += [pscustomobject]@{
+            Name = $expected.Name
+            Label = $expected.Label
+            Xml = Export-ScheduledTask -TaskName $expected.Name -TaskPath $managedTaskPath
+            WasRunning = $existingManaged.State -eq 'Running'
+        }
+    }
+    $attemptedManaged = @()
+    try {
+        foreach ($expected in $validatedManaged) {
+            if ($PSCmdlet.ShouldProcess($expected.Name, "stop and unregister direct MetaHarness $($expected.Label) task")) {
+                $attemptedManaged += $expected
+                Stop-ScheduledTask -TaskName $expected.Name -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
+                Unregister-ScheduledTask -TaskName $expected.Name -TaskPath $managedTaskPath -Confirm:$false
+            }
+        }
+    }
+    catch {
+        $removalFailure = $_
+        $restoreFailures = @()
+        foreach ($snapshot in $attemptedManaged) {
+            try {
+                Register-ScheduledTask -TaskName $snapshot.Name -TaskPath $managedTaskPath -Xml $snapshot.Xml -Force | Out-Null
+                if ($snapshot.WasRunning) {
+                    Start-ScheduledTask -TaskName $snapshot.Name -TaskPath $managedTaskPath
+                }
+            }
+            catch {
+                $restoreFailures += $snapshot.Name
+            }
+        }
+        if ($restoreFailures.Count -gt 0) {
+            throw "MetaHarness task removal failed and rollback could not restore every task: $($restoreFailures -join ', ')."
+        }
+        throw $removalFailure
+    }
+    [ordered]@{
+        schema = 'apocrypha.metaharness-resident.result.v1'
+        operation = 'uninstall'
+        task_name = $TaskName
+        renewal_task_name = $RenewalTaskName
+        task_path = $managedTaskPath
+        legacy_task_name = $LegacyTaskName
+        legacy_untouched = $true
+        credential_preserved = $true
+        capability_bundle_preserved = $true
+    } | ConvertTo-Json -Depth 5
+    exit 0
 }
 
 $fileToken = if ($dotenv.Values.ContainsKey($credentialName)) { [string]$dotenv.Values[$credentialName] } else { '' }
@@ -269,11 +357,27 @@ $plan = [ordered]@{
     schema = 'apocrypha.metaharness-resident.plan.v1'
     operation = $Operation.ToLowerInvariant()
     task_name = $TaskName
+    task_path = $managedTaskPath
     legacy_task_name = $LegacyTaskName
     legacy_untouched = $true
     action = [ordered]@{ execute = $taskExecutable; arguments = @('-m', 'meta_harness.mcp_server'); serialized_arguments = $taskArguments; working_directory = $root }
     trigger = @('user-logon')
     settings = [ordered]@{ restart_count = 999; restart_interval_seconds = 60; execution_time_limit_seconds = 0; multiple_instances = 'IgnoreNew'; hidden = $true }
+    renewal = [ordered]@{
+        task_name = $RenewalTaskName
+        task_path = $managedTaskPath
+        action = [ordered]@{
+            execute = $federatorExecutable
+            arguments = @('bootstrap-metaharness-capability', '--output', $bundlePath, '--owner-id', $ownerId, '--endpoint', $expectedEndpoint, '--ttl-ms', $capabilityTtlMs)
+            serialized_arguments = $renewalTaskArguments
+            working_directory = $renewalWorkingDirectory
+        }
+        trigger = @('user-logon', 'five-minute-repetition')
+        ttl_ms = $capabilityTtlMs
+        interval_seconds = $renewalIntervalMinutes * 60
+        credential_included_in_task = $false
+        output_contains_secret = $false
+    }
     observer = [ordered]@{ endpoint = $expectedEndpoint; authority = 'none'; execution_authorized = $false }
     credential = [ordered]@{ environment_name = $credentialName; action = $credentialAction; included_in_task = $false; printed = $false }
     federation = [ordered]@{ executable = $federatorExecutable; config = $federatorConfigPath; capability_bundle = $bundlePath; endpoint = $expectedEndpoint }
@@ -281,7 +385,8 @@ $plan = [ordered]@{
         virtual_environment_python = $venvPython
         base_python = $basePython
         editable_source = $installedSource
-        observer_executable_sha256 = Get-FileSha256 $entryPoint
+        observer_launcher_sha256 = Get-FileSha256 $taskExecutable
+        observer_entry_point_sha256 = Get-FileSha256 $entryPoint
         federator_executable_sha256 = Get-FileSha256 $federatorExecutable
     }
 }
@@ -295,11 +400,11 @@ if ($WhatIfPreference) {
     exit 0
 }
 
-$legacy = Get-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+$legacy = Get-ScheduledTask -TaskName $LegacyTaskName -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
 if ($null -ne $legacy -and $legacy.State -ne 'Disabled') {
     throw 'The legacy PowerShell MetaHarness task must remain disabled; it was not changed.'
 }
-$existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$existing = Get-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
 if ($null -ne $existing) {
     $existingExecute = [string]$existing.Actions[0].Execute
     $existingWorkingDirectory = [string]$existing.Actions[0].WorkingDirectory
@@ -308,6 +413,17 @@ if ($null -ne $existing) {
         -not [StringComparer]::OrdinalIgnoreCase.Equals($existingWorkingDirectory, $root) -or
         $existingArguments -cne $taskArguments) {
         throw 'Refusing to reuse an existing task that is not the exact direct MetaHarness action.'
+    }
+}
+$existingRenewal = Get-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
+if ($null -ne $existingRenewal) {
+    $renewalExecute = [string]$existingRenewal.Actions[0].Execute
+    $renewalArguments = [string]$existingRenewal.Actions[0].Arguments
+    $renewalWorking = [string]$existingRenewal.Actions[0].WorkingDirectory
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($renewalExecute, $federatorExecutable) -or
+        -not [StringComparer]::OrdinalIgnoreCase.Equals($renewalWorking, $renewalWorkingDirectory) -or
+        $renewalArguments -cne $renewalTaskArguments) {
+        throw 'Refusing to reuse an existing task that is not the exact MetaHarness capability renewal action.'
     }
 }
 $listeners = @(Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue)
@@ -329,7 +445,7 @@ try {
     }
 
     if ($PSCmdlet.ShouldProcess($bundlePath, 'seal synchronized MetaHarness DPAPI capability')) {
-        $bootstrapOutput = & $federatorExecutable 'bootstrap-metaharness-capability' '--output' $bundlePath '--owner-id' $ownerId '--endpoint' $expectedEndpoint 2>&1 | Out-String
+        $bootstrapOutput = & $federatorExecutable 'bootstrap-metaharness-capability' '--output' $bundlePath '--owner-id' $ownerId '--endpoint' $expectedEndpoint '--ttl-ms' $capabilityTtlMs 2>&1 | Out-String
         $bootstrapExit = $LASTEXITCODE
         if ($bootstrapOutput.Contains($token)) { throw 'Federator bootstrap exposed the bearer in output.' }
         if ($bootstrapExit -ne 0) { throw 'Federator refused the MetaHarness capability bootstrap.' }
@@ -339,50 +455,126 @@ try {
         }
     }
 
-    if ($null -ne $existing -and $existing.State -eq 'Running') {
-        Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-        $closeDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
-        do {
-            Start-Sleep -Milliseconds 250
-            $stillListening = @(Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue).Count -gt 0
-        } while ($stillListening -and [DateTimeOffset]::UtcNow -lt $closeDeadline)
-        if ($stillListening) { throw 'Existing direct MetaHarness task did not release port 8765.' }
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+    $renewalWasPresent = $null -ne $existingRenewal
+    $renewalWasRunning = $renewalWasPresent -and $existingRenewal.State -eq 'Running'
+    $renewalRollbackXml = if ($renewalWasPresent) {
+        Export-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath
+    }
+    else { $null }
+    try {
+        if ($renewalWasRunning) {
+            Stop-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
+        }
+        $renewalAction = New-ScheduledTaskAction -Execute $federatorExecutable -Argument $renewalTaskArguments -WorkingDirectory $renewalWorkingDirectory
+        $renewalLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+        $renewalRepeating = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $renewalIntervalMinutes)
+        $renewalSettings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Minutes 1) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -Hidden
+        if ($PSCmdlet.ShouldProcess($RenewalTaskName, 'register or reconcile direct MetaHarness capability renewal task')) {
+            Register-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath -Action $renewalAction -Trigger @($renewalLogon, $renewalRepeating) -Settings $renewalSettings -Principal $principal -Force | Out-Null
+        }
+        if (-not $DoNotStart -and $PSCmdlet.ShouldProcess($RenewalTaskName, 'run and verify direct MetaHarness capability renewal task')) {
+            Start-AndVerifyRenewalTask $RenewalTaskName
+        }
+    }
+    catch {
+        $renewalFailure = $_
+        try {
+            if ($renewalWasPresent) {
+                Register-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath -Xml $renewalRollbackXml -Force | Out-Null
+                if ($renewalWasRunning) {
+                    Start-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath
+                }
+            }
+            else {
+                $partialRenewal = Get-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
+                if ($null -ne $partialRenewal) {
+                    Unregister-ScheduledTask -TaskName $RenewalTaskName -TaskPath $managedTaskPath -Confirm:$false
+                }
+            }
+        }
+        catch {
+            throw "MetaHarness renewal reconciliation failed and its prior task could not be restored: $($renewalFailure.Exception.Message)"
+        }
+        throw $renewalFailure
     }
 
-    $action = New-ScheduledTaskAction -Execute $taskExecutable -Argument $taskArguments -WorkingDirectory $root
-    $logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-    $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -Hidden
-    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
-    if ($PSCmdlet.ShouldProcess($TaskName, 'register or reconcile direct persistent MetaHarness observer task')) {
-        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $logon -Settings $settings -Principal $principal -Force | Out-Null
+    $observerWasPresent = $null -ne $existing
+    $observerWasRunning = $observerWasPresent -and $existing.State -eq 'Running'
+    $observerRollbackXml = if ($observerWasPresent) {
+        Export-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath
     }
-    if (-not $DoNotStart -and $PSCmdlet.ShouldProcess($TaskName, 'start and verify direct MetaHarness observer task')) {
-        Start-ScheduledTask -TaskName $TaskName
-        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(40)
-        $verified = $false
-        do {
-            Start-Sleep -Milliseconds 500
-            try {
-                Test-UnauthenticatedDenial
-                Test-ObserverHealth $token
-                $verified = $true
+    else { $null }
+    try {
+        if ($observerWasRunning) {
+            Stop-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
+            $closeDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
+            do {
+                Start-Sleep -Milliseconds 250
+                $stillListening = @(Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue).Count -gt 0
+            } while ($stillListening -and [DateTimeOffset]::UtcNow -lt $closeDeadline)
+            if ($stillListening) { throw 'Existing direct MetaHarness task did not release port 8765.' }
+        }
+
+        $action = New-ScheduledTaskAction -Execute $taskExecutable -Argument $taskArguments -WorkingDirectory $root
+        $logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+        $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -Hidden
+        if ($PSCmdlet.ShouldProcess($TaskName, 'register or reconcile direct persistent MetaHarness observer task')) {
+            Register-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath -Action $action -Trigger $logon -Settings $settings -Principal $principal -Force | Out-Null
+        }
+
+        if (-not $DoNotStart -and $PSCmdlet.ShouldProcess($TaskName, 'start and verify direct MetaHarness observer task')) {
+            Start-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath
+            $deadline = [DateTimeOffset]::UtcNow.AddSeconds(40)
+            $verified = $false
+            do {
+                Start-Sleep -Milliseconds 500
+                try {
+                    Test-UnauthenticatedDenial
+                    Test-ObserverHealth $token
+                    $verified = $true
+                }
+                catch {
+                    if ([DateTimeOffset]::UtcNow -ge $deadline) { throw }
+                }
+            } while (-not $verified)
+        }
+    }
+    catch {
+        $observerFailure = $_
+        try {
+            if ($observerWasPresent) {
+                Register-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath -Xml $observerRollbackXml -Force | Out-Null
+                if ($observerWasRunning) { Start-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath }
             }
-            catch {
-                if ([DateTimeOffset]::UtcNow -ge $deadline) { throw }
+            else {
+                $partialObserver = Get-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath -ErrorAction SilentlyContinue
+                if ($null -ne $partialObserver) {
+                    Unregister-ScheduledTask -TaskName $TaskName -TaskPath $managedTaskPath -Confirm:$false
+                }
             }
-        } while (-not $verified)
+        }
+        catch {
+            throw "MetaHarness observer reconciliation failed and its prior task could not be restored: $($observerFailure.Exception.Message)"
+        }
+        throw $observerFailure
     }
 
     [ordered]@{
         schema = 'apocrypha.metaharness-resident.result.v1'
         operation = 'install'
         task_name = $TaskName
+        renewal_task_name = $RenewalTaskName
+        task_path = $managedTaskPath
         legacy_task_name = $LegacyTaskName
         legacy_untouched = $true
         direct_executable = $taskExecutable
         arguments = @('-m', 'meta_harness.mcp_server')
         started = -not [bool]$DoNotStart
         authenticated_health_verified = -not [bool]$DoNotStart
+        renewal_verified = -not [bool]$DoNotStart
+        capability_ttl_ms = $capabilityTtlMs
+        renewal_interval_seconds = $renewalIntervalMinutes * 60
         authority = 'none'
         execution_authorized = $false
         credential_printed = $false

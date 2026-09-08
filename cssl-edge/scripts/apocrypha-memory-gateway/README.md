@@ -79,6 +79,21 @@ On the production Windows host, `run-production.ps1` loads the ignored shared
 environment file and keeps the gateway attached to its supervisor. Install or
 refresh that hidden sign-in supervisor with `register-gateway-task.ps1`.
 
+MetaHarness has two direct scheduled tasks managed together by
+`metaharness-register-resident-task.ps1`. The observer task runs the pinned
+virtual-environment Python module. The separate hidden renewal task invokes the
+native capability bootstrap directly every five minutes, renewing the gateway's
+exact DPAPI bundle with a fifteen-minute TTL. Its action pins owner `apocky`,
+endpoint `http://127.0.0.1:8765/mcp`, and the bundle selected by the admitted
+federator configuration. The bearer remains in the current-user environment;
+it is never placed in task arguments or output. Renewal repeats indefinitely
+while the task exists. Both tasks are pinned to Task Scheduler's root path.
+Install verifies renewal before it touches a running observer and restores the
+prior task definition and running state if reconciliation fails. `-Operation
+Uninstall` prevalidates and snapshots both exact tasks before either is removed;
+if removal fails, it restores every task already touched. The credential and
+capability bundle remain preserved.
+
 Point every `APOCRYPHA_*_READ_URL` in the worker environment at its gateway URL
 and set every corresponding worker token to the gateway token. Rollback is to
 stop this process and remove those worker URL/token bindings. No source memory
