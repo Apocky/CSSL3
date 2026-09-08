@@ -1,0 +1,81 @@
+§ APOCRYPHA.CONTRIBUTOR.TRANSPORT.v1 ‼
+
+status := CANDIDATE.SOURCE_IMPLEMENTED ; live_migration := CLOSED
+purpose := authenticated_controller↔opt-in_node transport around
+           `contributor-node/src/runtime.ts`
+
+§P BOUNDARY
+  node := public_key.proof-of-possession + {platform,capability,consent_revision}
+  controller := Ed25519 lease+receipt signer ; operator := distinct Ed25519 revoker
+  store := durable.transactional adapter ; memory_store := TEST_ONLY
+  N! public_route ⇒ default_memory_store|implicit_store|credential_fallback
+  N! transport ⇒ raw_conversation|raw_memory|vault|credentials|filesystem
+
+§D MESSAGES
+  enrollment := `apocrypha.contributor.enrollment.v1`
+    {request_id,node_id,node_key_id,node_public_key_spki_b64,platform,
+     capabilities,consent_revision,issued_at,expires_at,signature_b64}
+  enrollment_receipt := controller-signed `...enrollment-receipt.v1`
+  lease_request := trusted_controller-side `...lease-request.v1`
+    {request_id,idempotency_key,node_id,issued_at,expires_at,attempt,task}
+  lease_dispatch := controller-signed `...lease-dispatch.v1`
+    {dispatch_id,request_id,idempotency_key,node_id,lease}
+    ; inner lease := existing `apocrypha.contributor.lease.v1`
+  result_submission := node-signed `...result-submission.v1`
+    {dispatch_id,request_id,idempotency_key,node_id,result}
+    ; inner result := existing node-signed `apocrypha.contributor.result.v1`
+  result_receipt := controller-signed `...result-receipt.v1`
+  revoke := operator-signed `...revoke.v1`
+  revoke_receipt := controller-signed `...revoke-receipt.v1`
+
+§D API.CONTRACT
+  POST `/api/apocrypha/contributor/enroll`
+    auth := rate-limited_public admission + signed node proof
+    body := enrollment ; replay(request_id,request_hash) ⇒ exact receipt
+  POST `/api/apocrypha/contributor/lease`
+    auth := authenticated_controller ; body := lease_request
+    replay(node_id,idempotency_key,request_hash) ⇒ exact dispatch
+  POST `/api/apocrypha/contributor/result`
+    auth := transport envelope only ; body := result_submission
+    replay(dispatch_id,submission_hash) ⇒ exact receipt
+  POST `/api/apocrypha/contributor/revoke`
+    auth := owner/admin session + operator signature ; body := revoke
+    revoked := terminal ; outstanding/future lease ⇒ reject
+  GET `/api/apocrypha/contributor/status`
+    auth := no secrets ; public metadata only ; no node inventory
+
+§D INVARIANTS
+  ⌈ exact_keys + bounded_bytes + canonical_json + Ed25519.verify ⌉
+  ⌈ enrollment.expiry≤5m + clock_skew≤30s + node_key immutable after enrollment ⌉
+  ⌈ revoked ⇒ no issueLease ∧ no acceptResult ; revoke irreversible ⌉
+  ⌈ idempotency conflict ⇒ reject ; retry same hash ⇒ byte-identical receipt ⌉
+  ⌈ store.transaction spans read→decision→write ; concurrent retry ⇒ one dispatch ⌉
+  ⌈ lease.inner_signature ∧ dispatch.outer_signature required ⌉
+  ⌈ result.inner_signature ∧ submission.outer_signature required ⌉
+  ⌈ task∈{vector_dot} ; capability∈{vector_dot} ; no wildcard capability ⌉
+  ⌈ result.started_at∈lease.window±clock_skew ∧ result.finished_at≤lease.expires_at+skew ⌉
+
+§T VERIFIED
+  ✓ proof-of-possession enrollment + controller receipt verification
+  ✓ enrollment replay returns exact receipt ; changed payload rejected
+  ✓ concurrent lease retry returns one exact signed dispatch
+  ✓ inner+outer lease signatures ; wrapper tamper rejected
+  ✓ runtime result round-trip + inner+outer signature verification
+  ✓ lost result acknowledgement retry returns exact receipt
+  ✓ revoke signature+replay ; revoked node cannot lease
+  ✓ malformed/unknown/store-missing paths fail closed
+  ✓ TypeScript strict check ; no network/filesystem side effects in transport module
+
+§C PROMOTION
+  source := `lib/apocrypha/contributor-transport.ts`
+  tests := `tests/contributor-node/transport.test.ts`
+  N! live_release until durable Supabase adapter/RPC + authenticated route
+     + rate-limit/abuse controls + signed native artifact + sandbox/resource
+     enforcement + install/rollback/device proof are independently verified
+  migration := separate owner-reviewed change ; N! apply in this candidate lane
+
+§R ROLLBACK
+  source := revert transport commit ; no runtime/store/live alias mutation
+  live := transport routes remain absent or fail-closed until promotion gates open
+
+∎
