@@ -117,6 +117,73 @@ pub fn emit_diagnostics(file_path: &Path, bag: &cssl_ast::DiagnosticBag) -> u32 
     fatal
 }
 
+/// Emit type-inference diagnostics with their real source coordinates.
+///
+/// Unlike the stage-0 bag renderer, HIR type diagnostics already carry spans.
+/// Keeping this adapter separate preserves the existing parser/lowerer output
+/// while giving `check` and `build` actionable line/column locations and a
+/// stable diagnostic class.
+pub fn emit_type_diagnostics(
+    file_path: &Path,
+    file: &cssl_ast::SourceFile,
+    diagnostics: &[cssl_ast::Diagnostic],
+) -> u32 {
+    fn position(file: &cssl_ast::SourceFile, span: Option<cssl_ast::Span>) -> (u32, u32) {
+        span.filter(|span| span.source == file.id)
+            .map_or((0, 0), |span| {
+                let location = file.position_of(span.start);
+                (location.line.get(), location.column.get())
+            })
+    }
+
+    let mut fatal = 0u32;
+    let file_display = file_path.display().to_string();
+    for diagnostic in diagnostics {
+        let severity = match diagnostic.severity {
+            cssl_ast::Severity::Error => Severity::Error,
+            cssl_ast::Severity::Warning => Severity::Warning,
+            cssl_ast::Severity::Note | cssl_ast::Severity::Help => Severity::Note,
+        };
+        if severity.is_fatal() {
+            fatal = fatal.saturating_add(1);
+        }
+        let (line, col) = position(file, diagnostic.span);
+        eprintln!(
+            "{}",
+            DiagLine {
+                severity,
+                code: Some("TYPECHECK".to_string()),
+                file: file_display.clone(),
+                line,
+                col,
+                message: diagnostic.message.clone(),
+            }
+            .render()
+        );
+        for note in &diagnostic.notes {
+            let note_severity = match note.severity {
+                cssl_ast::Severity::Error => Severity::Error,
+                cssl_ast::Severity::Warning => Severity::Warning,
+                cssl_ast::Severity::Note | cssl_ast::Severity::Help => Severity::Note,
+            };
+            let (line, col) = position(file, note.span);
+            eprintln!(
+                "    {}",
+                DiagLine {
+                    severity: note_severity,
+                    code: Some("TYPECHECK".to_string()),
+                    file: file_display.clone(),
+                    line,
+                    col,
+                    message: note.message.clone(),
+                }
+                .render()
+            );
+        }
+    }
+    fatal
+}
+
 /// Format a "file not found" / "unreadable" error for the user.
 #[must_use]
 pub fn fs_error(path: &Path, err: &std::io::Error) -> String {
@@ -200,5 +267,26 @@ mod tests {
         bag.push(Diagnostic::error("e2"));
         let n = emit_diagnostics(std::path::Path::new("foo.cssl"), &bag);
         assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn emit_type_diagnostics_counts_only_errors() {
+        use cssl_ast::{Diagnostic, SourceFile, SourceId, Span, Surface};
+        let file = SourceFile::new(
+            SourceId::first(),
+            "typed.cssl",
+            "fn f() -> bool {\n  2\n}\n",
+            Surface::RustHybrid,
+        );
+        let diagnostics = vec![
+            Diagnostic::error("expected Bool, found Int").with_span(Span::new(
+                SourceId::first(),
+                19,
+                20,
+            )),
+            Diagnostic::warning("secondary warning"),
+        ];
+        let n = emit_type_diagnostics(std::path::Path::new("typed.cssl"), &file, &diagnostics);
+        assert_eq!(n, 1);
     }
 }

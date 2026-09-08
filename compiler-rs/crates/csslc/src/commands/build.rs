@@ -66,6 +66,13 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         return ExitCode::from(exit_code::USER_ERROR);
     }
 
+    let (_type_map, type_diagnostics) = cssl_hir::check_module(&hir_mod, &interner);
+    let type_errors = diag::emit_type_diagnostics(path, &file, &type_diagnostics);
+    if type_errors > 0 {
+        eprintln!("csslc: build failed — {type_errors} type-check error(s)");
+        return ExitCode::from(exit_code::USER_ERROR);
+    }
+
     // § T11-W15-CSSLC-MULTI-MODULE : auxiliary modules — each `--module-path=…`
     //   path goes through the SAME lex → parse → HIR-lower passes ; their
     //   HIR fns are concatenated into a separate vec for the MIR-lower step
@@ -118,6 +125,16 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
                 "csslc: aux-module '{}' HIR-lower failed — {} error(s)",
                 aux_path.display(),
                 n_lerr
+            );
+            return ExitCode::from(exit_code::USER_ERROR);
+        }
+        let (_type_map, type_diagnostics) = cssl_hir::check_module(&aux_hir, &aux_interner);
+        let n_terr = diag::emit_type_diagnostics(aux_path, &aux_file, &type_diagnostics);
+        if n_terr > 0 {
+            eprintln!(
+                "csslc: aux-module '{}' type-check failed — {} error(s)",
+                aux_path.display(),
+                n_terr
             );
             return ExitCode::from(exit_code::USER_ERROR);
         }
@@ -1355,6 +1372,70 @@ mod tests {
         // Cleanup.
         let _ = std::fs::remove_file(&aux_path);
         let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn build_refuses_main_type_errors_before_artifact_emission() {
+        let invalid = [
+            "fn invalid(value: bool) -> bool { ~value }",
+            "fn invalid() -> bool { 2 }",
+            "fn invalid(value: u8) -> bool { value }",
+            "fn invalid(value: u8) -> bool { value as bool }",
+        ];
+        let expected = format!("{:?}", ExitCode::from(exit_code::USER_ERROR));
+        for (index, src) in invalid.iter().enumerate() {
+            let output = std::env::temp_dir().join(format!(
+                "csslc_typecheck_main_{}_{}.obj",
+                std::process::id(),
+                index
+            ));
+            let _ = std::fs::remove_file(&output);
+            let args = build_args("invalid_main.cssl", output.to_str().unwrap());
+            let code = run_with_source(Path::new("invalid_main.cssl"), src, &args);
+            assert_eq!(
+                format!("{code:?}"),
+                expected,
+                "case {index} accepted: {src}"
+            );
+            assert!(
+                !output.exists(),
+                "type-invalid main module emitted artifact: {}",
+                output.display()
+            );
+        }
+    }
+
+    #[test]
+    fn build_refuses_aux_type_errors_before_artifact_emission() {
+        let main_src = "fn main() -> i32 { 0i32 }";
+        let aux_src = "fn invalid(value: u8) -> bool { value }";
+        let aux_path =
+            std::env::temp_dir().join(format!("csslc_typecheck_aux_{}.cssl", std::process::id()));
+        let output =
+            std::env::temp_dir().join(format!("csslc_typecheck_aux_{}.obj", std::process::id()));
+        std::fs::write(&aux_path, aux_src).unwrap();
+        let _ = std::fs::remove_file(&output);
+        let args = BuildArgs {
+            input: PathBuf::from("valid_main.cssl"),
+            output: Some(output.clone()),
+            target: None,
+            emit: EmitMode::Object,
+            opt_level: 0,
+            backend: Backend::Cranelift,
+            module_paths: vec![aux_path.clone()],
+        };
+
+        let code = run_with_source(Path::new("valid_main.cssl"), main_src, &args);
+        assert_eq!(
+            format!("{code:?}"),
+            format!("{:?}", ExitCode::from(exit_code::USER_ERROR))
+        );
+        assert!(
+            !output.exists(),
+            "type-invalid auxiliary module emitted artifact: {}",
+            output.display()
+        );
+        let _ = std::fs::remove_file(&aux_path);
     }
 
     #[test]
