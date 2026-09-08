@@ -1,0 +1,25 @@
+module compiler.tests.abi_bool_not_probe
+
+pub fn bool_identity_v1(value: bool) -> bool {
+    value
+}
+
+pub fn bool_not_v1(value: bool) -> bool {
+    !value
+}
+
+pub fn bool_not_branch_v1(value: bool) -> u32 {
+    if !value { 11u32 } else { 22u32 }
+}
+
+pub fn bool_true_v1() -> bool {
+    true
+}
+
+pub fn bool_false_v1() -> bool {
+    false
+}
+
+pub fn bit_not_u8_v1(value: u8) -> u8 {
+    ~value
+}

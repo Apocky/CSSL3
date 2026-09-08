@@ -1128,11 +1128,18 @@ fn lower_op_to_cl(
                 // ops produced by HirLiteralKind::Bool lowering. Without this,
                 // the `i64::parse` fallthrough returns 0 for both `true` and
                 // `false`, breaking `#run true` comptime evaluation.
-                let i: i64 = match value_str {
-                    "true" => 1,
-                    "false" => 0,
-                    other => other.parse().unwrap_or(0),
-                };
+                let i: i64 = if matches!(r.ty, MirType::Bool) {
+                    match value_str {
+                        "true" | "1" => Ok(1),
+                        "false" | "0" => Ok(0),
+                        other => Err(JitError::LoweringFailed {
+                            fn_name: fn_name.to_string(),
+                            detail: format!("invalid boolean constant `{other}`"),
+                        }),
+                    }
+                } else {
+                    Ok(value_str.parse().unwrap_or(0))
+                }?;
                 builder.ins().iconst(cl_ty, i)
             };
             value_map.insert(r.id, v);
@@ -2461,6 +2468,37 @@ mod tests {
         );
         assert!(parse_i128_constant_bits("340282366920938463463374607431768211456").is_err());
         assert!(parse_i128_constant_bits("not-an-integer").is_err());
+    }
+
+    #[test]
+    fn boolean_constants_are_canonical_and_invalid_spelling_fails_closed() {
+        for (raw, expected) in [("false", false), ("0", false), ("true", true), ("1", true)] {
+            let mut function = MirFunc::new("bool_constant", vec![], vec![MirType::Bool]);
+            function.push_op(
+                MirOp::std("arith.constant")
+                    .with_attribute("value", raw)
+                    .with_result(ValueId(0), MirType::Bool),
+            );
+            function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+            let mut module = JitModule::new();
+            let handle = module.compile(&function).expect("canonical bool compiles");
+            module.finalize().expect("canonical bool finalizes");
+            assert_eq!(handle.call_unit_to_bool(&module).unwrap(), expected);
+        }
+
+        let mut function = MirFunc::new("bad_bool_constant", vec![], vec![MirType::Bool]);
+        function.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "truthy")
+                .with_result(ValueId(0), MirType::Bool),
+        );
+        function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = JitModule::new();
+        assert!(matches!(
+            module.compile(&function),
+            Err(JitError::LoweringFailed { detail, .. })
+                if detail.contains("invalid boolean constant")
+        ));
     }
 
     #[test]

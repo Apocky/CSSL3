@@ -3111,20 +3111,42 @@ fn lower_unary(
     span: Span,
 ) -> Option<(ValueId, MirType)> {
     let (in_id, in_ty) = lower_expr(ctx, operand)?;
-    // § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION : `!x` (logical-not) used to
-    // lower to a single-operand `arith.xori` op with the comment "xor x,
-    // true" — but only the operand was emitted, leaving downstream
-    // codegen-emit unable to bind a 2-operand cranelift `bxor`. Two valid
-    // lowerings exist : (a) emit a 2-operand xor against a constant
-    // (1 for bool ; -1 for int) ; (b) reuse the `bnot` codegen path
-    // (`arith.xori_not`) which is already a 1-operand op recognized by
-    // the body-emit subset. Path (b) is simpler and produces identical
-    // hardware — bnot on i1/i8/i32/i64 flips the bit-pattern, which for
-    // bool is the same as xor-with-1 and for int is the same as
-    // bitwise-not. We collapse `Not` + `BitNot` into the same MIR op so
-    // the codegen subset has one arm to maintain. The HIR-level
-    // distinction is preserved by the `op` parameter for any future
-    // pass that wants to distinguish them.
+    // § P1a-BOOL-NOT — logical negation is equality-to-zero, not bitwise
+    // inversion. Bool lowers to an ABI I8 in Cranelift, so `bnot(0|1)` yields
+    // 255|254 and both values branch as true. Preserve `~x` as bitwise bnot,
+    // but make boolean `!x` produce a canonical Bool in {0,1} on every
+    // comparison backend. CSSL historically overloads `!x` as integer
+    // bitwise complement, so integer Not deliberately joins BitNot below;
+    // every other Not operand is refused structurally instead of guessed.
+    if matches!(op, HirUnOp::Not) && matches!(in_ty, MirType::Bool) {
+        let zero = ctx.fresh_value_id();
+        ctx.ops.push(
+            MirOp::std("arith.constant")
+                .with_result(zero, MirType::Bool)
+                .with_attribute("value", "0")
+                .with_attribute("source_loc", format!("{span:?}")),
+        );
+        let id = ctx.fresh_value_id();
+        ctx.ops.push(
+            MirOp::std("arith.cmpi_eq")
+                .with_operand(in_id)
+                .with_operand(zero)
+                .with_result(id, MirType::Bool)
+                .with_attribute("source_loc", format!("{span:?}")),
+        );
+        return Some((id, MirType::Bool));
+    }
+    if matches!(op, HirUnOp::Not) && !matches!(in_ty, MirType::Int(_)) {
+            let id = ctx.fresh_value_id();
+            ctx.ops.push(
+                MirOp::std("cssl.boolean.logical_not.contract.unverified")
+                    .with_operand(in_id)
+                    .with_result(id, MirType::None)
+                    .with_attribute("operand_type", in_ty.to_string())
+                    .with_attribute("source_loc", format!("{span:?}")),
+            );
+            return Some((id, MirType::None));
+    }
     let op_name = match op {
         HirUnOp::Not | HirUnOp::BitNot => "arith.xori_not",
         HirUnOp::Neg => {
@@ -3141,7 +3163,9 @@ fn lower_unary(
     let id = ctx.fresh_value_id();
     if matches!(&in_ty, MirType::Int(_)) {
         if let Some(unsigned) = ctx.integer_unsigned_values.get(&in_id).copied() {
-            if matches!(op, HirUnOp::Not | HirUnOp::BitNot) || (matches!(op, HirUnOp::Neg) && !unsigned) {
+            if matches!(op, HirUnOp::Not | HirUnOp::BitNot)
+                || (matches!(op, HirUnOp::Neg) && !unsigned)
+            {
                 ctx.integer_unsigned_values.insert(id, unsigned);
             }
         }
@@ -8103,6 +8127,53 @@ mod tests {
             names.contains(&"arith.negf"),
             "expected arith.negf in {names:?}"
         );
+    }
+
+    #[test]
+    fn logical_not_is_zero_equality_while_bit_not_remains_bnot() {
+        let (logical, _) = lower_one("fn logical(x : bool) -> bool { !x }");
+        let entry = logical.body.entry().unwrap();
+        let zero = entry
+            .ops
+            .iter()
+            .find(|candidate| {
+                candidate.name == "arith.constant"
+                    && candidate
+                        .results
+                        .first()
+                        .is_some_and(|result| result.ty == MirType::Bool)
+                    && candidate
+                        .attributes
+                        .iter()
+                        .any(|(key, value)| key == "value" && value == "0")
+            })
+            .expect("logical-not requires canonical false constant");
+        let compare = entry
+            .ops
+            .iter()
+            .find(|candidate| candidate.name == "arith.cmpi_eq")
+            .expect("logical-not requires equality-to-zero");
+        assert_eq!(compare.operands.len(), 2);
+        assert_eq!(compare.operands[1], zero.results[0].id);
+        assert_eq!(compare.results[0].ty, MirType::Bool);
+        assert!(!entry
+            .ops
+            .iter()
+            .any(|candidate| candidate.name == "arith.xori_not"));
+
+        for source in [
+            "fn bitwise_bang(x : u32) -> u32 { !x }",
+            "fn bitwise_tilde(x : u32) -> u32 { ~x }",
+        ] {
+            let (bitwise, _) = lower_one(source);
+            assert!(bitwise
+                .body
+                .entry()
+                .unwrap()
+                .ops
+                .iter()
+                .any(|candidate| candidate.name == "arith.xori_not"));
+        }
     }
 
     #[test]
