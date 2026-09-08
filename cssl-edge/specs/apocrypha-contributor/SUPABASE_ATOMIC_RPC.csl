@@ -1,0 +1,132 @@
+§P apocrypha.contributor.supabase.atomic-rpc.v1
+  date := 2026-09-08
+  scope := source-only.atomic.persistence.seam
+  authority := user.approved.contributor-node.build
+  success := {one-postgresql-transaction/operation,
+              replay+revocation+RLS.invariants,
+              unavailable⇒typed.fail-closed}
+  non-goal := {routes,credential.mint|rotation,migration.apply,production.cutover,
+               controller.integration,public.worker|artifact|mobile.release}
+
+§D boundary
+  tables := cssl-supabase/migrations/0053_apocrypha_contributor_transport.sql
+  rpc := cssl-supabase/migrations/0054_apocrypha_contributor_transport_rpc.sql
+  adapter := cssl-edge/lib/apocrypha/contributor-transport-supabase.ts
+  tests := cssl-edge/tests/contributor-node/transport-supabase-rpc.test.ts
+  transport.store.transaction := generic.PostgREST.callback ≠ atomic
+  W! operation-level.RPC := sole.adapter.atomic.path
+  N! adapter.transaction ⇒ pretend.transaction
+
+§D rpc.contract
+  rpc.apocrypha_contributor_enroll_atomic(
+    p_request_id:text,p_request_hash:text,p_node:jsonb,p_receipt:jsonb
+  ) → jsonb
+  rpc.apocrypha_contributor_issue_lease_atomic(
+    p_node_id:text,p_idempotency_key:text,p_request_hash:text,p_dispatch:jsonb
+  ) → jsonb
+  rpc.apocrypha_contributor_accept_result_atomic(
+    p_node_id:text,p_dispatch_id:text,p_submission_hash:text,p_receipt:jsonb
+  ) → jsonb
+  rpc.apocrypha_contributor_revoke_atomic(
+    p_request_id:text,p_node_id:text,p_request_hash:text,p_reason:text,p_receipt:jsonb
+  ) → jsonb
+  W! output := exact.durable.receipt|dispatch.replay.payload
+  W! input := server-controller.verified+signed.payload
+  N! RPC := signature.authority; JS/controller verifies node|operator|controller signatures
+
+§D atomicity
+  enroll :=
+    lock(enrollment_replay.request_id)
+    → same.hash⇒return exact.receipt | hash.conflict⇒TRANSPORT_ENROLLMENT_REPLAY
+    → lock(node.node_id)
+    → reject(revoked|key.mismatch)
+    → assert(revision = prior+1)
+    → upsert(node)+insert(enrollment_replay)
+    → return(receipt)
+  lease :=
+    validate(dispatch.identity+deterministic.ids+lease.bounds)
+    → lock(node.node_id)
+    → reject(missing|revoked|capability.mismatch)
+    → lock(node,idempotency_key)
+    → same.hash⇒return exact.dispatch | hash.conflict⇒TRANSPORT_IDEMPOTENCY_CONFLICT
+    → lock(dispatch_id)
+    → duplicate.identity⇒conflict
+    → insert(lease_replay)
+    → return(dispatch)
+  result :=
+    validate(receipt.shape+hash.bounds)
+    → lock(node.node_id)
+    → reject(missing|revoked)
+    → lock(lease.dispatch_id)
+    → assert(receipt.node|request|idempotency|lease identity = dispatch)
+    → lock(result_replay.dispatch_id)
+    → same.hash⇒return exact.receipt | hash.conflict⇒TRANSPORT_RESULT_REPLAY
+    → insert(result_replay)
+    → return(receipt)
+  revoke :=
+    lock(revoke_replay.request_id)
+    → same.hash⇒return exact.receipt | hash.conflict⇒TRANSPORT_IDEMPOTENCY_CONFLICT
+    → lock(node.node_id)
+    → reject(missing)
+    → active⇒revision+1+status=revoked+reason+timestamp
+    → revoked⇒revision.same+status=already_revoked
+    → insert(revoke_replay)
+    → return(receipt)
+
+§D constraints
+  exact.keys := node|receipt|dispatch|lease|revoke.receipt
+  bounds := IDs+hashes+signatures+timestamps+JSON.size
+  deterministic := dispatch_id = `dispatch-` + left(request_hash,48)
+                 + lease_id = `lease-` + left(request_hash,56)
+  replay := same.identity+same.hash⇒exact.original.payload
+          + changed.hash⇒typed.conflict
+  revoke := monotonic.status+revision; active-node-only lease|result
+  capability := ['vector_dot'] only
+  data := public.key metadata+signed receipts; N! private.key|token|vault|conversation
+
+§D authority
+  function := SECURITY DEFINER + SET search_path(pg_catalog,public,extensions)
+  execute := REVOKE PUBLIC,anon,authenticated + GRANT service_role only
+  tables := 0053.dedicated.tables + RLS + service_role.table.grants
+  W! service-role.client := server-only.SupabaseClient
+  N! anon|authenticated direct table/RPC access
+  N! migration.apply|credential.custody|route.cutover in this slice
+
+§T adapter
+  methods := {
+    atomicEnroll,atomicIssueLease,atomicAcceptResult,atomicRevoke
+  }
+  rpc.names := {
+    enroll:apocrypha_contributor_enroll_atomic,
+    issueLease:apocrypha_contributor_issue_lease_atomic,
+    acceptResult:apocrypha_contributor_accept_result_atomic,
+    revoke:apocrypha_contributor_revoke_atomic
+  }
+  preflight := validate(local.binding+receipt shape) → no RPC on invalid input
+  response := validate(receipt shape) → invalid/missing⇒TRANSPORT_STORE_UNAVAILABLE
+  rpc.error := known.TRANSPORT_*⇒typed.code
+             + unknown|function.missing⇒TRANSPORT_STORE_UNAVAILABLE
+  generic.transaction := no.provider⇒TRANSPORT_STORE_UNAVAILABLE
+  proof := tests/contributor-node/transport-supabase-rpc.test.ts
+
+§S state
+  ✓ source.adapter.exposes.explicit.operation-level.atomic.seam
+  ✓ SQL.functions.lock+validate+commit.replay/state in one PostgreSQL transaction
+  ✓ function ACL + RLS/service_role boundary encoded
+  ✓ tests := 4.pass; existing.supabase.adapter := 4.pass
+  ◐ actual.database.apply|RPC.integration := unobserved
+  ◐ controller/routes ⇒ not wired; public.release remains CLOSED
+
+§C gate
+  lane.status := SOURCE_COMPLETE
+  release.status := NOT_DEPLOYABLE
+  promotion.requires := {
+    migration.apply+live.RPC.probe,
+    controller/route.atomic.call-path+rate.limit,
+    controller/operator.key custody+rotation,
+    signed.native.artifacts+sandbox+install/rollback/device proofs
+  }
+  rollback := revert(commit); 0054.not.applied; no production state mutated
+  falsifier := live.RPC call permits anon|authenticated OR concurrent replay diverges
+  next := route/controller integration under separate bounded lane
+∎

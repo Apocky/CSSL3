@@ -2,11 +2,16 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import {
   ContributorTransportError,
+  type ContributorTransportErrorCode,
   type ContributorNodeRecord,
   type ContributorTransportStore,
+  type EnrollmentReceipt,
   type EnrollmentReplay,
+  type LeaseDispatch,
   type LeaseReplay,
+  type ResultReceipt,
   type ResultReplay,
+  type RevokeReceipt,
   type RevokeReplay,
 } from './contributor-transport';
 
@@ -33,7 +38,62 @@ export const CONTRIBUTOR_TRANSPORT_SERVER_ENV = {
   serviceKey: 'SUPABASE_SERVICE_ROLE_KEY',
 } as const;
 
+/**
+ * Operation-level RPCs are the only Supabase path that can make the
+ * controller's read/check/write decision one PostgreSQL transaction.  A
+ * generic callback cannot cross PostgREST request boundaries atomically and
+ * therefore remains fail-closed in `transaction()` below.
+ */
+export const CONTRIBUTOR_TRANSPORT_ATOMIC_RPCS = {
+  enroll: 'apocrypha_contributor_enroll_atomic',
+  issueLease: 'apocrypha_contributor_issue_lease_atomic',
+  acceptResult: 'apocrypha_contributor_accept_result_atomic',
+  revoke: 'apocrypha_contributor_revoke_atomic',
+} as const;
+
 export type ContributorTransportTransaction = <T>(operation: () => Promise<T>) => Promise<T>;
+
+export interface ContributorTransportAtomicEnrollmentInput {
+  readonly requestId: string;
+  readonly requestHash: string;
+  readonly node: ContributorNodeRecord;
+  readonly receipt: EnrollmentReceipt;
+}
+
+export interface ContributorTransportAtomicLeaseInput {
+  readonly nodeId: string;
+  readonly idempotencyKey: string;
+  readonly requestHash: string;
+  readonly dispatch: LeaseDispatch;
+}
+
+export interface ContributorTransportAtomicResultInput {
+  readonly nodeId: string;
+  readonly dispatchId: string;
+  readonly submissionHash: string;
+  readonly receipt: ResultReceipt;
+}
+
+export interface ContributorTransportAtomicRevokeInput {
+  readonly requestId: string;
+  readonly nodeId: string;
+  readonly requestHash: string;
+  readonly reason: string;
+  readonly receipt: RevokeReceipt;
+}
+
+/**
+ * Explicit operation-level persistence seam for routes/controllers.  Each
+ * method maps to one SQL RPC and returns the exact durable replay payload.  It
+ * is intentionally separate from `ContributorTransportStore.transaction` so
+ * callers cannot mistake a PostgREST callback wrapper for an atomic boundary.
+ */
+export interface ContributorTransportAtomicOperations {
+  atomicEnroll(input: ContributorTransportAtomicEnrollmentInput): Promise<EnrollmentReceipt>;
+  atomicIssueLease(input: ContributorTransportAtomicLeaseInput): Promise<LeaseDispatch>;
+  atomicAcceptResult(input: ContributorTransportAtomicResultInput): Promise<ResultReceipt>;
+  atomicRevoke(input: ContributorTransportAtomicRevokeInput): Promise<RevokeReceipt>;
+}
 
 export interface SupabaseContributorTransportStoreOptions {
   readonly client: SupabaseClient;
@@ -108,6 +168,28 @@ const KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 const HASH = /^[0-9a-f]{64}$/;
 const PLATFORM = new Set(['windows-x64', 'macos-arm64', 'linux-x64', 'android', 'ios']);
 const SIGNATURE = /^[A-Za-z0-9_-]{86}$/;
+
+const RPC_TRANSPORT_CODES: ReadonlySet<ContributorTransportErrorCode> = new Set([
+  'TRANSPORT_SCHEMA_INVALID',
+  'TRANSPORT_NODE_KEY_MISMATCH',
+  'TRANSPORT_NODE_NOT_ENROLLED',
+  'TRANSPORT_NODE_REVOKED',
+  'TRANSPORT_ENROLLMENT_REPLAY',
+  'TRANSPORT_IDEMPOTENCY_CONFLICT',
+  'TRANSPORT_LEASE_INVALID',
+  'TRANSPORT_LEASE_UNKNOWN',
+  'TRANSPORT_RESULT_INVALID',
+  'TRANSPORT_RESULT_REPLAY',
+] as ContributorTransportErrorCode[]);
+
+function rpcFailure(operation: string, error: unknown): ContributorTransportError {
+  const source = record(error);
+  const message = source && typeof source.message === 'string' ? source.message : null;
+  if (message && RPC_TRANSPORT_CODES.has(message as ContributorTransportErrorCode)) {
+    return new ContributorTransportError(message as ContributorTransportErrorCode, message);
+  }
+  return storeUnavailable(`${operation}:rpc`, error);
+}
 
 function capabilityList(value: unknown): readonly ['vector_dot'] | null {
   return Array.isArray(value)
@@ -228,6 +310,25 @@ function persistedNode(node: ContributorNodeRecord): JsonRecord {
   };
 }
 
+async function callAtomicRpc(
+  client: SupabaseClient,
+  operation: string,
+  name: string,
+  parameters: Record<string, unknown>,
+): Promise<unknown> {
+  if (typeof client.rpc !== 'function') {
+    throw storeUnavailable(`${operation}:rpc-client`);
+  }
+  try {
+    const { data, error } = await client.rpc(name, parameters);
+    if (error) throw rpcFailure(operation, error);
+    return data;
+  } catch (error) {
+    if (error instanceof ContributorTransportError) throw error;
+    throw rpcFailure(operation, error);
+  }
+}
+
 export class SupabaseContributorTransportStore implements ContributorTransportStore {
   private readonly client: SupabaseClient;
   private readonly transactionProvider: ContributorTransportTransaction | null;
@@ -244,6 +345,15 @@ export class SupabaseContributorTransportStore implements ContributorTransportSt
     return this.transactionProvider !== null;
   }
 
+  /**
+   * True only when this client exposes Supabase's RPC surface.  Migration
+   * presence is still proven by the first call; a missing function is mapped
+   * to TRANSPORT_STORE_UNAVAILABLE rather than treated as readiness.
+   */
+  get atomicRpcCapable(): boolean {
+    return typeof this.client.rpc === 'function';
+  }
+
   async transaction<T>(operation: () => Promise<T>): Promise<T> {
     if (!this.transactionProvider) {
       throw new ContributorTransportError(
@@ -252,6 +362,109 @@ export class SupabaseContributorTransportStore implements ContributorTransportSt
       );
     }
     return this.transactionProvider(operation);
+  }
+
+  async atomicEnroll(input: ContributorTransportAtomicEnrollmentInput): Promise<EnrollmentReceipt> {
+    const node = nodeRow(persistedNode(input.node));
+    const replay = enrollmentReplay({ request_hash: input.requestHash, receipt: input.receipt });
+    if (!node || !replay
+      || input.requestId !== input.receipt.request_id
+      || input.requestHash !== input.receipt.request_hash
+      || input.node.node_id !== input.receipt.node_id
+      || input.node.node_key_id !== input.receipt.node_key_id) {
+      throw storeUnavailable('atomic-enroll:invalid-input');
+    }
+    const data = await callAtomicRpc(
+      this.client,
+      'atomic-enroll',
+      CONTRIBUTOR_TRANSPORT_ATOMIC_RPCS.enroll,
+      {
+        p_request_id: input.requestId,
+        p_request_hash: input.requestHash,
+        p_node: persistedNode(node),
+        p_receipt: input.receipt,
+      },
+    );
+    return requireParsed(
+      enrollmentReplay({ request_hash: input.requestHash, receipt: data }),
+      'atomic-enroll:invalid-response',
+    ).receipt;
+  }
+
+  async atomicIssueLease(input: ContributorTransportAtomicLeaseInput): Promise<LeaseDispatch> {
+    const replay = leaseReplay({ request_hash: input.requestHash, dispatch: input.dispatch });
+    if (!replay
+      || input.dispatch.node_id !== input.nodeId
+      || input.dispatch.idempotency_key !== input.idempotencyKey
+      || input.dispatch.dispatch_id !== `dispatch-${input.requestHash.slice(0, 48)}`
+      || input.dispatch.lease.lease_id !== `lease-${input.requestHash.slice(0, 56)}`) {
+      throw storeUnavailable('atomic-issue-lease:invalid-input');
+    }
+    const data = await callAtomicRpc(
+      this.client,
+      'atomic-issue-lease',
+      CONTRIBUTOR_TRANSPORT_ATOMIC_RPCS.issueLease,
+      {
+        p_node_id: input.nodeId,
+        p_idempotency_key: input.idempotencyKey,
+        p_request_hash: input.requestHash,
+        p_dispatch: input.dispatch,
+      },
+    );
+    return requireParsed(
+      leaseReplay({ request_hash: input.requestHash, dispatch: data }),
+      'atomic-issue-lease:invalid-response',
+    ).dispatch;
+  }
+
+  async atomicAcceptResult(input: ContributorTransportAtomicResultInput): Promise<ResultReceipt> {
+    const replay = resultReplay({ submission_hash: input.submissionHash, receipt: input.receipt });
+    if (!replay
+      || input.receipt.node_id !== input.nodeId
+      || input.receipt.dispatch_id !== input.dispatchId) {
+      throw storeUnavailable('atomic-accept-result:invalid-input');
+    }
+    const data = await callAtomicRpc(
+      this.client,
+      'atomic-accept-result',
+      CONTRIBUTOR_TRANSPORT_ATOMIC_RPCS.acceptResult,
+      {
+        p_node_id: input.nodeId,
+        p_dispatch_id: input.dispatchId,
+        p_submission_hash: input.submissionHash,
+        p_receipt: input.receipt,
+      },
+    );
+    return requireParsed(
+      resultReplay({ submission_hash: input.submissionHash, receipt: data }),
+      'atomic-accept-result:invalid-response',
+    ).receipt;
+  }
+
+  async atomicRevoke(input: ContributorTransportAtomicRevokeInput): Promise<RevokeReceipt> {
+    const replay = revokeReplay({ request_hash: input.requestHash, receipt: input.receipt });
+    if (!replay
+      || input.requestId !== input.receipt.request_id
+      || input.nodeId !== input.receipt.node_id
+      || input.reason !== input.receipt.reason) {
+      throw storeUnavailable('atomic-revoke:invalid-input');
+    }
+    const data = await callAtomicRpc(
+      this.client,
+      'atomic-revoke',
+      CONTRIBUTOR_TRANSPORT_ATOMIC_RPCS.revoke,
+      {
+        p_request_id: input.requestId,
+        p_node_id: input.nodeId,
+        p_request_hash: input.requestHash,
+        p_reason: input.reason,
+        p_receipt: input.receipt,
+      },
+    );
+    return requireParsed(
+      revokeReplay({ request_hash: input.requestHash, receipt: data }),
+      'atomic-revoke:invalid-response',
+    ).receipt;
   }
 
   async getNode(nodeId: string): Promise<ContributorNodeRecord | null> {
