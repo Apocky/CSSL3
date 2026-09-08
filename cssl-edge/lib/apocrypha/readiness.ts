@@ -48,6 +48,7 @@ interface SafeWorkerProfile {
 
 export interface ApocryphaReadinessProjection {
   rail: 'durable-outbound-qwen';
+  required_capability: string;
   status: 'ready' | 'degraded' | 'unavailable';
   ready: boolean;
   code:
@@ -66,6 +67,7 @@ export interface ApocryphaReadinessProjection {
     observed: SafeWorkerProfile | null;
   };
   operational: {
+    generation_ready: boolean;
     qwen_healthy: boolean;
     qwen_probe_at: string | null;
     memory_ready: boolean;
@@ -131,9 +133,9 @@ function heartbeat(row: ApocryphaWorkerReadinessRow): { text: string | null; mil
   return { text, milliseconds: Number.isFinite(milliseconds) ? milliseconds : null };
 }
 
-function hasCapability(row: ApocryphaWorkerReadinessRow): boolean {
+function hasCapability(row: ApocryphaWorkerReadinessRow, requiredCapability: string): boolean {
   return Array.isArray(row.allowed_capabilities)
-    && row.allowed_capabilities.some((item) => item === '*' || item === 'chaos_tarot_reading');
+    && row.allowed_capabilities.some((item) => item === '*' || item === requiredCapability);
 }
 
 function matches(actual: SafeWorkerProfile, expected: ApocryphaExpectedConfiguration): boolean {
@@ -184,11 +186,13 @@ export function projectApocryphaReadiness(input: {
   nodes: ApocryphaWorkerReadinessRow[];
   queue: ApocryphaQueueReadiness;
   expected: ApocryphaExpectedConfiguration;
+  requiredCapability?: string;
   now?: number;
   freshnessWindowMs?: number;
   memoryProbeFreshnessWindowMs?: number;
 }): ApocryphaReadinessProjection {
   const now = input.now ?? Date.now();
+  const requiredCapability = safeString(input.requiredCapability, 128) ?? 'chaos_tarot_reading';
   const freshnessWindowMs = boundedFreshnessWindow(
     input.freshnessWindowMs,
     APOCRYPHA_WORKER_FRESHNESS_MS,
@@ -200,7 +204,7 @@ export function projectApocryphaReadiness(input: {
     APOCRYPHA_MEMORY_IDLE_FRESHNESS_MS,
   );
   const active = input.nodes.filter((node) => node.status === 'active');
-  const capable = active.filter(hasCapability);
+  const capable = active.filter((node) => hasCapability(node, requiredCapability));
   const ordered = [...capable].sort((left, right) =>
     (heartbeat(right).milliseconds ?? -1) - (heartbeat(left).milliseconds ?? -1));
   const fresh = ordered.filter((node) => {
@@ -243,6 +247,7 @@ export function projectApocryphaReadiness(input: {
   const ready = code === 'READY';
   return {
     rail: 'durable-outbound-qwen',
+    required_capability: requiredCapability,
     status,
     ready,
     code,
@@ -255,6 +260,7 @@ export function projectApocryphaReadiness(input: {
       observed: selectedProfile,
     },
     operational: {
+      generation_ready: qwenHealthy.length > 0,
       qwen_healthy: selectedProfile ? qwenReady(selectedProfile, now, freshnessWindowMs) : false,
       qwen_probe_at: selectedProfile?.qwen_probe_at ?? null,
       memory_ready: selectedProfile ? memoryReady(selectedProfile, now, memoryProbeFreshnessWindowMs) : false,

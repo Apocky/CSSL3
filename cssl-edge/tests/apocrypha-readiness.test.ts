@@ -60,9 +60,11 @@ function node(overrides: Record<string, unknown> = {}) {
 
 const ready = projectApocryphaReadiness({ nodes: [node()], queue, expected, now: NOW });
 assert(ready.ready && ready.code === 'READY', 'fresh compatible Qwen worker was not ready');
+assert(ready.required_capability === 'chaos_tarot_reading', 'default capability changed');
 assert(ready.worker.compatible_nodes === 1, 'compatible worker count was wrong');
 assert(ready.worker.ready_nodes === 1, 'operational worker count was wrong');
 assert(ready.operational.qwen_healthy && ready.operational.memory_ready, 'operational readiness was not projected');
+assert(ready.operational.generation_ready, 'generation readiness was not projected');
 assert(ready.configuration.observed?.model_alias === expected.model_alias, 'model alias was not projected');
 const serialized = JSON.stringify(ready);
 for (const forbidden of ['private-node-id', 'private-node-key', 'private-display-name', 'private-token-hash', 'private_host_detail']) {
@@ -98,6 +100,15 @@ const incapable = projectApocryphaReadiness({
 });
 assert(!incapable.ready && incapable.code === 'NO_ACTIVE_WORKER', 'worker without Chaos capability was accepted');
 
+const ownerReady = projectApocryphaReadiness({
+  nodes: [node({ allowed_capabilities: ['apocky_owner_chat'] })],
+  queue,
+  expected,
+  requiredCapability: 'apocky_owner_chat',
+  now: NOW,
+});
+assert(ownerReady.ready && ownerReady.required_capability === 'apocky_owner_chat', 'owner capability was not projected');
+
 const qwenDown = projectApocryphaReadiness({
   nodes: [node({ model_profiles: { ...expected, phase: 'idle', ...healthyOperations, qwen_healthy: false } })],
   queue,
@@ -119,6 +130,7 @@ const memoryDown = projectApocryphaReadiness({
 });
 assert(!memoryDown.ready && memoryDown.code === 'MEMORY_ADAPTERS_UNHEALTHY', 'failed required memory adapter was accepted');
 assert(!memoryDown.operational.memory_ready, 'failed required memory adapter was projected as ready');
+assert(memoryDown.operational.generation_ready, 'memory degradation incorrectly disabled healthy generation');
 
 const staleMemoryProbe = projectApocryphaReadiness({
   nodes: [node({ model_profiles: {

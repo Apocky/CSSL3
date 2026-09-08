@@ -42,7 +42,9 @@ assert(jobs.includes('requireOwnerIdentity'), 'job submission requires owner ide
 assert(jobs.includes('enqueueApocryphaJob'), 'job submission enters the durable control plane');
 assert(jobs.includes("capability: 'apocky_owner_chat'"), 'job capability is fixed server-side');
 assert(status.includes("rail: 'durable-outbound-qwen'"), 'status reports the canonical Qwen rail');
-assert(status.includes("'qwen35-35b-a3b-q4'"), 'status reports the production model alias');
+assert(status.includes("requiredCapability: 'apocky_owner_chat'"), 'status does not require the owner chat capability');
+assert(status.includes('projectApocryphaReadiness'), 'status bypasses the canonical operational readiness projection');
+assert(status.includes('APOCRYPHA_MODEL_ALIAS'), 'status does not use the canonical model configuration');
 assert(!controls.includes('/api/admin/apocrypha/chat'), 'controls never reinterpret chat as a command channel');
 
 console.log('admin-chat.test : OK · one durable owner rail, recovery, and Qwen status passed');
