@@ -159,10 +159,11 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     // resolve `Opaque("RunHandle")` / `Opaque("!cssl.struct.RunHandle")`
     // operands to a scalar / pointer ABI class. Same iteration order as the
     // signature passes so source-order is preserved.
+    let mut nominal_struct_layouts = std::collections::BTreeMap::new();
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Struct(s) = item {
             let layout = cssl_mir::lower::build_struct_layout(&lower_ctx, s);
-            mir_mod.add_struct_layout(layout);
+            register_nominal_struct_layout(&mut nominal_struct_layouts, &layout);
         }
     }
     // T11-W19-α-CSSLC-FIX4-ENUM · stage-0 enum-FFI codegen.
@@ -180,7 +181,8 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         let aux_lower_ctx = cssl_mir::LowerCtx::new(aux_interner);
         for item in &aux_hir.items {
             if let cssl_hir::HirItem::Struct(s) = item {
-                mir_mod.add_struct_layout(cssl_mir::lower::build_struct_layout(&aux_lower_ctx, s));
+                let layout = cssl_mir::lower::build_struct_layout(&aux_lower_ctx, s);
+                register_nominal_struct_layout(&mut nominal_struct_layouts, &layout);
             }
             if let cssl_hir::HirItem::Enum(e) = item {
                 let layout = cssl_mir::lower::build_enum_layout(&aux_lower_ctx, e);
@@ -188,6 +190,9 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
                 mir_mod.add_enum_layout(layout);
             }
         }
+    }
+    for layout in nominal_struct_layouts.values().cloned() {
+        mir_mod.add_struct_layout(layout);
     }
     // First pass : lower extern fn signatures (no body) so the call-result
     // fixup can find them.
@@ -200,10 +205,11 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
-            cssl_mir::lower_fn_body_with_call_signatures_and_enum_layouts(
+            cssl_mir::lower_fn_body_with_call_signatures_and_layouts(
                 &interner,
                 Some(&file),
                 &call_signatures,
+                &nominal_struct_layouts,
                 &nominal_enum_layouts,
                 f,
                 &mut mf,
@@ -231,10 +237,11 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         for item in &aux_hir.items {
             if let cssl_hir::HirItem::Fn(f) = item {
                 let mut mf = cssl_mir::lower_function_signature(&aux_lower_ctx, f);
-                cssl_mir::lower_fn_body_with_call_signatures_and_enum_layouts(
+                cssl_mir::lower_fn_body_with_call_signatures_and_layouts(
                     aux_interner,
                     Some(aux_file),
                     &call_signatures,
+                    &nominal_struct_layouts,
                     &nominal_enum_layouts,
                     f,
                     &mut mf,
@@ -687,6 +694,23 @@ fn register_nominal_enum_layout(
     }
 }
 
+/// Record one exact nominal record identity. Repeated bare names across the
+/// multi-module build graph become pathless sentinels so ABI9001 cannot pick a
+/// layout by insertion order.
+fn register_nominal_struct_layout(
+    layouts: &mut std::collections::BTreeMap<String, cssl_mir::MirStructLayout>,
+    layout: &cssl_mir::MirStructLayout,
+) {
+    if layouts.contains_key(&layout.name) {
+        layouts.insert(
+            layout.name.clone(),
+            cssl_mir::MirStructLayout::new(layout.name.clone(), Vec::new(), 0, 1),
+        );
+    } else {
+        layouts.insert(layout.name.clone(), layout.clone());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -741,6 +765,33 @@ mod tests {
             ),
         );
         assert!(layouts["Kind"].variants.is_empty());
+    }
+
+    #[test]
+    fn abi9001_duplicate_bare_record_identity_becomes_pathless() {
+        let mut layouts = std::collections::BTreeMap::new();
+        register_nominal_struct_layout(
+            &mut layouts,
+            &cssl_mir::MirStructLayout::named(
+                "Pair",
+                vec![(
+                    "left".to_string(),
+                    cssl_mir::MirType::Int(cssl_mir::IntWidth::I32),
+                )],
+            ),
+        );
+        register_nominal_struct_layout(
+            &mut layouts,
+            &cssl_mir::MirStructLayout::named(
+                "Pair",
+                vec![(
+                    "right".to_string(),
+                    cssl_mir::MirType::Int(cssl_mir::IntWidth::I32),
+                )],
+            ),
+        );
+        assert!(layouts["Pair"].field_names.is_empty());
+        assert_eq!(layouts["Pair"].nominal_integer_storage_bits(), None);
     }
 
     #[test]
@@ -830,6 +881,71 @@ mod tests {
         let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
         assert_eq!(format!("{code:?}"), format!("{err:?}"));
         assert!(!tmp_out.exists(), "legacy x64 refusal must not write an object");
+    }
+
+    #[test]
+    fn abi9001_build_nominal_record_boundary_emits_cranelift_object() {
+        let src = "struct Pair { tag: u32, value: u32 }\n\
+                   pub fn identity(record: Pair) -> Pair { record }\n\
+                   pub fn probe(tag: u32, value: u32) -> u32 {\n\
+                       let record: Pair = Pair { value: value, tag: tag };\n\
+                       identity(record).value\n\
+                   }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9001_positive_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9001_positive.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9001_positive.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
+        assert!(tmp_out.exists(), "exact nominal record must emit an object");
+        assert!(!std::fs::read(&tmp_out).unwrap().is_empty());
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn abi9001_build_noninteger_record_is_explicitly_refused() {
+        let src = "struct FloatPair { x: f32, y: f32 }\n\
+                   pub fn make(x: f32, y: f32) -> FloatPair { FloatPair { x: x, y: y } }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9001_float_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9001_float.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9001_float.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "refused nominal record wrote output");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn abi9001_public_three_byte_record_boundary_is_explicitly_refused() {
+        let src = "struct ThreeBytes { a: u8, b: u8, c: u8 }\n\
+                   pub fn identity(value: ThreeBytes) -> ThreeBytes { value }\n";
+        let tmp_out = std::env::temp_dir().join(format!(
+            "csslc_abi9001_three_byte_{}.obj",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9001_three_byte.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9001_three_byte.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "unsafe public record boundary wrote output");
+    }
+
+    #[test]
+    fn abi9001_build_nominal_record_is_explicitly_refused_by_legacy_x64() {
+        let src = "struct Pair { tag: u32, value: u32 }\n\
+                   pub fn identity(record: Pair) -> Pair { record }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9001_x64_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args_native_x64("abi9001_x64.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9001_x64.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "legacy x64 nominal refusal wrote output");
     }
 
     #[test]

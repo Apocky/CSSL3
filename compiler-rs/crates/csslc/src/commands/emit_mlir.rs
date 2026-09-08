@@ -47,7 +47,24 @@ pub fn run_with_source(path: &Path, source: &str) -> ExitCode {
 
     let lower_ctx = cssl_mir::LowerCtx::new(&interner);
     let mut mir_mod = cssl_mir::MirModule::new();
+    let mut nominal_struct_layouts = std::collections::BTreeMap::new();
     let mut nominal_enum_layouts = std::collections::BTreeMap::new();
+    for item in &hir_mod.items {
+        if let cssl_hir::HirItem::Struct(s) = item {
+            let layout = cssl_mir::lower::build_struct_layout(&lower_ctx, s);
+            if nominal_struct_layouts.contains_key(&layout.name) {
+                nominal_struct_layouts.insert(
+                    layout.name.clone(),
+                    cssl_mir::MirStructLayout::new(layout.name.clone(), Vec::new(), 0, 1),
+                );
+            } else {
+                nominal_struct_layouts.insert(layout.name.clone(), layout);
+            }
+        }
+    }
+    for layout in nominal_struct_layouts.values().cloned() {
+        mir_mod.add_struct_layout(layout);
+    }
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Enum(e) = item {
             let layout = cssl_mir::lower::build_enum_layout(&lower_ctx, e);
@@ -69,8 +86,13 @@ pub fn run_with_source(path: &Path, source: &str) -> ExitCode {
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
-            cssl_mir::lower_fn_body_with_enum_layouts(
-                &interner, Some(&file), &nominal_enum_layouts, f, &mut mf,
+            cssl_mir::lower_fn_body_with_layouts(
+                &interner,
+                Some(&file),
+                &nominal_struct_layouts,
+                &nominal_enum_layouts,
+                f,
+                &mut mf,
             );
             mir_mod.push_func(mf);
         }

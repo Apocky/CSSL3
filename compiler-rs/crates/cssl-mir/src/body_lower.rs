@@ -46,7 +46,7 @@ use cssl_hir::{
 };
 
 use crate::block::{MirBlock, MirOp, MirRegion};
-use crate::func::{MirEnumLayout, MirFunc};
+use crate::func::{MirEnumLayout, MirFunc, MirStructLayout};
 use crate::op::CsslOp;
 use crate::trait_dispatch::TraitImplTable;
 use crate::value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
@@ -182,6 +182,9 @@ pub struct BodyLowerCtx<'a> {
     pub call_signatures: Option<&'a CallSignatureTable>,
     /// Declaration-backed nominal enum layouts.
     pub enum_layouts: Option<&'a BTreeMap<String, MirEnumLayout>>,
+    /// Declaration-backed nominal record layouts. Only exact named,
+    /// integer-only scalar layouts are admitted by ABI9001.
+    pub struct_layouts: Option<&'a BTreeMap<String, MirStructLayout>>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
     /// § Source unsignedness for checked indices; signless MIR width alone cannot select extension.
@@ -294,6 +297,7 @@ impl<'a> BodyLowerCtx<'a> {
             trait_impl_table: None,
             call_signatures: None,
             enum_layouts: None,
+            struct_layouts: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
             nominal_enum_values: HashMap::new(),
@@ -320,6 +324,7 @@ impl<'a> BodyLowerCtx<'a> {
             trait_impl_table: None,
             call_signatures: None,
             enum_layouts: None,
+            struct_layouts: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
             nominal_enum_values: HashMap::new(),
@@ -385,6 +390,7 @@ impl<'a> BodyLowerCtx<'a> {
             trait_impl_table: self.trait_impl_table,
             call_signatures: self.call_signatures,
             enum_layouts: self.enum_layouts,
+            struct_layouts: self.struct_layouts,
             param_vars: self.param_vars.clone(),
             index_unsigned_vars: self.index_unsigned_vars.clone(),
             nominal_enum_values: self.nominal_enum_values.clone(),
@@ -425,7 +431,7 @@ pub fn lower_fn_body(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
-    lower_fn_body_with_tables(interner, source, None, None, None, hir_fn, mir_fn);
+    lower_fn_body_with_tables(interner, source, None, None, None, None, hir_fn, mir_fn);
 }
 
 /// T11-D99 — lower with an optional trait-impl table threaded in.
@@ -442,7 +448,7 @@ pub fn lower_fn_body_with_table(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
-    lower_fn_body_with_tables(interner, source, table, None, None, hir_fn, mir_fn);
+    lower_fn_body_with_tables(interner, source, table, None, None, None, hir_fn, mir_fn);
 }
 
 /// Lower with declared direct-callee parameter contracts available to the
@@ -461,6 +467,7 @@ pub fn lower_fn_body_with_call_signatures(
         None,
         Some(call_signatures),
         None,
+        None,
         hir_fn,
         mir_fn,
     );
@@ -473,7 +480,38 @@ pub fn lower_fn_body_with_enum_layouts(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
-    lower_fn_body_with_tables(interner, source, None, None, Some(enum_layouts), hir_fn, mir_fn);
+    lower_fn_body_with_tables(
+        interner,
+        source,
+        None,
+        None,
+        None,
+        Some(enum_layouts),
+        hir_fn,
+        mir_fn,
+    );
+}
+
+/// Lower with declaration-backed nominal record and enum layouts. The record
+/// table is required for exact ABI9001 constructor/projection metadata.
+pub fn lower_fn_body_with_layouts(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    struct_layouts: &BTreeMap<String, MirStructLayout>,
+    enum_layouts: &BTreeMap<String, MirEnumLayout>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
+    lower_fn_body_with_tables(
+        interner,
+        source,
+        None,
+        None,
+        Some(struct_layouts),
+        Some(enum_layouts),
+        hir_fn,
+        mir_fn,
+    );
 }
 
 pub fn lower_fn_body_with_call_signatures_and_enum_layouts(
@@ -485,7 +523,37 @@ pub fn lower_fn_body_with_call_signatures_and_enum_layouts(
     mir_fn: &mut MirFunc,
 ) {
     lower_fn_body_with_tables(
-        interner, source, None, Some(call_signatures), Some(enum_layouts), hir_fn, mir_fn,
+        interner,
+        source,
+        None,
+        Some(call_signatures),
+        None,
+        Some(enum_layouts),
+        hir_fn,
+        mir_fn,
+    );
+}
+
+/// Full CSSLC body-lowering surface: declared direct-call contracts plus
+/// declaration-backed nominal record/enum identities.
+pub fn lower_fn_body_with_call_signatures_and_layouts(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    call_signatures: &CallSignatureTable,
+    struct_layouts: &BTreeMap<String, MirStructLayout>,
+    enum_layouts: &BTreeMap<String, MirEnumLayout>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
+    lower_fn_body_with_tables(
+        interner,
+        source,
+        None,
+        Some(call_signatures),
+        Some(struct_layouts),
+        Some(enum_layouts),
+        hir_fn,
+        mir_fn,
     );
 }
 
@@ -494,6 +562,7 @@ fn lower_fn_body_with_tables<'a>(
     source: Option<&'a SourceFile>,
     table: Option<&'a TraitImplTable>,
     call_signatures: Option<&'a CallSignatureTable>,
+    struct_layouts: Option<&'a BTreeMap<String, MirStructLayout>>,
     enum_layouts: Option<&'a BTreeMap<String, MirEnumLayout>>,
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
@@ -509,6 +578,7 @@ fn lower_fn_body_with_tables<'a>(
         ctx.trait_impl_table = Some(t);
     }
     ctx.call_signatures = call_signatures;
+    ctx.struct_layouts = struct_layouts;
     ctx.enum_layouts = enum_layouts;
     // Entry-block args = flat-scalarized fn params. Each vec2/vec3/vec4 param
     // occupies N consecutive entry-block ids (matches the flat signature emitted
@@ -1347,17 +1417,100 @@ fn lower_field(
     name: Symbol,
     span: Span,
 ) -> (ValueId, MirType) {
-    let (obj_id, _) = lower_expr(ctx, obj).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let (obj_id, obj_ty) = lower_expr(ctx, obj).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let field_name = ctx.interner.resolve(name);
+
+    if let (Some(layouts), Some(record_name)) = (
+        ctx.struct_layouts,
+        nominal_record_name_from_type(&obj_ty),
+    ) {
+        if let Some(layout) = layouts.get(record_name).cloned() {
+            let Some(storage_bits) = layout.nominal_integer_storage_bits() else {
+                let code = if layout.field_names.len() != layout.fields.len()
+                    || layout.field_offsets.len() != layout.fields.len()
+                {
+                    "ABI9001-PATHLESS-LAYOUT"
+                } else {
+                    "ABI9001-UNSUPPORTED-LAYOUT"
+                };
+                return emit_nominal_record_error(
+                    ctx,
+                    span,
+                    code,
+                    format!(
+                        "nominal record `{record_name}` requires a unique named integer-only 1, 2, 4, or 8-byte natural layout"
+                    ),
+                );
+            };
+            let Some((_, field_ty, field_offset)) = layout.named_field(&field_name) else {
+                return emit_nominal_record_error(
+                    ctx,
+                    span,
+                    "ABI9001-UNKNOWN-FIELD",
+                    format!("nominal record `{record_name}` has no unique field `{field_name}`"),
+                );
+            };
+            let Some(field_bits) = nominal_record_field_bits(field_ty) else {
+                return emit_nominal_record_error(
+                    ctx,
+                    span,
+                    "ABI9001-UNSUPPORTED-FIELD",
+                    format!("field `{record_name}.{field_name}` is not an admitted integer scalar"),
+                );
+            };
+            let field_ty = field_ty.clone();
+            let id = ctx.fresh_value_id();
+            ctx.ops.push(
+                MirOp::std("cssl.nominal_record.project")
+                    .with_operand(obj_id)
+                    .with_result(id, field_ty.clone())
+                    .with_attribute("struct_name", record_name)
+                    .with_attribute("field_name", field_name)
+                    .with_attribute("field_offset", field_offset.to_string())
+                    .with_attribute("field_bits", field_bits.to_string())
+                    .with_attribute("storage_bits", storage_bits.to_string())
+                    .with_attribute("byte_order", "little")
+                    .with_attribute("source_loc", format!("{span:?}")),
+            );
+            return (id, field_ty);
+        }
+        if matches!(&obj_ty, MirType::Opaque(raw) if raw.starts_with("!cssl.struct.")) {
+            return emit_nominal_record_error(
+                ctx,
+                span,
+                "ABI9001-MISSING-LAYOUT",
+                format!("nominal record `{record_name}` has no declaration-backed layout"),
+            );
+        }
+    }
+
     let id = ctx.fresh_value_id();
-    let ty = MirType::Opaque(format!("!cssl.field.{}", ctx.interner.resolve(name)));
+    let ty = MirType::Opaque(format!("!cssl.field.{field_name}"));
     ctx.ops.push(
         MirOp::std("cssl.field")
             .with_operand(obj_id)
             .with_result(id, ty.clone())
-            .with_attribute("field_name", ctx.interner.resolve(name))
+            .with_attribute("field_name", field_name)
             .with_attribute("source_loc", format!("{span:?}")),
     );
     (id, ty)
+}
+
+fn nominal_record_name_from_type(ty: &MirType) -> Option<&str> {
+    let MirType::Opaque(name) = ty else {
+        return None;
+    };
+    Some(name.strip_prefix("!cssl.struct.").unwrap_or(name))
+}
+
+fn nominal_record_field_bits(ty: &MirType) -> Option<u16> {
+    match ty {
+        MirType::Bool | MirType::Int(IntWidth::I1 | IntWidth::I8) => Some(8),
+        MirType::Int(IntWidth::I16) => Some(16),
+        MirType::Int(IntWidth::I32) => Some(32),
+        MirType::Int(IntWidth::I64) => Some(64),
+        _ => None,
+    }
 }
 
 // § Track source sign at checked memory ingress; broader unsigned arithmetic stays a separate gate.
@@ -1707,12 +1860,157 @@ fn lower_struct_expr(
         .map(|s| ctx.interner.resolve(*s))
         .collect::<Vec<_>>()
         .join(".");
+
+    let Some(layouts) = ctx.struct_layouts else {
+        return lower_legacy_struct_expr(ctx, &struct_name, fields, span);
+    };
+    if path.len() != 1 {
+        return emit_nominal_record_error(
+            ctx,
+            span,
+            "ABI9001-UNRESOLVED-PATH",
+            format!(
+                "nominal record constructor `{struct_name}` requires one exact declaration-backed name"
+            ),
+        );
+    }
+    let Some(layout) = layouts.get(&struct_name).cloned() else {
+        return emit_nominal_record_error(
+            ctx,
+            span,
+            "ABI9001-MISSING-LAYOUT",
+            format!("nominal record `{struct_name}` has no declaration-backed layout"),
+        );
+    };
+    let Some(storage_bits) = layout.nominal_integer_storage_bits() else {
+        let code = if layout.field_names.len() != layout.fields.len()
+            || layout.field_offsets.len() != layout.fields.len()
+        {
+            "ABI9001-PATHLESS-LAYOUT"
+        } else {
+            "ABI9001-UNSUPPORTED-LAYOUT"
+        };
+        return emit_nominal_record_error(
+            ctx,
+            span,
+            code,
+            format!(
+                "nominal record `{struct_name}` requires a unique named integer-only 1, 2, 4, or 8-byte natural layout"
+            ),
+        );
+    };
+    if fields.len() != layout.fields.len() {
+        return emit_nominal_record_error(
+            ctx,
+            span,
+            "ABI9001-FIELD-SET-MISMATCH",
+            format!(
+                "nominal record `{struct_name}` initializes {} of {} fields",
+                fields.len(),
+                layout.fields.len()
+            ),
+        );
+    }
+
+    let mut operand_ids = Vec::with_capacity(fields.len());
+    let mut field_offsets = Vec::with_capacity(fields.len());
+    let mut field_bits = Vec::with_capacity(fields.len());
+    for (decl_index, declared_name) in layout.field_names.iter().enumerate() {
+        let mut matches = fields.iter().filter(|field| {
+            ctx.interner.resolve(field.name) == *declared_name
+        });
+        let Some(field) = matches.next() else {
+            return emit_nominal_record_error(
+                ctx,
+                span,
+                "ABI9001-FIELD-SET-MISMATCH",
+                format!("nominal record `{struct_name}` is missing field `{declared_name}`"),
+            );
+        };
+        if matches.next().is_some() {
+            return emit_nominal_record_error(
+                ctx,
+                field.span,
+                "ABI9001-DUPLICATE-FIELD",
+                format!("nominal record `{struct_name}` repeats field `{declared_name}`"),
+            );
+        }
+        let (field_id, actual_ty) = match &field.value {
+            Some(value) => lower_expr(ctx, value)
+                .unwrap_or((ctx.fresh_value_id(), MirType::None)),
+            None => lower_path(ctx, &[field.name], field.span),
+        };
+        let expected_ty = &layout.fields[decl_index];
+        if &actual_ty != expected_ty {
+            return emit_nominal_record_error(
+                ctx,
+                field.span,
+                "ABI9001-FIELD-TYPE-MISMATCH",
+                format!(
+                    "field `{struct_name}.{declared_name}` requires `{expected_ty}`, got `{actual_ty}`"
+                ),
+            );
+        }
+        let Some(bits) = nominal_record_field_bits(expected_ty) else {
+            return emit_nominal_record_error(
+                ctx,
+                field.span,
+                "ABI9001-UNSUPPORTED-FIELD",
+                format!("field `{struct_name}.{declared_name}` is not an admitted integer scalar"),
+            );
+        };
+        operand_ids.push(field_id);
+        field_offsets.push(layout.field_offsets[decl_index]);
+        field_bits.push(bits);
+    }
+
+    let id = ctx.fresh_value_id();
+    let ty = MirType::Opaque(format!("!cssl.struct.{struct_name}"));
+    let mut op = MirOp::std("cssl.nominal_record.construct")
+        .with_result(id, ty.clone())
+        .with_attribute("struct_name", struct_name)
+        .with_attribute("field_count", layout.fields.len().to_string())
+        .with_attribute("field_names", layout.field_names.join(","))
+        .with_attribute(
+            "field_offsets",
+            field_offsets
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(","),
+        )
+        .with_attribute(
+            "field_bits",
+            field_bits
+                .iter()
+                .map(u16::to_string)
+                .collect::<Vec<_>>()
+                .join(","),
+        )
+        .with_attribute("storage_bits", storage_bits.to_string())
+        .with_attribute("byte_order", "little")
+        .with_attribute("source_loc", format!("{span:?}"));
+    for operand in operand_ids {
+        op = op.with_operand(operand);
+    }
+    ctx.ops.push(op);
+    (id, ty)
+}
+
+fn lower_legacy_struct_expr(
+    ctx: &mut BodyLowerCtx<'_>,
+    struct_name: &str,
+    fields: &[HirStructFieldInit],
+    span: Span,
+) -> (ValueId, MirType) {
     let mut operand_ids = Vec::with_capacity(fields.len());
     for f in fields {
-        if let Some(value) = &f.value {
-            if let Some((fid, _)) = lower_expr(ctx, value) {
-                operand_ids.push(fid);
-            }
+        let lowered = match &f.value {
+            Some(value) => lower_expr(ctx, value),
+            None => Some(lower_path(ctx, &[f.name], f.span)),
+        };
+        if let Some((field_id, _)) = lowered {
+            operand_ids.push(field_id);
         }
     }
     let id = ctx.fresh_value_id();
@@ -1727,6 +2025,23 @@ fn lower_struct_expr(
     }
     ctx.ops.push(op);
     (id, ty)
+}
+
+fn emit_nominal_record_error(
+    ctx: &mut BodyLowerCtx<'_>,
+    span: Span,
+    code: &'static str,
+    detail: String,
+) -> (ValueId, MirType) {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.nominal_record.error")
+            .with_result(id, MirType::None)
+            .with_attribute("code", code)
+            .with_attribute("detail", detail)
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (id, MirType::None)
 }
 
 fn lower_pipeline(
@@ -7392,9 +7707,12 @@ fn _unused(_: MirValue) {}
 mod tests {
     use super::{
         emit_compound_op, lower_fn_body, lower_fn_body_with_call_signatures,
-        lower_fn_body_with_enum_layouts, BodyLowerCtx, CallSignatureTable,
+        lower_fn_body_with_call_signatures_and_layouts, lower_fn_body_with_enum_layouts,
+        BodyLowerCtx, CallSignatureTable,
     };
-    use crate::lower::{build_enum_layout, lower_function_signature, LowerCtx};
+    use crate::lower::{
+        build_enum_layout, build_struct_layout, lower_function_signature, LowerCtx,
+    };
     use crate::value::IntWidth;
     use crate::value::MirType;
     use cssl_ast::{SourceFile, SourceId, Span, Surface};
@@ -7479,6 +7797,60 @@ mod tests {
         mf
     }
 
+    /// Lower one named function with the module's complete nominal-layout and
+    /// direct-call tables, matching CSSLC's ABI9001 production path.
+    fn lower_named_with_all_layouts(src: &str, name: &str) -> crate::func::MirFunc {
+        let (hir, interner, source) = hir_from(src);
+        let ctx = LowerCtx::new(&interner);
+        let struct_layouts = hir
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                cssl_hir::HirItem::Struct(definition) => {
+                    let layout = build_struct_layout(&ctx, definition);
+                    Some((layout.name.clone(), layout))
+                }
+                _ => None,
+            })
+            .collect();
+        let enum_layouts = hir
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                cssl_hir::HirItem::Enum(definition) => {
+                    let layout = build_enum_layout(&ctx, definition);
+                    Some((layout.name.clone(), layout))
+                }
+                _ => None,
+            })
+            .collect();
+        let mut signatures = CallSignatureTable::new();
+        signatures.extend_hir_module(&hir, &interner);
+        let function = hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                cssl_hir::HirItem::Fn(function)
+                    if interner.resolve(function.name) == name =>
+                {
+                    Some(function)
+                }
+                _ => None,
+            })
+            .expect("expected named fn item");
+        let mut mir = lower_function_signature(&ctx, function);
+        lower_fn_body_with_call_signatures_and_layouts(
+            &interner,
+            Some(&source),
+            &signatures,
+            &struct_layouts,
+            &enum_layouts,
+            function,
+            &mut mir,
+        );
+        mir
+    }
+
     /// Lower the first fn without threading a source file — used to assert
     /// that the `None` path still works (fallback to `stage0_*` placeholders).
     #[allow(dead_code)]
@@ -7502,6 +7874,119 @@ mod tests {
         f.body.entry().map_or(Vec::new(), |b| {
             b.ops.iter().map(|o| o.name.as_str()).collect()
         })
+    }
+
+    #[test]
+    fn abi9001_nominal_record_reorders_constructor_and_projects_concrete_field() {
+        let function = lower_named_with_all_layouts(
+            "struct Pair { tag: u32, value: u32 }\n\
+             fn identity(record: Pair) -> Pair { record }\n\
+             fn probe(tag: u32, value: u32) -> u32 {\n\
+                 let record: Pair = Pair { value: value, tag: tag };\n\
+                 let roundtrip: Pair = identity(record);\n\
+                 roundtrip.value\n\
+             }",
+            "probe",
+        );
+        let entry = function.body.entry().expect("entry block");
+        let constructor = entry
+            .ops
+            .iter()
+            .find(|op| op.name == "cssl.nominal_record.construct")
+            .expect("exact nominal record constructor");
+        assert_eq!(constructor.operands, vec![crate::value::ValueId(0), crate::value::ValueId(1)]);
+        for (key, expected) in [
+            ("struct_name", "Pair"),
+            ("field_names", "tag,value"),
+            ("field_offsets", "0,4"),
+            ("field_bits", "32,32"),
+            ("storage_bits", "64"),
+            ("byte_order", "little"),
+        ] {
+            assert!(constructor
+                .attributes
+                .iter()
+                .any(|(name, value)| name == key && value == expected));
+        }
+        let call = entry
+            .ops
+            .iter()
+            .find(|op| op.name == "func.call")
+            .expect("record identity call");
+        assert_eq!(call.results[0].ty, MirType::Opaque("Pair".to_string()));
+        let projection = entry
+            .ops
+            .iter()
+            .find(|op| op.name == "cssl.nominal_record.project")
+            .expect("exact nominal record projection");
+        assert_eq!(projection.results[0].ty, MirType::Int(IntWidth::I32));
+        assert!(projection
+            .attributes
+            .iter()
+            .any(|(name, value)| name == "field_offset" && value == "4"));
+    }
+
+    #[test]
+    fn abi9001_nominal_record_shorthand_fields_resolve_exact_bindings() {
+        let function = lower_named_with_all_layouts(
+            "struct Pair { tag: u32, value: u32 }\n\
+             fn make(tag: u32, value: u32) -> Pair { Pair { tag, value } }",
+            "make",
+        );
+        let constructor = function
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|op| op.name == "cssl.nominal_record.construct")
+            .expect("shorthand nominal record constructor");
+        assert_eq!(constructor.operands, vec![crate::value::ValueId(0), crate::value::ValueId(1)]);
+    }
+
+    #[test]
+    fn abi9001_nominal_record_missing_field_is_typed_failure() {
+        let function = lower_named_with_all_layouts(
+            "struct Pair { tag: u32, value: u32 }\n\
+             fn make(tag: u32) -> Pair { Pair { tag: tag } }",
+            "make",
+        );
+        assert!(function.body.entry().unwrap().ops.iter().any(|op| {
+            op.name == "cssl.nominal_record.error"
+                && op.attributes.iter().any(|(name, value)| {
+                    name == "code" && value == "ABI9001-FIELD-SET-MISMATCH"
+                })
+        }));
+    }
+
+    #[test]
+    fn abi9001_nominal_record_wrong_field_type_is_typed_failure() {
+        let function = lower_named_with_all_layouts(
+            "struct One { value: u32 }\n\
+             fn make(value: u64) -> One { One { value: value } }",
+            "make",
+        );
+        assert!(function.body.entry().unwrap().ops.iter().any(|op| {
+            op.name == "cssl.nominal_record.error"
+                && op.attributes.iter().any(|(name, value)| {
+                    name == "code" && value == "ABI9001-FIELD-TYPE-MISMATCH"
+                })
+        }));
+    }
+
+    #[test]
+    fn abi9001_noninteger_record_layout_is_typed_failure() {
+        let function = lower_named_with_all_layouts(
+            "struct FloatPair { x: f32, y: f32 }\n\
+             fn make(x: f32, y: f32) -> FloatPair { FloatPair { x: x, y: y } }",
+            "make",
+        );
+        assert!(function.body.entry().unwrap().ops.iter().any(|op| {
+            op.name == "cssl.nominal_record.error"
+                && op.attributes.iter().any(|(name, value)| {
+                    name == "code" && value == "ABI9001-UNSUPPORTED-LAYOUT"
+                })
+        }));
     }
 
     #[test]

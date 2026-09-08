@@ -24,7 +24,7 @@
 //!   t∞: ¬ (hurt ∨ harm) .making-of-T11-W17-A
 //!   @ (anyone ∨ anything ∨ anybody)
 
-use cssl_cgen_cpu_cranelift::object::emit_object_module;
+use cssl_cgen_cpu_cranelift::object::{emit_object_module, ObjectError};
 use cssl_mir::{
     IntWidth, MirFunc, MirModule, MirOp, MirStructLayout, MirType, ValueId,
 };
@@ -272,4 +272,129 @@ fn struct_ffi_zero_byte_struct_rejected() {
         result.is_err(),
         "0-byte struct must not silently slip through"
     );
+}
+
+fn abi9001_pair_layout() -> MirStructLayout {
+    MirStructLayout::named(
+        "Pair",
+        vec![
+            ("tag".to_string(), MirType::Int(IntWidth::I32)),
+            ("value".to_string(), MirType::Int(IntWidth::I32)),
+        ],
+    )
+}
+
+#[test]
+fn abi9001_exact_nominal_record_identity_signature_emits_object() {
+    let mut module = MirModule::new();
+    module.add_struct_layout(abi9001_pair_layout());
+    let opaque = MirType::Opaque("Pair".to_string());
+    let mut function = MirFunc::new(
+        "abi9001_record_identity",
+        vec![opaque.clone()],
+        vec![opaque],
+    );
+    function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+    module.push_func(function);
+
+    let bytes = emit_object_module(&module).expect("exact nominal record identity object");
+    assert!(!bytes.is_empty());
+}
+
+#[test]
+fn abi9001_exact_nominal_record_construct_and_project_emit_object() {
+    let i32_ty = MirType::Int(IntWidth::I32);
+    let record_ty = MirType::Opaque("!cssl.struct.Pair".to_string());
+    let mut function = MirFunc::new(
+        "abi9001_record_project",
+        vec![i32_ty.clone(), i32_ty.clone()],
+        vec![i32_ty.clone()],
+    );
+    function.push_op(
+        MirOp::std("cssl.nominal_record.construct")
+            .with_operand(ValueId(0))
+            .with_operand(ValueId(1))
+            .with_result(ValueId(2), record_ty)
+            .with_attribute("struct_name", "Pair")
+            .with_attribute("field_count", "2")
+            .with_attribute("field_names", "tag,value")
+            .with_attribute("field_offsets", "0,4")
+            .with_attribute("field_bits", "32,32")
+            .with_attribute("storage_bits", "64")
+            .with_attribute("byte_order", "little"),
+    );
+    function.push_op(
+        MirOp::std("cssl.nominal_record.project")
+            .with_operand(ValueId(2))
+            .with_result(ValueId(3), i32_ty)
+            .with_attribute("struct_name", "Pair")
+            .with_attribute("field_name", "value")
+            .with_attribute("field_offset", "4")
+            .with_attribute("field_bits", "32")
+            .with_attribute("storage_bits", "64")
+            .with_attribute("byte_order", "little"),
+    );
+    function.push_op(MirOp::std("func.return").with_operand(ValueId(3)));
+    let mut module = MirModule::new();
+    module.add_struct_layout(abi9001_pair_layout());
+    module.push_func(function);
+
+    let bytes = emit_object_module(&module).expect("nominal record construct/project object");
+    assert!(!bytes.is_empty());
+}
+
+#[test]
+fn abi9001_malformed_nominal_record_metadata_is_typed_failure() {
+    let i32_ty = MirType::Int(IntWidth::I32);
+    let mut function = MirFunc::new("abi9001_bad_record", vec![i32_ty.clone()], vec![]);
+    function.push_op(
+        MirOp::std("cssl.nominal_record.construct")
+            .with_operand(ValueId(0))
+            .with_result(ValueId(1), MirType::Opaque("Pair".to_string()))
+            .with_attribute("field_offsets", "0")
+            .with_attribute("field_bits", "32")
+            .with_attribute("storage_bits", "64"),
+    );
+    function.push_op(MirOp::std("func.return"));
+    let mut module = MirModule::new();
+    module.add_struct_layout(abi9001_pair_layout());
+    module.push_func(function);
+
+    assert!(matches!(
+        emit_object_module(&module),
+        Err(ObjectError::NominalRecordFailure { code, detail, .. })
+            if code == "ABI9001-MALFORMED-METADATA" && detail.contains("little-endian")
+    ));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn abi9001_public_three_byte_record_boundary_is_typed_refusal() {
+    let mut module = MirModule::new();
+    module.add_struct_layout(MirStructLayout::named(
+        "ThreeBytes",
+        vec![
+            ("a".to_string(), MirType::Int(IntWidth::I8)),
+            ("b".to_string(), MirType::Int(IntWidth::I8)),
+            ("c".to_string(), MirType::Int(IntWidth::I8)),
+        ],
+    ));
+    let record_ty = MirType::Opaque("ThreeBytes".to_string());
+    let mut function = MirFunc::new(
+        "unsafe_public_identity",
+        vec![record_ty.clone()],
+        vec![record_ty],
+    );
+    function
+        .attributes
+        .push(("linkage".to_string(), "export".to_string()));
+    function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+    module.push_func(function);
+
+    assert!(matches!(
+        emit_object_module(&module),
+        Err(ObjectError::NominalRecordFailure { code, detail, .. })
+            if code == "ABI9001-WINDOWS-C-UNSUPPORTED-LAYOUT"
+                && detail.contains("ThreeBytes")
+    ));
 }

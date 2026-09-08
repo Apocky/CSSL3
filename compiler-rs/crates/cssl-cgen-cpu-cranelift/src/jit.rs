@@ -52,7 +52,7 @@
 //!     variant of `@differentiable fn scene(a, b) { min(a, b) }` + execute +
 //!     compare against central-differences — **closes killer-app at runtime**.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 // § T11-D286 (W-E5-3) — wire-protocol constants for the runtime cap-verify
 // surface. The op-name + FFI-symbol must agree byte-for-byte with
@@ -69,7 +69,7 @@ use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule as ClJitModule};
 use cranelift_module::{FuncId, Linkage, Module};
-use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirOp, MirType, ValueId};
+use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirOp, MirStructLayout, MirType, ValueId};
 use thiserror::Error;
 
 /// JIT compilation + execution error surface.
@@ -83,6 +83,8 @@ pub enum JitError {
     UnsupportedMirOp { fn_name: String, op_name: String },
     #[error("nominal variant lowering refused in `{fn_name}` [{code}] : {detail}")]
     NominalVariantFailure { fn_name: String, code: String, detail: String },
+    #[error("nominal record lowering refused in `{fn_name}` [{code}] : {detail}")]
+    NominalRecordFailure { fn_name: String, code: String, detail: String },
     /// Cranelift reported a lowering / codegen error.
     #[error("cranelift lowering failed for `{fn_name}` : {detail}")]
     LoweringFailed { fn_name: String, detail: String },
@@ -128,6 +130,39 @@ pub struct JitFn {
 }
 
 impl JitFn {
+    /// Call an exact 8-byte nominal integer record identity. Compilation only
+    /// admits this opaque signature after a matching registered layout has
+    /// classified it as a 64-bit scalar carrier.
+    pub fn call_nominal_record_u64_to_u64(
+        &self,
+        value: u64,
+        module: &JitModule,
+    ) -> Result<u64, JitError> {
+        fn record_name(ty: &MirType) -> Option<&str> {
+            match ty {
+                MirType::Opaque(name) => {
+                    Some(name.strip_prefix("!cssl.struct.").unwrap_or(name))
+                }
+                _ => None,
+            }
+        }
+        let param_name = self.param_types.first().and_then(record_name);
+        let result_name = self.result_type.as_ref().and_then(record_name);
+        if self.param_types.len() != 1 || param_name.is_none() || param_name != result_name {
+            return Err(JitError::SignatureMismatch {
+                name: self.name.clone(),
+                expected: "(8-byte nominal record) -> same nominal record".to_string(),
+                actual: format!("{:?} -> {:?}", self.param_types, self.result_type),
+            });
+        }
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: compile() resolved both opaque slots through the registered
+        // exact 64-bit record layout; the host C ABI carries that value in one
+        // integer register and module owns the executable allocation.
+        let function: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(addr) };
+        Ok(function(value))
+    }
+
     /// Call an internal scalar-`u128` function through Cranelift's
     /// LLVM-compatible x64 ABI. This is an in-process compiler/JIT contract,
     /// not a promise that Windows C exposes a standard raw-`u128` ABI.
@@ -605,6 +640,9 @@ pub struct JitModule {
     fn_table: HashMap<String, (FuncId, Option<*const u8>)>,
     /// Metadata handles for each compiled fn (mirrors fn_table keys).
     handles: Vec<JitFn>,
+    /// Exact declaration-backed nominal record layouts available to JIT
+    /// function-signature lowering.
+    struct_layouts: BTreeMap<String, MirStructLayout>,
     finalized: bool,
 }
 
@@ -648,8 +686,50 @@ impl JitModule {
             codegen_ctx: Context::new(),
             fn_table: HashMap::new(),
             handles: Vec::new(),
+            struct_layouts: BTreeMap::new(),
             finalized: false,
         }
+    }
+
+    /// Register one exact nominal record layout before compiling functions.
+    /// Duplicate bare names are pathless and therefore rejected rather than
+    /// selected by insertion order.
+    pub fn register_struct_layout(&mut self, layout: MirStructLayout) -> Result<(), JitError> {
+        if self.finalized {
+            return Err(JitError::AlreadyFinalized);
+        }
+        if self.struct_layouts.contains_key(&layout.name) {
+            return Err(JitError::NominalRecordFailure {
+                fn_name: "<module>".to_string(),
+                code: "ABI9001-PATHLESS-LAYOUT".to_string(),
+                detail: format!("duplicate nominal record name `{}`", layout.name),
+            });
+        }
+        if layout.nominal_integer_storage_bits().is_none() {
+            let mut unique_names = std::collections::BTreeSet::new();
+            let pathless = layout.field_names.len() != layout.fields.len()
+                || layout.field_offsets.len() != layout.fields.len()
+                || layout.field_names.iter().any(String::is_empty)
+                || layout
+                    .field_names
+                    .iter()
+                    .any(|name| !unique_names.insert(name));
+            return Err(JitError::NominalRecordFailure {
+                fn_name: "<module>".to_string(),
+                code: if pathless {
+                    "ABI9001-PATHLESS-LAYOUT"
+                } else {
+                    "ABI9001-UNSUPPORTED-LAYOUT"
+                }
+                .to_string(),
+                detail: format!(
+                    "nominal record `{}` is not a named integer-only 1, 2, 4, or 8-byte natural layout",
+                    layout.name
+                ),
+            });
+        }
+        self.struct_layouts.insert(layout.name.clone(), layout);
+        Ok(())
     }
 
     /// Compile a [`MirFunc`] into the JIT module. Returns a handle ; the fn
@@ -683,7 +763,7 @@ impl JitModule {
         let call_conv = module.isa().default_call_conv();
         let mut sig = Signature::new(call_conv);
         for (idx, p_ty) in primal.params.iter().enumerate() {
-            let cl_ty = mir_to_cl_type(p_ty).ok_or_else(|| JitError::UnsupportedFeature {
+            let cl_ty = mir_to_cl_type_with_struct_layouts(p_ty, &self.struct_layouts).ok_or_else(|| JitError::UnsupportedFeature {
                 fn_name: primal.name.clone(),
                 reason: format!("param #{idx} type `{p_ty}` not scalar-JIT-able"),
             })?;
@@ -692,7 +772,7 @@ impl JitModule {
         if use_out_params {
             // Validate result types are all scalar-JIT-able.
             for (idx, r_ty) in primal.results.iter().enumerate() {
-                if mir_to_cl_type(r_ty).is_none() {
+                if mir_to_cl_type_with_struct_layouts(r_ty, &self.struct_layouts).is_none() {
                     return Err(JitError::UnsupportedFeature {
                         fn_name: primal.name.clone(),
                         reason: format!("result #{idx} type `{r_ty}` not scalar-JIT-able"),
@@ -707,7 +787,7 @@ impl JitModule {
             // Return type is void.
         } else {
             for (idx, r_ty) in primal.results.iter().enumerate() {
-                let cl_ty = mir_to_cl_type(r_ty).ok_or_else(|| JitError::UnsupportedFeature {
+                let cl_ty = mir_to_cl_type_with_struct_layouts(r_ty, &self.struct_layouts).ok_or_else(|| JitError::UnsupportedFeature {
                     fn_name: primal.name.clone(),
                     reason: format!("result #{idx} type `{r_ty}` not scalar-JIT-able"),
                 })?;
@@ -1080,6 +1160,210 @@ fn mir_to_cl_type(mir: &MirType) -> Option<cranelift_codegen::ir::Type> {
     }
 }
 
+fn mir_to_cl_type_with_struct_layouts(
+    mir: &MirType,
+    layouts: &BTreeMap<String, MirStructLayout>,
+) -> Option<cranelift_codegen::ir::Type> {
+    if let Some(scalar) = mir_to_cl_type(mir) {
+        return Some(scalar);
+    }
+    let MirType::Opaque(name) = mir else {
+        return None;
+    };
+    let candidate = name.strip_prefix("!cssl.struct.").unwrap_or(name);
+    let storage_bits = layouts.get(candidate)?.nominal_integer_storage_bits()?;
+    nominal_record_jit_storage_type(storage_bits)
+}
+
+fn nominal_record_jit_storage_type(bits: u16) -> Option<cranelift_codegen::ir::Type> {
+    Some(match bits {
+        8 => cl_types::I8,
+        16 => cl_types::I16,
+        32 => cl_types::I32,
+        64 => cl_types::I64,
+        _ => return None,
+    })
+}
+
+fn nominal_record_jit_failure(fn_name: &str, detail: impl Into<String>) -> JitError {
+    JitError::NominalRecordFailure {
+        fn_name: fn_name.to_string(),
+        code: "ABI9001-MALFORMED-METADATA".to_string(),
+        detail: detail.into(),
+    }
+}
+
+fn nominal_record_jit_attr<'a>(op: &'a MirOp, name: &str) -> Option<&'a str> {
+    op.attributes
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.as_str())
+}
+
+fn parse_nominal_record_jit_csv<T>(
+    op: &MirOp,
+    name: &str,
+    fn_name: &str,
+) -> Result<Vec<T>, JitError>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let raw = nominal_record_jit_attr(op, name)
+        .ok_or_else(|| nominal_record_jit_failure(fn_name, format!("missing `{name}`")))?;
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    raw.split(',')
+        .map(|part| {
+            part.parse::<T>().map_err(|error| {
+                nominal_record_jit_failure(
+                    fn_name,
+                    format!("invalid `{name}` entry `{part}`: {error}"),
+                )
+            })
+        })
+        .collect()
+}
+
+fn jit_lower_nominal_record_construct(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let result = op.results.first().ok_or_else(|| {
+        nominal_record_jit_failure(fn_name, "record constructor has no result")
+    })?;
+    if nominal_record_jit_attr(op, "byte_order") != Some("little") {
+        return Err(nominal_record_jit_failure(fn_name, "invalid `byte_order`"));
+    }
+    let storage_bits = nominal_record_jit_attr(op, "storage_bits")
+        .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `storage_bits`"))?
+        .parse::<u16>()
+        .map_err(|error| nominal_record_jit_failure(fn_name, error.to_string()))?;
+    let storage_ty = nominal_record_jit_storage_type(storage_bits).ok_or_else(|| {
+        nominal_record_jit_failure(fn_name, format!("unsupported {storage_bits}-bit carrier"))
+    })?;
+    let offsets: Vec<u32> = parse_nominal_record_jit_csv(op, "field_offsets", fn_name)?;
+    let widths: Vec<u16> = parse_nominal_record_jit_csv(op, "field_bits", fn_name)?;
+    if op.operands.is_empty()
+        || offsets.len() != widths.len()
+        || offsets.len() != op.operands.len()
+    {
+        return Err(nominal_record_jit_failure(
+            fn_name,
+            "record constructor metadata/operand count mismatch",
+        ));
+    }
+    let mut packed = builder.ins().iconst(storage_ty, 0);
+    for ((operand, &offset), &field_bits) in op.operands.iter().zip(&offsets).zip(&widths) {
+        let end = offset
+            .saturating_mul(8)
+            .checked_add(u32::from(field_bits));
+        if !matches!(field_bits, 8 | 16 | 32 | 64)
+            || end.is_none_or(|bits| bits > u32::from(storage_bits))
+        {
+            return Err(nominal_record_jit_failure(fn_name, "invalid field range"));
+        }
+        let mut value = *value_map.get(operand).ok_or_else(|| {
+            nominal_record_jit_failure(
+                fn_name,
+                format!("unknown field operand ValueId({})", operand.0),
+            )
+        })?;
+        let source_ty = builder.func.dfg.value_type(value);
+        if !source_ty.is_int() || source_ty.bits() != u32::from(field_bits) {
+            return Err(nominal_record_jit_failure(
+                fn_name,
+                format!("field operand has {source_ty}, expected i{field_bits}"),
+            ));
+        }
+        if source_ty != storage_ty {
+            value = builder.ins().uextend(storage_ty, value);
+        }
+        let shift_bits = offset.saturating_mul(8);
+        if shift_bits != 0 {
+            let shift = builder.ins().iconst(storage_ty, i64::from(shift_bits));
+            value = builder.ins().ishl(value, shift);
+        }
+        packed = builder.ins().bor(packed, value);
+    }
+    value_map.insert(result.id, packed);
+    Ok(false)
+}
+
+fn jit_lower_nominal_record_project(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let result = op.results.first().ok_or_else(|| {
+        nominal_record_jit_failure(fn_name, "record projection has no result")
+    })?;
+    if op.operands.len() != 1 || nominal_record_jit_attr(op, "byte_order") != Some("little") {
+        return Err(nominal_record_jit_failure(
+            fn_name,
+            "record projection requires one operand and little-endian metadata",
+        ));
+    }
+    let storage_bits = nominal_record_jit_attr(op, "storage_bits")
+        .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `storage_bits`"))?
+        .parse::<u16>()
+        .map_err(|error| nominal_record_jit_failure(fn_name, error.to_string()))?;
+    let storage_ty = nominal_record_jit_storage_type(storage_bits).ok_or_else(|| {
+        nominal_record_jit_failure(fn_name, format!("unsupported {storage_bits}-bit carrier"))
+    })?;
+    let offset = nominal_record_jit_attr(op, "field_offset")
+        .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `field_offset`"))?
+        .parse::<u32>()
+        .map_err(|error| nominal_record_jit_failure(fn_name, error.to_string()))?;
+    let field_bits = nominal_record_jit_attr(op, "field_bits")
+        .ok_or_else(|| nominal_record_jit_failure(fn_name, "missing `field_bits`"))?
+        .parse::<u16>()
+        .map_err(|error| nominal_record_jit_failure(fn_name, error.to_string()))?;
+    let end = offset
+        .saturating_mul(8)
+        .checked_add(u32::from(field_bits));
+    if !matches!(field_bits, 8 | 16 | 32 | 64)
+        || end.is_none_or(|bits| bits > u32::from(storage_bits))
+    {
+        return Err(nominal_record_jit_failure(fn_name, "invalid projected field range"));
+    }
+    let mut value = *value_map.get(&op.operands[0]).ok_or_else(|| {
+        nominal_record_jit_failure(
+            fn_name,
+            format!("unknown record operand ValueId({})", op.operands[0].0),
+        )
+    })?;
+    if builder.func.dfg.value_type(value) != storage_ty {
+        return Err(nominal_record_jit_failure(
+            fn_name,
+            "record projection carrier width mismatch",
+        ));
+    }
+    let shift_bits = offset.saturating_mul(8);
+    if shift_bits != 0 {
+        let shift = builder.ins().iconst(storage_ty, i64::from(shift_bits));
+        value = builder.ins().ushr(value, shift);
+    }
+    let result_ty = mir_to_cl_type(&result.ty).ok_or_else(|| {
+        nominal_record_jit_failure(fn_name, "record projection result is not scalar")
+    })?;
+    if !result_ty.is_int() || result_ty.bits() != u32::from(field_bits) {
+        return Err(nominal_record_jit_failure(
+            fn_name,
+            "record projection result width mismatch",
+        ));
+    }
+    if result_ty != storage_ty {
+        value = builder.ins().ireduce(result_ty, value);
+    }
+    value_map.insert(result.id, value);
+    Ok(false)
+}
+
 /// Lower a single MIR op into the cranelift function being built. Returns
 /// `Ok(true)` if the op was a terminator (`func.return`), else `Ok(false)`.
 ///
@@ -1216,6 +1500,12 @@ fn lower_op_to_cl(
         "memref.load" => lower_memref_load(op, builder, value_map, fn_name),
         "memref.store" => lower_memref_store(op, builder, value_map, fn_name),
         "func.call" => lower_intrinsic_call(op, builder, value_map, fn_name, callee_refs),
+        "cssl.nominal_record.construct" => {
+            jit_lower_nominal_record_construct(op, builder, value_map, fn_name)
+        }
+        "cssl.nominal_record.project" => {
+            jit_lower_nominal_record_project(op, builder, value_map, fn_name)
+        }
         // T11-D58 / S6-C1 : scf.if → cranelift brif + extended-blocks. The
         // shared helper in `crate::scf` walks the two regions and threads
         // the yielded value (when present) through a merge-block parameter.
@@ -1298,6 +1588,15 @@ fn lower_op_to_cl(
             Err(JitError::NominalVariantFailure {
                 fn_name: fn_name.to_string(),
                 code: attr("code").unwrap_or_else(|| "ABI9002-UNKNOWN".to_string()),
+                detail: attr("detail").unwrap_or_else(|| "missing failure detail".to_string()),
+            })
+        }
+        "cssl.nominal_record.error" => {
+            let attr = |name: &str| op.attributes.iter().find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone());
+            Err(JitError::NominalRecordFailure {
+                fn_name: fn_name.to_string(),
+                code: attr("code").unwrap_or_else(|| "ABI9001-UNKNOWN".to_string()),
                 detail: attr("detail").unwrap_or_else(|| "missing failure detail".to_string()),
             })
         }
@@ -2406,7 +2705,9 @@ mod tests {
         parse_i128_constant_bits, split_i128_constant_bits, transcendental_callee_key, JitError,
         JitModule,
     };
-    use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirOp, MirType, MirValue, ValueId};
+    use cssl_mir::{
+        FloatWidth, IntWidth, MirFunc, MirOp, MirStructLayout, MirType, MirValue, ValueId,
+    };
 
     fn i32_ty() -> MirType {
         MirType::Int(IntWidth::I32)
@@ -2513,6 +2814,130 @@ mod tests {
         let mut module = JitModule::new();
         assert!(matches!(module.compile(&f),
             Err(JitError::UnsupportedMirOp { op_name, .. }) if op_name == "scf.match"));
+    }
+
+    fn abi9001_pair_layout() -> MirStructLayout {
+        MirStructLayout::named(
+            "Pair",
+            vec![
+                ("tag".to_string(), i32_ty()),
+                ("value".to_string(), i32_ty()),
+            ],
+        )
+    }
+
+    #[test]
+    fn abi9001_jit_nominal_record_identity_preserves_all_64_bits() {
+        let record_ty = MirType::Opaque("Pair".to_string());
+        let mut function = MirFunc::new(
+            "abi9001_record_identity",
+            vec![record_ty.clone()],
+            vec![record_ty],
+        );
+        function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = JitModule::new();
+        module
+            .register_struct_layout(abi9001_pair_layout())
+            .expect("register exact record layout");
+        let handle = module.compile(&function).expect("compile record identity");
+        module.finalize().expect("finalize record identity");
+        for bits in [
+            0,
+            1,
+            0x1122_3344_aabb_ccdd,
+            0xffff_ffff_0000_0000,
+            u64::MAX,
+        ] {
+            assert_eq!(
+                handle
+                    .call_nominal_record_u64_to_u64(bits, &module)
+                    .unwrap(),
+                bits
+            );
+        }
+    }
+
+    #[test]
+    fn abi9001_jit_constructs_and_projects_declaration_ordered_field() {
+        let record_ty = MirType::Opaque("!cssl.struct.Pair".to_string());
+        let mut function = MirFunc::new(
+            "abi9001_record_project",
+            vec![i32_ty(), i32_ty()],
+            vec![i32_ty()],
+        );
+        function.push_op(
+            MirOp::std("cssl.nominal_record.construct")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), record_ty)
+                .with_attribute("field_offsets", "0,4")
+                .with_attribute("field_bits", "32,32")
+                .with_attribute("storage_bits", "64")
+                .with_attribute("byte_order", "little"),
+        );
+        function.push_op(
+            MirOp::std("cssl.nominal_record.project")
+                .with_operand(ValueId(2))
+                .with_result(ValueId(3), i32_ty())
+                .with_attribute("field_offset", "4")
+                .with_attribute("field_bits", "32")
+                .with_attribute("storage_bits", "64")
+                .with_attribute("byte_order", "little"),
+        );
+        function.push_op(MirOp::std("func.return").with_operand(ValueId(3)));
+        let mut module = JitModule::new();
+        let handle = module.compile(&function).expect("compile record projection");
+        module.finalize().expect("finalize record projection");
+        for (tag, value) in [
+            (0, 0),
+            (1, -1),
+            (-1, 1),
+            (i32::MIN, i32::MAX),
+            (0x1122_3344, -0x5544_3323),
+        ] {
+            assert_eq!(
+                handle
+                    .call_i32_i32_to_i32(tag, value, &module)
+                    .unwrap(),
+                value
+            );
+        }
+    }
+
+    #[test]
+    fn abi9001_jit_rejects_malformed_record_metadata() {
+        let mut function = MirFunc::new("abi9001_bad_record", vec![i32_ty()], vec![]);
+        function.push_op(
+            MirOp::std("cssl.nominal_record.construct")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Opaque("Pair".to_string()))
+                .with_attribute("field_offsets", "0")
+                .with_attribute("field_bits", "32")
+                .with_attribute("storage_bits", "64"),
+        );
+        function.push_op(MirOp::std("func.return"));
+        let mut module = JitModule::new();
+        assert!(matches!(
+            module.compile(&function),
+            Err(JitError::NominalRecordFailure { code, detail, .. })
+                if code == "ABI9001-MALFORMED-METADATA" && detail.contains("byte_order")
+        ));
+    }
+
+    #[test]
+    fn abi9001_jit_refuses_pathless_signature_layout() {
+        let mut module = JitModule::new();
+        let pathless = MirStructLayout::new(
+            "Pair",
+            vec![i32_ty(), i32_ty()],
+            8,
+            4,
+        );
+        assert!(matches!(
+            module.register_struct_layout(pathless),
+            Err(JitError::NominalRecordFailure { code, .. })
+                if code == "ABI9001-PATHLESS-LAYOUT"
+        ));
     }
 
     #[test]

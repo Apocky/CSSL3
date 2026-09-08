@@ -124,6 +124,9 @@ pub enum ObjectError {
     #[error("fn `{fn_name}` nominal variant lowering refused [{code}] : {detail}")]
     NominalVariantFailure { fn_name: String, code: String, detail: String },
 
+    #[error("fn `{fn_name}` nominal record lowering refused [{code}] : {detail}")]
+    NominalRecordFailure { fn_name: String, code: String, detail: String },
+
     /// Cranelift reported a codegen / declaration error.
     #[error("fn `{fn_name}` cranelift error : {detail}")]
     LoweringFailed { fn_name: String, detail: String },
@@ -194,6 +197,7 @@ pub fn emit_object_module_with_format(
     _format: crate::abi::ObjectFormat,
 ) -> Result<Vec<u8>, ObjectError> {
     reject_unsupported_windows_c_int128_boundaries(module)?;
+    reject_unsupported_windows_c_nominal_record_boundaries(module)?;
 
     // § 1. Build host ISA via cranelift_native.
     let mut flag_builder = settings::builder();
@@ -351,6 +355,63 @@ fn reject_unsupported_windows_c_int128_boundaries(
                     position: "result",
                     slot,
                 });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Windows x64 carries C aggregates directly only when their exact size is
+/// 1, 2, 4, or 8 bytes. Declaration-backed ABI9001 records outside that
+/// natural integer/bool class must not be widened to a scalar register at a
+/// public import/export seam; larger and pathless aggregate conventions need
+/// their own explicit by-reference/sret contract.
+fn reject_unsupported_windows_c_nominal_record_boundaries(
+    module: &MirModule,
+) -> Result<(), ObjectError> {
+    if !cfg!(target_os = "windows") {
+        return Ok(());
+    }
+
+    for mir_fn in &module.funcs {
+        let linkage = mir_fn
+            .attributes
+            .iter()
+            .find_map(|(key, value)| (key == "linkage").then_some(value.as_str()));
+        let crosses_c_boundary = match linkage {
+            Some("export") => true,
+            Some("import") => mir_fn
+                .attributes
+                .iter()
+                .any(|(key, value)| key == "abi" && value == "C"),
+            _ => false,
+        };
+        if !crosses_c_boundary {
+            continue;
+        }
+
+        for (position, types) in [
+            ("parameter", mir_fn.params.as_slice()),
+            ("result", mir_fn.results.as_slice()),
+        ] {
+            for (slot, ty) in types.iter().enumerate() {
+                let MirType::Opaque(name) = ty else {
+                    continue;
+                };
+                let candidate = name.strip_prefix("!cssl.struct.").unwrap_or(name);
+                let Some(layout) = module.struct_layouts.get(candidate) else {
+                    continue;
+                };
+                if layout.nominal_integer_storage_bits().is_none() {
+                    return Err(ObjectError::NominalRecordFailure {
+                        fn_name: mir_fn.name.clone(),
+                        code: "ABI9001-WINDOWS-C-UNSUPPORTED-LAYOUT".to_string(),
+                        detail: format!(
+                            "{position} #{slot} `{candidate}` is not an exact named integer/bool natural-layout aggregate of 1, 2, 4, or 8 bytes"
+                        ),
+                    });
+                }
             }
         }
     }
@@ -2044,6 +2105,15 @@ fn lower_one_op(
         //   into `value_map` under the op's first result-id. Void callees
         //   produce no result and are valid (callsite carries no `.results`).
         "func.call" => obj_lower_func_call(op, builder, value_map, fn_name, callee_refs),
+        // § P1a-ABI9001 — exact declaration-backed integer record values.
+        // Construction packs natural-layout fields into one 1/2/4/8-byte
+        // scalar carrier; projection extracts the declared bit-range.
+        "cssl.nominal_record.construct" => {
+            obj_lower_nominal_record_construct(op, builder, value_map, fn_name)
+        }
+        "cssl.nominal_record.project" => {
+            obj_lower_nominal_record_project(op, builder, value_map, fn_name, ptr_ty)
+        }
         // § T11-D58 (S6-C1) — structured-control-flow lowering. `scf.if`
         //   delegates to the shared `crate::scf::lower_scf_if` helper which
         //   creates the then/else/merge blocks + emits `brif`. `scf.yield`
@@ -2208,6 +2278,15 @@ fn lower_one_op(
                 detail: attr("detail").unwrap_or_else(|| "missing failure detail".to_string()),
             })
         }
+        "cssl.nominal_record.error" => {
+            let attr = |name: &str| op.attributes.iter().find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone());
+            Err(ObjectError::NominalRecordFailure {
+                fn_name: fn_name.to_string(),
+                code: attr("code").unwrap_or_else(|| "ABI9001-UNKNOWN".to_string()),
+                detail: attr("detail").unwrap_or_else(|| "missing failure detail".to_string()),
+            })
+        }
         // § T11-W19-α-CSSLC-FIX11 (sum-type constructors) — Result + Option
         //   variant-construction ops. body_lower::try_lower_result_{ok,err}
         //   + lower_option_{some,none} mint these with :
@@ -2319,6 +2398,225 @@ fn lower_one_op(
             op_name: other.to_string(),
         }),
     }
+}
+
+fn nominal_record_object_failure(
+    fn_name: &str,
+    detail: impl Into<String>,
+) -> ObjectError {
+    ObjectError::NominalRecordFailure {
+        fn_name: fn_name.to_string(),
+        code: "ABI9001-MALFORMED-METADATA".to_string(),
+        detail: detail.into(),
+    }
+}
+
+fn nominal_record_attr<'a>(op: &'a MirOp, name: &str) -> Option<&'a str> {
+    op.attributes
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.as_str())
+}
+
+fn nominal_record_storage_type(bits: u16) -> Option<cranelift_codegen::ir::Type> {
+    Some(match bits {
+        8 => cl_types::I8,
+        16 => cl_types::I16,
+        32 => cl_types::I32,
+        64 => cl_types::I64,
+        _ => return None,
+    })
+}
+
+fn parse_nominal_record_csv<T>(op: &MirOp, name: &str, fn_name: &str) -> Result<Vec<T>, ObjectError>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let raw = nominal_record_attr(op, name)
+        .ok_or_else(|| nominal_record_object_failure(fn_name, format!("missing `{name}`")))?;
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    raw.split(',')
+        .map(|part| {
+            part.parse::<T>().map_err(|error| {
+                nominal_record_object_failure(
+                    fn_name,
+                    format!("invalid `{name}` entry `{part}`: {error}"),
+                )
+            })
+        })
+        .collect()
+}
+
+fn validate_nominal_record_metadata(
+    op: &MirOp,
+    fn_name: &str,
+) -> Result<(cranelift_codegen::ir::Type, Vec<u32>, Vec<u16>), ObjectError> {
+    if nominal_record_attr(op, "byte_order") != Some("little") {
+        return Err(nominal_record_object_failure(
+            fn_name,
+            "only exact little-endian record carriers are admitted",
+        ));
+    }
+    let storage_bits = nominal_record_attr(op, "storage_bits")
+        .ok_or_else(|| nominal_record_object_failure(fn_name, "missing `storage_bits`"))?
+        .parse::<u16>()
+        .map_err(|error| {
+            nominal_record_object_failure(fn_name, format!("invalid `storage_bits`: {error}"))
+        })?;
+    let storage_ty = nominal_record_storage_type(storage_bits).ok_or_else(|| {
+        nominal_record_object_failure(fn_name, format!("unsupported {storage_bits}-bit carrier"))
+    })?;
+    let offsets: Vec<u32> = parse_nominal_record_csv(op, "field_offsets", fn_name)?;
+    let widths: Vec<u16> = parse_nominal_record_csv(op, "field_bits", fn_name)?;
+    if offsets.len() != widths.len() || offsets.len() != op.operands.len() {
+        return Err(nominal_record_object_failure(
+            fn_name,
+            format!(
+                "metadata/operand count mismatch: offsets={}, widths={}, operands={}",
+                offsets.len(),
+                widths.len(),
+                op.operands.len()
+            ),
+        ));
+    }
+    for (&offset, &width) in offsets.iter().zip(&widths) {
+        if !matches!(width, 8 | 16 | 32 | 64)
+            || u32::from(width)
+                .checked_add(offset.saturating_mul(8))
+                .is_none_or(|end| end > u32::from(storage_bits))
+        {
+            return Err(nominal_record_object_failure(
+                fn_name,
+                format!("field range offset={offset}B width={width}b exceeds carrier"),
+            ));
+        }
+    }
+    Ok((storage_ty, offsets, widths))
+}
+
+fn obj_lower_nominal_record_construct(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    let result = op.results.first().ok_or_else(|| {
+        nominal_record_object_failure(fn_name, "record constructor has no result")
+    })?;
+    let (storage_ty, offsets, widths) = validate_nominal_record_metadata(op, fn_name)?;
+    if op.operands.is_empty() {
+        return Err(nominal_record_object_failure(
+            fn_name,
+            "record constructor has no fields",
+        ));
+    }
+    let mut packed = builder.ins().iconst(storage_ty, 0);
+    for ((operand, &offset), &field_bits) in op.operands.iter().zip(&offsets).zip(&widths) {
+        let mut value = *value_map
+            .get(operand)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: operand.0,
+            })?;
+        let source_ty = builder.func.dfg.value_type(value);
+        if !source_ty.is_int() || source_ty.bits() != u32::from(field_bits) {
+            return Err(nominal_record_object_failure(
+                fn_name,
+                format!(
+                    "field operand ValueId({}) has {}, expected i{field_bits}",
+                    operand.0, source_ty
+                ),
+            ));
+        }
+        if source_ty != storage_ty {
+            value = builder.ins().uextend(storage_ty, value);
+        }
+        let shift_bits = offset.saturating_mul(8);
+        if shift_bits != 0 {
+            let shift = builder.ins().iconst(storage_ty, i64::from(shift_bits));
+            value = builder.ins().ishl(value, shift);
+        }
+        packed = builder.ins().bor(packed, value);
+    }
+    value_map.insert(result.id, packed);
+    Ok(false)
+}
+
+fn obj_lower_nominal_record_project(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let result = op.results.first().ok_or_else(|| {
+        nominal_record_object_failure(fn_name, "record projection has no result")
+    })?;
+    if op.operands.len() != 1 {
+        return Err(nominal_record_object_failure(
+            fn_name,
+            format!("record projection has {} operands, expected 1", op.operands.len()),
+        ));
+    }
+    let storage_bits = nominal_record_attr(op, "storage_bits")
+        .ok_or_else(|| nominal_record_object_failure(fn_name, "missing `storage_bits`"))?
+        .parse::<u16>()
+        .map_err(|error| nominal_record_object_failure(fn_name, error.to_string()))?;
+    let storage_ty = nominal_record_storage_type(storage_bits).ok_or_else(|| {
+        nominal_record_object_failure(fn_name, format!("unsupported {storage_bits}-bit carrier"))
+    })?;
+    if nominal_record_attr(op, "byte_order") != Some("little") {
+        return Err(nominal_record_object_failure(fn_name, "invalid `byte_order`"));
+    }
+    let offset = nominal_record_attr(op, "field_offset")
+        .ok_or_else(|| nominal_record_object_failure(fn_name, "missing `field_offset`"))?
+        .parse::<u32>()
+        .map_err(|error| nominal_record_object_failure(fn_name, error.to_string()))?;
+    let field_bits = nominal_record_attr(op, "field_bits")
+        .ok_or_else(|| nominal_record_object_failure(fn_name, "missing `field_bits`"))?
+        .parse::<u16>()
+        .map_err(|error| nominal_record_object_failure(fn_name, error.to_string()))?;
+    if !matches!(field_bits, 8 | 16 | 32 | 64)
+        || u32::from(field_bits)
+            .checked_add(offset.saturating_mul(8))
+            .is_none_or(|end| end > u32::from(storage_bits))
+    {
+        return Err(nominal_record_object_failure(fn_name, "invalid projected field range"));
+    }
+    let mut value = *value_map
+        .get(&op.operands[0])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[0].0,
+        })?;
+    if builder.func.dfg.value_type(value) != storage_ty {
+        return Err(nominal_record_object_failure(
+            fn_name,
+            "record projection operand carrier width mismatch",
+        ));
+    }
+    let shift_bits = offset.saturating_mul(8);
+    if shift_bits != 0 {
+        let shift = builder.ins().iconst(storage_ty, i64::from(shift_bits));
+        value = builder.ins().ushr(value, shift);
+    }
+    let result_ty = mir_type_to_cl(&result.ty, ptr_ty).ok_or_else(|| {
+        nominal_record_object_failure(fn_name, "record projection result is not scalar")
+    })?;
+    if !result_ty.is_int() || result_ty.bits() != u32::from(field_bits) {
+        return Err(nominal_record_object_failure(
+            fn_name,
+            format!("projection result type {result_ty} does not match i{field_bits}"),
+        ));
+    }
+    if result_ty != storage_ty {
+        value = builder.ins().ireduce(result_ty, value);
+    }
+    value_map.insert(result.id, value);
+    Ok(false)
 }
 
 // § Explicit integer extension keeps source signedness in the operation, across signless MIR types.

@@ -140,13 +140,18 @@ pub fn profile_bootstrap_manifest_status_v1(
     0i32
 }
 
-// Native nominal-record support is fail-closed until field projection is correct.
-// The status-only ABI prevents the known projection defect from exposing an
-// address-like value as if it were a record field.
+// ABI9001 exact 8-byte nominal-record identity. The identity function makes
+// the compiler-managed record parameter/return boundary independently real;
+// the status function then proves both natural-layout fields survive it.
+pub fn abi9001_record_identity_v1(record: ProfileRecordSentinel) -> ProfileRecordSentinel {
+    record
+}
+
 pub fn profile_record_native_status_v1(tag: u32, value: u32) -> i32 {
     let record: ProfileRecordSentinel = ProfileRecordSentinel { tag: tag, value: value };
-    if record.tag != tag { return 9001i32; }
-    if record.value != value { return 9001i32; }
+    let roundtrip: ProfileRecordSentinel = abi9001_record_identity_v1(record);
+    if roundtrip.tag != tag { return 9001i32; }
+    if roundtrip.value != value { return 9001i32; }
     0i32
 }
 
@@ -169,8 +174,8 @@ pub fn profile_variant_native_status_v1() -> i32 {
     0i32
 }
 
-// Canonical scalar wire sentinels remain executable even while native nominal
-// record/variant lowering is refused. Passing them does not promote the nominal ABI.
+// Canonical scalar wire sentinels remain independent interoperability probes.
+// Passing them does not widen the bounded native nominal ABI admitted above.
 pub fn profile_record_wire_byte_v1(tag: u32, value: u32, index: i64) -> u32 {
     if index < 0i64 { return 0xffffffffu32; }
     if index >= 8i64 { return 0xffffffffu32; }

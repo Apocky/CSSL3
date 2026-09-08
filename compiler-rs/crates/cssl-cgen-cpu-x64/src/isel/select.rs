@@ -1289,6 +1289,49 @@ mod tests {
         assert!(matches!(select_function(&module, &module.funcs[0]),
             Err(SelectError::UnsupportedOp { op, .. }) if op == "scf.match"));
     }
+
+    #[test]
+    fn abi9001_legacy_x64_explicitly_refuses_nominal_record_signature() {
+        let record_ty = MirType::Opaque("Pair".to_string());
+        let mut function = MirFunc::new(
+            "record_identity",
+            vec![record_ty.clone()],
+            vec![record_ty],
+        );
+        function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let module = marker_only_module(function);
+        let error = select_function(&module, &module.funcs[0]).unwrap_err();
+        assert!(matches!(
+            &error,
+            SelectError::UnsupportedSignatureType { fn_name, ty }
+                if fn_name == "record_identity" && ty == "Pair"
+        ));
+        assert_eq!(error.code(), "X64-0001");
+    }
+
+    #[test]
+    fn abi9001_legacy_x64_explicitly_refuses_nominal_record_op() {
+        let mut function = MirFunc::new(
+            "record_construct",
+            vec![i32_ty(), i32_ty()],
+            vec![i32_ty()],
+        );
+        function.push_op(
+            MirOp::std("cssl.nominal_record.construct")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), MirType::Opaque("Pair".to_string())),
+        );
+        function.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let module = marker_only_module(function);
+        let error = select_function(&module, &module.funcs[0]).unwrap_err();
+        assert!(matches!(
+            &error,
+            SelectError::UnsupportedOp { fn_name, op }
+                if fn_name == "record_construct" && op == "cssl.nominal_record.construct"
+        ));
+        assert_eq!(error.code(), "X64-0015");
+    }
     fn f32_ty() -> MirType {
         MirType::Float(FloatWidth::F32)
     }

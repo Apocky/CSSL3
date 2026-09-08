@@ -120,8 +120,10 @@ pub use auto_monomorph::{
 pub use block::{MirBlock, MirOp, MirRegion};
 pub use body_lower::{
     lower_fn_body, lower_fn_body_with_call_signatures,
-    lower_fn_body_with_call_signatures_and_enum_layouts, lower_fn_body_with_enum_layouts,
-    lower_fn_body_with_table, BodyLowerCtx, CallParamContract, CallSignatureTable,
+    lower_fn_body_with_call_signatures_and_enum_layouts,
+    lower_fn_body_with_call_signatures_and_layouts, lower_fn_body_with_enum_layouts,
+    lower_fn_body_with_layouts, lower_fn_body_with_table, BodyLowerCtx, CallParamContract,
+    CallSignatureTable,
 };
 pub use cap_runtime_check::{
     cap_kind_from_attr, cap_kind_index, collect_cap_required_params, count_cap_verify_ops,

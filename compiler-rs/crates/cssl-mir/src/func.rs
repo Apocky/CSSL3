@@ -51,6 +51,13 @@ pub struct MirStructLayout {
     /// Field types in declaration order. `Vec<MirType>` rather than
     /// `Vec<(String, MirType)>` because stage-0 ABI is positional.
     pub fields: Vec<MirType>,
+    /// Exact source field names in declaration order. Empty means the layout
+    /// came from a legacy/signature-only producer or is positional/pathless;
+    /// nominal record construction/projection must then refuse admission.
+    pub field_names: Vec<String>,
+    /// Natural-layout byte offsets in declaration order. Exact nominal record
+    /// lowering requires one offset per field.
+    pub field_offsets: Vec<u32>,
     /// Total byte-size of the struct (sum of field sizes + tail padding).
     /// `0` is treated as "unknown / opaque" by the codegen consumer.
     pub size_bytes: u32,
@@ -69,9 +76,29 @@ impl MirStructLayout {
         size_bytes: u32,
         align_bytes: u8,
     ) -> Self {
+        let (field_offsets, _, _) = Self::compute_layout(&fields);
         Self {
             name: name.into(),
             fields,
+            field_names: Vec::new(),
+            field_offsets,
+            size_bytes,
+            align_bytes,
+        }
+    }
+
+    /// Construct a declaration-backed named layout using the canonical
+    /// natural scalar layout. This is the only constructor that supplies the
+    /// nominal identity needed by ABI9001 record construction/projection.
+    #[must_use]
+    pub fn named(name: impl Into<String>, fields: Vec<(String, MirType)>) -> Self {
+        let (field_names, field_types): (Vec<_>, Vec<_>) = fields.into_iter().unzip();
+        let (field_offsets, size_bytes, align_bytes) = Self::compute_layout(&field_types);
+        Self {
+            name: name.into(),
+            fields: field_types,
+            field_names,
+            field_offsets,
             size_bytes,
             align_bytes,
         }
@@ -84,9 +111,20 @@ impl MirStructLayout {
     /// as "unknown" + degrade to ptr-by-reference.
     #[must_use]
     pub fn compute_size_align(fields: &[MirType]) -> (u32, u8) {
+        let (_, size, align) = Self::compute_layout(fields);
+        (size, align)
+    }
+
+    /// Compute natural field offsets plus aggregate size/alignment. Any
+    /// unresolved aggregate member makes the total size unknown (`0`) rather
+    /// than silently treating that member as a zero-byte scalar.
+    #[must_use]
+    pub fn compute_layout(fields: &[MirType]) -> (Vec<u32>, u32, u8) {
         use crate::value::{FloatWidth, IntWidth, MirType as MT};
         let mut size: u32 = 0;
         let mut align: u8 = 1;
+        let mut offsets = Vec::with_capacity(fields.len());
+        let mut exact = true;
         for f in fields {
             let (fs, fa): (u32, u8) = match f {
                 MT::Bool => (1, 1),
@@ -104,11 +142,15 @@ impl MirStructLayout {
                 MT::Handle | MT::Ptr => (8, 8),
                 _ => (0, 1), // unknown — caller-side ABI fallback
             };
+            if fs == 0 {
+                exact = false;
+            }
             // Round size up to field alignment.
             if fa > 1 {
                 let mask: u32 = u32::from(fa - 1);
                 size = (size + mask) & !mask;
             }
+            offsets.push(size);
             size = size.saturating_add(fs);
             if fa > align {
                 align = fa;
@@ -119,7 +161,67 @@ impl MirStructLayout {
             let mask: u32 = u32::from(align - 1);
             size = (size + mask) & !mask;
         }
-        (size, align)
+        (offsets, if exact { size } else { 0 }, align)
+    }
+
+    /// Exact named-field lookup. Duplicate/pathless metadata is rejected;
+    /// callers must never select a field by insertion order alone.
+    #[must_use]
+    pub fn named_field(&self, name: &str) -> Option<(usize, &MirType, u32)> {
+        if self.field_names.len() != self.fields.len()
+            || self.field_offsets.len() != self.fields.len()
+            || self.field_names.iter().filter(|candidate| *candidate == name).count() != 1
+        {
+            return None;
+        }
+        let index = self.field_names.iter().position(|candidate| candidate == name)?;
+        Some((index, &self.fields[index], self.field_offsets[index]))
+    }
+
+    /// Width of the exact integer-only scalar carrier admitted by ABI9001.
+    /// Float, pointer, nested, empty, unknown, non-power-of-two byte-size,
+    /// >8-byte, non-natural, and pathless layouts remain outside this bounded
+    /// Windows-x64 record-value contract.
+    #[must_use]
+    pub fn nominal_integer_storage_bits(&self) -> Option<u16> {
+        use crate::value::{IntWidth, MirType as MT};
+        if self.fields.is_empty()
+            || self.field_names.len() != self.fields.len()
+            || self.field_offsets.len() != self.fields.len()
+            || self.field_names.iter().any(String::is_empty)
+        {
+            return None;
+        }
+        let (natural_offsets, natural_size, natural_align) = Self::compute_layout(&self.fields);
+        if self.field_offsets != natural_offsets
+            || self.size_bytes != natural_size
+            || self.align_bytes != natural_align
+        {
+            return None;
+        }
+        let mut unique = std::collections::BTreeSet::new();
+        if self.field_names.iter().any(|name| !unique.insert(name)) {
+            return None;
+        }
+        for (field, &offset) in self.fields.iter().zip(&self.field_offsets) {
+            let width_bytes = match field {
+                MT::Bool | MT::Int(IntWidth::I1 | IntWidth::I8) => 1,
+                MT::Int(IntWidth::I16) => 2,
+                MT::Int(IntWidth::I32) => 4,
+                MT::Int(IntWidth::I64) => 8,
+                _ => return None,
+            };
+            if offset.checked_add(width_bytes)? > self.size_bytes {
+                return None;
+            }
+        }
+        Some(match self.size_bytes {
+            1 => 8,
+            2 => 16,
+            4 => 32,
+            8 => 64,
+            _ => return None,
+        })
     }
 
     /// Stage-0 ABI classification : how does this struct cross an FFI boundary?
@@ -458,6 +560,74 @@ mod tests {
         let (size, align) = MirStructLayout::compute_size_align(&fields);
         assert_eq!(size, 8, "expected 8B with internal padding");
         assert_eq!(align, 4);
+    }
+
+    #[test]
+    fn abi9001_named_layout_keeps_exact_natural_offsets() {
+        let layout = MirStructLayout::named(
+            "Padded",
+            vec![
+                ("flag".to_string(), MirType::Int(IntWidth::I8)),
+                ("value".to_string(), MirType::Int(IntWidth::I32)),
+            ],
+        );
+        assert_eq!(layout.field_names, vec!["flag", "value"]);
+        assert_eq!(layout.field_offsets, vec![0, 4]);
+        assert_eq!(layout.size_bytes, 8);
+        assert_eq!(layout.align_bytes, 4);
+        assert_eq!(layout.nominal_integer_storage_bits(), Some(64));
+        assert_eq!(
+            layout.named_field("value"),
+            Some((1, &MirType::Int(IntWidth::I32), 4))
+        );
+    }
+
+    #[test]
+    fn abi9001_pathless_or_duplicate_layout_is_not_admitted() {
+        let pathless = MirStructLayout::new(
+            "Pair",
+            vec![MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32)],
+            8,
+            4,
+        );
+        assert_eq!(pathless.nominal_integer_storage_bits(), None);
+
+        let duplicate = MirStructLayout::named(
+            "Duplicate",
+            vec![
+                ("value".to_string(), MirType::Int(IntWidth::I32)),
+                ("value".to_string(), MirType::Int(IntWidth::I32)),
+            ],
+        );
+        assert_eq!(duplicate.nominal_integer_storage_bits(), None);
+        assert_eq!(duplicate.named_field("value"), None);
+    }
+
+    #[test]
+    fn abi9001_unresolved_member_makes_layout_size_unknown() {
+        let layout = MirStructLayout::named(
+            "Nested",
+            vec![
+                ("tag".to_string(), MirType::Int(IntWidth::I32)),
+                ("child".to_string(), MirType::Opaque("Child".to_string())),
+            ],
+        );
+        assert_eq!(layout.size_bytes, 0);
+        assert_eq!(layout.nominal_integer_storage_bits(), None);
+    }
+
+    #[test]
+    fn abi9001_three_byte_record_is_not_a_windows_x64_scalar_aggregate() {
+        let layout = MirStructLayout::named(
+            "ThreeBytes",
+            vec![
+                ("a".to_string(), MirType::Int(IntWidth::I8)),
+                ("b".to_string(), MirType::Int(IntWidth::I8)),
+                ("c".to_string(), MirType::Int(IntWidth::I8)),
+            ],
+        );
+        assert_eq!(layout.size_bytes, 3);
+        assert_eq!(layout.nominal_integer_storage_bits(), None);
     }
 
     #[test]

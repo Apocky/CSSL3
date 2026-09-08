@@ -304,14 +304,29 @@ fn lower_item_into(ctx: &LowerCtx<'_>, item: &HirItem, mir: &mut MirModule) {
 #[must_use]
 pub fn build_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> MirStructLayout {
     let name = ctx.interner.resolve(s.name);
-    let fields: Vec<MirType> = match &s.body {
-        HirStructBody::Unit => Vec::new(),
-        HirStructBody::Tuple(decls) | HirStructBody::Named(decls) => {
-            decls.iter().map(|d| ctx.lower_type(&d.ty)).collect()
+    match &s.body {
+        HirStructBody::Unit => MirStructLayout::new(name, Vec::new(), 0, 1),
+        HirStructBody::Tuple(decls) => {
+            let fields: Vec<MirType> = decls.iter().map(|d| ctx.lower_type(&d.ty)).collect();
+            let (size, align) = MirStructLayout::compute_size_align(&fields);
+            MirStructLayout::new(name, fields, size, align)
         }
-    };
-    let (size, align) = MirStructLayout::compute_size_align(&fields);
-    MirStructLayout::new(name, fields, size, align)
+        HirStructBody::Named(decls) => MirStructLayout::named(
+            name,
+            decls
+                .iter()
+                .map(|field| {
+                    (
+                        field
+                            .name
+                            .map(|symbol| ctx.interner.resolve(symbol))
+                            .unwrap_or_default(),
+                        ctx.lower_type(&field.ty),
+                    )
+                })
+                .collect(),
+        ),
+    }
 }
 
 /// § Wrapper to keep the prior internal contract (`Option<MirStructLayout>`)
@@ -438,6 +453,9 @@ mod tests {
         assert_eq!(layout.align_bytes, 8);
         assert_eq!(layout.fields.len(), 1);
         assert_eq!(layout.fields[0], MirType::Int(IntWidth::I64));
+        assert_eq!(layout.field_names, vec!["raw"]);
+        assert_eq!(layout.field_offsets, vec![0]);
+        assert_eq!(layout.nominal_integer_storage_bits(), Some(64));
     }
 
     #[test]
@@ -452,6 +470,31 @@ mod tests {
             .expect("ShareReceipt layout populated");
         assert_eq!(layout.size_bytes, 16);
         assert_eq!(layout.align_bytes, 8);
+        assert_eq!(layout.field_names, vec!["receipt_id_lo", "receipt_id_hi"]);
+        assert_eq!(layout.field_offsets, vec![0, 8]);
+        assert_eq!(layout.nominal_integer_storage_bits(), None);
+    }
+
+    #[test]
+    fn abi9001_named_padding_layout_is_declaration_backed() {
+        let (hir, interner) = hir_from("struct Padded { flag: u8, value: u32 }");
+        let mir = lower_module_signatures(&LowerCtx::new(&interner), &hir);
+        let layout = mir.find_struct_layout("Padded").expect("Padded layout");
+        assert_eq!(layout.field_names, vec!["flag", "value"]);
+        assert_eq!(layout.field_offsets, vec![0, 4]);
+        assert_eq!(layout.size_bytes, 8);
+        assert_eq!(layout.nominal_integer_storage_bits(), Some(64));
+    }
+
+    #[test]
+    fn abi9001_tuple_struct_remains_pathless_and_refused() {
+        let (hir, interner) = hir_from("struct Positional(u32, u32)");
+        let mir = lower_module_signatures(&LowerCtx::new(&interner), &hir);
+        let layout = mir
+            .find_struct_layout("Positional")
+            .expect("Positional layout");
+        assert!(layout.field_names.is_empty());
+        assert_eq!(layout.nominal_integer_storage_bits(), None);
     }
 
     #[test]

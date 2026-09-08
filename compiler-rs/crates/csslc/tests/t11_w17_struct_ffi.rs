@@ -14,10 +14,11 @@
 //!   For struct-FFI signature validation the build-pipeline integration is
 //!   the strongest signal that the W17-A advancement landed end-to-end.
 //!
-//! § DEFERRED to W17-B+
-//!   - struct-field load/store body ops (currently `cssl.struct` op falls
-//!     outside the cgen-cpu-cranelift body subset)
-//!   - inline struct-construction in fn bodies (lower error)
+//! § ABI9001 FOLLOW-ON BOUNDARY
+//!   Exact declaration-backed named integer/bool records of 1, 2, 4, or 8 bytes now
+//!   support value construction + read-only field projection in Cranelift.
+//!   Larger, pathless, nested, pointer, float, and mutable-field records stay
+//!   explicitly outside that bounded admission.
 //!
 //! § REFERENCE
 //!   - tests/fixtures/struct_ffi/runhandle_signature_only.csl   ← FFI signature only
