@@ -3364,26 +3364,59 @@ fn lower_binary(
     rhs: &HirExpr,
     span: Span,
 ) -> Option<(ValueId, MirType)> {
-    let (lhs_id, lhs_ty) = lower_expr(ctx, lhs)?;
-    let exact_integer_operands = matches!(
+    let contextual_integer_operands = matches!(
         op,
-        HirBinOp::BitAnd | HirBinOp::BitOr | HirBinOp::BitXor | HirBinOp::Shl | HirBinOp::Shr
+        HirBinOp::BitAnd
+            | HirBinOp::BitOr
+            | HirBinOp::BitXor
+            | HirBinOp::Shl
+            | HirBinOp::Shr
+            | HirBinOp::Lt
+            | HirBinOp::Le
+            | HirBinOp::Gt
+            | HirBinOp::Ge
     );
-    let (rhs_id, rhs_ty) = if exact_integer_operands {
+    // A literal has no effects, so a literal on the left may safely be
+    // contextualized after lowering the non-literal right operand. This keeps
+    // `4 < unsigned_value` as exact as `unsigned_value > 4` without guessing a
+    // default signed contract.
+    let lhs_needs_rhs_contract = contextual_integer_operands
+        && integer_literal_span(lhs).is_some()
+        && integer_literal_span(rhs).is_none();
+    let (lhs_id, lhs_ty, rhs_id, rhs_ty) = if lhs_needs_rhs_contract {
+        let (rhs_id, rhs_ty) = lower_expr(ctx, rhs)?;
         let contextual = ctx
             .integer_unsigned_values
-            .get(&lhs_id)
+            .get(&rhs_id)
             .copied()
             .and_then(|unsigned| {
-                lower_contextual_integer_literal(ctx, rhs, &lhs_ty, unsigned)
+                lower_contextual_integer_literal(ctx, lhs, &rhs_ty, unsigned)
             });
-        match contextual {
+        let (lhs_id, lhs_ty) = match contextual {
             Some(Ok(value)) => value,
             Some(Err(id)) => return Some((id, MirType::None)),
-            None => lower_expr(ctx, rhs)?,
-        }
+            None => lower_expr(ctx, lhs)?,
+        };
+        (lhs_id, lhs_ty, rhs_id, rhs_ty)
     } else {
-        lower_expr(ctx, rhs)?
+        let (lhs_id, lhs_ty) = lower_expr(ctx, lhs)?;
+        let (rhs_id, rhs_ty) = if contextual_integer_operands {
+            let contextual = ctx
+                .integer_unsigned_values
+                .get(&lhs_id)
+                .copied()
+                .and_then(|unsigned| {
+                    lower_contextual_integer_literal(ctx, rhs, &lhs_ty, unsigned)
+                });
+            match contextual {
+                Some(Ok(value)) => value,
+                Some(Err(id)) => return Some((id, MirType::None)),
+                None => lower_expr(ctx, rhs)?,
+            }
+        } else {
+            lower_expr(ctx, rhs)?
+        };
+        (lhs_id, lhs_ty, rhs_id, rhs_ty)
     };
     let right_shift = if matches!(op, HirBinOp::Shr) {
         match exact_right_shift_op(ctx, lhs_id, &lhs_ty, rhs_id, &rhs_ty) {
@@ -3399,6 +3432,21 @@ fn lower_binary(
         None
     };
     let is_float = matches!(lhs_ty, MirType::Float(_));
+    let integer_relation = if !is_float
+        && matches!(op, HirBinOp::Lt | HirBinOp::Le | HirBinOp::Gt | HirBinOp::Ge)
+    {
+        match exact_integer_relation_op(ctx, op, lhs_id, &lhs_ty, rhs_id, &rhs_ty) {
+            Ok(name) => Some(name),
+            Err(reason) => {
+                let id = emit_integer_relation_contract_refusal(
+                    ctx, lhs_id, &lhs_ty, rhs_id, &rhs_ty, reason, span,
+                );
+                return Some((id, MirType::None));
+            }
+        }
+    } else {
+        None
+    };
     let op_name = match (op, is_float) {
         (HirBinOp::Add, false) => "arith.addi",
         (HirBinOp::Add, true) => "arith.addf",
@@ -3422,13 +3470,13 @@ fn lower_binary(
         (HirBinOp::Eq, true) => "arith.cmpf_oeq",
         (HirBinOp::Ne, false) => "arith.cmpi_ne",
         (HirBinOp::Ne, true) => "arith.cmpf_one",
-        (HirBinOp::Lt, false) => "arith.cmpi_slt",
+        (HirBinOp::Lt, false) => integer_relation.expect("integer relation was checked above"),
         (HirBinOp::Lt, true) => "arith.cmpf_olt",
-        (HirBinOp::Le, false) => "arith.cmpi_sle",
+        (HirBinOp::Le, false) => integer_relation.expect("integer relation was checked above"),
         (HirBinOp::Le, true) => "arith.cmpf_ole",
-        (HirBinOp::Gt, false) => "arith.cmpi_sgt",
+        (HirBinOp::Gt, false) => integer_relation.expect("integer relation was checked above"),
         (HirBinOp::Gt, true) => "arith.cmpf_ogt",
-        (HirBinOp::Ge, false) => "arith.cmpi_sge",
+        (HirBinOp::Ge, false) => integer_relation.expect("integer relation was checked above"),
         (HirBinOp::Ge, true) => "arith.cmpf_oge",
         (HirBinOp::And, _) => "arith.andi",
         (HirBinOp::Or, _) => "arith.ori",
@@ -3467,6 +3515,68 @@ fn lower_binary(
     );
     let _ = span;
     Some((id, result_ty))
+}
+
+/// Select relational integer semantics only from exact source contracts. MIR
+/// integer widths are signless, so a relational predicate must never default
+/// to signed when either operand's provenance is absent or disagrees.
+fn exact_integer_relation_op(
+    ctx: &BodyLowerCtx<'_>,
+    op: HirBinOp,
+    lhs_id: ValueId,
+    lhs_ty: &MirType,
+    rhs_id: ValueId,
+    rhs_ty: &MirType,
+) -> Result<&'static str, &'static str> {
+    if !matches!(lhs_ty, MirType::Int(_)) || !matches!(rhs_ty, MirType::Int(_)) {
+        return Err("integer relation requires two integer operands");
+    }
+    if lhs_ty != rhs_ty {
+        return Err("integer relation operand widths must match exactly");
+    }
+    let Some(lhs_unsigned) = ctx.integer_unsigned_values.get(&lhs_id).copied() else {
+        return Err("integer relation lhs signedness is unverified");
+    };
+    let Some(rhs_unsigned) = ctx.integer_unsigned_values.get(&rhs_id).copied() else {
+        return Err("integer relation rhs signedness is unverified");
+    };
+    if lhs_unsigned != rhs_unsigned {
+        return Err("integer relation operand signedness must match exactly");
+    }
+    match (op, lhs_unsigned) {
+        (HirBinOp::Lt, false) => Ok("arith.cmpi_slt"),
+        (HirBinOp::Le, false) => Ok("arith.cmpi_sle"),
+        (HirBinOp::Gt, false) => Ok("arith.cmpi_sgt"),
+        (HirBinOp::Ge, false) => Ok("arith.cmpi_sge"),
+        (HirBinOp::Lt, true) => Ok("arith.cmpi_ult"),
+        (HirBinOp::Le, true) => Ok("arith.cmpi_ule"),
+        (HirBinOp::Gt, true) => Ok("arith.cmpi_ugt"),
+        (HirBinOp::Ge, true) => Ok("arith.cmpi_uge"),
+        _ => Err("operator is not a relational integer comparison"),
+    }
+}
+
+fn emit_integer_relation_contract_refusal(
+    ctx: &mut BodyLowerCtx<'_>,
+    lhs_id: ValueId,
+    lhs_ty: &MirType,
+    rhs_id: ValueId,
+    rhs_ty: &MirType,
+    reason: &str,
+    span: Span,
+) -> ValueId {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.integer.relation.contract.unverified")
+            .with_operand(lhs_id)
+            .with_operand(rhs_id)
+            .with_result(id, MirType::None)
+            .with_attribute("lhs_ty", lhs_ty.to_string())
+            .with_attribute("rhs_ty", rhs_ty.to_string())
+            .with_attribute("reason", reason)
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    id
 }
 
 /// Select right-shift semantics only from exact source contracts. MIR integer
@@ -8707,6 +8817,82 @@ mod tests {
             names.contains(&"arith.cmpi_slt"),
             "expected arith.cmpi_slt in {names:?}"
         );
+    }
+
+    #[test]
+    fn typed_integer_relations_select_exact_signedness() {
+        for (ty, prefix) in [
+            ("u8", "u"), ("u16", "u"), ("u32", "u"), ("u64", "u"),
+            ("u128", "u"), ("usize", "u"), ("i8", "s"), ("i16", "s"),
+            ("i32", "s"), ("i64", "s"), ("i128", "s"), ("isize", "s"),
+        ] {
+            for (token, suffix) in [("<", "lt"), ("<=", "le"), (">", "gt"), (">=", "ge")] {
+                let source = format!("fn compare(left : {ty}, right : {ty}) -> bool {{ left {token} right }}");
+                let (function, _) = lower_one(&source);
+                let names = op_names(&function);
+                let expected = format!("arith.cmpi_{prefix}{suffix}");
+                assert_eq!(names.iter().filter(|name| **name == expected).count(), 1, "{source}: {names:?}");
+                assert!(!names.contains(&"cssl.integer.relation.contract.unverified"), "{source}: {names:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn unsigned_relations_contextualize_bare_literals_without_losing_high_bits() {
+        for (source, expected, bits) in [
+            ("fn compare(length : u64) -> bool { length > 4 }", "arith.cmpi_ugt", "4"),
+            ("fn compare(length : u64) -> bool { 4 < length }", "arith.cmpi_ult", "4"),
+            ("fn compare(length : u64) -> bool { length >= 9223372036854775808 }", "arith.cmpi_uge", "-9223372036854775808"),
+            ("fn compare(length : u64) -> bool { 9223372036854775808 <= length }", "arith.cmpi_ule", "-9223372036854775808"),
+            ("fn compare(length : u64) -> bool { length < 18446744073709551615 }", "arith.cmpi_ult", "-1"),
+            ("fn compare(length : u64) -> bool { length <= 55u64 }", "arith.cmpi_ule", "55"),
+        ] {
+            let (function, _) = lower_one(source);
+            let ops = &function.body.entry().expect("entry").ops;
+            let relation = ops.iter().find(|op| op.name == expected).expect(source);
+            let literal = ops.iter().find(|op| {
+                op.name == "arith.constant"
+                    && op.results.iter().any(|result| relation.operands.contains(&result.id))
+            }).expect("relation literal producer");
+            assert_eq!(literal.results[0].ty, MirType::Int(IntWidth::I64), "{source}");
+            assert!(literal.attributes.iter().any(|(key, value)| key == "value" && value == bits), "{source}: {literal:?}");
+            assert!(!op_names(&function).contains(&"cssl.integer.literal.contract.unverified"));
+        }
+    }
+
+    #[test]
+    fn integer_relation_unknown_or_mixed_contract_refuses_instead_of_guessing_signed() {
+        for source in [
+            "fn mixed(left : u64, right : i64) -> bool { left < right }",
+            "fn unknown(left : u64) -> bool { left >= not_declared() }",
+        ] {
+            let (function, _) = lower_one(source);
+            let names = op_names(&function);
+            assert!(names.contains(&"cssl.integer.relation.contract.unverified"), "{source}: {names:?}");
+            assert!(!names.iter().any(|name| matches!(*name,
+                "arith.cmpi_slt" | "arith.cmpi_sle" | "arith.cmpi_sgt" | "arith.cmpi_sge" |
+                "arith.cmpi_ult" | "arith.cmpi_ule" | "arith.cmpi_ugt" | "arith.cmpi_uge"
+            )), "{source}: {names:?}");
+        }
+    }
+
+    #[test]
+    fn mutable_load_and_direct_call_preserve_unsigned_relation_contract() {
+        let (mutable, _) = lower_one("fn compare(left : u64, right : u64) -> bool { let mut value : u64 = left; value > right }");
+        let mutable_names = op_names(&mutable);
+        assert!(mutable_names.contains(&"memref.load"));
+        assert!(mutable_names.contains(&"arith.cmpi_ugt"));
+        assert!(!mutable_names.contains(&"cssl.integer.relation.contract.unverified"));
+
+        let called = lower_named_with_call_signatures(
+            "fn identity(value : u64) -> u64 { value } fn compare(left : u64, right : u64) -> bool { identity(left) >= right }",
+            "compare",
+            true,
+        );
+        let called_names = op_names(&called);
+        assert!(called_names.contains(&"func.call"));
+        assert!(called_names.contains(&"arith.cmpi_uge"));
+        assert!(!called_names.contains(&"cssl.integer.relation.contract.unverified"));
     }
 
     #[test]
