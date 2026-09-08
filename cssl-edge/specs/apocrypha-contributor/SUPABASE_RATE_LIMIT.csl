@@ -1,0 +1,54 @@
+§ APOCRYPHA.CONTRIBUTOR.RATE.LIMIT.v1 ‼
+
+purpose := durable+global abuse control @ contributor HTTP boundary
+authority := server service-role RPC only
+default := CLOSED ← explicit opt-in required
+N! local memory|client RLS|raw client key|credential exposure
+
+§D REQUEST
+input := {endpoint, key, method}
+key := printable ASCII ∈ [1,128] ; digest := SHA256("apocrypha.contributor.rate.v1\\0" ⊕ key)
+scope := apocrypha.contributor.{enroll|lease|result|revoke}
+policy := {
+  enroll: {limit:20,window:60s},
+  lease:  {limit:120,window:60s},
+  result: {limit:120,window:60s},
+  revoke: {limit:10,window:60s}
+}
+status := excluded-from-mutating-counter
+
+§D STORAGE
+table := public.apocrypha_contributor_rate_limit_bucket
+key := (scope,key_digest,window_start)
+counter := integer ∈ [0,1000]
+retention := expires_at := window_start + window_seconds ; bounded sweep ≤256 rows/call
+RLS := ON ; table.execute := ∅ ; rpc.execute := service_role
+
+§D ATOMIC.RPC
+name := apocrypha_contributor_rate_limit_consume
+operation := validate bounds → server clock bucket → bounded expiry sweep
+             → insert|increment iff request_count < limit → return decision
+return := {allowed:true} ∨ {allowed:false,retry_after_seconds∈[1,3600]}
+concurrency := PostgreSQL ON CONFLICT UPDATE + row lock
+errors := RATE_LIMIT_SCHEMA_INVALID|RATE_LIMIT_STORE_UNAVAILABLE
+
+§D RESOLUTION
+env := APOCRYPHA_CONTRIBUTOR_RATE_LIMITER = "supabase"
+creds := existing server Supabase URL + SUPABASE_SERVICE_ROLE_KEY
+resolver := opt-in ∧ creds ∧ client.rpc ⇒ limiter
+            ; else ⇒ null|typed closed
+N! generated key|implicit enable|anon key|service-role return
+
+§T PROOF
+✓ explicit opt-in+missing-credential closure
+✓ digest not raw key
+✓ atomic RPC name+policy binding
+✓ denied retry parse+malformed response closure
+✓ dedicated table+RLS+service-role grant+bounded sweep
+
+§C OPEN
+○ migration 0055 application+remote RPC existence
+○ production env opt-in+credential custody
+○ load test+abuse policy calibration
+
+∎

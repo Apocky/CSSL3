@@ -22,6 +22,7 @@ import {
   type ContributorTransportAtomicRevokeInput,
   type ContributorTransportStoreAvailability,
 } from '@/lib/apocrypha/contributor-transport-supabase';
+import { createSupabaseContributorRateLimiter } from '@/lib/apocrypha/contributor-rate-limit-supabase';
 import { CONTRIBUTOR_NODE_MANIFEST } from '@/lib/apocrypha/contributor-node';
 
 /**
@@ -279,7 +280,10 @@ async function enforceRateLimit(
   req: NextApiRequest,
   dependencies: ContributorRouteDependencies,
 ): Promise<void> {
-  const limiter = dependencies.rateLimiter;
+  const limiter = dependencies.rateLimiter ?? (() => {
+    const availability = createSupabaseContributorRateLimiter();
+    return availability.ok ? availability.limiter : null;
+  })();
   if (!limiter) {
     throw new ContributorHttpError(
       503,
@@ -570,6 +574,10 @@ function productionStoreCapabilities(): ContributorStoreCapabilities {
 function statusPayload(dependencies: ContributorRouteDependencies): ContributorStatusPayload {
   const storeCapabilities = productionStoreCapabilities();
   const atomicController = dependencies.atomicController;
+  const rateLimiter = dependencies.rateLimiter ?? (() => {
+    const availability = createSupabaseContributorRateLimiter();
+    return availability.ok ? availability.limiter : null;
+  })();
   const controllerKeyConfigured = Boolean(
     envKeyId('APOCRYPHA_CONTRIBUTOR_CONTROLLER_KEY_ID')
     && readEd25519PrivateKey('APOCRYPHA_CONTRIBUTOR_CONTROLLER_PRIVATE_KEY_PEM'),
@@ -585,14 +593,14 @@ function statusPayload(dependencies: ContributorRouteDependencies): ContributorS
     && atomicController.controllerSigningConfigured,
   );
   const tokenConfigured = Boolean(controllerTokenDigest(dependencies));
-  const limiterConfigured = Boolean(dependencies.rateLimiter);
+  const limiterConfigured = Boolean(rateLimiter);
   // Keep the injected generic controller as a unit-test-only compatibility
   // seam.  Production mutating capability requires an atomic controller plus
   // the external limiter and internal controller bearer configuration.
   const legacyTestEnabled = Boolean(dependencies.controller && dependencies.rateLimiter);
   const atomicEnabled = Boolean(
     atomicControllerConfigured
-    && dependencies.rateLimiter
+    && rateLimiter
     && tokenConfigured,
   );
   const enabled = legacyTestEnabled || atomicEnabled;
