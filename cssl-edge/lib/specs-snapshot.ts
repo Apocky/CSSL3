@@ -5569,6 +5569,82 @@ t∞ : ¬ harm @ in-the-Mycelium-build · sovereignty-preserved · ¬ data-exfil
 § creator @ Apocky · 2026-05-01 · designed-spec/23 · landed-W10 · ¬ subscription-prison · t∞
 `,
   },
+  {
+    slug: "26_APOCRYPHA_CONTRIBUTOR_NODE_DOWNLOAD",
+    filename: "26_APOCRYPHA_CONTRIBUTOR_NODE_DOWNLOAD.csl",
+    title: "APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v1 ‼",
+    body: `§ APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v1 ‼
+# status := SCAFFOLD.PUBLIC_METADATA.NOT_DEPLOYED
+# authority := user-requested implementation lane ∩ CSSL-edge source+tests
+# production := no executable artifact | no worker | no alias mutation in this slice
+
+§P GAP+REUSE
+  need := one readable desktop+mobile release surface for future Apocrypha
+          mycelial-contributor node
+  reuse := {
+    Apocv4.MYCELIAL_APOCRYPHA_NODE_V1 : candidate-only migration-bootstrap contract,
+    CSSL-edge.mobile-release : native phone availability + signed-artifact checks,
+    CSSL-edge.hotfix : manifest/download vocabulary, no credential reuse
+  }
+  current.fact := existing Apocv4 node has no production transport/listener
+                  ; existing Mycelium placeholder is ¬ runnable release
+  selected.form := public static landing + read-only JSON manifest
+
+§D PUBLIC.CONTRACT
+  route := /download/apocrypha-node
+  api := GET /api/apocrypha/contributor/manifest
+  state := NOT_DEPLOYED ∧ release_gate=CLOSED
+  artifact := null ∀ platform
+  platforms := {windows-x64,macos-arm64,linux-x64,android,ios}
+  promotion := native_transport ∧ signed_artifact ∧ SHA256 ∧ detached_signature
+               ∧ pinned_signer ∧ reproducible_build ∧ malware_scan
+               ∧ isolated_install_smoke ∧ rollback_smoke ∧ owner_gate
+
+§SOVEREIGNTY
+  start := paused
+  opt_in := explicit
+  auto_start := false
+  privilege_escalation := false
+  sandbox := required
+  controls := {pause=immediate_local_stop,
+               revoke=sever+rotate_node_identity,
+               uninstall=remove_binary+retain_state,
+               purge=explicit_owner_confirmation}
+  caps := {cpu≤25%,memory≤2048MiB,disk≤4096MiB,egress≤5Mbps,
+           schedule=user_selected,metered_network=blocked_by_default}
+  mobile := foreground_only ∧ charging_required ∧ OS_background_compute=false
+
+§PRIVACY
+  export := public_capsules_only
+  never_export := {raw_conversation,raw_memory,vault_payloads,credentials,
+                   private_paths,screenshots,local_logs}
+  telemetry := disabled_by_default
+  N! Vault|Obsidian content baked into package or sent to worker
+
+§T ACCEPTANCE
+  ✓ manifest parser rejects unknown keys, missing platforms, unsafe hrefs,
+    missing hashes/signatures, candidate→READY promotion, and contract mismatch
+  ✓ API GET returns public-safe manifest + no-store; non-GET=405+Allow
+  ✓ page renders unavailable state with no executable link
+  ○ production deploy only after integration owner cherry-pick + source/build
+    proof + live route oracle
+
+§R ROLLBACK
+  source := git revert <owned-slice-commit>
+  runtime := no worker state changed; no alias changed by this lane
+  artifact := future release pointer remains absent until promotion gate
+
+§OPEN
+  native Rust worker+transport; signed artifacts; publisher-key custody;
+  owner release sign-off; legal/license review; install/device/rollback proof;
+  authenticated live contribution oracle; deployment by integration owner
+
+§ ATTESTATION
+  "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
+`,
+  },
 ];
 
 export function findSpec(slug: string): SpecEntry | null {
