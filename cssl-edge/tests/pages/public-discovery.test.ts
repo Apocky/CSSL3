@@ -41,6 +41,7 @@ const principlesFallback = read('public/commons/principles.html');
 const homePage = read('pages/index.tsx');
 const siteShell = read('components/SiteShell.tsx');
 const apocryphaPage = read('pages/apocrypha.tsx');
+const chatAlias = read('pages/chat.tsx');
 
 const homePanels = renderSiteDirectory();
 const panels = [...homePanels.matchAll(/<article\b([^>]*\bdata-destination="([^"]+)"[^>]*)>([\s\S]*?)<\/article>/g)]
@@ -86,13 +87,15 @@ assert.equal(pwa['start_url'], '/', 'public PWA must not enter the owner-only ad
 assert.equal('apocrypha' in manifest, false, 'retired service must not have a discovery object');
 assert.equal(exists('public/apocrypha-manifest.json'), false, 'retired manifest alias must not ship');
 
-assert.match(apocryphaPage, /BrainExperience/, 'exact /apocrypha retains the owner conversation');
+assert.match(apocryphaPage, /ChatThread/, 'exact /apocrypha retains the owner conversation');
 assert.match(apocryphaPage, /requireBrainOwner/, 'owner conversation selection retains authorization');
 assert.match(apocryphaPage, /AccountChat/, 'other accounts retain their existing account conversation');
 assert.doesNotMatch(apocryphaPage, /PublicChat|ClearingRoom/, 'exact /apocrypha must not revive the retired public chat');
-for (const retiredPage of ['pages/apoc.tsx', 'pages/apx.tsx', 'pages/chat.tsx']) {
+for (const retiredPage of ['pages/apoc.tsx', 'pages/apx.tsx']) {
   assert.equal(exists(retiredPage), false, `${retiredPage} must not be built as a page`);
 }
+assert.match(chatAlias, /destination: `\/apocrypha\$\{suffix\}`/, 'legacy /chat traffic redirects into the unified Apocrypha conversation');
+assert.match(chatAlias, /permanent: true/, 'legacy /chat traffic uses a permanent redirect');
 
 const activePublicSurfaces: Record<string, string> = {
   words: read('pages/words.tsx'),
