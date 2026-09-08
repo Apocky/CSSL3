@@ -71,6 +71,7 @@ function config(controlPlaneUrl: string, qwenUrl: string, journalDir: string): W
     healthPort: 19_991,
     heartbeatIntervalMs: 1_000,
     heartbeatEnabled: false,
+    memoryReadConcurrency: 1,
     memoryProbeTenantId: '11111111-1111-4111-8111-111111111111',
     memoryProbePrincipalId: '22222222-2222-4222-8222-222222222222',
     memoryProbeCapability: 'chaos_tarot_reading',
@@ -103,17 +104,23 @@ function claimedJob(workerConfig: WorkerConfig): ClaimedJob {
 async function main(): Promise<void> {
   const journalDir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-test-'));
   const qwenRequests: Array<Record<string, unknown>> = [];
+  let activeMemoryRequests = 0;
+  let peakMemoryRequests = 0;
   const output = 'The Tower names the break already underway; the Star asks what remains worth carrying through it. '.repeat(5);
   const qwen = await listen(async (request, response) => {
     if (request.url === '/health') return json(response, 200, { status: 'ok' });
     if (request.url === '/v1/models') return json(response, 200, { data: [{ id: 'qwen35-35b-a3b-q4' }] });
     if (request.url === '/memory') {
+      activeMemoryRequests += 1;
+      peakMemoryRequests = Math.max(peakMemoryRequests, activeMemoryRequests);
       const received = await body(request);
       assert(received.read_only === true, 'memory request was not read-only');
       assert([
         '30000000-0000-4000-8000-000000000001',
         '11111111-1111-4111-8111-111111111111',
       ].includes(String(received.tenant_id)), 'memory request lost tenant boundary');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      activeMemoryRequests -= 1;
       return json(response, 200, { records: [{ id: 'tarot:tower-star', text: 'The Tower and Star pair disruption with chosen renewal.' }] });
     }
     if (request.url === '/unconfigured') {
@@ -228,6 +235,10 @@ async function main(): Promise<void> {
     assert(operationalProbe?.probedAt !== null, 'five real adapter reads did not mint probe freshness');
     assert(operationalProbe?.results.length === 5 && operationalProbe.results.every((result) => result.state === 'ok'),
       'periodic adapter probe did not report all five runtime states');
+    assert(peakMemoryRequests === 1, 'bounded adapter scheduler allowed overlapping memory reads');
+    const failedProbeEnv = { ...probeEnv, APOCRYPHA_GRAPHIFY_READ_URL: `${qwen.url}/unconfigured` };
+    const failedProbe = await probeMemoryAdapters(workerConfig, failedProbeEnv);
+    assert(failedProbe?.probedAt === null, 'failed adapter result minted fresh operational evidence');
   } finally {
     await Promise.all([control.close(), qwen.close()]);
     await rm(journalDir, { recursive: true, force: true });

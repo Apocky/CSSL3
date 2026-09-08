@@ -90,5 +90,5 @@ export interface GatewayRuntime {
   startedAt: string;
   requests: number;
   rejected: number;
-  lastError: { code: string; adapter?: AdapterName; at: string } | null;
+  lastError: { code: string; adapter?: AdapterName; cause?: string; at: string } | null;
 }

@@ -111,6 +111,7 @@ export interface WorkerConfig {
   healthPort: number;
   heartbeatIntervalMs: number;
   heartbeatEnabled: boolean;
+  memoryReadConcurrency: number;
   memoryProbeTenantId: string | null;
   memoryProbePrincipalId: string;
   memoryProbeCapability: string;

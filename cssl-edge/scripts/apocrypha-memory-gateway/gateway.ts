@@ -40,6 +40,11 @@ async function bounded<T>(timeoutMs: number, operation: (signal: AbortSignal) =>
   try { return await operation(controller.signal); } finally { clearTimeout(timer); }
 }
 
+function safeCause(error: unknown): string | undefined {
+  const message = error instanceof Error ? error.message : '';
+  return /^[A-Z][A-Z0-9_]{1,79}$/u.test(message) ? message : undefined;
+}
+
 async function probes(
   adapters: ReadonlyMap<AdapterName, ReadOnlyAdapter>,
   timeoutMs: number,
@@ -97,13 +102,14 @@ export function createGatewayServer(
       return json(response, 200, boundedRecordsEnvelope(adapterName, records, config.limits.responseBytes));
     } catch (error) {
       const known = error instanceof GatewayError ? error : null;
+      const cause = safeCause(error);
       const code = known?.code ?? (error instanceof Error && error.message === 'ADAPTER_UNCONFIGURED'
         ? 'ADAPTER_UNCONFIGURED' : error instanceof Error && /TIMEOUT|aborted/iu.test(error.message)
           ? 'ADAPTER_TIMEOUT' : 'ADAPTER_UNAVAILABLE');
       const status = known?.status ?? (code === 'ADAPTER_UNCONFIGURED' ? 503 : code === 'ADAPTER_TIMEOUT' ? 504 : 502);
       runtime.rejected += 1;
-      runtime.lastError = { code, ...(adapterName ? { adapter: adapterName } : {}), at: new Date().toISOString() };
-      if (!response.headersSent) json(response, status, { error: code, read_only: true }); else response.destroy();
+      runtime.lastError = { code, ...(adapterName ? { adapter: adapterName } : {}), ...(cause ? { cause } : {}), at: new Date().toISOString() };
+      if (!response.headersSent) json(response, status, { error: code, ...(cause ? { cause } : {}), read_only: true }); else response.destroy();
     }
   });
   server.maxHeadersCount = 48;

@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGatewayServer } from '../scripts/apocrypha-memory-gateway/gateway';
-import { brainmonsoonRecords } from '../scripts/apocrypha-memory-gateway/adapters';
+import { brainmonsoonRecords, canonicalGraphQuery, nativeErrorCode } from '../scripts/apocrypha-memory-gateway/adapters';
 import { isLoopbackUrl, loadGatewayConfig } from '../scripts/apocrypha-memory-gateway/config';
 import { runBoundedJsonl } from '../scripts/apocrypha-memory-gateway/process';
 import type {
@@ -73,6 +73,11 @@ async function main(): Promise<void> {
   assert(brainRecords.length === 3, 'Brainmonsoon batch was not normalized into admitted records');
   assert(brainRecords.every((item) => item.authority === 'read_only_analysis' && item.effect_authority === false),
     'Brainmonsoon records lost read-only authority labels');
+  const graphQuery = canonicalGraphQuery(`Tower\r\n${'Star '.repeat(1_000)}`);
+  assert(!/[\r\n]/u.test(graphQuery) && Buffer.byteLength(graphQuery, 'utf8') <= 4_000,
+    'Graphify query retained forbidden controls or exceeded its native bound');
+  assert(nativeErrorCode({ ok: false, error: { code: 'APOC_GRAPH_QUERY_INVALID' } }, 'NATIVE_GRAPH_UNAVAILABLE')
+    === 'APOC_GRAPH_QUERY_INVALID', 'nested native Graphify error code was lost');
   assert(isLoopbackUrl('http://127.0.0.1:8787/search'), 'loopback URL rejected');
   assert(!isLoopbackUrl('https://example.com/search'), 'remote upstream admitted');
   let configRejected = false;

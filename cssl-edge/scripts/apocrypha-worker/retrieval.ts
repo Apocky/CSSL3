@@ -89,10 +89,17 @@ function boundedJson(value: unknown, maxChars: number): string {
   }
 }
 
-function publicAdapterError(payload: string): string | null {
+function publicAdapterError(payload: string): { code: string; cause: string | null } | null {
   try {
-    const code = record(JSON.parse(payload) as unknown).error;
-    return typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/u.test(code) ? code : null;
+    const body = record(JSON.parse(payload) as unknown);
+    const code = body.error;
+    const cause = body.cause;
+    return typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/u.test(code)
+      ? {
+          code,
+          cause: typeof cause === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/u.test(cause) ? cause : null,
+        }
+      : null;
   } catch {
     return null;
   }
@@ -203,7 +210,8 @@ async function invokeAdapter(
     });
     if (!response.ok) {
       const bounded = await boundedResponseText(response, 16_384);
-      const code = publicAdapterError(bounded);
+      const upstream = publicAdapterError(bounded);
+      const code = upstream?.code ?? null;
       const state = response.status === 401 || response.status === 403
         ? 'denied'
         : response.status === 504 || code === 'ADAPTER_TIMEOUT'
@@ -216,7 +224,7 @@ async function invokeAdapter(
         state,
         durationMs: Date.now() - started,
         records: [],
-        detail: code ?? `HTTP ${response.status}`,
+        detail: upstream?.cause ?? code ?? `HTTP ${response.status}`,
       };
     }
     const bounded = await boundedResponseText(response);
@@ -245,6 +253,47 @@ async function invokeAdapter(
   }
 }
 
+async function invokeAdaptersBounded(
+  config: WorkerConfig,
+  operation: (adapter: MemoryAdapterManifest) => Promise<RetrievalAdapterResult>,
+): Promise<Array<PromiseSettledResult<RetrievalAdapterResult>>> {
+  const adapters = config.manifest.memory.adapters;
+  const settled = new Array<PromiseSettledResult<RetrievalAdapterResult>>(adapters.length);
+  let cursor = 0;
+  const runner = async (): Promise<void> => {
+    while (cursor < adapters.length) {
+      const index = cursor;
+      cursor += 1;
+      const adapter = adapters[index] as MemoryAdapterManifest;
+      try {
+        settled[index] = { status: 'fulfilled', value: await operation(adapter) };
+      } catch (reason) {
+        settled[index] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(Array.from(
+    { length: Math.min(config.memoryReadConcurrency, Math.max(1, adapters.length)) },
+    () => runner(),
+  ));
+  return settled;
+}
+
+function completedProbeAt(
+  config: WorkerConfig,
+  env: NodeJS.ProcessEnv,
+  results: RetrievalAdapterResult[],
+): string | null {
+  const allConfigured = config.manifest.memory.adapters.every((adapter) => {
+    const url = env[adapter.urlEnv]?.trim();
+    return Boolean(url && isSafeAdapterUrl(url));
+  });
+  return allConfigured && results.length === config.manifest.memory.adapters.length
+    && results.every((result) => result.state === 'ok')
+    ? new Date().toISOString()
+    : null;
+}
+
 export async function retrieveMemory(
   config: WorkerConfig,
   job: ClaimedJob,
@@ -252,9 +301,8 @@ export async function retrieveMemory(
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle> {
   const query = queryFromJob(job);
-  const settled = await Promise.allSettled(
-    config.manifest.memory.adapters.map((adapter) => invokeAdapter(adapter, job, query, env, fetchImpl)),
-  );
+  const settled = await invokeAdaptersBounded(config,
+    (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl));
   const results = settled.map((result, index): RetrievalAdapterResult => {
     if (result.status === 'fulfilled') return result.value;
     return {
@@ -266,13 +314,9 @@ export async function retrieveMemory(
     };
   });
   const records = results.flatMap((result) => result.records).slice(0, 40);
-  const allConfigured = config.manifest.memory.adapters.every((adapter) => {
-    const url = env[adapter.urlEnv]?.trim();
-    return Boolean(url && isSafeAdapterUrl(url));
-  });
   return {
     query, results, records, digest: sha256(stableJson(records)),
-    probedAt: allConfigured ? new Date().toISOString() : null,
+    probedAt: completedProbeAt(config, env, results),
   };
 }
 
@@ -300,22 +344,17 @@ export async function probeMemoryAdapters(
     memoryManifestHash: config.memoryManifestHash,
   };
   const query = queryFromJob(job);
-  const settled = await Promise.allSettled(
-    config.manifest.memory.adapters.map((adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1)),
-  );
+  const settled = await invokeAdaptersBounded(config,
+    (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1));
   const results = settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
     name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
     state: 'error', durationMs: 0, records: [],
     detail: result.reason instanceof Error ? result.reason.message : 'adapter probe failed',
   }));
-  const allConfigured = config.manifest.memory.adapters.every((adapter) => {
-    const url = env[adapter.urlEnv]?.trim();
-    return Boolean(url && isSafeAdapterUrl(url));
-  });
   const records = results.flatMap((result) => result.records).slice(0, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),
-    probedAt: allConfigured ? new Date().toISOString() : null,
+    probedAt: completedProbeAt(config, env, results),
   };
 }
 

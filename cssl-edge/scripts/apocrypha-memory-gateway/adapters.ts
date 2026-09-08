@@ -15,9 +15,24 @@ function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+export function nativeErrorCode(payload: Record<string, unknown> | undefined, fallback: string): string {
+  const nested = object(payload?.error)?.code;
+  const direct = payload?.code;
+  const code = typeof nested === 'string' ? nested : direct;
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/u.test(code) ? code : fallback;
+}
+
 function boundedScalar(value: unknown, maximum = 512): string {
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
     ? String(value).replace(/\s+/gu, ' ').trim().slice(0, maximum) : '';
+}
+
+export function canonicalGraphQuery(value: string): string {
+  return utf8Prefix(value.replace(/\s+/gu, ' ').trim(), 4_000);
+}
+
+function innerDeadline(outerTimeoutMs: number): number {
+  return outerTimeoutMs - Math.min(2_000, Math.max(1, Math.floor(outerTimeoutMs / 5)));
 }
 
 export function brainmonsoonRecords(payload: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -154,7 +169,7 @@ class NativeMemPalaceAdapter implements ReadOnlyAdapter {
       privacy_partition: native.privacyPartition,
       query: request.query,
       limit: request.limit,
-      deadline_ms: this.config.limits.timeoutMs,
+      deadline_ms: innerDeadline(this.config.limits.timeoutMs),
       include_sample_digest: false,
     }], signal, this.config.limits.responseBytes * 4);
     const payload = frames[0] as Record<string, unknown> | undefined;
@@ -190,13 +205,15 @@ class NativeGraphAdapter implements ReadOnlyAdapter {
       schema_version: 'apocrypha.graph-organ.service-request.v1',
       request_id: scopedRequestId('gateway-graph', request),
       method: 'query',
-      query: request.query,
-      deadline_ms: this.config.limits.timeoutMs,
+      query: canonicalGraphQuery(request.query),
+      deadline_ms: innerDeadline(this.config.limits.timeoutMs),
       max_depth: 2,
       max_results: request.limit,
     }], signal, this.config.limits.responseBytes * 4);
     const payload = frames[0] as Record<string, unknown> | undefined;
-    if (!payload || payload.ok !== true) throw new Error('NATIVE_GRAPH_UNAVAILABLE');
+    if (!payload || payload.ok !== true) {
+      throw new Error(nativeErrorCode(payload, 'NATIVE_GRAPH_UNAVAILABLE'));
+    }
     return payload;
   }
   async probe(signal: AbortSignal): Promise<AdapterProbe> {
@@ -232,7 +249,7 @@ class NativeObserveAdapter implements ReadOnlyAdapter {
         query,
         regions: [this.name === 'mneme' ? 'three_mneme' : 'metaharness'],
         limit: Math.min(request.limit, 2),
-        deadline_ms: Math.min(this.config.limits.timeoutMs, 12_000),
+        deadline_ms: innerDeadline(Math.min(this.config.limits.timeoutMs, 12_000)),
         expected_owner_sha256: createHash('sha256').update(owner).digest('hex'),
         expected_privacy_partition_sha256: createHash('sha256').update(partition).digest('hex'),
       }], signal, this.config.limits.responseBytes * 4);
@@ -270,7 +287,7 @@ class NativeAnamnesisAdapter implements ReadOnlyAdapter {
       db_path: this.config.native.anamnesisDb,
       query: utf8Prefix(request.query.replace(/\s+/gu, ' ').trim(), 4_000),
       limit: request.limit,
-      deadline_ms: this.config.limits.timeoutMs,
+      deadline_ms: innerDeadline(this.config.limits.timeoutMs),
     }], signal, this.config.limits.responseBytes * 4);
     const payload = frames[0] as Record<string, unknown> | undefined;
     if (!payload || payload.ok !== true || payload.read_only !== true || payload.authority !== 'none') {
@@ -315,7 +332,7 @@ class NativeBrainmonsoonAdapter implements ReadOnlyAdapter {
       state_root: native.brainmonsoonStateRoot,
       query,
       limit: Math.min(limit, 8),
-      deadline_ms: this.timeoutMs,
+      deadline_ms: innerDeadline(this.timeoutMs),
     }], signal, Math.max(524_288, this.config.limits.responseBytes * 4));
     const payload = frames[0] as Record<string, unknown> | undefined;
     if (!payload || payload.ok !== true || payload.read_only !== true || payload.authority !== 'read_only_analysis') {

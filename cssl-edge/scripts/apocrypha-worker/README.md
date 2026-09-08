@@ -33,7 +33,7 @@ Only one worker process can own a journal directory. `worker.lock` prevents dupl
 
 ## Memory and tools
 
-`manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, and MNEME. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. Calls run in parallel. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen.
+`manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, and MNEME. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. The resident defaults to one bounded adapter call at a time so native readers cannot collide during process startup; `APOCRYPHA_MEMORY_READ_CONCURRENCY` can admit up to five only after a host benchmark. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen beyond its declared timeout.
 
 An individual resident can raise a slow local adapter's deadline with
 `APOCRYPHA_<ADAPTER>_READ_TIMEOUT_MS` (250 through 60000). This runtime dial

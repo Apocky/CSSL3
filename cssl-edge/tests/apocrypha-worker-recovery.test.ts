@@ -37,6 +37,7 @@ function makeConfig(controlPlaneUrl: string, journalDir: string): WorkerConfig {
     controlPlaneTimeoutMs: 2_000, chunkFlushMs: 20, chunkMaxChars: 64, qwenIdleTimeoutMs: 2_000,
     qwenMaxRuntimeMs: 10_000, contextWindowTokens: 4_096, maxOutputTokens: 128, journalDir, healthHost: '127.0.0.1', healthPort: 19_992,
     heartbeatIntervalMs: 1_000, heartbeatEnabled: false,
+    memoryReadConcurrency: 1,
     memoryProbeTenantId: '11111111-1111-4111-8111-111111111111',
     memoryProbePrincipalId: '22222222-2222-4222-8222-222222222222',
     memoryProbeCapability: 'chaos_tarot_reading',
