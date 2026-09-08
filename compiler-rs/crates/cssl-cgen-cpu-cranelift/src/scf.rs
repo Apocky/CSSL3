@@ -159,6 +159,9 @@ pub enum ScfError {
         fn_name: String,
         value_id: u32,
     },
+
+    #[error("nominal scf.match in `{fn_name}` is malformed : {detail}")]
+    NominalMatchMalformed { fn_name: String, detail: String },
 }
 
 /// Wrapper that carries either the local [`ScfError`] (structural problems
@@ -205,6 +208,62 @@ pub fn mir_to_cl(ty: &MirType) -> Option<Type> {
         MirType::Ptr | MirType::Handle => Some(cl_types::I64),
         _ => None,
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NominalMatchDispatch {
+    pub variant_count: usize,
+    /// Source-arm index → declaration-order discriminant.
+    pub arm_discriminants: Vec<usize>,
+}
+
+/// Validate a total nominal-unit dispatch bijection. Legacy matches return None.
+pub fn nominal_match_dispatch(
+    op: &MirOp, fn_name: &str,
+) -> Result<Option<NominalMatchDispatch>, ScfError> {
+    let attr = |name: &str| op.attributes.iter().find(|(key, _)| key == name)
+        .map(|(_, value)| value.as_str());
+    if attr("dispatch") != Some("nominal_unit") { return Ok(None); }
+    let malformed = |detail| ScfError::NominalMatchMalformed {
+        fn_name: fn_name.to_string(), detail,
+    };
+    let variant_count = attr("variant_count")
+        .ok_or_else(|| malformed("missing `variant_count`".to_string()))?
+        .parse::<usize>().map_err(|_| malformed("invalid `variant_count`".to_string()))?;
+    if variant_count == 0 { return Err(malformed("zero variants".to_string())); }
+    let enum_name = attr("enum_name")
+        .ok_or_else(|| malformed("missing `enum_name`".to_string()))?;
+    if enum_name.is_empty() { return Err(malformed("empty `enum_name`".to_string())); }
+    let arm_count = attr("arm_count")
+        .ok_or_else(|| malformed("missing `arm_count`".to_string()))?
+        .parse::<usize>().map_err(|_| malformed("invalid `arm_count`".to_string()))?;
+    if arm_count != op.regions.len() {
+        return Err(malformed(format!(
+            "arm_count {arm_count} for {} regions",
+            op.regions.len()
+        )));
+    }
+    let tags = attr("arm_discriminants")
+        .ok_or_else(|| malformed("missing `arm_discriminants`".to_string()))?
+        .split(',').map(|raw| raw.parse::<usize>()
+            .map_err(|_| malformed(format!("invalid arm discriminant `{raw}`"))))
+        .collect::<Result<Vec<_>, _>>()?;
+    if tags.len() != op.regions.len() {
+        return Err(malformed(format!("{} tags for {} regions", tags.len(), op.regions.len())));
+    }
+    if tags.len() != variant_count {
+        return Err(malformed(format!("{} arms for {variant_count} variants", tags.len())));
+    }
+    let mut seen = vec![false; variant_count];
+    for &tag in &tags {
+        if tag >= variant_count {
+            return Err(malformed(format!("discriminant {tag} outside 0..{variant_count}")));
+        }
+        if std::mem::replace(&mut seen[tag], true) {
+            return Err(malformed(format!("duplicate discriminant {tag}")));
+        }
+    }
+    Ok(Some(NominalMatchDispatch { variant_count, arm_discriminants: tags }))
 }
 
 /// Lower an `scf.if` op. The caller supplies a closure that lowers a single
@@ -1281,5 +1340,35 @@ mod tests {
             "implementation must thread the both-branches-terminated \
              flag back as the tail Ok(...) expression"
         );
+    }
+
+    #[test]
+    fn abi9002_nominal_dispatch_accepts_reordered_total_bijection() {
+        let op = MirOp::std("scf.match")
+            .with_region(cssl_mir::MirRegion::new())
+            .with_region(cssl_mir::MirRegion::new())
+            .with_region(cssl_mir::MirRegion::new())
+            .with_attribute("dispatch", "nominal_unit")
+            .with_attribute("enum_name", "Kind")
+            .with_attribute("variant_count", "3")
+            .with_attribute("arm_count", "3")
+            .with_attribute("arm_discriminants", "2,0,1");
+        let parsed = nominal_match_dispatch(&op, "probe").unwrap().unwrap();
+        assert_eq!(parsed.arm_discriminants, vec![2, 0, 1]);
+    }
+
+    #[test]
+    fn abi9002_nominal_dispatch_refuses_duplicate_tags() {
+        let op = MirOp::std("scf.match")
+            .with_region(cssl_mir::MirRegion::new())
+            .with_region(cssl_mir::MirRegion::new())
+            .with_attribute("dispatch", "nominal_unit")
+            .with_attribute("enum_name", "Kind")
+            .with_attribute("variant_count", "2")
+            .with_attribute("arm_count", "2")
+            .with_attribute("arm_discriminants", "0,0");
+        assert!(matches!(nominal_match_dispatch(&op, "probe"),
+            Err(ScfError::NominalMatchMalformed { detail, .. })
+                if detail.contains("duplicate discriminant")));
     }
 }

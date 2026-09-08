@@ -150,19 +150,20 @@ pub fn profile_record_native_status_v1(tag: u32, value: u32) -> i32 {
     0i32
 }
 
-// Native nominal-variant support is independently observable from the record
-// path; a record refusal can no longer mask the mutated-discriminant refusal.
+// Native nominal unit-variant support is independently observable from the
+// record path. Reversed source-arm order proves dispatch follows declaration
+// discriminants rather than arm position. Payload variants remain fail-closed.
 pub fn profile_variant_native_status_v1() -> i32 {
     let current: ProfileVectorKind = ProfileVectorKind::Current;
     let current_tag = match current {
-        ProfileVectorKind::Current => 0u32,
         ProfileVectorKind::Mutated => 1u32,
+        ProfileVectorKind::Current => 0u32,
     };
     if current_tag != 0u32 { return 9002i32; }
     let mutated: ProfileVectorKind = ProfileVectorKind::Mutated;
     let mutated_tag = match mutated {
-        ProfileVectorKind::Current => 0u32,
         ProfileVectorKind::Mutated => 1u32,
+        ProfileVectorKind::Current => 0u32,
     };
     if mutated_tag != 1u32 { return 9002i32; }
     0i32

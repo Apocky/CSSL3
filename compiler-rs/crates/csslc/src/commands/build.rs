@@ -166,10 +166,27 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         }
     }
     // T11-W19-α-CSSLC-FIX4-ENUM · stage-0 enum-FFI codegen.
+    let mut nominal_enum_layouts = std::collections::BTreeMap::new();
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Enum(e) = item {
             let layout = cssl_mir::lower::build_enum_layout(&lower_ctx, e);
+            register_nominal_enum_layout(&mut nominal_enum_layouts, &layout);
             mir_mod.add_enum_layout(layout);
+        }
+    }
+    // § P1a-ABI9002 — collect the complete build graph before lowering
+    // declaration-backed nominal constructors or matches.
+    for (aux_hir, aux_interner) in &aux_hirs {
+        let aux_lower_ctx = cssl_mir::LowerCtx::new(aux_interner);
+        for item in &aux_hir.items {
+            if let cssl_hir::HirItem::Struct(s) = item {
+                mir_mod.add_struct_layout(cssl_mir::lower::build_struct_layout(&aux_lower_ctx, s));
+            }
+            if let cssl_hir::HirItem::Enum(e) = item {
+                let layout = cssl_mir::lower::build_enum_layout(&aux_lower_ctx, e);
+                register_nominal_enum_layout(&mut nominal_enum_layouts, &layout);
+                mir_mod.add_enum_layout(layout);
+            }
         }
     }
     // First pass : lower extern fn signatures (no body) so the call-result
@@ -183,10 +200,11 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
-            cssl_mir::lower_fn_body_with_call_signatures(
+            cssl_mir::lower_fn_body_with_call_signatures_and_enum_layouts(
                 &interner,
                 Some(&file),
                 &call_signatures,
+                &nominal_enum_layouts,
                 f,
                 &mut mf,
             );
@@ -202,20 +220,6 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     //   collision ; symbol resolution at the MIR level is fname-string-based.
     for ((aux_hir, aux_interner), aux_file) in aux_hirs.iter().zip(aux_files.iter()) {
         let aux_lower_ctx = cssl_mir::LowerCtx::new(aux_interner);
-        // T11-W17-A · aux struct-FFI layouts.
-        for item in &aux_hir.items {
-            if let cssl_hir::HirItem::Struct(s) = item {
-                let layout = cssl_mir::lower::build_struct_layout(&aux_lower_ctx, s);
-                mir_mod.add_struct_layout(layout);
-            }
-        }
-        // T11-W19-α-CSSLC-FIX4-ENUM · aux enum-FFI layouts.
-        for item in &aux_hir.items {
-            if let cssl_hir::HirItem::Enum(e) = item {
-                let layout = cssl_mir::lower::build_enum_layout(&aux_lower_ctx, e);
-                mir_mod.add_enum_layout(layout);
-            }
-        }
         for item in &aux_hir.items {
             if let cssl_hir::HirItem::ExternFn(ef) = item {
                 mir_mod.push_func(cssl_mir::lower::lower_extern_fn_signature(
@@ -227,10 +231,11 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         for item in &aux_hir.items {
             if let cssl_hir::HirItem::Fn(f) = item {
                 let mut mf = cssl_mir::lower_function_signature(&aux_lower_ctx, f);
-                cssl_mir::lower_fn_body_with_call_signatures(
+                cssl_mir::lower_fn_body_with_call_signatures_and_enum_layouts(
                     aux_interner,
                     Some(aux_file),
                     &call_signatures,
+                    &nominal_enum_layouts,
                     f,
                     &mut mf,
                 );
@@ -656,6 +661,27 @@ fn rewrite_path_ref_to_constant(
     }
 }
 
+/// Record one exact nominal identity. Repeated bare enum names remain valid
+/// for legacy ABI layout lookup, but their nominal table is deliberately made
+/// pathless so constructor/match lowering refuses insertion-order selection.
+fn register_nominal_enum_layout(
+    layouts: &mut std::collections::BTreeMap<String, cssl_mir::MirEnumLayout>,
+    layout: &cssl_mir::MirEnumLayout,
+) {
+    if layouts.contains_key(&layout.name) {
+        layouts.insert(
+            layout.name.clone(),
+            cssl_mir::MirEnumLayout::new(
+                layout.name.clone(),
+                layout.variant_count,
+                layout.is_unit_only,
+            ),
+        );
+    } else {
+        layouts.insert(layout.name.clone(), layout.clone());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,6 +714,28 @@ mod tests {
             backend: Backend::NativeX64,
             module_paths: Vec::new(),
         }
+    }
+
+    #[test]
+    fn abi9002_duplicate_bare_enum_identity_becomes_pathless() {
+        let mut layouts = std::collections::BTreeMap::new();
+        register_nominal_enum_layout(
+            &mut layouts,
+            &cssl_mir::MirEnumLayout::with_variants(
+                "Kind",
+                vec!["Alpha".to_string()],
+                true,
+            ),
+        );
+        register_nominal_enum_layout(
+            &mut layouts,
+            &cssl_mir::MirEnumLayout::with_variants(
+                "Kind",
+                vec!["Beta".to_string()],
+                true,
+            ),
+        );
+        assert!(layouts["Kind"].variants.is_empty());
     }
 
     #[test]
@@ -777,6 +825,52 @@ mod tests {
         let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
         assert_eq!(format!("{code:?}"), format!("{err:?}"));
         assert!(!tmp_out.exists(), "legacy x64 refusal must not write an object");
+    }
+
+    #[test]
+    fn abi9002_build_nominal_unit_variant_match_emits_cranelift_object() {
+        let src = "enum Kind { Alpha, Beta, Gamma }\n\
+                   pub fn probe() -> u32 { let value: Kind = Kind::Gamma; match value {\n\
+                   Kind::Gamma => 30u32, Kind::Alpha => 10u32, Kind::Beta => 20u32, } }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_abi9002_positive_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9002_positive.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9002_positive.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
+        assert!(tmp_out.exists(), "nominal unit variant match must emit an object");
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn abi9002_build_pathless_nominal_pattern_is_explicitly_refused() {
+        let src = "enum Kind { Alpha, Beta }\n\
+                   pub fn probe() -> u32 { let value: Kind = Kind::Beta; match value {\n\
+                   Alpha => 10u32, Beta => 20u32, } }\n";
+        let tmp_out = std::env::temp_dir()
+            .join(format!("csslc_abi9002_pathless_refusal_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args("abi9002_pathless_refusal.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9002_pathless_refusal.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "pathless nominal refusal wrote output");
+    }
+
+    #[test]
+    fn abi9002_build_nominal_variant_match_is_explicitly_refused_by_legacy_x64() {
+        let src = "enum Kind { Alpha, Beta }\n\
+                   pub fn probe() -> u32 { let value: Kind = Kind::Beta; match value {\n\
+                   Kind::Beta => 20u32, Kind::Alpha => 10u32, } }\n";
+        let tmp_out = std::env::temp_dir()
+            .join(format!("csslc_abi9002_x64_refusal_{}.obj", std::process::id()));
+        let _ = std::fs::remove_file(&tmp_out);
+        let args = build_args_native_x64("abi9002_x64_refusal.cssl", tmp_out.to_str().unwrap());
+        let code = run_with_source(Path::new("abi9002_x64_refusal.cssl"), src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
+        assert!(!tmp_out.exists(), "legacy x64 nominal refusal wrote output");
     }
 
     #[test]

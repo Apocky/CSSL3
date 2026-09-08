@@ -81,6 +81,8 @@ pub enum JitError {
     /// A MIR op is not yet JIT-lowered.
     #[error("unsupported MIR op in `{fn_name}` : `{op_name}` (stage-0 JIT scalars-arith-only)")]
     UnsupportedMirOp { fn_name: String, op_name: String },
+    #[error("nominal variant lowering refused in `{fn_name}` [{code}] : {detail}")]
+    NominalVariantFailure { fn_name: String, code: String, detail: String },
     /// Cranelift reported a lowering / codegen error.
     #[error("cranelift lowering failed for `{fn_name}` : {detail}")]
     LoweringFailed { fn_name: String, detail: String },
@@ -1218,6 +1220,7 @@ fn lower_op_to_cl(
         // shared helper in `crate::scf` walks the two regions and threads
         // the yielded value (when present) through a merge-block parameter.
         "scf.if" => lower_scf_if_in_jit(op, builder, value_map, fn_name, callee_refs),
+        "scf.match" => lower_scf_match_in_jit(op, builder, value_map, fn_name, callee_refs),
         // T11-D61 / S6-C2 : structured-loop ops. Each delegates to the
         // matching entry in `crate::scf` ; the body-walker dispatcher
         // closure re-enters `lower_op_to_cl` for nested ops (including
@@ -1289,6 +1292,15 @@ fn lower_op_to_cl(
         //   runtime trap (no panicking ABI yet at stage-0). When the diagnostic
         //   surface lands (T11-D## TBD) this arm reroutes to a real error op.
         "cssl.closure.call.error" => Ok(jit_lower_closure_call_error(op, builder, value_map)),
+        "cssl.nominal_variant.error" => {
+            let attr = |name: &str| op.attributes.iter().find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone());
+            Err(JitError::NominalVariantFailure {
+                fn_name: fn_name.to_string(),
+                code: attr("code").unwrap_or_else(|| "ABI9002-UNKNOWN".to_string()),
+                detail: attr("detail").unwrap_or_else(|| "missing failure detail".to_string()),
+            })
+        }
         // `cssl.diff.bwd_return` is the AD walker's bwd-variant terminator —
         // it carries one-operand-per-primal-float-param holding that param's
         // accumulated adjoint. Lower identically to `func.return` since the
@@ -2061,6 +2073,111 @@ fn parse_int_cc(s: &str) -> Option<cranelift_codegen::ir::condcodes::IntCC> {
     })
 }
 
+/// § P1a-ABI9002 — pattern-preserving nominal unit-enum dispatch.
+fn lower_scf_match_in_jit(
+    op: &MirOp, builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>, fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<bool, JitError> {
+    use cranelift_codegen::ir::{InstBuilder, JumpTableData};
+    let nominal = crate::scf::nominal_match_dispatch(op, fn_name).map_err(|error| {
+        JitError::NominalVariantFailure { fn_name: fn_name.to_string(),
+            code: "ABI9002-MALFORMED-DISPATCH".to_string(), detail: error.to_string() }
+    })?;
+    if nominal.is_none() {
+        return Err(JitError::UnsupportedMirOp {
+            fn_name: fn_name.to_string(),
+            op_name: op.name.clone(),
+        });
+    }
+    let scrut_id = op.operands.first().copied().ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(), detail: "scf.match missing scrutinee".to_string() })?;
+    let scrut = *value_map.get(&scrut_id).ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(), detail: format!("scf.match unknown ValueId({})", scrut_id.0) })?;
+    if op.regions.is_empty() { return Err(JitError::LoweringFailed {
+        fn_name: fn_name.to_string(), detail: "scf.match has zero regions".to_string() }); }
+    let src_ty = builder.func.dfg.value_type(scrut);
+    let index = if src_ty == cl_types::I32 { scrut }
+        else if src_ty.is_int() && src_ty.bits() < 32 { builder.ins().uextend(cl_types::I32, scrut) }
+        else if src_ty.is_int() && src_ty.bits() > 32 { builder.ins().ireduce(cl_types::I32, scrut) }
+        else { return Err(JitError::LoweringFailed { fn_name: fn_name.to_string(),
+            detail: format!("scf.match scrutinee `{src_ty}` is not integer") }); };
+
+    let arms: Vec<_> = op.regions.iter().map(|_| builder.create_block()).collect();
+    let default = builder.create_block();
+    let merge = builder.create_block();
+    let merge_ty = op.results.first().and_then(|result| mir_to_cl_type(&result.ty))
+        .unwrap_or(cl_types::I32);
+    builder.append_block_param(merge, merge_ty);
+    let dispatch = if let Some(map) = &nominal {
+        let mut by_tag = vec![default; map.variant_count];
+        for (arm, &tag) in map.arm_discriminants.iter().enumerate() { by_tag[tag] = arms[arm]; }
+        by_tag
+    } else { arms.clone() };
+    let table = JumpTableData::new(builder.func.dfg.block_call(default, &[]),
+        &dispatch.iter().map(|block| builder.func.dfg.block_call(*block, &[])).collect::<Vec<_>>());
+    let table = builder.func.create_jump_table(table);
+    builder.ins().br_table(index, table);
+
+    for (arm_index, region) in op.regions.iter().enumerate() {
+        if nominal.is_some() && region.blocks.len() != 1 {
+            return Err(JitError::NominalVariantFailure { fn_name: fn_name.to_string(),
+                code: "ABI9002-MALFORMED-REGION".to_string(),
+                detail: format!("arm {arm_index} has {} blocks; expected one", region.blocks.len()) });
+        }
+        builder.switch_to_block(arms[arm_index]); builder.seal_block(arms[arm_index]);
+        let mut yielded = None; let mut terminated = false;
+        if let Some(entry) = region.blocks.first() {
+            for arm_op in &entry.ops {
+                if arm_op.name == "scf.yield" {
+                    let id = arm_op.operands.first().copied().ok_or_else(|| JitError::LoweringFailed {
+                        fn_name: fn_name.to_string(), detail: "valueless scf.yield".to_string() })?;
+                    yielded = Some(*value_map.get(&id).ok_or_else(|| JitError::LoweringFailed {
+                        fn_name: fn_name.to_string(), detail: format!("unknown yield ValueId({})", id.0) })?);
+                    break;
+                }
+                if lower_op_to_cl(arm_op, builder, value_map, fn_name, callee_refs)? {
+                    terminated = true; break;
+                }
+                if let Some(result) = arm_op.results.first() { yielded = value_map.get(&result.id).copied(); }
+            }
+        }
+        if !terminated {
+            let value = match yielded {
+                Some(value) => coerce_match_value(builder, value, merge_ty, fn_name)?,
+                None => zero_of_type(builder, merge_ty),
+            };
+            builder.ins().jump(merge, &[value]);
+        }
+    }
+    builder.switch_to_block(default); builder.seal_block(default);
+    let zero = zero_of_type(builder, merge_ty); builder.ins().jump(merge, &[zero]);
+    builder.switch_to_block(merge); builder.seal_block(merge);
+    if let Some(result) = op.results.first() { value_map.insert(result.id, builder.block_params(merge)[0]); }
+    Ok(false)
+}
+
+fn coerce_match_value(
+    builder: &mut FunctionBuilder<'_>, value: cranelift_codegen::ir::Value,
+    expected: cranelift_codegen::ir::Type, fn_name: &str,
+) -> Result<cranelift_codegen::ir::Value, JitError> {
+    let actual = builder.func.dfg.value_type(value);
+    if actual == expected { return Ok(value); }
+    if actual.is_int() && expected.is_int() {
+        return Ok(if actual.bits() < expected.bits() { builder.ins().uextend(expected, value) }
+            else { builder.ins().ireduce(expected, value) });
+    }
+    Err(JitError::LoweringFailed { fn_name: fn_name.to_string(),
+        detail: format!("scf.match arm `{actual}` cannot join `{expected}`") })
+}
+
+fn zero_of_type(builder: &mut FunctionBuilder<'_>, ty: cranelift_codegen::ir::Type)
+    -> cranelift_codegen::ir::Value {
+    if ty == cl_types::F32 { builder.ins().f32const(0.0) }
+    else if ty == cl_types::F64 { builder.ins().f64const(0.0) }
+    else { builder.ins().iconst(ty, 0) }
+}
+
 /// Adapter : delegate `scf.if` lowering to the shared [`crate::scf`] helper,
 /// turning [`crate::scf::BackendOrScfError`] into [`JitError`] so the outer
 /// JIT dispatch keeps a single error type. The closure passed in re-enters
@@ -2334,6 +2451,68 @@ mod tests {
                 .push(MirOp::std("func.return").with_operand(ValueId(2)));
         }
         f
+    }
+
+    fn nominal_arm(id: u32, value: i32) -> cssl_mir::MirRegion {
+        let mut block = cssl_mir::MirBlock::new("arm");
+        block.ops.push(MirOp::std("arith.constant").with_result(ValueId(id), i32_ty())
+            .with_attribute("value", value.to_string()));
+        block.ops.push(MirOp::std("scf.yield").with_operand(ValueId(id)));
+        let mut region = cssl_mir::MirRegion::new(); region.push(block); region
+    }
+
+    fn nominal_match(discriminant: i32, tags: &str) -> MirFunc {
+        let mut f = MirFunc::new("nominal_match", vec![], vec![i32_ty()]);
+        f.push_op(MirOp::std("arith.constant")
+            .with_result(ValueId(0), MirType::Int(IntWidth::I8))
+            .with_attribute("value", discriminant.to_string()));
+        f.push_op(MirOp::std("scf.match").with_operand(ValueId(0))
+            .with_region(nominal_arm(1, 30)).with_region(nominal_arm(2, 10))
+            .with_region(nominal_arm(3, 20)).with_result(ValueId(4), i32_ty())
+            .with_attribute("dispatch", "nominal_unit").with_attribute("enum_name", "Kind")
+            .with_attribute("variant_count", "3").with_attribute("arm_count", "3")
+            .with_attribute("arm_discriminants", tags));
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(4))); f
+    }
+
+    #[test]
+    fn abi9002_jit_dispatches_by_discriminant_not_arm_order() {
+        for (tag, expected) in [(0, 10), (1, 20), (2, 30)] {
+            let mut module = JitModule::new();
+            let handle = module.compile(&nominal_match(tag, "2,0,1")).unwrap();
+            module.finalize().unwrap();
+            assert_eq!(handle.call_unit_to_i32(&module).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn abi9002_jit_refuses_malformed_nominal_dispatch() {
+        let mut module = JitModule::new();
+        assert!(matches!(module.compile(&nominal_match(0, "0,0,1")),
+            Err(JitError::NominalVariantFailure { code, detail, .. })
+                if code == "ABI9002-MALFORMED-DISPATCH" && detail.contains("duplicate")));
+    }
+
+    #[test]
+    fn abi9002_jit_preserves_typed_nominal_refusal() {
+        let mut f = MirFunc::new("bad_nominal", vec![], vec![i32_ty()]);
+        f.push_op(MirOp::std("cssl.nominal_variant.error")
+            .with_result(ValueId(0), MirType::None)
+            .with_attribute("code", "ABI9002-PATHLESS-PATTERN")
+            .with_attribute("detail", "qualified path required"));
+        let mut module = JitModule::new();
+        assert!(matches!(module.compile(&f),
+            Err(JitError::NominalVariantFailure { code, .. })
+                if code == "ABI9002-PATHLESS-PATTERN"));
+    }
+
+    #[test]
+    fn abi9002_jit_preserves_legacy_generic_match_refusal() {
+        let mut f = MirFunc::new("generic_match", vec![], vec![i32_ty()]);
+        f.push_op(MirOp::std("scf.match").with_operand(ValueId(0)));
+        let mut module = JitModule::new();
+        assert!(matches!(module.compile(&f),
+            Err(JitError::UnsupportedMirOp { op_name, .. }) if op_name == "scf.match"));
     }
 
     #[test]

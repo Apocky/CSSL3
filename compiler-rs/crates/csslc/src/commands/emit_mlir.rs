@@ -47,10 +47,31 @@ pub fn run_with_source(path: &Path, source: &str) -> ExitCode {
 
     let lower_ctx = cssl_mir::LowerCtx::new(&interner);
     let mut mir_mod = cssl_mir::MirModule::new();
+    let mut nominal_enum_layouts = std::collections::BTreeMap::new();
+    for item in &hir_mod.items {
+        if let cssl_hir::HirItem::Enum(e) = item {
+            let layout = cssl_mir::lower::build_enum_layout(&lower_ctx, e);
+            if nominal_enum_layouts.contains_key(&layout.name) {
+                nominal_enum_layouts.insert(
+                    layout.name.clone(),
+                    cssl_mir::MirEnumLayout::new(
+                        layout.name.clone(),
+                        layout.variant_count,
+                        layout.is_unit_only,
+                    ),
+                );
+            } else {
+                nominal_enum_layouts.insert(layout.name.clone(), layout.clone());
+            }
+            mir_mod.add_enum_layout(layout);
+        }
+    }
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
-            cssl_mir::lower_fn_body(&interner, Some(&file), f, &mut mf);
+            cssl_mir::lower_fn_body_with_enum_layouts(
+                &interner, Some(&file), &nominal_enum_layouts, f, &mut mf,
+            );
             mir_mod.push_func(mf);
         }
     }

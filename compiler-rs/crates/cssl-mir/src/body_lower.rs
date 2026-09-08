@@ -46,7 +46,7 @@ use cssl_hir::{
 };
 
 use crate::block::{MirBlock, MirOp, MirRegion};
-use crate::func::MirFunc;
+use crate::func::{MirEnumLayout, MirFunc};
 use crate::op::CsslOp;
 use crate::trait_dispatch::TraitImplTable;
 use crate::value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
@@ -180,10 +180,14 @@ pub struct BodyLowerCtx<'a> {
     /// Declared direct-call parameter contracts for generic `func.call`
     /// lowering. Recognizer-owned intrinsics remain unchanged.
     pub call_signatures: Option<&'a CallSignatureTable>,
+    /// Declaration-backed nominal enum layouts.
+    pub enum_layouts: Option<&'a BTreeMap<String, MirEnumLayout>>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
     /// § Source unsignedness for checked indices; signless MIR width alone cannot select extension.
     pub index_unsigned_vars: HashMap<Symbol, bool>,
+    /// SSA values proven to carry one declaration-backed nominal enum.
+    pub nominal_enum_values: HashMap<ValueId, String>,
     /// Known source binding contracts for checked array and integer aliases.
     pub checked_alias_types: HashMap<Symbol, (MirType, bool)>,
     // § Cast provenance follows actual SSA values, not signless MIR widths or mutable names.
@@ -289,8 +293,10 @@ impl<'a> BodyLowerCtx<'a> {
             source: None,
             trait_impl_table: None,
             call_signatures: None,
+            enum_layouts: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
+            nominal_enum_values: HashMap::new(),
             checked_alias_types: HashMap::new(),
             integer_unsigned_values: HashMap::new(),
             array_unsigned_values: HashMap::new(),
@@ -313,8 +319,10 @@ impl<'a> BodyLowerCtx<'a> {
             source: Some(source),
             trait_impl_table: None,
             call_signatures: None,
+            enum_layouts: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
+            nominal_enum_values: HashMap::new(),
             checked_alias_types: HashMap::new(),
             integer_unsigned_values: HashMap::new(),
             array_unsigned_values: HashMap::new(),
@@ -376,8 +384,10 @@ impl<'a> BodyLowerCtx<'a> {
             source: self.source,
             trait_impl_table: self.trait_impl_table,
             call_signatures: self.call_signatures,
+            enum_layouts: self.enum_layouts,
             param_vars: self.param_vars.clone(),
             index_unsigned_vars: self.index_unsigned_vars.clone(),
+            nominal_enum_values: self.nominal_enum_values.clone(),
             checked_alias_types: self.checked_alias_types.clone(),
             integer_unsigned_values: self.integer_unsigned_values.clone(),
             array_unsigned_values: self.array_unsigned_values.clone(),
@@ -415,7 +425,7 @@ pub fn lower_fn_body(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
-    lower_fn_body_with_tables(interner, source, None, None, hir_fn, mir_fn);
+    lower_fn_body_with_tables(interner, source, None, None, None, hir_fn, mir_fn);
 }
 
 /// T11-D99 — lower with an optional trait-impl table threaded in.
@@ -432,7 +442,7 @@ pub fn lower_fn_body_with_table(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
-    lower_fn_body_with_tables(interner, source, table, None, hir_fn, mir_fn);
+    lower_fn_body_with_tables(interner, source, table, None, None, hir_fn, mir_fn);
 }
 
 /// Lower with declared direct-callee parameter contracts available to the
@@ -450,8 +460,32 @@ pub fn lower_fn_body_with_call_signatures(
         source,
         None,
         Some(call_signatures),
+        None,
         hir_fn,
         mir_fn,
+    );
+}
+
+pub fn lower_fn_body_with_enum_layouts(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    enum_layouts: &BTreeMap<String, MirEnumLayout>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
+    lower_fn_body_with_tables(interner, source, None, None, Some(enum_layouts), hir_fn, mir_fn);
+}
+
+pub fn lower_fn_body_with_call_signatures_and_enum_layouts(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    call_signatures: &CallSignatureTable,
+    enum_layouts: &BTreeMap<String, MirEnumLayout>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
+    lower_fn_body_with_tables(
+        interner, source, None, Some(call_signatures), Some(enum_layouts), hir_fn, mir_fn,
     );
 }
 
@@ -460,6 +494,7 @@ fn lower_fn_body_with_tables<'a>(
     source: Option<&'a SourceFile>,
     table: Option<&'a TraitImplTable>,
     call_signatures: Option<&'a CallSignatureTable>,
+    enum_layouts: Option<&'a BTreeMap<String, MirEnumLayout>>,
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
@@ -474,6 +509,7 @@ fn lower_fn_body_with_tables<'a>(
         ctx.trait_impl_table = Some(t);
     }
     ctx.call_signatures = call_signatures;
+    ctx.enum_layouts = enum_layouts;
     // Entry-block args = flat-scalarized fn params. Each vec2/vec3/vec4 param
     // occupies N consecutive entry-block ids (matches the flat signature emitted
     // by `lower_function_signature`) ; everything else occupies one id. The
@@ -502,6 +538,11 @@ fn lower_fn_body_with_tables<'a>(
                 mir_fn.attributes.push((format!("borrow.{}", id.0), if *mutable { "mutable" } else { "shared" }.to_owned()));
             }
             if let Some(sym) = sym {
+                if let MirType::Opaque(name) = &ty {
+                    if enum_layouts.is_some_and(|layouts| layouts.contains_key(name)) {
+                        ctx.nominal_enum_values.insert(id, name.clone());
+                    }
+                }
                 ctx.index_unsigned_vars.insert(sym, hir_integer_unsigned(interner, &p.ty));
                 if let Some(contract) = checked_alias_type(interner, source, &p.ty) {
                     match &contract.0 {
@@ -1167,7 +1208,11 @@ fn lower_match(
     arms: &[cssl_hir::HirMatchArm],
     span: Span,
 ) -> (ValueId, MirType) {
-    let (scrut_id, _) = lower_expr(ctx, scrutinee).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let (scrut_id, scrut_ty) = lower_expr(ctx, scrutinee)
+        .unwrap_or((ctx.fresh_value_id(), MirType::None));
+    if let Some(enum_name) = nominal_enum_name_for_scrutinee(ctx, scrut_id, &scrut_ty) {
+        return lower_nominal_unit_match(ctx, scrut_id, &enum_name, arms, span);
+    }
     // One nested region per arm body.
     let arm_regions: Vec<MirRegion> = arms
         .iter()
@@ -1193,6 +1238,107 @@ fn lower_match(
     }
     ctx.ops.push(op);
     (id, MirType::None)
+}
+
+fn nominal_enum_name_for_scrutinee(
+    ctx: &BodyLowerCtx<'_>, scrut_id: ValueId, scrut_ty: &MirType,
+) -> Option<String> {
+    if let Some(name) = ctx.nominal_enum_values.get(&scrut_id) { return Some(name.clone()); }
+    let layouts = ctx.enum_layouts?;
+    if let MirType::Opaque(name) = scrut_ty {
+        if layouts.contains_key(name) { return Some(name.clone()); }
+    }
+    None
+}
+
+fn lower_nominal_unit_match(
+    ctx: &mut BodyLowerCtx<'_>, scrut_id: ValueId, enum_name: &str,
+    arms: &[cssl_hir::HirMatchArm], span: Span,
+) -> (ValueId, MirType) {
+    let Some(layout) = ctx.enum_layouts.and_then(|table| table.get(enum_name)).cloned() else {
+        return emit_nominal_variant_error(ctx, span, "ABI9002-MISSING-LAYOUT",
+            format!("nominal enum `{enum_name}` has no declaration-backed layout"));
+    };
+    if !layout.is_unit_only {
+        return emit_nominal_variant_error(ctx, span, "ABI9002-PAYLOAD-ENUM",
+            format!("nominal enum `{enum_name}` carries payloads; unit-only lowering required"));
+    }
+    if layout.variants.is_empty()
+        || usize::try_from(layout.variant_count).ok() != Some(layout.variants.len())
+    {
+        return emit_nominal_variant_error(ctx, span, "ABI9002-PATHLESS-LAYOUT",
+            format!("nominal enum `{enum_name}` lacks exact variant names"));
+    }
+
+    let mut tags = Vec::with_capacity(arms.len());
+    for arm in arms {
+        let (path, args) = match &arm.pat.kind {
+            cssl_hir::HirPatternKind::Variant { path, args, .. } => (path, args),
+            cssl_hir::HirPatternKind::Binding { .. } => {
+                return emit_nominal_variant_error(ctx, arm.pat.span,
+                    "ABI9002-PATHLESS-PATTERN",
+                    format!("match on `{enum_name}` requires qualified `Enum::Variant` patterns"));
+            }
+            _ => return emit_nominal_variant_error(ctx, arm.pat.span,
+                "ABI9002-UNSUPPORTED-PATTERN",
+                format!("match on `{enum_name}` supports only payload-free variant patterns")),
+        };
+        if !args.is_empty() {
+            return emit_nominal_variant_error(ctx, arm.pat.span,
+                "ABI9002-PAYLOAD-PATTERN",
+                format!("match on `{enum_name}` does not admit payload patterns"));
+        }
+        if path.len() != 2 {
+            return emit_nominal_variant_error(ctx, arm.pat.span,
+                "ABI9002-PATHLESS-PATTERN",
+                format!("match on `{enum_name}` requires exact payload-free paths"));
+        }
+        let pattern_enum = ctx.interner.resolve(path[0]);
+        let pattern_variant = ctx.interner.resolve(path[1]);
+        if pattern_enum != enum_name {
+            return emit_nominal_variant_error(ctx, arm.pat.span, "ABI9002-FOREIGN-PATTERN",
+                format!("`{pattern_enum}::{pattern_variant}` cannot dispatch `{enum_name}`"));
+        }
+        let Some(tag) = layout.discriminant_for(&pattern_variant) else {
+            return emit_nominal_variant_error(ctx, arm.pat.span, "ABI9002-UNKNOWN-VARIANT",
+                format!("`{enum_name}` has no variant `{pattern_variant}`"));
+        };
+        if tags.contains(&tag) {
+            return emit_nominal_variant_error(ctx, arm.pat.span, "ABI9002-DUPLICATE-PATTERN",
+                format!("duplicate `{enum_name}::{pattern_variant}` arm"));
+        }
+        tags.push(tag);
+    }
+    if tags.len() != layout.variants.len() {
+        return emit_nominal_variant_error(ctx, span, "ABI9002-NONEXHAUSTIVE-MATCH",
+            format!("match on `{enum_name}` covers {} of {} variants", tags.len(), layout.variants.len()));
+    }
+
+    let mut regions = Vec::with_capacity(arms.len());
+    let mut yield_types = Vec::with_capacity(arms.len());
+    for arm in arms {
+        let (region, yield_ty) = lower_branch_region(ctx, |sub| lower_expr(sub, &arm.body));
+        regions.push(region);
+        yield_types.push(yield_ty);
+    }
+    let result_ty = yield_types.first().cloned().flatten().unwrap_or(MirType::None);
+    if yield_types.iter().any(|candidate| candidate.clone().unwrap_or(MirType::None) != result_ty) {
+        return emit_nominal_variant_error(ctx, span, "ABI9002-ARM-TYPE-MISMATCH",
+            format!("match on `{enum_name}` has non-identical arm yield types"));
+    }
+    let id = ctx.fresh_value_id();
+    let mut op = MirOp::std("scf.match")
+        .with_operand(scrut_id)
+        .with_result(id, result_ty.clone())
+        .with_attribute("dispatch", "nominal_unit")
+        .with_attribute("enum_name", enum_name)
+        .with_attribute("variant_count", layout.variant_count.to_string())
+        .with_attribute("arm_discriminants", tags.iter().map(u32::to_string).collect::<Vec<_>>().join(","))
+        .with_attribute("arm_count", arms.len().to_string())
+        .with_attribute("source_loc", format!("{span:?}"));
+    for region in regions { op = op.with_region(region); }
+    ctx.ops.push(op);
+    (id, result_ty)
 }
 
 fn lower_field(
@@ -2806,6 +2952,60 @@ fn lower_path(ctx: &mut BodyLowerCtx<'_>, segments: &[Symbol], span: Span) -> (V
             return (*id, ty.clone());
         }
     }
+    // A bare name matching any declaration-backed variant is ambiguous by
+    // construction. Refuse it instead of falling through to the historical
+    // unresolved-path zero sentinel.
+    if segments.len() == 1 {
+        if let Some(layouts) = ctx.enum_layouts {
+            let bare = ctx.interner.resolve(segments[0]);
+            if layouts.values().any(|layout| {
+                layout.variants.iter().any(|variant| variant == &bare)
+            }) {
+                return emit_nominal_variant_error(
+                    ctx,
+                    span,
+                    "ABI9002-PATHLESS-CONSTRUCTOR",
+                    format!("bare nominal variant `{bare}` requires exact `Enum::Variant` path"),
+                );
+            }
+        }
+    }
+    // § P1a-ABI9002 — known nominal enums never use the path-ref zero sentinel.
+    if let (Some(layouts), Some(first)) = (ctx.enum_layouts, segments.first()) {
+        let enum_name = ctx.interner.resolve(*first);
+        if let Some(layout) = layouts.get(&enum_name).cloned() {
+            if segments.len() != 2 {
+                return emit_nominal_variant_error(ctx, span, "ABI9002-PATHLESS-CONSTRUCTOR",
+                    format!("nominal enum `{enum_name}` requires exact `Enum::Variant` path"));
+            }
+            if !layout.is_unit_only {
+                return emit_nominal_variant_error(ctx, span, "ABI9002-PAYLOAD-ENUM",
+                    format!("nominal enum `{enum_name}` carries payloads; unit-only lowering required"));
+            }
+            if layout.variants.is_empty()
+                || usize::try_from(layout.variant_count).ok() != Some(layout.variants.len())
+            {
+                return emit_nominal_variant_error(ctx, span, "ABI9002-PATHLESS-LAYOUT",
+                    format!("nominal enum `{enum_name}` lacks exact variant names"));
+            }
+            let variant_name = ctx.interner.resolve(segments[1]);
+            let Some(discriminant) = layout.discriminant_for(&variant_name) else {
+                return emit_nominal_variant_error(ctx, span, "ABI9002-UNKNOWN-VARIANT",
+                    format!("`{enum_name}` has no variant `{variant_name}`"));
+            };
+            let result_ty = nominal_unit_enum_mir_type(layout.variant_count);
+            let id = ctx.fresh_value_id();
+            ctx.integer_unsigned_values.insert(id, true);
+            ctx.nominal_enum_values.insert(id, enum_name.clone());
+            ctx.ops.push(MirOp::std("arith.constant")
+                .with_result(id, result_ty.clone())
+                .with_attribute("value", discriminant.to_string())
+                .with_attribute("nominal_enum", enum_name)
+                .with_attribute("nominal_variant", variant_name)
+                .with_attribute("source_loc", format!("{span:?}")));
+            return (id, result_ty);
+        }
+    }
     // Multi-segment or unresolved : emit an opaque `arith.constant`-shaped placeholder
     // so downstream passes see a typed value.
     let id = ctx.fresh_value_id();
@@ -2822,6 +3022,24 @@ fn lower_path(ctx: &mut BodyLowerCtx<'_>, segments: &[Symbol], span: Span) -> (V
             .with_attribute("source_loc", format!("{span:?}")),
     );
     (id, ty)
+}
+
+fn nominal_unit_enum_mir_type(variant_count: u32) -> MirType {
+    if variant_count <= 256 { MirType::Int(IntWidth::I8) }
+    else if variant_count <= 65_536 { MirType::Int(IntWidth::I16) }
+    else { MirType::Int(IntWidth::I32) }
+}
+
+fn emit_nominal_variant_error(
+    ctx: &mut BodyLowerCtx<'_>, span: Span, code: &'static str, detail: String,
+) -> (ValueId, MirType) {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(MirOp::std("cssl.nominal_variant.error")
+        .with_result(id, MirType::None)
+        .with_attribute("code", code)
+        .with_attribute("detail", detail)
+        .with_attribute("source_loc", format!("{span:?}")));
+    (id, MirType::None)
 }
 
 fn lower_binary(
@@ -3264,6 +3482,32 @@ fn lower_call(
         if segments.len() == 2 {
             let leading = ctx.interner.resolve(segments[0]);
             let variant = ctx.interner.resolve(segments[1]);
+            if let Some(layout) = ctx
+                .enum_layouts
+                .and_then(|layouts| layouts.get(&leading))
+                .cloned()
+            {
+                for arg in args {
+                    let expression = match arg {
+                        HirCallArg::Positional(expression)
+                        | HirCallArg::Named {
+                            value: expression, ..
+                        } => expression,
+                    };
+                    let _ = lower_expr(ctx, expression);
+                }
+                if !layout.is_unit_only || !args.is_empty() {
+                    return Some(emit_nominal_variant_error(
+                        ctx,
+                        span,
+                        "ABI9002-PAYLOAD-CONSTRUCTOR",
+                        format!(
+                            "nominal constructor `{leading}::{variant}` carries payload syntax; unit-only lowering required"
+                        ),
+                    ));
+                }
+                return Some(lower_path(ctx, segments, span));
+            }
             let leading_is_title = leading
                 .chars()
                 .next()
@@ -7147,10 +7391,10 @@ fn _unused(_: MirValue) {}
 #[cfg(test)]
 mod tests {
     use super::{
-        emit_compound_op, lower_fn_body, lower_fn_body_with_call_signatures, BodyLowerCtx,
-        CallSignatureTable,
+        emit_compound_op, lower_fn_body, lower_fn_body_with_call_signatures,
+        lower_fn_body_with_enum_layouts, BodyLowerCtx, CallSignatureTable,
     };
-    use crate::lower::{lower_function_signature, LowerCtx};
+    use crate::lower::{build_enum_layout, lower_function_signature, LowerCtx};
     use crate::value::IntWidth;
     use crate::value::MirType;
     use cssl_ast::{SourceFile, SourceId, Span, Surface};
@@ -7180,6 +7424,25 @@ mod tests {
         let mut mf = lower_function_signature(&ctx, f);
         lower_fn_body(&interner, Some(&source), f, &mut mf);
         (mf, interner)
+    }
+
+    fn lower_named_with_enum_layouts(src: &str, name: &str) -> crate::func::MirFunc {
+        let (hir, interner, source) = hir_from(src);
+        let ctx = LowerCtx::new(&interner);
+        let layouts = hir.items.iter().filter_map(|item| match item {
+            cssl_hir::HirItem::Enum(definition) => {
+                let layout = build_enum_layout(&ctx, definition);
+                Some((layout.name.clone(), layout))
+            }
+            _ => None,
+        }).collect();
+        let function = hir.items.iter().find_map(|item| match item {
+            cssl_hir::HirItem::Fn(function) if interner.resolve(function.name) == name => Some(function),
+            _ => None,
+        }).expect("expected named fn item");
+        let mut mir = lower_function_signature(&ctx, function);
+        lower_fn_body_with_enum_layouts(&interner, Some(&source), &layouts, function, &mut mir);
+        mir
     }
 
     /// Lower one named function with the module's declared direct-call
@@ -7239,6 +7502,58 @@ mod tests {
         f.body.entry().map_or(Vec::new(), |b| {
             b.ops.iter().map(|o| o.name.as_str()).collect()
         })
+    }
+
+    #[test]
+    fn abi9002_nominal_constructor_and_reordered_match_keep_discriminants() {
+        let function = lower_named_with_enum_layouts(
+            "enum Kind { Alpha, Beta, Gamma }\n\
+             fn probe() -> u32 { let value: Kind = Kind::Gamma; match value {\n\
+             Kind::Gamma => 30u32, Kind::Alpha => 10u32, Kind::Beta => 20u32, } }",
+            "probe",
+        );
+        let entry = function.body.entry().unwrap();
+        let constructor = entry.ops.iter().find(|op| op.attributes.iter()
+            .any(|(key, value)| key == "nominal_variant" && value == "Gamma")).unwrap();
+        assert_eq!(constructor.name, "arith.constant");
+        assert_eq!(constructor.results[0].ty, MirType::Int(IntWidth::I8));
+        assert!(constructor.attributes.iter().any(|(k, v)| k == "value" && v == "2"));
+        let dispatch = entry.ops.iter().find(|op| op.name == "scf.match").unwrap();
+        assert_eq!(dispatch.results[0].ty, MirType::Int(IntWidth::I32));
+        assert!(dispatch.attributes.iter().any(|(k, v)| k == "arm_discriminants" && v == "2,0,1"));
+        assert!(dispatch.regions.iter().all(|region| region.blocks.first()
+            .and_then(|block| block.ops.last()).is_some_and(|op| op.name == "scf.yield")));
+    }
+
+    #[test]
+    fn abi9002_pathless_nominal_pattern_is_typed_failure() {
+        let function = lower_named_with_enum_layouts(
+            "enum Kind { Alpha, Beta }\n\
+             fn probe() -> u32 { let value: Kind = Kind::Beta;\n\
+             match value { Alpha => 10u32, Beta => 20u32 } }", "probe");
+        let failure = function.body.entry().unwrap().ops.iter()
+            .find(|op| op.name == "cssl.nominal_variant.error").unwrap();
+        assert!(failure.attributes.iter().any(|(k, v)| k == "code" && v == "ABI9002-PATHLESS-PATTERN"));
+    }
+
+    #[test]
+    fn abi9002_payload_enum_constructor_is_typed_failure() {
+        let function = lower_named_with_enum_layouts(
+            "enum Kind { Empty, Payload(i32) }\n\
+             fn probe() -> i32 { let value: Kind = Kind::Payload(7i32); 0i32 }", "probe");
+        let failure = function.body.entry().unwrap().ops.iter()
+            .find(|op| op.name == "cssl.nominal_variant.error").unwrap();
+        assert!(failure.attributes.iter().any(|(k, v)| k == "code" && v == "ABI9002-PAYLOAD-CONSTRUCTOR"));
+    }
+
+    #[test]
+    fn abi9002_pathless_nominal_constructor_is_typed_failure() {
+        let function = lower_named_with_enum_layouts(
+            "enum Kind { Alpha, Beta }\n\
+             fn probe() -> Kind { Beta }", "probe");
+        let failure = function.body.entry().unwrap().ops.iter()
+            .find(|op| op.name == "cssl.nominal_variant.error").unwrap();
+        assert!(failure.attributes.iter().any(|(k, v)| k == "code" && v == "ABI9002-PATHLESS-CONSTRUCTOR"));
     }
 
     #[test]

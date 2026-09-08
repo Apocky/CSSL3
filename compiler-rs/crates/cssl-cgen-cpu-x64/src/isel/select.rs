@@ -1276,6 +1276,19 @@ mod tests {
     fn legacy_x64_explicitly_refuses_scalar_i128_width() {
         assert_eq!(mir_to_x64_width(&MirType::Int(IntWidth::I128)), None);
     }
+    #[test]
+    fn abi9002_legacy_x64_explicitly_refuses_nominal_match() {
+        let mut f = MirFunc::new("nominal_match", vec![], vec![i32_ty()]);
+        f.push_op(MirOp::std("arith.constant")
+            .with_result(ValueId(0), MirType::Int(IntWidth::I8)).with_attribute("value", "1"));
+        f.push_op(MirOp::std("scf.match").with_operand(ValueId(0))
+            .with_result(ValueId(1), i32_ty()).with_attribute("dispatch", "nominal_unit")
+            .with_attribute("enum_name", "Kind").with_attribute("variant_count", "2")
+            .with_attribute("arm_count", "2").with_attribute("arm_discriminants", "0,1"));
+        let module = marker_only_module(f);
+        assert!(matches!(select_function(&module, &module.funcs[0]),
+            Err(SelectError::UnsupportedOp { op, .. }) if op == "scf.match"));
+    }
     fn f32_ty() -> MirType {
         MirType::Float(FloatWidth::F32)
     }

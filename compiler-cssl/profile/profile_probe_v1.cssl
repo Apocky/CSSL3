@@ -262,7 +262,7 @@ pub fn profile_probe_variant_v1() -> i32 {
 
 pub fn profile_probe_known_refusals_v1() -> i32 {
     if profile_probe_record_v1() != 9001i32 { return 9021i32; }
-    if profile_probe_variant_v1() != 9002i32 { return 9022i32; }
+    if profile_probe_variant_v1() != 0i32 { return 9022i32; }
     if profile_probe_u128_composite_v1() != 0i32 { return 9023i32; }
     if profile_probe_native_u128_scalar_v1() != 0i32 { return 9024i32; }
     if profile_probe_unsigned_shift_semantics_v1() != 0i32 { return 9025i32; }

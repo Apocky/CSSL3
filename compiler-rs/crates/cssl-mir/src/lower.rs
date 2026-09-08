@@ -326,12 +326,14 @@ fn lower_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> Option<MirStructLay
 #[must_use]
 pub fn build_enum_layout(ctx: &LowerCtx<'_>, e: &HirEnum) -> MirEnumLayout {
     let name = ctx.interner.resolve(e.name);
+    let variants = e.variants.iter()
+        .map(|variant| ctx.interner.resolve(variant.name))
+        .collect();
     let is_unit_only = e
         .variants
         .iter()
         .all(|v| matches!(v.body, HirStructBody::Unit));
-    let variant_count = u32::try_from(e.variants.len()).unwrap_or(u32::MAX);
-    MirEnumLayout::new(name, variant_count, is_unit_only)
+    MirEnumLayout::with_variants(name, variants, is_unit_only)
 }
 
 #[cfg(test)]

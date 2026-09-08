@@ -121,6 +121,9 @@ pub enum ObjectError {
         slot: usize,
     },
 
+    #[error("fn `{fn_name}` nominal variant lowering refused [{code}] : {detail}")]
+    NominalVariantFailure { fn_name: String, code: String, detail: String },
+
     /// Cranelift reported a codegen / declaration error.
     #[error("fn `{fn_name}` cranelift error : {detail}")]
     LoweringFailed { fn_name: String, detail: String },
@@ -2196,6 +2199,15 @@ fn lower_one_op(
         //   first variant of every Error enum in stdlib is the canonical
         //   "ok-shaped" or "not-found" sentinel).
         "cssl.path_ref" => obj_lower_cssl_path_ref(op, builder, value_map, fn_name, ptr_ty),
+        "cssl.nominal_variant.error" => {
+            let attr = |name: &str| op.attributes.iter().find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone());
+            Err(ObjectError::NominalVariantFailure {
+                fn_name: fn_name.to_string(),
+                code: attr("code").unwrap_or_else(|| "ABI9002-UNKNOWN".to_string()),
+                detail: attr("detail").unwrap_or_else(|| "missing failure detail".to_string()),
+            })
+        }
         // § T11-W19-α-CSSLC-FIX11 (sum-type constructors) — Result + Option
         //   variant-construction ops. body_lower::try_lower_result_{ok,err}
         //   + lower_option_{some,none} mint these with :
@@ -3437,9 +3449,10 @@ fn obj_lower_cssl_vec_index(
 ///       attribute arm_count = N+1
 ///   ```
 ///   `body_lower::lower_match` mints this op-shape per
-///   `crates/cssl-mir/src/body_lower.rs::lower_match`. The arm-order
-///   matches HIR source-order which (for unit-only enums) matches
-///   discriminant-order, so the scrutinee Value IS the arm-index.
+///   `crates/cssl-mir/src/body_lower.rs::lower_match`. For admitted nominal
+///   unit enums, `arm_discriminants` carries each source arm's declaration
+///   tag. `nominal_match_dispatch` verifies a total bijection and builds the
+///   declaration-tag to source-arm jump table.
 ///
 /// § EMITTED CRANELIFT SHAPE
 ///   ```text
@@ -3463,10 +3476,9 @@ fn obj_lower_cssl_vec_index(
 ///     type. Mismatched arm-yield types coerce via `coerce_int_to_block_arg_ty`
 ///     (FIX5 helper). Pointer-shaped yields fall back to host-pointer-
 ///     width per FIX7 precedent.
-///   - Pattern info isn't preserved on `scf.match` regions ; this stage-0
-///     lowering ASSUMES discriminant-order alignment. A future MatchExpansion
-///     pass will enrich each arm with its pattern + then we can build a
-///     proper compare-cascade for non-unit enums + struct-variant patterns.
+///   - Payload variants, pathless patterns, duplicate/missing/foreign arms,
+///     and non-exhaustive nominal matches arrive as typed ABI9002 refusal
+///     ops. Generic non-nominal `scf.match` remains outside this admission.
 ///
 /// § ERRORS
 ///   Returns `ObjectError::LoweringFailed` for missing-scrutinee or
@@ -3485,6 +3497,14 @@ fn lower_scf_match_in_object(
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
     use cranelift_codegen::ir::{InstBuilder, JumpTableData};
+
+    let nominal_dispatch = crate::scf::nominal_match_dispatch(op, fn_name).map_err(|error| {
+        ObjectError::NominalVariantFailure {
+            fn_name: fn_name.to_string(),
+            code: "ABI9002-MALFORMED-DISPATCH".to_string(),
+            detail: error.to_string(),
+        }
+    })?;
 
     let scrut_id = op
         .operands
@@ -3539,9 +3559,16 @@ fn lower_scf_match_in_object(
     builder.append_block_param(merge_block, merge_param_ty);
 
     // § Build + emit the br_table.
+    let dispatch_blocks = if let Some(dispatch) = &nominal_dispatch {
+        let mut by_tag = vec![default_block; dispatch.variant_count];
+        for (arm, &tag) in dispatch.arm_discriminants.iter().enumerate() {
+            by_tag[tag] = arm_blocks[arm];
+        }
+        by_tag
+    } else { arm_blocks.clone() };
     let mut jt_data = JumpTableData::new(
         builder.func.dfg.block_call(default_block, &[]),
-        &arm_blocks
+        &dispatch_blocks
             .iter()
             .map(|blk| builder.func.dfg.block_call(*blk, &[]))
             .collect::<Vec<_>>(),
@@ -3552,6 +3579,13 @@ fn lower_scf_match_in_object(
 
     // § Lower each arm-region into its own block.
     for (arm_idx, region) in op.regions.iter().enumerate() {
+        if nominal_dispatch.is_some() && region.blocks.len() != 1 {
+            return Err(ObjectError::NominalVariantFailure {
+                fn_name: fn_name.to_string(),
+                code: "ABI9002-MALFORMED-REGION".to_string(),
+                detail: format!("arm {arm_idx} has {} blocks; expected one", region.blocks.len()),
+            });
+        }
         let arm_block = arm_blocks[arm_idx];
         builder.switch_to_block(arm_block);
         builder.seal_block(arm_block);
@@ -4991,6 +5025,57 @@ mod tests {
         f.push_op(const_op);
         f.push_op(return_op);
         f
+    }
+
+    fn nominal_arm(id: u32, value: i32) -> cssl_mir::MirRegion {
+        let mut block = cssl_mir::MirBlock::new("arm");
+        block.ops.push(MirOp::std("arith.constant")
+            .with_result(ValueId(id), MirType::Int(IntWidth::I32))
+            .with_attribute("value", value.to_string()));
+        block.ops.push(MirOp::std("scf.yield").with_operand(ValueId(id)));
+        let mut region = cssl_mir::MirRegion::new();
+        region.push(block);
+        region
+    }
+
+    fn nominal_match_module(tags: &str) -> MirModule {
+        let mut f = MirFunc::new("nominal_match", vec![], vec![MirType::Int(IntWidth::I32)]);
+        f.push_op(MirOp::std("arith.constant")
+            .with_result(ValueId(0), MirType::Int(IntWidth::I8)).with_attribute("value", "1"));
+        f.push_op(MirOp::std("scf.match").with_operand(ValueId(0))
+            .with_region(nominal_arm(1, 30)).with_region(nominal_arm(2, 10))
+            .with_region(nominal_arm(3, 20)).with_result(ValueId(4), MirType::Int(IntWidth::I32))
+            .with_attribute("dispatch", "nominal_unit").with_attribute("enum_name", "Kind")
+            .with_attribute("variant_count", "3").with_attribute("arm_count", "3")
+            .with_attribute("arm_discriminants", tags));
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(4)));
+        let mut module = MirModule::new(); module.push_func(f); module
+    }
+
+    #[test]
+    fn abi9002_object_accepts_reordered_nominal_dispatch() {
+        let bytes = emit_object_module(&nominal_match_module("2,0,1")).unwrap();
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn abi9002_object_refuses_malformed_nominal_dispatch() {
+        assert!(matches!(emit_object_module(&nominal_match_module("0,0,1")),
+            Err(ObjectError::NominalVariantFailure { code, detail, .. })
+                if code == "ABI9002-MALFORMED-DISPATCH" && detail.contains("duplicate")));
+    }
+
+    #[test]
+    fn abi9002_object_preserves_typed_nominal_refusal() {
+        let mut f = MirFunc::new("bad_nominal", vec![], vec![]);
+        f.push_op(MirOp::std("cssl.nominal_variant.error")
+            .with_result(ValueId(0), MirType::None)
+            .with_attribute("code", "ABI9002-PATHLESS-PATTERN")
+            .with_attribute("detail", "qualified path required"));
+        let mut module = MirModule::new(); module.push_func(f);
+        assert!(matches!(emit_object_module(&module),
+            Err(ObjectError::NominalVariantFailure { code, .. })
+                if code == "ABI9002-PATHLESS-PATTERN"));
     }
 
     use crate::abi::ObjectFormat;

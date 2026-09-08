@@ -183,6 +183,9 @@ pub struct MirEnumLayout {
     pub name: String,
     pub variant_count: u32,
     pub is_unit_only: bool,
+    /// Source-declaration-order variant names. Empty preserves legacy
+    /// count-only layouts; exact nominal lowering requires this table.
+    pub variants: Vec<String>,
 }
 
 impl MirEnumLayout {
@@ -192,7 +195,24 @@ impl MirEnumLayout {
             name: name.into(),
             variant_count,
             is_unit_only,
+            variants: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_variants(
+        name: impl Into<String>,
+        variants: Vec<String>,
+        is_unit_only: bool,
+    ) -> Self {
+        let variant_count = u32::try_from(variants.len()).unwrap_or(u32::MAX);
+        Self { name: name.into(), variant_count, is_unit_only, variants }
+    }
+
+    #[must_use]
+    pub fn discriminant_for(&self, variant: &str) -> Option<u32> {
+        self.variants.iter().position(|candidate| candidate == variant)
+            .and_then(|index| u32::try_from(index).ok())
     }
 
     /// Stage-0 ABI classification.
