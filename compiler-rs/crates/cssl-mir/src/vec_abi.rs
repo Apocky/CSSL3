@@ -685,8 +685,12 @@ fn expand_vec_push(
 ///
 /// ```text
 ///   %len   = memref.load %v +8                     // i64
-///   %ok    = arith.cmpi slt %i, %len               // i1
-///   scf.if !%ok { cssl.panic "vec_index OOB" }     // bounds-check
+///   %zero  = arith.constant 0                       // i64
+///   %nonneg = arith.cmpi sge %i, %zero              // i1
+///   %below = arith.cmpi slt %i, %len                // i1
+///   %ok    = arith.andi %nonneg, %below             // i1
+///   %oob   = arith.xori_not %ok                     // i1
+///   scf.if %oob { cssl.panic "vec_index OOB" }      // bounds-check
 ///   %data  = memref.load %v +0                     // !cssl.ptr
 ///   %off   = arith.muli %i, sizeof_T
 ///   %addr  = cssl.ptr.offset %data, %off
@@ -700,9 +704,12 @@ fn expand_vec_index(
 ) -> VecExpansion {
     let v_id = op.operands.first().copied().unwrap_or(ValueId(0));
     let i_id = op.operands.get(1).copied().unwrap_or(ValueId(0));
-    let mut ops = Vec::with_capacity(10);
+    let mut ops = Vec::with_capacity(14);
 
     let len_id = ids.fresh();
+    let zero_id = ids.fresh();
+    let non_negative = ids.fresh();
+    let below_len = ids.fresh();
     let in_bounds = ids.fresh();
     let oob = ids.fresh();
     let if_marker = ids.fresh();
@@ -714,15 +721,36 @@ fn expand_vec_index(
 
     push_field_load(&mut ops, len_id, v_id, layout.len_offset, "len", layout.field_size, MirType::Int(IntWidth::I64));
     ops.push(
+        MirOp::std("arith.constant")
+            .with_result(zero_id, MirType::Int(IntWidth::I64))
+            .with_attribute("value", "0")
+            .with_attribute("origin", "vec_index.zero"),
+    );
+    ops.push(
+        MirOp::std("arith.cmpi")
+            .with_operand(i_id)
+            .with_operand(zero_id)
+            .with_result(non_negative, MirType::Bool)
+            .with_attribute("predicate", "sge")
+            .with_attribute("origin", "vec_index.non_negative"),
+    );
+    ops.push(
         MirOp::std("arith.cmpi")
             .with_operand(i_id)
             .with_operand(len_id)
-            .with_result(in_bounds, MirType::Bool)
-            .with_attribute("predicate", "slt"),
+            .with_result(below_len, MirType::Bool)
+            .with_attribute("predicate", "slt")
+            .with_attribute("origin", "vec_index.below_len"),
     );
     ops.push(
-        MirOp::std("arith.xori")
-            .with_operand(in_bounds)
+        MirOp::std("arith.andi")
+            .with_operand(non_negative)
+            .with_operand(below_len)
+            .with_result(in_bounds, MirType::Bool)
+            .with_attribute("origin", "vec_index.in_bounds"),
+    );
+    ops.push(
+        MirOp::std("arith.xori_not")
             .with_operand(in_bounds)
             .with_result(oob, MirType::Bool)
             .with_attribute("origin", "vec_index.oob_invert"),
@@ -1353,6 +1381,42 @@ mod tests {
             bounds_op.is_some(),
             "vec_index must emit a bounds-check scf.if"
         );
+    }
+
+    #[test]
+    fn vec_index_requires_non_negative_and_below_len_then_inverts_once() {
+        let mut func = MirFunc::new(
+            "idx",
+            vec![MirType::Opaque("Vec".to_string()), MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        func.push_op(mk_vec_index(0, 1, "i32", 2));
+        let _ = expand_vec_func(&mut func);
+        let ops = &func.body.entry().expect("entry").ops;
+
+        let non_negative = ops.iter().find(|op| {
+            op.name == "arith.cmpi"
+                && op.attributes.iter().any(|(key, value)| key == "predicate" && value == "sge")
+                && op.attributes.iter().any(|(key, value)| key == "origin" && value == "vec_index.non_negative")
+        }).expect("non-negative guard");
+        let below_len = ops.iter().find(|op| {
+            op.name == "arith.cmpi"
+                && op.attributes.iter().any(|(key, value)| key == "predicate" && value == "slt")
+                && op.attributes.iter().any(|(key, value)| key == "origin" && value == "vec_index.below_len")
+        }).expect("upper-bound guard");
+        let in_bounds = ops.iter().find(|op| op.name == "arith.andi" && op.operands == vec![non_negative.results[0].id, below_len.results[0].id])
+            .expect("combined bounds guard");
+        let invert = ops.iter().find(|op| op.name == "arith.xori_not" && op.operands == vec![in_bounds.results[0].id])
+            .expect("single boolean inversion");
+        let bounds = ops.iter().find(|op| {
+            op.name == "scf.if"
+                && op.attributes.iter().any(|(key, value)| key == ATTR_SOURCE_KIND && value == "vec_index_bounds_check")
+        }).expect("bounds branch");
+
+        assert_eq!(non_negative.operands[0], ValueId(1));
+        assert_eq!(below_len.operands[0], ValueId(1));
+        assert_eq!(bounds.operands, vec![invert.results[0].id]);
+        assert!(!ops.iter().any(|op| op.name == "arith.xori" && op.operands.len() == 2 && op.operands[0] == op.operands[1]));
     }
 
     #[test]

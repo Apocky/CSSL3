@@ -1,0 +1,47 @@
+§ P1A.VEC.INDEX.BOUNDS.REPAIR @2026-09-08
+
+I> authority := user.authorized.local.compiler.code+tests+commit+push.
+I> base := 8020b3b25b23961bde9d7890291c3c9b9e6a9f8a.
+I> scope := dormant `cssl-mir::vec_abi` expansion semantics only.
+
+§P observed.defect
+  ✓ prior expansion admitted `%i < %len` using signed comparison without `%i≥0`.
+  ✓ negative i64 therefore satisfied upper-bound check and reached negative byte offset.
+  ✓ prior OOB inversion was `arith.xori(%in_bounds,%in_bounds)` = false ∀ input.
+  ✓ csslc canonical pipeline does not invoke VecAbiPass today.
+  ✓ raw Cranelift `cssl.vec.index` fallback returns typed zero and does not materialize backing data.
+  ∴ defect is promotion-blocking correctness+safety debt ; N! current runtime memory-safety exploit claim.
+
+§D repair
+  %non_negative := cmp.sge(%i,0i64).
+  %below_len := cmp.slt(%i,%len).
+  %in_bounds := and(%non_negative,%below_len).
+  %oob := not(%in_bounds).
+  scf.if(%oob)→cssl.panic ; else→continue.
+  W! result address/load remains after guard sequence.
+
+§T root.verification
+  focused.vec.index := 4/4.
+  cssl-mir.full := 852/852.
+  cssl-cgen-cpu-cranelift.full := 628/628.
+  csslc.full.pre-delta-equivalent := 108/108.
+  ✓ structure asserts {sge0,slt.len,and,unary.not,scf.if consumes oob,self-xor absent}.
+
+§C verdict
+  ◐ STRUCTURAL_REPAIR_CANDIDATE ; N! production promotion.
+  blockers := {
+    canonical pipeline insertion,
+    fail-closed cssl.panic object+JIT lowering,
+    real backing-data threading instead of typed-zero fallback,
+    negative|equal-len|greater-len|max-i64|corrupt-len native behavioral oracle,
+    allocation-lifetime+overflow+unwind proof,
+    independent audit
+  }.
+  strongest.countercase := corrected dormant expansion cannot protect canonical object output while raw vec.index remains typed-zero fallback.
+  falsifier := any self-XOR ; missing negative guard ; OOB reaches ptr.offset ; canonical build claims semantic success through typed-zero fallback.
+  rollback := revert this lane commit ; restores prior dormant expansion only.
+  effects := 0 ; deployment=false ; runtime.cutover=false.
+
+attestation := "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+∎
