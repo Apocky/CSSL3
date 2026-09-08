@@ -1,6 +1,12 @@
 import { once } from 'node:events';
+import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createGatewayServer } from '../scripts/apocrypha-memory-gateway/gateway';
+import { brainmonsoonRecords } from '../scripts/apocrypha-memory-gateway/adapters';
 import { isLoopbackUrl, loadGatewayConfig } from '../scripts/apocrypha-memory-gateway/config';
 import { runBoundedJsonl } from '../scripts/apocrypha-memory-gateway/process';
 import type {
@@ -10,6 +16,14 @@ import type {
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`assert failed : ${message}`);
 }
+
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
+  DatabaseSync: new (path: string) => {
+    exec(sql: string): void;
+    prepare(sql: string): { run(...values: unknown[]): unknown };
+    close(): void;
+  };
+};
 
 class FixtureAdapter implements ReadOnlyAdapter {
   constructor(readonly name: AdapterName, private readonly delay = false) {}
@@ -36,7 +50,7 @@ function config(timeoutMs = 150): GatewayConfig {
   return {
     host: '127.0.0.1', port: 19_127, token: 'test-gateway-token-with-at-least-32-bytes',
     allowedTenants: new Set(['tenant-1']), allowedPrincipals: new Set(['principal-1']),
-    allowedCapabilities: new Set(['apocky_owner_chat']),
+    allowedCapabilities: new Set(['apocky_owner_chat', 'chaos_tarot_reading']),
     limits: { bodyBytes: 4_096, queryBytes: 128, responseBytes: 2_048, recordChars: 300, totalChars: 400, maxRecords: 8, timeoutMs },
     native: {}, upstreams: {},
   };
@@ -51,6 +65,14 @@ function requestBody(overrides: Record<string, unknown> = {}): Record<string, un
 }
 
 async function main(): Promise<void> {
+  const brainRecords = brainmonsoonRecords({ native_response: { result: { batch: { input: {
+    claims: [{ claim_ref: 'claim:1', kind: 'observation', actor: 'The Tower', confidence: 0.8 }],
+    relations: [{ subject: 'Tower', predicate: 'crosses', object: 'Star' }],
+    prior_events: [{ event_ref: 'event:1', kind: 'reading', valid_time: '2026-09-07T00:00:00Z' }],
+  } } } } });
+  assert(brainRecords.length === 3, 'Brainmonsoon batch was not normalized into admitted records');
+  assert(brainRecords.every((item) => item.authority === 'read_only_analysis' && item.effect_authority === false),
+    'Brainmonsoon records lost read-only authority labels');
   assert(isLoopbackUrl('http://127.0.0.1:8787/search'), 'loopback URL rejected');
   assert(!isLoopbackUrl('https://example.com/search'), 'remote upstream admitted');
   let configRejected = false;
@@ -79,6 +101,22 @@ async function main(): Promise<void> {
     assert(denied.status === 401, 'missing bearer was not denied');
     const tenant = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({ tenant_id: 'other' })) });
     assert(tenant.status === 403, 'foreign tenant was not denied');
+    const publicMember = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
+      principal_id: '40000000-0000-4000-8000-000000000099', capability: 'chaos_tarot_reading',
+    })) });
+    assert(publicMember.status === 200, 'admitted Chaos tenant UUID principal was denied');
+    const publicMemberForeignTenant = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
+      tenant_id: 'other', principal_id: '40000000-0000-4000-8000-000000000099', capability: 'chaos_tarot_reading',
+    })) });
+    assert(publicMemberForeignTenant.status === 403, 'dynamic principal escaped the admitted tenant');
+    const malformedPublicMember = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
+      principal_id: 'public-user', capability: 'chaos_tarot_reading',
+    })) });
+    assert(malformedPublicMember.status === 403, 'non-UUID dynamic principal was admitted');
+    const ownerOnlyDynamic = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({
+      principal_id: '40000000-0000-4000-8000-000000000099', capability: 'apocky_owner_chat',
+    })) });
+    assert(ownerOnlyDynamic.status === 403, 'dynamic principal reached owner-only capability');
     const write = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({ operation: 'write', read_only: false })) });
     assert(write.status === 403, 'write-shaped operation was not denied');
     const extra = await fetch(`${base}/v1/memory/mempalace`, { method: 'POST', headers, body: JSON.stringify(requestBody({ method: 'refresh' })) });
@@ -119,6 +157,29 @@ async function main(): Promise<void> {
   const child = await runBoundedJsonl(process.execPath, ['-e', "process.stdin.on('data',b=>process.stdout.write(JSON.stringify({text:b.toString().trim()})+'\\n'))"],
     [{ operation: 'health' }], new AbortController().signal, 2_048);
   assert(child.length === 1, 'bounded JSONL child did not return one frame');
+
+  const anamnesisDir = await mkdtemp(join(tmpdir(), 'anamnesis-ro-reader-'));
+  const anamnesisDb = join(anamnesisDir, 'anamnesis.db');
+  try {
+    const database = new DatabaseSync(anamnesisDb);
+    database.exec('CREATE TABLE records(id INTEGER PRIMARY KEY,ts TEXT,session TEXT,repo TEXT,kind TEXT,ref TEXT,payload TEXT,payload_sha TEXT,self_sha TEXT,provenance TEXT,redacted INTEGER DEFAULT 0)');
+    database.prepare('INSERT INTO records(ts,session,repo,kind,ref,payload,payload_sha,self_sha,provenance,redacted) VALUES(?,?,?,?,?,?,?,?,?,0)')
+      .run('2026-09-07T00:00:00Z', 'fixture', 'fixture', 'note', 'tower', 'Tower evidence remains bounded.', 'p', 's', 'fixture');
+    database.close();
+    const before = createHash('sha256').update(await readFile(anamnesisDb)).digest('hex');
+    const frames = await runBoundedJsonl(process.execPath,
+      [join(process.cwd(), 'scripts', 'apocrypha-memory-gateway', 'anamnesis-reader.mjs')], [{
+        schema: 'apocrypha.anamnesis.read-request.v1', db_path: anamnesisDb,
+        query: 'tower', limit: 1, deadline_ms: 1_000,
+      }], new AbortController().signal, 8_192);
+    const result = frames[0] as Record<string, unknown>;
+    assert(result.ok === true && result.read_only === true && result.authority === 'none', 'Anamnesis helper lost read-only authority');
+    assert(Array.isArray(result.records) && result.records.length === 1, 'Anamnesis helper did not return bounded recall');
+    const after = createHash('sha256').update(await readFile(anamnesisDb)).digest('hex');
+    assert(before === after, 'Anamnesis helper changed the source database');
+  } finally {
+    await rm(anamnesisDir, { recursive: true, force: true });
+  }
   console.log('apocrypha-memory-gateway.test : OK · loopback auth, closed scope, no writes, six routes, bounds, timeout, readiness, JSONL child');
 }
 

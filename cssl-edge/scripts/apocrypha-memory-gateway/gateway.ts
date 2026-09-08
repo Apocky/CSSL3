@@ -48,7 +48,7 @@ async function probes(
     const adapter = adapters.get(name);
     if (!adapter) return [name, { state: 'unconfigured', detail: 'adapter absent' }] as const;
     try {
-      return [name, await bounded(timeoutMs, (signal) => adapter.probe(signal))] as const;
+      return [name, await bounded(adapter.timeoutMs ?? timeoutMs, (signal) => adapter.probe(signal))] as const;
     } catch {
       return [name, { state: 'unavailable', detail: 'probe failed or timed out' }] as const;
     }
@@ -92,7 +92,7 @@ export function createGatewayServer(
       if (!adapter) throw new GatewayError(503, 'ADAPTER_UNCONFIGURED');
       const search = validateSearchRequest(await readJson(request, config.limits.bodyBytes), config);
       runtime.requests += 1;
-      const payload = await bounded(config.limits.timeoutMs, (signal) => adapter.search(search, signal));
+      const payload = await bounded(adapter.timeoutMs ?? config.limits.timeoutMs, (signal) => adapter.search(search, signal));
       const records = normalizeRecords(adapterName, payload, { ...config.limits, maxRecords: Math.min(search.limit, config.limits.maxRecords) });
       return json(response, 200, boundedRecordsEnvelope(adapterName, records, config.limits.responseBytes));
     } catch (error) {
@@ -107,7 +107,9 @@ export function createGatewayServer(
     }
   });
   server.maxHeadersCount = 48;
-  server.requestTimeout = Math.max(5_000, config.limits.timeoutMs + 2_000);
+  const maximumAdapterTimeout = Math.max(config.limits.timeoutMs,
+    ...[...adapters.values()].map((adapter) => adapter.timeoutMs ?? config.limits.timeoutMs));
+  server.requestTimeout = Math.max(5_000, maximumAdapterTimeout + 2_000);
   server.headersTimeout = 5_000;
   server.keepAliveTimeout = 5_000;
   return server;

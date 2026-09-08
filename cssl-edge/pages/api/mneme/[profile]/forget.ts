@@ -8,6 +8,7 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
+import { MNEME_CAPABILITIES, requireMnemeProfileAccess } from '@/lib/mneme/auth';
 import { getMnemeClient, forgetMemory } from '@/lib/mneme/store';
 import type { ForgetResponse } from '@/lib/mneme/types';
 
@@ -17,7 +18,6 @@ interface ErrorResponse {
     ts:        string;
 }
 
-const PROFILE_RE = /^[a-z0-9-]{1,64}$/;
 const UUID_RE    = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isObject(b: unknown): b is Record<string, unknown> {
@@ -40,15 +40,9 @@ export default async function handler(
         return;
     }
 
-    const profile_id = String(req.query['profile'] ?? '');
-    if (!PROFILE_RE.test(profile_id)) {
-        const env = envelope();
-        res.status(422).json({
-            error: 'Invalid profile_id',
-            served_by: env.served_by, ts: env.ts,
-        });
-        return;
-    }
+    const access = await requireMnemeProfileAccess(req, res, MNEME_CAPABILITIES.forget);
+    if (!access) return;
+    const profile_id = access.profileId;
 
     const body: unknown = req.body;
     if (!isObject(body)) {

@@ -19,7 +19,7 @@ if (Test-Path -LiteralPath $EnvFile) {
         if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
             $value = $value.Substring(1, $value.Length - 2)
         }
-        if ($name -match '^[A-Za-z_][A-Za-z0-9_]*$' -and -not [Environment]::GetEnvironmentVariable($name, 'Process')) {
+        if ($name -match '^[A-Za-z_][A-Za-z0-9_]*$') {
             [Environment]::SetEnvironmentVariable($name, $value, 'Process')
         }
     }

@@ -111,6 +111,9 @@ export interface WorkerConfig {
   healthPort: number;
   heartbeatIntervalMs: number;
   heartbeatEnabled: boolean;
+  memoryProbeTenantId: string | null;
+  memoryProbePrincipalId: string;
+  memoryProbeCapability: string;
   once: boolean;
   probeOnly: boolean;
   recoverOnly: boolean;
@@ -138,6 +141,7 @@ export interface RetrievalBundle {
   results: RetrievalAdapterResult[];
   records: RetrievalRecord[];
   digest: string;
+  probedAt: string | null;
 }
 
 export interface QwenUsage {
@@ -184,4 +188,5 @@ export interface WorkerRuntimeState {
   failedJobs: number;
   recoveredAttempts: number;
   adapterStates: Record<string, AdapterState>;
+  adapterProbeAt: string | null;
 }

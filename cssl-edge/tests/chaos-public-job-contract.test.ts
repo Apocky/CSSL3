@@ -25,7 +25,7 @@ const projected = externalJobSnapshot({
     error_code: null,
     error_detail: null,
   },
-  chunks: [{ seq: 0, chunk_kind: 'text_delta', delta: 'A durable answer.', metadata: { section_index: 0 }, created_at: now }],
+  chunks: [{ seq: 0, chunk_kind: 'token', delta: 'A durable answer.', metadata: { section_index: 0 }, created_at: now }],
   revisions: [{ id: 'revision-1', revision_no: 1, revision_role: 'primary', content: 'A durable answer.', provenance: {}, usage: {}, created_at: now }],
   events: [
     { ordinal: 1, event_type: 'job.queued', outcome: 'expected_fired', severity: 'info', source: 'control_plane.enqueue', flagged: false, metadata: { phase: 'queued' }, occurred_at: now },

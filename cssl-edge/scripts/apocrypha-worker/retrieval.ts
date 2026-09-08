@@ -89,6 +89,15 @@ function boundedJson(value: unknown, maxChars: number): string {
   }
 }
 
+function publicAdapterError(payload: string): string | null {
+  try {
+    const code = record(JSON.parse(payload) as unknown).error;
+    return typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/u.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
 function canonicalReadingQuery(value: unknown): string {
   const reading = record(value);
   if (Object.keys(reading).length === 0) return '';
@@ -154,6 +163,7 @@ async function invokeAdapter(
   query: string,
   env: NodeJS.ProcessEnv,
   fetchImpl: Fetch,
+  limit = 8,
 ): Promise<RetrievalAdapterResult> {
   const started = Date.now();
   const rawUrl = env[adapter.urlEnv]?.trim();
@@ -165,7 +175,10 @@ async function invokeAdapter(
     return { name: adapter.name, state: 'denied', durationMs: 0, records: [], detail: 'capability not admitted' };
   }
   const controller = new AbortController();
-  const timeoutMs = adapter.timeoutMs ?? 3_500;
+  const timeoutOverride = Number(env[`APOCRYPHA_${adapter.name.toUpperCase()}_READ_TIMEOUT_MS`]?.trim());
+  const timeoutMs = Number.isInteger(timeoutOverride) && timeoutOverride >= 250 && timeoutOverride <= 60_000
+    ? timeoutOverride
+    : adapter.timeoutMs ?? 3_500;
   const timer = setTimeout(() => controller.abort(new Error('retrieval timeout')), timeoutMs);
   try {
     const token = adapter.tokenEnv ? env[adapter.tokenEnv]?.trim() : undefined;
@@ -180,7 +193,7 @@ async function invokeAdapter(
         operation: 'search',
         read_only: true,
         query,
-        limit: 8,
+        limit,
         tenant_id: job.tenantId,
         principal_id: job.ownerPrincipalId,
         capability: job.capability,
@@ -189,12 +202,21 @@ async function invokeAdapter(
       signal: controller.signal,
     });
     if (!response.ok) {
+      const bounded = await boundedResponseText(response, 16_384);
+      const code = publicAdapterError(bounded);
+      const state = response.status === 401 || response.status === 403
+        ? 'denied'
+        : response.status === 504 || code === 'ADAPTER_TIMEOUT'
+          ? 'timeout'
+          : code === 'ADAPTER_UNCONFIGURED'
+            ? 'unconfigured'
+            : 'error';
       return {
         name: adapter.name,
-        state: response.status === 401 || response.status === 403 ? 'denied' : 'error',
+        state,
         durationMs: Date.now() - started,
         records: [],
-        detail: `HTTP ${response.status}`,
+        detail: code ?? `HTTP ${response.status}`,
       };
     }
     const bounded = await boundedResponseText(response);
@@ -244,7 +266,57 @@ export async function retrieveMemory(
     };
   });
   const records = results.flatMap((result) => result.records).slice(0, 40);
-  return { query, results, records, digest: sha256(stableJson(records)) };
+  const allConfigured = config.manifest.memory.adapters.every((adapter) => {
+    const url = env[adapter.urlEnv]?.trim();
+    return Boolean(url && isSafeAdapterUrl(url));
+  });
+  return {
+    query, results, records, digest: sha256(stableJson(records)),
+    probedAt: allConfigured ? new Date().toISOString() : null,
+  };
+}
+
+export async function probeMemoryAdapters(
+  config: WorkerConfig,
+  env: NodeJS.ProcessEnv = process.env,
+  fetchImpl: Fetch = fetch,
+): Promise<RetrievalBundle | null> {
+  if (!config.memoryProbeTenantId) return null;
+  const job: ClaimedJob = {
+    jobId: '00000000-0000-4000-8000-000000000000',
+    attemptId: '00000000-0000-4000-8000-000000000000',
+    attemptNo: 0,
+    leaseEpoch: 0,
+    leaseToken: '',
+    leaseExpiresAt: new Date(0).toISOString(),
+    tenantId: config.memoryProbeTenantId,
+    ownerPrincipalId: config.memoryProbePrincipalId,
+    kind: 'operational_probe',
+    capability: config.memoryProbeCapability,
+    request: { retrieval_query: 'resident adapter operational health' },
+    modelAlias: config.modelAlias,
+    profileHash: config.profileHash,
+    toolRegistryVersion: config.toolRegistryVersion,
+    memoryManifestHash: config.memoryManifestHash,
+  };
+  const query = queryFromJob(job);
+  const settled = await Promise.allSettled(
+    config.manifest.memory.adapters.map((adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1)),
+  );
+  const results = settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
+    name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
+    state: 'error', durationMs: 0, records: [],
+    detail: result.reason instanceof Error ? result.reason.message : 'adapter probe failed',
+  }));
+  const allConfigured = config.manifest.memory.adapters.every((adapter) => {
+    const url = env[adapter.urlEnv]?.trim();
+    return Boolean(url && isSafeAdapterUrl(url));
+  });
+  const records = results.flatMap((result) => result.records).slice(0, 40);
+  return {
+    query, results, records, digest: sha256(stableJson(records)),
+    probedAt: allConfigured ? new Date().toISOString() : null,
+  };
 }
 
 export function renderMemoryContext(bundle: RetrievalBundle, maxChars = 28_000): string {

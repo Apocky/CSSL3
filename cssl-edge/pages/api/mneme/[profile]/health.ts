@@ -3,8 +3,7 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit, commitSha } from '@/lib/response';
-
-const PROFILE_RE = /^[a-z0-9-]{1,64}$/;
+import { MNEME_CAPABILITIES, requireMnemeProfileAccess } from '@/lib/mneme/auth';
 
 export interface MnemeHealthResponse {
     ok: true;
@@ -29,21 +28,15 @@ function isSet(name: string): boolean {
     return typeof v === 'string' && v.length > 0;
 }
 
-export default function handler(
+export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse<MnemeHealthResponse | ErrorResponse>,
-): void {
+): Promise<void> {
     logHit('mneme.health', { method: req.method ?? 'GET' });
 
-    const profile_id = String(req.query['profile'] ?? '');
-    if (!PROFILE_RE.test(profile_id)) {
-        const env = envelope();
-        res.status(422).json({
-            error: 'Invalid profile_id',
-            served_by: env.served_by, ts: env.ts,
-        });
-        return;
-    }
+    const access = await requireMnemeProfileAccess(req, res, MNEME_CAPABILITIES.health);
+    if (!access) return;
+    const profile_id = access.profileId;
     const env = envelope();
     const anth = isSet('ANTHROPIC_API_KEY');
     const voy  = isSet('VOYAGE_API_KEY');

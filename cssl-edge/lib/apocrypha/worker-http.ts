@@ -3,6 +3,17 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { assertWorkerRequest, getApocryphaServiceClient, publicJobError } from '@/lib/apocrypha/job-control';
 import { methodNotAllowed, noStore, objectField } from '@/lib/apocrypha/job-http';
 
+class WorkerDatabaseError extends Error {
+  constructor(
+    message: string,
+    readonly operation: string,
+    readonly databaseCode: string,
+  ) {
+    super(message);
+    this.name = 'WorkerDatabaseError';
+  }
+}
+
 export function workerDatabaseError(
   error: { code?: string | null; message?: string | null },
   operation = 'WORKER_RPC_FAILED',
@@ -13,7 +24,11 @@ export function workerDatabaseError(
     message.includes('worker authentication failed')
     || message.includes('worker is not admitted for this operation')
   );
-  return new Error(workerAuthFailure ? 'WORKER_UNAUTHORIZED' : `${operation}:${code}`);
+  return new WorkerDatabaseError(
+    workerAuthFailure ? 'WORKER_UNAUTHORIZED' : `${operation}:${code}`,
+    operation,
+    code,
+  );
 }
 
 export async function workerRpc(
@@ -33,6 +48,15 @@ export async function workerRpc(
     return res.status(200).json({ ok: true, ...project(data) });
   } catch (error) {
     const safe = publicJobError(error);
+    console.error(JSON.stringify({
+      at: new Date().toISOString(),
+      level: 'error',
+      event: 'apocrypha.worker_rpc.failed',
+      rpc,
+      operation: error instanceof WorkerDatabaseError ? error.operation : 'REQUEST_VALIDATION',
+      database_code: error instanceof WorkerDatabaseError ? error.databaseCode : null,
+      public_code: safe.code,
+    }));
     return res.status(safe.status).json({ ok: false, code: safe.code, error: safe.message });
   }
 }

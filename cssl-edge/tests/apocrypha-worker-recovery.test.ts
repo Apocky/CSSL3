@@ -36,7 +36,11 @@ function makeConfig(controlPlaneUrl: string, journalDir: string): WorkerConfig {
     pollIntervalMs: 10, claimLeaseSeconds: 180, leaseRenewIntervalMs: 10_000, leaseExpiryGraceMs: 5_000,
     controlPlaneTimeoutMs: 2_000, chunkFlushMs: 20, chunkMaxChars: 64, qwenIdleTimeoutMs: 2_000,
     qwenMaxRuntimeMs: 10_000, contextWindowTokens: 4_096, maxOutputTokens: 128, journalDir, healthHost: '127.0.0.1', healthPort: 19_992,
-    heartbeatIntervalMs: 1_000, heartbeatEnabled: false, once: false, probeOnly: false, recoverOnly: true,
+    heartbeatIntervalMs: 1_000, heartbeatEnabled: false,
+    memoryProbeTenantId: '11111111-1111-4111-8111-111111111111',
+    memoryProbePrincipalId: '22222222-2222-4222-8222-222222222222',
+    memoryProbeCapability: 'chaos_tarot_reading',
+    once: false, probeOnly: false, recoverOnly: true,
   };
 }
 
@@ -76,7 +80,7 @@ async function main(): Promise<void> {
     const config = makeConfig(control.url, directory);
     const journal = new AttemptJournal(directory, config.nodeToken, config.nodeId);
     const state = await journal.create(claim(config, 'terminal'));
-    await journal.addPendingChunk(state, { seq: 0, chunkKind: 'text_delta', delta: 'uncertain-ack-chunk' });
+    await journal.addPendingChunk(state, { seq: 0, chunkKind: 'token', delta: 'uncertain-ack-chunk' });
     await journal.setCompletion(state, { content: 'uncertain-ack-chunk', revisionRole: 'primary' });
     const worker = new ApocryphaWorker(config);
     await worker.run();

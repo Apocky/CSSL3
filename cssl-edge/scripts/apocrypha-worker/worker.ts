@@ -3,7 +3,7 @@ import { AttemptJournal } from './journal';
 import { log } from './log';
 import { composeQwenRequest } from './prompt';
 import { QwenClient, QwenError } from './qwen';
-import { retrieveMemory } from './retrieval';
+import { probeMemoryAdapters, retrieveMemory } from './retrieval';
 import type {
   AttemptJournalState,
   ClaimedJob,
@@ -60,6 +60,7 @@ export class ApocryphaWorker {
   private readonly stopController = new AbortController();
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private heartbeatRetryAt = 0;
+  private heartbeatInFlight = false;
 
   constructor(config: WorkerConfig, dependencies: Dependencies = {}) {
     this.config = config;
@@ -80,6 +81,7 @@ export class ApocryphaWorker {
       failedJobs: 0,
       recoveredAttempts: 0,
       adapterStates: Object.fromEntries(config.manifest.memory.adapters.map((adapter) => [adapter.name, 'unconfigured'])),
+      adapterProbeAt: null,
     };
   }
 
@@ -196,6 +198,7 @@ export class ApocryphaWorker {
       this.runtime.phase = 'retrieving';
       memory = await retrieveMemory(this.config, claim, this.env, this.fetchImpl);
       this.runtime.adapterStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
+      this.runtime.adapterProbeAt = memory.probedAt;
       if (abortController.signal.aborted) throw abortController.signal.reason;
       this.runtime.phase = 'generating';
       const request = composeQwenRequest(this.config, claim, memory);
@@ -209,7 +212,7 @@ export class ApocryphaWorker {
           buffer = buffer.slice(size);
           const chunk: OutputChunk = {
             seq,
-            chunkKind: 'text_delta',
+            chunkKind: 'token',
             delta,
             metadata: { model_alias: this.config.modelAlias },
           };
@@ -398,13 +401,30 @@ export class ApocryphaWorker {
 
   private startHeartbeat(): void {
     const send = async (): Promise<void> => {
-      if (Date.now() < this.heartbeatRetryAt || this.stopController.signal.aborted) return;
+      if (this.heartbeatInFlight || Date.now() < this.heartbeatRetryAt || this.stopController.signal.aborted) return;
+      this.heartbeatInFlight = true;
       try {
-        const supported = await this.controlPlane.heartbeat(this.runtime);
+        const probe = await this.qwen.probe(this.stopController.signal);
+        const probeAge = this.runtime.adapterProbeAt
+          ? Date.now() - Date.parse(this.runtime.adapterProbeAt)
+          : Number.POSITIVE_INFINITY;
+        if (this.runtime.phase === 'idle' && probeAge >= 30_000) {
+          const memoryProbe = await probeMemoryAdapters(this.config, this.env, this.fetchImpl);
+          if (memoryProbe) {
+            this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
+            this.runtime.adapterProbeAt = memoryProbe.probedAt;
+          }
+        }
+        const supported = await this.controlPlane.heartbeat(this.runtime, {
+          qwenHealthy: probe.healthy,
+          qwenProbeAt: new Date().toISOString(),
+        });
         this.heartbeatRetryAt = supported ? 0 : Date.now() + 5 * 60_000;
       } catch (error) {
         this.recordError('HEARTBEAT_FAILED', boundedError(error));
         log('warn', 'worker.heartbeat.failed', { detail: boundedError(error) });
+      } finally {
+        this.heartbeatInFlight = false;
       }
     };
     void send();

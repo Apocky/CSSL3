@@ -104,6 +104,7 @@ export class QwenClient {
   ): Promise<QwenResult> {
     const started = Date.now();
     const controller = new AbortController();
+    let callbackError: unknown;
     let idleTimer: NodeJS.Timeout | null = null;
     const maxRuntimeTimer = setTimeout(
       () => controller.abort(new QwenError('Qwen generation exceeded maximum runtime', 'QWEN_MAX_RUNTIME', true)),
@@ -184,7 +185,12 @@ export class QwenClient {
         if (delta) {
           if (firstTokenMs === undefined) firstTokenMs = Date.now() - started;
           content += delta;
-          await onDelta(delta);
+          try {
+            await onDelta(delta);
+          } catch (error) {
+            callbackError = error;
+            throw error;
+          }
         }
       };
       while (true) {
@@ -201,6 +207,7 @@ export class QwenClient {
       if (!content.trim()) throw new QwenError('Qwen returned no visible content', 'QWEN_EMPTY_RESPONSE', true);
       return { content, usage, model, firstTokenMs, durationMs: Date.now() - started };
     } catch (error) {
+      if (callbackError === error) throw error;
       if (error instanceof QwenError) throw error;
       if (controller.signal.aborted) {
         const reason = controller.signal.reason;

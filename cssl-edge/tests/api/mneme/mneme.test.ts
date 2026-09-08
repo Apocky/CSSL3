@@ -18,7 +18,8 @@ import {
 
 import { validateCsl, extractTopicKey, composeEmbeddingText, composeTsQuery } from '@/lib/mneme/csl';
 
-import { reciprocalRankFusion, maxScoreFor } from '@/lib/mneme/store';
+import { MNEME_CAPABILITIES, type MnemeCapability } from '@/lib/mneme/auth';
+import { _resetMnemeClientForTests, getMnemeClient, reciprocalRankFusion, maxScoreFor } from '@/lib/mneme/store';
 import type { ChannelHit, ChannelName } from '@/lib/mneme/types';
 
 import { chunkConversation, extractFull } from '@/lib/mneme/prompts/extract-full';
@@ -60,13 +61,34 @@ interface MockedResponse {
     headers: Record<string, string>;
 }
 
+const TEST_MNEME_PROFILE = 'scratch';
+const TEST_MNEME_SERVICE_TOKEN = 'mneme-test-service-token-32-bytes-minimum';
+const TEST_MNEME_CAPABILITIES = Object.values(MNEME_CAPABILITIES).join(',');
+
+function configureMnemeServiceAuth(): void {
+    process.env.MNEME_OWNER_PROFILE_ID = TEST_MNEME_PROFILE;
+    process.env.MNEME_SERVICE_PROFILE_ID = TEST_MNEME_PROFILE;
+    process.env.MNEME_SERVICE_TOKEN = TEST_MNEME_SERVICE_TOKEN;
+    process.env.MNEME_SERVICE_CAPABILITIES = TEST_MNEME_CAPABILITIES;
+}
+
+function serviceHeaders(capability: MnemeCapability, profile = TEST_MNEME_PROFILE): Record<string, string> {
+    configureMnemeServiceAuth();
+    return {
+        authorization: `Bearer ${TEST_MNEME_SERVICE_TOKEN}`,
+        'x-mneme-capability': capability,
+        'x-mneme-profile': profile,
+    };
+}
+
 function mockReqRes(
     method: string,
     query: Record<string, string> = {},
     body: unknown = undefined,
+    headers: Record<string, string> = {},
 ): { req: NextApiRequest; res: NextApiResponse; out: MockedResponse } {
     const out: MockedResponse = { statusCode: 0, body: null, headers: {} };
-    const req = { method, query, headers: {}, body } as unknown as NextApiRequest;
+    const req = { method, query, headers, body } as unknown as NextApiRequest;
     const res = {
         status(code: number) { out.statusCode = code; return this; },
         json(payload: unknown) { out.body = payload; return this; },
@@ -472,23 +494,142 @@ export function testTemporalFacts(): void {
 // 12. HTTP route tests (stub-mode, no env)
 // ══════════════════════════════════════════════════════════════════════
 
-export function testHealthRoute200(): void {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
-    healthHandler(req, res);
+type TestHandler = (req: NextApiRequest, res: NextApiResponse) => void | Promise<void>;
+
+export async function testEveryRouteDeniesUnauthenticated(): Promise<void> {
+    configureMnemeServiceAuth();
+    const cases: Array<{ name: string; method: string; body?: unknown; handler: TestHandler }> = [
+        { name: 'health', method: 'GET', handler: healthHandler as TestHandler },
+        { name: 'smoke', method: 'GET', handler: smokeHandler as TestHandler },
+        { name: 'ingest', method: 'POST', body: { session_id: 's', messages: [{ role: 'user', content: 'hello' }] }, handler: ingestHandler as TestHandler },
+        { name: 'remember', method: 'POST', body: { csl: 'user.pref.pkg-mgr ⊗ pnpm' }, handler: rememberHandler as TestHandler },
+        { name: 'recall', method: 'POST', body: { query: 'package manager' }, handler: recallHandler as TestHandler },
+        { name: 'list', method: 'GET', handler: listHandler as TestHandler },
+        { name: 'export', method: 'GET', handler: exportHandler as TestHandler },
+        { name: 'forget', method: 'POST', body: { memory_id: '00000000-0000-4000-8000-000000000000', reason: 'test' }, handler: forgetHandler as TestHandler },
+    ];
+    for (const testCase of cases) {
+        const { req, res, out } = mockReqRes(testCase.method, { profile: TEST_MNEME_PROFILE }, testCase.body);
+        await testCase.handler(req, res);
+        assert(out.statusCode === 401, `${testCase.name} missing auth denied before route work`);
+        const body = out.body as Record<string, unknown>;
+        assert(body['code'] === 'MNEME_AUTH_REQUIRED', `${testCase.name} stable auth code`);
+    }
+}
+
+export async function testServiceProfileAndCapabilityBinding(): Promise<void> {
+    const allowed = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.health));
+    await healthHandler(allowed.req, allowed.res);
+    assert(allowed.out.statusCode === 200, 'exact service profile + capability allowed');
+
+    const foreign = mockReqRes('GET', { profile: 'foreign-profile' }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.health, 'foreign-profile'));
+    await healthHandler(foreign.req, foreign.res);
+    assert(foreign.out.statusCode === 403, 'foreign service profile denied');
+
+    const wrongCapability = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.list));
+    await healthHandler(wrongCapability.req, wrongCapability.res);
+    assert(wrongCapability.out.statusCode === 403, 'mismatched route capability denied');
+
+    const wrongBearer = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined, {
+        authorization: 'Bearer invalid-service-token-that-does-not-match',
+        'x-mneme-capability': MNEME_CAPABILITIES.health,
+        'x-mneme-profile': TEST_MNEME_PROFILE,
+    });
+    await healthHandler(wrongBearer.req, wrongBearer.res);
+    assert(wrongBearer.out.statusCode === 401, 'incorrect service bearer denied');
+}
+
+export async function testOwnerProfileBinding(): Promise<void> {
+    const saved = {
+        bypass: process.env.LAZARUS_TEST_AUTH_BYPASS,
+        admins: process.env.APOCKY_ADMIN_EMAILS,
+        ownerProfile: process.env.MNEME_OWNER_PROFILE_ID,
+    };
+    try {
+        process.env.LAZARUS_TEST_AUTH_BYPASS = '1';
+        process.env.APOCKY_ADMIN_EMAILS = 'owner@example.com';
+        process.env.MNEME_OWNER_PROFILE_ID = TEST_MNEME_PROFILE;
+        const headers = { 'x-apocky-test-admin-email': 'owner@example.com' };
+
+        const allowed = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined, headers);
+        await healthHandler(allowed.req, allowed.res);
+        assert(allowed.out.statusCode === 200, 'exact owner profile allowed');
+
+        const foreign = mockReqRes('GET', { profile: 'foreign-profile' }, undefined, headers);
+        await healthHandler(foreign.req, foreign.res);
+        assert(foreign.out.statusCode === 403, 'foreign owner profile denied');
+    } finally {
+        if (saved.bypass === undefined) delete process.env.LAZARUS_TEST_AUTH_BYPASS;
+        else process.env.LAZARUS_TEST_AUTH_BYPASS = saved.bypass;
+        if (saved.admins === undefined) delete process.env.APOCKY_ADMIN_EMAILS;
+        else process.env.APOCKY_ADMIN_EMAILS = saved.admins;
+        if (saved.ownerProfile === undefined) delete process.env.MNEME_OWNER_PROFILE_ID;
+        else process.env.MNEME_OWNER_PROFILE_ID = saved.ownerProfile;
+    }
+}
+
+export async function testAuthDenialPrecedesStoreAndProviderConstruction(): Promise<void> {
+    configureMnemeServiceAuth();
+    const savedUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const savedServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const savedFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    try {
+        process.env.NEXT_PUBLIC_SUPABASE_URL = 'not-a-supabase-url';
+        process.env.SUPABASE_SERVICE_ROLE_KEY = 'must-not-be-consumed';
+        _resetMnemeClientForTests();
+        globalThis.fetch = (async () => {
+            fetchCalls++;
+            throw new Error('provider construction crossed the auth boundary');
+        }) as typeof fetch;
+
+        const { req, res, out } = mockReqRes('POST', { profile: TEST_MNEME_PROFILE }, {
+            session_id: 'auth-boundary',
+            messages: [{ role: 'user', content: 'valid body that must not reach the pipeline' }],
+        });
+        await ingestHandler(req, res);
+        assert(out.statusCode === 401, 'auth denial returned before poisoned store configuration');
+        assert(fetchCalls === 0, 'auth denial made no auth/model/embedding network request');
+        let poisonWouldFail = false;
+        try {
+            getMnemeClient();
+        } catch {
+            poisonWouldFail = true;
+        }
+        assert(poisonWouldFail, 'poisoned store proves denial occurred before client construction');
+    } finally {
+        globalThis.fetch = savedFetch;
+        if (savedUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+        else process.env.NEXT_PUBLIC_SUPABASE_URL = savedUrl;
+        if (savedServiceRole === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+        else process.env.SUPABASE_SERVICE_ROLE_KEY = savedServiceRole;
+        _resetMnemeClientForTests();
+    }
+}
+
+export async function testHealthRoute200(): Promise<void> {
+    const { req, res, out } = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.health));
+    await healthHandler(req, res);
     assert(out.statusCode === 200, `health 200, got ${out.statusCode}`);
     const body = out.body as Record<string, unknown>;
     assert(body['ok'] === true, 'ok');
     assert(typeof body['anthropic_configured'] === 'boolean', 'anthropic flag');
 }
 
-export function testHealthRoute422OnBadProfile(): void {
-    const { req, res, out } = mockReqRes('GET', { profile: 'BAD!' });
-    healthHandler(req, res);
+export async function testHealthRoute422OnBadProfile(): Promise<void> {
+    const { req, res, out } = mockReqRes('GET', { profile: 'BAD!' }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.health, 'BAD!'));
+    await healthHandler(req, res);
     assert(out.statusCode === 422, '422 on bad profile');
 }
 
 export async function testSmokeRoute(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
+    const { req, res, out } = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.smoke));
     await smokeHandler(req, res);
     assert(out.statusCode === 200, `smoke 200, got ${out.statusCode}`);
     const body = out.body as Record<string, unknown>;
@@ -498,31 +639,36 @@ export async function testSmokeRoute(): Promise<void> {
 }
 
 export async function testIngestRoute405OnGet(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
+    const { req, res, out } = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.ingest));
     await ingestHandler(req, res);
     assert(out.statusCode === 405, '405 on GET');
 }
 
 export async function testIngestRoute400OnBadBody(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' }, 'not-json');
+    const { req, res, out } = mockReqRes('POST', { profile: TEST_MNEME_PROFILE }, 'not-json',
+        serviceHeaders(MNEME_CAPABILITIES.ingest));
     await ingestHandler(req, res);
     assert(out.statusCode === 400, '400 on bad body');
 }
 
 export async function testRecallRoute400EmptyQuery(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' }, { query: '' });
+    const { req, res, out } = mockReqRes('POST', { profile: TEST_MNEME_PROFILE }, { query: '' },
+        serviceHeaders(MNEME_CAPABILITIES.recall));
     await recallHandler(req, res);
     assert(out.statusCode === 400, '400 empty query');
 }
 
 export async function testRememberRoute400EmptyCsl(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' }, { csl: '' });
+    const { req, res, out } = mockReqRes('POST', { profile: TEST_MNEME_PROFILE }, { csl: '' },
+        serviceHeaders(MNEME_CAPABILITIES.remember));
     await rememberHandler(req, res);
     assert(out.statusCode === 400, '400 empty csl');
 }
 
 export async function testListRoute200StubMode(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
+    const { req, res, out } = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.list));
     await listHandler(req, res);
     assert(out.statusCode === 200, '200 stub list');
     const body = out.body as Record<string, unknown>;
@@ -530,14 +676,15 @@ export async function testListRoute200StubMode(): Promise<void> {
 }
 
 export async function testForgetRoute400OnBadUuid(): Promise<void> {
-    const { req, res, out } = mockReqRes('POST', { profile: 'scratch' },
-        { memory_id: 'not-a-uuid', reason: 'test' });
+    const { req, res, out } = mockReqRes('POST', { profile: TEST_MNEME_PROFILE },
+        { memory_id: 'not-a-uuid', reason: 'test' }, serviceHeaders(MNEME_CAPABILITIES.forget));
     await forgetHandler(req, res);
     assert(out.statusCode === 400, '400 bad uuid');
 }
 
 export async function testExportRoute200StubMode(): Promise<void> {
-    const { req, res, out } = mockReqRes('GET', { profile: 'scratch' });
+    const { req, res, out } = mockReqRes('GET', { profile: TEST_MNEME_PROFILE }, undefined,
+        serviceHeaders(MNEME_CAPABILITIES.export));
     await exportHandler(req, res);
     assert(out.statusCode === 200, '200 stub export');
     const body = out.body as Record<string, unknown>;
@@ -586,6 +733,10 @@ async function runAll(): Promise<void> {
         ['deterministic-msg-id',            testDeterministicMsgId],
         ['merge-candidates',                testMergeCandidates],
         ['temporal-facts',                  testTemporalFacts],
+        ['routes-deny-unauthenticated',     testEveryRouteDeniesUnauthenticated],
+        ['service-profile-cap-binding',     testServiceProfileAndCapabilityBinding],
+        ['owner-profile-binding',           testOwnerProfileBinding],
+        ['auth-before-store-provider',      testAuthDenialPrecedesStoreAndProviderConstruction],
         ['health-route-200',                testHealthRoute200],
         ['health-route-422',                testHealthRoute422OnBadProfile],
         ['smoke-route',                     testSmokeRoute],

@@ -35,6 +35,7 @@ export interface AdapterProbe {
 
 export interface ReadOnlyAdapter {
   readonly name: AdapterName;
+  readonly timeoutMs?: number;
   search(request: SearchRequest, signal: AbortSignal): Promise<unknown>;
   probe(signal: AbortSignal): Promise<AdapterProbe>;
 }
@@ -62,7 +63,20 @@ export interface GatewayConfig {
     federatorExecutable?: string;
     federatorConfig?: string;
     mempalaceDb?: string;
+    anamnesisDb?: string;
     privacyPartition?: string;
+    brainmonsoonExecutable?: string;
+    brainmonsoonExecutableSha256?: string;
+    brainmonsoonRegistry?: string;
+    brainmonsoonRegistrySha256?: string;
+    brainmonsoonCsl?: string;
+    brainmonsoonCslSha256?: string;
+    brainmonsoonNil?: string;
+    brainmonsoonNilSha256?: string;
+    brainmonsoonCssl?: string;
+    brainmonsoonCsslSha256?: string;
+    brainmonsoonStateRoot?: string;
+    brainmonsoonLineageSha256?: string;
     graphExecutable?: string;
     graphPath?: string;
     graphCsl?: string;

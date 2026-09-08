@@ -36,6 +36,13 @@ function absolutePath(env: NodeJS.ProcessEnv, name: string): string | undefined 
   return resolve(raw);
 }
 
+function sha256(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const value = env[name]?.trim().toLowerCase();
+  if (!value) return undefined;
+  if (!/^[a-f0-9]{64}$/u.test(value)) throw new Error(`${name} must be a SHA-256 digest`);
+  return value;
+}
+
 export function isLoopbackUrl(raw: string): boolean {
   try {
     const url = new URL(raw);
@@ -99,7 +106,20 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
       federatorExecutable: absolutePath(env, 'APOCRYPHA_MEMORY_FEDERATOR_EXE'),
       federatorConfig: absolutePath(env, 'APOCRYPHA_MEMORY_FEDERATOR_CONFIG'),
       mempalaceDb: absolutePath(env, 'APOCRYPHA_MEMPALACE_DB_PATH'),
+      anamnesisDb: absolutePath(env, 'APOCRYPHA_ANAMNESIS_DB_PATH'),
       privacyPartition: env.APOCRYPHA_MEMORY_PRIVACY_PARTITION?.trim() || undefined,
+      brainmonsoonExecutable: absolutePath(env, 'APOCRYPHA_BRAINMONSOON_EXE'),
+      brainmonsoonExecutableSha256: sha256(env, 'APOCRYPHA_BRAINMONSOON_EXE_SHA256'),
+      brainmonsoonRegistry: absolutePath(env, 'APOCRYPHA_BRAINMONSOON_REGISTRY_PATH'),
+      brainmonsoonRegistrySha256: sha256(env, 'APOCRYPHA_BRAINMONSOON_REGISTRY_SHA256'),
+      brainmonsoonCsl: absolutePath(env, 'APOCRYPHA_BRAINMONSOON_CSL_PATH'),
+      brainmonsoonCslSha256: sha256(env, 'APOCRYPHA_BRAINMONSOON_CSL_SHA256'),
+      brainmonsoonNil: absolutePath(env, 'APOCRYPHA_BRAINMONSOON_NIL_PATH'),
+      brainmonsoonNilSha256: sha256(env, 'APOCRYPHA_BRAINMONSOON_NIL_SHA256'),
+      brainmonsoonCssl: absolutePath(env, 'APOCRYPHA_BRAINMONSOON_CSSL_PATH'),
+      brainmonsoonCsslSha256: sha256(env, 'APOCRYPHA_BRAINMONSOON_CSSL_SHA256'),
+      brainmonsoonStateRoot: absolutePath(env, 'APOCRYPHA_BRAINMONSOON_STATE_ROOT'),
+      brainmonsoonLineageSha256: sha256(env, 'APOCRYPHA_BRAINMONSOON_LINEAGE_SHA256'),
       graphExecutable: absolutePath(env, 'APOCRYPHA_GRAPH_ORGAN_EXE'),
       graphPath: absolutePath(env, 'APOCRYPHA_GRAPH_PATH'),
       graphCsl: absolutePath(env, 'APOCRYPHA_GRAPH_CSL_PATH'),

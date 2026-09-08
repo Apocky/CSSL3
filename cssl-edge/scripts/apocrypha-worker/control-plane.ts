@@ -206,7 +206,10 @@ export class ControlPlaneClient {
     }) as Promise<Record<string, unknown>>;
   }
 
-  async heartbeat(runtime: WorkerRuntimeState): Promise<boolean> {
+  async heartbeat(
+    runtime: WorkerRuntimeState,
+    operational: { qwenHealthy: boolean; qwenProbeAt: string },
+  ): Promise<boolean> {
     try {
       await this.request('/api/apocrypha/worker/heartbeat', {
         method: 'POST',
@@ -221,6 +224,11 @@ export class ControlPlaneClient {
           memory_manifest_hash: this.config.memoryManifestHash,
           capabilities: this.config.manifest.capabilities,
           load: { completed_jobs: runtime.completedJobs, failed_jobs: runtime.failedJobs },
+          qwen_healthy: operational.qwenHealthy,
+          qwen_probe_at: operational.qwenProbeAt,
+          adapter_states: runtime.adapterStates,
+          adapter_probe_at: runtime.adapterProbeAt,
+          generation_deadline_ms: this.config.qwenMaxRuntimeMs,
         },
         idempotencyKey: `${this.config.nodeId}:heartbeat:${Math.floor(Date.now() / this.config.heartbeatIntervalMs)}`,
         attempts: 1,

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { loadManifest, memoryManifestHash } from '../scripts/apocrypha-worker/config';
 import { AttemptJournal } from '../scripts/apocrypha-worker/journal';
+import { probeMemoryAdapters } from '../scripts/apocrypha-worker/retrieval';
 import { ApocryphaWorker } from '../scripts/apocrypha-worker/worker';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
@@ -70,6 +71,9 @@ function config(controlPlaneUrl: string, qwenUrl: string, journalDir: string): W
     healthPort: 19_991,
     heartbeatIntervalMs: 1_000,
     heartbeatEnabled: false,
+    memoryProbeTenantId: '11111111-1111-4111-8111-111111111111',
+    memoryProbePrincipalId: '22222222-2222-4222-8222-222222222222',
+    memoryProbeCapability: 'chaos_tarot_reading',
     once: true,
     probeOnly: false,
     recoverOnly: false,
@@ -106,8 +110,18 @@ async function main(): Promise<void> {
     if (request.url === '/memory') {
       const received = await body(request);
       assert(received.read_only === true, 'memory request was not read-only');
-      assert(received.tenant_id === '30000000-0000-4000-8000-000000000001', 'memory request lost tenant boundary');
+      assert([
+        '30000000-0000-4000-8000-000000000001',
+        '11111111-1111-4111-8111-111111111111',
+      ].includes(String(received.tenant_id)), 'memory request lost tenant boundary');
       return json(response, 200, { records: [{ id: 'tarot:tower-star', text: 'The Tower and Star pair disruption with chosen renewal.' }] });
+    }
+    if (request.url === '/unconfigured') {
+      return json(response, 503, { error: 'ADAPTER_UNCONFIGURED', read_only: true });
+    }
+    if (request.url === '/slow-memory') {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return json(response, 200, { records: [{ id: 'late', text: 'late record' }] });
     }
     if (request.url === '/v1/chat/completions') {
       const received = await body(request);
@@ -180,6 +194,11 @@ async function main(): Promise<void> {
       ...process.env,
       APOCRYPHA_MEMPALACE_READ_URL: `${qwen.url}/memory`,
       APOCRYPHA_MEMPALACE_READ_TOKEN: 'memory-read-token',
+      APOCRYPHA_BRAINMONSOON_READ_URL: `${qwen.url}/unconfigured`,
+      APOCRYPHA_BRAINMONSOON_READ_TOKEN: 'memory-read-token',
+      APOCRYPHA_ANAMNESIS_READ_URL: `${qwen.url}/slow-memory`,
+      APOCRYPHA_ANAMNESIS_READ_TOKEN: 'memory-read-token',
+      APOCRYPHA_ANAMNESIS_READ_TIMEOUT_MS: '250',
     };
     const worker = new ApocryphaWorker(workerConfig, { env });
     await worker.run();
@@ -198,7 +217,17 @@ async function main(): Promise<void> {
     assert((qwenRequest.chat_template_kwargs as Record<string, unknown>).enable_thinking === false, 'ordinary reading left model thinking enabled');
     const messages = qwenRequest.messages as Array<{ role: string; content: string }>;
     assert(messages[0]?.content.includes('tarot:tower-star'), 'admitted memory provenance was not supplied to Qwen');
+    assert(worker.runtime.adapterStates.brainmonsoon === 'unconfigured', 'gateway unconfigured state was flattened to a generic error');
+    assert(worker.runtime.adapterStates.anamnesis === 'timeout', 'per-adapter timeout override was not enforced');
+    assert(worker.runtime.adapterProbeAt === null, 'partial adapter configuration minted fresh operational evidence');
     assert(await worker.journal.pendingCount() === 0, 'journal remained after terminal server acknowledgement');
+
+    const probeEnv: NodeJS.ProcessEnv = { ...env };
+    for (const adapter of workerConfig.manifest.memory.adapters) probeEnv[adapter.urlEnv] = `${qwen.url}/memory`;
+    const operationalProbe = await probeMemoryAdapters(workerConfig, probeEnv);
+    assert(operationalProbe?.probedAt !== null, 'five real adapter reads did not mint probe freshness');
+    assert(operationalProbe?.results.length === 5 && operationalProbe.results.every((result) => result.state === 'ok'),
+      'periodic adapter probe did not report all five runtime states');
   } finally {
     await Promise.all([control.close(), qwen.close()]);
     await rm(journalDir, { recursive: true, force: true });
@@ -209,7 +238,7 @@ async function main(): Promise<void> {
     const workerConfig2 = config('http://127.0.0.1:1', 'http://127.0.0.1:2', encryptedDir);
     const journal = new AttemptJournal(encryptedDir, workerConfig2.nodeToken, workerConfig2.nodeId);
     const state = await journal.create(claimedJob(workerConfig2));
-    await journal.addPendingChunk(state, { seq: 0, chunkKind: 'text_delta', delta: 'private-output-fragment' });
+    await journal.addPendingChunk(state, { seq: 0, chunkKind: 'token', delta: 'private-output-fragment' });
     const name = (await readdir(encryptedDir)).find((item) => item.endsWith('.journal'));
     assert(name, 'encrypted journal file was not created');
     const raw = await readFile(join(encryptedDir, name), 'utf8');

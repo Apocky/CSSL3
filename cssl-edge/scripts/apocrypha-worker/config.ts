@@ -30,6 +30,10 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
+function firstCsv(value: string | undefined): string | null {
+  return value?.split(',').map((item) => item.trim()).find(Boolean) ?? null;
+}
+
 function safeUrl(raw: string, label: string, allowLoopbackHttp: boolean): string {
   const url = new URL(raw);
   const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname);
@@ -103,12 +107,29 @@ export function loadConfig(
     healthPort: integerEnv(env, 'APOCRYPHA_WORKER_HEALTH_PORT', 19_126, 1_024, 65_535),
     heartbeatIntervalMs: integerEnv(env, 'APOCRYPHA_WORKER_HEARTBEAT_MS', 15_000, 5_000, 300_000),
     heartbeatEnabled: boolEnv(env, 'APOCRYPHA_WORKER_HEARTBEAT_ENABLED', true),
+    memoryProbeTenantId: env.APOCRYPHA_MEMORY_PROBE_TENANT_ID?.trim()
+      || firstCsv(env.APOCRYPHA_MEMORY_GATEWAY_ALLOWED_TENANTS),
+    memoryProbePrincipalId: env.APOCRYPHA_MEMORY_PROBE_PRINCIPAL_ID?.trim() || required(env, 'APOCRYPHA_WORKER_NODE_ID'),
+    memoryProbeCapability: env.APOCRYPHA_MEMORY_PROBE_CAPABILITY?.trim()
+      || (manifest.capabilities.includes('chaos_tarot_reading') ? 'chaos_tarot_reading' : manifest.capabilities[0] as string),
     once: argv.includes('--once'),
     probeOnly: argv.includes('--probe'),
     recoverOnly: argv.includes('--recover-only'),
   };
 
   if (config.modelAlias !== manifest.model.alias) throw new Error('configured model alias differs from accepted worker manifest');
+  for (const [label, value, maximum] of [
+    ['memory probe tenant', config.memoryProbeTenantId, 160],
+    ['memory probe principal', config.memoryProbePrincipalId, 160],
+    ['memory probe capability', config.memoryProbeCapability, 128],
+  ] as const) {
+    if (value !== null && (!value || value.length > maximum || /[\r\n\0]/u.test(value))) {
+      throw new Error(`${label} is invalid`);
+    }
+  }
+  if (!manifest.capabilities.includes(config.memoryProbeCapability)) {
+    throw new Error('memory probe capability is not admitted by the worker manifest');
+  }
   if (config.profileHash !== manifest.model.profileHash.toLowerCase()) {
     throw new Error('configured model profile hash differs from worker manifest');
   }

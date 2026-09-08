@@ -51,6 +51,7 @@ const memory: RetrievalBundle = {
   results: [],
   records: [],
   digest: 'c'.repeat(64),
+  probedAt: null,
 };
 
 const query = queryFromJob(job);

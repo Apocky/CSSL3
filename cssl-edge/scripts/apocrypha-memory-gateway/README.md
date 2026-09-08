@@ -34,6 +34,13 @@ existing worker envelope:
 }
 ```
 
+The closed tenant and capability lists remain mandatory. Owner-only requests
+also require an exact principal allowlist match. `chaos_tarot_reading` admits a
+canonical UUID principal inside the admitted Chaos tenant so new members do not
+require a gateway restart. Native request identifiers bind an opaque digest of
+tenant, principal, and capability; raw identities are never placed on child
+process command lines or returned in records.
+
 Responses contain only bounded `records` with opaque provenance, text, and
 allowlisted scalar metadata. They always state `authority: none`,
 `execution_authorized: false`, and `read_only: true`. Raw queries, bearer
@@ -52,11 +59,12 @@ gateway cannot open their sealed capabilities itself. Those child processes
 receive closed environments and bounded JSONL over stdin, so private queries
 are absent from command lines.
 
-Anamnesis and Brainmonsoon require an already-running read-only loopback HTTP
-surface. This is intentional: the current federation and Brainmonsoon service
-construct derived state during initialization or analysis, which would violate
-this gateway's no-write boundary. Their gateway routes remain present and
-truthfully report `unconfigured` until those read-only upstreams are supplied.
+Anamnesis uses a disposable SQLite `mode=ro`/`query_only` reader. Brainmonsoon
+is package-hash pinned and recalls one explicitly pinned protected lineage
+through managed stdio. Its helper admits only `health`, `status`, and `recall`
+and verifies that the protected state tree is byte-identical before and after.
+Gateway readiness requires a real lineage recall with admitted records, so a
+health-only response cannot claim that the Brainmonsoon corpus is accessible.
 
 Copy `gateway.env.example` into the host's ignored environment store, replace
 all placeholder identities, and use a random token of at least 32 bytes. Then:
@@ -64,6 +72,10 @@ all placeholder identities, and use a random token of at least 32 bytes. Then:
 ```powershell
 node --import tsx scripts/apocrypha-memory-gateway/server.ts
 ```
+
+On the production Windows host, `run-production.ps1` loads the ignored shared
+environment file and keeps the gateway attached to its supervisor. Install or
+refresh that hidden sign-in supervisor with `register-gateway-task.ps1`.
 
 Point every `APOCRYPHA_*_READ_URL` in the worker environment at its gateway URL
 and set every corresponding worker token to the gateway token. Rollback is to

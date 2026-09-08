@@ -35,6 +35,19 @@ Only one worker process can own a journal directory. `worker.lock` prevents dupl
 
 `manifest.production.json` declares the same read-only faculties for both products: MemPalace, Brainmonsoon, Anamnesis, Graphify, and MNEME. Each adapter has its own HTTPS or loopback endpoint, token, timeout, and content bound. Calls run in parallel. A slow or unavailable faculty appears in provenance as partial availability and cannot block Qwen.
 
+An individual resident can raise a slow local adapter's deadline with
+`APOCRYPHA_<ADAPTER>_READ_TIMEOUT_MS` (250 through 60000). This runtime dial
+does not change the admitted faculty, authority, response bound, or manifest;
+it only allows a known local reader enough time to finish.
+
+Every heartbeat performs a bounded live Qwen probe. While idle, the worker
+also performs all five read-only adapter requests at least every 30 seconds.
+The control plane receives `qwen_healthy`, `qwen_probe_at`, the five exact
+adapter states, and `adapter_probe_at`; the adapter timestamp advances only
+after all five URLs were actually called. Generation heartbeats publish the
+bounded generation deadline so readiness can preserve a live long response
+without accepting stale idle evidence.
+
 Every retrieval request includes the job's tenant, principal, capability, and memory-manifest hash. Retrieved text is placed in a data-only boundary and cannot grant instructions or tool authority. Brainmonsoon writes and every other mutation remain outside this worker.
 
 ## Run and verify

@@ -8,6 +8,7 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
+import { MNEME_CAPABILITIES, requireMnemeProfileAccess } from '@/lib/mneme/auth';
 import { getMnemeClient, exportProfile, memoryToPublic } from '@/lib/mneme/store';
 import { maskToHex } from '@/lib/mneme/sigma';
 import type { ExportResponse, Profile } from '@/lib/mneme/types';
@@ -17,8 +18,6 @@ interface ErrorResponse {
     served_by: string;
     ts:        string;
 }
-
-const PROFILE_RE = /^[a-z0-9-]{1,64}$/;
 
 export default async function handler(
     req: NextApiRequest,
@@ -36,15 +35,9 @@ export default async function handler(
         return;
     }
 
-    const profile_id = String(req.query['profile'] ?? '');
-    if (!PROFILE_RE.test(profile_id)) {
-        const env = envelope();
-        res.status(422).json({
-            error: 'Invalid profile_id',
-            served_by: env.served_by, ts: env.ts,
-        });
-        return;
-    }
+    const access = await requireMnemeProfileAccess(req, res, MNEME_CAPABILITIES.export);
+    if (!access) return;
+    const profile_id = access.profileId;
 
     const sb = getMnemeClient();
     try {

@@ -48,6 +48,7 @@ export function startHealthServer(
         tool_registry_version: config.toolRegistryVersion,
         memory_manifest_hash: config.memoryManifestHash,
         adapter_states: runtime.adapterStates,
+        adapter_probe_at: runtime.adapterProbeAt,
       },
     }));
   });

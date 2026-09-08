@@ -63,6 +63,16 @@ All routes live under `pages/api/mneme/[profile]/*`:
 Every response carries `served_by` + `ts` per the cssl-edge envelope
 convention. Errors use `{ error, served_by, ts }`.
 
+Every route is private and default-deny. A signed-in Apocky owner may access
+only `MNEME_OWNER_PROFILE_ID`. A service caller must present the exact
+`MNEME_SERVICE_TOKEN`, call only `MNEME_SERVICE_PROFILE_ID`, send matching
+`x-mneme-profile` and `x-mneme-capability` headers, and have that route
+capability in the closed `MNEME_SERVICE_CAPABILITIES` allowlist. The eight
+capability names are `mneme.health`, `mneme.smoke`, `mneme.ingest`,
+`mneme.remember`, `mneme.recall`, `mneme.list`, `mneme.export`, and
+`mneme.forget`. Missing or wildcard configuration fails closed before the
+service-role store or any model/embedding provider is constructed.
+
 ## Local development
 
 1. From `cssl-edge/`:
@@ -70,7 +80,8 @@ convention. Errors use `{ error, served_by, ts }`.
    ```sh
    npm install
    cp .env.example .env.local
-   # set ANTHROPIC_API_KEY, VOYAGE_API_KEY, NEXT_PUBLIC_SUPABASE_URL,
+   # set MNEME_OWNER_PROFILE_ID and/or the exact MNEME service binding,
+   # plus ANTHROPIC_API_KEY, VOYAGE_API_KEY, NEXT_PUBLIC_SUPABASE_URL,
    # SUPABASE_SERVICE_ROLE_KEY, MNEME_SOVEREIGN_PUBKEY_HEX
    npm run check        # typecheck (must pass before push)
    npm run dev          # next dev — visit http://localhost:3000/api/mneme/scratch/health
@@ -88,7 +99,10 @@ convention. Errors use `{ error, served_by, ts }`.
 3. Smoke the pipelines without any external services:
 
    ```sh
-   curl http://localhost:3000/api/mneme/scratch/smoke
+   curl -H "Authorization: Bearer $MNEME_SERVICE_TOKEN" \
+        -H "x-mneme-profile: scratch" \
+        -H "x-mneme-capability: mneme.smoke" \
+        http://localhost:3000/api/mneme/scratch/smoke
    ```
 
    Expected: 200 with `{ ok:true, ingest:{…}, retrieve:{…} }`.

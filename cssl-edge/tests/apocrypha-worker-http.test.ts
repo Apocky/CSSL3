@@ -160,6 +160,13 @@ async function testHeartbeatAuthenticatesAtDatabaseBeforeUpdate(): Promise<void>
     node_id: nodeId,
     status: 'idle',
     model_alias: 'test-model',
+    qwen_healthy: true,
+    qwen_probe_at: '2026-09-07T12:00:00.000Z',
+    adapter_probe_at: '2026-09-07T11:59:55.000Z',
+    generation_deadline_ms: 2_700_000,
+    adapter_states: {
+      mempalace: 'ok', brainmonsoon: 'unconfigured', anamnesis: 'unconfigured', graphify: 'ok', mneme: 'unconfigured',
+    },
   }), res);
 
   assert(out.statusCode === 200, `authenticated heartbeat returned ${out.statusCode}`);
@@ -170,6 +177,14 @@ async function testHeartbeatAuthenticatesAtDatabaseBeforeUpdate(): Promise<void>
   assert(authBody.p_node_token === shapedToken, 'heartbeat did not forward the bearer token for hash verification');
   assert(authBody.p_require_active === true, 'heartbeat did not require an active worker');
   assert(calls[1]?.url.includes('/rest/v1/apocrypha_worker_node') === true, 'heartbeat did not update after authentication');
+  const updateBody = JSON.parse(String(calls[1]?.init?.body ?? '{}')) as Record<string, unknown>;
+  const profiles = updateBody.model_profiles as Record<string, unknown>;
+  assert(profiles.qwen_healthy === true, 'heartbeat omitted operational Qwen probe state');
+  assert(profiles.qwen_probe_at === '2026-09-07T12:00:00.000Z', 'heartbeat omitted Qwen probe timestamp');
+  assert(profiles.adapter_probe_at === '2026-09-07T11:59:55.000Z', 'heartbeat omitted adapter probe timestamp');
+  assert(profiles.generation_deadline_ms === 2_700_000, 'heartbeat omitted bounded generation deadline');
+  const adapterStates = profiles.adapter_states as Record<string, unknown>;
+  assert(adapterStates.mempalace === 'ok' && adapterStates.graphify === 'ok', 'heartbeat omitted operational adapter states');
 }
 
 async function testHeartbeatDatabaseAuthenticationFailureIs401(): Promise<void> {
