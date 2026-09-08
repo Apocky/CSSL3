@@ -23,6 +23,7 @@ import {
   type ContributorTransportStoreAvailability,
 } from '@/lib/apocrypha/contributor-transport-supabase';
 import { createSupabaseContributorRateLimiter } from '@/lib/apocrypha/contributor-rate-limit-supabase';
+import { createProductionContributorAtomicController } from '@/lib/apocrypha/contributor-atomic-controller';
 import { CONTRIBUTOR_NODE_MANIFEST } from '@/lib/apocrypha/contributor-node';
 
 /**
@@ -355,7 +356,22 @@ function controllerTokenDigest(dependencies: ContributorRouteDependencies): stri
   return digest && /^[0-9a-f]{64}$/.test(digest) ? digest : null;
 }
 
-function configuredController(): ConfiguredController | null {
+function configuredController(dependencies: ContributorRouteDependencies): ConfiguredController | null {
+  const rateLimiter = dependencies.rateLimiter ?? (() => {
+    const availability = createSupabaseContributorRateLimiter();
+    return availability.ok ? availability.limiter : null;
+  })();
+  const atomicController = createProductionContributorAtomicController({
+    rateLimiterConfigured: Boolean(rateLimiter),
+  });
+  if (atomicController) {
+    return {
+      atomicController,
+      operatorConfigured: atomicController.operatorConfigured,
+      transactionalStore: atomicController.genericTransactionCapable,
+      atomicRpcCapable: true,
+    };
+  }
   const controllerKeyId = envKeyId('APOCRYPHA_CONTRIBUTOR_CONTROLLER_KEY_ID');
   const controllerPrivateKey = readEd25519PrivateKey('APOCRYPHA_CONTRIBUTOR_CONTROLLER_PRIVATE_KEY_PEM');
   if (!controllerKeyId || !controllerPrivateKey) return null;
@@ -427,7 +443,7 @@ function configuredControllerForRoute(
       atomicRpcCapable: false,
     };
   }
-  const resolved = configuredController();
+  const resolved = configuredController(dependencies);
   if (!resolved) {
     throw new ContributorHttpError(
       503,
@@ -573,11 +589,13 @@ function productionStoreCapabilities(): ContributorStoreCapabilities {
 
 function statusPayload(dependencies: ContributorRouteDependencies): ContributorStatusPayload {
   const storeCapabilities = productionStoreCapabilities();
-  const atomicController = dependencies.atomicController;
   const rateLimiter = dependencies.rateLimiter ?? (() => {
     const availability = createSupabaseContributorRateLimiter();
     return availability.ok ? availability.limiter : null;
   })();
+  const atomicController = dependencies.atomicController ?? createProductionContributorAtomicController({
+    rateLimiterConfigured: Boolean(rateLimiter),
+  });
   const controllerKeyConfigured = Boolean(
     envKeyId('APOCRYPHA_CONTRIBUTOR_CONTROLLER_KEY_ID')
     && readEd25519PrivateKey('APOCRYPHA_CONTRIBUTOR_CONTROLLER_PRIVATE_KEY_PEM'),

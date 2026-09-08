@@ -1,0 +1,65 @@
+§ APOCRYPHA.CONTRIBUTOR.ATOMIC.CONTROLLER.v1 ‼
+
+date := 2026-09-08
+status := SOURCE_IMPLEMENTED ; live_cutover := CLOSED
+purpose := bind.HTTP.transport → explicit.controller.signer → atomic.Supabase.RPC
+
+§P boundary
+  source := `lib/apocrypha/contributor-atomic-controller.ts`
+  route := `lib/apocrypha/contributor-http.ts`
+  tests := `tests/contributor-node/atomic-controller.test.ts`
+  inputs := {controller_key_id,controller_private_key_pem,
+             operator_key_id,operator_public_key_pem}
+  persistence := `createSupabaseContributorTransportStore()`
+                  ⊑ service_role.server_only
+  limiter := external/global.rate_limiter.required
+  N! bridge.key|anon.key|generated.key|MemoryStore|raw.token|vault|conversation
+
+§D preparation
+  enroll := verify(node.Ed25519.enrollment)
+            → read(existing.node)
+            → derive(revision+1)
+            → sign(controller.receipt)
+            → atomicEnroll(node+receipt)
+  lease := verify(controller-authenticated.request+time/task.bounds)
+           → sign(inner.lease+outer.dispatch)
+           → atomicIssueLease(dispatch)
+  result := parse(node.submission)
+            → read(node+lease)
+            → verify(node.inner+outer.signatures+identity+time)
+            → sign(controller.receipt)
+            → atomicAcceptResult(receipt)
+  revoke := verify(operator.Ed25519.request+time)
+            → read(node)
+            → derive(monotonic.status+revision)
+            → sign(controller.receipt)
+            → atomicRevoke(receipt)
+  W! DB.RPC rechecks+locks all mutable state; preflight TOCTOU ⇒ fail-closed
+
+§D resolver
+  require := {rateLimiterConfigured=true,
+              valid.Ed25519.controller.keypair,
+              Supabase.service_role.client,
+              client.rpc.surface}
+  missing|malformed ⇒ null
+  operator := optional.for enroll|lease|result ; required.for revoke
+  status.atomic_controller_configured := resolver.success
+  N! resolver ⇒ credential.mint|rotation|log|return
+
+§T proof
+  tests := `tests/contributor-node/atomic-controller.test.ts`
+  cover := {all four preparation paths,signature verification,
+            operation delegation,missing limiter|keys,non-atomic rejection}
+  check := `npm run check`
+  lint := `npm run lint`
+  falsifier := unsigned|wrong-key|stale-state accepted
+
+§C promotion
+  source := COMPLETE
+  live := CLOSED until {controller/operator custody+rotation,
+                        rate-limiter migration+live consume,
+                        0053+0054 apply+RPC probe,
+                        signed artifact+sandbox/install/rollback/device proof,
+                        release manifest OPEN}
+  rollback := revert(binding commit); route falls back to typed closed state
+∎

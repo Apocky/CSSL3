@@ -366,6 +366,15 @@ export function publicKeySpkiB64(value: PublicKeyInput): string {
   }
 }
 
+/**
+ * Server-side transport binding helper.  The controller boundary needs the
+ * same strict SPKI parser used by result verification; exposing this narrow
+ * wrapper avoids reimplementing DER/key-shape validation in an adapter.
+ */
+export function publicKeyFromSpkiB64(value: string): KeyObject {
+  return publicKeyFromSpki(value);
+}
+
 function signPayload(payload: unknown, privateKey: KeyObject): string {
   try {
     return cryptoSign(null, Buffer.from(canonicalJson(payload), 'utf8'), ed25519PrivateKey(privateKey)).toString('base64url');
@@ -385,6 +394,11 @@ function verifyPayload(payload: unknown, signature: unknown, publicKey: PublicKe
 
 function hashPayload(payload: unknown): string {
   return createHash('sha256').update(canonicalJson(payload), 'utf8').digest('hex');
+}
+
+/** Stable transport hash for operation-level RPC preparation. */
+export function contributorPayloadHash(payload: unknown): string {
+  return hashPayload(payload);
 }
 
 function exactCapabilities(value: unknown): readonly ContributorCapability[] {
@@ -550,6 +564,22 @@ function parseLeaseRequest(value: unknown): LeaseIssueRequest {
   };
 }
 
+/** Strict parser for the authenticated controller-side lease request. */
+export function parseContributorLeaseIssueRequest(value: unknown): LeaseIssueRequest {
+  return parseLeaseRequest(value);
+}
+
+/**
+ * Lease request validation used before an atomic RPC envelope is signed.  The
+ * request is authenticated by the route's separate controller bearer gate;
+ * it deliberately has no node signature field.
+ */
+export function verifyContributorLeaseIssueRequest(value: unknown, now = Date.now()): LeaseIssueRequest {
+  const request = parseContributorLeaseIssueRequest(value);
+  temporal(request.issued_at, request.expires_at, now, CONTRIBUTOR_ENROLLMENT_TTL_MS, 'TRANSPORT_ENROLLMENT_EXPIRED');
+  return request;
+}
+
 function dispatchPayload(value: LeaseDispatch | LeaseDispatchPayload): LeaseDispatchPayload {
   return {
     schema_version: CONTRIBUTOR_LEASE_DISPATCH_SCHEMA,
@@ -620,6 +650,11 @@ function parseResultSubmission(value: unknown): ResultSubmission {
     result: source.result as ResultEnvelope,
     signature_b64: decodeSignature(source.signature_b64).toString('base64url'),
   };
+}
+
+/** Strict parser for the node-signed result envelope before DB binding. */
+export function parseContributorResultSubmission(value: unknown): ResultSubmission {
+  return parseResultSubmission(value);
 }
 
 export function signResultSubmission(
