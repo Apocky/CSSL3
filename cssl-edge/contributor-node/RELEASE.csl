@@ -44,6 +44,17 @@ artifact := source+reproducible-build only ; no signed.public.download
   N! public.page links artifact while state=NOT_DEPLOYABLE
   owner := integration agent controls any deployment/alias effect
 
+§C ARTIFACT.PIPELINE
+  release:candidate := pack:candidate ⊕ deterministic ZIP32 + SPDX-2.3 SBOM
+                       + in-toto/SLSA-shaped provenance + promotion manifest
+  archive := fixed metadata+path order ; SHA256(exact bytes)
+  signature := external Ed25519 over exact archive bytes ; detached base64url
+               ; verifier N! accepts private key|network|promotion effect
+  promotion.manifest := release.v1 ; gate vector + missing_gates ; default CLOSED
+  READY ∧ OPEN ⇒ every gate=true ∧ artifact digest+signature verification ✓
+  source/spec/test := tracked ; candidate-dist outputs N! committed|published
+  reference := specs/apocrypha-contributor/RELEASE_ARTIFACT_PIPELINE.csl
+
 §R ROLLBACK
   source := revert candidate commit
   runtime := no persistent state or alias changed by this lane
