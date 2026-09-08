@@ -1,0 +1,54 @@
+§ APOCRYPHA.CONTRIBUTOR.SUPABASE.ADAPTER.v1 ‼
+
+status := SOURCE_IMPLEMENTED ; live_migration := CLOSED ; route_cutover := CLOSED
+purpose := durable_server_only persistence for `TRANSPORT_CONTRACT.v1`
+
+§P BOUNDARY
+  tables := {
+    `apocrypha_contributor_node`,
+    `apocrypha_contributor_enrollment_replay`,
+    `apocrypha_contributor_lease_replay`,
+    `apocrypha_contributor_result_replay`,
+    `apocrypha_contributor_revoke_replay`
+  }
+  migration := `cssl-supabase/migrations/0053_apocrypha_contributor_transport.sql`
+  credentials := server_only {APOCKY_HUB_SUPABASE_URL|NEXT_PUBLIC_SUPABASE_URL,
+                               SUPABASE_SERVICE_ROLE_KEY}
+  N! anon_key|client_bundle|private_key|bearer_token|raw_payload_log|broad_queue
+
+§D ADAPTER
+  source := `lib/apocrypha/contributor-transport-supabase.ts`
+  api := `ContributorTransportStore`
+  postgrest := dedicated_table_queries + bounded_row_validation
+  transaction := explicit_real_provider.required
+                 ; operation RPC|server_transaction required
+                 ; generic PostgREST wrapper N! sufficient
+  missing {url|service_key|transaction_provider|malformed_row|database_error}
+    ⇒ `TRANSPORT_STORE_UNAVAILABLE` ; no memory fallback
+  replay := exact request/submission hash + signed receipt/dispatch
+  schema := no private key ; no task queue ownership ; no conversation/memory/vault
+
+§D SECURITY
+  service_role := server_process only ; `REVOKE ALL` public|anon|authenticated
+  RLS := enabled all five tables ; no public read/write policy
+  constraints := bounded identifiers|hashes|JSONB|capability|status transitions
+  atomicity := controller read→decision→write remains one database transaction
+  N! adapter transactional flag ⇒ proof of database atomicity
+
+§T TESTS
+  source := `tests/contributor-node/transport-supabase.test.ts`
+  require := missing_env|missing_transaction|malformed_row|database_error fail closed
+             + dedicated table names/filters + injected transaction seam
+  migration := no unrelated queue/table reference ; RLS+least_privilege present
+
+§C PROMOTION
+  OPEN only after owner-reviewed migration apply + RPC/server transaction proof
+         + authenticated route + rate_limit + sandbox/resource controls
+         + signed artifact + native install/rollback/device evidence
+  current := NOT_DEPLOYABLE ; no live migration ; no production cutover
+
+§R ROLLBACK
+  source := revert adapter/spec/migration commit
+  live := unchanged because migration and route gates remain closed
+
+∎
