@@ -1,39 +1,57 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Act } from '../App.tsx';
+import type { Act, SendMessage } from '../App.tsx';
 import { ipc } from '../lib/ipc.ts';
-import { canSend, conversationLabel, MAX_TEXT_BYTES, promptBytes, scopeNote, sendBlockedReason, type View } from '../lib/view.ts';
+import {
+  canSend,
+  conversationLabel,
+  liveStatus,
+  MAX_TEXT_BYTES,
+  promptBytes,
+  sendBlockedReason,
+  type Live,
+  type View,
+} from '../lib/view.ts';
 
 interface Props {
   view: View;
   busy: boolean;
+  live: Live | null;
   act: Act;
+  sendMessage: SendMessage;
 }
 
-export function Chat({ view, busy, act }: Props) {
+/** Ticks while a reply is arriving so the wait is legible. */
+function useElapsed(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
+export function Chat({ view, busy, live, act, sendMessage }: Props) {
   const [draft, setDraft] = useState('');
   const stream = useRef<HTMLDivElement>(null);
+  const now = useElapsed(live !== null);
 
   useEffect(() => {
     stream.current?.scrollTo({ top: stream.current.scrollHeight });
-  }, [view.messages, view.session_id]);
+  }, [view.messages, view.session_id, live?.text]);
 
   const blocked = sendBlockedReason(view, draft, busy);
   const sendable = canSend(view, draft, busy);
   const bytes = promptBytes(draft);
-  const partial = scopeNote(view);
+  const status = liveStatus(live, now);
 
   const submit = () => {
     if (!sendable) return;
     const text = draft;
     setDraft('');
-    void act(async () => {
-      const next = await ipc.send(text);
-      // The controller hands the text back when the service refused it, so the
-      // person does not lose what they wrote.
-      if (!next.messages.some((message) => message.role === 'user' && message.content === text.trim())) {
-        setDraft(text);
-      }
-      return next;
+    void sendMessage(text).then((accepted) => {
+      if (!accepted) setDraft(text);
     });
   };
 
@@ -67,7 +85,6 @@ export function Chat({ view, busy, act }: Props) {
             ))
           )}
         </div>
-        {partial ? <p className="rail-note">{partial}</p> : null}
         <div className="rail-foot">
           <button className="ghost" disabled={busy} onClick={() => void act(() => ipc.refresh())}>
             Refresh
@@ -80,7 +97,7 @@ export function Chat({ view, busy, act }: Props) {
 
       <section className="conversation">
         <div className="stream" ref={stream} aria-live="polite">
-          {view.messages.length === 0 ? (
+          {view.messages.length === 0 && !live ? (
             <div className="stream-empty">
               <span aria-hidden="true">◇</span>
               <p>Start a conversation with Apocrypha.</p>
@@ -93,7 +110,28 @@ export function Chat({ view, busy, act }: Props) {
               </article>
             ))
           )}
-          {view.pending_request ? (
+
+          {live ? (
+            <article className="turn assistant writing" aria-label="Apocrypha is replying">
+              <span className="who">
+                Apocrypha <span className="status">{status}</span>
+              </span>
+              {live.text ? (
+                <p>
+                  {live.text}
+                  <span className="caret" aria-hidden="true" />
+                </p>
+              ) : (
+                <p className="thinking" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </p>
+              )}
+            </article>
+          ) : null}
+
+          {view.pending_request && !live ? (
             <p className="unconfirmed">
               This message is not confirmed yet. Refresh to check for the reply — it will not be sent again
               automatically.
@@ -126,7 +164,7 @@ export function Chat({ view, busy, act }: Props) {
               {bytes.toLocaleString()} / {MAX_TEXT_BYTES.toLocaleString()} bytes
             </span>
             <span className="notice" role="status">
-              {busy ? 'Working…' : view.notice}
+              {status ?? (busy ? 'Working…' : view.notice)}
             </span>
             <button className="primary" type="submit" disabled={!sendable} title={blocked ?? undefined}>
               Send

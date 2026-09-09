@@ -17,10 +17,16 @@ mod journal;
 mod protocol;
 mod session;
 mod store;
+mod stream;
 
 use std::sync::{Arc, Mutex};
 
+use tauri::Emitter;
+
 use controller::{Controller, View};
+
+/// Carries one fragment of a reply to the window while it is being written.
+const TURN_DELTA_EVENT: &str = "apocrypha://turn-delta";
 
 struct App {
     controller: Arc<Mutex<Option<Controller>>>,
@@ -111,9 +117,19 @@ async fn new_conversation(state: tauri::State<'_, App>) -> Result<View, String> 
     run(state, |controller| controller.new_conversation()).await
 }
 
+/// Sends a message and streams the reply into the window as it is written.
+///
+/// Each fragment is emitted as it arrives rather than held until the turn ends,
+/// so the person watches the reply being composed instead of a spinner.
 #[tauri::command]
-async fn send(state: tauri::State<'_, App>, text: String) -> Result<View, String> {
-    run(state, move |controller| controller.send(&text)).await
+async fn send(app: tauri::AppHandle, state: tauri::State<'_, App>, text: String) -> Result<View, String> {
+    run(state, move |controller| {
+        let mut emit = |delta: &str| {
+            let _ = app.emit(TURN_DELTA_EVENT, delta);
+        };
+        controller.send(&text, &mut emit)
+    })
+    .await
 }
 
 #[tauri::command]

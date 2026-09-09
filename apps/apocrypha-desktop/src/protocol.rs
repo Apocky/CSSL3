@@ -9,7 +9,6 @@ use url::Url;
 
 pub const SITE: &str = "https://www.apocky.com";
 pub const AUTH: &str = "https://pzirbmyfmrbtkllrtcmx.supabase.co";
-pub const API: &str = "https://www.apocky.com/api/mobile";
 pub const MAX_TEXT_BYTES: usize = 16_384;
 pub const USER_AGENT: &str = concat!("Apocrypha-Desktop/", env!("CARGO_PKG_VERSION"));
 
@@ -121,10 +120,9 @@ pub fn endpoint(raw: &str) -> Result<Url> {
     let permitted = match host {
         SITE_HOST => match (path, query) {
             ("/api/mobile/config", None)
-            | ("/api/mobile/status", None)
-            | ("/api/mobile/turn", None)
-            | ("/api/mobile/sessions", None) => true,
-            ("/api/mobile/sessions", Some(q)) => q
+            | ("/api/apocrypha/chat", None)
+            | ("/api/apocrypha/sessions", None) => true,
+            ("/api/apocrypha/sessions", Some(q)) => q
                 .strip_prefix("session_id=")
                 .map(|value| id(value).is_ok())
                 .unwrap_or(false),
@@ -198,7 +196,8 @@ fn anon_claim(key: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub fn turn_body(text_value: &str, session: &str, request: &str) -> Result<serde_json::Value> {
+/// The exact three-key body `/api/apocrypha/chat` accepts; anything else is a 400.
+pub fn chat_body(text_value: &str, session: &str, request: &str) -> Result<serde_json::Value> {
     Ok(serde_json::json!({
         "text": prompt(text_value)?,
         "session_id": id(session)?,
@@ -206,44 +205,54 @@ pub fn turn_body(text_value: &str, session: &str, request: &str) -> Result<serde
     }))
 }
 
-/// Reads a completed turn, refusing any reply not bound to this exact request.
-pub fn completed(result: &serde_json::Value, session: &str, request: &str) -> Result<String> {
-    schema(result, "apocky.mobile.turn.v1")?;
-    let bound = result.get("status").and_then(|v| v.as_str()) == Some("completed")
+/// Reads the terminal result of a streamed turn, refusing any reply not bound
+/// to this exact request.
+pub fn chat_result(result: &serde_json::Value, session: &str, request: &str) -> Result<String> {
+    let bound = result.get("outcome").and_then(|v| v.as_str()) == Some("completed")
         && result.get("session_id").and_then(|v| v.as_str()) == Some(id(session)?.as_str())
         && result.get("request_id").and_then(|v| v.as_str()) == Some(id(request)?.as_str());
     if !bound {
         return Err(reject("The reply does not match this message."));
     }
+    // The runtime states which model answered and a digest of what it said.
+    // A reply arriving without that evidence is not one this client will show.
+    let model = text(result, "model_id", 512)?;
+    let digest = text(result, "response_digest", 64)?;
+    let shaped = !model.is_empty()
+        && digest.len() == 64
+        && digest.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'));
+    if !shaped {
+        return Err(reject("The reply did not carry its response evidence."));
+    }
     text(result, "text", 2_097_152)
 }
 
-pub struct SessionList {
-    pub scope: String,
-    pub conversations: Vec<Conversation>,
-}
-
-pub fn sessions(value: &serde_json::Value) -> Result<SessionList> {
-    schema(value, "apocky.mobile.sessions.v1")?;
-    let scope = text(value, "discovery_scope", 64)?;
-    if scope != "account_conversations" && scope != "latest_conversation_only" {
-        return Err(reject("Unknown history discovery scope."));
-    }
+/// The durable conversation list for this account.
+///
+/// The service returns the client's own identifiers here, so a conversation
+/// listed can be opened directly by the id it carries.
+pub fn sessions(value: &serde_json::Value) -> Result<Vec<Conversation>> {
     let rows = value
         .get("sessions")
         .and_then(|v| v.as_array())
         .ok_or_else(|| reject("The service returned an unsupported response."))?;
-    if rows.len() > 500 {
+    if rows.len() > 128 {
         return Err(reject("Too many conversation entries."));
     }
     let mut conversations = Vec::with_capacity(rows.len());
     for row in rows {
+        let count = row
+            .get("message_count")
+            .and_then(|v| v.as_i64())
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| reject("The conversation list returned an invalid thread."))?;
+        let _ = count;
         conversations.push(Conversation {
             id: id(&text(row, "session_id", 64)?)?,
             title: text(row, "title", 4096)?,
         });
     }
-    Ok(SessionList { scope, conversations })
+    Ok(conversations)
 }
 
 pub struct History {
@@ -252,11 +261,10 @@ pub struct History {
 }
 
 pub fn history(value: &serde_json::Value, expected: &str) -> Result<History> {
-    schema(value, "apocky.mobile.session.v1")?;
     let session = value
         .get("session")
         .ok_or_else(|| reject("The service returned an unsupported response."))?;
-    schema(session, "apocky.mobile.history-session.v1")?;
+    schema(session, "apocv4.workspace-session-snapshot.v1")?;
     if text(session, "session_id", 64)? != id(expected)? {
         return Err(reject("The history belongs to another conversation."));
     }
@@ -333,9 +341,8 @@ mod tests {
     fn endpoints_outside_the_allowlist_are_refused() {
         for good in [
             "https://www.apocky.com/api/mobile/config",
-            "https://www.apocky.com/api/mobile/status",
-            "https://www.apocky.com/api/mobile/turn",
-            "https://www.apocky.com/api/mobile/sessions",
+            "https://www.apocky.com/api/apocrypha/chat",
+            "https://www.apocky.com/api/apocrypha/sessions",
             "https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/otp",
             "https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/token?grant_type=password",
             "https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/token?grant_type=refresh_token",
@@ -352,7 +359,10 @@ mod tests {
             "https://www.apocky.com/api/mobile/config#fragment",
             "https://www.apocky.com/api/mobile/config?token=secret",
             "https://www.apocky.com/api/admin/apocrypha/keys",
-            "https://www.apocky.com/api/mobile/sessions?session_id=../secret",
+            "https://www.apocky.com/api/apocrypha/sessions?session_id=../secret",
+            "https://www.apocky.com/api/mobile/turn",
+            "https://www.apocky.com/api/apocrypha/member/jobs",
+            "https://www.apocky.com/api/apocrypha/vision",
             "https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/token?grant_type=client_credentials",
             "https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/logout?scope=global",
             "https://pzirbmyfmrbtkllrtcmx.supabase.co/rest/v1/profiles",
@@ -360,7 +370,7 @@ mod tests {
         ] {
             assert!(endpoint(bad).is_err(), "{bad} must be refused");
         }
-        let permitted = format!("https://www.apocky.com/api/mobile/sessions?session_id={}", new_id());
+        let permitted = format!("https://www.apocky.com/api/apocrypha/sessions?session_id={}", new_id());
         assert!(endpoint(&permitted).is_ok());
     }
 
@@ -409,23 +419,44 @@ mod tests {
         assert!(config(&service).is_err());
     }
 
+    fn terminal(session: &str, request: &str) -> serde_json::Value {
+        serde_json::json!({
+            "outcome": "completed",
+            "session_id": session,
+            "request_id": request,
+            "text": "answer",
+            "model_id": "apocrypha-runtime",
+            "response_digest": "a".repeat(64),
+        })
+    }
+
     #[test]
     fn a_reply_must_be_bound_to_its_own_request() {
         let session = new_id();
         let request = new_id();
-        let reply = serde_json::json!({
-            "schema_version": "apocky.mobile.turn.v1",
-            "status": "completed",
-            "session_id": session,
-            "request_id": request,
-            "text": "answer",
-        });
-        assert_eq!(completed(&reply, &session, &request).unwrap(), "answer");
-        assert!(completed(&reply, &new_id(), &request).is_err());
-        assert!(completed(&reply, &session, &new_id()).is_err());
+        let reply = terminal(&session, &request);
+        assert_eq!(chat_result(&reply, &session, &request).unwrap(), "answer");
+        assert!(chat_result(&reply, &new_id(), &request).is_err());
+        assert!(chat_result(&reply, &session, &new_id()).is_err());
         let mut running = reply.clone();
-        running["status"] = serde_json::json!("running");
-        assert!(completed(&running, &session, &request).is_err());
+        running["outcome"] = serde_json::json!("running");
+        assert!(chat_result(&running, &session, &request).is_err());
+    }
+
+    #[test]
+    fn a_reply_without_response_evidence_is_refused() {
+        let session = new_id();
+        let request = new_id();
+        for (key, value) in [
+            ("model_id", serde_json::json!("")),
+            ("response_digest", serde_json::json!("not-a-digest")),
+            ("response_digest", serde_json::json!("A".repeat(64))),
+            ("model_id", serde_json::Value::Null),
+        ] {
+            let mut broken = terminal(&session, &request);
+            broken[key] = value;
+            assert!(chat_result(&broken, &session, &request).is_err(), "{key} must be checked");
+        }
     }
 
     #[test]
@@ -433,9 +464,8 @@ mod tests {
         let session = new_id();
         let request = new_id();
         let payload = serde_json::json!({
-            "schema_version": "apocky.mobile.session.v1",
             "session": {
-                "schema_version": "apocky.mobile.history-session.v1",
+                "schema_version": "apocv4.workspace-session-snapshot.v1",
                 "session_id": session,
                 "events_truncated": true,
                 "messages": [{ "role": "user", "content": "hi", "request_id": request }],
@@ -445,19 +475,37 @@ mod tests {
         assert!(parsed.truncated);
         assert_eq!(parsed.messages.len(), 1);
         assert!(history(&payload, &new_id()).is_err());
+        let mut wrong_schema = payload.clone();
+        wrong_schema["session"]["schema_version"] = serde_json::json!("apocv4.workspace-session-snapshot.v2");
+        assert!(history(&wrong_schema, &session).is_err());
     }
 
     #[test]
-    fn session_lists_reject_unknown_scopes() {
-        let payload = |scope: &str| {
-            serde_json::json!({
-                "schema_version": "apocky.mobile.sessions.v1",
-                "discovery_scope": scope,
-                "sessions": [{ "session_id": new_id(), "title": "A conversation" }],
-            })
-        };
-        assert!(sessions(&payload("account_conversations")).is_ok());
-        assert!(sessions(&payload("latest_conversation_only")).is_ok());
-        assert!(sessions(&payload("everything")).is_err());
+    fn conversation_lists_need_a_client_identifier_and_a_count() {
+        let listed = new_id();
+        let payload = serde_json::json!({
+            "sessions": [{
+                "session_id": listed,
+                "title": "A conversation",
+                "updated_at": "2026-09-09T00:00:00Z",
+                "message_count": 4,
+                "active_job_count": 0,
+            }],
+            "count": 1,
+        });
+        let parsed = sessions(&payload).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, listed);
+        for (key, value) in [
+            ("session_id", serde_json::json!("not-a-uuid")),
+            ("message_count", serde_json::json!(-1)),
+            ("message_count", serde_json::json!("four")),
+            ("title", serde_json::Value::Null),
+        ] {
+            let mut broken = payload.clone();
+            broken["sessions"][0][key] = value;
+            assert!(sessions(&broken).is_err(), "{key} must be checked");
+        }
+        assert!(sessions(&serde_json::json!({ "count": 0 })).is_err());
     }
 }

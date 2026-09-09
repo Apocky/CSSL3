@@ -148,3 +148,48 @@ label { display: block; margin: 14px 0 6px; font-size: 13px; color: var(--copy);
   .rail { display: none; }
   .composer, .stream { padding-left: 20px; padding-right: 20px; }
 }
+
+/* ── a reply being written ───────────────────────────────────────────────── */
+
+.turn.writing .who .status {
+  margin-left: 8px;
+  color: var(--mint);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-weight: 500;
+}
+
+/* A block caret that keeps pace with the text rather than blinking under it. */
+.caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--mint);
+  animation: caret 1s steps(1, end) infinite;
+}
+
+@keyframes caret {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+
+.thinking { display: flex; gap: 6px; align-items: center; height: 1.6em; }
+.thinking span {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted);
+  animation: thinking 1.2s ease-in-out infinite;
+}
+.thinking span:nth-child(2) { animation-delay: 0.15s; }
+.thinking span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes thinking {
+  0%, 60%, 100% { opacity: 0.28; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret { animation: none; }
+  .thinking span { animation: none; opacity: 0.6; }
+}

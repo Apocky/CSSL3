@@ -1,12 +1,27 @@
 # Apocrypha desktop
 
-The Windows client for Apocrypha. It signs in with an Apocky account and talks to
-the same public contract the phone clients use:
-`https://www.apocky.com/api/mobile/{config,status,turn,sessions}`.
+The Windows client for Apocrypha. It signs in with an Apocky account and reads
+the reply **as it is written**, over the site's streaming turn surface:
+
+| what | where |
+| --- | --- |
+| sign-in configuration | `GET /api/mobile/config` |
+| a turn | `POST /api/apocrypha/chat`, `Accept: application/x-ndjson` |
+| conversations | `GET /api/apocrypha/sessions` |
+| one transcript | `GET /api/apocrypha/sessions?session_id=<id>` |
 
 Nothing about Apocrypha runs on the computer. This is a thin client: it holds a
 sign-in, sends a message, and reads that account's own history back from the
 service. The website entry is `/download/apocrypha`.
+
+**This is not the surface the Android client uses.** The phone app is on
+`/api/mobile/*`, which answers a turn in one blocking response and cannot show a
+reply being composed. The two surfaces scope conversations differently — the
+mobile lane signs an account grant over the raw client UUID, this one derives a
+principal-scoped id — so **a conversation started on the phone is not the same
+conversation on the desktop.** That divergence is deliberate and was chosen
+(2026-09-09) to get live streaming onto the desktop; it should close again when
+one surface wins.
 
 Spec: [`specs/operations/APOCRYPHA_DESKTOP_DISTRIBUTION_2026-09-09.csl`](../../specs/operations/APOCRYPHA_DESKTOP_DISTRIBUTION_2026-09-09.csl)
 
@@ -20,6 +35,7 @@ a typed command that returns the whole view.
 | --- | --- |
 | `src/protocol.rs` | the wire contract and the outbound endpoint allowlist |
 | `src/api.rs` | HTTPS transport, status-to-sentence mapping, bounded reads |
+| `src/stream.rs` | the NDJSON turn stream and its integrity rule |
 | `src/session.rs` | a sign-in, verified against `/auth/v1/user` rather than the token payload |
 | `src/store.rs` | the refresh token, encrypted with DPAPI under the Windows user |
 | `src/journal.rs` | messages whose outcome the service has not confirmed |
@@ -27,12 +43,12 @@ a typed command that returns the whole view.
 | `src/main.rs` | the Tauri window and the command surface |
 | `frontend/` | Vite + React view over those commands |
 
-`protocol.rs`, `api.rs`, `session.rs`, `store.rs`, `journal.rs` and
-`controller.rs` are ports of the Android client's `Protocol.java`,
-`ApiClient.java`, `AuthSession.java`, `SecureStore.java`, `RequestJournal.java`
-and `AppController.java` in `Apocv4/apps/mobile/android`. **Keep them in step.**
-A change to what either client accepts, refuses, or says is a change to the
-shared contract, not a desktop-only detail.
+`session.rs`, `store.rs`, `journal.rs` and much of `controller.rs` began as
+ports of the Android client's `AuthSession.java`, `SecureStore.java`,
+`RequestJournal.java` and `AppController.java` in `Apocv4/apps/mobile/android`.
+The sign-in rules, the unconfirmed-turn rules and the sentences a person reads
+are still shared with the phone and should stay that way. The *transport* has
+diverged: `protocol.rs` and `api.rs` now speak the streaming surface.
 
 This crate is deliberately outside the `compiler-rs` workspace: Tauri pulls in
 200+ transitive dependencies and must not enter the compiler's default build.
@@ -51,6 +67,30 @@ uninstaller's good manners.
 So the folder, the Start-menu entry and the Add/Remove-programs entry read
 "Apocrypha Desktop". **The window is still titled "Apocrypha"** — see
 `app.windows[0].title`. Do not "tidy" `productName` back.
+
+
+## Reading a reply as it is written
+
+`POST /api/apocrypha/chat` answers with one JSON object per line
+(`apocky.apocrypha-chat-stream.v1`): `delta` lines carrying text as it is
+composed, then exactly one terminal `completed` or `error`. Fragments are
+handed to the window as they arrive, so a person watches the reply form.
+
+One rule is worth stating on its own: **the text shown while streaming and the
+text in the verified terminal response must be the same text.** A stream that
+renders one thing and certifies another is refused rather than displayed —
+otherwise the live view becomes a place to say something the receipt does not
+cover. `stream.rs` enforces that, along with a 32 KB cap per fragment, a 128 KB
+cap on the whole reply, and a refusal to accept anything after the terminal.
+
+If the connection dies mid-reply, what arrived stays on screen and the turn
+stays *unconfirmed* — it is never resent, because the service may still be
+writing it. Refreshing the conversation is how it resolves.
+
+`tests/stream_over_socket.rs` proves this over a real socket: a fixture holds
+the connection open between fragments, and the test asserts each fragment is
+observed before the next is sent. That is the property a unit test feeding lines
+in directly cannot demonstrate.
 
 ## What is stored on the computer
 
@@ -80,7 +120,7 @@ cd apps\apocrypha-desktop\frontend; npm install
 cd ..; cargo tauri build
 ```
 
-Output: `target\release\bundle\nsis\Apocrypha_<version>_x64-setup.exe`.
+Output: `target\release\bundle\nsis\Apocrypha Desktop_<version>_x64-setup.exe`.
 
 ## Test
 

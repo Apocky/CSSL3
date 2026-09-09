@@ -4,15 +4,18 @@
 //! the Rust process: the webview never holds a token and never reaches the
 //! network itself, so a rendering-side defect cannot leak or misdirect one.
 
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::time::Duration;
 
 use crate::protocol::{self, ProtocolError};
 use crate::session::AuthSession;
+use crate::stream::TurnStream;
 
 const MAX_REQUEST_BYTES: usize = 131_072;
 const MAX_RESPONSE_BYTES: usize = 4_194_304;
 const MAX_DIAGNOSTIC_BYTES: usize = 16_384;
+/// A generous ceiling on the whole stream; `TurnStream` enforces the real one.
+const MAX_STREAM_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -137,10 +140,98 @@ impl ApiClient {
         Ok(())
     }
 
-    /// A call against the account API on apocky.com; `None` body means GET.
-    pub fn account(&self, path: &str, body: Option<serde_json::Value>, token: &str) -> Result<serde_json::Value> {
-        let method = if body.is_some() { "POST" } else { "GET" };
-        self.request(&format!("{}{path}", protocol::API), method, body, Some(token), false)
+    /// A read against the account's durable conversations on apocky.com.
+    pub fn apocrypha_get(&self, path: &str, token: &str) -> Result<serde_json::Value> {
+        self.request(&format!("{}{path}", protocol::SITE), "GET", None, Some(token), false)
+    }
+
+    /// Sends a turn and reads the reply as it is written.
+    ///
+    /// `on_delta` is called for each fragment the service writes, so the window
+    /// can show the reply forming. The verified text is what this returns; a
+    /// stream whose fragments disagree with that text is an error, not a reply.
+    pub fn stream_turn(
+        &self,
+        text: &str,
+        session: &str,
+        request: &str,
+        token: &str,
+        on_delta: &mut dyn FnMut(&str),
+    ) -> Result<String> {
+        let body = protocol::chat_body(text, session, request)?;
+        let encoded = serde_json::to_vec(&body)
+            .map_err(|_| ApiError::Rejected("The request could not be prepared.".into()))?;
+        if encoded.len() > MAX_REQUEST_BYTES {
+            return Err(ApiError::Rejected("The request is too large.".into()));
+        }
+        let url = protocol::endpoint(&format!("{}/api/apocrypha/chat", protocol::SITE))?;
+        let outcome = self
+            .agent
+            .request_url("POST", &url)
+            .timeout(Duration::from_secs(300))
+            .set("Accept", "application/x-ndjson")
+            .set("Content-Type", "application/json")
+            .set("Origin", protocol::SITE)
+            .set("Authorization", &format!("Bearer {token}"))
+            .send_bytes(&encoded);
+
+        let response = match outcome {
+            Ok(response) => response,
+            Err(ureq::Error::Status(status, response)) => {
+                if (300..400).contains(&status) {
+                    return Err(ApiError::Http {
+                        status,
+                        message: "The service tried to redirect this secure request. Update the app or retry later.".into(),
+                    });
+                }
+                let trace = response.header("X-Apocky-Trace-Id").map(str::to_string);
+                let json_error = response
+                    .header("Content-Type")
+                    .map(|value| value.to_ascii_lowercase().starts_with("application/json"))
+                    .unwrap_or(false);
+                let diagnostic = if json_error {
+                    read_bounded(response, MAX_DIAGNOSTIC_BYTES).unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                return Err(failure(status, false, &diagnostic, trace.as_deref()));
+            }
+            Err(ureq::Error::Transport(transport)) => {
+                return Err(match transport.kind() {
+                    ureq::ErrorKind::Io => ApiError::Timeout,
+                    _ => ApiError::Transport,
+                });
+            }
+        };
+
+        let ndjson = response
+            .header("Content-Type")
+            .map(|value| value.to_ascii_lowercase().starts_with("application/x-ndjson"))
+            .unwrap_or(false);
+        if !ndjson {
+            return Err(ApiError::Rejected(
+                "The service did not return a reply stream.".into(),
+            ));
+        }
+
+        let mut stream = TurnStream::new();
+        let reader = BufReader::new(response.into_reader().take(MAX_STREAM_RESPONSE_BYTES));
+        for line in reader.lines() {
+            let line = line.map_err(|_| ApiError::Timeout)?;
+            if let Some(delta) = stream.accept(&line)? {
+                on_delta(&delta);
+            }
+        }
+        if !stream.is_finished() && !stream.text().is_empty() {
+            // The person watched real words appear, so say what happened to
+            // them rather than reporting a bare failure.
+            return Err(ApiError::Rejected(format!(
+                "The connection ended while the reply was still being written; {} characters had arrived. \
+                 The reply may still be running — refresh this conversation to check for it.",
+                stream.text().chars().count(),
+            )));
+        }
+        stream.finish(session, request).map_err(ApiError::from)
     }
 
     fn session(&self, tokens: &serde_json::Value) -> Result<AuthSession> {
@@ -177,15 +268,10 @@ impl ApiClient {
         auth: bool,
     ) -> Result<serde_json::Value> {
         let url = protocol::endpoint(raw_url)?;
-        let read_timeout = if raw_url == format!("{}/turn", protocol::API) {
-            Duration::from_secs(300)
-        } else {
-            Duration::from_secs(30)
-        };
         let mut request = self
             .agent
             .request_url(method, &url)
-            .timeout(read_timeout)
+            .timeout(Duration::from_secs(30))
             .set("Accept", "application/json");
         if auth {
             if let Some(key) = &self.public_key {

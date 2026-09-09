@@ -28,7 +28,6 @@ pub struct View {
     pub notice: String,
     pub session_id: String,
     pub pending_request: String,
-    pub history_scope: String,
     pub messages: Vec<Message>,
     pub conversations: Vec<Conversation>,
 }
@@ -43,7 +42,6 @@ pub struct Controller {
     notice: String,
     email_draft: String,
     session_id: String,
-    history_scope: String,
     fresh_conversation: bool,
     code_sent: bool,
     access_denied: bool,
@@ -63,7 +61,6 @@ impl Controller {
             notice: String::new(),
             email_draft: String::new(),
             session_id: protocol::new_id(),
-            history_scope: "account_conversations".to_string(),
             fresh_conversation: false,
             code_sent: false,
             access_denied: false,
@@ -88,7 +85,6 @@ impl Controller {
             notice: self.notice.clone(),
             session_id: self.session_id.clone(),
             pending_request: pending,
-            history_scope: self.history_scope.clone(),
             messages: self.messages.clone(),
             conversations,
         }
@@ -219,15 +215,19 @@ impl Controller {
         self.view()
     }
 
-    pub fn send(&mut self, value: &str) -> View {
+    /// Sends a message and reads the reply as it is written.
+    ///
+    /// `on_delta` receives each fragment so the window can show the reply
+    /// forming rather than a spinner.
+    pub fn send(&mut self, value: &str, on_delta: &mut dyn FnMut(&str)) -> View {
         if self.session.is_none() || self.access_denied || !self.journal.request_for(&self.session_id).is_empty() {
             return self.view();
         }
-        let outcome = self.send_turn(value);
+        let outcome = self.send_turn(value, on_delta);
         self.finish(outcome)
     }
 
-    fn send_turn(&mut self, value: &str) -> Flow {
+    fn send_turn(&mut self, value: &str, on_delta: &mut dyn FnMut(&str)) -> Flow {
         let text = protocol::prompt(value)?;
         let request = protocol::new_id();
         let target = self.session_id.clone();
@@ -244,13 +244,13 @@ impl Controller {
         });
 
         let token = self.access_token()?;
-        let body = protocol::turn_body(&text, &target, &request)?;
-        let result = match self.api.account("/turn", Some(body), &token) {
-            Ok(result) => result,
+        let reply = match self.api.stream_turn(&text, &target, &request, &token, on_delta) {
+            Ok(reply) => reply,
             Err(error) => {
                 // These statuses mean the service never accepted the message,
                 // so it is safe to release it and hand the text back. Any other
-                // failure leaves the turn unconfirmed on purpose.
+                // failure — including a stream that broke midway — leaves the
+                // turn unconfirmed on purpose: the reply may still be running.
                 if let ApiError::Http { status, .. } = error {
                     if matches!(status, 400 | 401 | 403 | 404 | 415 | 429) {
                         self.journal.resolve(&target, &request);
@@ -261,7 +261,6 @@ impl Controller {
                 return Err(error);
             }
         };
-        let reply = protocol::completed(&result, &target, &request)?;
         self.messages.push(Message {
             role: "assistant".into(),
             content: reply,
@@ -300,25 +299,18 @@ impl Controller {
     fn refresh_account(&mut self) -> Flow {
         self.fresh_session()?;
         let token = self.access_token()?;
-        let status = self.api.account("/status", None, &token)?;
-        if protocol::text(&status, "schema_version", 64)? != "apocky.mobile.status.v1" {
-            return Err(ApiError::Rejected("The service returned an unsupported response.".into()));
-        }
-        self.access_denied = false;
-        if protocol::text(&status, "status", 32)? != "live" {
-            self.notice = "Apocrypha is reconnecting. Your account is signed in; retry when the service is ready.".into();
-            return Ok(());
-        }
-        let list = self.api.account("/sessions", None, &token)?;
+        // The conversation list doubles as the liveness check: if it answers,
+        // the account's durable history is reachable.
+        let list = self.api.apocrypha_get("/api/apocrypha/sessions", &token)?;
         let remote = protocol::sessions(&list)?;
-        self.history_scope = remote.scope;
-        for item in remote.conversations.iter().rev() {
+        self.access_denied = false;
+        for item in remote.iter().rev() {
             self.remember(&item.id, &item.title);
         }
         let pending = self.journal.request_for(&self.session_id);
         let unknown = !self.known.iter().any(|(id, _)| id == &self.session_id);
         if pending.is_empty() && !self.fresh_conversation && unknown && self.messages.is_empty() {
-            if let Some(first) = remote.conversations.first() {
+            if let Some(first) = remote.first() {
                 self.session_id = first.id.clone();
             }
         }
@@ -333,8 +325,8 @@ impl Controller {
 
     fn read_conversation(&mut self) -> Flow {
         let token = self.access_token()?;
-        let path = format!("/sessions?session_id={}", protocol::id(&self.session_id)?);
-        let response = self.api.account(&path, None, &token)?;
+        let path = format!("/api/apocrypha/sessions?session_id={}", protocol::id(&self.session_id)?);
+        let response = self.api.apocrypha_get(&path, &token)?;
         let canonical = protocol::history(&response, &self.session_id)?;
         self.messages = canonical.messages;
         let pending = self.journal.request_for(&self.session_id);
@@ -461,7 +453,7 @@ mod tests {
     fn a_signed_out_client_refuses_to_send() {
         let mut controller = Controller::new().unwrap();
         let before = controller.view().messages.len();
-        let view = controller.send("hello");
+        let view = controller.send("hello", &mut |_| {});
         assert_eq!(view.messages.len(), before, "no message may be composed without a session");
         assert!(!view.signed_in);
     }

@@ -23,7 +23,6 @@ export interface View {
   notice: string;
   session_id: string;
   pending_request: string;
-  history_scope: string;
   messages: Message[];
   conversations: Conversation[];
 }
@@ -38,7 +37,6 @@ export const EMPTY_VIEW: View = {
   notice: 'Connecting to apocky.com…',
   session_id: '',
   pending_request: '',
-  history_scope: 'account_conversations',
   messages: [],
   conversations: [],
 };
@@ -79,10 +77,31 @@ export function conversationLabel(conversation: Conversation): string {
   return title.length > 64 ? `${title.slice(0, 63)}…` : title;
 }
 
-/** True when this history came back partial and the person should know. */
-export function scopeNote(view: View): string | null {
-  if (!view.signed_in) return null;
-  return view.history_scope === 'latest_conversation_only'
-    ? 'This service is listing only your most recent conversation.'
-    : null;
+/** The name of the window event that carries reply fragments as they arrive. */
+export const TURN_DELTA_EVENT = 'apocrypha://turn-delta';
+
+/** A reply currently being written. */
+export interface Live {
+  text: string;
+  startedAt: number;
+}
+
+/** How long the reply has been arriving, in words rather than milliseconds. */
+export function elapsedLabel(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${String(seconds % 60).padStart(2, '0')}s`;
+}
+
+/**
+ * What to say while a reply is still arriving.
+ *
+ * Silence is the thing to avoid: before the first fragment there is nothing to
+ * read, so the wait itself has to be legible.
+ */
+export function liveStatus(live: Live | null, now: number): string | null {
+  if (!live) return null;
+  const elapsed = elapsedLabel(now - live.startedAt);
+  return live.text ? `Writing · ${elapsed}` : `Thinking · ${elapsed}`;
 }

@@ -5,8 +5,9 @@ import {
   conversationLabel,
   EMPTY_VIEW,
   MAX_TEXT_BYTES,
+  elapsedLabel,
+  liveStatus,
   promptBytes,
-  scopeNote,
   sendBlockedReason,
   type View,
 } from './view.ts';
@@ -68,8 +69,19 @@ test('conversation labels stay short and never render as blank', () => {
   assert.ok(long.endsWith('…'));
 });
 
-test('a partial history scope is surfaced rather than hidden', () => {
-  assert.equal(scopeNote(signedIn), null);
-  assert.match(scopeNote({ ...signedIn, history_scope: 'latest_conversation_only' }) ?? '', /most recent/);
-  assert.equal(scopeNote({ ...EMPTY_VIEW, history_scope: 'latest_conversation_only' }), null);
+test('elapsed time is readable at every scale', () => {
+  assert.equal(elapsedLabel(0), '0s');
+  assert.equal(elapsedLabel(-500), '0s');
+  assert.equal(elapsedLabel(1_500), '1s');
+  assert.equal(elapsedLabel(59_999), '59s');
+  assert.equal(elapsedLabel(60_000), '1m 00s');
+  assert.equal(elapsedLabel(3_725_000), '62m 05s');
+});
+
+test('the wait is legible before the first fragment arrives', () => {
+  const started = 1_000_000;
+  assert.equal(liveStatus(null, started), null);
+  // Nothing written yet: the person still needs to know it is working.
+  assert.equal(liveStatus({ text: '', startedAt: started }, started + 2_000), 'Thinking · 2s');
+  assert.equal(liveStatus({ text: 'Once', startedAt: started }, started + 2_000), 'Writing · 2s');
 });
