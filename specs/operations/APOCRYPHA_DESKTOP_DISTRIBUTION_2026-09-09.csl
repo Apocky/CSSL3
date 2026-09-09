@@ -52,19 +52,41 @@
                         ; mismatch ⇒ degrade→preparing ; N! publish.hash.that.lies
   signing := unsigned ⇒ page states the SmartScreen screen by name + how to verify before running
 
-§T EVIDENCE @2026-09-09
-  ✓ cargo test --release : 33/33 (protocol.allowlist, DPAPI.opaque-on-disk, DPAPI.name-rebind-refused,
-                            journal.no-duplicate-send, session.account-rebind-refused)
+§C INSTALL.PATH.COLLISION ← found by running the install check, ¬ by reading code
+  ✓ observed @2026-09-09 : NSIS currentUser installs to %LOCALAPPDATA%\<productName>
+  ✓ %LOCALAPPDATA%\Apocrypha pre-exists since 2026-07-14 ⊗ foreign.state :
+      secrets\online-learning-capability.txt + security\acl-backups\{4 dated dirs}
+      + worker-stdout.log @2026-09-08  ⇒ another Apocrypha component owns that root
+  ✗ first install put apocrypha-desktop.exe + uninstall.exe INTO that root
+  ✓ backed up 13 files before uninstalling ; uninstaller removed only its own two
+    ; all 11 foreign files verified byte-identical after ⇒ ¬ harm.done
+  ✓ fix := productName "Apocrypha" → "Apocrypha Desktop" ⇒ install root %LOCALAPPDATA%\Apocrypha Desktop
+    ; app.windows[0].title stays "Apocrypha" ⇒ window unchanged for the person
+  I> N! revert productName ← the folder name is load-bearing, ¬ cosmetic
+  ✓ second finding : SecureStore::new created %LOCALAPPDATA%\Apocky\Apocrypha at startup
+    ⇒ opening.app ∧ ¬ sign-in still left a folder ; fix := create-on-first-write
+    ; test store::opening_the_store_writes_nothing_until_something_is_saved
+
+§T EVIDENCE @2026-09-09 ← final artifact
+  ✓ cargo test --release : 34/34 (protocol.allowlist, DPAPI.opaque-on-disk, DPAPI.name-rebind-refused,
+                            journal.no-duplicate-send, session.account-rebind-refused, store.lazy-create)
   ✓ frontend node:test : 9/9 (byte-budget = UTF-8 ¬ chars ; composer closed while unconfirmed)
-  ✓ cargo tauri build → Apocrypha_0.1.0_x64-setup.exe → staged 1_770_374 B
-      sha256 aef4d9827596037e89468062eae3d39ae7137f0500d827c0bc0fce3dad8e403e
+  ✓ cargo tauri build → "Apocrypha Desktop_0.1.0_x64-setup.exe" → staged 1_770_272 B
+      sha256 51d5bc739ba4bae4a3d7658d4bb7744c05905aef6782f0810784d87cf6d58587
   ✓ live : cargo test -- --ignored ⇒ real /api/mobile/config satisfies protocol::config
-  ✓ runtime : window opened ⊗ notice "Sign in with your apocky.com account." ⇒ bootstrap reached.service
+  ✓ install : exit 0 → %LOCALAPPDATA%\Apocrypha Desktop ; neighbour Apocrypha 11 files unchanged
+  ✓ launch.installed : window 'Apocrypha' 1196x819 ⊗ "Sign in with your apocky.com account."
+      ⇒ the installed copy reached the service ; ¬ only the dev build
+  ✓ ¬ data.folder created before sign-in
+  ✓ uninstall : exit 0 ; install dir gone ; shortcut gone ; HKCU uninstall entry gone
+      ; neighbour Apocrypha still 11 files
   ✓ site : npm run check clean ; next build clean ; .next/server/pages/download/apocrypha.html
            carries installer href + sidecar href + exact sha256 + unsigned-warning copy
+           ; Windows pending list now reads "account sign-in and chat" only
   ✓ tests/lib/desktop-release.test.tsx + native-mobile-release.test.tsx wired → npm run test:apocrypha-downloads
+  ◐ installer_install_and_uninstall := passed ⊗ caveat : this host is ¬ a clean machine
+      (it already carried the foreign %LOCALAPPDATA%\Apocrypha) ; weaker than a fresh-VM check
   ○ account_sign_in_and_chat := pending ← needs a real account credential ; declared pending on the page
-  ○ installer_install_and_uninstall := pending ← not installed on a clean machine
   ▽ pre-existing.red : tests/api/brain/mobile-sync.test.ts 502≠200
       ✓ reproduced identically @ pristine bfe8c20 ⇒ ¬ caused.by.this.slice ; untouched
 

@@ -26,18 +26,18 @@ pub struct SecureStore {
 }
 
 impl SecureStore {
+    /// Resolves the folder without creating it.
+    ///
+    /// Creation is deferred to the first write, so opening the application and
+    /// never signing in leaves nothing at all behind on the computer.
     pub fn new() -> Result<Self> {
         let base = std::env::var("LOCALAPPDATA")
             .map_err(|_| reject("This computer has no local application data folder."))?;
-        let root = Path::new(&base).join("Apocky").join("Apocrypha");
-        fs::create_dir_all(&root)
-            .map_err(|_| reject("Your secure session folder could not be created."))?;
-        Ok(Self { root })
+        Ok(Self { root: Path::new(&base).join("Apocky").join("Apocrypha") })
     }
 
     #[cfg(test)]
     pub fn at(root: PathBuf) -> Result<Self> {
-        fs::create_dir_all(&root).map_err(|_| reject("Your secure session folder could not be created."))?;
         Ok(Self { root })
     }
 
@@ -64,6 +64,8 @@ impl SecureStore {
 
     pub fn put(&self, name: &str, data: &serde_json::Value) -> Result<()> {
         let path = self.path(name)?;
+        fs::create_dir_all(&self.root)
+            .map_err(|_| reject("Your secure session folder could not be created."))?;
         let plaintext = serde_json::to_vec(data)
             .map_err(|_| reject("Your secure session could not be saved."))?;
         let sealed = protect(&plaintext, &Self::entropy(name))?;
@@ -196,6 +198,17 @@ mod tests {
         let root = std::env::temp_dir().join(format!("apocrypha-store-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         (SecureStore::at(root.clone()).unwrap(), root)
+    }
+
+    #[test]
+    fn opening_the_store_writes_nothing_until_something_is_saved() {
+        let (store, root) = temp_store("lazy");
+        let _ = fs::remove_dir_all(&root);
+        assert!(store.get("auth").unwrap().is_none());
+        assert!(!root.exists(), "a person who never signs in leaves nothing behind");
+        store.put("auth", &serde_json::json!({ "refresh_token": "value" })).unwrap();
+        assert!(root.exists());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

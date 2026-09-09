@@ -37,6 +37,21 @@ shared contract, not a desktop-only detail.
 This crate is deliberately outside the `compiler-rs` workspace: Tauri pulls in
 200+ transitive dependencies and must not enter the compiler's default build.
 
+## Where it installs, and why the product name is what it is
+
+`productName` is **"Apocrypha Desktop"**, not "Apocrypha". NSIS installs a
+`currentUser` build to `%LOCALAPPDATA%\<productName>`, and
+`%LOCALAPPDATA%\Apocrypha` already belongs to another Apocrypha component — it
+holds that component's `secrets\` and `security\acl-backups\`. Installing into
+it once (2026-09-09) put this client's binary alongside another program's
+secrets; the uninstaller behaved and removed only its own two files, but an
+install root shared with foreign state is not something to leave to an
+uninstaller's good manners.
+
+So the folder, the Start-menu entry and the Add/Remove-programs entry read
+"Apocrypha Desktop". **The window is still titled "Apocrypha"** — see
+`app.windows[0].title`. Do not "tidy" `productName` back.
+
 ## What is stored on the computer
 
 Under `%LOCALAPPDATA%\Apocky\Apocrypha`, encrypted with DPAPI and bound to both
@@ -45,8 +60,10 @@ the Windows user and the record's own name:
 - the Supabase **refresh token** and the account id
 - conversation **identifiers** opened on this computer, and any unresolved request ids
 
-No access token. No message text. Signing out inside the application deletes all
-of it and calls `/auth/v1/logout?scope=local`.
+No access token. No message text. The folder is created on the first write, not
+at startup, so opening the application and never signing in leaves nothing at
+all behind. Signing out inside the application deletes all of it and calls
+`/auth/v1/logout?scope=local`.
 
 ## Unconfirmed messages
 
