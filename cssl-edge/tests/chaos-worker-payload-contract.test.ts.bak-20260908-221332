@@ -162,8 +162,6 @@ assert(constrainedText.includes('CARD_MARKER'), 'context compaction removed card
 assert(constrainedText.includes('RECENT_CONTEXT_MARKER'), 'context compaction removed recent conversation context');
 assert(constrainedText.includes(job.memoryManifestHash) && constrainedText.includes(oversizedMemory.digest),
   'context compaction removed admitted-memory provenance');
-assert(constrainedText.includes('MEMORY_MARKER') && /bounded evidence (bounded evidence ){20,}/u.test(constrainedText),
-  'context compaction starved admitted-memory record text (hash survived, content did not)');
 
 const ownerContinuityJob: ClaimedJob = {
   ...job,

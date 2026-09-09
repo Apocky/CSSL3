@@ -190,7 +190,6 @@ function baseSystem(job: ClaimedJob): string {
     'Answer the actual question directly. Use admitted memory when relevant and distinguish recalled context from present evidence.',
     'Preserve meaningful ambiguity and disagreement instead of smoothing it into false certainty.',
     'If the admitted memory records and the conversation do not contain the answer, say exactly that; never invent names, acronym expansions, layers, or records.',
-    'When you rely on a record, name its bracketed source and provenance id so the user can check it. When asked what you remember, list the record headers you actually received.',
     MEMORY_DIAGNOSTIC_POLICY,
   ].join(' ');
 }

@@ -270,11 +270,6 @@ export class ApocryphaWorker {
           job_id: claim.jobId,
           attempt_id: claim.attemptId,
           adapter_states: retrievalStates,
-          // Without the per-adapter detail a degraded faculty is invisible:
-          // the state alone cannot tell a misconfigured reader from a slow one.
-          adapter_details: Object.fromEntries(memory.results
-            .filter((result) => result.state !== 'ok' && result.detail)
-            .map((result) => [result.name, String(result.detail).slice(0, 300)])),
         });
       }
       if (abortController.signal.aborted) throw abortController.signal.reason;
@@ -358,13 +353,7 @@ export class ApocryphaWorker {
             log('warn', 'worker.qwen.prompt_recompacted', { job_id: claim.jobId, prompt_tokens: count, ceiling });
             request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry: true });
           } else if (count !== null) {
-            log('info', 'worker.qwen.prompt_tokens', {
-              job_id: claim.jobId,
-              prompt_tokens: count,
-              ceiling,
-              memory_records: (memory as RetrievalBundle).records.length,
-              memory_sources: Object.fromEntries((memory as RetrievalBundle).results.map((result) => [result.name, result.records.length])),
-            });
+            log('info', 'worker.qwen.prompt_tokens', { job_id: claim.jobId, prompt_tokens: count, ceiling, memory_records: (memory as RetrievalBundle).records.length });
           }
         }
         return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);

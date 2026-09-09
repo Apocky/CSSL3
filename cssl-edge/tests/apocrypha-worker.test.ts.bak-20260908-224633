@@ -134,12 +134,6 @@ async function main(): Promise<void> {
   const qwen = await listen(async (request, response) => {
     if (request.url === '/health') return json(response, 200, { status: 'ok' });
     if (request.url === '/v1/models') return json(response, 200, { data: [{ id: 'qwen35-35b-a3b-q4' }] });
-    if (request.url === '/props') return json(response, 200, { default_generation_settings: { n_ctx: 4096 } });
-    if (request.url === '/tokenize') {
-      const received = await body(request);
-      const tokens = Math.ceil(String(received.content ?? '').length / 3);
-      return json(response, 200, { tokens: Array.from({ length: tokens }, (_item, index) => index) });
-    }
     if (request.url === '/memory') {
       activeMemoryRequests += 1;
       peakMemoryRequests = Math.max(peakMemoryRequests, activeMemoryRequests);

@@ -11,7 +11,7 @@
     "base_url": "http://127.0.0.1:19124/v1",
     "model_alias": "qwen35-35b-a3b-q4",
     "profile_hash": "5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9",
-    "context_tokens": 16384,
+    "context_tokens": 4096,
     "max_output_tokens": 2048,
     "idle_timeout_ms": 180000,
     "max_runtime_ms": 2700000,

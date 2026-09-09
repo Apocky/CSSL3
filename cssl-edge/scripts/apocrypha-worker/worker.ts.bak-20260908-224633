@@ -60,7 +60,6 @@ export class ApocryphaWorker {
   private readonly fetchImpl: typeof fetch;
   private readonly stopController = new AbortController();
   private heartbeatTimer: NodeJS.Timeout | null = null;
-  private contextClampLogged = false;
   private heartbeatRetryAt = 0;
   private heartbeatInFlight = false;
   private memoryProbeInFlight = false;
@@ -270,11 +269,6 @@ export class ApocryphaWorker {
           job_id: claim.jobId,
           attempt_id: claim.attemptId,
           adapter_states: retrievalStates,
-          // Without the per-adapter detail a degraded faculty is invisible:
-          // the state alone cannot tell a misconfigured reader from a slow one.
-          adapter_details: Object.fromEntries(memory.results
-            .filter((result) => result.state !== 'ok' && result.detail)
-            .map((result) => [result.name, String(result.detail).slice(0, 300)])),
         });
       }
       if (abortController.signal.aborted) throw abortController.signal.reason;
@@ -334,39 +328,8 @@ export class ApocryphaWorker {
           if (timedFlushReady && buffer.length > 0) await flush(true);
         }
       };
-      // The server's real window is authoritative; a larger configured window
-      // would only produce overflow rejections.
-      const serverContext = probe.contextTokens;
-      const effectiveConfig = serverContext && serverContext < this.config.contextWindowTokens
-        ? { ...this.config, contextWindowTokens: serverContext }
-        : this.config;
-      if (effectiveConfig !== this.config && !this.contextClampLogged) {
-        this.contextClampLogged = true;
-        log('warn', 'worker.qwen.context_clamped', {
-          configured: this.config.contextWindowTokens,
-          server_n_ctx: serverContext,
-        });
-      }
       const generate = async (overflowRetry = false): Promise<QwenResult> => {
-        let request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry });
-        if (!overflowRetry) {
-          // Exact count from the server; fall back to the byte estimate when unavailable.
-          const counter = (this.qwen as { tokenCount?: QwenClient['tokenCount'] }).tokenCount;
-          const count = counter ? await counter.call(this.qwen, request.messages, abortController.signal) : null;
-          const ceiling = effectiveConfig.contextWindowTokens - (request.generation.maxTokens ?? this.config.maxOutputTokens) - 64;
-          if (count !== null && count > ceiling) {
-            log('warn', 'worker.qwen.prompt_recompacted', { job_id: claim.jobId, prompt_tokens: count, ceiling });
-            request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry: true });
-          } else if (count !== null) {
-            log('info', 'worker.qwen.prompt_tokens', {
-              job_id: claim.jobId,
-              prompt_tokens: count,
-              ceiling,
-              memory_records: (memory as RetrievalBundle).records.length,
-              memory_sources: Object.fromEntries((memory as RetrievalBundle).results.map((result) => [result.name, result.records.length])),
-            });
-          }
-        }
+        const request = composeQwenRequest(this.config, claim, memory as RetrievalBundle, { overflowRetry });
         return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);
       };
       let result: QwenResult;
