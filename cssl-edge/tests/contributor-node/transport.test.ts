@@ -4,6 +4,7 @@ import { generateKeyPairSync, type KeyObject } from 'node:crypto';
 import {
   CONTRIBUTOR_ENROLLMENT_SCHEMA,
   CONTRIBUTOR_LEASE_REQUEST_SCHEMA,
+  CONTRIBUTOR_LEASE_POLL_SCHEMA,
   CONTRIBUTOR_RESULT_SUBMISSION_SCHEMA,
   CONTRIBUTOR_REVOKE_SCHEMA,
   ContributorTransportController,
@@ -11,16 +12,19 @@ import {
   MemoryContributorTransportStore,
   publicKeySpkiB64,
   signEnrollmentRequest,
+  signLeasePollRequest,
   signRevokeRequest,
   signResultSubmission,
   verifyEnrollmentReceipt,
   verifyLeaseDispatch,
+  verifyContributorLeasePollRequest,
   verifyResultReceipt,
   verifyResultSubmission,
   verifyRevokeReceipt,
   type EnrollmentRequest,
   type LeaseDispatch,
   type LeaseIssueRequest,
+  type LeasePollRequestPayload,
   type RevokeRequestPayload,
 } from '../../lib/apocrypha/contributor-transport';
 import {
@@ -128,6 +132,30 @@ export async function testLeaseDispatchIsSignedAndIdempotent(): Promise<void> {
   assert.throws(() => verifyLeaseDispatch(tampered, f.controllerPublic), errorIs('TRANSPORT_SIGNATURE_INVALID'));
 }
 
+export async function testNodeSignedLeasePollProofOfPossession(): Promise<void> {
+  const f = fixture();
+  const poll: LeasePollRequestPayload = {
+    schema_version: CONTRIBUTOR_LEASE_POLL_SCHEMA,
+    request_id: 'poll-request-01',
+    idempotency_key: 'poll-idempotency-01',
+    node_id: f.enrollment.node_id,
+    node_key_id: f.enrollment.node_key_id,
+    issued_at: NOW - 500,
+    expires_at: NOW + 30_000,
+    attempt: 0,
+    task: { kind: 'vector_dot', left: [1, 2], right: [3, 4] },
+  };
+  const signed = signLeasePollRequest(poll, f.node);
+  assert.equal(
+    verifyContributorLeasePollRequest(signed, f.nodePublic, f.enrollment.node_id, f.enrollment.node_key_id, NOW).node_id,
+    f.enrollment.node_id,
+  );
+  await assert.rejects(
+    async () => verifyContributorLeasePollRequest({ ...signed, node_id: 'node-other' }, f.nodePublic, f.enrollment.node_id, f.enrollment.node_key_id, NOW),
+    errorIs('TRANSPORT_NODE_KEY_MISMATCH'),
+  );
+}
+
 export async function testWorkerResultRoundTripAndReplay(): Promise<void> {
   const f = fixture();
   await f.transport.enroll(f.enrollment);
@@ -229,10 +257,11 @@ export async function testFailClosedBoundaries(): Promise<void> {
 async function runAll(): Promise<void> {
   await testEnrollmentProofOfPossessionAndReplay();
   await testLeaseDispatchIsSignedAndIdempotent();
+  await testNodeSignedLeasePollProofOfPossession();
   await testWorkerResultRoundTripAndReplay();
   await testRevocationSeversFutureTransport();
   await testFailClosedBoundaries();
-  console.log('contributor-node/transport.test : OK · 5 tests passed');
+  console.log('contributor-node/transport.test : OK · 6 tests passed');
 }
 
 declare const require: { main?: unknown } | undefined;

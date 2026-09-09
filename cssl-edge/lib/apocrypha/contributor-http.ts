@@ -39,7 +39,7 @@ import { CONTRIBUTOR_NODE_MANIFEST } from '@/lib/apocrypha/contributor-node';
 export const CONTRIBUTOR_HTTP_MAX_BODY_BYTES = 128 * 1024;
 export const CONTRIBUTOR_HTTP_ROUTE_SCHEMA = 'apocrypha.contributor.http.v1' as const;
 
-export type ContributorEndpoint = 'enroll' | 'lease' | 'result' | 'revoke' | 'status';
+export type ContributorEndpoint = 'enroll' | 'lease' | 'poll' | 'result' | 'revoke' | 'status';
 
 export interface ContributorRateLimitRequest {
   readonly endpoint: ContributorEndpoint;
@@ -73,6 +73,7 @@ export interface ContributorAtomicRouteController {
   readonly prepare: {
     enrollment(value: unknown): Promise<ContributorTransportAtomicEnrollmentInput>;
     lease(value: unknown): Promise<ContributorTransportAtomicLeaseInput>;
+    poll?(value: unknown): Promise<ContributorTransportAtomicLeaseInput>;
     result(value: unknown): Promise<ContributorTransportAtomicResultInput>;
     revoke(value: unknown): Promise<ContributorTransportAtomicRevokeInput>;
   };
@@ -680,6 +681,19 @@ async function dispatchEndpoint(
     if (endpoint === 'lease') {
       return configured.atomicController.operations.atomicIssueLease(
         await configured.atomicController.prepare.lease(body),
+      );
+    }
+    if (endpoint === 'poll') {
+      if (!configured.atomicController.prepare.poll) {
+        throw new ContributorHttpError(
+          503,
+          'transport_unconfigured',
+          'contributor node polling is not configured',
+          { retryAfterSeconds: 60 },
+        );
+      }
+      return configured.atomicController.operations.atomicIssueLease(
+        await configured.atomicController.prepare.poll(body),
       );
     }
     if (endpoint === 'result') {

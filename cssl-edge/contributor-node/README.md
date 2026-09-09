@@ -1,14 +1,10 @@
-# Apocrypha contributor node candidate
+# Apocrypha contributor node
 
-This package is a local-only candidate runtime. It has no network transport,
-filesystem traversal, shell, process spawning, git, chat, vault, or MCP
-integration. It starts paused, requires `--opt-in`, accepts one controller-
-signed deterministic `vector_dot` lease, and emits one node-signed result.
+This package is an opt-in, resource-capped contributor runtime. It has no filesystem traversal, shell, process spawning, git, chat, vault, or MCP integration. It starts paused, requires `--opt-in`, and can either accept one controller-signed deterministic `vector_dot` lease on stdin or use `--network` to enroll, poll a node-signed lease, execute it, and submit a node-signed result to the Apocrypha transport.
 
-The candidate is intentionally not a public executable release. A controller
-transport, publisher signature, platform installers, authenticated contribution
-oracle, and rollback proof are still missing. Do not run an unsigned package
-against production.
+The downloadable artifact remains gated by the website release manifest until
+the platform signer, install smoke, malware scan, and rollback evidence are
+published. Do not run an unsigned package against production.
 
 ## Build and local test
 
@@ -47,5 +43,8 @@ closed with evidence.
 The process reads one JSON lease from stdin and writes one JSON result to
 stdout. It requires an Ed25519 controller public key in
 `APOCRYPHA_CONTROLLER_PUBLIC_KEY_PEM`, and only accepts `--opt-in` for work.
-No private key is read from an environment variable; the node signing key is
-generated in memory and never leaves the process.
+For live mode, set `APOCRYPHA_CONTROLLER_PUBLIC_KEY_PEM` and
+`APOCRYPHA_CONTROLLER_KEY_ID`, then run `node dist/cli.js --network --opt-in`.
+The node identity is generated once under the platform state directory with
+0600 permissions and is never sent to the server; only its public key and
+signed envelopes leave the device. `--loop` is an additional explicit opt-in.

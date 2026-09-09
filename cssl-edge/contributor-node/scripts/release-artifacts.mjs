@@ -38,6 +38,8 @@ export const CANDIDATE_FILES = Object.freeze([
   'RELEASE.csl',
   'dist/cli.d.ts',
   'dist/cli.js',
+  'dist/client.d.ts',
+  'dist/client.js',
   'dist/runtime.d.ts',
   'dist/runtime.js',
   'package.json',

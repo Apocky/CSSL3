@@ -1,27 +1,15 @@
--- §C contributor abuse-control bucket ⊕ atomic global consume
+-- §C public node-authenticated polling abuse control
 --
--- 0055 adds no credential or caller-selected authority.  One service-role-only
--- RPC owns bucket creation/update; key material is a one-way digest supplied by
--- the server adapter.  Retention is bounded per call and rows expire quickly.
+-- 0056 widens the already service-role-only rate-limit scope to include the
+-- node-signed lease polling endpoint.  No table privilege or caller authority
+-- is widened; this is a constraint/function replacement only.
 
-CREATE TABLE IF NOT EXISTS public.apocrypha_contributor_rate_limit_bucket (
-    scope text NOT NULL
-        CHECK (scope ~ '^apocrypha\.contributor\.(enroll|lease|poll|result|revoke)$'),
-    key_digest text NOT NULL
-        CHECK (key_digest ~ '^[0-9a-f]{64}$'),
-    window_start timestamptz NOT NULL,
-    expires_at timestamptz NOT NULL,
-    request_count integer NOT NULL DEFAULT 0
-        CHECK (request_count BETWEEN 0 AND 1000),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (scope, key_digest, window_start),
-    CHECK (expires_at > window_start),
-    CHECK (expires_at <= window_start + interval '3601 seconds')
-);
+ALTER TABLE public.apocrypha_contributor_rate_limit_bucket
+    DROP CONSTRAINT IF EXISTS apocrypha_contributor_rate_limit_bucket_scope_check;
 
-CREATE INDEX IF NOT EXISTS apocrypha_contributor_rate_limit_expiry_idx
-    ON public.apocrypha_contributor_rate_limit_bucket (expires_at);
+ALTER TABLE public.apocrypha_contributor_rate_limit_bucket
+    ADD CONSTRAINT apocrypha_contributor_rate_limit_bucket_scope_check
+    CHECK (scope ~ '^apocrypha\.contributor\.(enroll|lease|poll|result|revoke)$');
 
 CREATE OR REPLACE FUNCTION public.apocrypha_contributor_rate_limit_consume(
     p_scope text,
@@ -58,8 +46,6 @@ BEGIN
     );
     v_expires_at := v_window_start + make_interval(secs => p_window_seconds);
 
-    -- Bounded opportunistic retention.  A stuck caller cannot turn a request
-    -- into an unbounded DELETE; the indexed sweep converges across calls.
     WITH stale AS (
         SELECT scope, key_digest, window_start
         FROM public.apocrypha_contributor_rate_limit_bucket
@@ -87,32 +73,20 @@ BEGIN
     v_allowed := FOUND;
     v_retry_after := greatest(
         1,
-        least(
-            3600,
-            ceil(extract(epoch FROM (v_expires_at - v_now)))::integer
-        )
+        least(3600, ceil(extract(epoch FROM (v_expires_at - v_now)))::integer)
     );
 
     IF v_allowed THEN
         RETURN jsonb_build_object('allowed', true);
     END IF;
-    RETURN jsonb_build_object(
-        'allowed', false,
-        'retry_after_seconds', v_retry_after
-    );
+    RETURN jsonb_build_object('allowed', false, 'retry_after_seconds', v_retry_after);
 END;
 $$;
 
-ALTER TABLE public.apocrypha_contributor_rate_limit_bucket ENABLE ROW LEVEL SECURITY;
-
-REVOKE ALL ON TABLE public.apocrypha_contributor_rate_limit_bucket
-    FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.apocrypha_contributor_rate_limit_consume(text, text, integer, integer)
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.apocrypha_contributor_rate_limit_consume(text, text, integer, integer)
     TO service_role;
 
-COMMENT ON TABLE public.apocrypha_contributor_rate_limit_bucket IS
-    'Server-only hashed fixed-window counters for contributor transport abuse control; rows expire after one window.';
 COMMENT ON FUNCTION public.apocrypha_contributor_rate_limit_consume(text, text, integer, integer) IS
-    'Atomic service-role-only contributor rate-limit consume; validates bounds, increments one bucket, returns allow/retry decision, and performs bounded expiry sweep.';
+    'Atomic service-role-only contributor rate-limit consume for enroll, lease, poll, result, and revoke scopes.';

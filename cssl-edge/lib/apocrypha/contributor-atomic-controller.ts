@@ -14,9 +14,11 @@ import {
   CONTRIBUTOR_REVOKE_RECEIPT_SCHEMA,
   ContributorTransportError,
   contributorPayloadHash,
+  parseContributorLeasePollRequest,
   parseContributorResultSubmission,
   publicKeyFromSpkiB64,
   verifyContributorLeaseIssueRequest,
+  verifyContributorLeasePollRequest,
   verifyEnrollmentRequest,
   verifyRevokeRequest,
   verifyResultSubmission,
@@ -27,6 +29,7 @@ import {
   type LeaseDispatch,
   type LeaseDispatchPayload,
   type LeaseIssueRequest,
+  type LeasePollRequest,
   type ResultReceipt,
   type ResultReceiptPayload,
   type ResultSubmission,
@@ -144,6 +147,20 @@ function leaseRequestPayload(request: LeaseIssueRequest) {
     request_id: request.request_id,
     idempotency_key: request.idempotency_key,
     node_id: request.node_id,
+    issued_at: request.issued_at,
+    expires_at: request.expires_at,
+    attempt: request.attempt,
+    task: request.task,
+  };
+}
+
+function leasePollRequestPayload(request: LeasePollRequest) {
+  return {
+    schema_version: request.schema_version,
+    request_id: request.request_id,
+    idempotency_key: request.idempotency_key,
+    node_id: request.node_id,
+    node_key_id: request.node_key_id,
     issued_at: request.issued_at,
     expires_at: request.expires_at,
     attempt: request.attempt,
@@ -271,6 +288,68 @@ function createPrepare(
     async lease(value: unknown): Promise<ContributorTransportAtomicLeaseInput> {
       const request = verifyContributorLeaseIssueRequest(value, now());
       const requestHash = contributorPayloadHash(leaseRequestPayload(request));
+      const leaseId = `lease-${requestHash.slice(0, 56)}`;
+      let lease;
+      try {
+        lease = signLease({
+          schema_version: 'apocrypha.contributor.lease.v1',
+          key_id: controllerKeyId,
+          lease_id: leaseId,
+          node_id: request.node_id,
+          issued_at: request.issued_at,
+          expires_at: request.expires_at,
+          attempt: request.attempt,
+          task: request.task,
+        } satisfies LeaseInput, controllerPrivateKey);
+      } catch {
+        throw new ContributorTransportError('TRANSPORT_LEASE_INVALID', 'controller lease signing failed');
+      }
+      const dispatchPayload: LeaseDispatchPayload = {
+        schema_version: CONTRIBUTOR_LEASE_DISPATCH_SCHEMA,
+        dispatch_id: `dispatch-${requestHash.slice(0, 48)}`,
+        request_id: request.request_id,
+        idempotency_key: request.idempotency_key,
+        node_id: request.node_id,
+        lease,
+      };
+      const dispatch: LeaseDispatch = {
+        ...dispatchPayload,
+        signature_b64: controllerSignature(dispatchPayload, controllerPrivateKey),
+      };
+      return {
+        nodeId: request.node_id,
+        idempotencyKey: request.idempotency_key,
+        requestHash,
+        dispatch,
+      };
+    },
+
+    async poll(value: unknown): Promise<ContributorTransportAtomicLeaseInput> {
+      const pollRequest = parseContributorLeasePollRequest(value);
+      const node = requireExistingNode(await store.getNode(pollRequest.node_id));
+      if (node.status === 'revoked') throw new ContributorTransportError('TRANSPORT_NODE_REVOKED');
+      if (node.node_key_id !== pollRequest.node_key_id) {
+        throw new ContributorTransportError('TRANSPORT_NODE_KEY_MISMATCH');
+      }
+      verifyContributorLeasePollRequest(
+        pollRequest,
+        publicKeyFromSpkiB64(node.node_public_key_spki_b64),
+        node.node_id,
+        node.node_key_id,
+        now(),
+      );
+      const request: LeaseIssueRequest = {
+        schema_version: 'apocrypha.contributor.lease-request.v1',
+        request_id: pollRequest.request_id,
+        idempotency_key: pollRequest.idempotency_key,
+        node_id: pollRequest.node_id,
+        issued_at: pollRequest.issued_at,
+        expires_at: pollRequest.expires_at,
+        attempt: pollRequest.attempt,
+        task: pollRequest.task,
+      };
+      verifyContributorLeaseIssueRequest(request, now());
+      const requestHash = contributorPayloadHash(leasePollRequestPayload(pollRequest));
       const leaseId = `lease-${requestHash.slice(0, 56)}`;
       let lease;
       try {

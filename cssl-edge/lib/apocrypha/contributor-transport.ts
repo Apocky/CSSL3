@@ -30,6 +30,7 @@ import {
 export const CONTRIBUTOR_ENROLLMENT_SCHEMA = 'apocrypha.contributor.enrollment.v1' as const;
 export const CONTRIBUTOR_ENROLLMENT_RECEIPT_SCHEMA = 'apocrypha.contributor.enrollment-receipt.v1' as const;
 export const CONTRIBUTOR_LEASE_REQUEST_SCHEMA = 'apocrypha.contributor.lease-request.v1' as const;
+export const CONTRIBUTOR_LEASE_POLL_SCHEMA = 'apocrypha.contributor.lease-poll.v1' as const;
 export const CONTRIBUTOR_LEASE_DISPATCH_SCHEMA = 'apocrypha.contributor.lease-dispatch.v1' as const;
 export const CONTRIBUTOR_RESULT_SUBMISSION_SCHEMA = 'apocrypha.contributor.result-submission.v1' as const;
 export const CONTRIBUTOR_RESULT_RECEIPT_SCHEMA = 'apocrypha.contributor.result-receipt.v1' as const;
@@ -124,6 +125,24 @@ export interface LeaseIssueRequestPayload {
 
 export interface LeaseIssueRequest extends LeaseIssueRequestPayload {
   readonly signature_b64?: never;
+}
+
+/** Public node-authenticated lease request.  The node key id is bound to the
+ * enrolled public key before the controller signs a dispatch. */
+export interface LeasePollRequestPayload {
+  readonly schema_version: typeof CONTRIBUTOR_LEASE_POLL_SCHEMA;
+  readonly request_id: string;
+  readonly idempotency_key: string;
+  readonly node_id: string;
+  readonly node_key_id: string;
+  readonly issued_at: number;
+  readonly expires_at: number;
+  readonly attempt: number;
+  readonly task: ContributorTask;
+}
+
+export interface LeasePollRequest extends LeasePollRequestPayload {
+  readonly signature_b64: string;
 }
 
 export interface LeaseDispatchPayload {
@@ -577,6 +596,73 @@ export function parseContributorLeaseIssueRequest(value: unknown): LeaseIssueReq
 export function verifyContributorLeaseIssueRequest(value: unknown, now = Date.now()): LeaseIssueRequest {
   const request = parseContributorLeaseIssueRequest(value);
   temporal(request.issued_at, request.expires_at, now, CONTRIBUTOR_ENROLLMENT_TTL_MS, 'TRANSPORT_ENROLLMENT_EXPIRED');
+  return request;
+}
+
+function leasePollPayload(value: LeasePollRequestPayload): LeasePollRequestPayload {
+  return {
+    schema_version: CONTRIBUTOR_LEASE_POLL_SCHEMA,
+    request_id: value.request_id,
+    idempotency_key: value.idempotency_key,
+    node_id: value.node_id,
+    node_key_id: value.node_key_id,
+    issued_at: value.issued_at,
+    expires_at: value.expires_at,
+    attempt: value.attempt,
+    task: value.task,
+  };
+}
+
+function parseLeasePollRequest(value: unknown): LeasePollRequest {
+  const source = asRecord(value);
+  if (!source || !exactKeys(source, [
+    'schema_version', 'request_id', 'idempotency_key', 'node_id', 'node_key_id',
+    'issued_at', 'expires_at', 'attempt', 'task', 'signature_b64',
+  ]) || source.schema_version !== CONTRIBUTOR_LEASE_POLL_SCHEMA) {
+    fail('TRANSPORT_LEASE_INVALID');
+  }
+  return {
+    schema_version: CONTRIBUTOR_LEASE_POLL_SCHEMA,
+    request_id: boundedRequestId(source.request_id),
+    idempotency_key: boundedIdempotencyKey(source.idempotency_key),
+    node_id: boundedIdentifier(source.node_id),
+    node_key_id: boundedKeyId(source.node_key_id),
+    issued_at: boundedInteger(source.issued_at, 0, 9_000_000_000_000),
+    expires_at: boundedInteger(source.expires_at, 0, 9_000_000_000_000),
+    attempt: boundedInteger(source.attempt, 0, 1_000_000),
+    task: source.task as ContributorTask,
+    signature_b64: decodeSignature(source.signature_b64).toString('base64url'),
+  };
+}
+
+/** Strict parser for the public node-authenticated lease polling request. */
+export function parseContributorLeasePollRequest(value: unknown): LeasePollRequest {
+  return parseLeasePollRequest(value);
+}
+
+export function signLeasePollRequest(
+  input: LeasePollRequestPayload,
+  nodePrivateKey: KeyObject,
+): LeasePollRequest {
+  const payload = leasePollPayload(input);
+  return { ...payload, signature_b64: signPayload(payload, nodePrivateKey) };
+}
+
+/** Verify a poll request against the public key recorded at enrollment. */
+export function verifyContributorLeasePollRequest(
+  value: unknown,
+  nodePublicKey: PublicKeyInput,
+  expectedNodeId?: string,
+  expectedNodeKeyId?: string,
+  now = Date.now(),
+): LeasePollRequest {
+  const request = parseLeasePollRequest(value);
+  temporal(request.issued_at, request.expires_at, now, CONTRIBUTOR_ENROLLMENT_TTL_MS, 'TRANSPORT_ENROLLMENT_EXPIRED');
+  if (expectedNodeId !== undefined && request.node_id !== expectedNodeId) fail('TRANSPORT_NODE_KEY_MISMATCH');
+  if (expectedNodeKeyId !== undefined && request.node_key_id !== expectedNodeKeyId) fail('TRANSPORT_NODE_KEY_MISMATCH');
+  if (!verifyPayload(leasePollPayload(request), request.signature_b64, nodePublicKey)) {
+    fail('TRANSPORT_SIGNATURE_INVALID');
+  }
   return request;
 }
 

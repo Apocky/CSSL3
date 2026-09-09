@@ -26,6 +26,7 @@ export const CONTRIBUTOR_RATE_LIMITER_OPT_IN_ENV = 'APOCRYPHA_CONTRIBUTOR_RATE_L
 export const CONTRIBUTOR_RATE_LIMIT_POLICIES = {
   enroll: { scope: 'apocrypha.contributor.enroll', limit: 20, windowSeconds: 60 },
   lease: { scope: 'apocrypha.contributor.lease', limit: 120, windowSeconds: 60 },
+  poll: { scope: 'apocrypha.contributor.poll', limit: 120, windowSeconds: 60 },
   result: { scope: 'apocrypha.contributor.result', limit: 120, windowSeconds: 60 },
   revoke: { scope: 'apocrypha.contributor.revoke', limit: 10, windowSeconds: 60 },
 } as const satisfies Record<Exclude<ContributorEndpoint, 'status'>, {
@@ -95,7 +96,7 @@ function policyFor(
   const policy = overrides[endpoint] ?? CONTRIBUTOR_RATE_LIMIT_POLICIES[endpoint];
   if (!policy
     || typeof policy.scope !== 'string'
-    || !/^apocrypha\.contributor\.(?:enroll|lease|result|revoke)$/.test(policy.scope)
+    || !/^apocrypha\.contributor\.(?:enroll|lease|poll|result|revoke)$/.test(policy.scope)
     || !Number.isSafeInteger(policy.limit)
     || policy.limit < 1
     || policy.limit > 1000

@@ -8,6 +8,7 @@ import {
   ContributorTransportError,
   publicKeySpkiB64,
   signEnrollmentRequest,
+  signLeasePollRequest,
   signRevokeRequest,
   signResultSubmission,
   verifyEnrollmentReceipt,
@@ -19,6 +20,7 @@ import {
   type LeaseDispatch,
   type LeaseReplay,
   type RevokeRequestPayload,
+  type LeasePollRequestPayload,
 } from '../../lib/apocrypha/contributor-transport';
 import {
   CONTRIBUTOR_CONTROLLER_ENV,
@@ -179,6 +181,23 @@ export async function testProductionBindingPreparesVerifiesSignsAndCallsAtomicOp
     const resultInput = await bound.prepare.result(submission);
     const resultReceipt = await bound.operations.atomicAcceptResult(resultInput);
     assert.equal(verifyResultReceipt(resultReceipt, controller.publicKey).dispatch_id, dispatch.dispatch_id);
+
+    const pollPayload: LeasePollRequestPayload = {
+      schema_version: 'apocrypha.contributor.lease-poll.v1',
+      request_id: 'atomic-controller-poll-01',
+      idempotency_key: 'atomic-controller-poll-idem-01',
+      node_id: request.node_id,
+      node_key_id: request.node_key_id,
+      issued_at: NOW - 500,
+      expires_at: NOW + 30_000,
+      attempt: 0,
+      task: { kind: 'vector_dot', left: [1, 2], right: [3, 4] },
+    };
+    const pollRequest = signLeasePollRequest(pollPayload, node.privateKey);
+    assert.ok(bound.prepare.poll);
+    const pollInput = await bound.prepare.poll(pollRequest);
+    const pollDispatch = await bound.operations.atomicIssueLease(pollInput);
+    assert.equal(verifyLeaseDispatch(pollDispatch, controller.publicKey, request.node_id, 'atomic-controller-test-v1').node_id, request.node_id);
 
     const revokePayload: RevokeRequestPayload = {
       schema_version: CONTRIBUTOR_REVOKE_SCHEMA,

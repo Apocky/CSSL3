@@ -1,8 +1,8 @@
 {
-  "name": "@apocky/apocrypha-contributor-node-candidate",
+  "name": "@apocky/apocrypha-contributor-node",
   "version": "0.1.0-candidate",
   "private": true,
-  "description": "Local-only, opt-in, resource-capped Apocrypha contributor-node candidate.",
+  "description": "Opt-in, resource-capped Apocrypha contributor node with signed live transport.",
   "type": "module",
   "bin": {
     "apocrypha-contributor-node": "dist/cli.js"
