@@ -11,6 +11,9 @@
     "dist",
     "README.md",
     "RELEASE.csl",
+    "controller-public-key.pem",
+    "run-once-apocrypha-node.cmd",
+    "start-apocrypha-node.cmd",
     "package.json"
   ],
   "scripts": {
@@ -18,6 +21,7 @@
     "test": "node --import tsx ../tests/contributor-node/runtime.test.ts",
     "ensure:candidate-dist": "node --input-type=module -e \"import { mkdirSync } from 'node:fs'; mkdirSync('candidate-dist', { recursive: true })\"",
     "pack:candidate": "npm run build && npm run ensure:candidate-dist && npm pack --ignore-scripts --pack-destination candidate-dist",
-    "release:candidate": "npm run pack:candidate && node scripts/release-artifacts.mjs --input . --out candidate-dist"
+    "release:candidate": "npm run pack:candidate && node scripts/release-artifacts.mjs --input . --out candidate-dist",
+    "pack:windows": "npm run build && node scripts/build-windows-bundle.mjs"
   }
 }

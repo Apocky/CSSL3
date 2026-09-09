@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   ContributorClientError,
+  DEFAULT_CONTROLLER_PUBLIC_KEY_PEM,
   ContributorNetworkClient,
   loadOrCreateIdentity,
 } from './client.js';
@@ -19,7 +20,8 @@ Reads one signed lease JSON object from stdin and writes one signed result JSON
 object to stdout, or use --network to enroll, poll, execute, and submit one
 approved public-capsule task over the authenticated Apocrypha transport.
 
-Required environment:
+Network uses the pinned production controller key bundled in the package.
+Override only when independently verifying a different controller:
   APOCRYPHA_CONTROLLER_PUBLIC_KEY_PEM  controller Ed25519 public key
 
 Optional environment:
@@ -80,8 +82,7 @@ function platformTarget(): 'windows-x64' | 'macos-arm64' | 'linux-x64' | 'androi
 
 async function runNetwork(args: string[]): Promise<void> {
   if (!args.includes('--opt-in')) throw new ContributorClientError('WORKER_NOT_OPTED_IN');
-  const controllerPublicKey = process.env.APOCRYPHA_CONTROLLER_PUBLIC_KEY_PEM;
-  if (!controllerPublicKey) throw new ContributorClientError('CONTROLLER_KEY_REQUIRED');
+  const controllerPublicKey = process.env.APOCRYPHA_CONTROLLER_PUBLIC_KEY_PEM ?? DEFAULT_CONTROLLER_PUBLIC_KEY_PEM;
   const controllerKeyId = process.env.APOCRYPHA_CONTROLLER_KEY_ID ?? 'apocrypha-controller-v1';
   const baseUrl = option(args, '--base-url') ?? process.env.APOCRYPHA_NODE_BASE_URL ?? 'https://www.apocky.com';
   const dataDir = option(args, '--data-dir') ?? process.env.APOCRYPHA_NODE_DATA_DIR;
@@ -114,6 +115,10 @@ async function main(): Promise<void> {
     process.stdout.write(HELP);
     return;
   }
+  if (args.has('--network')) {
+    await runNetwork(rawArgs);
+    return;
+  }
   const controllerPublicKey = process.env.APOCRYPHA_CONTROLLER_PUBLIC_KEY_PEM;
   if (!controllerPublicKey) throw new ContributorNodeError('CONTROLLER_KEY_REQUIRED');
   const controllerKeyId = process.env.APOCRYPHA_CONTROLLER_KEY_ID ?? 'apocrypha-controller-v1';
@@ -129,10 +134,6 @@ async function main(): Promise<void> {
   }
   if (args.has('--uninstall')) {
     process.stdout.write(`${JSON.stringify(worker.uninstall())}\n`);
-    return;
-  }
-  if (args.has('--network')) {
-    await runNetwork(rawArgs);
     return;
   }
   if (CONTRIBUTOR_NETWORK_ENABLED) throw new ContributorNodeError('TASK_FAILED');

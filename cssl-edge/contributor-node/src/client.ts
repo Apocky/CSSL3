@@ -26,6 +26,12 @@ export const CONTRIBUTOR_LEASE_DISPATCH_SCHEMA = 'apocrypha.contributor.lease-di
 export const CONTRIBUTOR_RESULT_SUBMISSION_SCHEMA = 'apocrypha.contributor.result-submission.v1' as const;
 export const CONTRIBUTOR_RESULT_RECEIPT_SCHEMA = 'apocrypha.contributor.result-receipt.v1' as const;
 
+/** Public verification key bundled for the production controller endpoint. */
+export const DEFAULT_CONTROLLER_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA3ErV/9vJDgYh3eftwhtNQ/h6pCitOiGF2gRWfYKaPSE=
+-----END PUBLIC KEY-----
+`;
+
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
