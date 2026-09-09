@@ -48,3 +48,8 @@ For live mode, set `APOCRYPHA_CONTROLLER_PUBLIC_KEY_PEM` and
 The node identity is generated once under the platform state directory with
 0600 permissions and is never sent to the server; only its public key and
 signed envelopes leave the device. `--loop` is an additional explicit opt-in.
+
+The current production public key is published at
+`https://www.apocky.com/releases/apocrypha-node/controller-public-key.pem`.
+Verify its SHA-256 SPKI fingerprint before configuring the node:
+`1f6a4507814f922a572c2c61faaed287bdf1ec4c15ba99c907e830c0f0c5eb17`.
