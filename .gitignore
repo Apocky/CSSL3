@@ -3,6 +3,10 @@
 
 # Rust build artifacts
 /compiler-rs/target/
+# § Apocrypha desktop client (standalone Tauri crate ; see apps/apocrypha-desktop/README.md)
+/apps/apocrypha-desktop/target/
+# tauri-build regenerates these from tauri.conf.json on every build
+/apps/apocrypha-desktop/gen/schemas/
 /target/
 **/*.rs.bk
 

@@ -130,7 +130,7 @@ test('owner-private Brain exposes truthful multidimensional memory without a fak
   await expect(releaseShelf.getByRole('link', { name: /Changelog/i })).toHaveAttribute('href', '/releases/apocrypha-living/changelog.json');
   await expect(releaseShelf.getByRole('link', { name: /Build manifest/i })).toHaveAttribute('href', '/releases/apocrypha-living/manifest.json');
   await expect(releaseShelf.locator('a[href^="/downloads/"]')).toHaveCount(0);
-  await expect(releaseShelf.getByRole('link', { name: 'Android downloads and iPhone availability' })).toHaveAttribute('href', '/download/apocrypha');
+  await expect(releaseShelf.getByRole('link', { name: 'Windows and Android downloads, and iPhone availability' })).toHaveAttribute('href', '/download/apocrypha');
   await releaseShelf.locator('summary').click();
   const diagnostics = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: /^Desktop diagnostics$/ }) }).last();
   await diagnostics.locator('summary').first().click();

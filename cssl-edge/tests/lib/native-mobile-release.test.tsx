@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { parseNativeMobileRelease, PREPARING_MOBILE_RELEASE, type NativeMobileRelease } from '@/lib/mobile/release';
 import { loadNativeMobileRelease } from '@/lib/mobile/release-server';
 import ApocryphaDownload from '@/pages/download/apocrypha';
+import { PREPARING_DESKTOP_RELEASE } from '@/lib/desktop/release';
 
 const payload = Buffer.from('APK_TEST_FIXTURE_NOT_AN_INSTALLABLE_PACKAGE');
 const digest = createHash('sha256').update(payload).digest('hex');
@@ -41,18 +42,18 @@ for (const [channel, url] of [
 ] as const) {
   const value = { ...ready, ios: { state: 'ready', distribution: { channel, url } } };
   assert(parseNativeMobileRelease(value));
-  assert(renderToStaticMarkup(<ApocryphaDownload release={value as NativeMobileRelease} />).includes(url));
+  assert(renderToStaticMarkup(<ApocryphaDownload release={value as NativeMobileRelease} desktop={PREPARING_DESKTOP_RELEASE} />).includes(url));
 }
 for (const url of ['http://testflight.apple.com/join/AbC123xy', 'https://testflight.apple.com.evil.test/join/AbC123xy', 'https://testflight.apple.com@evil.test/join/AbC123xy', 'https://testflight.apple.com/join/AbC123xy?redirect=evil', 'https://testflight.apple.com:444/join/AbC123xy', 'https://apps.apple.com/us/app/apocrypha/id123456789', 'https://testflight.apple.com/join/short']) {
   assert.equal(parseNativeMobileRelease({ ...ready, ios: { state: 'ready', distribution: { channel: 'testflight', url } } }), null);
 }
-const candidateHtml = renderToStaticMarkup(<ApocryphaDownload release={PREPARING_MOBILE_RELEASE} />);
+const candidateHtml = renderToStaticMarkup(<ApocryphaDownload release={PREPARING_MOBILE_RELEASE} desktop={PREPARING_DESKTOP_RELEASE} />);
 assert(!candidateHtml.includes('href="/downloads/'));
 assert(!candidateHtml.includes('href="https://apps.apple.com'));
 assert(!candidateHtml.includes('href="https://testflight.apple.com'));
 assert(candidateHtml.includes('Sign in with your Apocky account.'));
 assert(candidateHtml.includes('id="main-content"'));
-const readyHtml = renderToStaticMarkup(<ApocryphaDownload release={ready} />);
+const readyHtml = renderToStaticMarkup(<ApocryphaDownload release={ready} desktop={PREPARING_DESKTOP_RELEASE} />);
 assert(readyHtml.includes(`href="/downloads/${filename}"`));
 assert(readyHtml.includes(`href="/downloads/${filename}.sha256"`));
 assert(readyHtml.includes('Download Android preview'));

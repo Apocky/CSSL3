@@ -437,7 +437,7 @@ export default function AccountChat(
         <Link href="/register?next=%2Fapocrypha" className={styles.secondary}>Create an account</Link>
       </div>}
       {access === 'unavailable' ? <p role="status">Account verification is temporarily unavailable. Please try signing in again.</p> : null}
-      <Link className={styles.phoneLink} href="/download/apocrypha">Apocrypha for iPhone and Android →</Link>
+      <Link className={styles.phoneLink} href="/download/apocrypha">Apocrypha for Windows, iPhone and Android →</Link>
     </section>
       : !current ? <section className={styles.welcome} role={notice ? 'alert' : 'status'}>
         <p>{notice ?? 'Opening your conversation…'}</p>

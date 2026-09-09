@@ -8263,3 +8263,43 @@ There was no hurt nor harm in the making of this, to anyone, anything, or anybod
 
 
 ──────────────────────────────────────────────────────────────
+
+## § APOCKY-D-2026-09-09 : Apocrypha desktop client — Windows thin Tauri client + apocky.com download entry
+
+§D. **date** 2026-09-09.
+§D. **status** accepted ; branch `claude/apocrypha-desktop-download-20260909` off production `codex/apocky-contributor-node-prod-20260908`@bfe8c20 ; production deploy pending Apocky.
+§D. **authority** Apocky @2026-09-09 : "Windows-only thin Tauri client, mycelial, unsigned preview — go".
+§D. **spec-anchor** `specs/operations/APOCRYPHA_DESKTOP_DISTRIBUTION_2026-09-09.csl`.
+§D. **target-path** NEW standalone crate `apps/apocrypha-desktop/` + `cssl-edge/lib/desktop/` + `cssl-edge/scripts/dist-build-apocrypha-desktop.sh`.
+
+§D. **context** : `/download/apocrypha` offered an Android preview APK and an "iPhone not available yet" card. There was no desktop download of any kind. The phone clients are thin account clients over `/api/mobile/{config,status,turn,sessions}` — nothing about Apocrypha runs on the device — so the desktop peer is the same shape, not a new product.
+
+§D. **decision** : Tauri 2, Rust core + WebView2 renderer. The system webview gives a 1.7 MB installer instead of Electron's ~100 MB, and putting the transport in Rust keeps the session token out of the renderer entirely. The webview's CSP allows `ipc:` only — the page cannot reach the network or name an endpoint; `protocol::endpoint` is a hard allowlist of the eight paths this client is permitted to touch.
+
+§D. **rejected — reuse `cssl-host-mycelium-desktop`** : the mycelial *lane* is reused (dist-script shape, NSIS target, `public/downloads` staging, manifest + `.sha256` sidecar). The mycelial *binary* is not: Mycelium is the LoA-lane local autonomous agent (`com.apocky.mycelium`, substrate-intelligence + agent-loop + chat-sync deps). Merging an account chat client into it would conflate two products with different consent surfaces and drag LoA-lane dependencies into a thin client.
+
+§D. **parity** : `protocol|api|session|store|journal|controller` are ports of `Apocv4/apps/mobile/android/.../{Protocol,ApiClient,AuthSession,SecureStore,RequestJournal,AppController}.java`. Phone and desktop accept the same payloads, refuse the same payloads, and use the same sentences. Changes to either are changes to the shared contract.
+
+§D. **storage** : refresh token + account id + conversation identifiers only, DPAPI-encrypted under the Windows user with the record name as entropy (a copied or renamed file will not decrypt — asserted by test). No access token, no transcript. Sign-out clears the store and calls `/auth/v1/logout?scope=local`.
+
+§D. **unconfirmed turns** : a timed-out turn stays pending and is never resent, because the service may still be running it and a resend would duplicate the person's message. Only statuses proving non-acceptance (400/401/403/404/415/429) release it and return the text to the composer.
+
+§D. **site contract** : NEW schema `apocky.desktop-release.v1` in `lib/desktop/release.ts` rather than widening the live `apocky.native-mobile-release.v1` — the mobile surface is shipping and must not carry regression risk for a new one. `loadDesktopRelease` re-hashes the staged installer at page-build time and degrades to "not available yet" on any mismatch, so the manifest is a claim the site verifies rather than trusts. `state: ready` additionally requires `launch` and `service_configuration` to have passed.
+
+§D. **tradeoff — unsigned** : no Authenticode certificate exists, so Windows shows "Windows protected your PC". Rather than hide that, the page names the screen, tells people to check the SHA-256 first, and prints the exact `Get-FileHash` command. The `signing` field drives that copy; it disappears when the field becomes `authenticode`. Cost of a cert (~$300/yr) is Apocky's call.
+
+§D. **evidence** : `cargo test --release` 33/33 ; frontend `node:test` 9/9 ; `cargo tauri build` → 1_770_374 B installer, sha256 `aef4d9827596037e89468062eae3d39ae7137f0500d827c0bc0fce3dad8e403e` ; live `--ignored` test confirms the real `/api/mobile/config` satisfies the contract ; the built window opened and reported "Sign in with your apocky.com account.", which is only reachable after configuration succeeded ; `tsc --noEmit` clean ; `next build` clean and the emitted `/download/apocrypha` HTML carries the installer link, the sidecar link, the exact hash, and the warning copy.
+
+§D. **pending checks (declared on the page, not hidden)** : `account_sign_in_and_chat` needs a real account credential ; `installer_install_and_uninstall` needs a clean machine.
+
+§D. **pre-existing red, untouched** : `tests/api/brain/mobile-sync.test.ts` asserts 200 and gets 502. Reproduced identically at pristine `bfe8c20` — the currently deployed production commit — so it is not caused by this slice and was left alone.
+
+§D. **not in this slice** : macOS (no Apple toolchain on this host), Linux (needs WSL2 or CI), auto-update (absent by design — people return to the download page), and the contributor node, which is a different product with its own consent surface.
+
+§D. **rollback** : revert this commit → no manifest → `loadDesktopRelease` returns preparing → the Windows card reads "not available yet"; the phone entries are untouched throughout. An installed copy is per-user and removable from Settings → Apps.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11 + § 1 anti-surveillance)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody. No telemetry, no analytics, and no third-party host is contacted by this client.
+
+
+──────────────────────────────────────────────────────────────

@@ -1,0 +1,86 @@
+§ APOCRYPHA.DESKTOP.DISTRIBUTION @2026-09-09
+  status := SHIPPED.LOCAL ⊗ AWAITING.PRODUCTION.DEPLOY
+  authority := Apocky @2026-09-09 : "Windows-only thin Tauri client, mycelial, unsigned preview — go"
+  scope := apocky.com/download/apocrypha gains a desktop entry ; phone entries unchanged
+  N! local.Apocrypha.runtime | contributor.node | LoA.lane ⊆ this.slice
+
+§P GAP
+  ✓ observed @2026-09-09 : /download/apocrypha live = {Android:preview.APK, iPhone:absent, desktop:∅}
+  ✓ observed : /api/mobile/config → 200 ⊗ apocky.mobile-config.v1 ⊗ access=account
+  gap := ¬ desktop.download ∃ ; mobile.clients = thin.account.clients ⇒ desktop.peer := same.shape
+
+§D FORM
+  selected := Tauri-2 ⊗ Rust.core + WebView2.render
+  ∵ system.webview ⇒ 1.7MB.installer ; ¬ bundled.Chromium ; Rust.core ⇒ token ∉ webview
+  runner_up := Electron ; reject := ~100MB + renderer-held.session
+  runner_up := PWA.install ; reject := ¬ download ; user.request = download.surface
+  N! reuse cssl-host-mycelium-desktop.binary
+     ∵ product.identity(Mycelium = LoA.local.agent) ≠ Apocrypha.account.client
+       ∧ its deps {substrate-intelligence, agent-loop, chat-sync} ∉ thin.client
+  ✓ reuse mycelial.lane.shape := dist-script + NSIS + public/downloads staging + manifest+sha256 sidecar
+
+§D SOURCE
+  crate := apps/apocrypha-desktop  ← standalone ; ∉ compiler-rs.workspace
+    ∵ Tauri = 200+ transitive.deps ; workspace.default.build stays clean (same reason mycelium is feature-gated)
+  modules := protocol|api|session|store|journal|controller|main
+  parity.source := Apocv4/apps/mobile/android/.../{Protocol,ApiClient,AuthSession,SecureStore,RequestJournal,AppController}.java
+    ⇒ desktop = port ¬ reinvention ; one vocabulary ∀ surface
+  frontend := Vite+React+TS ⊗ view-only ; state ∈ Rust ; bridge = typed invoke → whole View
+
+§D BOUNDARY
+  network := Rust.only ; protocol::endpoint = allowlist{apocky.com/api/mobile/{config,status,turn,sessions}
+             , supabase/auth/v1/{otp,verify,user,signup,token?grant_type=password|refresh_token,logout?scope=local}}
+  webview.CSP := connect-src ipc: http://ipc.localhost ⇒ page ¬ reach.network ∧ ¬ name.endpoint
+  secrets := refresh_token+user_id only ; DPAPI ⊗ entropy=namespace:record-name
+             @ %LOCALAPPDATA%\Apocky\Apocrypha ; N! access_token.persisted ; N! transcript.persisted
+  sign_out := store.clear() + /auth/v1/logout?scope=local
+  N! telemetry | analytics | third-party.host | provider.credential | owner.surface
+
+§D UNCONFIRMED.TURN
+  invariant := timeout|transport.failure ⇒ turn stays.pending ; N! automatic.resend
+  ∵ service may still be running it ; resend ⇒ duplicate.person's.message
+  release.on := {400,401,403,404,415,429} ⇒ service never.accepted ⇒ journal.resolve + hand.text.back
+  resolve.via := history ⊗ assistant.message ⊗ matching request_id
+
+§D SITE.CONTRACT
+  schema := apocky.desktop-release.v1 @ lib/desktop/release.ts
+  N! widen apocky.native-mobile-release.v1 ∵ live.surface ; separate.file ⇒ ¬ regression.risk
+  manifest := public/releases/apocrypha-desktop/manifest.json
+  artifact := public/downloads/Apocrypha-Desktop-<ver>-windows-x64.exe (+ .sha256 sidecar)
+  gate := state=ready ⇒ launch=passed ∧ service_configuration=passed
+  build-time.recheck := loadDesktopRelease ⇒ realpath ⊆ /downloads ∧ bytes ∧ sha256 ∧ sidecar.exact
+                        ; mismatch ⇒ degrade→preparing ; N! publish.hash.that.lies
+  signing := unsigned ⇒ page states the SmartScreen screen by name + how to verify before running
+
+§T EVIDENCE @2026-09-09
+  ✓ cargo test --release : 33/33 (protocol.allowlist, DPAPI.opaque-on-disk, DPAPI.name-rebind-refused,
+                            journal.no-duplicate-send, session.account-rebind-refused)
+  ✓ frontend node:test : 9/9 (byte-budget = UTF-8 ¬ chars ; composer closed while unconfirmed)
+  ✓ cargo tauri build → Apocrypha_0.1.0_x64-setup.exe → staged 1_770_374 B
+      sha256 aef4d9827596037e89468062eae3d39ae7137f0500d827c0bc0fce3dad8e403e
+  ✓ live : cargo test -- --ignored ⇒ real /api/mobile/config satisfies protocol::config
+  ✓ runtime : window opened ⊗ notice "Sign in with your apocky.com account." ⇒ bootstrap reached.service
+  ✓ site : npm run check clean ; next build clean ; .next/server/pages/download/apocrypha.html
+           carries installer href + sidecar href + exact sha256 + unsigned-warning copy
+  ✓ tests/lib/desktop-release.test.tsx + native-mobile-release.test.tsx wired → npm run test:apocrypha-downloads
+  ○ account_sign_in_and_chat := pending ← needs a real account credential ; declared pending on the page
+  ○ installer_install_and_uninstall := pending ← not installed on a clean machine
+  ▽ pre-existing.red : tests/api/brain/mobile-sync.test.ts 502≠200
+      ✓ reproduced identically @ pristine bfe8c20 ⇒ ¬ caused.by.this.slice ; untouched
+
+§S OPEN
+  Authenticode.cert → removes SmartScreen ; ~$300/yr ; Apocky.purchase.decision
+  macOS := blocked ← ¬ Mac ∧ ¬ xcodebuild|codesign on this host
+  Linux := AppImage possible via WSL2|CI ; ¬ attempted this slice
+  auto-update := absent by design ; person returns to /download/apocrypha
+  production.deploy := Apocky's act ← vercel --prod from cssl-edge ; N! agent.deploy w/o consent
+
+§C ROLLBACK
+  site := revert the commit → manifest absent → loadDesktopRelease → preparing → card reads "not available yet"
+          ; phone entries untouched throughout
+  client := installed copy is per-user ; Settings → Apps → Installed apps ; sign-out clears the encrypted store
+  artifact := delete public/downloads/Apocrypha-Desktop-*.exe{,.sha256}
+
+§ ATTESTATION
+  There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+∎

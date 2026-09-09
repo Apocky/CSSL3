@@ -4,12 +4,19 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { loadNativeMobileRelease } from '@/lib/mobile/release-server';
 import type { NativeMobileRelease } from '@/lib/mobile/release';
+import { loadDesktopRelease } from '@/lib/desktop/release-server';
+import { pendingChecks as desktopPendingChecks, type DesktopRelease } from '@/lib/desktop/release';
 
-interface Props { release: NativeMobileRelease }
+interface Props { release: NativeMobileRelease; desktop: DesktopRelease }
 
-const ApocryphaDownload: NextPage<Props> = ({ release }) => {
+const megabytes = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`);
+
+const ApocryphaDownload: NextPage<Props> = ({ release, desktop }) => {
   const apk = release.android.state === 'ready' ? release.android.artifact : null;
   const iphone = release.ios.state === 'ready' ? release.ios.distribution : null;
+  const windows = desktop.windows.state === 'ready' ? desktop.windows.artifact : null;
+  const unsigned = desktop.windows.signing === 'unsigned';
+  const desktopPending = desktopPendingChecks(desktop);
   const checks = release.android.verification;
   const pendingChecks = [
     checks.account_sign_in_and_chat !== 'passed' ? 'account sign-in and chat' : null,
@@ -18,10 +25,10 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
   return (
     <>
       <Head>
-        <title>Apocrypha downloads &amp; phone availability · Apocky</title>
-        <meta name="description" content="Check the Android preview and iPhone availability, download an available release, or continue to Apocrypha in your browser." />
-        <meta property="og:title" content="Apocrypha. On your phone." />
-        <meta property="og:description" content="Android preview downloads, iPhone availability, and a browser option." />
+        <title>Apocrypha downloads · Windows, Android &amp; iPhone · Apocky</title>
+        <meta name="description" content="Download the Windows preview, check the Android preview and iPhone availability, or continue to Apocrypha in your browser." />
+        <meta property="og:title" content="Apocrypha. On your computer and your phone." />
+        <meta property="og:description" content="Windows and Android preview downloads, iPhone availability, and a browser option." />
         <link rel="canonical" href="https://www.apocky.com/download/apocrypha" />
       </Head>
       <main id="main-content" className="mobile-download">
@@ -29,11 +36,87 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
           <nav className="page-return" aria-label="Download navigation"><Link href="/">← Home</Link><Link href="/apocrypha">Chat in your browser →</Link></nav>
           <header className="mobile-hero">
             <p className="eyebrow">Apocrypha · Downloads</p>
-            <h1>Apocrypha <em>on your phone.</em></h1>
-            <p className="lead">Choose your phone to see the available download. You can also use Apocrypha in your browser.</p>
+            <h1>Apocrypha <em>on your computer and phone.</em></h1>
+            <p className="lead">Choose your device to see the available download. You can also use Apocrypha in your browser.</p>
             <div className="access-note"><span aria-hidden="true">◇</span><p><strong>Sign in with your Apocky account.</strong> The app uses your account for private chat and conversation history. New here? <Link href="/register?next=%2Fapocrypha">Create an account.</Link></p></div>
           </header>
 
+          <section className="desktop-band" aria-label="Desktop download">
+            <p className="band-label">On your computer</p>
+            <article className="platform windows" aria-labelledby="windows-title">
+              <div className="platform-heading">
+                <span className="platform-icon" aria-hidden="true">▤</span>
+                <span className="badge">{windows ? 'Preview available' : 'Not available yet'}</span>
+              </div>
+              <h2 id="windows-title">Windows</h2>
+              <p>
+                {windows
+                  ? 'Install the Windows preview directly from apocky.com. It signs in with your Apocky account and talks to the same service as the website.'
+                  : 'The Windows download will appear here when the preview is available.'}
+              </p>
+              <div className="platform-action">
+                {windows ? (
+                  <a className="download-button" href={windows.href} download>
+                    Download for Windows <span aria-hidden="true">↓</span>
+                  </a>
+                ) : (
+                  <p className="unavailable">No Windows download is available yet.</p>
+                )}
+                <p className="fine">
+                  {windows
+                    ? `Version ${desktop.version} · ${megabytes(windows.bytes)} · installer for Windows 10 and 11, 64-bit`
+                    : 'The download will appear here when the package and its checksum are available.'}
+                </p>
+              </div>
+
+              {windows && unsigned ? (
+                <p className="preview-note">
+                  <strong>This installer is not signed yet.</strong> Windows will show a blue &ldquo;Windows protected
+                  your PC&rdquo; screen. If you choose to continue, select <em>More info</em>, check that the publisher
+                  is unknown and the file name matches the one above, then select <em>Run anyway</em>. Compare the
+                  checksum below first — that is the only way to confirm you have the file this page describes.
+                </p>
+              ) : null}
+
+              {windows && desktopPending.length ? (
+                <p className="preview-note">
+                  <strong>Checks still pending:</strong> {desktopPending.join(', ')}. This is a preview release.
+                </p>
+              ) : null}
+
+              {windows ? (
+                <details className="install-help">
+                  <summary>How to install on Windows</summary>
+                  <ol>
+                    <li>Download the installer, then check its SHA-256 against the value below.</li>
+                    <li>Open the file. Windows will warn about an unsigned publisher; continue only if the checksum matched.</li>
+                    <li>Apocrypha installs for your Windows account only — no administrator rights are needed.</li>
+                    <li>Open Apocrypha and sign in with your Apocky account.</li>
+                  </ol>
+                  <p>
+                    Remove it at any time from Settings → Apps → Installed apps. Your sign-in is kept encrypted under your
+                    Windows account in <code>%LOCALAPPDATA%\Apocky\Apocrypha</code>; signing out inside the app deletes it.
+                  </p>
+                </details>
+              ) : null}
+
+              {windows ? (
+                <details className="integrity">
+                  <summary>Check this download</summary>
+                  <p>Compare the downloaded file with its SHA-256 checksum.</p>
+                  <a href={`${windows.href}.sha256`}>Open checksum file</a>
+                  <dl>
+                    <dt>File SHA-256</dt>
+                    <dd><code>{windows.sha256}</code></dd>
+                    <dt>Check it in PowerShell</dt>
+                    <dd><code>Get-FileHash .\{windows.href.replace('/downloads/', '')} -Algorithm SHA256</code></dd>
+                  </dl>
+                </details>
+              ) : null}
+            </article>
+          </section>
+
+          <p className="band-label">On your phone</p>
           <section className="platforms" aria-label="Choose your phone">
             <article className="platform android" aria-labelledby="android-title">
               <div className="platform-heading"><span className="platform-icon" aria-hidden="true">↧</span><span className="badge">{apk ? 'Preview available' : 'Not available yet'}</span></div>
@@ -42,7 +125,7 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
               <div className="platform-action">
                 {apk ? <a className="download-button" href={apk.href} download>Download Android preview <span aria-hidden="true">↓</span></a>
                   : <p className="unavailable">No Android download is available yet.</p>}
-                {apk ? <p className="fine">Version {release.version} · {apk.bytes < 1024 * 1024 ? `${Math.ceil(apk.bytes / 1024)} KB` : `${(apk.bytes / (1024 * 1024)).toFixed(1)} MB`} · APK</p>
+                {apk ? <p className="fine">Version {release.version} · {megabytes(apk.bytes)} · APK</p>
                   : <p className="fine">The download will appear here when the package and its checksum are available.</p>}
               </div>
               {apk && pendingChecks.length ? <p className="preview-note"><strong>Checks still pending:</strong> {pendingChecks.join(' and ')}. This is a preview release.</p> : null}
@@ -79,7 +162,7 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
             <div><h3>Prefer to use your browser?</h3><p><Link href="/apocrypha">Open Apocrypha online.</Link> Sign in with your Apocky account to use private chat and your conversation history.</p></div>
             <div><h3>Check back here for releases.</h3><p>Each install link appears only when that platform’s release is available. Preview testing details stay visible above.</p></div>
           </section>
-          <footer className="mobile-footer"><Link href="/apocrypha">Chat in your browser →</Link><Link href="/legal/privacy">Privacy</Link><Link href="/download">Labyrinth of Apocalypse downloads</Link><a href="/releases/apocrypha-mobile/manifest.json">Release details</a></footer>
+          <footer className="mobile-footer"><Link href="/apocrypha">Chat in your browser →</Link><Link href="/legal/privacy">Privacy</Link><Link href="/download">Labyrinth of Apocalypse downloads</Link><a href="/releases/apocrypha-desktop/manifest.json">Desktop release details</a><a href="/releases/apocrypha-mobile/manifest.json">Phone release details</a></footer>
         </div>
       </main>
       <style jsx>{`
@@ -96,6 +179,8 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
         .access-note > span { color: var(--apx-violet); font-size: 20px; line-height: 1.2; }
         .access-note p { margin: 0; font-size: .85rem; line-height: 1.6; } .access-note strong { color: var(--apx-ink); }
         .access-note :global(a) { color: var(--apx-mint); text-underline-offset: 3px; padding: 14px 0; }
+        .desktop-band { display: block; }
+        .band-label { margin: 0 0 10px; color: var(--apx-muted); font: 600 11px/1.5 var(--apx-mono); letter-spacing: .16em; text-transform: uppercase; }
         .platforms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
         .platform { background: linear-gradient(155deg, rgba(20,24,50,.83), rgba(7,9,21,.96)); border: 1px solid var(--apx-line); padding: 20px; border-radius: 16px; display: flex; flex-direction: column; }
         .platform-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
@@ -136,6 +221,10 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
         .access-note { margin: 20px 0 0; max-width: 680px; background: #161c2a; border-color: #364052; color: #bac3d2; }
         .access-note p { font-size: 16px; }
         .platforms { gap: 20px; align-items: start; }
+        .desktop-band { margin-bottom: 28px; }
+        .band-label { color: #9aa5b8; font: 600 12px/1.5 var(--apx-sans, system-ui); letter-spacing: .14em; margin-bottom: 12px; }
+        .windows .platform-icon { color: #91d5dc; }
+        .windows > p { max-width: 62ch; }
         .platform { padding: 26px; background: #161c2a; border-color: #364052; }
         .platform > p { font-size: 16px; color: #bac3d2; max-width: 38ch; }
         .platform-heading { margin-bottom: 18px; }
@@ -168,7 +257,7 @@ const ApocryphaDownload: NextPage<Props> = ({ release }) => {
 };
 
 export const getStaticProps: GetStaticProps<Props> = async () => ({
-  props: { release: loadNativeMobileRelease() },
+  props: { release: loadNativeMobileRelease(), desktop: loadDesktopRelease() },
 });
 
 export default ApocryphaDownload;

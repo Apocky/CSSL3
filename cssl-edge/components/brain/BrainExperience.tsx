@@ -272,7 +272,7 @@ function ReleaseShelf(): JSX.Element {
           ) : (
             <div className={styles.releaseHold}>
               <strong>Get Apocrypha for your phone</strong>
-              <p><Link href="/download/apocrypha">Android downloads and iPhone availability</Link></p>
+              <p><Link href="/download/apocrypha">Windows and Android downloads, and iPhone availability</Link></p>
               <p>This shelf describes the browser release. The download page lists each native app and its current release status.</p>
             </div>
           )}

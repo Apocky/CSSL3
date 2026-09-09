@@ -48,7 +48,7 @@ function AccountResolutionUnavailable(): JSX.Element {
         <Link href="/login?next=%2Fapocrypha" className={styles.primary}>Sign in to chat</Link>
         <Link href="/register?next=%2Fapocrypha" className={styles.secondary}>Create an account</Link>
       </div>
-      <Link className={styles.phoneLink} href="/download/apocrypha">Apocrypha for iPhone and Android →</Link>
+      <Link className={styles.phoneLink} href="/download/apocrypha">Apocrypha for Windows, iPhone and Android →</Link>
     </section>
   </main>;
 }
