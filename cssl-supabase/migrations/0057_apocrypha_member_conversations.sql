@@ -51,9 +51,29 @@ $migration$;
 ALTER TABLE public.apocrypha_member_chat_conversation
     DROP CONSTRAINT IF EXISTS apocrypha_member_chat_conversation_stable_id;
 
--- PRIMARY KEY (tenant_id, principal_id) was the structural "one conversation".
--- The scope unique already covers the wider key, so it is promoted and the
--- duplicate dropped rather than leaving two identical indexes behind.
+-- PRIMARY KEY (tenant_id, principal_id) was the structural "one conversation",
+-- and it has to go. The wider key already exists as scope_unique, so the clean
+-- end state is that key AS the primary key and no duplicate index beside it.
+--
+-- MEASURED, on the first attempt against the live database: dropping
+-- scope_unique fails with 2BP01, because apocrypha_member_chat_request has a
+-- foreign key standing on it:
+--
+--   FOREIGN KEY (tenant_id, principal_id, conversation_id)
+--     REFERENCES apocrypha_member_chat_conversation(tenant_id, principal_id, conversation_id)
+--
+-- A foreign key depends on the specific constraint backing it, not merely on
+-- some index over those columns - so adding the new primary key first does not
+-- release it either. The FK has to be dropped and re-created around the swap.
+--
+-- Doing that is safe HERE and would not be everywhere: the whole file runs in
+-- one transaction, so the window where the FK does not exist is not visible to
+-- any other session, and it either all lands or none of it does. On a table
+-- with real volume the re-validation at the end would also be worth costing;
+-- this one has zero rows.
+ALTER TABLE public.apocrypha_member_chat_request
+    DROP CONSTRAINT IF EXISTS apocrypha_member_chat_request_conversation_fk;
+
 ALTER TABLE public.apocrypha_member_chat_conversation
     DROP CONSTRAINT IF EXISTS apocrypha_member_chat_conversation_primary;
 ALTER TABLE public.apocrypha_member_chat_conversation
@@ -61,6 +81,14 @@ ALTER TABLE public.apocrypha_member_chat_conversation
 ALTER TABLE public.apocrypha_member_chat_conversation
     ADD CONSTRAINT apocrypha_member_chat_conversation_primary
         PRIMARY KEY (tenant_id, principal_id, conversation_id);
+
+-- Re-pointed at the new primary key, same columns, same cascade.
+ALTER TABLE public.apocrypha_member_chat_request
+    ADD CONSTRAINT apocrypha_member_chat_request_conversation_fk
+        FOREIGN KEY (tenant_id, principal_id, conversation_id)
+        REFERENCES public.apocrypha_member_chat_conversation
+            (tenant_id, principal_id, conversation_id)
+        ON DELETE CASCADE;
 
 -- UNIQUE (tenant_id, conversation_id) is deliberately KEPT. It is now the
 -- entire ownership guarantee: one conversation id, at most one owner.
