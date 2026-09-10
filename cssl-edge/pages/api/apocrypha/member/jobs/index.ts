@@ -121,12 +121,16 @@ export function createMemberChatSubmitHandler(
     }
 
     try {
+      // These are no longer the same value. They were, while a member had one
+      // conversation whose id WAS their auth user id - so passing one for both
+      // was harmless then and would be a privilege bug now.
+      const verifiedAuthUserId = session.user.id.toLowerCase();
       const authoritativeConversationId = requireMemberChatConversationBinding(
         session.user.id,
         conversationId,
       );
       const job = await dependencies.enqueue({
-        verifiedAuthUserId: authoritativeConversationId,
+        verifiedAuthUserId,
         conversationId: authoritativeConversationId,
         requestId,
         message,

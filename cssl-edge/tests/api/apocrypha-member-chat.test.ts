@@ -169,7 +169,7 @@ async function testRpcReceivesOnlyServerBindings(): Promise<void> {
   }, client);
   equal(calledFunction, 'apocrypha_enqueue_member_chat_v2', 'canonical member enqueue RPC is used');
   equal(calledArgs.p_verified_auth_user_id, CONVERSATION_ID, 'verified user binds the RPC');
-  equal(calledArgs.p_presented_conversation_id, CONVERSATION_ID, 'browser conversation id is validation only');
+  equal(calledArgs.p_presented_conversation_id, CONVERSATION_ID, 'the browser conversation id reaches the RPC, which owns the ownership check');
   equal(calledArgs.p_request_id, REQUEST_ID, 'opaque replay id crosses the boundary');
   equal(calledArgs.p_message, 'Hello, Apocrypha.', 'canonical message crosses the boundary');
   assert(!('p_tenant_id' in calledArgs), 'caller cannot supply a tenant');
@@ -179,28 +179,87 @@ async function testRpcReceivesOnlyServerBindings(): Promise<void> {
   assert(typeof calledArgs.p_memory_manifest_hash === 'string', 'memory manifest is server-selected');
   equal(result.job_id, JOB_ID, 'validated receipt returned');
 
-  let mismatchRpcCalls = 0;
-  const mismatchClient: MemberChatRpcClient = {
+  // ── ownership moved from equality to lookup (migration 0057) ──────────
+  //
+  // This used to assert that a conversation id differing from the auth user id
+  // was refused HERE, before storage. That was the whole implementation of
+  // "one conversation per member", so it had to change when members got more
+  // than one - but it is being replaced, not deleted, and the replacement has
+  // to be at least as strong or the change is not worth making.
+  //
+  // What must still hold, and is asserted below:
+  //   1. a malformed conversation id is STILL refused before storage;
+  //   2. a well-formed foreign id is forwarded, and the two identities reach
+  //      the RPC as SEPARATE arguments - which is the only reason the database
+  //      can tell they differ and refuse;
+  //   3. the database's refusal (P4031) surfaces to the caller as a refusal
+  //      rather than as a success or a crash.
+  //
+  // 1. Shape is still checked in-process. A junk id never costs a round trip.
+  let malformedRpcCalls = 0;
+  const malformedClient: MemberChatRpcClient = {
     async rpc() {
-      mismatchRpcCalls += 1;
+      malformedRpcCalls += 1;
       return { data: null, error: null };
     },
   };
-  let mismatchRejected = false;
+  let malformedRejected = false;
+  try {
+    await enqueueMemberChat({
+      verifiedAuthUserId: CONVERSATION_ID,
+      conversationId: 'not-a-uuid',
+      requestId: REQUEST_ID,
+      message: 'Hello, Apocrypha.',
+    }, malformedClient);
+  } catch (error) {
+    malformedRejected = error instanceof MemberChatStoreError
+      && error.publicStatus === 403
+      && error.publicCode === 'MEMBER_CHAT_CONVERSATION_MISMATCH';
+  }
+  assert(malformedRejected, 'a malformed conversation id is refused');
+  equal(malformedRpcCalls, 0, 'a malformed conversation id is refused before storage');
+
+  // 2. A foreign but well-formed id is forwarded WITH the verified identity
+  //    kept separate. If these two were ever collapsed back into one argument
+  //    the database would be comparing a value against itself and could never
+  //    refuse anything - so this assertion is the one holding the boundary.
+  let foreignArgs: Record<string, unknown> = {};
+  const foreignClient: MemberChatRpcClient = {
+    async rpc(_fn: string, args: Record<string, unknown>) {
+      foreignArgs = args;
+      return {
+        data: null,
+        error: { code: 'P4031', message: 'member conversation is not owned by the verified identity' },
+      };
+    },
+  };
+  let foreignRejected = false;
   try {
     await enqueueMemberChat({
       verifiedAuthUserId: FOREIGN_MEMBER_ID,
       conversationId: CONVERSATION_ID,
       requestId: REQUEST_ID,
       message: 'Hello, Apocrypha.',
-    }, mismatchClient);
+    }, foreignClient);
   } catch (error) {
-    mismatchRejected = error instanceof MemberChatStoreError
-      && error.publicStatus === 403
-      && error.publicCode === 'MEMBER_CHAT_CONVERSATION_MISMATCH';
+    foreignRejected = error instanceof MemberChatStoreError;
   }
-  assert(mismatchRejected, 'a browser-selected conversation cannot cross the verified identity binding');
-  equal(mismatchRpcCalls, 0, 'conversation mismatch is rejected before storage');
+  equal(
+    foreignArgs.p_verified_auth_user_id,
+    FOREIGN_MEMBER_ID,
+    'the verified identity reaches the RPC as itself',
+  );
+  equal(
+    foreignArgs.p_presented_conversation_id,
+    CONVERSATION_ID,
+    'the presented conversation reaches the RPC as a separate argument',
+  );
+  assert(
+    foreignArgs.p_verified_auth_user_id !== foreignArgs.p_presented_conversation_id,
+    'identity and conversation are not collapsed into one value',
+  );
+  // 3. And the database's refusal is surfaced, not swallowed.
+  assert(foreignRejected, 'a P4031 from the ownership check surfaces as a refusal');
 
   const oversizedProjection: MemberChatRpcClient = {
     async rpc() {
@@ -352,6 +411,16 @@ async function testSubmitBoundary(): Promise<void> {
     async enqueue(input) {
       enqueueCalls += 1;
       submissions.push(input);
+      // Stand in for apocrypha_open_member_conversation, which since 0057 is
+      // the component that decides ownership. It refuses a conversation whose
+      // owning principal is not the verified one.
+      if (input.conversationId !== input.verifiedAuthUserId) {
+        throw new MemberChatStoreError(
+          403,
+          'MEMBER_CHAT_CONVERSATION_MISMATCH',
+          'This conversation is not bound to the verified member session.',
+        );
+      }
       return receipt(false);
     },
   });
@@ -386,12 +455,35 @@ async function testSubmitBoundary(): Promise<void> {
   equal(submissions[0]?.verifiedAuthUserId, CONVERSATION_ID, 'server auth result is the only principal input');
   assertPrivate(success.out);
 
+  // Since 0057 a member may open any conversation they own, so the route no
+  // longer decides ownership - it forwards the request with the verified
+  // identity kept SEPARATE from the presented conversation, and storage
+  // refuses what is not the member's.
+  //
+  // The assertion that carries the weight is the third one. If identity and
+  // conversation were ever collapsed back into a single value, storage would
+  // be comparing a value against itself, could never refuse anything, and this
+  // test would still pass on the first two lines alone.
   const mismatched = reqRes('POST', {
     body: { ...validBody, conversation_id: FOREIGN_MEMBER_ID },
   });
   await handler(mismatched.req, mismatched.res);
-  equal(mismatched.out.statusCode, 403, 'client-selected conversation id is rejected after auth');
-  equal(enqueueCalls, 1, 'conversation mismatch never reaches storage');
+  equal(mismatched.out.statusCode, 403, 'a conversation the member does not own is refused');
+  equal(enqueueCalls, 2, 'ownership is decided by storage, so the request reaches it');
+  equal(
+    submissions[1]?.verifiedAuthUserId,
+    CONVERSATION_ID,
+    'the verified identity is the session, never the body',
+  );
+  equal(
+    submissions[1]?.conversationId,
+    FOREIGN_MEMBER_ID,
+    'the presented conversation is forwarded as its own value',
+  );
+  assert(
+    submissions[1]?.verifiedAuthUserId !== submissions[1]?.conversationId,
+    'identity and conversation are not collapsed, which is what lets storage refuse',
+  );
 
   const nulMessage = reqRes('POST', {
     body: { ...validBody, message: 'unsafe\u0000message' },
@@ -502,6 +594,14 @@ async function testDurableHistoryBoundary(): Promise<void> {
       observedUser = input.verifiedAuthUserId;
       observedConversation = input.conversationId;
       observedCursor = input.beforeCursor;
+      // Stands in for the ownership check, which since 0057 lives in the RPC.
+      if (input.conversationId !== input.verifiedAuthUserId) {
+        throw new MemberChatStoreError(
+          403,
+          'MEMBER_CHAT_CONVERSATION_MISMATCH',
+          'This conversation is not bound to the verified member session.',
+        );
+      }
       return { history: [historyEntry()], nextCursor: null };
     },
   });
@@ -535,12 +635,18 @@ async function testDurableHistoryBoundary(): Promise<void> {
   equal(forged.out.statusCode, 400, 'history query cannot override tenant scope');
   equal(listCalls, 2, 'forged history query never reaches storage');
 
+  // As with submit: reading a conversation the member does not own is refused,
+  // but the refusal is now storage's, so the request reaches it with identity
+  // and conversation kept apart.
   const mismatchedConversation = reqRes('GET', {
     query: { conversation_id: FOREIGN_MEMBER_ID },
   });
   await handler(mismatchedConversation.req, mismatchedConversation.res);
-  equal(mismatchedConversation.out.statusCode, 403, 'history cannot select another conversation');
-  equal(listCalls, 2, 'conversation mismatch never reaches storage');
+  equal(mismatchedConversation.out.statusCode, 403, 'history of a conversation the member does not own is refused');
+  equal(listCalls, 3, 'ownership is decided by storage, so the query reaches it');
+  equal(observedUser, CONVERSATION_ID, 'the verified identity is the session, never the query string');
+  equal(observedConversation, FOREIGN_MEMBER_ID, 'the requested conversation is forwarded as its own value');
+  assert(observedUser !== observedConversation, 'identity and conversation are not collapsed');
 
   const sameOriginReferer = reqRes('GET', {
     query: { conversation_id: CONVERSATION_ID },
