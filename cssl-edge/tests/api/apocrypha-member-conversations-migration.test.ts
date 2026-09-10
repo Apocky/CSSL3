@@ -38,6 +38,32 @@ function main(): void {
     'the replacement primary key must include conversation_id',
   );
 
+  // ── the dependent foreign key is dropped and re-created ───────────────
+  //
+  // MEASURED: the first attempt against the live database failed with 2BP01.
+  // apocrypha_member_chat_request holds an FK standing on scope_unique, and a
+  // foreign key depends on the specific constraint backing it - so adding the
+  // new primary key first does not release it either.
+  //
+  // Both halves have to be asserted. Dropping it without re-creating it would
+  // make the migration succeed while requests quietly lose their referential
+  // integrity, and nothing else in this suite would notice.
+  assert.match(
+    migration,
+    /ALTER TABLE public\.apocrypha_member_chat_request\s+DROP CONSTRAINT IF EXISTS apocrypha_member_chat_request_conversation_fk/,
+    'the dependent foreign key must be dropped, or the key swap fails with 2BP01',
+  );
+  assert.match(
+    migration,
+    /ADD CONSTRAINT apocrypha_member_chat_request_conversation_fk\s+FOREIGN KEY \(tenant_id, principal_id, conversation_id\)/,
+    'the dependent foreign key must be RE-CREATED, or requests lose referential integrity',
+  );
+  assert.match(
+    migration,
+    /REFERENCES public\.apocrypha_member_chat_conversation\s*\(tenant_id, principal_id, conversation_id\)\s+ON DELETE CASCADE/,
+    'the re-created foreign key must keep its columns and its cascade',
+  );
+
   // ── the ownership guarantee is KEPT, and it is the whole point ─────────
   //
   // UNIQUE (tenant_id, conversation_id) is what makes "look the id up, then
