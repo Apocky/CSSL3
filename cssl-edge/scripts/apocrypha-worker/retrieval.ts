@@ -141,14 +141,16 @@ function canonicalReadingQuery(value: unknown): string {
 
 export function queryFromJob(job: ClaimedJob): string {
   const request = job.request;
-  const explicit = request.retrieval_query;
-  if (typeof explicit === 'string' && explicit.trim()) return explicit.trim().slice(0, 4_000);
+  const explicit = typeof request.retrieval_query === 'string' ? request.retrieval_query.trim() : '';
 
   const question = safeText(request.question).trim();
   const legacyPrompt = [request.prompt, request.query, request.text, request.content, request.oracle_prompt]
     .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
     ?.trim() ?? '';
-  const currentPrompt = (question || legacyPrompt).slice(0, 4_000);
+  // retrieval_query names this turn's question, not the finished query. Widening
+  // it here keeps current-prompt precedence and the 4K bound in one place; a
+  // caller that pre-joined its own history would slip past both.
+  const currentPrompt = (explicit || question || legacyPrompt).slice(0, 4_000);
   const reading = canonicalReadingQuery(request.canonical_reading);
   const source = safeText(request.source_text).trim().slice(0, 1_800);
   const structured = boundedJson(request.structured_context, 1_000);
