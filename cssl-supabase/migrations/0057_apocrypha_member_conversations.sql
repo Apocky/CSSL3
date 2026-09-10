@@ -40,7 +40,7 @@ DO $migration$
 BEGIN
     IF to_regclass('public.apocrypha_member_chat_conversation') IS NULL THEN
         RAISE EXCEPTION
-            '0053_apocrypha_member_conversations requires 0049_apocrypha_member_chat_hardening';
+            '0057_apocrypha_member_conversations requires 0049_apocrypha_member_chat_hardening';
     END IF;
 END;
 $migration$;
