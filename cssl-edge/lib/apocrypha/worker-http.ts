@@ -8,10 +8,36 @@ class WorkerDatabaseError extends Error {
     message: string,
     readonly operation: string,
     readonly databaseCode: string,
+    /** A bounded, redacted form of what the database or transport actually
+     *  said. Held separately from `message`, which is a stable classification
+     *  the response shape depends on and must not start carrying prose. */
+    readonly detail: string,
   ) {
     super(message);
     this.name = 'WorkerDatabaseError';
   }
+}
+
+/**
+ * Make an upstream failure safe to write to a log.
+ *
+ * These messages are worth keeping - see `workerDatabaseError` - but they come
+ * from a layer that has seen row values and connection settings, so the parts
+ * that could carry a secret are removed before anything is written down. A log
+ * line is forever and ends up in places a credential should not be.
+ *
+ * Bounded too: an unbounded upstream string is an unbounded log line.
+ */
+function redactDetail(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw
+    .replace(/eyJ[A-Za-z0-9_-]{10,}/g, '<jwt>')
+    .replace(/sb_(secret|publishable)_[A-Za-z0-9_-]+/g, '<key>')
+    .replace(/postgres(ql)?:\/\/[^\s'"]+/gi, '<dsn>')
+    .replace(/https?:\/\/[^\s'"]+/gi, '<url>')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
 }
 
 function isWorkerFenceFailure(code: string, message: string): boolean {
@@ -31,6 +57,11 @@ export function workerDatabaseError(
   error: { code?: string | null; message?: string | null },
   operation = 'WORKER_RPC_FAILED',
 ): Error {
+  // An absent code is itself a signal: a PostgreSQL error always carries a
+  // SQLSTATE, so a missing one means the call did not reach the database -
+  // a fetch failure, a timeout, a gateway error. Production showed exactly
+  // this on apocrypha_claim_job, eight times over two days, and it was
+  // undiagnosable because the message was discarded here.
   const code = error.code ?? 'unknown';
   const message = error.message?.toLowerCase() ?? '';
   const workerAuthFailure = code === '28000' && (
@@ -46,6 +77,10 @@ export function workerDatabaseError(
         : `${operation}:${code}`,
     operation,
     code,
+    // The original text, kept. Classification above deliberately collapses
+    // every unrecognised failure to one string, which is right for the
+    // response and useless for the operator.
+    redactDetail(error.message),
   );
 }
 
@@ -73,6 +108,11 @@ export async function workerRpc(
       rpc,
       operation: error instanceof WorkerDatabaseError ? error.operation : 'REQUEST_VALIDATION',
       database_code: error instanceof WorkerDatabaseError ? error.databaseCode : null,
+      // Without this the log said `database_code: "unknown"` and nothing else,
+      // which cannot distinguish a network blip from a real database fault.
+      database_detail: error instanceof WorkerDatabaseError
+        ? error.detail
+        : redactDetail(error instanceof Error ? error.message : String(error)),
       public_code: safe.code,
     }));
     return res.status(safe.status).json({ ok: false, code: safe.code, error: safe.message });
