@@ -562,3 +562,49 @@ export function memberChatPublicError(error: unknown): {
     },
   };
 }
+
+/** One of a member's conversations, as a sidebar would show it. */
+export interface MemberChatConversationSummary {
+  conversation_id: string;
+  title: string;
+  turn_count: number;
+  created_at: string;
+  last_activity_at: string;
+}
+
+/**
+ * Every conversation this member owns, most recently active first.
+ *
+ * Scoping happens inside the RPC, derived from the verified auth user id, so
+ * there is no conversation id to present here and therefore none to get wrong.
+ *
+ * DORMANT until migration 0053 is applied: the RPC it calls does not exist yet,
+ * so this returns a storage error rather than data. It ships ahead of the
+ * migration deliberately - the route and the type are inert, and landing them
+ * separately keeps the migration's own change-set small enough to read.
+ */
+export async function listMemberConversations(
+  input: { verifiedAuthUserId: string; limit?: number },
+  client: MemberChatRpcClient = configuredClient(),
+): Promise<MemberChatConversationSummary[]> {
+  const verifiedAuthUserId = canonicalMemberChatVerifiedIdentity(input.verifiedAuthUserId);
+  const { data, error } = await client.rpc('apocrypha_list_member_conversations', {
+    p_verified_auth_user_id: verifiedAuthUserId,
+    p_limit: Math.min(Math.max(input.limit ?? 50, 1), 200),
+  });
+  if (error) storeFailure('conversation listing', error);
+  return rows(data).map((row) => {
+    const item = row as Record<string, unknown>;
+    const conversationId = requiredString(item.conversation_id, 'conversation_id', isMemberChatUuid)
+      .toLowerCase();
+    return {
+      conversation_id: conversationId,
+      // A title is presentation, so a missing or odd one degrades to a usable
+      // label rather than failing a listing the member is entitled to see.
+      title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'New conversation',
+      turn_count: Number.isFinite(Number(item.turn_count)) ? Number(item.turn_count) : 0,
+      created_at: typeof item.created_at === 'string' ? item.created_at : '',
+      last_activity_at: typeof item.last_activity_at === 'string' ? item.last_activity_at : '',
+    };
+  });
+}
