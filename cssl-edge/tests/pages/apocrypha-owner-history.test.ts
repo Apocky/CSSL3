@@ -289,7 +289,7 @@ async function main(): Promise<void> {
   assert.deepEqual(statusReads, ['queued'], 'the accepted job remains queued before the remount');
   assert.match(text(tree), /Earlier durable question\./, 'prior durable user turn remains visible before remount');
   assert.match(text(tree), /Earlier durable answer\./, 'prior durable answer remains visible before remount');
-  assert.match(text(tree), /Accepted\. Waiting for the local Qwen node/, 'queued status remains visible before remount');
+  assert.match(text(tree), /Accepted\. Waiting for the local Apocrypha node/, 'queued status remains visible before remount');
   assert.notEqual(storage.getItem(ACTIVE_JOB_KEY), null, 'queued job remains recoverable in the active-job journal');
   first.unmount();
 
@@ -304,7 +304,7 @@ async function main(): Promise<void> {
   assert.match(text(tree), /Earlier durable question\./, 'in-flight remount keeps the prior durable user turn visible');
   assert.match(text(tree), /Earlier durable answer\./, 'in-flight remount keeps the prior durable answer visible');
   assert.equal(occurrences(text(tree), pendingMessage.text), 1, 'in-flight remount restores the accepted prompt exactly once');
-  assert.match(text(tree), /The Qwen node has claimed this thought/, 'remount reconnects to the running job');
+  assert.match(text(tree), /The Apocrypha node has claimed this thought/, 'remount reconnects to the running job');
   assert.deepEqual(statusReads, ['queued', 'leased'], 'the remounted component resumes polling the accepted job');
   assert.ok(
     calls.filter((call) => call.url === `/api/admin/apocrypha/conversations?id=${CONVERSATION_ID}`).length

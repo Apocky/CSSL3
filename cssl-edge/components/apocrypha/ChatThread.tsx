@@ -341,9 +341,9 @@ export function ChatThread() {
             }
             setStreamingText(visibleText);
             setStreamingPhase(snapshot.job.status === 'queued'
-              ? 'Accepted. Waiting for the local Qwen node…'
+              ? 'Accepted. Waiting for the local Apocrypha node…'
               : snapshot.job.status === 'leased'
-                ? 'The Qwen node has claimed this thought…'
+                ? 'The Apocrypha node has claimed this thought…'
                 : snapshot.job.status === 'cancel_requested'
                   ? 'Stopping after the current safe boundary…'
                   : 'Apocrypha is composing the answer…');
@@ -447,7 +447,7 @@ export function ChatThread() {
       window.localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(record));
       setCurrentConv(conversationId);
       setActiveJob(record);
-      setStreamingPhase('Accepted. Waiting for the local Qwen node…');
+      setStreamingPhase('Accepted. Waiting for the local Apocrypha node…');
     } catch (sendError) {
       setStreaming(false);
       setError(sendError instanceof Error ? sendError.message : String(sendError));
