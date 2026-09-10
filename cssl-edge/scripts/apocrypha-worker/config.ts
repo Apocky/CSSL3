@@ -6,11 +6,14 @@ import type { MemoryProbeScope, WorkerConfig, WorkerManifest } from './types';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const EXACT_MODEL_ALIAS = 'qwen35-35b-a3b-q4';
-// Updated 2026-09-09: the Qwen runtime profile changed gpu_layers 99 -> 0 to release
-// the Arc A770 (8,943 MB measured) for apocrypha-core. The pin is a source constant
-// precisely so that a profile change cannot pass unnoticed; this edit is that notice.
-// Previous: 5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9
-const EXACT_PROFILE_HASH = 'a455fc613f43360ffc8f19722ceab82f29488a6954b03f1823d089fe27f94f96';
+// 2026-09-09: reverted to the original digest. Freeing the Arc changed
+// gpu_layers 99 -> 0, which changed this file's hash - and the DEPLOYED site
+// pins the old one in lib/apocrypha/readiness.ts, so every heartbeat was
+// rejected with WORKER_MANIFEST_MISMATCH and answered 503. llama-server is now
+// decommissioned, so the runtime profile is a descriptor nothing executes:
+// restoring its bytes costs nothing operationally and needs no production
+// deploy. Moving to the new digest requires redeploying apocky.com first.
+const EXACT_PROFILE_HASH = '5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9';
 const EXACT_TOOL_REGISTRY_VERSION = 'apocrypha-readonly-v1';
 const EXACT_MEMORY_MANIFEST_HASH = '307a86ce2ec83a37ad30f86327195e47259167728cf32e4276af377f08988273';
 const EXACT_MEMORY_ADAPTERS = [
@@ -180,7 +183,7 @@ export function loadConfig(
     controlPlaneUrl: safeUrl(required(env, 'APOCRYPHA_CONTROL_PLANE_URL'), 'APOCRYPHA_CONTROL_PLANE_URL', false),
     nodeId: required(env, 'APOCRYPHA_WORKER_NODE_ID'),
     nodeToken: required(env, 'APOCRYPHA_WORKER_TOKEN'),
-    qwenBaseUrl: safeUrl(env.APOCRYPHA_QWEN_BASE_URL?.trim() || 'http://127.0.0.1:19124/v1', 'APOCRYPHA_QWEN_BASE_URL', true),
+    qwenBaseUrl: safeUrl(env.APOCRYPHA_QWEN_BASE_URL?.trim() || 'http://127.0.0.1:19128/v1', 'APOCRYPHA_QWEN_BASE_URL', true),
     ...frontier,
     runtimeProfilePath: profilePathRaw ? resolve(profilePathRaw) : null,
     modelAlias: env.APOCRYPHA_MODEL_ALIAS?.trim() || manifest.model.alias,
