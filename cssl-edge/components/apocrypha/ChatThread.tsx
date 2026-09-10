@@ -75,6 +75,13 @@ interface ActiveJobRecord {
 }
 
 const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
+// Set when the reader presses New chat, cleared the moment they actually send
+// something. It exists because "open the most recent conversation on load" and
+// "I asked for a blank one" are both correct behaviours and only the reader
+// knows which applies - so the choice has to outlive the page, not just the
+// React tree. Without it, New chat cannot survive a reload: the mount decides
+// on its own to reopen the newest conversation, and every chat is the same chat.
+const NEW_CHAT_KEY = 'apocky.apocrypha.new-chat.v1';
 const JOB_POLL_MS = 1_500;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
 const MUTED_TEXT = '#85859a';
@@ -117,6 +124,18 @@ export function ChatThread() {
   const activeHydrationRef = useRef<{ jobId: string; promise: Promise<boolean> } | null>(null);
 
   useEffect(() => {
+    try {
+      // Read BEFORE the active-job branch below, and outside its early return,
+      // so a reader who pressed New chat keeps a blank one even on a load where
+      // there is no active job to recover.
+      if (window.localStorage.getItem(NEW_CHAT_KEY)) {
+        restoredInitialConversationRef.current = true;
+      }
+    } catch {
+      // Storage blocked: fall through to the default, which is to reopen the
+      // most recent conversation. Losing the preference is a worse experience,
+      // not a broken one.
+    }
     try {
       const raw = window.localStorage.getItem(ACTIVE_JOB_KEY);
       if (!raw) return;
@@ -248,6 +267,33 @@ export function ChatThread() {
     setCurrentConv(null);
     setStreamingTools([]);
     setError(null);
+    // The persisted active-job record has to go too, and this is the whole bug
+    // it fixes: clearing only React state left ACTIVE_JOB_KEY in localStorage,
+    // so the mount effect above read it back on the next load and restored
+    // currentConv from it. New chat appeared to work, and then reopening the
+    // app put you straight back into the previous conversation - which reads,
+    // correctly, as every chat being the same chat.
+    //
+    // Also stopping the stream and dropping activeJob, because a record that
+    // is gone from storage but still in state would re-hydrate the same
+    // conversation the moment anything touched that effect.
+    setActiveJob(null);
+    setStreaming(false);
+    setStreamingText('');
+    setStreamingPhase('');
+    hydratedActiveJobRef.current = null;
+    activeHydrationRef.current = null;
+    restoredInitialConversationRef.current = true;
+    try {
+      window.localStorage.removeItem(ACTIVE_JOB_KEY);
+      // Recorded so the choice survives a reload. The mount deliberately
+      // reopens the most recent conversation, which is right when you are
+      // coming back and wrong when you just asked for a blank one.
+      window.localStorage.setItem(NEW_CHAT_KEY, '1');
+    } catch {
+      // A browser with storage blocked has nothing to clear, and failing to
+      // clear what does not exist must not stop the new chat from opening.
+    }
     if (compactViewport) setSidebarOpen(false);
     setTimeout(() => textareaRef.current?.focus(), 0);
   }, [compactViewport]);
@@ -445,6 +491,10 @@ export function ChatThread() {
         conversationId,
       };
       window.localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(record));
+      // The blank chat has been used, so the preference is spent. From here on
+      // a reload should reopen THIS conversation, which is what the default
+      // already does.
+      window.localStorage.removeItem(NEW_CHAT_KEY);
       setCurrentConv(conversationId);
       setActiveJob(record);
       setStreamingPhase('Accepted. Waiting for the local Apocrypha node…');

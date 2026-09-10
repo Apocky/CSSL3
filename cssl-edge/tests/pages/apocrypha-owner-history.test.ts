@@ -41,6 +41,18 @@ function text(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 }
 
+/** The first node in the tree carrying `className`, or null.
+ *
+ * `children` already walks the whole tree AND includes each node itself, so
+ * this scans its output rather than recursing - recursing over it revisits
+ * every node forever. */
+function findByClassName(value: unknown, className: string): Tree | null {
+  for (const node of children(value)) {
+    if (node.props && node.props.className === className) return node;
+  }
+  return null;
+}
+
 function occurrences(value: string, needle: string): number {
   return value.split(needle).length - 1;
 }
@@ -363,7 +375,67 @@ async function main(): Promise<void> {
   assert.equal(storage.getItem(ACTIVE_JOB_KEY), null, 'first-poll terminal recovery clears its journal only after composition');
   terminalReload.unmount();
 
-  console.log('apocrypha-owner-history UI test: in-flight durable remount and exactly-once terminal recovery OK');
+  // ── New chat actually opens a new chat ────────────────────────────────
+  //
+  // Apocky, 2026-09-10: "Hitting new chat takes me to the same chat they are
+  // all the same one single chat."
+  //
+  // newChat cleared React state and nothing else, so ACTIVE_JOB_KEY survived in
+  // localStorage and the mount effect read it straight back on the next load -
+  // restoring currentConv and replaying the previous prompt. Pressing the
+  // button appeared to work and reopening the app undid it.
+  //
+  // The assertion that matters is the SECOND one: not that the button clears
+  // the screen, but that a REMOUNT afterwards does not walk back into the
+  // conversation the user just left. Testing only the first would have passed
+  // against the broken build.
+  storage.setItem(ACTIVE_JOB_KEY, JSON.stringify({
+    id: JOB_ID,
+    prompt: pendingMessage.text,
+    submittedAt: pendingMessage.ts_iso,
+    conversationId: CONVERSATION_ID,
+  }));
+  jobStatus = 'leased';
+  const beforeNewChat = createHarness(source, authFetch, storage);
+  beforeNewChat.render();
+  tree = await beforeNewChat.flush();
+  tree = await beforeNewChat.flush();
+  assert.match(text(tree), /Earlier durable question\./, 'the previous conversation is on screen before New chat');
+
+  const newChatButton = findByClassName(tree, 'chat-new-button');
+  assert.ok(newChatButton, 'the New chat button is rendered');
+  const onClick = (newChatButton as { props?: { onClick?: () => void } }).props?.onClick;
+  assert.equal(typeof onClick, 'function', 'the New chat button has a click handler');
+  (onClick as () => void)();
+
+  tree = await beforeNewChat.flush();
+  assert.doesNotMatch(text(tree), /Earlier durable question\./, 'New chat clears the previous conversation from the screen');
+  assert.equal(
+    storage.getItem(ACTIVE_JOB_KEY),
+    null,
+    'New chat clears the persisted active-job journal, not just React state',
+  );
+  beforeNewChat.unmount();
+
+  // The regression itself: reopen the app after pressing New chat.
+  const afterNewChat = createHarness(source, authFetch, storage);
+  afterNewChat.render();
+  tree = await afterNewChat.flush();
+  tree = await afterNewChat.flush();
+  tree = await afterNewChat.flush();
+  assert.doesNotMatch(
+    text(tree),
+    /Earlier durable question\./,
+    'reopening after New chat must not restore the conversation the user just left',
+  );
+  assert.doesNotMatch(
+    text(tree),
+    new RegExp(pendingMessage.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    'reopening after New chat must not replay the previous prompt',
+  );
+  afterNewChat.unmount();
+
+  console.log('apocrypha-owner-history UI test: in-flight durable remount, exactly-once terminal recovery, and New chat OK');
 }
 
 void main().catch((error) => {
