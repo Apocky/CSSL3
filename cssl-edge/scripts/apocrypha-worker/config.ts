@@ -6,7 +6,11 @@ import type { MemoryProbeScope, WorkerConfig, WorkerManifest } from './types';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const EXACT_MODEL_ALIAS = 'qwen35-35b-a3b-q4';
-const EXACT_PROFILE_HASH = '5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9';
+// Updated 2026-09-09: the Qwen runtime profile changed gpu_layers 99 -> 0 to release
+// the Arc A770 (8,943 MB measured) for apocrypha-core. The pin is a source constant
+// precisely so that a profile change cannot pass unnoticed; this edit is that notice.
+// Previous: 5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9
+const EXACT_PROFILE_HASH = 'a455fc613f43360ffc8f19722ceab82f29488a6954b03f1823d089fe27f94f96';
 const EXACT_TOOL_REGISTRY_VERSION = 'apocrypha-readonly-v1';
 const EXACT_MEMORY_MANIFEST_HASH = '307a86ce2ec83a37ad30f86327195e47259167728cf32e4276af377f08988273';
 const EXACT_MEMORY_ADAPTERS = [
