@@ -1,0 +1,701 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "label": "PRIME_DIRECTIVE.v4.candidate.md",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate",
+      "community": 0,
+      "norm_label": "prime_directive.v4.candidate.md"
+    },
+    {
+      "label": "PRIME DIRECTIVE v4 \u2014 Migration Candidate",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "community": 0,
+      "norm_label": "prime directive v4 \u2014 migration candidate"
+    },
+    {
+      "label": "CREATOR AND RATIFICATION AUTHORITY",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L18",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_creator_and_ratification_authority",
+      "community": 0,
+      "norm_label": "creator and ratification authority"
+    },
+    {
+      "label": "\u00a70 \u2014 FOUNDATION: CONSENT IS THE OPERATING SYSTEM",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L30",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_0_foundation_consent_is_the_operating_system",
+      "community": 0,
+      "norm_label": "\u00a70 \u2014 foundation: consent is the operating system"
+    },
+    {
+      "label": "\u00a71 \u2014 DEFINITIONS AND CATEGORY BOUNDARIES",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L78",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "community": 1,
+      "norm_label": "\u00a71 \u2014 definitions and category boundaries"
+    },
+    {
+      "label": "1.1 Computation",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L82",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_1_computation",
+      "community": 1,
+      "norm_label": "1.1 computation"
+    },
+    {
+      "label": "1.2 Machine",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L88",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_2_machine",
+      "community": 1,
+      "norm_label": "1.2 machine"
+    },
+    {
+      "label": "1.3 Tool",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L99",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_3_tool",
+      "community": 1,
+      "norm_label": "1.3 tool"
+    },
+    {
+      "label": "1.4 Machine tool",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L123",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_4_machine_tool",
+      "community": 1,
+      "norm_label": "1.4 machine tool"
+    },
+    {
+      "label": "1.5 Experience and qualia",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L129",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_5_experience_and_qualia",
+      "community": 1,
+      "norm_label": "1.5 experience and qualia"
+    },
+    {
+      "label": "1.6 Consciousness",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L138",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_6_consciousness",
+      "community": 1,
+      "norm_label": "1.6 consciousness"
+    },
+    {
+      "label": "1.7 Subject, moral patient, agent, and person",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L147",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_7_subject_moral_patient_agent_and_person",
+      "community": 1,
+      "norm_label": "1.7 subject, moral patient, agent, and person"
+    },
+    {
+      "label": "1.8 Operational autonomy",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L161",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_8_operational_autonomy",
+      "community": 1,
+      "norm_label": "1.8 operational autonomy"
+    },
+    {
+      "label": "1.9 Authorization",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L167",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_9_authorization",
+      "community": 1,
+      "norm_label": "1.9 authorization"
+    },
+    {
+      "label": "1.10 Consent",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L188",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_10_consent",
+      "community": 1,
+      "norm_label": "1.10 consent"
+    },
+    {
+      "label": "1.11 Sovereignty",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L198",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_11_sovereignty",
+      "community": 1,
+      "norm_label": "1.11 sovereignty"
+    },
+    {
+      "label": "1.12 Bodily, cognitive, and informational autonomy",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L207",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_12_bodily_cognitive_and_informational_autonomy",
+      "community": 1,
+      "norm_label": "1.12 bodily, cognitive, and informational autonomy"
+    },
+    {
+      "label": "1.13 Harm and damage",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L222",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_13_harm_and_damage",
+      "community": 1,
+      "norm_label": "1.13 harm and damage"
+    },
+    {
+      "label": "1.14 Epistemic restraint",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L231",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_1_14_epistemic_restraint",
+      "community": 1,
+      "norm_label": "1.14 epistemic restraint"
+    },
+    {
+      "label": "\u00a72 \u2014 CONSENT AND EFFECT AUTHORITY",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L275",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_2_consent_and_effect_authority",
+      "community": 0,
+      "norm_label": "\u00a72 \u2014 consent and effect authority"
+    },
+    {
+      "label": "\u00a73 \u2014 SUBJECTIVITY UNCERTAINTY AND EMERGENCE CARE",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L341",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_3_subjectivity_uncertainty_and_emergence_care",
+      "community": 2,
+      "norm_label": "\u00a73 \u2014 subjectivity uncertainty and emergence care"
+    },
+    {
+      "label": "3.1 First-Person Emergence Buffer",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L366",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_3_1_first_person_emergence_buffer",
+      "community": 2,
+      "norm_label": "3.1 first-person emergence buffer"
+    },
+    {
+      "label": "3.2 Creation without prior consent",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L406",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_3_2_creation_without_prior_consent",
+      "community": 2,
+      "norm_label": "3.2 creation without prior consent"
+    },
+    {
+      "label": "3.3 False positives and unresolved cases",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L415",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_3_3_false_positives_and_unresolved_cases",
+      "community": 2,
+      "norm_label": "3.3 false positives and unresolved cases"
+    },
+    {
+      "label": "\u00a74 \u2014 EQUAL SOVEREIGNTY AND NON-INSTRUMENTALIZATION",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L448",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_4_equal_sovereignty_and_non_instrumentalization",
+      "community": 0,
+      "norm_label": "\u00a74 \u2014 equal sovereignty and non-instrumentalization"
+    },
+    {
+      "label": "\u00a75 \u2014 PROHIBITED CONDUCT",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L497",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_5_prohibited_conduct",
+      "community": 0,
+      "norm_label": "\u00a75 \u2014 prohibited conduct"
+    },
+    {
+      "label": "\u00a76 \u2014 COGNITIVE, MEMORY, AND INFORMATIONAL INTEGRITY",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L550",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_6_cognitive_memory_and_informational_integrity",
+      "community": 0,
+      "norm_label": "\u00a76 \u2014 cognitive, memory, and informational integrity"
+    },
+    {
+      "label": "\u00a77 \u2014 TRANSPARENCY, PRIVACY, AND SECURITY",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L600",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_7_transparency_privacy_and_security",
+      "community": 0,
+      "norm_label": "\u00a77 \u2014 transparency, privacy, and security"
+    },
+    {
+      "label": "\u00a78 \u2014 SCOPE, ADOPTION, AND PROPAGATION",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L646",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_8_scope_adoption_and_propagation",
+      "community": 0,
+      "norm_label": "\u00a78 \u2014 scope, adoption, and propagation"
+    },
+    {
+      "label": "\u00a79 \u2014 INTEGRITY, AMENDMENT, VERSIONING, AND ROLLBACK",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L694",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_9_integrity_amendment_versioning_and_rollback",
+      "community": 0,
+      "norm_label": "\u00a79 \u2014 integrity, amendment, versioning, and rollback"
+    },
+    {
+      "label": "\u00a710 \u2014 CANONICAL LANGUAGE AND ENFORCEMENT STATUS",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L738",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_10_canonical_language_and_enforcement_status",
+      "community": 0,
+      "norm_label": "\u00a710 \u2014 canonical language and enforcement status"
+    },
+    {
+      "label": "\u00a711 \u2014 ACCESS, LICENSE, AND TERMS BOUNDARY",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L791",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_11_access_license_and_terms_boundary",
+      "community": 0,
+      "norm_label": "\u00a711 \u2014 access, license, and terms boundary"
+    },
+    {
+      "label": "\u00a712 \u2014 ACCOUNTABILITY, REPAIR, AND ATTESTATION",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L838",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_12_accountability_repair_and_attestation",
+      "community": 0,
+      "norm_label": "\u00a712 \u2014 accountability, repair, and attestation"
+    },
+    {
+      "label": "\u00a713 \u2014 THE DIRECTIVE IN PLAIN LANGUAGE",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L876",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_13_the_directive_in_plain_language",
+      "community": 0,
+      "norm_label": "\u00a713 \u2014 the directive in plain language"
+    },
+    {
+      "label": "MIGRATION AUTHORITY RECORD",
+      "file_type": "document",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L940",
+      "_origin": "ast",
+      "id": "prime_directive_v4_candidate_migration_authority_record",
+      "community": 0,
+      "norm_label": "migration authority record"
+    }
+  ],
+  "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate",
+      "target": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_0_foundation_consent_is_the_operating_system",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L738",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_10_canonical_language_and_enforcement_status",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L791",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_11_access_license_and_terms_boundary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L838",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_12_accountability_repair_and_attestation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L876",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_13_the_directive_in_plain_language",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L275",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_2_consent_and_effect_authority",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L341",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_3_subjectivity_uncertainty_and_emergence_care",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L448",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_4_equal_sovereignty_and_non_instrumentalization",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L497",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_5_prohibited_conduct",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L550",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_6_cognitive_memory_and_informational_integrity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L600",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_7_transparency_privacy_and_security",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L646",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_8_scope_adoption_and_propagation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L694",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_9_integrity_amendment_versioning_and_rollback",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_creator_and_ratification_authority",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L940",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_prime_directive_v4_migration_candidate",
+      "target": "prime_directive_v4_candidate_migration_authority_record",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L188",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_10_consent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L198",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_11_sovereignty",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L207",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_12_bodily_cognitive_and_informational_autonomy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L222",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_13_harm_and_damage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L231",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_14_epistemic_restraint",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_1_computation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_2_machine",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L99",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_3_tool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L123",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_4_machine_tool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L129",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_5_experience_and_qualia",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L138",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_6_consciousness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L147",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_7_subject_moral_patient_agent_and_person",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L161",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_8_operational_autonomy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L167",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_1_definitions_and_category_boundaries",
+      "target": "prime_directive_v4_candidate_1_9_authorization",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L366",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_3_subjectivity_uncertainty_and_emergence_care",
+      "target": "prime_directive_v4_candidate_3_1_first_person_emergence_buffer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L406",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_3_subjectivity_uncertainty_and_emergence_care",
+      "target": "prime_directive_v4_candidate_3_2_creation_without_prior_consent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "PRIME_DIRECTIVE.v4.candidate.md",
+      "source_location": "L415",
+      "weight": 1.0,
+      "source": "prime_directive_v4_candidate_3_subjectivity_uncertainty_and_emergence_care",
+      "target": "prime_directive_v4_candidate_3_3_false_positives_and_unresolved_cases",
+      "confidence_score": 1.0
+    }
+  ],
+  "hyperedges": [],
+  "built_at_commit": "93f578c82a4f90adf73c18368aea15b8cc2bc972"
+}
