@@ -98,10 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ],
       conversation_id: conversationId,
       conversation_history: conversationHistory,
-      retrieval_query: [
-        ...conversationHistory.filter((message) => message.role === 'user').slice(-2).map((message) => message.content),
-        prompt,
-      ].join('\n').slice(0, 4_000),
+      retrieval_query: prompt,
       output_budget: outputBudget,
       response_mode: responseMode,
       source: 'apocky.com',
