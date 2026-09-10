@@ -46,9 +46,11 @@ function contentType(req: NextApiRequest): string | null {
     .toLowerCase() ?? null;
 }
 
+// G12 history only records terminal turns (COMPLETED yields the assistant reply, FAILED yields
+// terminal_failure), so the request id appearing at all IS the committed-turn receipt. Demanding a
+// reply as well would re-send an already-delivered request id whenever the desktop has not answered yet.
 function hasRequest(session: OwnerBrainHistoryGetProjection, requestId: string): boolean {
-  return session.session.messages.some(message => message.request_id === requestId
-    && (message.role === 'assistant' || Boolean(message.terminal_failure)));
+  return session.session.messages.some(message => message.request_id === requestId);
 }
 
 function syncResponse(input: {
@@ -171,7 +173,7 @@ export function createMiniBrainSyncHandler(dependencies: SyncDependencies = defa
       if (priorRequest.length > 0 && !priorRequest.some(message => message.role === 'user' && message.content === request.payload!.text)) {
         throw new MiniBrainRelayError('BRAIN_SYNC_REQUEST_CONFLICT', 409);
       }
-      if (before && priorRequest.some(message => message.role === 'assistant' || message.terminal_failure)) {
+      if (before && priorRequest.length > 0) {
         res.status(200).json(syncResponse({
           status: 'idempotent_replay',
           sessionId: request.session_id,
