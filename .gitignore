@@ -68,3 +68,8 @@ compiler-rs/crates/*/Cargo.lock
 
 # apply-script backups
 *.bak-*
+
+# Derived: graphify rebuilds these from source on every hook run, so tracking
+# them means every commit leaves the tree dirty again. Added 2026-09-10 after a
+# sweep found 1,896 cache deletions in a single repo.
+graphify-out/cache/
