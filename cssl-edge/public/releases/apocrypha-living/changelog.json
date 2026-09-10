@@ -1,0 +1,136 @@
+{
+  "schema": "apocky.apocrypha-public-changelog.v1",
+  "version": "1.0.0",
+  "release_state": "RELEASED",
+  "generated_at": "2026-09-05T18:52:00.650Z",
+  "project": "Apocrypha",
+  "entries": [
+    {
+      "at": "2026-09-03",
+      "kind": "blueprint",
+      "state": "ACTIVE_DIRECTION",
+      "summary": "The local-living architecture became the active build direction with local-first, privacy, authority, and rollback constraints."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "owner-brain",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "The private Brain gained persistent-conversation seams plus graph, timeline, and source-tunnel memory views."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "humanity-admission",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "Humanity source admission now fails closed before memory and preserves difficult testimony only as attributed quarantine evidence."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "living-runtime",
+      "state": "LIVE_LOCAL_CHECK_PASSED",
+      "summary": "The same worldline admitted and answered an exact live continuity turn after the settled-history hot loop was removed from the one-second heartbeat."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "interoception",
+      "state": "FOCUSED_CHECKS_PASSED",
+      "summary": "The compatibility runtime gained causal stage traces, stable error codes, bounded telemetry, differential backups, and verified restore semantics."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "native-substrate",
+      "state": "RUST_SHADOW_BENCHMARKED",
+      "summary": "The migration contract now binds CSLv3 semantics, a NIL timing graph, CSSLv3 compiled kernels, and meet-or-exceed promotion gates; the first deterministic Rust context shadow passed its focused tests and microbenchmark."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "public-shell",
+      "state": "LIVE_VERIFIED",
+      "summary": "The simplified Apocky home, owner-gated Apocrypha route, Atlas, conversation constellations, and new icon family were promoted and exercised across desktop, Pixel, and iPhone viewports."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "conversation-corpus",
+      "state": "REVIEW_HELD_PROTOTYPE_LIVE",
+      "summary": "The corpus prototype reports 1,386 held conversations and 19,479 messages through aggregate and curated projections while raw bodies and unreviewed detail remain unpublished."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "accessibility",
+      "state": "LIVE_VERIFIED",
+      "summary": "Muted text contrast was raised and the live conversation surface passed accessibility and overflow checks on desktop, Pixel, and iPhone viewports."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mycelial-package",
+      "state": "CANDIDATE_HELD",
+      "summary": "A reversible Windows migration package was built and verified locally; no public download is exposed until native signature and lifecycle gates pass."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "conversation-corpus-generator",
+      "state": "LIVE_VERIFIED",
+      "summary": "The public aggregate is now generated deterministically from sealed privacy-safe facts during every build; both live projections are byte-identical and all 1,386 records remain review-held."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mobile-mini-brain",
+      "state": "SCHEMA_REPAIRED_OWNER_BOOTSTRAP_ACTIVE",
+      "summary": "A real mobile visit exposed a missing Mneme schema. The four storage tables and thirteen owner/service policies are now live with row-level security and zero anonymous-visible rows; owner bootstrap and signed two-device synchronization remain unproven."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "Trinity-organs",
+      "state": "GRAPHIFY_FIRST_VERTICAL_ACTIVE",
+      "summary": "The native migration now covers cognitive organs themselves: Graphify first, then shared traversal, provenance, scheduling, memory, diagnostics, MCP, API, and TTY kernels, with Python retained only as a frozen differential oracle until superseded."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "proprietary-language-execution",
+      "state": "ACCEPTANCE_GATE_ACTIVE",
+      "summary": "CSLv3 contracts, NIL graphs, and CSSLv3 kernels now have an execution gate: embedded, displayed, or hashed language artifacts do not count until they produce a measured behavioral change through the language runtime."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mneme-schema",
+      "state": "LIVE_SCHEMA_BOUNDARY_VERIFIED",
+      "summary": "The private Mneme substrate now exposes four row-secured tables and thirteen policies; anonymous boundary probes see no rows. Authenticated owner registration and phone-to-desktop data flow remain separate gates."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "routing",
+      "state": "LIVE_FORWARD_REPAIR_VERIFIED",
+      "summary": "The candidate 5 cutover was retained. Repeated probes now resolve the canonical and bare-domain Apocrypha routes plus plan, changelog, and manifest without rolling back."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "mobile-mini-brain",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "The missing first-owner path now has an explicit Mneme bootstrap, and the mobile surface has an encrypted local vault, deterministic offline reflection, signed replay-safe synchronization, conflict preservation, and a no-API-cache service worker. Physical-phone and live desktop synchronization remain acceptance gates."
+    },
+    {
+      "at": "2026-09-03",
+      "kind": "graphify-native-query",
+      "state": "DIFFERENTIAL_BENCHMARK_PASSED",
+      "summary": "The first Trinity organ now executes a sealed CSSLv3 query policy through a bounded native runtime and emits an inspectable non-authoritative NIL trace. Exact fixed-query parity, morphology retention, policy countertests, startup latency, and rollback were measured; product integration remains open."
+    },
+    {
+      "at": "2026-09-04",
+      "kind": "web-pwa-1.0-release",
+      "state": "RELEASED_PWA_METADATA_SEALED",
+      "summary": "The 1.0.0 browser-delivered web/PWA release has one route-aware install manifest, iOS safe-area activation, an unobscured telemetry-blackout surface, strict private-response no-store behavior, no private API entries in service-worker caches, offline encrypted restart coverage, serious and critical accessibility checks, and narrow-screen overflow checks across local automated desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit. Native binaries, physical-device verification, and production deployment are not claimed."
+    },
+    {
+      "at": "2026-09-05",
+      "kind": "conversation-recovery",
+      "state": "RECOVERY_CHECKS_PASSED",
+      "summary": "Saved messages remain encrypted on the device while a delayed reply is pending. Retry preserves the original message, reconnecting resumes its delivery, and changing accounts cannot send another account’s pending text. Conversation history is retained across the service restart."
+    },
+    {
+      "at": "2026-09-05",
+      "kind": "conversation-formatting",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "Assistant replies display readable headings, lists, emphasis and code through an escaped renderer. The saved message text, copy actions, history and pending delivery are preserved."
+    }
+  ],
+  "claim_boundary": "Public-safe change summaries only; runtime availability and release readiness require fresh direct observation."
+}

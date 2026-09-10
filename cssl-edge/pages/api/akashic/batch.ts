@@ -6,6 +6,7 @@
 // Limits : ≤ 256 events per batch (matches client RING_CAP).
 
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { isAkashicKind } from '@/lib/akashic-telemetry/event-types';
 import { envelope, logHit } from '@/lib/response';
 import { getSupabase } from '@/lib/supabase';
 
@@ -67,12 +68,11 @@ interface OkResp {
 }
 interface ErrResp { served_by: string; ts: string; error: string; }
 
-const KIND_RX = /^[a-z][a-z0-9._-]{2,63}$/;
 const MAX_BATCH = 256;
 
 function isValid(e: BatchEvent): boolean {
   if (typeof e.cell_id !== 'string' || e.cell_id.length < 8 || e.cell_id.length > 64) return false;
-  if (typeof e.kind !== 'string' || !KIND_RX.test(e.kind)) return false;
+  if (!isAkashicKind(e.kind)) return false;
   if (typeof e.session_id !== 'string' || e.session_id.length < 8 || e.session_id.length > 64) return false;
   const mask = e.sigma_mask ?? 0;
   if (typeof mask !== 'number' || mask <= 0 || mask > 4095) return false;

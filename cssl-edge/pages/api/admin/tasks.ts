@@ -1,10 +1,20 @@
 // /api/admin/tasks · stub list of scheduled-tasks · activates when admin-bridge wired
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { setPrivateNoStore } from '../../../lib/apocrypha/proxy';
+import { requireAdmin } from '../../../lib/require-admin';
 
-export default function handler(_req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
+  setPrivateNoStore(res);
+  res.setHeader('Allow', 'GET');
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
+  if (!(await requireAdmin(req, res))) return;
+
   // Reflects the W7/W8/W9/W10 schedule visible at this moment.
   // Live data lands when scheduled-tasks bridge wires (W9-D2 supabase + admin-bridge).
-  return res.status(200).json({
+  res.status(200).json({
     stub: true,
     tasks: [
       {

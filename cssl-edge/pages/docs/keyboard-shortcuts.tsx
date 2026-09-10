@@ -5,42 +5,42 @@ import DocsLayout from '@/components/DocsLayout';
 import Callout from '@/components/Callout';
 import PrevNextNav from '@/components/PrevNextNav';
 
-interface Row { keys: string[]; action: string; notes?: string; status?: '✓' | '◐' | '○' }
+interface Row { keys: string[]; action: string; notes?: string; status?: 'available' | 'unfinished' | 'planned' }
 
 const movement: Row[] = [
-  { keys: ['W'], action: 'Move forward', status: '✓' },
-  { keys: ['A'], action: 'Strafe left', status: '✓' },
-  { keys: ['S'], action: 'Move backward', status: '✓' },
-  { keys: ['D'], action: 'Strafe right', status: '✓' },
-  { keys: ['Space'], action: 'Jump', status: '✓' },
-  { keys: ['Shift'], action: 'Sprint while held', status: '✓' },
-  { keys: ['Ctrl'], action: 'Crouch while held', status: '✓' },
-  { keys: ['Mouse'], action: 'Look around', notes: 'Cursor is captured while the window is focused', status: '✓' },
+  { keys: ['W'], action: 'Move forward', status: 'available' },
+  { keys: ['A'], action: 'Strafe left', status: 'available' },
+  { keys: ['S'], action: 'Move backward', status: 'available' },
+  { keys: ['D'], action: 'Strafe right', status: 'available' },
+  { keys: ['Space'], action: 'Jump', status: 'available' },
+  { keys: ['Shift'], action: 'Sprint while held', status: 'available' },
+  { keys: ['Ctrl'], action: 'Crouch while held', status: 'available' },
+  { keys: ['Mouse'], action: 'Look around', notes: 'Cursor is captured while the window is focused', status: 'available' },
 ];
 
 const renderModes: Row[] = [
-  { keys: ['F1'], action: 'Default render mode', status: '✓' },
-  { keys: ['F2'], action: 'Wireframe', status: '✓' },
-  { keys: ['F3'], action: 'Normals visualization', status: '✓' },
-  { keys: ['F4'], action: 'UV grid', status: '✓' },
-  { keys: ['F5'], action: 'Albedo only (no shading)', status: '✓' },
-  { keys: ['F6'], action: 'Material id heat-map', status: '✓' },
-  { keys: ['F7'], action: 'Light contributions split', status: '◐' },
-  { keys: ['F8'], action: 'Spectral debug overlay', status: '◐' },
+  { keys: ['F1'], action: 'Default display', status: 'available' },
+  { keys: ['F2'], action: 'Wireframe view', status: 'available' },
+  { keys: ['F3'], action: 'Surface-direction view', status: 'available' },
+  { keys: ['F4'], action: 'Texture-coordinate grid', status: 'available' },
+  { keys: ['F5'], action: 'Base color only, without shading', status: 'available' },
+  { keys: ['F6'], action: 'Material-number heat map', status: 'available' },
+  { keys: ['F7'], action: 'Separate light contributions', status: 'unfinished' },
+  { keys: ['F8'], action: 'Light-spectrum debugging view', status: 'unfinished' },
 ];
 
 const captureMode: Row[] = [
-  { keys: ['F9'], action: 'Burst capture · 10 frames', notes: 'Saves PNGs into ./snapshots/', status: '✓' },
-  { keys: ['F11'], action: 'Toggle borderless fullscreen', status: '✓' },
-  { keys: ['F12'], action: 'Single screenshot', notes: 'Saves PNG into ./snapshots/', status: '✓' },
+  { keys: ['F9'], action: 'Capture 10 frames', notes: 'Saves PNG image files into ./snapshots/', status: 'available' },
+  { keys: ['F11'], action: 'Turn borderless full-screen on or off', status: 'available' },
+  { keys: ['F12'], action: 'Take one screenshot', notes: 'Saves a PNG image into ./snapshots/', status: 'available' },
 ];
 
 const ui: Row[] = [
-  { keys: ['/'], action: 'Focus the chat panel', notes: 'Type a free-form request', status: '✓' },
-  { keys: ['Enter'], action: 'Submit chat / dispatch intent', status: '✓' },
-  { keys: ['Esc'], action: 'Cancel chat focus · pause menu', status: '✓' },
-  { keys: ['Tab'], action: 'Pause · open menu', status: '✓' },
-  { keys: ['↑', '↓'], action: 'Scroll chat history while focused', status: '✓' },
+  { keys: ['/'], action: 'Focus the request panel', notes: 'Type a request', status: 'available' },
+  { keys: ['Enter'], action: 'Submit the request', status: 'available' },
+  { keys: ['Esc'], action: 'Cancel text entry or open the pause menu', status: 'available' },
+  { keys: ['Tab'], action: 'Pause and open the menu', status: 'available' },
+  { keys: ['↑', '↓'], action: 'Browse earlier requests while the panel is focused', status: 'available' },
 ];
 
 const Section = ({ title, rows }: { title: string; rows: Row[] }) => (
@@ -62,7 +62,9 @@ const Section = ({ title, rows }: { title: string; rows: Row[] }) => (
               <div style={{ color: '#e6e6f0' }}>{r.action}</div>
               {r.notes !== undefined ? <div style={{ fontSize: '0.78rem', color: '#7a7a8c', marginTop: '0.2rem' }}>{r.notes}</div> : null}
             </td>
-            <td><span style={{ color: r.status === '✓' ? '#34d399' : r.status === '◐' ? '#fbbf24' : '#9aa0a6' }}>{r.status ?? '○'}</span></td>
+            <td><span style={{ color: r.status === 'available' ? '#34d399' : r.status === 'unfinished' ? '#fbbf24' : '#9aa0a6' }}>
+              {r.status === 'available' ? 'Available' : r.status === 'unfinished' ? 'Unfinished' : 'Planned'}
+            </span></td>
           </tr>
         ))}
       </tbody>
@@ -78,12 +80,12 @@ const Page: NextPage = () => {
       description="The complete keyboard reference for Labyrinth of Apocalypse — movement, render modes, screenshots, burst capture, fullscreen, pause, chat focus."
     >
       <h1 className="docs-h1">Keyboard Shortcuts</h1>
-      <p className="docs-blurb">§ Movement · render modes · capture · UI focus.</p>
+      <p className="docs-blurb">Movement · render modes · capture · UI focus.</p>
 
       <p className="docs-p">
-        Every binding below is the engine default and is wired into the loa-host event loop. Keys marked{' '}
-        <span style={{ color: '#34d399' }}>✓</span> work in the current alpha build. Keys marked{' '}
-        <span style={{ color: '#fbbf24' }}>◐</span> are wired but the visual output is still being polished.
+        These are the default controls. <span style={{ color: '#34d399' }}>Available</span> means the control
+        is expected to work in the current test build. <span style={{ color: '#fbbf24' }}>Unfinished</span>{' '}
+        means the control exists but its result may still change.
       </p>
 
       <Section title="Movement" rows={movement} />
@@ -91,7 +93,7 @@ const Page: NextPage = () => {
       <Section title="Capture + window" rows={captureMode} />
       <Section title="UI + chat" rows={ui} />
 
-      <h2 className="docs-h2">§ Notes</h2>
+      <h2 className="docs-h2">Notes</h2>
       <Callout kind="note" title="Snapshots directory">
         F9 (burst) and F12 (single) write PNGs into a <code className="docs-ic">snapshots/</code> directory next to{' '}
         <code className="docs-ic">LoA.exe</code>. The engine creates the directory on first capture if it does not exist.
@@ -106,7 +108,7 @@ const Page: NextPage = () => {
       </Callout>
 
       <Callout kind="coming-soon" title="Custom rebinding">
-        ○ A keybinding-config file is on the roadmap. For the alpha, the bindings above are hard-coded in
+        A file for changing the controls is planned. For the alpha, the bindings above are fixed in
         <code className="docs-ic"> compiler-rs/crates/loa-host/src/input.rs</code>. The
         <code className="docs-ic"> /docs/changelog</code> page will note when rebinding ships.
       </Callout>

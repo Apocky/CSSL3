@@ -1,0 +1,63 @@
+/* Home identity graphic. Two renderings of one motif: `.visual` fills the desktop mark column,
+   `.compact` sits beside the identity line once the stage collapses to a single column. */
+.visual.visual { width: 100%; max-width: 460px; justify-self: center; mix-blend-mode: screen; }
+.field { position: relative; width: 100%; aspect-ratio: 1; isolation: isolate; }
+.field::before,
+.compact::before {
+  content: '';
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(109, 93, 252, 0.3), rgba(79, 124, 255, 0.1) 42%, transparent 70%);
+}
+.orbits { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: 50% 50%; }
+.stopBlue { stop-color: var(--apx-blue, #4f7cff); }
+.stopIndigo { stop-color: var(--apx-indigo, #6d5dfc); }
+.stopViolet { stop-color: var(--apx-violet, #b998ff); }
+
+/* The mark PNG is opaque on near-black; the screen blend + contrast lift hide that square, and
+   the radial mask feathers its edge so no rectangle ghost survives over page gradients. */
+.visual .mark,
+.compact .mark {
+  position: absolute;
+  inset: 18%;
+  width: 64%;
+  height: 64%;
+  object-fit: contain;
+  mix-blend-mode: screen;
+  filter: contrast(1.15);
+  -webkit-mask-image: radial-gradient(circle closest-side, #000 86%, transparent 100%);
+  mask-image: radial-gradient(circle closest-side, #000 86%, transparent 100%);
+}
+
+.compact {
+  display: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 108px;
+  aspect-ratio: 1;
+  isolation: isolate;
+  mix-blend-mode: screen;
+}
+.compact::before { inset: 10%; }
+.compact .mark { inset: 15%; width: 70%; height: 70%; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .visual .orbits { animation: orbit 240s linear infinite; }
+}
+@keyframes orbit { to { transform: rotate(360deg); } }
+
+@media (max-width: 940px) {
+  .visual.visual { display: none; }
+  .compact { display: block; }
+}
+@media (max-width: 660px) {
+  .compact { width: 88px; }
+}
+
+@media (forced-colors: active) {
+  .visual.visual, .compact, .visual .mark, .compact .mark { mix-blend-mode: normal; filter: none; }
+  .field::before, .compact::before { display: none; }
+  .rings { stroke: CanvasText; }
+  .nodes { fill: CanvasText; }
+}

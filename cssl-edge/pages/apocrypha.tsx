@@ -1,18 +1,54 @@
 import Head from 'next/head';
-import { useRouter } from 'next/router';
-import { useState } from 'react';
-import { getAuthClient } from '@/lib/auth';
-import { useClearing } from '@/lib/clearing/useClearing';
-import type { ClearingMessage } from '@/lib/clearing/useClearing';
-import styles from '@/styles/clearing.module.css';
+import { useEffect, useRef, useState } from 'react';
+import { openAccountPendingJournal } from '@/lib/mobile/chat-contract';
+import { useSiteSession } from '@/components/hub/SiteSession';
+import AccountChat from '@/components/apocrypha/AccountChat';
+import { ChatThread } from '@/components/apocrypha/ChatThread';
 
-const axes = ['People', 'Meaning', 'Visibility', 'Time'] as const;
-const glyphs: Record<string, string> = { spark: '✦', heart: '♡', echo: '↟', curious: '◎' };
-const age = (date: string) => { const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(date)) / 1000)); return seconds < 60 ? 'now' : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h` : `${Math.floor(seconds / 86400)}d`; };
-
-export default function Apocrypha() {
-  const router = useRouter(); const slug = typeof router.query.room === 'string' ? router.query.room : 'north-clearing'; const clearing = useClearing(slug); const [draft, setDraft] = useState(''); const [selected, setSelected] = useState<string | null>(null); const [axis, setAxis] = useState<typeof axes[number]>('People'); const [reply, setReply] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [sending, setSending] = useState(false);
-  const selectedMessage = clearing.messages.find((m) => m.id === selected) ?? null; const stateLabel = clearing.liveState === 'live' ? 'LIVE' : clearing.liveState === 'reconnecting' ? 'RECONNECTING' : clearing.liveState === 'loading' ? 'OPENING' : 'UNAVAILABLE';
-  const send = async () => { if (clearing.authState !== 'signed-in') { void router.push('/login?next=%2Fapocrypha'); return; } setSending(true); const result = await clearing.sendMessage(draft, reply); setSending(false); if (result.ok) { setDraft(''); setReply(null); } else setNotice(result.error ?? 'The room could not place that message.'); };
-  return <><Head><title>{clearing.activeRoom?.title ?? 'The Clearing'} · Apocky</title><meta name="description" content="A public room for shared messages, threads, and small discoveries." /></Head><main className={styles.clearing} aria-label="The Clearing public room"><div className={styles.frame}><header className={styles.header}><div className={styles.brand}><span className={styles.brandMark}>◇</span>THE CLEARING</div><div className={styles.headerRoom}><span>{clearing.activeRoom?.glyph ?? '◇'}</span><strong>{clearing.activeRoom?.title ?? 'North Clearing'}</strong><small>{clearing.presenceCount > 0 ? `${clearing.presenceCount} here now` : 'a public room'}</small></div><nav className={styles.headerActions} aria-label="Room actions"><button onClick={() => { void navigator.clipboard?.writeText(window.location.href); setNotice('Room link copied.'); }}>Invite</button><button onClick={() => void router.push(`/apocrypha?room=${encodeURIComponent(slug)}#history`)}>History</button><button onClick={() => void router.push('/account#consent')}>Consent</button></nav></header><div className={styles.layout}><aside className={styles.shelf} aria-label="Rooms"><div className={styles.shelfLabel}>ROOMS</div><div className={styles.roomList}>{clearing.rooms.map((room) => <button key={room.id} className={`${styles.roomDoor} ${room.id === clearing.activeRoom?.id ? styles.roomDoorActive : ''}`} aria-current={room.id === clearing.activeRoom?.id ? 'page' : undefined} onClick={() => void router.replace({ pathname: '/apocrypha', query: { room: room.slug } }, undefined, { shallow: true })}><span>{room.glyph ?? '◇'}</span><span>{room.title}</span><small>{room.slug === clearing.activeRoom?.slug ? 'open' : 'door'}</small></button>)}</div><div className={styles.shelfFooter}>{stateLabel}<small>{clearing.error ?? 'public projection'}</small></div></aside><section className={styles.stage} aria-label="Context stage"><div className={styles.stageBackdrop}><span>✦</span><span>◌</span><span>◇</span></div>{selectedMessage ? <div className={styles.contextPanel}><div className={styles.contextHead}><span className={styles.eyebrow}>CONTEXT</span><button onClick={() => setSelected(null)} aria-label="Close Context">×</button></div><p className={styles.contextQuote}>{selectedMessage.body}</p><div className={styles.axisGrid}>{axes.map((item) => <button key={item} className={axis === item ? styles.axisActive : ''} onClick={() => setAxis(item)}>{item}</button>)}</div><p className={styles.axisPeek}>{axis === 'People' ? `${selectedMessage.author_label} · ${clearing.members.length} participants have left a trace here.` : axis === 'Meaning' ? `${clearing.messages.filter((m) => m.reply_to_id === selectedMessage.id).length} replies branch from this message inside ${clearing.activeRoom?.title ?? 'the room'}.` : axis === 'Visibility' ? 'Public room · readable by anyone · posting requires a signed-in account.' : `Placed ${age(selectedMessage.created_at)} · ${selectedMessage.edited_at ? 'revised' : 'unrevised'}.`}</p></div> : <div className={styles.stageEmpty}><span className={styles.stageSigil}>◇</span><strong>Choose a message</strong><p>Its nearby relations will appear here without leaving the room.</p></div>}</section><section className={styles.chat} aria-label="Conversation"><div className={styles.chatHead}><div><span className={styles.eyebrow}>CURRENT THREAD</span><h1>{clearing.activeRoom?.title ?? 'The Clearing'}</h1></div><span className={styles.chatState}>{stateLabel}</span></div><div className={styles.stream} aria-live="polite">{clearing.messages.length === 0 && <div className={styles.emptyStream}>◇<p>No messages yet.</p><small>Leave the first trace in this room.</small></div>}{clearing.messages.map((message: ClearingMessage) => <article key={message.id} className={styles.message}><button className={styles.messageBody} onClick={() => { setSelected(message.id); setAxis('People'); }} aria-label={`Open Context for ${message.author_label}'s message`}><span className={styles.avatar}>{message.author_label.slice(0, 1).toUpperCase()}</span><span className={styles.messageCopy}><span className={styles.messageMeta}><strong>{message.author_label}</strong><time dateTime={message.created_at}>{age(message.created_at)}</time></span><span className={styles.messageText}>{message.body}</span></span></button><div className={styles.messageTools}>{Object.entries(glyphs).map(([kind, glyph]) => <button key={kind} onClick={() => void clearing.toggleReaction(message.id, kind)} aria-label={`React ${kind}`}>{glyph}</button>)}<button onClick={() => { setReply(message.id); setSelected(message.id); }}>↳</button></div></article>)}</div><form className={styles.composer} onSubmit={(event) => { event.preventDefault(); if (draft.trim()) void send(); }}>{reply && <div>Replying in thread <button type="button" onClick={() => setReply(null)}>cancel</button></div>}<textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={clearing.authState === 'signed-in' ? 'Leave a trace…' : 'Sign in to leave a trace…'} aria-label="Message the Clearing" maxLength={2000} onFocus={() => { if (clearing.authState !== 'signed-in') void router.push('/login?next=%2Fapocrypha'); }} /><div className={styles.composerTools}><button type="button" onClick={() => setNotice('Local artifact sharing is not connected to this room yet.')} aria-label="Attach a local artifact">＋</button><button type="button" onClick={() => setNotice('Microphone is unavailable by site policy.')} aria-label="Microphone unavailable">◌</button><button type="button" onClick={() => setNotice('Headset routing is unavailable by site policy.')} aria-label="Audio room unavailable">◉</button><button type="button" onClick={() => setNotice('Camera is unavailable by site policy.')} aria-label="Camera unavailable">▣</button><button className={styles.send} type="submit" disabled={sending || clearing.authState !== 'signed-in' || !draft.trim()} aria-label={clearing.authState === 'signed-in' ? 'Send message' : 'Sign in to send message'}>↑</button></div>{notice && <small>{notice}</small>}</form></section></div></div></main></>;
+export default function ApocryphaPage(): JSX.Element {
+  const session = useSiteSession();
+  const displayOwner = session.ownerConversation === true;
+  const account = session.authenticated ? session.subjectKey : null;
+  const [pendingCheck, setPendingCheck] = useState<{ account: string; status: 'clear' | 'pending' | 'unavailable' } | null>(null);
+  const controller = useRef<{ account: string; choice: 'owner' | 'account' } | null>(null);
+  const [, redraw] = useState(0);
+  if (!account) controller.current = null;
+  else if (controller.current?.account !== account) controller.current = { account, choice: displayOwner ? 'owner' : 'account' };
+  useEffect(() => {
+    let active = true;
+    if (!account) return;
+    void openAccountPendingJournal().then(store => store.load(account)).then(pending => {
+      if (active) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
+    }, () => { if (active) setPendingCheck({ account, status: 'unavailable' }); });
+    return () => { active = false; };
+  }, [account]);
+  const checked = account !== null && pendingCheck?.account === account;
+  if (checked && pendingCheck?.status !== 'clear' && controller.current) controller.current.choice = 'account';
+  const showOwner = displayOwner && checked && pendingCheck?.status === 'clear' && controller.current?.choice === 'owner';
+  const checkingSaved = displayOwner && (!account || !checked);
+  const returnToOwner = async () => {
+    if (!account || !displayOwner) return;
+    try {
+      const pending = await (await openAccountPendingJournal()).load(account);
+      if (controller.current?.account !== account) return;
+      setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
+      if (!pending) { controller.current.choice = 'owner'; redraw(value => value + 1); }
+    } catch { if (controller.current?.account === account) setPendingCheck({ account, status: 'unavailable' }); }
+  };
+  return <>
+    <Head>
+      <title>Apocrypha · Apocky</title>
+      <meta name="description" content="Chat with Apocrypha from your browser. Sign in to your Apocky account to keep your own conversations together." />
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
+      <meta name="referrer" content="no-referrer" />
+      <meta name="theme-color" content="#05060b" />
+    </Head>
+    {checkingSaved ? <main id="main-content" role="status"><p>Opening your saved conversation…</p></main>
+      : showOwner ? <main id="main-content" aria-label="Apocrypha owner conversation" style={{ height: '100dvh', minHeight: 480, overflow: 'hidden' }}><ChatThread /></main> : <AccountChat onPendingChange={pending => {
+        if (account && controller.current?.account === account) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
+      }} />}
+    {displayOwner && account && !checkingSaved && !showOwner ? <p><button type="button" disabled={pendingCheck?.status !== 'clear'}
+      onClick={() => { void returnToOwner(); }}>Open your main conversation</button></p> : null}
+  </>;
 }

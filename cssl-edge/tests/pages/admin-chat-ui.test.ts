@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 
 const source = readFileSync(resolve(process.cwd(), 'components/apocrypha/ChatThread.tsx'), 'utf8');
 const cognition = readFileSync(resolve(process.cwd(), 'components/apocrypha/CognitionView.tsx'), 'utf8');
-const publicChat = readFileSync(resolve(process.cwd(), 'pages/chat.tsx'), 'utf8');
+const alias = readFileSync(resolve(process.cwd(), 'pages/chat.tsx'), 'utf8');
+const ownerPage = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(`assert failed : ${message}`);
@@ -64,20 +65,17 @@ export function testCognitionResponsiveAccessibilityContract(): void {
   }
 }
 
-export function testPublicChatShortViewportContract(): void {
+export function testSingleLiveChatPath(): void {
   for (const token of [
-    'overflow-y: auto',
-    'chat-access-avatar',
-    'max-height: 650px',
-    '<h1 role="status"',
-    'inset: 0;',
-    'background-position: 56px 56px;',
+    'GetServerSideProps',
+    '`/apocrypha${suffix}`',
+    'permanent: true',
   ]) {
-    assert(publicChat.includes(token), `public chat short-viewport contract missing: ${token}`);
+    assert(alias.includes(token), `chat alias redirect contract missing: ${token}`);
   }
-  for (const forbidden of ['inset: -30%', 'translate3d(56px, 56px, 0)']) {
-    assert(!publicChat.includes(forbidden), `decorative grid expands scroll area: ${forbidden}`);
-  }
+  assert(!alias.includes('ChatThread'), 'the alias must not create a second chat surface');
+  assert(ownerPage.includes("height: '100dvh'"), 'the canonical owner chat uses the dynamic viewport');
+  assert(ownerPage.includes('<ChatThread />'), 'the canonical owner chat uses the durable UI');
 }
 
 export function testSettingsSurfaceIsGatedAndPresentationOnly(): void {
@@ -91,6 +89,6 @@ testConversationLifecycleSurface();
 testResponsiveSidebarContract();
 testChatAccessibilityContract();
 testCognitionResponsiveAccessibilityContract();
-testPublicChatShortViewportContract();
+testSingleLiveChatPath();
 testSettingsSurfaceIsGatedAndPresentationOnly();
 console.log('admin-chat-ui.test : OK · 6 tests passed');

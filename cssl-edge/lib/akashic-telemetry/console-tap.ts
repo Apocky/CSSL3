@@ -6,10 +6,14 @@
 // gate denies emission for tiers ⊏ akashic ; this module only listens. Real
 // gate is in client.capture().
 
-import { capture } from './client';
+import { _isInit, capture, currentTier, isTelemetryBlackoutPath } from './client';
 import { redactString } from './sigma-mask';
 
 let installed = false;
+let originalError: typeof console.error | null = null;
+let originalWarn: typeof console.warn | null = null;
+let wrappedError: typeof console.error | null = null;
+let wrappedWarn: typeof console.warn | null = null;
 
 function safeStringify(arg: unknown): string {
   if (typeof arg === 'string') return arg;
@@ -28,12 +32,15 @@ function joinArgs(args: unknown[]): string {
 export function installConsoleTap(): void {
   if (installed) return;
   if (typeof console === 'undefined') return;
+  if (!_isInit() || currentTier() !== 'akashic' || isTelemetryBlackoutPath()) return;
   installed = true;
 
-  const origErr = console.error.bind(console);
-  const origWarn = console.warn.bind(console);
+  originalError = console.error;
+  originalWarn = console.warn;
+  const origErr = originalError.bind(console);
+  const origWarn = originalWarn.bind(console);
 
-  console.error = (...args: unknown[]): void => {
+  wrappedError = (...args: unknown[]): void => {
     try {
       capture('console.error', {
         message: redactString(joinArgs(args)),
@@ -43,8 +50,9 @@ export function installConsoleTap(): void {
     }
     origErr(...args);
   };
+  console.error = wrappedError;
 
-  console.warn = (...args: unknown[]): void => {
+  wrappedWarn = (...args: unknown[]): void => {
     try {
       capture('console.warn', {
         message: redactString(joinArgs(args)),
@@ -54,8 +62,33 @@ export function installConsoleTap(): void {
     }
     origWarn(...args);
   };
+  console.warn = wrappedWarn;
+}
+
+export function uninstallConsoleTap(): void {
+  if (
+    typeof console !== 'undefined' &&
+    originalError !== null &&
+    wrappedError !== null &&
+    console.error === wrappedError
+  ) {
+    console.error = originalError;
+  }
+  if (
+    typeof console !== 'undefined' &&
+    originalWarn !== null &&
+    wrappedWarn !== null &&
+    console.warn === wrappedWarn
+  ) {
+    console.warn = originalWarn;
+  }
+  originalError = null;
+  originalWarn = null;
+  wrappedError = null;
+  wrappedWarn = null;
+  installed = false;
 }
 
 export function _resetConsoleTapForTests(): void {
-  installed = false;
+  uninstallConsoleTap();
 }

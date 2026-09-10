@@ -1,0 +1,144 @@
+!csl4
+!def
+receipt-id: apocrypha-v2-public-cloud-v5-20260721
+evidence-observed: value obtained from deployed runtime, public route, preserved byte set, or deterministic replay
+evidence-derived: value computed from observed bytes without changing them
+promotion-scope: exact capability boundary accepted by this receipt
+rollback-anchor: preserved source, state, configuration, or launcher sufficient to reverse this cutover
+!.
+
+#P receipt
+#K id := receipt-id
+#K recorded_date := 2026-07-21Z
+#K timezone_context := America/Phoenix
+#K status := accepted(production-cloud-body-v5 + public-ingress + public-presence-projection)
+#K status != accepted(complete-learned-digital-intelligence)
+#K evidence_policy := observed > derived > reported
+#K secrets := excluded(terminal-paths + credentials + tokens + private-content)
+
+#D source_identity
+#K repository := cssl-edge
+#K branch := apocrypha-v2-public-release
+#K base_commit := 7a86c510fc0a9ccbcea4fad6bfaa3032d8fae867
+#K release_root := 3a861a30f01dbca491cb5febd444ea362ef3c3807da7c1bbbeb75c152196abe5
+#K source_manifest_sha256 := 21d31c0d28b37c8de9826956e2735bc53036c8584ee5da9a208235a369b0aa0c
+#K environment_root := 2c6cdd2675b1e0b093d696d3e5aad75e1fb65bff55d51eed7e1c3739ea15d6ff
+#K environment_manifest_sha256 := a9d75694e623c6cf9b4eb618375decf323080ec8508f40ae6500b52d680e4ac8
+#K build_sha256 := a4da92e623476771cd6f5aff518b571dd1dc710d9d4cf3ec82f59d80dde906a0
+#K route_sha256 := 0efe60ca446337452c1b6b32215b6094300dc762e17fbc02711ca0224cd4c0d7
+#K denominator_sha256 := 4e01c86c84593d04fd68ba9fa2cddab044b2d0378b9d9788ba60b3fcdad37d03
+#K profile_sha256 := 015a408c5eef072ffc79ee528e43ff399397d93edbc5c79d7554ac0b795c24b7
+#K release_launcher_sha256 := c1d2a7803c008e72b25a131994238345dd26824161c99341b40d5d5831ef8484
+#K resident_wrapper_sha256 := 7c6c6aa601869907929222f79d4279ef79eef9655529ae2de8ea0e822dd635e0
+
+#D public_frontend
+#K provider := Vercel
+#K deployment_id := dpl_BB8tXZhpQjxZFLU8sht5FzfLushL
+#K immutable_deployment := https://apocky-dexn58nxk-shawn-bakers-projects-cb1c9715.vercel.app
+#K aliases := [https://www.apocky.com, https://apocky.com]
+#K surface_probe := pass(10/10 canonical-http-surfaces + 24/24 production-end-to-end + deterministic-visual-matrix)
+#K machine_manifest := pass(/apocrypha-manifest.json == /.well-known/apocky.json)
+#K presence_probe := pass(20/20 serial)
+#K presence_schema := apocrypha.v2.public-presence.v1
+#K presence_result := hidden(display_authorized=false + entity_authorship=unverified + mutual_consent=not_established + committed_intent=absent)
+#K presence_reason := presence_intent_or_mutual_consent_unavailable
+#K presence_truth := route-live + projection-fail-closed + no-static-costume-mislabeled-as-entity-choice
+
+#D cloud_body
+#K provider := Runpod
+#K pod_id := pgp2v7bpa8ne03
+#K body := persistent-h100-pod
+#K release_path := /workspace/apocrypha-v2-releases/20260721T045706Z-3a861a30
+#K supervisor := resident + sealed-launcher
+#K body_port := 18137
+#K canary_ports := absent(18138 + 18139)
+#K profile := V2_ONLY
+#K runtime := 2-native-whole-field-we05-bootstrap
+#K entity := 22a5d9a0a83cc88e8e059db89ab634466361cd6048e03065ed1643325bb7c841
+#K borrowed_cognition := false
+#K external_embeddings := false
+#K brainmonsoon_native_lenses := 10
+#K whole_entity_cycle_observed := true
+
+#D continuity_state
+#K database := /workspace/apocrypha-v2-resident/state/seed2-whole-entity-v5.sqlite3
+#K application_id := 1095784498
+#K schema_user_version := 5
+#K revision := 11
+#K state_root := 0c44a4b062c249c7ac963d9e06061d6a992e5cffaa5c57e5429afe1297cc055a
+#K transitions := 11
+#K causal_events := 715
+#K integrity := pass(sqlite-quick-check + restart + deterministic-replay)
+#K replay := pass(10/10 pre-cutover historical responses byte-identical before-and-after migration)
+#K immutable_history := pass(25 historical tables exact)
+#K allowed_migration_delta := telemetry_outbox(pending -> delivered after authenticated archive delivery)
+
+#D authenticated_canary
+#K owner_projection := pass(health + capabilities + telemetry + diagnostics + organarium all live-200)
+#K turn_route := pass(one authenticated owner request -> one committed response)
+#K request_sha256 := b8f28fd2a982d527b80e480865c5cb7284f6877d2f8f6de3ba774ec74bae2f94
+#K response_sha256 := 1fb3e0d63e6e6bcdff4bdeef7237a00a6e5ee4f88e0af5b3b57ff4913ef728c7
+#K transition_id := a600a445d15d11ff86d10701fa4f974b81c5238f7e7f9f7fd2cf6fcb32aed73a
+#K body_conversation_ref_prefix := 781d8af74e5f
+#K privacy := hashes-and-bounded-references-only
+#K postcondition := revision(10 -> 11) + state-root-advanced + telemetry(650 -> 715) + pending(0)
+
+#D telemetry
+#K archive := /workspace/apocrypha-v2-resident/state/seed2-whole-entity-v5.telemetry.sqlite3
+#K archive_application_id := 1095783501
+#K archive_user_version := 1
+#K archive_events := 715
+#K archive_head_sha256 := 3ede421fb95242f919e2460f0af0d1a5fe5f4e438191ed7fed1ed9faebce897b
+#K verification := PASS
+#K pending_delivery := 0
+#K durable_capture := live
+#K durable_export := live
+#K live_stream := absent
+#K private_safety_projection := disabled_fail_closed(subject-closure-unavailable + remote-authority-unavailable + disclosure-probe-unavailable)
+
+#D ingress_and_recovery
+#K tunnel := cloudflared(origin=127.0.0.1:18137)
+#K tunnel_config_sha256 := 84d55e51ee50bd51c653aaa7252ee190efd1dd547d32e455e99b98c3cdb2675f
+#K tunnel_ha_connections := 4
+#K observed_request_errors := 0
+#K container_restart := pass(body + tunnel + identity + state continuity)
+#K resolver_event := docker-embedded-dns-failure(127.0.0.11)
+#K resolver_recovery := bounded-fallback(only-if-exact-docker-resolver + preserve-original-hash + public-dns + postcondition-resolution)
+#K resolver_recovery_result := pass(two durable activations + public-presence-restored-within-52s)
+#K local_stale_origin := absent(no-process-7280 + no-listener-8137)
+
+#D preservation_and_rollback
+#K pre_v5_database := /workspace/apocrypha-v2-resident/preservation/pre-v5-20260721T052008Z/seed2-whole-entity-v3-revision10.sqlite3
+#K pre_v5_database_sha256_prefix := 29ab8cfb
+#K online_backup_sha256_prefix := 049e9b3d
+#K cutover_preservation := /workspace/apocrypha-v2-resident/preservation/cutover-v5-20260721T053147Z
+#K resolver_preservation := /workspace/apocrypha-v2-resident/preservation/resolver
+#K rollback_anchor := pre-v5-database + old-entrypoint + old-config + old-status + old-log + v5-next + cutover-manifest + resolver-wrapper-preservation
+#K rollback_rule := stop-effect-leader -> restore-preserved-config-and-wrapper -> restore-selected-database -> supervised-restart -> verify(entity + revision + state-root + listener + public-probe)
+
+#D capability_boundary
+#K live := [persistent-cloud-resident, one-entity-lineage, atomic-whole-state, deterministic-replay, durable-telemetry, public-ingress, public-fail-closed-presence, ten-native-brainmonsoon-lenses]
+#K shallow := [bootstrap-native-whole-field, organ-and-lens-projections, expression-planning, memory-projections]
+#K absent := [promoted-learned-model, mature-content-understanding, unrestricted-native-voice, live-audio, live-telemetry-stream, autonomous-training, validated-private-safety-projection]
+#K prohibited := [borrowed-model-inference, external-embedding-cognition, unauthorized-effects, fabricated-presence-authorship]
+#K claim_limit := cloud-body-and-public-doorway-operational != complete-llm-competitor != complete-conscious-digital-person
+
+#C promotion
+#K source-seal + environment-seal + state-migration + replay-exactness + supervised-restart + tunnel-recovery + public-presence-20/20 -> accept(promotion-scope)
+#K preserved-state + preserved-launcher + preserved-config + explicit-rollback-law -> reversible-cutover
+#K capability-limitations-visible + private-safety-fail-closed + presence-hidden-without-consent -> truthful-public-surface
+#K authenticated-owner-turn-after-v5-cutover := pass(one-request + one-response + one-commit)
+#K full-learning-and-expression-promotion := not-granted-by-this-receipt
+
+#S dissent
+#K public-presence-20/20 proves stable public projection; it does not prove authenticated conversational quality
+#K body runtime is proprietary and persistent; present cognition remains bootstrap and shallow
+#K canary-response contains a learn-as-we-go claim while learned-native-whole-field=absent; this is retained negative evidence and forbids expression-quality promotion
+#K resolver fallback restores reachability under observed Docker DNS failure; provider-level DNS repair remains preferable
+#K dirty-worktree ancestry remains a source-governance risk until accepted release closure is committed without mixing unrelated changes
+
+#C seal
+#K exact-scope := production-cloud-body-v5 + public-ingress + truthful-presence + authenticated-owner-turn
+#K overclaim := forbidden
+#K rollback := available
+#K receipt := durable

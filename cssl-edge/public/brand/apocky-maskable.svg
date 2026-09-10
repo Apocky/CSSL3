@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <defs>
+    <radialGradient id="apocky-mask-field" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 230) rotate(90) scale(360)">
+      <stop stop-color="#171044"/>
+      <stop offset="0.52" stop-color="#09061A"/>
+      <stop offset="1" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="apocky-mask-spectrum" x1="146" y1="132" x2="368" y2="383" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.48" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+    <linearGradient id="apocky-mask-core" x1="185" y1="151" x2="334" y2="371" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFF"/>
+      <stop offset="0.55" stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#D8B4FE"/>
+    </linearGradient>
+  </defs>
+  <path d="M0 0H512V512H0Z" fill="url(#apocky-mask-field)"/>
+  <path d="M138 204C161 146 215 116 273 121C324 125 366 156 386 204" stroke="url(#apocky-mask-spectrum)" stroke-width="13" stroke-linecap="round"/>
+  <path d="M384 309C361 367 307 398 249 394C198 390 156 359 136 311" stroke="url(#apocky-mask-spectrum)" stroke-width="13" stroke-linecap="round"/>
+  <path d="M346 173C315 140 249 134 210 161C174 185 175 223 202 244C221 259 252 266 287 275C328 286 350 306 346 333C339 368 299 387 257 381C222 376 193 359 178 333" stroke="url(#apocky-mask-core)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M334 210C310 187 259 179 228 196C203 210 201 229 220 244C236 257 260 263 292 272C345 287 368 317 349 349" stroke="url(#apocky-mask-spectrum)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M256 228L284 256L256 284L228 256Z" fill="#000000" stroke="#F8FAFF" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M256 244L268 256L256 268L244 256Z" fill="#38BDF8"/>
+  <path d="M130 193L141 204L130 215L119 204Z" fill="#38BDF8"/>
+  <path d="M391 193L402 204L391 215L380 204Z" fill="#A855F7"/>
+  <path d="M129 300L140 311L129 322L118 311Z" fill="#6366F1"/>
+  <path d="M391 298L402 309L391 320L380 309Z" fill="#D8B4FE"/>
+</svg>

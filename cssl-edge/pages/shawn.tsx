@@ -6,15 +6,15 @@ import { atlasData } from '@/lib/shawn/atlas';
 const ShawnPage: NextPage = () => (
   <>
     <Head>
-      <title>Shawn / Apocky — Interactive Cognitive and Epistemic Atlas</title>
+      <title>Shawn / Apocky — Interactive evidence atlas</title>
       <meta
         name="description"
-        content="A chronological, evidence-typed atlas of Shawn Apocky's reasoning, experiments, artifacts, contradictions, and evolving models."
+        content="A correctable, source-linked overview of Shawn Apocky’s work, reasoning, experiments, and changing interpretations."
       />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <meta name="referrer" content="no-referrer" />
-      <meta property="og:title" content="Shawn / Apocky — Interactive Cognitive and Epistemic Atlas" />
-      <meta property="og:description" content="A question becomes a field. The field is rotated. What survives becomes a model." />
+      <meta property="og:title" content="Shawn / Apocky — Interactive evidence atlas" />
+      <meta property="og:description" content="A source-linked overview that separates observations, reports, inferences, and proposals." />
       <meta property="og:type" content="website" />
       <meta property="og:url" content="https://apocky.com/shawn" />
       <link rel="canonical" href="https://apocky.com/shawn" />

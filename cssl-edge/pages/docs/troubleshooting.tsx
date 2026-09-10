@@ -11,14 +11,15 @@ const Page: NextPage = () => {
     <DocsLayout
       activeSlug="troubleshooting"
       title="Troubleshooting · Apocky Docs"
-      description="Fixes for common Labyrinth of Apocalypse issues — black screen, missing fonts, snapshot directory permissions, log locations, and how to file a bug."
+      description="Plain steps for common Labyrinth of Apocalypse test-build problems and reporting a bug."
     >
       <h1 className="docs-h1">Troubleshooting</h1>
-      <p className="docs-blurb">§ Common issues · log locations · how to file a useful bug.</p>
+      <p className="docs-blurb">Common problems, log files, and what to include in a bug report.</p>
 
-      <h2 className="docs-h2">§ The window opens then immediately closes</h2>
+      <h2 className="docs-h2">The window opens then immediately closes</h2>
       <p className="docs-p">
-        Almost always a renderer initialization failure. Run from a terminal so you can see the message:
+        One possible cause is a failure to start the <strong>renderer</strong>, the part of the game that draws
+        the picture. Run the program from PowerShell or Command Prompt so the error message remains visible:
       </p>
       <CodeBlock lang="bash" caption="Capture stderr">{`# PowerShell
 .\\LoA.exe 2>&1 | Tee-Object -FilePath last_run.log
@@ -27,11 +28,12 @@ const Page: NextPage = () => {
 LoA.exe > last_run.log 2>&1`}</CodeBlock>
       <p className="docs-p">
         Then check the last-run log alongside <code className="docs-ic">logs/loa_runtime.log</code> for the
-        renderer startup banner. The banner names the wgpu adapter selected and the surface format. If the
-        banner is missing, your GPU driver is the most likely cause.
+        renderer startup message. It names the graphics processor, or <strong>GPU</strong>, selected by the
+        game. A missing message can indicate a graphics-driver problem, but the log is needed before concluding
+        that is the cause.
       </p>
 
-      <h2 className="docs-h2">§ Black screen but the window is alive</h2>
+      <h2 className="docs-h2">Black screen but the window is alive</h2>
       <ul className="docs-ul">
         <li>Press <span className="docs-kbd">F1</span> to force the default render mode.</li>
         <li>Press <span className="docs-kbd">F11</span> to toggle borderless fullscreen — sometimes the swapchain re-initializes.</li>
@@ -39,14 +41,14 @@ LoA.exe > last_run.log 2>&1`}</CodeBlock>
         <li>If movement works but you still see black, try <span className="docs-kbd">F2</span> (wireframe). If wireframe is visible, the issue is shader-side; file a bug with the GPU model.</li>
       </ul>
 
-      <h2 className="docs-h2">§ Chat panel won't focus</h2>
+      <h2 className="docs-h2">Chat panel won't focus</h2>
       <ul className="docs-ul">
         <li>Confirm the window is focused (click into it). Background windows do not receive keyboard input.</li>
         <li>Check that the keyboard layout is the one you expect. The <span className="docs-kbd">/</span> key is the literal "/" character.</li>
         <li>If you are in pause state (<span className="docs-kbd">Tab</span>/<span className="docs-kbd">Esc</span>), unpause first.</li>
       </ul>
 
-      <h2 className="docs-h2">§ "Intent classified as Unknown"</h2>
+      <h2 className="docs-h2">"Intent classified as Unknown"</h2>
       <p className="docs-p">
         The classifier is deterministic and conservative — it falls through to{' '}
         <code className="docs-ic">Intent::Unknown</code> when no rule matches. The chat scrollback will echo the
@@ -58,7 +60,7 @@ LoA.exe > last_run.log 2>&1`}</CodeBlock>
         <li>Try a simpler phrasing: <code className="docs-ic">spawn cube at 5 5 5</code> instead of <code className="docs-ic">could you place a cube at 5 5 5 please</code>.</li>
       </ul>
 
-      <h2 className="docs-h2">§ Snapshots don't appear</h2>
+      <h2 className="docs-h2">Snapshots don't appear</h2>
       <p className="docs-p">
         F9 (burst) and F12 (single screenshot) write into <code className="docs-ic">snapshots/</code> next to{' '}
         <code className="docs-ic">LoA.exe</code>. The directory is created on first capture. If you placed the
@@ -66,29 +68,28 @@ LoA.exe > last_run.log 2>&1`}</CodeBlock>
         will fail silently. Move the binary to a folder you own.
       </p>
 
-      <Callout kind="note" title="No admin elevation">
-        LoA never requests admin elevation. If Windows is asking for elevation, that is not us — close the
-        prompt and check that the binary is the one you downloaded.
+      <Callout kind="note" title="Administrator access is not expected">
+        The public test build is intended to run without administrator access. If Windows asks for it, stop and
+        confirm the file name and SHA-256 fingerprint against the download page before continuing.
       </Callout>
 
-      <h2 className="docs-h2">§ Log locations</h2>
+      <h2 className="docs-h2">Log locations</h2>
       <table className="docs-table">
         <thead>
           <tr><th>File</th><th>Purpose</th></tr>
         </thead>
         <tbody>
           <tr><td><code className="docs-ic">logs/loa_runtime.log</code></td><td>Engine startup + per-frame anomalies + audit emissions</td></tr>
-          <tr><td><code className="docs-ic">logs/intent_recent.jsonl</code></td><td>The last RECENT_INTENT_CAP (16) intent dispatches · same as <code className="docs-ic">intent.recent</code> MCP</td></tr>
-          <tr><td><code className="docs-ic">snapshots/snap_&lt;frame&gt;_&lt;ts_ms&gt;.png</code></td><td>Captures from F9 / F12 / <code className="docs-ic">snapshot</code> intent</td></tr>
-          <tr><td><code className="docs-ic">~/.loa-secrets/caps.toml</code></td><td>Cap configuration · sovereignty surface</td></tr>
+          <tr><td><code className="docs-ic">logs/intent_recent.jsonl</code></td><td>Up to sixteen recent requests recognized by the game</td></tr>
+          <tr><td><code className="docs-ic">snapshots/snap_&lt;frame&gt;_&lt;ts_ms&gt;.png</code></td><td>Images captured with F9, F12, or the snapshot request</td></tr>
         </tbody>
       </table>
 
-      <h2 className="docs-h2">§ The KAN classifier seems wrong</h2>
+      <h2 className="docs-h2">The KAN classifier seems wrong</h2>
       <p className="docs-p">
-        Stage-1 (KAN classifier) drops in alongside Stage-0 (the deterministic keyword classifier). Stage-0
-        always-fallback means the deterministic rule is the floor; KAN can only steer, not override. If you
-        suspect KAN is making a poor choice in a procgen swap-point, you can disable it with:
+        Some development builds can use a Kolmogorov-Arnold Network (KAN), a compact mathematical model, to
+        influence a bounded generation choice. If your build supports that experiment and you suspect it is
+        making a poor choice, you can disable it before launch:
       </p>
       <CodeBlock lang="bash" caption="Disable KAN steering">{`# Set this env-var before launch · KAN nudge becomes a no-op,
 # stage-0 fallback is exclusive. The engine still emits the
@@ -96,7 +97,7 @@ LoA.exe > last_run.log 2>&1`}</CodeBlock>
 $env:LOA_DISABLE_KAN_NUDGE = "1"
 .\\LoA.exe`}</CodeBlock>
 
-      <h2 className="docs-h2">§ How to file a useful bug</h2>
+      <h2 className="docs-h2">How to file a useful bug</h2>
       <p className="docs-p">
         Open an issue at <a href="https://github.com/Apocky" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>github.com/Apocky</a>{' '}
         with:
@@ -109,7 +110,8 @@ $env:LOA_DISABLE_KAN_NUDGE = "1"
         <li>(Optional) the relevant snapshot if visual.</li>
       </ol>
       <p className="docs-p">
-        Logs and snapshots never leave your machine unless you attach them to the issue yourself.
+        Do not attach a log or image until you have reviewed it for private information. The normal bug-report
+        flow requires you to choose and upload those files yourself.
       </p>
 
       <PrevNextNav slug="troubleshooting" />

@@ -1,8 +1,8 @@
 # lib/mneme — developer guide
 
-Status: v1 · 2026-05-02 · routes wired · self-tests inline.
+Status: v1 · 2026-09-08 · hybrid member + worker authorization wired · self-tests inline.
 
-MNEME is the agent-memory service for the CSSL/LoA portfolio. It is a
+MNEME is the agent-memory service for the CSSL and Apocky portfolio. It is a
 proprietary, sovereign-gated mirror of Cloudflare's "Agent Memory" pattern,
 adapted to use CSLv3 as the canonical storage form and Postgres + pgvector
 + Voyage embeddings for retrieval. The Cloudflare implementation we
@@ -33,6 +33,9 @@ lib/mneme/
   embed.ts                  — Voyage-3-large client (document/query)
   anthropic.ts              — Claude Messages API (Haiku + Sonnet) with prompt-caching
   store.ts                  — Supabase repo + 6 retrieval channels + RRF
+  auth.ts                   — exact bearer/profile/capability worker authorization
+  member-profile.ts         — signed-in opaque `/me` binding + same-origin mutation gate
+  route-access.ts           — strict dispatcher between member and worker authorization
   pipeline-ingest.ts        — 8-stage ingest orchestrator
   pipeline-retrieve.ts      — 7-stage retrieve orchestrator
   prompts/
@@ -47,21 +50,40 @@ lib/mneme/
 
 ## REST surface
 
-All routes live under `pages/api/mneme/[profile]/*`:
+MNEME exposes two disjoint authorization rails. `/api/mneme/me/*` is the
+signed-in member broker. `me` is a route sentinel, not a profile identifier:
+the server derives an opaque profile ID from the verified site session. A
+member session never authorizes a client-supplied profile name.
 
-| Route       | Method | Body / Query                                                                |
-| ---         | ---    | ---                                                                         |
-| `health`    | GET    | —                                                                           |
-| `ingest`    | POST   | `{ session_id, messages: [{role, content}], sigma_mask_hex? }`              |
-| `recall`    | POST   | `{ query, k?, types?, audience_bits?, debug? }`                             |
-| `remember`  | POST   | `{ csl, paraphrase?, type?, topic_key?, sigma_mask_hex? }`                  |
-| `list`      | GET    | `?type=&limit=&cursor=`                                                     |
-| `forget`    | POST   | `{ memory_id, reason }`                                                     |
-| `export`    | GET    | —                                                                           |
-| `smoke`     | GET    | exercises pipelines with stubbed LLM/embed/DB (no env required)             |
+Apocrypha workers use `/api/mneme/[profile]/*` with a configured service
+profile. Every request must present the exact `MNEME_SERVICE_TOKEN` bearer,
+call only `MNEME_SERVICE_PROFILE_ID`, send matching `x-mneme-profile` and
+`x-mneme-capability` headers, and have that capability in the closed
+`MNEME_SERVICE_CAPABILITIES` allowlist. Wildcards, missing configuration,
+owner sessions, mismatched headers, and mismatched profiles fail closed.
 
-Every response carries `served_by` + `ts` per the cssl-edge envelope
-convention. Errors use `{ error, served_by, ts }`.
+| Route       | Method | Body / Query                                                | Requirement                              |
+| ---         | ---    | ---                                                         | ---                                      |
+| `health`    | GET    | —                                                           | member or worker rail + exact binding     |
+| `recall`    | POST   | `{ query, k?, types?, audience_bits? }`                     | provisioned profile + semantic services  |
+| `remember`  | POST   | `{ csl, paraphrase?, type?, topic_key?, sigma_mask_hex? }`  | provisioned profile + semantic services  |
+| `list`      | GET    | `?type=&limit=&cursor=`                                     | provisioned profile + storage            |
+| `forget`    | POST   | `{ memory_id, reason }`                                     | provisioned profile + storage            |
+| `export`    | GET    | —                                                           | provisioned profile + storage            |
+| `ingest`    | POST   | `{ session_id, messages, sigma_mask_hex? }`                 | worker rail only                          |
+| `smoke`     | GET    | bounded pipeline smoke                                      | worker rail only                          |
+
+Member POST requests must be same-origin. Worker POST requests are
+server-to-server and rely on the exact bearer/profile/capability binding.
+Every response is private and non-cacheable. Neither rail creates a profile
+implicitly or reports local mock storage as a successful route result. A
+signed-in member without a provisioned profile receives
+`MNEME_PROFILE_NOT_PROVISIONED`; unavailable storage receives
+`MNEME_STORAGE_UNAVAILABLE`.
+
+Successful responses carry `served_by` + `ts` per the cssl-edge envelope
+convention. Errors include a stable machine-readable `code` alongside a short,
+non-sensitive `error` message.
 
 ## Local development
 
@@ -70,10 +92,12 @@ convention. Errors use `{ error, served_by, ts }`.
    ```sh
    npm install
    cp .env.example .env.local
-   # set ANTHROPIC_API_KEY, VOYAGE_API_KEY, NEXT_PUBLIC_SUPABASE_URL,
+   # set MNEME_SERVICE_PROFILE_ID, MNEME_SERVICE_TOKEN, and the closed
+   # MNEME_SERVICE_CAPABILITIES list for Apocrypha workers; also set
+   # ANTHROPIC_API_KEY, VOYAGE_API_KEY, NEXT_PUBLIC_SUPABASE_URL,
    # SUPABASE_SERVICE_ROLE_KEY, MNEME_SOVEREIGN_PUBKEY_HEX
    npm run check        # typecheck (must pass before push)
-   npm run dev          # next dev — visit http://localhost:3000/api/mneme/scratch/health
+   npm run dev          # next dev — use /memory-tools through a signed-in site session
    ```
 
 2. Apply migrations to a Supabase project:
@@ -85,13 +109,12 @@ convention. Errors use `{ error, served_by, ts }`.
    psql -f cssl-supabase/verify-mneme.sql
    ```
 
-3. Smoke the pipelines without any external services:
+3. Run the isolated pipeline suite without external services. These tests call
+   the library directly; no unauthenticated HTTP smoke route is exposed:
 
    ```sh
-   curl http://localhost:3000/api/mneme/scratch/smoke
+   npm run test:mneme
    ```
-
-   Expected: 200 with `{ ok:true, ingest:{…}, retrieve:{…} }`.
 
 4. Self-test sigma codec:
 

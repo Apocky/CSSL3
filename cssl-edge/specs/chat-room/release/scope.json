@@ -1,0 +1,120 @@
+{
+  "schema": "apocky.chat-room.release-scope.v1",
+  "status": "prepared-source-scope; historical baseline; current auth and aliases unknown",
+  "repo": "C:/Users/Apocky/source/worktrees/codex-apockalypsis-20260905",
+  "appPrefix": "cssl-edge/",
+  "branch": "codex/codex-apockalypsis-20260905",
+  "remote": "https://github.com/Apocky/CSSL3.git",
+  "project": "prj_7G4FJtQBrPeWJ2Vo00jTR3jbKiO7",
+  "team": "team_Y6LfW90oecok9MxGTNoyA3Y5",
+  "scope": "shawn-bakers-projects-cb1c9715",
+  "aliases": [
+    "apocky.com",
+    "www.apocky.com"
+  ],
+  "baseline": {
+    "id": "dpl_AjgK4VYHXQH3iWWWmRjPnYfx4oRi",
+    "app": "C:/Users/Apocky/Documents/Novel/The_Good_Book/publication/staging/redesign-build-20260905T230713Z/app",
+    "envelope": "C:/Users/Apocky/Documents/Novel/The_Good_Book/publication/staging/redesign-deploy-2026-09-05T23-34-52-072Z-a4bf8996a5f3/deployment-body.json",
+    "envelopeSha256": "bc40b7816a5b6c89549638958c00ae38dd277d17cdad5611918ea43f5996e1f0",
+    "manifest": "C:/Users/Apocky/Documents/Novel/The_Good_Book/publication/staging/redesign-deploy-2026-09-05T23-34-52-072Z-a4bf8996a5f3/frozen-build-manifest.json",
+    "manifestSha256": "a4bf8996a5f320e2319c3d428b8b99be7b75cb91aabf5fd35ff50899def7dbb5",
+    "receipt": "C:/Users/Apocky/Documents/Novel/The_Good_Book/publication/staging/redesign-deploy-2026-09-05T23-34-52-072Z-a4bf8996a5f3/promotion-completed.json",
+    "receiptAt": "2026-09-05T23:40:35.275Z"
+  },
+  "counts": {
+    "baseline": 727,
+    "retained": 723,
+    "replaced": 4,
+    "added": 3,
+    "total": 730
+  },
+  "overlays": [
+    {
+      "file": "components/apocrypha/AccountChat.tsx",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 21260,
+        "sha1": "a66e47342958f39c511f6169168407c0fe871869",
+        "sha256": "3127dc56ef2c67ea7e5da5cf2104c99475eccbd6c22afd8f39a1a7c505912e03"
+      },
+      "expected": {
+        "bytes": 25459,
+        "sha1": "cddddb128ac71e268aacb2a2624feddc7d52fadf",
+        "sha256": "c4f0c85017282574b03487d569e22558498a202d44481ccbe711cf5492e7c2e7"
+      }
+    },
+    {
+      "file": "styles/AccountChat.module.css",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 7092,
+        "sha1": "bbdf7c379de4687fb8c1a79bf12212e92726f423",
+        "sha256": "e1ce1bccfd1c8eab17a6b62091483653242fb733d07112203dd536807c1edc47"
+      },
+      "expected": {
+        "bytes": 9846,
+        "sha1": "e4a6ca6c4ae07a5d77c1f5a802f6bb6f827235bf",
+        "sha256": "d5993d0840b42a5208be00dfeb2ffcba39ee1aeb0b6ffb5293be598a3cc42910"
+      }
+    },
+    {
+      "file": "components/brain/BrainExperience.tsx",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 54074,
+        "sha1": "f7e9cf5a3f73f57f40b307f10945b328e0856604",
+        "sha256": "83fb7b532b3b3206719fcc7d3d26f0c64d51ecb69fdfeee6bb1bc0b21b49c281"
+      },
+      "expected": {
+        "bytes": 60789,
+        "sha1": "8892871ba06e72d0f0ac475c0fc0200afd585c48",
+        "sha256": "49fec6288e92abd074c7f7e155f5992c3b8cd61164759ee09a3f5906e27e39bd"
+      }
+    },
+    {
+      "file": "components/brain/BrainExperience.module.css",
+      "kind": "REPLACE",
+      "previous": {
+        "bytes": 28668,
+        "sha1": "f1aa89976af62451ade5217f01d2d68e1af2db9c",
+        "sha256": "63a2fbe6cada57f33dcbbdd864597c5a2e649f6648ac884ec70ea54d84fce1a9"
+      },
+      "expected": {
+        "bytes": 39977,
+        "sha1": "cd8cdf87b81faf61790c093d5b755974c3157780",
+        "sha256": "86b9739b60472e7c1b6ab1e555ad03228fcd1cb029f54da3483fcfff1ebf1fa1"
+      }
+    },
+    {
+      "file": "components/apocrypha/ChatTools.tsx",
+      "kind": "ADD",
+      "previous": null,
+      "expected": {
+        "bytes": 11391,
+        "sha1": "d61853ba6d56ce5bc46c1defbba388a6dd24613e",
+        "sha256": "180a2cb7c3a073927b14ad437341f1fa20f1c1289d43ffaa07bf0a075c0df02c"
+      }
+    },
+    {
+      "file": "components/apocrypha/ChatTools.module.css",
+      "kind": "ADD",
+      "previous": null,
+      "expected": {
+        "bytes": 4517,
+        "sha1": "7a437a6d8825aba5b358724a519a8142afdb8236",
+        "sha256": "b61ff43306725b14c126da5b1235d338b6920da1d8083575ad81bfc45ae148cd"
+      }
+    },
+    {
+      "file": "lib/apocrypha/chat-tools.ts",
+      "kind": "ADD",
+      "previous": null,
+      "expected": {
+        "bytes": 5104,
+        "sha1": "247db08f624569acd73b7d8a9d5946208da0dacf",
+        "sha256": "7cd6e60288fda17346d932db74accbd85dcb5a7478f9ce6a6ddf639bba28798c"
+      }
+    }
+  ]
+}

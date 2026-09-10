@@ -61,7 +61,7 @@
       glyph: '◎',
       label: 'PEOPLE',
       title: 'Three authored roles',
-      copy: 'Mira → selected clip → Apocky → Apocrypha study.',
+      copy: 'Mira → selected clip → Apocky → invited participant study.',
       route: '/membership?from=clearing&origin=river-interval&axis=people',
       routeLabel: 'Open people detail',
       opensNewTab: true,

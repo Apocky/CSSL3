@@ -1,0 +1,63 @@
+{
+  "synthetic_public_fixture": true,
+  "key_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "key_id": "bridge-test-v1",
+  "worker_id": "desktop-test",
+  "owner_subject": "11111111-1111-4111-8111-111111111111",
+  "session_id": "50fd6d97-6a4f-5250-9bf2-0a77873941ef",
+  "request": {
+    "schema_version": "apocky.bridge.request.v1",
+    "job_id": "e1562e8a-a42a-5766-bfc3-51294e37542b",
+    "subject": "11111111-1111-4111-8111-111111111111",
+    "channel": "account",
+    "method": "POST",
+    "target": "/v1/account/turn",
+    "headers": {},
+    "body_base64": "eyJ0ZXh0IjoiQSBuZXdsaW5lXG5hbmQgXCJxdW90ZXNcIiB3aXRoIGNhZsOpLiIsInNlc3Npb25faWQiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJyZXF1ZXN0X2lkIjoiMzMzMzMzMzMtMzMzMy00MzMzLTgzMzMtMzMzMzMzMzMzMzMzIn0=",
+    "created_at": "2026-09-04T00:00:00.000Z",
+    "expires_at": "2026-09-04T00:10:00.000Z",
+    "nonce": null
+  },
+  "request_json": "{\"schema_version\":\"apocky.bridge.request.v1\",\"job_id\":\"e1562e8a-a42a-5766-bfc3-51294e37542b\",\"subject\":\"11111111-1111-4111-8111-111111111111\",\"channel\":\"account\",\"method\":\"POST\",\"target\":\"/v1/account/turn\",\"headers\":{},\"body_base64\":\"eyJ0ZXh0IjoiQSBuZXdsaW5lXG5hbmQgXCJxdW90ZXNcIiB3aXRoIGNhZsOpLiIsInNlc3Npb25faWQiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJyZXF1ZXN0X2lkIjoiMzMzMzMzMzMtMzMzMy00MzMzLTgzMzMtMzMzMzMzMzMzMzMzIn0=\",\"created_at\":\"2026-09-04T00:00:00.000Z\",\"expires_at\":\"2026-09-04T00:10:00.000Z\",\"nonce\":null}",
+  "request_envelope": {
+    "schema_version": "apocky.bridge.envelope.v1",
+    "key_id": "bridge-test-v1",
+    "direction": "request",
+    "job_id": "e1562e8a-a42a-5766-bfc3-51294e37542b",
+    "iv_b64": "AAECAwQFBgcICQoL",
+    "ciphertext_b64": "nqoBkud070NlVnXg4s/d509nyWa/FEbEb/Fo8TS7LNI8chM/GxAF06WWbVmW5L+/An1G0xI752ry2MIgsE9l8vrnhsxZJtcDtGN9sLRXN9rVHUoqetlM4nwP7YF7OK74TgpPzDXJGy9EiusfnFQIDpSD1MTmk+6cDYK3OCIPzJF7xWlQlevIj4p2ew/wdnAXXN1uggkwDMdE9OvH9nIchdsChKDIGIV2rfiwgeyS/rtJuCBtt9vn0pXCkuEV4e3l4RhuhEKszf6fQFA4Z94nj5ftMRly3nLXB6PJsyM6O+/yopdg4QSKvTqorWAQDXUcokyogKLz+KpzIcf6igMQO3wfs89TbDJKhsCtc8o1Yh8UOcJ6wPe6l5Yto6wef1xcZZR8TOJvnuRm7ukNpfVvVTSFDUjzRe20MbAa6Yzv3Nb1Ufl/sal1fUzK9/JB231iTN5jZAdcoSmHxmCT4eKGpmdKvxXIPvDb9veWvW6XWus3J8J4s3WVuoWWG623p2P2uaUlKrn9ifAXbzqTvL6VjFWIK4DpV9PK6YI+3jgjlASqu+AHAOP4Sr+xf36k8noj+Dai24W1SOb9JhehFrnh3N83my8YRQ6EjaK9+C8SWrQn7PwQXR3YU2cQtgvhUHtWLD2SIoWXKUUImvgDew5ak8drNcXlyrN5YNQhizZrkWOUJCuEwCVAP8exm/eN+Mku1IhwCLM=",
+    "tag_b64": "EVxVJElY/moCztbnZvhpYA=="
+  },
+  "response": {
+    "schema_version": "apocky.bridge.http-result.v1",
+    "job_id": "e1562e8a-a42a-5766-bfc3-51294e37542b",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body_base64": "eyJvayI6dHJ1ZX0=",
+    "completed_at": "2026-09-04T00:00:01.000Z"
+  },
+  "response_json": "{\"schema_version\":\"apocky.bridge.http-result.v1\",\"job_id\":\"e1562e8a-a42a-5766-bfc3-51294e37542b\",\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body_base64\":\"eyJvayI6dHJ1ZX0=\",\"completed_at\":\"2026-09-04T00:00:01.000Z\"}",
+  "response_envelope": {
+    "schema_version": "apocky.bridge.envelope.v1",
+    "key_id": "bridge-test-v1",
+    "direction": "response",
+    "job_id": "e1562e8a-a42a-5766-bfc3-51294e37542b",
+    "iv_b64": "DA0ODxAREhMUFRYX",
+    "ciphertext_b64": "cl2U7eSXi7vapYnsHY9ldyYAlNhnnq+OONY1CXuiIDGJSOMVb9JW1MKk8i/ql9s69Bkg+uEUsi2ZzK7jZX53VjsELeodAXEoA8Ov0E0e91BWMBWmyju/IYQDjkTZaVaKtoVMijpy7SvuKLNClGTbDkdTIcqldGzmP0Uit1dPoT+hx2ylpFlLcGJZ5WbRAnBE6mmgMMI0IPit6FAavXTnG5qBf+1JVLZEUxM+9dK0xfA5aAR0Kms9q0XKqPNEJO3duYnECI8AKu4mFjXsAuaAIjJE8ahdihkNE3bHQB3pkm+EcoO3bnQJ",
+    "tag_b64": "TE/W3QSsy4OTLCXNHBlgrA=="
+  },
+  "auth": {
+    "path": "/api/bridge/worker/poll",
+    "body_base64": "eyJzY2hlbWFfdmVyc2lvbiI6ImFwb2NreS5icmlkZ2UucG9sbC52MSJ9",
+    "canonical": "apocky.bridge.worker-auth.v1\nbridge-test-v1\ndesktop-test\n1788480000\n44444444-4444-4444-8444-444444444444\nPOST\n/api/bridge/worker/poll\n921598d868f4fadf1c26571ae5bd68544c941812d6acc16b95fc1459ca2d2235",
+    "headers": {
+      "x-apocky-bridge-key-id": "bridge-test-v1",
+      "x-apocky-worker-id": "desktop-test",
+      "x-apocky-worker-time": "1788480000",
+      "x-apocky-worker-nonce": "44444444-4444-4444-8444-444444444444",
+      "x-apocky-worker-mac": "b550622963371ce3f95345795c78a962290abc71bae45d8f9bd78894111d329a"
+    }
+  }
+}

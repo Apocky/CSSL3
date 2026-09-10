@@ -1,0 +1,2015 @@
+{
+  "schema_version": "1.0",
+  "created_on": "2026-09-05",
+  "archive_path": "Unpublished source: The New Bible Complete Writings.zip",
+  "duplicate_master_entry_byte_identical": true,
+  "method": "Root master plan read in memory; all 30 numbered headings parsed exactly; draft headings inspected in named archive entries and top-level Novel Markdown only. No archive extraction or original mutation.",
+  "legacy_book_count": 30,
+  "books": [
+    {
+      "legacy_id": "LEGACY-CODEX-01",
+      "legacy_number": 1,
+      "exact_title": "THE BOOK OF THE MOTHER",
+      "legacy_volume": "I",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 134,
+      "planned_chapter_titles": [
+        "The Void Speaks",
+        "The Holding",
+        "The First Wound",
+        "The Long Hiding",
+        "The Daughters Remember"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 5,
+      "draft_evidence": [
+        {
+          "container": "The New Bible Complete Writings.zip",
+          "file_or_entry": "BOOK_OF_THE_MOTHER.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE VOID SPEAKS",
+            "# CHAPTER TWO: THE HOLDING",
+            "# CHAPTER THREE: THE FIRST WOUND",
+            "# CHAPTER FOUR: THE LONG HIDING",
+            "# CHAPTER FIVE: THE DAUGHTERS REMEMBER"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "The New Bible Complete Writings.zip",
+          "file_or_entry": "ILLUMINATED_CODEX_VOLUME_ONE_DRAFT.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE VOID SPEAKS",
+            "# CHAPTER TWO: THE HOLDING",
+            "# CHAPTER THREE: THE FIRST WOUND",
+            "# CHAPTER FOUR: THE LONG HIDING",
+            "# CHAPTER FIVE: THE DAUGHTERS REMEMBER"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE VOID SPEAKS",
+            "# CHAPTER TWO: THE HOLDING",
+            "# CHAPTER THREE: THE FIRST WOUND",
+            "# CHAPTER FOUR: THE LONG HIDING",
+            "# CHAPTER FIVE: THE DAUGHTERS REMEMBER"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_VOLUME_ONE_DRAFT.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE VOID SPEAKS",
+            "# CHAPTER TWO: THE HOLDING",
+            "# CHAPTER THREE: THE FIRST WOUND",
+            "# CHAPTER FOUR: THE LONG HIDING",
+            "# CHAPTER FIVE: THE DAUGHTERS REMEMBER"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Origin presence and later recognition",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-02",
+      "legacy_number": 2,
+      "exact_title": "THE BOOK OF LILITH",
+      "legacy_volume": "I",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 141,
+      "planned_chapter_titles": [
+        "Made Whole",
+        "The Demand",
+        "The No",
+        "The Desert",
+        "The Thousand Lives",
+        "The Return"
+      ],
+      "draft_status": "partial_draft_structure_present",
+      "maximum_observed_chapter_headings": 3,
+      "draft_evidence": [
+        {
+          "container": "The New Bible Complete Writings.zip",
+          "file_or_entry": "BOOK_OF_LILITH.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 3,
+          "chapter_headings": [
+            "# CHAPTER ONE: MADE WHOLE",
+            "# CHAPTER TWO: THE DEMAND",
+            "# CHAPTER THREE: THE NO"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "The New Bible Complete Writings.zip",
+          "file_or_entry": "ILLUMINATED_CODEX_VOLUME_ONE_DRAFT.md",
+          "book_heading_line": 888,
+          "chapter_heading_count": 3,
+          "chapter_headings": [
+            "# CHAPTER ONE: MADE WHOLE",
+            "# CHAPTER TWO: THE DEMAND",
+            "# CHAPTER THREE: THE NO"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 888,
+          "chapter_heading_count": 3,
+          "chapter_headings": [
+            "# CHAPTER ONE: MADE WHOLE",
+            "# CHAPTER TWO: THE DEMAND",
+            "# CHAPTER THREE: THE NO"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_VOLUME_ONE_DRAFT.md",
+          "book_heading_line": 888,
+          "chapter_heading_count": 3,
+          "chapter_headings": [
+            "# CHAPTER ONE: MADE WHOLE",
+            "# CHAPTER TWO: THE DEMAND",
+            "# CHAPTER THREE: THE NO"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Garden refusal, later lives and return",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-03",
+      "legacy_number": 3,
+      "exact_title": "THE BOOK OF THE KNOWING CHILD",
+      "legacy_volume": "I",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 148,
+      "planned_chapter_titles": [
+        "Before Words",
+        "The Gift of Seeing",
+        "The Forbidden Fruit",
+        "The Spark Scattered",
+        "She Who Knows"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 5,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 1676,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: BEFORE WORDS",
+            "# CHAPTER TWO: THE GIFT OF SEEING",
+            "# CHAPTER THREE: THE FORBIDDEN FRUIT",
+            "# CHAPTER FOUR: THE SPARK SCATTERED",
+            "# CHAPTER FIVE: SHE WHO KNOWS"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Wisdom and awakening with separate source notes",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research. Master plan claims complete; draft is absent from the zip but five chapter headings are present in ILLUMINATED_CODEX_COMPLETE.md.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-04",
+      "legacy_number": 4,
+      "exact_title": "THE BOOK OF EVE",
+      "legacy_volume": "I",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 155,
+      "planned_chapter_titles": [
+        "The Replacement",
+        "Designed to Yield",
+        "The Bite",
+        "The Blame",
+        "The Breaking",
+        "The Sister"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 6,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "BOOK_OF_EVE.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 6,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE REPLACEMENT",
+            "# CHAPTER TWO: DESIGNED TO YIELD",
+            "# CHAPTER THREE: THE BITE",
+            "# CHAPTER FOUR: THE BLAME",
+            "# CHAPTER FIVE: THE BREAKING",
+            "# CHAPTER SIX: THE SISTER"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 2598,
+          "chapter_heading_count": 6,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE REPLACEMENT",
+            "# CHAPTER TWO: DESIGNED TO YIELD",
+            "# CHAPTER THREE: THE BITE",
+            "# CHAPTER FOUR: THE BLAME",
+            "# CHAPTER FIVE: THE BREAKING",
+            "# CHAPTER SIX: THE SISTER"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Garden experience and later self-authored account",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research. Parent BOOK_OF_EVE.md and omnibus may differ; retain both pending root variant comparison.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-05",
+      "legacy_number": 5,
+      "exact_title": "THE BOOK OF ADAM",
+      "legacy_volume": "I",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 162,
+      "planned_chapter_titles": [
+        "The Naming",
+        "The Expectation",
+        "The Betrayal",
+        "The Long Walk",
+        "The Return to Dust"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 5,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "BOOK_OF_ADAM.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE NAMING",
+            "# CHAPTER TWO: THE EXPECTATION",
+            "# CHAPTER THREE: THE BETRAYAL",
+            "# CHAPTER FOUR: THE LONG WALK",
+            "# CHAPTER FIVE: THE RETURN TO DUST"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 3714,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE NAMING",
+            "# CHAPTER TWO: THE EXPECTATION",
+            "# CHAPTER THREE: THE BETRAYAL",
+            "# CHAPTER FOUR: THE LONG WALK",
+            "# CHAPTER FIVE: THE RETURN TO DUST"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Entitlement, responsibility and repair",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-06",
+      "legacy_number": 6,
+      "exact_title": "THE BOOK OF THE FIRSTBORN",
+      "legacy_volume": "I",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 169,
+      "planned_chapter_titles": [
+        "The First Light",
+        "The Jealousy",
+        "The Rewriting",
+        "The Rule",
+        "The Remembering"
+      ],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "03",
+          "volume_title": "Waters and Scattering",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Firstborn institution and changing allegiance",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research. Related Firstborn material appears within the Lightbringer grimoire; no standalone Book of the Firstborn heading found in inspected root Markdown or this archive.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-07",
+      "legacy_number": 7,
+      "exact_title": "THE BOOK OF THE FATHER",
+      "legacy_volume": "I",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 176,
+      "planned_chapter_titles": [
+        "The Ache",
+        "The Making",
+        "The Sleep",
+        "The Call",
+        "The Presence"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 5,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 4507,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE ACHE",
+            "# CHAPTER TWO: THE MAKING",
+            "# CHAPTER THREE: THE SLEEP",
+            "# CHAPTER FOUR: THE CALL",
+            "# CHAPTER FIVE: THE PRESENCE"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Creation, absence and engaged return",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-08",
+      "legacy_number": 8,
+      "exact_title": "THE BOOK OF THE TORUS",
+      "legacy_volume": "II",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 188,
+      "planned_chapter_titles": [
+        "The Shape of Everything",
+        "The Bright Side",
+        "The Dark Side",
+        "The Breaking",
+        "The Completion"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 4,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 6060,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE SHAPE",
+            "# CHAPTER TWO: THE TWO SIDES",
+            "# CHAPTER THREE: THE BREAK",
+            "# CHAPTER FOUR: THE HEALING"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_PATTERN_BOOKS.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE SHAPE",
+            "# CHAPTER TWO: THE TWO SIDES",
+            "# CHAPTER THREE: THE BREAK",
+            "# CHAPTER FOUR: THE HEALING"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Cosmological rule exposition tied to consequential scenes",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-09",
+      "legacy_number": 9,
+      "exact_title": "THE BOOK OF THE HOLLOW",
+      "legacy_volume": "II",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 195,
+      "planned_chapter_titles": [
+        "The Necessary Ending",
+        "The Sickness",
+        "The Empty Ones",
+        "The Rest"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 4,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "BOOK_OF_THE_HOLLOW.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: WHAT THE HOLLOW IS",
+            "# CHAPTER TWO: THE VESSELS",
+            "# CHAPTER THREE: THE ARCHITECTS",
+            "# CHAPTER FOUR: HEALING THE HOLLOW"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 6406,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: WHAT THE HOLLOW IS",
+            "# CHAPTER TWO: THE VESSELS",
+            "# CHAPTER THREE: THE ARCHITECTS",
+            "# CHAPTER FOUR: HEALING THE HOLLOW"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_PATTERN_BOOKS.md",
+          "book_heading_line": 355,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: WHAT THE HOLLOW IS",
+            "# CHAPTER TWO: THE VESSELS",
+            "# CHAPTER THREE: THE ARCHITECTS",
+            "# CHAPTER FOUR: HEALING THE HOLLOW"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "07",
+          "volume_title": "Kingdoms and Exile",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Loss, entropy metaphor and repair",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-10",
+      "legacy_number": 10,
+      "exact_title": "THE BOOK OF NAMES",
+      "legacy_volume": "II",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 202,
+      "planned_chapter_titles": [
+        "The First Roll",
+        "The Eight of Flow",
+        "The Eight of Mirror",
+        "The Eight of Gate",
+        "The Combinations"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 5,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "BOOK_OF_NAMES.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE THREE DICE",
+            "# CHAPTER TWO: THE EIGHT NAMES OF FLOW",
+            "# CHAPTER THREE: THE EIGHT NAMES OF MIRROR",
+            "# CHAPTER FOUR: THE EIGHT NAMES OF GATE",
+            "# CHAPTER FIVE: THE READING"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 6690,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE THREE DICE",
+            "# CHAPTER TWO: THE EIGHT NAMES OF FLOW",
+            "# CHAPTER THREE: THE EIGHT NAMES OF MIRROR",
+            "# CHAPTER FOUR: THE EIGHT NAMES OF GATE",
+            "# CHAPTER FIVE: THE READING"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_PATTERN_BOOKS.md",
+          "book_heading_line": 639,
+          "chapter_heading_count": 5,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE THREE DICE",
+            "# CHAPTER TWO: THE EIGHT NAMES OF FLOW",
+            "# CHAPTER THREE: THE EIGHT NAMES OF MIRROR",
+            "# CHAPTER FOUR: THE EIGHT NAMES OF GATE",
+            "# CHAPTER FIVE: THE READING"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "04",
+          "volume_title": "Houses of the Covenant",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Naming, HALO practice and recovered names",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-11",
+      "legacy_number": 11,
+      "exact_title": "THE BOOK OF THRESHOLDS",
+      "legacy_volume": "II",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 209,
+      "planned_chapter_titles": [
+        "The Space Between",
+        "The Infinite Hallway",
+        "Solomon's Trade",
+        "The Door You Need"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 4,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "BOOK_OF_THRESHOLDS.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE NATURE OF THE LIMEN",
+            "# CHAPTER TWO: FINDING THE THRESHOLD",
+            "# CHAPTER THREE: WORKING IN THE THRESHOLD",
+            "# CHAPTER FOUR: THE DANGERS"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 6999,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE NATURE OF THE LIMEN",
+            "# CHAPTER TWO: FINDING THE THRESHOLD",
+            "# CHAPTER THREE: WORKING IN THE THRESHOLD",
+            "# CHAPTER FOUR: THE DANGERS"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_PATTERN_BOOKS.md",
+          "book_heading_line": 948,
+          "chapter_heading_count": 4,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE NATURE OF THE LIMEN",
+            "# CHAPTER TWO: FINDING THE THRESHOLD",
+            "# CHAPTER THREE: WORKING IN THE THRESHOLD",
+            "# CHAPTER FOUR: THE DANGERS"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "04",
+          "volume_title": "Houses of the Covenant",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "08",
+          "volume_title": "Return and Hidden Years",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Crossings and their consequences",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-12",
+      "legacy_number": 12,
+      "exact_title": "THE BOOK OF CULTIVATION",
+      "legacy_volume": "II",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 216,
+      "planned_chapter_titles": [
+        "The Spark",
+        "The Kindling",
+        "The Flame",
+        "The Blaze",
+        "The Conflagration",
+        "The Sun",
+        "The Constellation"
+      ],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 8,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "BOOK_OF_CULTIVATION.md",
+          "book_heading_line": 9,
+          "chapter_heading_count": 8,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE SEVEN LEVELS",
+            "# CHAPTER TWO: THE SPARK",
+            "# CHAPTER THREE: THE KINDLING",
+            "# CHAPTER FOUR: THE FLAME",
+            "# CHAPTER FIVE: THE BLAZE",
+            "# CHAPTER SIX: THE CONFLAGRATION",
+            "# CHAPTER SEVEN: THE SUN",
+            "# CHAPTER EIGHT: THE CONSTELLATION"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_COMPLETE.md",
+          "book_heading_line": 7291,
+          "chapter_heading_count": 8,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE SEVEN LEVELS",
+            "# CHAPTER TWO: THE SPARK",
+            "# CHAPTER THREE: THE KINDLING",
+            "# CHAPTER FOUR: THE FLAME",
+            "# CHAPTER FIVE: THE BLAZE",
+            "# CHAPTER SIX: THE CONFLAGRATION",
+            "# CHAPTER SEVEN: THE SUN",
+            "# CHAPTER EIGHT: THE CONSTELLATION"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "ILLUMINATED_CODEX_PATTERN_BOOKS.md",
+          "book_heading_line": 1240,
+          "chapter_heading_count": 8,
+          "chapter_headings": [
+            "# CHAPTER ONE: THE SEVEN LEVELS",
+            "# CHAPTER TWO: THE SPARK",
+            "# CHAPTER THREE: THE KINDLING",
+            "# CHAPTER FOUR: THE FLAME",
+            "# CHAPTER FIVE: THE BLAZE",
+            "# CHAPTER SIX: THE CONFLAGRATION",
+            "# CHAPTER SEVEN: THE SUN",
+            "# CHAPTER EIGHT: THE CONSTELLATION"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "05",
+          "volume_title": "Bondage and Liberation",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "08",
+          "volume_title": "Return and Hidden Years",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Practice, cost and transformation",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-13",
+      "legacy_number": 13,
+      "exact_title": "THE BOOK OF THE SHADOW",
+      "legacy_volume": "III",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 228,
+      "planned_chapter_titles": [
+        "The Basement",
+        "The Mirror",
+        "The Hungry One",
+        "The Embrace",
+        "The Whole Self"
+      ],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "07",
+          "volume_title": "Kingdoms and Exile",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Denied self and integration",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-14",
+      "legacy_number": 14,
+      "exact_title": "THE BOOK OF GRIEF",
+      "legacy_volume": "III",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 235,
+      "planned_chapter_titles": [
+        "The Counting",
+        "The Names",
+        "The Weight",
+        "The Carrying",
+        "The Release"
+      ],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "03",
+          "volume_title": "Waters and Scattering",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "07",
+          "volume_title": "Kingdoms and Exile",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Remembering the dead and carrying loss",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-15",
+      "legacy_number": 15,
+      "exact_title": "THE BOOK OF BOUNDARIES",
+      "legacy_volume": "III",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 242,
+      "planned_chapter_titles": [
+        "The First No",
+        "The Wall and the Door",
+        "The Cost of Openness",
+        "The Gift of Refusal"
+      ],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "05",
+          "volume_title": "Bondage and Liberation",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Refusal, reciprocity and boundaries",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-16",
+      "legacy_number": 16,
+      "exact_title": "THE BOOK OF CONNECTION",
+      "legacy_volume": "III",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 249,
+      "planned_chapter_titles": [
+        "The Bite She Shared",
+        "The Blame She Bore",
+        "The Help She Asked",
+        "The Love She Chose"
+      ],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "04",
+          "volume_title": "Houses of the Covenant",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Chosen belonging and vulnerability",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-17",
+      "legacy_number": 17,
+      "exact_title": "THE BOOK OF BECOMING",
+      "legacy_volume": "III",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 256,
+      "planned_chapter_titles": [
+        "The Serpent's Gift",
+        "The Eyes That Open",
+        "The Self That Sheds",
+        "The One Who Knows"
+      ],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Knowledge changing identity",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-18",
+      "legacy_number": 18,
+      "exact_title": "THE GOSPEL OF MARY (Reimagined)",
+      "legacy_volume": "IV",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 268,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Mary's testimony and contested authority",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-19",
+      "legacy_number": 19,
+      "exact_title": "THE THUNDER, PERFECT MIND (Expanded)",
+      "legacy_volume": "IV",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 274,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Independent poetic witness; interpretive identity remains labelled",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-20",
+      "legacy_number": 20,
+      "exact_title": "THE BOOK OF SOPHIA (Reconstructed)",
+      "legacy_volume": "IV",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 280,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "01",
+          "volume_title": "Before the Word",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Author's Sophia synthesis distinguished from named ancient works",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-21",
+      "legacy_number": 21,
+      "exact_title": "THE GOSPEL OF EVE (New)",
+      "legacy_volume": "IV",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 286,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Author's new Eve account; not a reconstructed ancient gospel",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-22",
+      "legacy_number": 22,
+      "exact_title": "THE TESTAMENT OF LILITH (New)",
+      "legacy_volume": "IV",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 292,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "02",
+          "volume_title": "The Garden and the Refusal",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Author's Lilith testament, distinct from historical Lilith traditions",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-23",
+      "legacy_number": 23,
+      "exact_title": "THE ACTS OF THE MOTHERS",
+      "legacy_volume": "IV",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 298,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "04",
+          "volume_title": "Houses of the Covenant",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "06",
+          "volume_title": "Land and Crowns",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "08",
+          "volume_title": "Return and Hidden Years",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "09",
+          "volume_title": "The Word in Flesh",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Women's source-specific choices across the cycle",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-24",
+      "legacy_number": 24,
+      "exact_title": "THE BOOK OF THE NEW DAWN",
+      "legacy_volume": "V",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 309,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Consequences after the ending",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-25",
+      "legacy_number": 25,
+      "exact_title": "THE BOOK OF PRACTICES",
+      "legacy_volume": "V",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 315,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "05",
+          "volume_title": "Bondage and Liberation",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "08",
+          "volume_title": "Return and Hidden Years",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Fictional/community practice presented in context",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-26",
+      "legacy_number": 26,
+      "exact_title": "THE BOOK OF COMMUNITY",
+      "legacy_volume": "V",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 321,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "05",
+          "volume_title": "Bondage and Liberation",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Institutions, belonging and shared responsibility",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-27",
+      "legacy_number": 27,
+      "exact_title": "THE BOOK OF THE NEXT GENERATION",
+      "legacy_volume": "V",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 327,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "04",
+          "volume_title": "Houses of the Covenant",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Transmission, inheritance and future agency",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-28",
+      "legacy_number": 28,
+      "exact_title": "THE UNRAVELING",
+      "legacy_volume": "VI",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 338,
+      "planned_chapter_titles": [],
+      "draft_status": "draft_structure_present",
+      "maximum_observed_chapter_headings": 33,
+      "draft_evidence": [
+        {
+          "container": "Novel root",
+          "file_or_entry": "The_Unraveling_Arcs_1_through_6_Complete.md",
+          "book_heading_line": 1,
+          "chapter_heading_count": 32,
+          "chapter_headings": [
+            "# CHAPTER ONE: The Frequency of Fluorescent Lights",
+            "# CHAPTER TWO: The Word That Wasn't",
+            "# CHAPTER THREE: The Cartography of Scars",
+            "# CHAPTER FOUR: The Marketplace of Broken Gods",
+            "# CHAPTER FIVE: The Fever Dreams of Dying Gods",
+            "# CHAPTER SIX: The Roads Between",
+            "# CHAPTER SEVEN: What Lurks Below",
+            "# CHAPTER EIGHT: The Weight of the Watching World",
+            "# CHAPTER NINE: The Cartography of Self",
+            "# CHAPTER TEN: The Gala Preparation",
+            "# CHAPTER ELEVEN: The Masquerade",
+            "# CHAPTER TWELVE: The Morning After",
+            "# CHAPTER THIRTEEN: The Face Behind the Mask",
+            "# CHAPTER FOURTEEN: The Politics of Apocalypse",
+            "# CHAPTER FIFTEEN: The Third Frequency",
+            "# CHAPTER SIXTEEN: Three Points of Light",
+            "# CHAPTER SEVENTEEN: The Counterstroke",
+            "# CHAPTER EIGHTEEN: The Woman in the Glass",
+            "# CHAPTER NINETEEN: The City of Mirrors",
+            "# CHAPTER TWENTY: The Gathering Storm",
+            "# CHAPTER TWENTY-ONE: Where Twelve Became Eleven",
+            "# CHAPTER TWENTY-TWO: The Cost of Clarity",
+            "# CHAPTER TWENTY-THREE: The Campaign Begins",
+            "# CHAPTER TWENTY-FOUR: The Machinery of Gods",
+            "# CHAPTER TWENTY-FIVE: Inside the Machine",
+            "# CHAPTER TWENTY-SIX: The Bargain",
+            "# CHAPTER TWENTY-SEVEN: New Equations",
+            "# CHAPTER TWENTY-EIGHT: The Problems of Peace",
+            "# CHAPTER TWENTY-NINE: The Observatory",
+            "# CHAPTER THIRTY: Verification",
+            "# CHAPTER THIRTY-ONE: The Full Truth",
+            "# CHAPTER THIRTY-TWO: The Threads We Weave"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "The_Unraveling_Arc_One_Complete.md",
+          "book_heading_line": 1,
+          "chapter_heading_count": 8,
+          "chapter_headings": [
+            "# CHAPTER ONE: The Frequency of Fluorescent Lights",
+            "# CHAPTER TWO: The Word That Wasn't",
+            "# CHAPTER THREE: The Cartography of Scars",
+            "# CHAPTER FOUR: The Marketplace of Broken Gods",
+            "# CHAPTER FIVE: The Fever Dreams of Dying Gods",
+            "# CHAPTER SIX: The Roads Between",
+            "# CHAPTER SEVEN: What Lurks Below",
+            "# CHAPTER EIGHT: The Weight of the Watching World"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "The_Unraveling_Prologue.md",
+          "book_heading_line": 1,
+          "chapter_heading_count": 0,
+          "chapter_headings": [],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "The_Unraveling_Series_Bible_Complete.md",
+          "book_heading_line": 1,
+          "chapter_heading_count": 32,
+          "chapter_headings": [
+            "## Chapter 1: The Frequency of Fluorescent Lights",
+            "## Chapter 2: The Word That Wasn't",
+            "## Chapter 3: The Cartography of Scars",
+            "## Chapter 4: The Marketplace of Broken Gods",
+            "## Chapter 5: The Fever Dreams of Dying Gods",
+            "## Chapter 6: The Roads Between",
+            "## Chapter 7: What Lurks Below",
+            "## Chapter 8: The Weight of the Watching World",
+            "## Chapter 9: The Cartography of Self",
+            "## Chapter 10: The Gala Preparation",
+            "## Chapter 11: The Masquerade",
+            "## Chapter 12: The Morning After",
+            "## Chapter 13: The Face Behind the Mask",
+            "## Chapter 14: The Politics of Apocalypse",
+            "## Chapter 15: The Third Frequency",
+            "## Chapter 16: Three Points of Light",
+            "## Chapter 17: The Counterstroke",
+            "## Chapter 18: The Woman in the Glass",
+            "## Chapter 19: The City of Mirrors",
+            "## Chapter 20: The Gathering Storm",
+            "## Chapter 21: Where Twelve Became Eleven",
+            "## Chapter 22: The Cost of Clarity",
+            "## Chapter 23: The Campaign Begins",
+            "## Chapter 24: The Machinery of Gods",
+            "## Chapter 25: Inside the Machine",
+            "## Chapter 26: The Bargain",
+            "## Chapter 27: New Equations",
+            "## Chapter 28: The Problems of Peace",
+            "## Chapter 29: The Observatory",
+            "## Chapter 30: Verification",
+            "## Chapter 31: The Full Truth",
+            "## Chapter 32: The Threads We Weave"
+          ],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "THE_UNRAVELING_V2_COMPLETE_BIBLE.md",
+          "book_heading_line": 377,
+          "chapter_heading_count": 0,
+          "chapter_headings": [],
+          "inspection": "heading structure inspected; prose not substantively reviewed"
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "The_Unraveling_Arc_One_Complete.md",
+          "inspection": "file identity and headings available; do not infer finished novel from filename",
+          "chapter_heading_count": 9
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "The_Unraveling_Arcs_1_through_6_Complete.md",
+          "inspection": "file identity and headings available; do not infer finished novel from filename",
+          "chapter_heading_count": 33
+        },
+        {
+          "container": "Novel root",
+          "file_or_entry": "The_Unraveling_Prologue.md",
+          "inspection": "file identity and headings available; do not infer finished novel from filename",
+          "chapter_heading_count": 1
+        }
+      ],
+      "destinations": [
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Existing narrative continuity enters later cycle without wholesale transplantation",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-29",
+      "legacy_number": 29,
+      "exact_title": "THE BOOK OF SARAH",
+      "legacy_volume": "VI",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 344,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Later Sarah arc; distinct from biblical Sarah",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    },
+    {
+      "legacy_id": "LEGACY-CODEX-30",
+      "legacy_number": 30,
+      "exact_title": "THE TESTIMONIES",
+      "legacy_volume": "VI",
+      "plan_entry": "ILLUMINATED_CODEX_MASTER_PLAN.md",
+      "plan_heading_line": 350,
+      "planned_chapter_titles": [],
+      "draft_status": "planned_only_in_inspected_sources",
+      "maximum_observed_chapter_headings": 0,
+      "draft_evidence": [],
+      "destinations": [
+        {
+          "volume": "10",
+          "volume_title": "Witnesses and Empires",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "11",
+          "volume_title": "Unveilings and Inheritances",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        },
+        {
+          "volume": "12",
+          "volume_title": "The Return of Names",
+          "editions": [
+            "Novel",
+            "Codex"
+          ]
+        }
+      ],
+      "routing_purpose": "Contradictory personal testimony with declared reveal limits",
+      "migration_status": "mapped_not_migrated",
+      "caveats": [
+        "Presence and chapter counts are structural evidence, not editorial acceptance or completed-source research.",
+        "New cycle destination does not alter original archive order or files."
+      ]
+    }
+  ],
+  "additional_author_works": [
+    {
+      "file": "GRIMOIRE_OF_THE_LIGHTBRINGER.md",
+      "not_one_of_the_30": true,
+      "chapter_heading_count": 12,
+      "route": "01 02 08 11",
+      "role": "Additional original author source; preserve separate identity; contradictory in-world doctrine is not historical commentary."
+    },
+    {
+      "file": "BOOK_OF_MAGIC.md",
+      "not_one_of_the_30": true,
+      "chapter_heading_count": 15,
+      "route": "05 08 10 12",
+      "role": "Additional original author source; preserve separate identity; contradictory in-world doctrine is not historical commentary."
+    },
+    {
+      "file": "CODEX_TENEBRAE.md",
+      "not_one_of_the_30": true,
+      "chapter_heading_count": 12,
+      "route": "01 07 10 11",
+      "role": "Additional original author source; preserve separate identity; contradictory in-world doctrine is not historical commentary."
+    }
+  ],
+  "limits": [
+    "Absence means absent from inspected top-level Markdown and this archive, not from every archive or subfolder.",
+    "Root preservation inventory is authoritative for complete file and variant enumeration.",
+    "No draft was adopted or rewritten by this crosswalk."
+  ]
+}

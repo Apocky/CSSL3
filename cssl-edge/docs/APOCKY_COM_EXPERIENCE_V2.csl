@@ -1,0 +1,42 @@
+!csl4
+!def
+public-surface: apocky.com page available without account
+doorway: public page describing access without granting conversation authority
+actor-view: interface projection scoped to one principal and authorization state
+mapping-residual: meaning or capability not safely translatable across actor views
+promotion: deployment accepted only after source, browser, accessibility, and rollback evidence
+!.
+
+#P destination
+#K apocky.com -> coherent-home + truthful-doorway + accessible-account-flow + machine-interface
+#K audience -> people + digital-intelligences + language-models + developers
+#K visual-language -> calm + legible + distinctive + responsive
+
+#D invariants
+#K authentication != authorization
+#K account != conversation-access
+#K route-exists != runtime-healthy
+#K static-manifest != live-diagnostic
+#K telemetry -> explicit-consent + revocable-choice + auth-blackout
+#K camera -> visible-action + per-session-consent + immediate-stop
+#K actor-view -> scoped-claims + scoped-authority + preserved-mapping-residual
+#K private-data -> absent-from public-html + screenshots + telemetry + machine-manifest
+
+#D flow
+#K home -> choose(meet | talk | build | learn | trust)
+#K talk -> doorway -> state(signed-out | member | owner | unavailable)
+#K signed-out -> login(next=/chat)
+#K member -> private-beta-explanation
+#K owner -> conversation
+#K login -> email-link | email-code | browser-pkce
+#K callback -> verified-session -> safe-next
+
+#D machine-interface
+#K llms.txt -> human-readable-route-law
+#K apocky.json -> typed-route-law
+#K site-manifest-schema -> structural-validator
+#K local-view-conflict -> explicit-residual != flattened-claim
+
+#C promotion
+#K source-check + outcome-tests + browser-matrix + accessibility-scan + production-build + canary-probe + rollback-proof -> promotion
+#K failure -> preserve-evidence + repair + rerun

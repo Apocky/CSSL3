@@ -17,8 +17,24 @@ const OUT_FILE = path.resolve(__dirname, '..', 'lib', 'specs-snapshot.ts');
 
 function readSpecs() {
   if (!fs.existsSync(SPECS_DIR)) {
-    console.warn(`[snapshot-specs] missing ${SPECS_DIR} · emitting empty snapshot`);
-    return [];
+    // Vercel uploads cssl-edge/ as the project root, so the canonical source
+    // directory is intentionally outside its build closure.  The generated
+    // snapshot is checked into that closure and is the hermetic fallback.
+    // Never replace a valid shipped snapshot with an empty one merely because
+    // the source-only parent directory is unavailable on the deploy host.
+    if (fs.existsSync(OUT_FILE)) {
+      const existing = fs.readFileSync(OUT_FILE, 'utf8');
+      const entryCount = (existing.match(/^\s+slug:\s/gm) ?? []).length;
+      if (entryCount > 0) {
+        console.warn(
+          `[snapshot-specs] missing ${SPECS_DIR} · preserving ${entryCount}-entry hermetic snapshot`,
+        );
+        return null;
+      }
+    }
+    throw new Error(
+      `[snapshot-specs] missing ${SPECS_DIR} and no non-empty hermetic snapshot is available`,
+    );
   }
   const entries = fs
     .readdirSync(SPECS_DIR)
@@ -81,6 +97,20 @@ function main() {
     }
   }
   const specs = readSpecs();
+  if (specs === null) {
+    if (!fs.existsSync(OUT_FILE)) {
+      throw new Error(`[snapshot-specs] missing source and committed snapshot: ${OUT_FILE}`);
+    }
+    const existing = fs.readFileSync(OUT_FILE, 'utf8');
+    const entries = existing.match(/\bslug:\s*"/g)?.length ?? 0;
+    if (!existing.includes('// AUTO-GENERATED') || !existing.includes('export const SPECS') || entries === 0) {
+      throw new Error(`[snapshot-specs] committed snapshot is invalid or empty: ${OUT_FILE}`);
+    }
+    console.log(
+      `[snapshot-specs] preserved ${entries} committed specs → ${path.relative(REPO_ROOT, OUT_FILE)}`,
+    );
+    return;
+  }
   const out = buildOutput(specs);
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
   fs.writeFileSync(OUT_FILE, out, 'utf8');

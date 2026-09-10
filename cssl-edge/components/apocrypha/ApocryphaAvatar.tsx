@@ -12,6 +12,8 @@ export type ApocryphaVisualState =
 
 interface ApocryphaAvatarProps {
   state: ApocryphaVisualState;
+  displayAuthorized?: boolean;
+  authorizationRef?: string | null;
   size?: number;
   cycleProgress?: number | null;
   detail?: 'compact' | 'full';
@@ -34,6 +36,8 @@ const ORGANS = ['memory', 'language', 'reason', 'agency', 'perception', 'dream']
 
 export function ApocryphaAvatar({
   state,
+  displayAuthorized = false,
+  authorizationRef = null,
   size = 180,
   cycleProgress = null,
   detail = 'full',
@@ -41,6 +45,10 @@ export function ApocryphaAvatar({
   className,
 }: ApocryphaAvatarProps) {
   const rawId = useId();
+  // Presence is deny-by-default. A caller must hold both the current display
+  // decision and its committed authority reference; visual convenience alone
+  // can never make the representation appear.
+  if (!displayAuthorized || !authorizationRef) return null;
   const id = rawId.replace(/[^a-zA-Z0-9_-]/g, '');
   const palette = STATE[state];
   const paused = state === 'offline' || state === 'checking' || state === 'private';
@@ -54,6 +62,8 @@ export function ApocryphaAvatar({
   return (
     <figure
       className={className}
+      data-display-authorized="true"
+      data-display-authorization-ref={authorizationRef}
       data-apocrypha-state={state}
       data-presence-provenance={provenance}
       style={{

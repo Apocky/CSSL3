@@ -1,25 +1,38 @@
-// apocky.com/api/admin/apocrypha/telemetry · proxy → Apocrypha /api/v1/telemetry/recent
-// Returns recent TelemetryEvents for the cockpit poll-loop.
+// Owner-only, metadata-only V2 telemetry projection.
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+import { proxyV2ToApocrypha, setPrivateNoStore } from '@/lib/apocrypha/proxy';
 import { envelope } from '@/lib/response';
-import { proxyToApocrypha } from '@/lib/apocrypha/proxy';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+const MAX_EVENT_SEQ = Number.MAX_SAFE_INTEGER;
+
+function parseAfterEventSeq(value: string | string[] | undefined): number | null {
+  if (value === undefined) return 0;
+  if (typeof value !== 'string' || !/^(?:0|[1-9][0-9]{0,15})$/.test(value)) return null;
+  const cursor = Number(value);
+  return Number.isSafeInteger(cursor) && cursor >= 0 && cursor <= MAX_EVENT_SEQ ? cursor : null;
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
+  setPrivateNoStore(res);
+  res.setHeader('Allow', 'GET');
   if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
-    return res.status(405).json({ error: 'Method not allowed', ...envelope() });
+    res.status(405).json({ error: 'Method not allowed', ...envelope() });
+    return;
   }
-  const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : 200;
-  const prefix = typeof req.query.prefix === 'string' ? req.query.prefix : undefined;
-  const query: Record<string, string | number | undefined> = {
-    limit: Number.isFinite(limit) ? limit : 200,
-  };
-  if (prefix) query.prefix = prefix;
-  await proxyToApocrypha(req, res, {
-    method: 'GET',
-    upstreamPath: '/api/v1/telemetry/recent',
-    query,
+  const rawLimit = typeof req.query.limit === 'string' ? Number(req.query.limit) : 100;
+  const limit = Number.isInteger(rawLimit) ? Math.max(1, Math.min(500, rawLimit)) : 100;
+  const afterEventSeq = parseAfterEventSeq(req.query.after_event_seq);
+  if (afterEventSeq === null) {
+    res.status(400).json({
+      error: `after_event_seq must be a decimal integer between 0 and ${MAX_EVENT_SEQ}`,
+      ...envelope(),
+    });
+    return;
+  }
+  await proxyV2ToApocrypha(req, res, {
+    upstreamPath: '/v2/telemetry',
+    query: { after_event_seq: afterEventSeq, limit },
   });
 }

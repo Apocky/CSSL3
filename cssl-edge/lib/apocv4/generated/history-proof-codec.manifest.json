@@ -1,0 +1,14 @@
+{
+  "schema_version": "apocv4.history-proof-codec-artifact.v1",
+  "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+  "bindgen": "wasm-bindgen 0.2.118",
+  "wasm_sha256": "74ee96c0ad4c0fe41b8adc66c615c8c0f86abf9721c76ad356d6d869fe1f04af",
+  "wasm_bytes": 169162,
+  "wasm_max_memory_bytes": 134217728,
+  "source_sha256": {
+    "Cargo.toml": "2a6a978ef27e43597292754d673857bb3ca435b0d1cbc62344687f8aedd91d45",
+    "Cargo.lock": "25397bca75b9b7b5568c3691eaae597585258190e2d325a5ca238c65a3de6dd8",
+    "src/lib.rs": "c8a7722791aeb75281159d30eb7b9fc6b59b7a3d0da1a5d2c066bf7bb137c1ff",
+    "scripts/build-web.mjs": "e3fd994e51c7ee5c164422dc237d11f89dc44e7cb78a68d4379b6ab96b2f9183"
+  }
+}

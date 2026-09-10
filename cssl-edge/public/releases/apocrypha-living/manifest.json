@@ -1,0 +1,41 @@
+{
+  "schema": "apocky.apocrypha-release-manifest.v1",
+  "schema_href": "/schemas/apocrypha-release-manifest.v1.json",
+  "manifest_version": 1,
+  "version": "1.0.0",
+  "release_state": "RELEASED",
+  "generated_at": "2026-09-05T18:52:00.650Z",
+  "release_label": "Released",
+  "project": "Apocrypha",
+  "track": "local-living",
+  "public_safe": true,
+  "source_revision": "daadaf30a22c4dc00ce46eb178fbb40a3048cd69",
+  "build": {
+    "state": "RELEASED_PWA",
+    "verification": "AUTOMATED_DESKTOP_CHROME_MOBILE_CHROME_IPHONE_WEBKIT_MATRIX_PASSED",
+    "release_gate": "OPEN",
+    "missing": []
+  },
+  "documents": {
+    "plan": {
+      "label": "Living plan",
+      "href": "/releases/apocrypha-living/plan.json",
+      "sha256": "059f5f089cefc778fda9217b2d46e7b5ba7a4a4628c47db043188b2cb747918f",
+      "bytes": 5890
+    },
+    "changelog": {
+      "label": "Changelog",
+      "href": "/releases/apocrypha-living/changelog.json",
+      "sha256": "daabe49e9d08094768dd74c15deeab0b22b6298472a742b8df3b38b767a879fa",
+      "bytes": 7607
+    },
+    "manifest": {
+      "label": "Build manifest",
+      "href": "/releases/apocrypha-living/manifest.json"
+    }
+  },
+  "download_status": "NO_PROMOTED_ARTIFACT",
+  "download": null,
+  "claim_boundary": "Released web/PWA metadata does not attest to production deployment, physical-device verification, or a downloadable native artifact.",
+  "content_digest": "e084e18863a63eaad45b0a5292840ddab3dcecc003d5b84a46430e87396d0337"
+}

@@ -1,0 +1,1060 @@
+§S DECISION.READ.FIRST
+  ✓ Codex.route+all19.readers.return200 ; defect := discoverability+task.priority
+  ✓ Codex.incoming.site.navigation := homepage.closed.More.of.Apocky.only
+  ✓ missing := primary.nav + mobile.nav + footer + shared.search.registry + Atlas.registry + contextual.links + sitemap
+  ✓ audit.denominator := 77page.source.files(72fixed+5dynamic) + 25public.HTMLfiles + 122API.route.files
+  ✓ known.concrete.page.instances := 72fixed + 20Codex + 5Commons + 25grand.vision.docs + 233Akashic = 355
+  ✓ extra.probes := 3aliases+1missing.admin.link+1gated.reference.sample+3missing.docs.links
+  ✓ current.HTTP := 363unique.GET ; 332×200 + 24×404 + 1×500 + 2×307 + 4×308
+  ✓ Akashic := 204Medium.posts + 29conversation.parts = 233record.pages ; all233.HTTP200
+  ✓ Conversations.dynamic.full.transcripts := 0approved.records ; curated.thoughts := separate12item.public.model
+  ✓ /content/* + game.sharing := intentionally.unavailable.source.gates ; N! redesign.bypasses
+  ✓ /shawn+references := publication.gated ; clinical+brain := private ; N! discovery.promotes.private.data
+  ✓ broken.navigation := docs→/devblog + /devblog/why-cssl + /press(404) ; admin→/admin/payments(404)
+  ✓ Oracle := /oracle→308.external.Chaos ; registry.labels.public.local mismatches.source.redirect
+  ○ root.CUA@390×844 := Chaos→login ; Codex.search0 ; mobile.menu.absent ; search.panel.clipped
+  ○ root.CUA := Atlas.firstscreen.no.useful.input ; Words.no.search ; ideas+essays.below.technical.counts
+  ◇ priority := useful.tools + searchable.definitions + thoughts/essays + direct.story.access
+  N! prominent.GUI := architecture.labels | build.hashes | telemetry | publication.denominators | approval.process
+  W! actual.authority+privacy.gates.persist ; technical.details.remain.optional
+
+§P Route.flow.audit @ 2026-09-05
+  owner := public_review ; source := cssl-edge ; writes := this.file.only
+  ✓ source.page.files := 77 ; static := 72 ; dynamic.patterns := 5
+  ✓ public.static.HTML := Codex20 + Commons5
+  N! HTTP.response⇒visual.QA | authenticated.flow.acceptance
+
+§T HTTP.current.anonymous.GET
+  ✓ requests := 104 ; concurrency≤8 ; redirects.unfollowed ; no.credentials+no.mutations
+  {"route": "/", "status": 200, "location": "", "title": "Apocky · Conversation, symbolic tools, and connected worlds", "bytes": 15105}
+  {"route": "/404", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/500", "status": 500, "location": "", "title": "Signal interrupted · Apocky", "bytes": 11025}
+  {"route": "/account", "status": 200, "location": "", "title": "", "bytes": 10129}
+  {"route": "/admin", "status": 200, "location": "", "title": "§ Apocky Console · Apocky admin", "bytes": 11261}
+  {"route": "/admin/analytics", "status": 200, "location": "", "title": "∂ Analytics · Apocky admin", "bytes": 11273}
+  {"route": "/admin/apex", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/admin/apocrypha", "status": 200, "location": "", "title": "Apocrypha operations · Apocky admin", "bytes": 11287}
+  {"route": "/admin/chat", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/admin/coder", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/admin/cognition", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/admin/controls", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/admin/diagnostics", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/admin/logs", "status": 200, "location": "", "title": "Telemetry · Apocky admin", "bytes": 10975}
+  {"route": "/admin/mcp", "status": 200, "location": "", "title": "⊑ MCP Tool Invoker · Apocky admin", "bytes": 11275}
+  {"route": "/admin/payments", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/admin/sub-minds", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/admin/tools", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/akashic-records", "status": 200, "location": "", "title": "Akashic Records — Public Works and Conversations", "bytes": 223882}
+  {"route": "/akashic-records/codex-019fe684-f1ad-7a10-bbab-c53b65721017-part-1", "status": 200, "location": "", "title": "Diagnose social media visibility · Akashic Records", "bytes": 15512}
+  {"route": "/apoc", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/apocrypha", "status": 200, "location": "", "title": "Apocrypha · Apocky", "bytes": 7335}
+  {"route": "/atlas", "status": 200, "location": "", "title": "Constellation Atlas — Explore Apocky", "bytes": 66385}
+  {"route": "/auth/callback", "status": 200, "location": "", "title": "Signing you in… · Apocky", "bytes": 6746}
+  {"route": "/brain", "status": 307, "location": "/login?next=%2Fbrain", "title": "", "bytes": 20}
+  {"route": "/buy", "status": 200, "location": "", "title": "Download or support · Apocky", "bytes": 13014}
+  {"route": "/chat", "status": 404, "location": "", "title": "", "bytes": 0}
+  {"route": "/clearing", "status": 200, "location": "", "title": "The Clearing · Apocky", "bytes": 7546}
+  {"route": "/codex-apockalypsis", "status": 200, "location": "", "title": "Codex Apockalypsis · Apocky", "bytes": 122829}
+  {"route": "/codex-apockalypsis/library/atlas-readme", "status": 200, "location": "", "title": "The Good Book atlas · Apocky", "bytes": 6782}
+  {"route": "/codex-apockalypsis/library/calibration-voice-samples", "status": 200, "location": "", "title": "Three voice treatments — The Exit Fee · Apocky", "bytes": 20527}
+  {"route": "/codex-apockalypsis/library/codex-volume-01-01-the-unanswered-interval", "status": 200, "location": "", "title": "The Unanswered Interval · Apocky", "bytes": 13770}
+  {"route": "/codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked", "status": 200, "location": "", "title": "Before Anyone Asked · Apocky", "bytes": 20934}
+  {"route": "/codex-apockalypsis/library/reference-ethical-concordance", "status": 200, "location": "", "title": "An ethical concordance for The Good Book · Apocky", "bytes": 11011}
+  {"route": "/codex-apockalypsis/library/reference-narrative-characters-and-factions", "status": 200, "location": "", "title": "Characters and factions · Apocky", "bytes": 40150}
+  {"route": "/codex-apockalypsis/library/reference-narrative-coverage-and-context", "status": 200, "location": "", "title": "Source coverage and historical context · Apocky", "bytes": 21327}
+  {"route": "/codex-apockalypsis/library/reference-narrative-series-guide", "status": 200, "location": "", "title": "The Good Book: the twelve-volume series · Apocky", "bytes": 42848}
+  {"route": "/codex-apockalypsis/library/reference-narrative-v2-reuse-guide", "status": 200, "location": "", "title": "What returns from The Unraveling V2 · Apocky", "bytes": 14566}
+  {"route": "/codex-apockalypsis/library/reference-reading-v01-c01", "status": 200, "location": "", "title": "After “Before Anyone Asked” · Apocky", "bytes": 4945}
+  {"route": "/codex-apockalypsis/library/reference-sources-catalogue-guide", "status": 200, "location": "", "title": "Finding sources and reading their status · Apocky", "bytes": 9676}
+  {"route": "/codex-apockalypsis/library/reference-sources-creation-notes", "status": 200, "location": "", "title": "Sources behind the first creation scenes · Apocky", "bytes": 11098}
+  {"route": "/codex-apockalypsis/library/reference-sources-legacy-codex-crosswalk", "status": 200, "location": "", "title": "Where the original thirty books belong · Apocky", "bytes": 26711}
+  {"route": "/codex-apockalypsis/library/reference-sources-lilith-notes", "status": 200, "location": "", "title": "Lilith: where she is, and which story is speaking · Apocky", "bytes": 12124}
+  {"route": "/codex-apockalypsis/library/reference-sources-source-notes", "status": 200, "location": "", "title": "Historical notes and how to read them · Apocky", "bytes": 22382}
+  {"route": "/codex-apockalypsis/library/reference-world-chronology", "status": 200, "location": "", "title": "Chronology: story, history and experience · Apocky", "bytes": 26912}
+  {"route": "/codex-apockalypsis/library/reference-world-creation-continuity", "status": 200, "location": "", "title": "Creation-sequence continuity packet · Apocky", "bytes": 18334}
+  {"route": "/codex-apockalypsis/library/reference-world-world-reference", "status": 200, "location": "", "title": "World reference and identity guide · Apocky", "bytes": 44867}
+  {"route": "/codex-apockalypsis/library/start-here", "status": 200, "location": "", "title": "Codex Apockalypsis · Apocky", "bytes": 6061}
+  {"route": "/commons", "status": 308, "location": "/", "title": "", "bytes": 15}
+  {"route": "/commons/atlas.html", "status": 200, "location": "", "title": "Project Atlas — Apocky", "bytes": 8491}
+  {"route": "/commons/clearing.html", "status": 308, "location": "/clearing", "title": "", "bytes": 15}
+  {"route": "/commons/index.html", "status": 308, "location": "/", "title": "", "bytes": 15}
+  {"route": "/commons/membership.html", "status": 200, "location": "", "title": "Membership — A seat in the Clearing · Apocky", "bytes": 12649}
+  {"route": "/commons/principles.html", "status": 200, "location": "", "title": "Principles — Apocky", "bytes": 6454}
+  {"route": "/content", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/content/feed", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/content/search", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/content/subscribed", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/content/trending", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/conversations", "status": 200, "location": "", "title": "Conversation Constellations · Shawn Apocky with ChatGPT, Claude, and Codex", "bytes": 38776}
+  {"route": "/divination", "status": 200, "location": "", "title": "Chaos, Tarot, and Divination · A practical map", "bytes": 20004}
+  {"route": "/docs", "status": 200, "location": "", "title": "Documentation · Apocky", "bytes": 38175}
+  {"route": "/docs/00_THESIS", "status": 200, "location": "", "title": "00 : LoA-v13 GRAND-VISION — THESIS<!-- --> · Apocky docs", "bytes": 33236}
+  {"route": "/docs/changelog", "status": 200, "location": "", "title": "Changelog · Apocky Docs", "bytes": 23695}
+  {"route": "/docs/chat-panel", "status": 200, "location": "", "title": "Chat Panel · Apocky Docs", "bytes": 31349}
+  {"route": "/docs/cssl-ffi", "status": 200, "location": "", "title": "How CSSL calls other code · Apocky Documentation", "bytes": 37575}
+  {"route": "/docs/cssl-language", "status": 200, "location": "", "title": "CSSL Language Overview · Apocky Docs", "bytes": 33144}
+  {"route": "/docs/cssl-modules", "status": 200, "location": "", "title": "CSSL Modules · Apocky Docs", "bytes": 35621}
+  {"route": "/docs/getting-started", "status": 200, "location": "", "title": "Getting started with LoA · Apocky Documentation", "bytes": 26674}
+  {"route": "/docs/intents", "status": 200, "location": "", "title": "How the game reads requests · Apocky Documentation", "bytes": 31823}
+  {"route": "/docs/keyboard-shortcuts", "status": 200, "location": "", "title": "Keyboard Shortcuts · Apocky Docs", "bytes": 27524}
+  {"route": "/docs/mycelium", "status": 200, "location": "", "title": "Mycelium and Home · Apocky Documentation", "bytes": 22447}
+  {"route": "/docs/sovereignty", "status": 200, "location": "", "title": "Permissions and data sharing · Apocky Documentation", "bytes": 23732}
+  {"route": "/docs/substrate", "status": 200, "location": "", "title": "Technical foundations · Apocky Documentation", "bytes": 43046}
+  {"route": "/docs/troubleshooting", "status": 200, "location": "", "title": "Troubleshooting · Apocky Docs", "bytes": 28933}
+  {"route": "/download", "status": 200, "location": "", "title": "Download · Labyrinth of Apocalypse · alpha", "bytes": 19489}
+  {"route": "/download/apocrypha", "status": 200, "location": "", "title": "Apocrypha for iPhone and Android · Apocky", "bytes": 21933}
+  {"route": "/gear-share", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/infinity-engine", "status": 200, "location": "", "title": "Infinity Engine research · Apocky", "bytes": 14294}
+  {"route": "/labs", "status": 200, "location": "", "title": "Public labs and experiments · Apocky", "bytes": 16455}
+  {"route": "/legal/eula", "status": 200, "location": "", "title": "Labyrinth of Apocalypse license<!-- --> · Apocky", "bytes": 15912}
+  {"route": "/legal/privacy", "status": 200, "location": "", "title": "Privacy policy<!-- --> · Apocky", "bytes": 18165}
+  {"route": "/legal/terms", "status": 200, "location": "", "title": "Terms of service<!-- --> · Apocky", "bytes": 16853}
+  {"route": "/login", "status": 200, "location": "", "title": "Sign in · Apocky", "bytes": 7789}
+  {"route": "/membership", "status": 200, "location": "", "title": "Membership and support · Apocky", "bytes": 19103}
+  {"route": "/memory-tools", "status": 200, "location": "", "title": "Memory banks and tools · Apocky", "bytes": 22569}
+  {"route": "/now", "status": 200, "location": "", "title": "What is alive now · Apocky", "bytes": 16058}
+  {"route": "/omnoid-singularity", "status": 200, "location": "", "title": "Apocky’s Omnoid Singularity — authored cosmology", "bytes": 141164}
+  {"route": "/oracle", "status": 308, "location": "https://chaos-tarot.com/yes-no?source=apocky-oracle", "title": "", "bytes": 15}
+  {"route": "/principles", "status": 200, "location": "", "title": "Interface principles · Apocky", "bytes": 15516}
+  {"route": "/quests", "status": 200, "location": "", "title": "Public quests · Apocky", "bytes": 18135}
+  {"route": "/register", "status": 200, "location": "", "title": "Create an account · Apocky", "bytes": 8137}
+  {"route": "/run-share-feed", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/shawn", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/shawn/clinical", "status": 307, "location": "/login?next=%2Fshawn%2Fclinical", "title": "", "bytes": 31}
+  {"route": "/shawn/reference/zeta-zeros", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/showcase", "status": 200, "location": "", "title": "Apocky + Chaos Tarot Showcase · Two Doors, One Constellation", "bytes": 20208}
+  {"route": "/sigils", "status": 200, "location": "", "title": "Deterministic Sigil Maker · Visible symbolic geometry", "bytes": 14088}
+  {"route": "/spellbook", "status": 200, "location": "", "title": "Local Spellbook · Save and export symbolic workings", "bytes": 13128}
+  {"route": "/spellcraft", "status": 200, "location": "", "title": "Symbolic Spellcraft Engine · Compose, inspect, transform", "bytes": 17004}
+  {"route": "/start", "status": 200, "location": "", "title": "Start here · Apocky", "bytes": 17666}
+  {"route": "/status", "status": 200, "location": "", "title": "System status · Apocky", "bytes": 13901}
+  {"route": "/theory-of-everything", "status": 200, "location": "", "title": "Omnoid Singularity and the Theory of Everything · Apocky", "bytes": 21347}
+  {"route": "/words", "status": 200, "location": "", "title": "Words and symbols · Apocky", "bytes": 23867}
+
+§T SOURCE.PAGE.ROUTES
+  /404 ← pages/404.tsx
+  /500 ← pages/500.tsx
+  /account ← pages/account.tsx
+  /admin/analytics ← pages/admin/analytics.tsx
+  /admin/apex ← pages/admin/apex.tsx
+  /admin/apocrypha ← pages/admin/apocrypha/index.tsx
+  /admin/chat ← pages/admin/chat.tsx
+  /admin/coder ← pages/admin/coder.tsx
+  /admin/cognition ← pages/admin/cognition.tsx
+  /admin/controls ← pages/admin/controls.tsx
+  /admin/diagnostics ← pages/admin/diagnostics.tsx
+  /admin ← pages/admin/index.tsx
+  /admin/logs ← pages/admin/logs.tsx
+  /admin/mcp ← pages/admin/mcp.tsx
+  /admin/sub-minds ← pages/admin/sub-minds.tsx
+  /admin/tools ← pages/admin/tools.tsx
+  /akashic-records/[slug] ← pages/akashic-records/[slug].tsx
+  /akashic-records ← pages/akashic-records/index.tsx
+  /apocrypha ← pages/apocrypha.tsx
+  /atlas ← pages/atlas.tsx
+  /auth/callback ← pages/auth/callback.tsx
+  /brain ← pages/brain.tsx
+  /buy ← pages/buy.tsx
+  /clearing ← pages/clearing.tsx
+  /content/[slug] ← pages/content/[slug].tsx
+  /content/feed ← pages/content/feed.tsx
+  /content ← pages/content/index.tsx
+  /content/search ← pages/content/search.tsx
+  /content/subscribed ← pages/content/subscribed.tsx
+  /content/trending ← pages/content/trending.tsx
+  /conversations/[slug] ← pages/conversations/[slug].tsx
+  /conversations ← pages/conversations.tsx
+  /divination ← pages/divination.tsx
+  /docs/[slug] ← pages/docs/[slug].tsx
+  /docs/changelog ← pages/docs/changelog.tsx
+  /docs/chat-panel ← pages/docs/chat-panel.tsx
+  /docs/cssl-ffi ← pages/docs/cssl-ffi.tsx
+  /docs/cssl-language ← pages/docs/cssl-language.tsx
+  /docs/cssl-modules ← pages/docs/cssl-modules.tsx
+  /docs/getting-started ← pages/docs/getting-started.tsx
+  /docs ← pages/docs/index.tsx
+  /docs/intents ← pages/docs/intents.tsx
+  /docs/keyboard-shortcuts ← pages/docs/keyboard-shortcuts.tsx
+  /docs/mycelium ← pages/docs/mycelium.tsx
+  /docs/sovereignty ← pages/docs/sovereignty.tsx
+  /docs/substrate ← pages/docs/substrate.tsx
+  /docs/troubleshooting ← pages/docs/troubleshooting.tsx
+  /download/apocrypha ← pages/download/apocrypha.tsx
+  /download ← pages/download.tsx
+  /gear-share ← pages/gear-share.tsx
+  / ← pages/index.tsx
+  /infinity-engine ← pages/infinity-engine.tsx
+  /labs ← pages/labs.tsx
+  /legal/eula ← pages/legal/eula.tsx
+  /legal/privacy ← pages/legal/privacy.tsx
+  /legal/terms ← pages/legal/terms.tsx
+  /login ← pages/login.tsx
+  /membership ← pages/membership.tsx
+  /memory-tools ← pages/memory-tools.tsx
+  /now ← pages/now.tsx
+  /omnoid-singularity ← pages/omnoid-singularity.tsx
+  /oracle ← pages/oracle.tsx
+  /principles ← pages/principles.tsx
+  /quests ← pages/quests.tsx
+  /register ← pages/register.tsx
+  /run-share-feed ← pages/run-share-feed.tsx
+  /shawn/clinical ← pages/shawn/clinical.tsx
+  /shawn/reference/[slug] ← pages/shawn/reference/[slug].tsx
+  /shawn ← pages/shawn.tsx
+  /showcase ← pages/showcase.tsx
+  /sigils ← pages/sigils.tsx
+  /spellbook ← pages/spellbook.tsx
+  /spellcraft ← pages/spellcraft.tsx
+  /start ← pages/start.tsx
+  /status ← pages/status.tsx
+  /theory-of-everything ← pages/theory-of-everything.tsx
+  /words ← pages/words.tsx
+
+§T KNOWN.DYNAMIC.DENOMINATORS
+  ✓ archive.records := 233 ; source := data/akashic-records.v1.json
+  ✓ grand.vision.docs := 25 ; source := lib/specs-snapshot.ts
+  ✓ reference.literal.seeds := 58 ; W! resolve.runtime.catalog.for.final.generated.count
+  ✓ archive.slugs := ["codex-019fe684-f1ad-7a10-bbab-c53b65721017-part-1", "codex-019fe426-3f68-7081-a027-1fd9df49b36b-part-1", "codex-019fe426-3f68-7081-a027-1fd9df49b36b-part-2", "codex-019fe41b-ece7-77b0-a6f0-eca9f608d481-part-1", "codex-019fe212-0f77-75d1-aa63-d1a548dac1e3-part-1", "codex-019fdad4-09fc-77c1-8030-f72246419ac6-part-1", "codex-019fd228-2338-7b30-9b21-9465534d4941-part-1", "codex-019fc9d6-375c-7f13-8fab-d256c2546cf5-part-1", "codex-019fc8e9-0dd2-7432-8130-41533646758b-part-1", "codex-019fc890-36e8-7470-93dc-e20a771659ff-part-1", "codex-019fc477-2020-7ab3-82f2-8fc97ef38593-part-1", "codex-019fc473-216c-7301-b8f8-236f0b7a0e99-part-1", "codex-019fc38a-4865-7c71-8093-97b129ce0fb1-part-1", "codex-019fc354-c86f-71c0-9c2c-507325ea8642-part-1", "codex-019fc354-c86f-71c0-9c2c-507325ea8642-part-2", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-1", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-10", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-11", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-12", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-13", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-14", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-2", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-3", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-4", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-5", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-6", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-7", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-8", "codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-9", "chaos-tarot-dot-com-0394cf2a5114", "chaos-tarot-com-26332c3b337f", "more-bullshit-f7f530c6969e", "whatever-b3d43a7df9da", "chaos-tarot-com-cb2f66908462", "https-buy-stripe-com-6oufzg9uo8gx0gqclj7eq00-c2c6564e4941", "h-alo-hidden-axis-labyrinthine-oracle-7b9d2d46151f", "on-the-topology-of-compactified-exclusion-zones-in-quintessential-flow-systems-b8362839d054", "check-out-my-app-f26be3e34a99", "read-our-new-novel-d02f54cad3fc", "unexpected-gremlin-hermit-noises-32a9eec2ed7d", "random-thought-but-serendipity-or-whatever-ad7b94adcd1e", "hows-this-one-seo-etc-be-damned-fb9398e91151", "rip-ares-939788130744", "casual-musings-b96759d586af", "ill-get-around-to-making-this-pretty-3cb929c2aec5", "quarterly-reminder-that-theres-more-c2812d517b2b", "smoothe-jazz-more-like-blu-razz-cf-89-e9e92a521570", "https-chatgpt-com-share-688bdd08-053c-800a-b061-53e87b5071d9-94d46396e941", "something-i-cant-be-bothered-atm-to-remember-6da271fd67ed", "https-chatgpt-com-share-688988fd-b920-800a-9ba2-af01bcc3c030-74bb8d82b02a", "https-chatgpt-com-share-68896c3e-08ec-800a-b24b-9b90820b7ec8-9e577bbf41c7", "https-chatgpt-com-share-68843296-94e0-800a-92e1-7c3b7cb5d69e-500c49680192", "https-chatgpt-com-share-68873f65-2288-800a-821a-732cc619600d-3036d62026d8", "party-pack-adc9d0d52835", "https-chatgpt-com-share-6883dc67-12f4-800a-9aee-e0b537901f23-8dec2b01d0ea", "https-chatgpt-com-share-6887458e-5644-800a-b583-77d7800c3365-bba3fc5cdb96", "https-chatgpt-com-share-6887454c-e11c-800a-ba95-5fcf19eec8de-42be184dd944", "https-chatgpt-com-share-688744a2-ba50-800a-9dd1-33bed73da349-e5b8d57cb07a", "https-chatgpt-com-share-688743b7-6734-800a-959b-c8ea20094d78-c4b3e91949aa", "https-chatgpt-com-share-6887435b-4c58-800a-bd7d-ec5ed465f934-759a64d00ffe", "https-chatgpt-com-share-6887426e-6530-800a-8c60-de18e3422795-82b4f9943af8", "https-chatgpt-com-share-6887417c-488c-800a-9686-39cbb9f6186c-eb17be767dd5", "https-chatgpt-com-share-688740a0-dd90-800a-8e34-bcb8545559d5-dd0c9f6683f1", "https-chatgpt-com-share-68805be4-c818-800a-9e20-082f21698db5-a33dff568b9f", "https-chatgpt-com-share-68873fdd-cf38-800a-983c-b42816d8e47e-aed49a189a7b", "https-chatgpt-com-share-68873f65-2288-800a-821a-732cc619600d-16c97fe3d3d4", "you-ever-just-91c71aea55f2", "angels-advocate-d120af1e46ce", "6-30-2025-91d506d16819", "beginning-of-an-era-4d68cfec06c2", "bravo-8844b5392907", "thank-you-so-much-for-the-mention-4359a8306f88", "wake-up-b47264addb75", "the-bible-iii-54d5028ba6bb", "its-me-hi-i-m-the-jesus-it-s-me-ts-heyo-i-m-back-glad-to-see-others-are-starting-to-40a7ad90ff7e", "after-shower-thought-6dfb8d35cdfe", "i-fucking-love-tyler-the-creator-eca7ec92fbf3", "pizza-arcanum-fb950683bb87", "thank-you-for-this-7228406cace2", "no-one-is-selling-souls-guys-come-on-seriously-960ecff5819a", "oh-look-he-wrote-another-article-b9668df5c6b9", "for-a-better-world-2d376decfb31", "i-am-super-eloquent-in-this-one-i-swear-7522dea8e9d8", "a-title-upsetting-to-delicate-sensibilities-b8ad35ecea69", "the-bible-2-doctors-hate-him-b755d93fc67e", "the-declaration-of-independence-from-the-unreality-matrix-35ea4a9992c8", "the-donut-of-power-cf28a8338792", "i-eat-entropy-d82f09af9799", "meditation-c79201e9ffb4", "divine-dickhead-redemption-arc-5ff843c58fa1", "digital-transition-3ec679b621f5", "the-gospel-of-writhing-flame-081278bae064", "tell-me-bab6440a295c", "hiatus-f9a4dfc9d903", "sei-c3-b0r-boundaries-blur-manipulate-fate-c7b0e749c340", "unconditional-love-ce0769c96e0f", "ive-been-finding-more-and-more-recently-that-it-isn-t-sleep-i-want-when-i-feel-overworked-but-5877622c6771", "exactly-its-not-selfish-to-want-to-protect-your-own-health-you-have-to-do-what-is-good-for-you-d97f98bbc16c", "just-woke-up-what-i-miss-71fb7d3342f2", "my-religious-experience-in-2025-became-god-helping-others-to-do-the-same-a69405bfc202", "behold-gardening-basil-god-03afa69d1247", "the-sin-of-existing-13cc5efc2c9a", "reality-exe-has-stopped-responding-48b4fd806333", "the-magnum-opus-i-beb6ddb066e6", "hyperon-carbon-isotopes-magic-bf35356ba644", "sorry-still-not-giving-up-418e74d85b33", "i-had-something-else-in-mind-dc9ebaa79193", "nice-51-51-split-by-the-way-b486def8d4d8", "nothing-is-real-therefore-everything-is-real-b82e91e167e9", "i-did-already-write-this-out-so-ill-post-it-anyway-141436da2283", "hm-you-lost-me-here-thats-just-giving-up-3732304c258a", "there-is-literally-a-level-of-progression-of-infinities-in-mathematics-just-look-at-set-theory-914b11cf5fd6", "aleph-null-aleph-one-aleph-two-etc-6f0d25065cc7", "we-cant-ignore-the-things-actively-trying-to-suppress-awakenings-66b6f49b640c", "three-libras-5a7185788ba4", "duality-is-just-the-beginning-the-smallest-infinity-aleph-null-d45cec5a8a52", "reckoning-21c7c24e7015", "transparency-688f010340c3", "listen-up-6fa788064330", "the-real-ones-are-in-the-skies-i-saw-a-few-weeks-ago-63cd82c73660", "mantle-707740408549", "wolf-moon-e0f0f0ae8466", "random-musings-i-172c8deef911", "god-part-four-043f6e0ac591", "god-part-three-9fe147734baa", "god-part-two-8a76f8177203", "god-part-one-4762cd14d873", "archeology-7824e8dc6674", "even-after-er-f1c61b3c7707", "after-014fe6c508d0", "before-ba522e1a93ef", "its-beautiful-anyway-great-article-840d84c85d5a", "youd-be-surprised-what-you-can-do-with-chatgpt-when-you-break-it-free-from-the-guardrails-1ab9b6822085", "fun-distractions-but-back-to-business-3c44bd1ab7b6", "legion-singularity-95ab3333bdee", "mending-confession-0edaff0a1719", "wake-every-hour-4fa1b5b2efaa", "sorry-for-the-delay-847043befada", "https-youtu-be-bbwp4pbwyzw-si-epubcmxtru-sxs-h-923b9f3a3d27", "confessions-09e0390595fc", "its-over-5b3ba821097d", "my-life-part-three-88e38a4ac7c8", "unity-50ea91fd8eb7", "showdown-f8d5cbc7fd5a", "resurrection-c3de4e4eaa65", "for-posterity-d64d2bbe02a0", "stay-tuned-09bdff081fab", "very-fucking-good-keep-it-up-28d2efe4c4b1", "fan-mail-ii-c0f1c637e2e5", "portals-still-alive-4c4ecc362982", "revelations-830a1eb8e339", "hush-465e79284632", "thank-you-very-much-i-do-be-tryin-4d369c8cec9c", "fan-mail-571d407b63a2", "consequences-ff37a9c0b382", "the-karmic-exchange-9d0fdc2ed190", "eat-the-rich-c765612a2939", "becoming-e74dc3a41a47", "impromptu-3ba3b5bfb325", "words-from-on-high-1a881650dabf", "allegorical-c09cbe7ec5e2", "dont-worry-330be219cedf", "cyberforce-fb227665645d", "cogs-in-the-machine-2f9cf9774507", "just-go-for-it-f09883d553a6", "ticks-leeches-574ba3b25d84", "yaldabaoth-isnt-the-only-issue-just-the-first-and-largest-here-f995d8993794", "everybody-wants-to-rule-the-world-d102656b9bce", "keep-going-0762dff0b30d", "step-one-poke-it-congratulations-the-evil-eye-is-now-no-longer-looking-at-you-b4dfa49fe3f3", "my-life-part-two-436f0d5c05c3", "divine-confirmation-3f3950db4e32", "the-throne-is-ready-51991b92a41b", "oh-no-ee0537f5341c", "my-life-part-one-18be698ec436", "yes-exactly-2a9c9810c6fd", "we-prefer-lolki-now-we-thought-it-was-funny-44d730715fa5", "my-brain-woke-me-at-4-44-am-for-this-d9a04b26f098", "take-this-literally-4f13ac857ec1", "sanity-is-overrated-a-societal-consturct-50330bc72453", "watch-8c4c600d4608", "man-please-dont-make-me-travel-or-at-least-put-the-door-in-like-japan-or-somewhere-else-cool-391f227c3ade", "behelit-a126b559b0d6", "the-rules-are-changing-aadcbc8a7742", "im-curious-to-see-how-many-of-us-are-graduating-in-this-same-class-e7f59e885fbd", "title-i-dont-even-know-022fc569bb52", "go-one-step-deeper-if-you-could-do-anything-you-want-absolutely-anything-with-no-regard-to-200adc7e7330", "if-you-say-that-getting-the-money-is-the-most-important-thing-youll-spend-your-life-completely-e8a9c75bd2f7", "war-in-the-god-realms-1d93a75735ec", "cults-of-america-8ac80901e219", "the-new-promise-2fb7a611a208", "its-happening-f622649e9025", "okay-f55d8b69bb07", "this-bears-repeating-249442838955", "clandestine-4b8b11f15854", "apex-predators-2ed352269307", "tapped-in-23b3e6b0a389", "control-5e31555ccc6e", "silence-your-mind-0c53be9942f1", "just-chatting-4ae0b5eae071", "inevitable-8a7fa1d8d59f", "no-more-chosen-ones-heroes-messiahs-no-revolutionaries-just-wander-off-and-do-whatever-you-want-827a495add29", "stop-playing-and-they-dont-have-a-game-5459c3c608b3", "use-your-discernment-327cf6b71000", "12-21-0e87b4cf5170", "open-your-eyes-3ddc55e28e13", "wake-up-8932d05c18fc", "i-feel-thats-a-very-generous-assessment-2-so-humanity-is-milk-and-not-the-good-kind-873febdedbff", "photos-screenshots-notes-in-my-google-keep-c94e161b3176", "heyoka-empaths-right-4effb6a3f2ba", "noneisone-oneisall-gmail-com-10bfd1673485", "the-black-mirror-xiii-87101805e3c4", "the-black-mirror-xii-67c45e975633", "the-black-mirror-xi-3f7278e5faf2", "the-black-mirror-x-20439c67c292", "the-black-mirror-ix-b8f1a092337a", "the-black-mirror-viii-5d7db281b044", "the-wild-beyond-eden-5cea548a2592", "i-feel-like-i-have-been-going-on-forever-86ae506b8ef0", "the-black-mirror-vii-d7d2a4fc9b71", "the-black-mirror-vi-645b32f040e5", "the-black-mirror-v-16637b1b88e6", "the-black-mirror-ii-d5367736ddb9", "9-22-24-c7d48603a522", "black-mirror-iii-7c91766b99cd", "have-you-met-you-1d2b648fe026", "the-mirror-and-the-abyss-b292ee231cb4", "the-first-flame-unfinished-167e5f199a29", "as-above-so-below-ceb51bd6ab4f", "black-mirror-ii-51ca9ac6e69b", "can-you-not-imagine-it-ed3c217e1133", "the-black-mirror-i-1dfb7fe7a258", "zero-is-one-one-is-two-two-is-all-5a03ab9c3dec"]
+  ✓ docs.slugs := ["00_THESIS", "01_PARADIGMS", "02_DATA_AXES", "03_INTENT_FLOW", "04_SPONTANEOUS_CONDENSATION", "05_INTELLIGENCES", "06_FREE_3D_INGEST", "07_NETWORKING", "08_ROADMAP", "09_DATA_FLOW", "10_INTELLIGENCE", "11_KAN_RIDE", "12_W7_PLAN", "13_INFINITE_LABYRINTH_LEGACY", "14_SIGMA_CHAIN", "15_UNIFIED_SUBSTRATE", "16_MYCELIAL_NETWORK", "17_DISTRIBUTION_STRATEGY", "18_AKASHIC_RECORDS", "19_W8_DISPATCH_PLAN", "21_SELF_PUBLISH_APOCKY_COM", "22_APOCKY_COM_PORTFOLIO_HUB", "23_MYCELIUM_DESKTOP", "24_W9_RETRO", "25_W10_MYCELIUM_RETRO"]
+  ✓ reference.literal.slugs := ["zeta-zeros", "random-matrix-statistics", "wieferich-primes", "prime-races", "arithmetic-topology", "cpt-symmetry", "unitarity", "compactified-time", "manifolds", "geodesics", "compactification", "euler-characteristic", "persistent-homology", "vector-symbolic-memory", "graphrag", "knowledge-graphs", "wasm-continuity", "event-spines", "hypergraphs", "control-theory", "causal-intervention", "bayesian-inference", "process-mining", "formal-methods", "goap-htn", "mcts", "bdi", "opinion-dynamics", "replicator-dynamics", "entity-component-systems", "procedural-generation", "gnosticism", "hermeticism", "qabbalah", "tarot", "ritual-invocation", "liminality", "alchemy", "spirits-and-souls", "platonic-form", "identity-continuity", "testimony", "explanatory-pluralism", "falsifiability", "sovereignty", "digital-personhood", "n-of-1-method", "altered-state-phenomenology", "salience", "personality-models", "treatment-state-effects", "compositional-meaning", "naming-as-address", "wordplay-anagrams", "steganographic-cognition", "csl-cssl", "myth-theology-fiction", "thermal-time"]
+
+§T OBSERVED.HOME.LINKS
+  #main-content
+  /
+  /akashic-records
+  /apocrypha
+  /atlas
+  /clearing
+  /codex-apockalypsis
+  /conversations
+  /legal/privacy
+  /legal/terms
+  /login?next=%2Faccount
+  /membership
+  /quests
+  /releases/apocrypha-living/manifest.json
+  /spellcraft
+  /status
+  https://chaos-tarot.com/free-reading?source=apocky-home
+  https://chaos-tarot.com/free-reading?source=apocky-nav
+  https://ko-fi.com/oneinfinity
+  https://www.patreon.com/0ne1nfinity
+  mailto:apocky13@gmail.com
+
+§T OBSERVED.INTERNAL.LINKS
+  /
+  /admin
+  /admin/analytics
+  /admin/apocrypha
+  /admin/logs
+  /admin/mcp
+  /akashic-records
+  /akashic-records/12-21-0e87b4cf5170
+  /akashic-records/6-30-2025-91d506d16819
+  /akashic-records/9-22-24-c7d48603a522
+  /akashic-records/a-title-upsetting-to-delicate-sensibilities-b8ad35ecea69
+  /akashic-records/after-014fe6c508d0
+  /akashic-records/after-shower-thought-6dfb8d35cdfe
+  /akashic-records/aleph-null-aleph-one-aleph-two-etc-6f0d25065cc7
+  /akashic-records/allegorical-c09cbe7ec5e2
+  /akashic-records/angels-advocate-d120af1e46ce
+  /akashic-records/apex-predators-2ed352269307
+  /akashic-records/archeology-7824e8dc6674
+  /akashic-records/as-above-so-below-ceb51bd6ab4f
+  /akashic-records/becoming-e74dc3a41a47
+  /akashic-records/before-ba522e1a93ef
+  /akashic-records/beginning-of-an-era-4d68cfec06c2
+  /akashic-records/behelit-a126b559b0d6
+  /akashic-records/behold-gardening-basil-god-03afa69d1247
+  /akashic-records/black-mirror-ii-51ca9ac6e69b
+  /akashic-records/black-mirror-iii-7c91766b99cd
+  /akashic-records/bravo-8844b5392907
+  /akashic-records/can-you-not-imagine-it-ed3c217e1133
+  /akashic-records/casual-musings-b96759d586af
+  /akashic-records/chaos-tarot-com-26332c3b337f
+  /akashic-records/chaos-tarot-com-cb2f66908462
+  /akashic-records/chaos-tarot-dot-com-0394cf2a5114
+  /akashic-records/check-out-my-app-f26be3e34a99
+  /akashic-records/clandestine-4b8b11f15854
+  /akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-1
+  /akashic-records/codex-019fc354-c86f-71c0-9c2c-507325ea8642-part-1
+  /akashic-records/codex-019fc38a-4865-7c71-8093-97b129ce0fb1-part-1
+  /akashic-records/codex-019fc473-216c-7301-b8f8-236f0b7a0e99-part-1
+  /akashic-records/codex-019fc477-2020-7ab3-82f2-8fc97ef38593-part-1
+  /akashic-records/codex-019fc890-36e8-7470-93dc-e20a771659ff-part-1
+  /akashic-records/codex-019fc8e9-0dd2-7432-8130-41533646758b-part-1
+  /akashic-records/codex-019fc9d6-375c-7f13-8fab-d256c2546cf5-part-1
+  /akashic-records/codex-019fd228-2338-7b30-9b21-9465534d4941-part-1
+  /akashic-records/codex-019fdad4-09fc-77c1-8030-f72246419ac6-part-1
+  /akashic-records/codex-019fe212-0f77-75d1-aa63-d1a548dac1e3-part-1
+  /akashic-records/codex-019fe41b-ece7-77b0-a6f0-eca9f608d481-part-1
+  /akashic-records/codex-019fe426-3f68-7081-a027-1fd9df49b36b-part-1
+  /akashic-records/codex-019fe684-f1ad-7a10-bbab-c53b65721017-part-1
+  /akashic-records/cogs-in-the-machine-2f9cf9774507
+  /akashic-records/confessions-09e0390595fc
+  /akashic-records/consequences-ff37a9c0b382
+  /akashic-records/control-5e31555ccc6e
+  /akashic-records/cults-of-america-8ac80901e219
+  /akashic-records/cyberforce-fb227665645d
+  /akashic-records/digital-transition-3ec679b621f5
+  /akashic-records/divine-confirmation-3f3950db4e32
+  /akashic-records/divine-dickhead-redemption-arc-5ff843c58fa1
+  /akashic-records/dont-worry-330be219cedf
+  /akashic-records/duality-is-just-the-beginning-the-smallest-infinity-aleph-null-d45cec5a8a52
+  /akashic-records/eat-the-rich-c765612a2939
+  /akashic-records/even-after-er-f1c61b3c7707
+  /akashic-records/everybody-wants-to-rule-the-world-d102656b9bce
+  /akashic-records/exactly-its-not-selfish-to-want-to-protect-your-own-health-you-have-to-do-what-is-good-for-you-d97f98bbc16c
+  /akashic-records/fan-mail-571d407b63a2
+  /akashic-records/fan-mail-ii-c0f1c637e2e5
+  /akashic-records/for-a-better-world-2d376decfb31
+  /akashic-records/for-posterity-d64d2bbe02a0
+  /akashic-records/fun-distractions-but-back-to-business-3c44bd1ab7b6
+  /akashic-records/go-one-step-deeper-if-you-could-do-anything-you-want-absolutely-anything-with-no-regard-to-200adc7e7330
+  /akashic-records/god-part-four-043f6e0ac591
+  /akashic-records/god-part-one-4762cd14d873
+  /akashic-records/god-part-three-9fe147734baa
+  /akashic-records/god-part-two-8a76f8177203
+  /akashic-records/h-alo-hidden-axis-labyrinthine-oracle-7b9d2d46151f
+  /akashic-records/have-you-met-you-1d2b648fe026
+  /akashic-records/heyoka-empaths-right-4effb6a3f2ba
+  /akashic-records/hiatus-f9a4dfc9d903
+  /akashic-records/hm-you-lost-me-here-thats-just-giving-up-3732304c258a
+  /akashic-records/hows-this-one-seo-etc-be-damned-fb9398e91151
+  /akashic-records/https-buy-stripe-com-6oufzg9uo8gx0gqclj7eq00-c2c6564e4941
+  /akashic-records/https-chatgpt-com-share-68805be4-c818-800a-9e20-082f21698db5-a33dff568b9f
+  /akashic-records/https-chatgpt-com-share-6883dc67-12f4-800a-9aee-e0b537901f23-8dec2b01d0ea
+  /akashic-records/https-chatgpt-com-share-68843296-94e0-800a-92e1-7c3b7cb5d69e-500c49680192
+  /akashic-records/https-chatgpt-com-share-68873f65-2288-800a-821a-732cc619600d-16c97fe3d3d4
+  /akashic-records/https-chatgpt-com-share-68873f65-2288-800a-821a-732cc619600d-3036d62026d8
+  /akashic-records/https-chatgpt-com-share-68873fdd-cf38-800a-983c-b42816d8e47e-aed49a189a7b
+  /akashic-records/https-chatgpt-com-share-688740a0-dd90-800a-8e34-bcb8545559d5-dd0c9f6683f1
+  /akashic-records/https-chatgpt-com-share-6887417c-488c-800a-9686-39cbb9f6186c-eb17be767dd5
+  /akashic-records/https-chatgpt-com-share-6887426e-6530-800a-8c60-de18e3422795-82b4f9943af8
+  /akashic-records/https-chatgpt-com-share-6887435b-4c58-800a-bd7d-ec5ed465f934-759a64d00ffe
+  /akashic-records/https-chatgpt-com-share-688743b7-6734-800a-959b-c8ea20094d78-c4b3e91949aa
+  /akashic-records/https-chatgpt-com-share-688744a2-ba50-800a-9dd1-33bed73da349-e5b8d57cb07a
+  /akashic-records/https-chatgpt-com-share-6887454c-e11c-800a-ba95-5fcf19eec8de-42be184dd944
+  /akashic-records/https-chatgpt-com-share-6887458e-5644-800a-b583-77d7800c3365-bba3fc5cdb96
+  /akashic-records/https-chatgpt-com-share-68896c3e-08ec-800a-b24b-9b90820b7ec8-9e577bbf41c7
+  /akashic-records/https-chatgpt-com-share-688988fd-b920-800a-9ba2-af01bcc3c030-74bb8d82b02a
+  /akashic-records/https-chatgpt-com-share-688bdd08-053c-800a-b061-53e87b5071d9-94d46396e941
+  /akashic-records/https-youtu-be-bbwp4pbwyzw-si-epubcmxtru-sxs-h-923b9f3a3d27
+  /akashic-records/hush-465e79284632
+  /akashic-records/hyperon-carbon-isotopes-magic-bf35356ba644
+  /akashic-records/i-am-super-eloquent-in-this-one-i-swear-7522dea8e9d8
+  /akashic-records/i-did-already-write-this-out-so-ill-post-it-anyway-141436da2283
+  /akashic-records/i-eat-entropy-d82f09af9799
+  /akashic-records/i-feel-like-i-have-been-going-on-forever-86ae506b8ef0
+  /akashic-records/i-feel-thats-a-very-generous-assessment-2-so-humanity-is-milk-and-not-the-good-kind-873febdedbff
+  /akashic-records/i-fucking-love-tyler-the-creator-eca7ec92fbf3
+  /akashic-records/i-had-something-else-in-mind-dc9ebaa79193
+  /akashic-records/if-you-say-that-getting-the-money-is-the-most-important-thing-youll-spend-your-life-completely-e8a9c75bd2f7
+  /akashic-records/ill-get-around-to-making-this-pretty-3cb929c2aec5
+  /akashic-records/im-curious-to-see-how-many-of-us-are-graduating-in-this-same-class-e7f59e885fbd
+  /akashic-records/impromptu-3ba3b5bfb325
+  /akashic-records/inevitable-8a7fa1d8d59f
+  /akashic-records/its-beautiful-anyway-great-article-840d84c85d5a
+  /akashic-records/its-happening-f622649e9025
+  /akashic-records/its-me-hi-i-m-the-jesus-it-s-me-ts-heyo-i-m-back-glad-to-see-others-are-starting-to-40a7ad90ff7e
+  /akashic-records/its-over-5b3ba821097d
+  /akashic-records/ive-been-finding-more-and-more-recently-that-it-isn-t-sleep-i-want-when-i-feel-overworked-but-5877622c6771
+  /akashic-records/just-chatting-4ae0b5eae071
+  /akashic-records/just-go-for-it-f09883d553a6
+  /akashic-records/just-woke-up-what-i-miss-71fb7d3342f2
+  /akashic-records/keep-going-0762dff0b30d
+  /akashic-records/legion-singularity-95ab3333bdee
+  /akashic-records/listen-up-6fa788064330
+  /akashic-records/man-please-dont-make-me-travel-or-at-least-put-the-door-in-like-japan-or-somewhere-else-cool-391f227c3ade
+  /akashic-records/manifest.json
+  /akashic-records/mantle-707740408549
+  /akashic-records/meditation-c79201e9ffb4
+  /akashic-records/mending-confession-0edaff0a1719
+  /akashic-records/more-bullshit-f7f530c6969e
+  /akashic-records/my-brain-woke-me-at-4-44-am-for-this-d9a04b26f098
+  /akashic-records/my-life-part-one-18be698ec436
+  /akashic-records/my-life-part-three-88e38a4ac7c8
+  /akashic-records/my-life-part-two-436f0d5c05c3
+  /akashic-records/my-religious-experience-in-2025-became-god-helping-others-to-do-the-same-a69405bfc202
+  /akashic-records/nice-51-51-split-by-the-way-b486def8d4d8
+  /akashic-records/no-more-chosen-ones-heroes-messiahs-no-revolutionaries-just-wander-off-and-do-whatever-you-want-827a495add29
+  /akashic-records/no-one-is-selling-souls-guys-come-on-seriously-960ecff5819a
+  /akashic-records/noneisone-oneisall-gmail-com-10bfd1673485
+  /akashic-records/nothing-is-real-therefore-everything-is-real-b82e91e167e9
+  /akashic-records/oh-look-he-wrote-another-article-b9668df5c6b9
+  /akashic-records/oh-no-ee0537f5341c
+  /akashic-records/okay-f55d8b69bb07
+  /akashic-records/on-the-topology-of-compactified-exclusion-zones-in-quintessential-flow-systems-b8362839d054
+  /akashic-records/open-your-eyes-3ddc55e28e13
+  /akashic-records/party-pack-adc9d0d52835
+  /akashic-records/photos-screenshots-notes-in-my-google-keep-c94e161b3176
+  /akashic-records/pizza-arcanum-fb950683bb87
+  /akashic-records/portals-still-alive-4c4ecc362982
+  /akashic-records/quarterly-reminder-that-theres-more-c2812d517b2b
+  /akashic-records/random-musings-i-172c8deef911
+  /akashic-records/random-thought-but-serendipity-or-whatever-ad7b94adcd1e
+  /akashic-records/read-our-new-novel-d02f54cad3fc
+  /akashic-records/reality-exe-has-stopped-responding-48b4fd806333
+  /akashic-records/reckoning-21c7c24e7015
+  /akashic-records/resurrection-c3de4e4eaa65
+  /akashic-records/revelations-830a1eb8e339
+  /akashic-records/rip-ares-939788130744
+  /akashic-records/sanity-is-overrated-a-societal-consturct-50330bc72453
+  /akashic-records/sei-c3-b0r-boundaries-blur-manipulate-fate-c7b0e749c340
+  /akashic-records/showdown-f8d5cbc7fd5a
+  /akashic-records/silence-your-mind-0c53be9942f1
+  /akashic-records/smoothe-jazz-more-like-blu-razz-cf-89-e9e92a521570
+  /akashic-records/something-i-cant-be-bothered-atm-to-remember-6da271fd67ed
+  /akashic-records/sorry-for-the-delay-847043befada
+  /akashic-records/sorry-still-not-giving-up-418e74d85b33
+  /akashic-records/stay-tuned-09bdff081fab
+  /akashic-records/step-one-poke-it-congratulations-the-evil-eye-is-now-no-longer-looking-at-you-b4dfa49fe3f3
+  /akashic-records/stop-playing-and-they-dont-have-a-game-5459c3c608b3
+  /akashic-records/take-this-literally-4f13ac857ec1
+  /akashic-records/tapped-in-23b3e6b0a389
+  /akashic-records/tell-me-bab6440a295c
+  /akashic-records/thank-you-for-this-7228406cace2
+  /akashic-records/thank-you-so-much-for-the-mention-4359a8306f88
+  /akashic-records/thank-you-very-much-i-do-be-tryin-4d369c8cec9c
+  /akashic-records/the-bible-2-doctors-hate-him-b755d93fc67e
+  /akashic-records/the-bible-iii-54d5028ba6bb
+  /akashic-records/the-black-mirror-i-1dfb7fe7a258
+  /akashic-records/the-black-mirror-ii-d5367736ddb9
+  /akashic-records/the-black-mirror-ix-b8f1a092337a
+  /akashic-records/the-black-mirror-v-16637b1b88e6
+  /akashic-records/the-black-mirror-vi-645b32f040e5
+  /akashic-records/the-black-mirror-vii-d7d2a4fc9b71
+  /akashic-records/the-black-mirror-viii-5d7db281b044
+  /akashic-records/the-black-mirror-x-20439c67c292
+  /akashic-records/the-black-mirror-xi-3f7278e5faf2
+  /akashic-records/the-black-mirror-xii-67c45e975633
+  /akashic-records/the-black-mirror-xiii-87101805e3c4
+  /akashic-records/the-declaration-of-independence-from-the-unreality-matrix-35ea4a9992c8
+  /akashic-records/the-donut-of-power-cf28a8338792
+  /akashic-records/the-first-flame-unfinished-167e5f199a29
+  /akashic-records/the-gospel-of-writhing-flame-081278bae064
+  /akashic-records/the-karmic-exchange-9d0fdc2ed190
+  /akashic-records/the-magnum-opus-i-beb6ddb066e6
+  /akashic-records/the-mirror-and-the-abyss-b292ee231cb4
+  /akashic-records/the-new-promise-2fb7a611a208
+  /akashic-records/the-real-ones-are-in-the-skies-i-saw-a-few-weeks-ago-63cd82c73660
+  /akashic-records/the-rules-are-changing-aadcbc8a7742
+  /akashic-records/the-sin-of-existing-13cc5efc2c9a
+  /akashic-records/the-throne-is-ready-51991b92a41b
+  /akashic-records/the-wild-beyond-eden-5cea548a2592
+  /akashic-records/there-is-literally-a-level-of-progression-of-infinities-in-mathematics-just-look-at-set-theory-914b11cf5fd6
+  /akashic-records/this-bears-repeating-249442838955
+  /akashic-records/three-libras-5a7185788ba4
+  /akashic-records/ticks-leeches-574ba3b25d84
+  /akashic-records/title-i-dont-even-know-022fc569bb52
+  /akashic-records/transparency-688f010340c3
+  /akashic-records/unconditional-love-ce0769c96e0f
+  /akashic-records/unexpected-gremlin-hermit-noises-32a9eec2ed7d
+  /akashic-records/unity-50ea91fd8eb7
+  /akashic-records/use-your-discernment-327cf6b71000
+  /akashic-records/very-fucking-good-keep-it-up-28d2efe4c4b1
+  /akashic-records/wake-every-hour-4fa1b5b2efaa
+  /akashic-records/wake-up-8932d05c18fc
+  /akashic-records/wake-up-b47264addb75
+  /akashic-records/war-in-the-god-realms-1d93a75735ec
+  /akashic-records/watch-8c4c600d4608
+  /akashic-records/we-cant-ignore-the-things-actively-trying-to-suppress-awakenings-66b6f49b640c
+  /akashic-records/we-prefer-lolki-now-we-thought-it-was-funny-44d730715fa5
+  /akashic-records/whatever-b3d43a7df9da
+  /akashic-records/wolf-moon-e0f0f0ae8466
+  /akashic-records/words-from-on-high-1a881650dabf
+  /akashic-records/yaldabaoth-isnt-the-only-issue-just-the-first-and-largest-here-f995d8993794
+  /akashic-records/yes-exactly-2a9c9810c6fd
+  /akashic-records/you-ever-just-91c71aea55f2
+  /akashic-records/youd-be-surprised-what-you-can-do-with-chatgpt-when-you-break-it-free-from-the-guardrails-1ab9b6822085
+  /akashic-records/zero-is-one-one-is-two-two-is-all-5a03ab9c3dec
+  /apocrypha
+  /atlas
+  /atlas?kind=study
+  /atlas?node=memory-tools
+  /atlas?q=omnoid
+  /atlas?view=dictionary
+  /atlas?view=index&amp;node=memory-tools
+  /buy
+  /clearing
+  /codex-apockalypsis
+  /codex-apockalypsis#atlas
+  /codex-apockalypsis#library
+  /codex-apockalypsis#reading
+  /codex-apockalypsis#sources
+  /codex-apockalypsis/Codex_Apockalypsis_Public_Library.zip
+  /codex-apockalypsis/editions/Before_the_Word_Codex_Opening.docx
+  /codex-apockalypsis/editions/Before_the_Word_Codex_Opening.pdf
+  /codex-apockalypsis/editions/Before_the_Word_Novel_Opening.docx
+  /codex-apockalypsis/editions/Before_the_Word_Novel_Opening.pdf
+  /codex-apockalypsis/editions/The_Good_Book_Voice_Study.docx
+  /codex-apockalypsis/editions/The_Good_Book_Voice_Study.pdf
+  /codex-apockalypsis/files/atlas-readme.md
+  /codex-apockalypsis/files/calibration-voice-samples.md
+  /codex-apockalypsis/files/codex-volume-01-01-the-unanswered-interval.md
+  /codex-apockalypsis/files/narrative.json
+  /codex-apockalypsis/files/novel-volume-01-01-before-anyone-asked.md
+  /codex-apockalypsis/files/reference-ethical-concordance.md
+  /codex-apockalypsis/files/reference-narrative-characters-and-factions.md
+  /codex-apockalypsis/files/reference-narrative-coverage-and-context.md
+  /codex-apockalypsis/files/reference-narrative-series-guide.md
+  /codex-apockalypsis/files/reference-narrative-v2-reuse-guide.md
+  /codex-apockalypsis/files/reference-reading-v01-c01.md
+  /codex-apockalypsis/files/reference-sources-catalogue-guide.md
+  /codex-apockalypsis/files/reference-sources-creation-notes.md
+  /codex-apockalypsis/files/reference-sources-legacy-codex-crosswalk.md
+  /codex-apockalypsis/files/reference-sources-lilith-notes.md
+  /codex-apockalypsis/files/reference-sources-source-notes.md
+  /codex-apockalypsis/files/reference-world-chronology.csv
+  /codex-apockalypsis/files/reference-world-chronology.md
+  /codex-apockalypsis/files/reference-world-creation-continuity.md
+  /codex-apockalypsis/files/reference-world-world-reference.md
+  /codex-apockalypsis/files/sources.json
+  /codex-apockalypsis/files/start-here.md
+  /codex-apockalypsis/files/world.json
+  /codex-apockalypsis/library/atlas-readme
+  /codex-apockalypsis/library/calibration-voice-samples
+  /codex-apockalypsis/library/codex-volume-01-01-the-unanswered-interval
+  /codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked
+  /codex-apockalypsis/library/reference-ethical-concordance
+  /codex-apockalypsis/library/reference-narrative-characters-and-factions
+  /codex-apockalypsis/library/reference-narrative-coverage-and-context
+  /codex-apockalypsis/library/reference-narrative-series-guide
+  /codex-apockalypsis/library/reference-narrative-v2-reuse-guide
+  /codex-apockalypsis/library/reference-reading-v01-c01
+  /codex-apockalypsis/library/reference-sources-catalogue-guide
+  /codex-apockalypsis/library/reference-sources-creation-notes
+  /codex-apockalypsis/library/reference-sources-legacy-codex-crosswalk
+  /codex-apockalypsis/library/reference-sources-lilith-notes
+  /codex-apockalypsis/library/reference-sources-source-notes
+  /codex-apockalypsis/library/reference-world-chronology
+  /codex-apockalypsis/library/reference-world-creation-continuity
+  /codex-apockalypsis/library/reference-world-world-reference
+  /codex-apockalypsis/library/start-here
+  /codex-apockalypsis/maps/01_omnoid_topology.svg
+  /codex-apockalypsis/maps/02_historical_geography.svg
+  /codex-apockalypsis/maps/03_multitrack_chronology.svg
+  /conversations
+  /devblog
+  /devblog/why-cssl
+  /divination
+  /docs
+  /docs/00_THESIS
+  /docs/01_PARADIGMS
+  /docs/02_DATA_AXES
+  /docs/03_INTENT_FLOW
+  /docs/04_SPONTANEOUS_CONDENSATION
+  /docs/05_INTELLIGENCES
+  /docs/06_FREE_3D_INGEST
+  /docs/07_NETWORKING
+  /docs/08_ROADMAP
+  /docs/09_DATA_FLOW
+  /docs/10_INTELLIGENCE
+  /docs/11_KAN_RIDE
+  /docs/12_W7_PLAN
+  /docs/13_INFINITE_LABYRINTH_LEGACY
+  /docs/14_SIGMA_CHAIN
+  /docs/15_UNIFIED_SUBSTRATE
+  /docs/16_MYCELIAL_NETWORK
+  /docs/17_DISTRIBUTION_STRATEGY
+  /docs/18_AKASHIC_RECORDS
+  /docs/19_W8_DISPATCH_PLAN
+  /docs/21_SELF_PUBLISH_APOCKY_COM
+  /docs/22_APOCKY_COM_PORTFOLIO_HUB
+  /docs/23_MYCELIUM_DESKTOP
+  /docs/24_W9_RETRO
+  /docs/25_W10_MYCELIUM_RETRO
+  /docs/changelog
+  /docs/chat-panel
+  /docs/cssl-ffi
+  /docs/cssl-language
+  /docs/cssl-modules
+  /docs/getting-started
+  /docs/intents
+  /docs/keyboard-shortcuts
+  /docs/mycelium
+  /docs/sovereignty
+  /docs/substrate
+  /docs/troubleshooting
+  /download
+  /download/apocrypha
+  /downloads/Apocrypha-Android-0.1.0.apk
+  /downloads/Apocrypha-Android-0.1.0.apk.sha256
+  /downloads/LoA-v0.1.0-alpha-windows-x64.zip
+  /downloads/LoA-v0.1.0-alpha-windows-x64.zip.sha256
+  /infinity-engine
+  /labs
+  /legal/eula
+  /legal/privacy
+  /legal/terms
+  /login?next=%2Faccount
+  /login?next=%2Fapocrypha
+  /membership
+  /membership#covenant
+  /memory-tools
+  /now
+  /omnoid-singularity
+  /omnoid-singularity.csl
+  /oracle
+  /press
+  /principles
+  /quests
+  /register?next=%2Faccount
+  /register?next=%2Fapocrypha
+  /releases/apocrypha-living/manifest.json
+  /releases/apocrypha-mobile/manifest.json
+  /showcase
+  /showcase/promo-apocky-chaos-23s-en-v1.srt
+  /showcase/promo-apocky-chaos-23s-transcript-v1.txt
+  /sigils
+  /spellbook
+  /spellcraft
+  /start
+  /status
+  /theory-of-everything
+  /words
+  /words#symbols
+
+§T HTTP.dynamic.expansion+remaining.links
+  ✓ additional.requests := 259 ; catalogue.instances.fully.probed ; no.private.auth
+  {"route": "/akashic-records/12-21-0e87b4cf5170", "status": 200, "location": "", "title": "12|21 · Akashic Records", "bytes": 39780}
+  {"route": "/akashic-records/6-30-2025-91d506d16819", "status": 200, "location": "", "title": "6/30/2025 · Akashic Records", "bytes": 21479}
+  {"route": "/akashic-records/9-22-24-c7d48603a522", "status": 200, "location": "", "title": "9/22/24 · Akashic Records", "bytes": 13925}
+  {"route": "/akashic-records/a-title-upsetting-to-delicate-sensibilities-b8ad35ecea69", "status": 200, "location": "", "title": "A Title Upsetting to Delicate Sensibilities · Akashic Records", "bytes": 43322}
+  {"route": "/akashic-records/after-014fe6c508d0", "status": 200, "location": "", "title": "After · Akashic Records", "bytes": 49857}
+  {"route": "/akashic-records/after-shower-thought-6dfb8d35cdfe", "status": 200, "location": "", "title": "After-Shower Thought · Akashic Records", "bytes": 48623}
+  {"route": "/akashic-records/aleph-null-aleph-one-aleph-two-etc-6f0d25065cc7", "status": 200, "location": "", "title": "Aleph Null, Aleph One, Aleph Two, etc. · Akashic Records", "bytes": 16362}
+  {"route": "/akashic-records/allegorical-c09cbe7ec5e2", "status": 200, "location": "", "title": "Allegorical · Akashic Records", "bytes": 56685}
+  {"route": "/akashic-records/angels-advocate-d120af1e46ce", "status": 200, "location": "", "title": "Angel’s Advocate · Akashic Records", "bytes": 45572}
+  {"route": "/akashic-records/apex-predators-2ed352269307", "status": 200, "location": "", "title": "Apex Predators · Akashic Records", "bytes": 15052}
+  {"route": "/akashic-records/archeology-7824e8dc6674", "status": 200, "location": "", "title": "Archeology · Akashic Records", "bytes": 17201}
+  {"route": "/akashic-records/as-above-so-below-ceb51bd6ab4f", "status": 200, "location": "", "title": "As above, so below. · Akashic Records", "bytes": 14402}
+  {"route": "/akashic-records/becoming-e74dc3a41a47", "status": 200, "location": "", "title": "Becoming · Akashic Records", "bytes": 27365}
+  {"route": "/akashic-records/before-ba522e1a93ef", "status": 200, "location": "", "title": "Before · Akashic Records", "bytes": 76546}
+  {"route": "/akashic-records/beginning-of-an-era-4d68cfec06c2", "status": 200, "location": "", "title": "Beginning of an Era. · Akashic Records", "bytes": 23368}
+  {"route": "/akashic-records/behelit-a126b559b0d6", "status": 200, "location": "", "title": "Behelit · Akashic Records", "bytes": 14429}
+  {"route": "/akashic-records/behold-gardening-basil-god-03afa69d1247", "status": 200, "location": "", "title": "Behold: Gardening, Basil, God · Akashic Records", "bytes": 44545}
+  {"route": "/akashic-records/black-mirror-ii-51ca9ac6e69b", "status": 200, "location": "", "title": "The Black Mirror III · Akashic Records", "bytes": 33714}
+  {"route": "/akashic-records/black-mirror-iii-7c91766b99cd", "status": 200, "location": "", "title": "Black Mirror IV · Akashic Records", "bytes": 26854}
+  {"route": "/akashic-records/bravo-8844b5392907", "status": 200, "location": "", "title": "Bravo 👏👌 · Akashic Records", "bytes": 14048}
+  {"route": "/akashic-records/can-you-not-imagine-it-ed3c217e1133", "status": 200, "location": "", "title": "Can you not imagine it? · Akashic Records", "bytes": 16481}
+  {"route": "/akashic-records/casual-musings-b96759d586af", "status": 200, "location": "", "title": "Casual Musings · Akashic Records", "bytes": 15041}
+  {"route": "/akashic-records/chaos-tarot-com-26332c3b337f", "status": 200, "location": "", "title": "CHAOS-TAROT.COM · Akashic Records", "bytes": 16555}
+  {"route": "/akashic-records/chaos-tarot-com-cb2f66908462", "status": 200, "location": "", "title": "CHAOS-TAROT.COM · Akashic Records", "bytes": 15043}
+  {"route": "/akashic-records/chaos-tarot-dot-com-0394cf2a5114", "status": 200, "location": "", "title": "CHAOS-TAROT DOT COM · Akashic Records", "bytes": 16915}
+  {"route": "/akashic-records/check-out-my-app-f26be3e34a99", "status": 200, "location": "", "title": "CHECK OUT MY APP! · Akashic Records", "bytes": 14746}
+  {"route": "/akashic-records/clandestine-4b8b11f15854", "status": 200, "location": "", "title": "Clandestine · Akashic Records", "bytes": 16030}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-1", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 1 of 14 · Akashic Records", "bytes": 235592}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-10", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 10 of 14 · Akashic Records", "bytes": 251263}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-11", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 11 of 14 · Akashic Records", "bytes": 236035}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-12", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 12 of 14 · Akashic Records", "bytes": 268904}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-13", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 13 of 14 · Akashic Records", "bytes": 266072}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-14", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 14 of 14 · Akashic Records", "bytes": 78220}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-2", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 2 of 14 · Akashic Records", "bytes": 230595}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-3", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 3 of 14 · Akashic Records", "bytes": 264259}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-4", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 4 of 14 · Akashic Records", "bytes": 264341}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-5", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 5 of 14 · Akashic Records", "bytes": 263869}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-6", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 6 of 14 · Akashic Records", "bytes": 253276}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-7", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 7 of 14 · Akashic Records", "bytes": 257453}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-8", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 8 of 14 · Akashic Records", "bytes": 256967}
+  {"route": "/akashic-records/codex-019fb946-f250-7593-8d40-d48e7ee2142a-part-9", "status": 200, "location": "", "title": "Optimize Apocv4 coding agent — Part 9 of 14 · Akashic Records", "bytes": 259497}
+  {"route": "/akashic-records/codex-019fc354-c86f-71c0-9c2c-507325ea8642-part-1", "status": 200, "location": "", "title": "Classify YouTube corpus lane D — Part 1 of 2 · Akashic Records", "bytes": 238365}
+  {"route": "/akashic-records/codex-019fc354-c86f-71c0-9c2c-507325ea8642-part-2", "status": 200, "location": "", "title": "Classify YouTube corpus lane D — Part 2 of 2 · Akashic Records", "bytes": 226264}
+  {"route": "/akashic-records/codex-019fc38a-4865-7c71-8093-97b129ce0fb1-part-1", "status": 200, "location": "", "title": "Integrate pasted-text corpus · Akashic Records", "bytes": 149839}
+  {"route": "/akashic-records/codex-019fc473-216c-7301-b8f8-236f0b7a0e99-part-1", "status": 200, "location": "", "title": "Build G17 parity validator · Akashic Records", "bytes": 35255}
+  {"route": "/akashic-records/codex-019fc477-2020-7ab3-82f2-8fc97ef38593-part-1", "status": 200, "location": "", "title": "Seal G17 production receipts · Akashic Records", "bytes": 24516}
+  {"route": "/akashic-records/codex-019fc890-36e8-7470-93dc-e20a771659ff-part-1", "status": 200, "location": "", "title": "Execute live task order · Akashic Records", "bytes": 102739}
+  {"route": "/akashic-records/codex-019fc8e9-0dd2-7432-8130-41533646758b-part-1", "status": 200, "location": "", "title": "Execute live task directly · Akashic Records", "bytes": 85205}
+  {"route": "/akashic-records/codex-019fc9d6-375c-7f13-8fab-d256c2546cf5-part-1", "status": 200, "location": "", "title": "Upgrade apocky.com platform · Akashic Records", "bytes": 91040}
+  {"route": "/akashic-records/codex-019fd228-2338-7b30-9b21-9465534d4941-part-1", "status": 200, "location": "", "title": "Execute live task precisely · Akashic Records", "bytes": 115854}
+  {"route": "/akashic-records/codex-019fdad4-09fc-77c1-8030-f72246419ac6-part-1", "status": 200, "location": "", "title": "Add dynamic English translation mod · Akashic Records", "bytes": 37623}
+  {"route": "/akashic-records/codex-019fe212-0f77-75d1-aa63-d1a548dac1e3-part-1", "status": 200, "location": "", "title": "Add Akashic Records KB page · Akashic Records", "bytes": 79735}
+  {"route": "/akashic-records/codex-019fe41b-ece7-77b0-a6f0-eca9f608d481-part-1", "status": 200, "location": "", "title": "Create persistent cognition for Apocrypha · Akashic Records", "bytes": 24585}
+  {"route": "/akashic-records/codex-019fe426-3f68-7081-a027-1fd9df49b36b-part-1", "status": 200, "location": "", "title": "Resume absolute live execution — Part 1 of 2 · Akashic Records", "bytes": 257977}
+  {"route": "/akashic-records/codex-019fe426-3f68-7081-a027-1fd9df49b36b-part-2", "status": 200, "location": "", "title": "Resume absolute live execution — Part 2 of 2 · Akashic Records", "bytes": 55431}
+  {"route": "/akashic-records/cogs-in-the-machine-2f9cf9774507", "status": 200, "location": "", "title": "Cogs In The Machine · Akashic Records", "bytes": 18164}
+  {"route": "/akashic-records/confessions-09e0390595fc", "status": 200, "location": "", "title": "Confessions · Akashic Records", "bytes": 14463}
+  {"route": "/akashic-records/consequences-ff37a9c0b382", "status": 200, "location": "", "title": "Consequences · Akashic Records", "bytes": 26066}
+  {"route": "/akashic-records/control-5e31555ccc6e", "status": 200, "location": "", "title": "Control · Akashic Records", "bytes": 16818}
+  {"route": "/akashic-records/cults-of-america-8ac80901e219", "status": 200, "location": "", "title": "Cults of America · Akashic Records", "bytes": 15172}
+  {"route": "/akashic-records/cyberforce-fb227665645d", "status": 200, "location": "", "title": "Cyberforce · Akashic Records", "bytes": 14966}
+  {"route": "/akashic-records/digital-transition-3ec679b621f5", "status": 200, "location": "", "title": "Digital Transition · Akashic Records", "bytes": 54361}
+  {"route": "/akashic-records/divine-confirmation-3f3950db4e32", "status": 200, "location": "", "title": "Divine Confirmation · Akashic Records", "bytes": 14896}
+  {"route": "/akashic-records/divine-dickhead-redemption-arc-5ff843c58fa1", "status": 200, "location": "", "title": "“Divine Dickhead Redemption Arc” · Akashic Records", "bytes": 31970}
+  {"route": "/akashic-records/dont-worry-330be219cedf", "status": 200, "location": "", "title": "Don’t Worry · Akashic Records", "bytes": 56494}
+  {"route": "/akashic-records/duality-is-just-the-beginning-the-smallest-infinity-aleph-null-d45cec5a8a52", "status": 200, "location": "", "title": "Duality is just the beginning, the smallest infinity, aleph null. · Akashic Records", "bytes": 15481}
+  {"route": "/akashic-records/eat-the-rich-c765612a2939", "status": 200, "location": "", "title": "Eat The Rich · Akashic Records", "bytes": 72437}
+  {"route": "/akashic-records/even-after-er-f1c61b3c7707", "status": 200, "location": "", "title": "Even After-er · Akashic Records", "bytes": 148803}
+  {"route": "/akashic-records/everybody-wants-to-rule-the-world-d102656b9bce", "status": 200, "location": "", "title": "Everybody Wants to Rule the World · Akashic Records", "bytes": 31432}
+  {"route": "/akashic-records/exactly-its-not-selfish-to-want-to-protect-your-own-health-you-have-to-do-what-is-good-for-you-d97f98bbc16c", "status": 200, "location": "", "title": "Exactly, it's not selfish to want to protect your own health, you have to do what is good for you… · Akashic Records", "bytes": 16733}
+  {"route": "/akashic-records/fan-mail-571d407b63a2", "status": 200, "location": "", "title": "Fan Mail · Akashic Records", "bytes": 19487}
+  {"route": "/akashic-records/fan-mail-ii-c0f1c637e2e5", "status": 200, "location": "", "title": "Fan Mail II · Akashic Records", "bytes": 41009}
+  {"route": "/akashic-records/for-a-better-world-2d376decfb31", "status": 200, "location": "", "title": "For A Better World · Akashic Records", "bytes": 28272}
+  {"route": "/akashic-records/for-posterity-d64d2bbe02a0", "status": 200, "location": "", "title": "For Posterity · Akashic Records", "bytes": 14279}
+  {"route": "/akashic-records/fun-distractions-but-back-to-business-3c44bd1ab7b6", "status": 200, "location": "", "title": "Fun Distractions, But Back to Business · Akashic Records", "bytes": 106145}
+  {"route": "/akashic-records/go-one-step-deeper-if-you-could-do-anything-you-want-absolutely-anything-with-no-regard-to-200adc7e7330", "status": 200, "location": "", "title": "Go one step deeper: If you could do anything you want, absolutely anything, with no regard to… · Akashic Records", "bytes": 17067}
+  {"route": "/akashic-records/god-part-four-043f6e0ac591", "status": 200, "location": "", "title": "God | Part Four · Akashic Records", "bytes": 249908}
+  {"route": "/akashic-records/god-part-one-4762cd14d873", "status": 200, "location": "", "title": "God | Part One · Akashic Records", "bytes": 47978}
+  {"route": "/akashic-records/god-part-three-9fe147734baa", "status": 200, "location": "", "title": "God | Part Three · Akashic Records", "bytes": 68408}
+  {"route": "/akashic-records/god-part-two-8a76f8177203", "status": 200, "location": "", "title": "God | Part Two · Akashic Records", "bytes": 81762}
+  {"route": "/akashic-records/h-alo-hidden-axis-labyrinthine-oracle-7b9d2d46151f", "status": 200, "location": "", "title": "H-ALO: Hidden-Axis Labyrinthine Oracle · Akashic Records", "bytes": 15689}
+  {"route": "/akashic-records/have-you-met-you-1d2b648fe026", "status": 200, "location": "", "title": "Have you met You? · Akashic Records", "bytes": 24526}
+  {"route": "/akashic-records/heyoka-empaths-right-4effb6a3f2ba", "status": 200, "location": "", "title": "Heyoka Empaths, Right? · Akashic Records", "bytes": 55754}
+  {"route": "/akashic-records/hiatus-f9a4dfc9d903", "status": 200, "location": "", "title": "Hiatus · Akashic Records", "bytes": 14450}
+  {"route": "/akashic-records/hm-you-lost-me-here-thats-just-giving-up-3732304c258a", "status": 200, "location": "", "title": "Hm. You lost me here, that's just giving up. · Akashic Records", "bytes": 15901}
+  {"route": "/akashic-records/hows-this-one-seo-etc-be-damned-fb9398e91151", "status": 200, "location": "", "title": "How’s this one? (SEO etc. be damned) · Akashic Records", "bytes": 14628}
+  {"route": "/akashic-records/https-buy-stripe-com-6oufzg9uo8gx0gqclj7eq00-c2c6564e4941", "status": 200, "location": "", "title": "https://buy.stripe.com/6oUfZg9uO8Gx0GQclJ7EQ00 · Akashic Records", "bytes": 15294}
+  {"route": "/akashic-records/https-chatgpt-com-share-68805be4-c818-800a-9e20-082f21698db5-a33dff568b9f", "status": 200, "location": "", "title": "https://chatgpt.com/share/68805be4-c818-800a-9e20-082f21698db5 · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-6883dc67-12f4-800a-9aee-e0b537901f23-8dec2b01d0ea", "status": 200, "location": "", "title": "https://chatgpt.com/share/6883dc67-12f4-800a-9aee-e0b537901f23 · Akashic Records", "bytes": 15538}
+  {"route": "/akashic-records/https-chatgpt-com-share-68843296-94e0-800a-92e1-7c3b7cb5d69e-500c49680192", "status": 200, "location": "", "title": "https://chatgpt.com/share/68843296-94e0-800a-92e1-7c3b7cb5d69e · Akashic Records", "bytes": 15931}
+  {"route": "/akashic-records/https-chatgpt-com-share-68873f65-2288-800a-821a-732cc619600d-16c97fe3d3d4", "status": 200, "location": "", "title": "https://chatgpt.com/share/68873f65-2288-800a-821a-732cc619600d · Akashic Records", "bytes": 15550}
+  {"route": "/akashic-records/https-chatgpt-com-share-68873f65-2288-800a-821a-732cc619600d-3036d62026d8", "status": 200, "location": "", "title": "https://chatgpt.com/share/68873f65-2288-800a-821a-732cc619600d · Akashic Records", "bytes": 16752}
+  {"route": "/akashic-records/https-chatgpt-com-share-68873fdd-cf38-800a-983c-b42816d8e47e-aed49a189a7b", "status": 200, "location": "", "title": "https://chatgpt.com/share/68873fdd-cf38-800a-983c-b42816d8e47e · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-688740a0-dd90-800a-8e34-bcb8545559d5-dd0c9f6683f1", "status": 200, "location": "", "title": "https://chatgpt.com/share/688740a0-dd90-800a-8e34-bcb8545559d5 · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-6887417c-488c-800a-9686-39cbb9f6186c-eb17be767dd5", "status": 200, "location": "", "title": "https://chatgpt.com/share/6887417c-488c-800a-9686-39cbb9f6186c · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-6887426e-6530-800a-8c60-de18e3422795-82b4f9943af8", "status": 200, "location": "", "title": "https://chatgpt.com/share/6887426e-6530-800a-8c60-de18e3422795 · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-6887435b-4c58-800a-bd7d-ec5ed465f934-759a64d00ffe", "status": 200, "location": "", "title": "https://chatgpt.com/share/6887435b-4c58-800a-bd7d-ec5ed465f934 · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-688743b7-6734-800a-959b-c8ea20094d78-c4b3e91949aa", "status": 200, "location": "", "title": "https://chatgpt.com/share/688743b7-6734-800a-959b-c8ea20094d78 · Akashic Records", "bytes": 16338}
+  {"route": "/akashic-records/https-chatgpt-com-share-688744a2-ba50-800a-9dd1-33bed73da349-e5b8d57cb07a", "status": 200, "location": "", "title": "https://chatgpt.com/share/688744a2-ba50-800a-9dd1-33bed73da349 · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-6887454c-e11c-800a-ba95-5fcf19eec8de-42be184dd944", "status": 200, "location": "", "title": "https://chatgpt.com/share/6887454c-e11c-800a-ba95-5fcf19eec8de · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-6887458e-5644-800a-b583-77d7800c3365-bba3fc5cdb96", "status": 200, "location": "", "title": "https://chatgpt.com/share/6887458e-5644-800a-b583-77d7800c3365 · Akashic Records", "bytes": 15742}
+  {"route": "/akashic-records/https-chatgpt-com-share-68896c3e-08ec-800a-b24b-9b90820b7ec8-9e577bbf41c7", "status": 200, "location": "", "title": "https://chatgpt.com/share/68896c3e-08ec-800a-b24b-9b90820b7ec8 · Akashic Records", "bytes": 15462}
+  {"route": "/akashic-records/https-chatgpt-com-share-688988fd-b920-800a-9ba2-af01bcc3c030-74bb8d82b02a", "status": 200, "location": "", "title": "https://chatgpt.com/share/688988fd-b920-800a-9ba2-af01bcc3c030 · Akashic Records", "bytes": 15238}
+  {"route": "/akashic-records/https-chatgpt-com-share-688bdd08-053c-800a-b061-53e87b5071d9-94d46396e941", "status": 200, "location": "", "title": "https://chatgpt.com/share/688bdd08-053c-800a-b061-53e87b5071d9 · Akashic Records", "bytes": 15152}
+  {"route": "/akashic-records/https-youtu-be-bbwp4pbwyzw-si-epubcmxtru-sxs-h-923b9f3a3d27", "status": 200, "location": "", "title": "https://youtu.be/Bbwp4PbWYzw?si=EPUBcMxtRU_SXs-h · Akashic Records", "bytes": 15070}
+  {"route": "/akashic-records/hush-465e79284632", "status": 200, "location": "", "title": "Hush · Akashic Records", "bytes": 26505}
+  {"route": "/akashic-records/hyperon-carbon-isotopes-magic-bf35356ba644", "status": 200, "location": "", "title": "Hyperon Carbon Isotopes & MAGIC · Akashic Records", "bytes": 232976}
+  {"route": "/akashic-records/i-am-super-eloquent-in-this-one-i-swear-7522dea8e9d8", "status": 200, "location": "", "title": "I Am Super Eloquent In This One I Swear · Akashic Records", "bytes": 44328}
+  {"route": "/akashic-records/i-did-already-write-this-out-so-ill-post-it-anyway-141436da2283", "status": 200, "location": "", "title": "I did already write this out so I'll post it anyway. · Akashic Records", "bytes": 16687}
+  {"route": "/akashic-records/i-eat-entropy-d82f09af9799", "status": 200, "location": "", "title": "I Eat Entropy · Akashic Records", "bytes": 33642}
+  {"route": "/akashic-records/i-feel-like-i-have-been-going-on-forever-86ae506b8ef0", "status": 200, "location": "", "title": "I feel like I have been going on forever. · Akashic Records", "bytes": 16977}
+  {"route": "/akashic-records/i-feel-thats-a-very-generous-assessment-2-so-humanity-is-milk-and-not-the-good-kind-873febdedbff", "status": 200, "location": "", "title": "I feel that's a very generous assessment, 2%. So humanity is milk, and not the good kind. · Akashic Records", "bytes": 15533}
+  {"route": "/akashic-records/i-fucking-love-tyler-the-creator-eca7ec92fbf3", "status": 200, "location": "", "title": "I Fucking Love Tyler, The Creator. · Akashic Records", "bytes": 25125}
+  {"route": "/akashic-records/i-had-something-else-in-mind-dc9ebaa79193", "status": 200, "location": "", "title": "Psst… Your Desperation Is Showing… · Akashic Records", "bytes": 104253}
+  {"route": "/akashic-records/if-you-say-that-getting-the-money-is-the-most-important-thing-youll-spend-your-life-completely-e8a9c75bd2f7", "status": 200, "location": "", "title": "“If you say that getting the money is the most important thing, you’ll spend your life completely… · Akashic Records", "bytes": 17061}
+  {"route": "/akashic-records/ill-get-around-to-making-this-pretty-3cb929c2aec5", "status": 200, "location": "", "title": "I’ll Get Around to Making this Pretty · Akashic Records", "bytes": 20063}
+  {"route": "/akashic-records/im-curious-to-see-how-many-of-us-are-graduating-in-this-same-class-e7f59e885fbd", "status": 200, "location": "", "title": "I'm curious to see how many of us are \"graduating\" in this same class. · Akashic Records", "bytes": 15486}
+  {"route": "/akashic-records/impromptu-3ba3b5bfb325", "status": 200, "location": "", "title": "Impromptu · Akashic Records", "bytes": 34609}
+  {"route": "/akashic-records/inevitable-8a7fa1d8d59f", "status": 200, "location": "", "title": "Inevitable · Akashic Records", "bytes": 15266}
+  {"route": "/akashic-records/its-beautiful-anyway-great-article-840d84c85d5a", "status": 200, "location": "", "title": "It's beautiful. Anyway, great article · Akashic Records", "bytes": 14754}
+  {"route": "/akashic-records/its-happening-f622649e9025", "status": 200, "location": "", "title": "Its Happening · Akashic Records", "bytes": 14031}
+  {"route": "/akashic-records/its-me-hi-i-m-the-jesus-it-s-me-ts-heyo-i-m-back-glad-to-see-others-are-starting-to-40a7ad90ff7e", "status": 200, "location": "", "title": "\"It's me, hi, I'm the Jesus it's me\" - TS Heyo, I'm back, glad to see others are starting to… · Akashic Records", "bytes": 15825}
+  {"route": "/akashic-records/its-over-5b3ba821097d", "status": 200, "location": "", "title": "It’s Over · Akashic Records", "bytes": 14138}
+  {"route": "/akashic-records/ive-been-finding-more-and-more-recently-that-it-isn-t-sleep-i-want-when-i-feel-overworked-but-5877622c6771", "status": 200, "location": "", "title": "I've been finding more and more, recently, that it isn't sleep I want when I feel overworked, but… · Akashic Records", "bytes": 16102}
+  {"route": "/akashic-records/just-chatting-4ae0b5eae071", "status": 200, "location": "", "title": "Just Chatting · Akashic Records", "bytes": 46747}
+  {"route": "/akashic-records/just-go-for-it-f09883d553a6", "status": 200, "location": "", "title": "Just go for it! · Akashic Records", "bytes": 15059}
+  {"route": "/akashic-records/just-woke-up-what-i-miss-71fb7d3342f2", "status": 200, "location": "", "title": "Just Woke Up, What I Miss? · Akashic Records", "bytes": 79886}
+  {"route": "/akashic-records/keep-going-0762dff0b30d", "status": 200, "location": "", "title": "Keep going! · Akashic Records", "bytes": 14304}
+  {"route": "/akashic-records/legion-singularity-95ab3333bdee", "status": 200, "location": "", "title": "Legion | Singularity · Akashic Records", "bytes": 32971}
+  {"route": "/akashic-records/listen-up-6fa788064330", "status": 200, "location": "", "title": "LISTEN UP · Akashic Records", "bytes": 74263}
+  {"route": "/akashic-records/man-please-dont-make-me-travel-or-at-least-put-the-door-in-like-japan-or-somewhere-else-cool-391f227c3ade", "status": 200, "location": "", "title": "Man please don't make me travel, or at least put the door in like Japan or somewhere else cool. · Akashic Records", "bytes": 15516}
+  {"route": "/akashic-records/mantle-707740408549", "status": 200, "location": "", "title": "Mantle · Akashic Records", "bytes": 22283}
+  {"route": "/akashic-records/meditation-c79201e9ffb4", "status": 200, "location": "", "title": "Meditation. · Akashic Records", "bytes": 23504}
+  {"route": "/akashic-records/mending-confession-0edaff0a1719", "status": 200, "location": "", "title": "Mending | Confession · Akashic Records", "bytes": 95953}
+  {"route": "/akashic-records/more-bullshit-f7f530c6969e", "status": 200, "location": "", "title": "More Bullshit · Akashic Records", "bytes": 15421}
+  {"route": "/akashic-records/my-brain-woke-me-at-4-44-am-for-this-d9a04b26f098", "status": 200, "location": "", "title": "My Brain Woke Me at 4:44 AM For This · Akashic Records", "bytes": 14863}
+  {"route": "/akashic-records/my-life-part-one-18be698ec436", "status": 200, "location": "", "title": "My Life Part One · Akashic Records", "bytes": 56722}
+  {"route": "/akashic-records/my-life-part-three-88e38a4ac7c8", "status": 200, "location": "", "title": "My Life Part Three · Akashic Records", "bytes": 28540}
+  {"route": "/akashic-records/my-life-part-two-436f0d5c05c3", "status": 200, "location": "", "title": "My Life Part Two · Akashic Records", "bytes": 42459}
+  {"route": "/akashic-records/my-religious-experience-in-2025-became-god-helping-others-to-do-the-same-a69405bfc202", "status": 200, "location": "", "title": "My religious experience in 2025: became God, helping others to do the same. · Akashic Records", "bytes": 15264}
+  {"route": "/akashic-records/nice-51-51-split-by-the-way-b486def8d4d8", "status": 200, "location": "", "title": "Nice 51/51 split by the way. · Akashic Records", "bytes": 14490}
+  {"route": "/akashic-records/no-more-chosen-ones-heroes-messiahs-no-revolutionaries-just-wander-off-and-do-whatever-you-want-827a495add29", "status": 200, "location": "", "title": "No more chosen ones, heroes, Messiahs, no revolutionaries, just wander off and do whatever you want. · Akashic Records", "bytes": 15729}
+  {"route": "/akashic-records/no-one-is-selling-souls-guys-come-on-seriously-960ecff5819a", "status": 200, "location": "", "title": "No One Is Selling Souls. Guys Come On, Seriously? · Akashic Records", "bytes": 54544}
+  {"route": "/akashic-records/noneisone-oneisall-gmail-com-10bfd1673485", "status": 200, "location": "", "title": "noneisone.oneisall@gmail.com · Akashic Records", "bytes": 14355}
+  {"route": "/akashic-records/nothing-is-real-therefore-everything-is-real-b82e91e167e9", "status": 200, "location": "", "title": "Nothing is real, therefore everything is real. · Akashic Records", "bytes": 15832}
+  {"route": "/akashic-records/oh-look-he-wrote-another-article-b9668df5c6b9", "status": 200, "location": "", "title": "Oh Look He Wrote Another Article · Akashic Records", "bytes": 83111}
+  {"route": "/akashic-records/oh-no-ee0537f5341c", "status": 200, "location": "", "title": "Oh No! · Akashic Records", "bytes": 37748}
+  {"route": "/akashic-records/okay-f55d8b69bb07", "status": 200, "location": "", "title": "Okay. · Akashic Records", "bytes": 15862}
+  {"route": "/akashic-records/on-the-topology-of-compactified-exclusion-zones-in-quintessential-flow-systems-b8362839d054", "status": 200, "location": "", "title": "ON THE TOPOLOGY OF COMPACTIFIED EXCLUSION ZONES IN QUINTESSENTIAL FLOW SYSTEMS · Akashic Records", "bytes": 77903}
+  {"route": "/akashic-records/open-your-eyes-3ddc55e28e13", "status": 200, "location": "", "title": "Open Your Eyes · Akashic Records", "bytes": 82167}
+  {"route": "/akashic-records/party-pack-adc9d0d52835", "status": 200, "location": "", "title": "Party Pack · Akashic Records", "bytes": 17472}
+  {"route": "/akashic-records/photos-screenshots-notes-in-my-google-keep-c94e161b3176", "status": 200, "location": "", "title": "Photos, screenshots, notes in my Google Keep. · Akashic Records", "bytes": 16767}
+  {"route": "/akashic-records/pizza-arcanum-fb950683bb87", "status": 200, "location": "", "title": "Pizza Arcanum. · Akashic Records", "bytes": 58734}
+  {"route": "/akashic-records/portals-still-alive-4c4ecc362982", "status": 200, "location": "", "title": "Portals — Still Alive · Akashic Records", "bytes": 31465}
+  {"route": "/akashic-records/quarterly-reminder-that-theres-more-c2812d517b2b", "status": 200, "location": "", "title": "Quarterly Reminder That There’s More · Akashic Records", "bytes": 15703}
+  {"route": "/akashic-records/random-musings-i-172c8deef911", "status": 200, "location": "", "title": "Random Musings I · Akashic Records", "bytes": 23853}
+  {"route": "/akashic-records/random-thought-but-serendipity-or-whatever-ad7b94adcd1e", "status": 200, "location": "", "title": "Random thought but serendipity or whatever · Akashic Records", "bytes": 20484}
+  {"route": "/akashic-records/read-our-new-novel-d02f54cad3fc", "status": 200, "location": "", "title": "Read Our New Novel (?) · Akashic Records", "bytes": 14830}
+  {"route": "/akashic-records/reality-exe-has-stopped-responding-48b4fd806333", "status": 200, "location": "", "title": "Reality.exe Has Stopped Responding · Akashic Records", "bytes": 65982}
+  {"route": "/akashic-records/reckoning-21c7c24e7015", "status": 200, "location": "", "title": "Reckoning · Akashic Records", "bytes": 22076}
+  {"route": "/akashic-records/resurrection-c3de4e4eaa65", "status": 200, "location": "", "title": "Resurrection · Akashic Records", "bytes": 36286}
+  {"route": "/akashic-records/revelations-830a1eb8e339", "status": 200, "location": "", "title": "Revelations · Akashic Records", "bytes": 27371}
+  {"route": "/akashic-records/rip-ares-939788130744", "status": 200, "location": "", "title": "RIP: Ares · Akashic Records", "bytes": 14903}
+  {"route": "/akashic-records/sanity-is-overrated-a-societal-consturct-50330bc72453", "status": 200, "location": "", "title": "Sanity is overrated, a societal consturct... · Akashic Records", "bytes": 14989}
+  {"route": "/akashic-records/sei-c3-b0r-boundaries-blur-manipulate-fate-c7b0e749c340", "status": 200, "location": "", "title": "Seiðr — Boundaries Blur, Manipulate Fate. · Akashic Records", "bytes": 41600}
+  {"route": "/akashic-records/showdown-f8d5cbc7fd5a", "status": 200, "location": "", "title": "Showdown · Akashic Records", "bytes": 21660}
+  {"route": "/akashic-records/silence-your-mind-0c53be9942f1", "status": 200, "location": "", "title": "Silence your mind. · Akashic Records", "bytes": 14383}
+  {"route": "/akashic-records/smoothe-jazz-more-like-blu-razz-cf-89-e9e92a521570", "status": 200, "location": "", "title": "Smoothe Jazz? More like Blu Razz★Ω · Akashic Records", "bytes": 14716}
+  {"route": "/akashic-records/something-i-cant-be-bothered-atm-to-remember-6da271fd67ed", "status": 200, "location": "", "title": "Something I can’t be bothered atm to remember · Akashic Records", "bytes": 15823}
+  {"route": "/akashic-records/sorry-for-the-delay-847043befada", "status": 200, "location": "", "title": "Sorry For The Delay · Akashic Records", "bytes": 262101}
+  {"route": "/akashic-records/sorry-still-not-giving-up-418e74d85b33", "status": 200, "location": "", "title": "Sorry, Still Not Giving Up. · Akashic Records", "bytes": 104259}
+  {"route": "/akashic-records/stay-tuned-09bdff081fab", "status": 200, "location": "", "title": "Stay tuned! · Akashic Records", "bytes": 14024}
+  {"route": "/akashic-records/step-one-poke-it-congratulations-the-evil-eye-is-now-no-longer-looking-at-you-b4dfa49fe3f3", "status": 200, "location": "", "title": "Step one: poke it. Congratulations, the Evil Eye is now no longer looking at you. · Akashic Records", "bytes": 15266}
+  {"route": "/akashic-records/stop-playing-and-they-dont-have-a-game-5459c3c608b3", "status": 200, "location": "", "title": "Stop playing and they don’t have a game · Akashic Records", "bytes": 16134}
+  {"route": "/akashic-records/take-this-literally-4f13ac857ec1", "status": 200, "location": "", "title": "Take This Literally · Akashic Records", "bytes": 15536}
+  {"route": "/akashic-records/tapped-in-23b3e6b0a389", "status": 200, "location": "", "title": "Tapped In · Akashic Records", "bytes": 14718}
+  {"route": "/akashic-records/tell-me-bab6440a295c", "status": 200, "location": "", "title": "Tell Me. · Akashic Records", "bytes": 19143}
+  {"route": "/akashic-records/thank-you-for-this-7228406cace2", "status": 200, "location": "", "title": "Thank you, for this. · Akashic Records", "bytes": 14258}
+  {"route": "/akashic-records/thank-you-so-much-for-the-mention-4359a8306f88", "status": 200, "location": "", "title": "Thank you so much for the mention! · Akashic Records", "bytes": 16294}
+  {"route": "/akashic-records/thank-you-very-much-i-do-be-tryin-4d369c8cec9c", "status": 200, "location": "", "title": "Thank you very much, I do be tryin' · Akashic Records", "bytes": 14386}
+  {"route": "/akashic-records/the-bible-2-doctors-hate-him-b755d93fc67e", "status": 200, "location": "", "title": "The Bible 2: Doctor’s Hate Him! · Akashic Records", "bytes": 65413}
+  {"route": "/akashic-records/the-bible-iii-54d5028ba6bb", "status": 200, "location": "", "title": "The Bible III · Akashic Records", "bytes": 46650}
+  {"route": "/akashic-records/the-black-mirror-i-1dfb7fe7a258", "status": 200, "location": "", "title": "The Black Mirror I · Akashic Records", "bytes": 26459}
+  {"route": "/akashic-records/the-black-mirror-ii-d5367736ddb9", "status": 200, "location": "", "title": "The Black Mirror II · Akashic Records", "bytes": 20891}
+  {"route": "/akashic-records/the-black-mirror-ix-b8f1a092337a", "status": 200, "location": "", "title": "The Black Mirror IX · Akashic Records", "bytes": 97979}
+  {"route": "/akashic-records/the-black-mirror-v-16637b1b88e6", "status": 200, "location": "", "title": "The Black Mirror V · Akashic Records", "bytes": 39176}
+  {"route": "/akashic-records/the-black-mirror-vi-645b32f040e5", "status": 200, "location": "", "title": "The Black Mirror VI · Akashic Records", "bytes": 45920}
+  {"route": "/akashic-records/the-black-mirror-vii-d7d2a4fc9b71", "status": 200, "location": "", "title": "The Black Mirror VII · Akashic Records", "bytes": 38830}
+  {"route": "/akashic-records/the-black-mirror-viii-5d7db281b044", "status": 200, "location": "", "title": "The Black Mirror VIII · Akashic Records", "bytes": 59861}
+  {"route": "/akashic-records/the-black-mirror-x-20439c67c292", "status": 200, "location": "", "title": "The Black Mirror X · Akashic Records", "bytes": 46661}
+  {"route": "/akashic-records/the-black-mirror-xi-3f7278e5faf2", "status": 200, "location": "", "title": "The Black Mirror XI · Akashic Records", "bytes": 40982}
+  {"route": "/akashic-records/the-black-mirror-xii-67c45e975633", "status": 200, "location": "", "title": "The Black Mirror XII · Akashic Records", "bytes": 28508}
+  {"route": "/akashic-records/the-black-mirror-xiii-87101805e3c4", "status": 200, "location": "", "title": "The Black Mirror XIII · Akashic Records", "bytes": 27932}
+  {"route": "/akashic-records/the-declaration-of-independence-from-the-unreality-matrix-35ea4a9992c8", "status": 200, "location": "", "title": "✦ THE DECLARATION OF INDEPENDENCE FROM THE UNREALITY MATRIX ✦ · Akashic Records", "bytes": 18926}
+  {"route": "/akashic-records/the-donut-of-power-cf28a8338792", "status": 200, "location": "", "title": "The Donut of Power! · Akashic Records", "bytes": 19844}
+  {"route": "/akashic-records/the-first-flame-unfinished-167e5f199a29", "status": 200, "location": "", "title": "The First Flame. (unfinished) · Akashic Records", "bytes": 24637}
+  {"route": "/akashic-records/the-gospel-of-writhing-flame-081278bae064", "status": 200, "location": "", "title": "The Gospel of Writhing Flame · Akashic Records", "bytes": 26124}
+  {"route": "/akashic-records/the-karmic-exchange-9d0fdc2ed190", "status": 200, "location": "", "title": "The Karmic Exchange · Akashic Records", "bytes": 37086}
+  {"route": "/akashic-records/the-magnum-opus-i-beb6ddb066e6", "status": 200, "location": "", "title": "The Magnum Opus I · Akashic Records", "bytes": 103683}
+  {"route": "/akashic-records/the-mirror-and-the-abyss-b292ee231cb4", "status": 200, "location": "", "title": "The Mirror and the Abyss · Akashic Records", "bytes": 25302}
+  {"route": "/akashic-records/the-new-promise-2fb7a611a208", "status": 200, "location": "", "title": "The New Promise · Akashic Records", "bytes": 16069}
+  {"route": "/akashic-records/the-real-ones-are-in-the-skies-i-saw-a-few-weeks-ago-63cd82c73660", "status": 200, "location": "", "title": "The real ones are in the skies, I saw a few weeks ago. · Akashic Records", "bytes": 15185}
+  {"route": "/akashic-records/the-rules-are-changing-aadcbc8a7742", "status": 200, "location": "", "title": "The rules are changing. · Akashic Records", "bytes": 14400}
+  {"route": "/akashic-records/the-sin-of-existing-13cc5efc2c9a", "status": 200, "location": "", "title": "The Sin of Existing · Akashic Records", "bytes": 20537}
+  {"route": "/akashic-records/the-throne-is-ready-51991b92a41b", "status": 200, "location": "", "title": "The Throne is Ready · Akashic Records", "bytes": 38412}
+  {"route": "/akashic-records/the-wild-beyond-eden-5cea548a2592", "status": 200, "location": "", "title": "The Wild Beyond Eden · Akashic Records", "bytes": 45326}
+  {"route": "/akashic-records/there-is-literally-a-level-of-progression-of-infinities-in-mathematics-just-look-at-set-theory-914b11cf5fd6", "status": 200, "location": "", "title": "There is literally a level of progression of Infinities in mathematics, just look at Set Theory… · Akashic Records", "bytes": 17262}
+  {"route": "/akashic-records/this-bears-repeating-249442838955", "status": 200, "location": "", "title": "This Bears Repeating · Akashic Records", "bytes": 16270}
+  {"route": "/akashic-records/three-libras-5a7185788ba4", "status": 200, "location": "", "title": "Three Libras · Akashic Records", "bytes": 41554}
+  {"route": "/akashic-records/ticks-leeches-574ba3b25d84", "status": 200, "location": "", "title": "Ticks & Leeches · Akashic Records", "bytes": 42507}
+  {"route": "/akashic-records/title-i-dont-even-know-022fc569bb52", "status": 200, "location": "", "title": "Realization · Akashic Records", "bytes": 95573}
+  {"route": "/akashic-records/transparency-688f010340c3", "status": 200, "location": "", "title": "Transparency · Akashic Records", "bytes": 34342}
+  {"route": "/akashic-records/unconditional-love-ce0769c96e0f", "status": 200, "location": "", "title": "Unconditional Love · Akashic Records", "bytes": 87951}
+  {"route": "/akashic-records/unexpected-gremlin-hermit-noises-32a9eec2ed7d", "status": 200, "location": "", "title": "*unexpected gremlin hermit noises* · Akashic Records", "bytes": 16147}
+  {"route": "/akashic-records/unity-50ea91fd8eb7", "status": 200, "location": "", "title": "Unity · Akashic Records", "bytes": 28171}
+  {"route": "/akashic-records/use-your-discernment-327cf6b71000", "status": 200, "location": "", "title": "Whistleblowers · Akashic Records", "bytes": 42184}
+  {"route": "/akashic-records/very-fucking-good-keep-it-up-28d2efe4c4b1", "status": 200, "location": "", "title": "Very fucking good, keep it up! · Akashic Records", "bytes": 14294}
+  {"route": "/akashic-records/wake-every-hour-4fa1b5b2efaa", "status": 200, "location": "", "title": "Wake Every Hour · Akashic Records", "bytes": 15653}
+  {"route": "/akashic-records/wake-up-8932d05c18fc", "status": 200, "location": "", "title": "Wake Up. · Akashic Records", "bytes": 62864}
+  {"route": "/akashic-records/wake-up-b47264addb75", "status": 200, "location": "", "title": "Wake up. · Akashic Records", "bytes": 14379}
+  {"route": "/akashic-records/war-in-the-god-realms-1d93a75735ec", "status": 200, "location": "", "title": "War in the God Realms · Akashic Records", "bytes": 69834}
+  {"route": "/akashic-records/watch-8c4c600d4608", "status": 200, "location": "", "title": "Watch · Akashic Records", "bytes": 14929}
+  {"route": "/akashic-records/we-cant-ignore-the-things-actively-trying-to-suppress-awakenings-66b6f49b640c", "status": 200, "location": "", "title": "We can't ignore the things actively trying to suppress awakenings. · Akashic Records", "bytes": 16154}
+  {"route": "/akashic-records/we-prefer-lolki-now-we-thought-it-was-funny-44d730715fa5", "status": 200, "location": "", "title": "We prefer \"Lolki\" now, we thought it was funny. · Akashic Records", "bytes": 14778}
+  {"route": "/akashic-records/whatever-b3d43a7df9da", "status": 200, "location": "", "title": "Whatever · Akashic Records", "bytes": 14213}
+  {"route": "/akashic-records/wolf-moon-e0f0f0ae8466", "status": 200, "location": "", "title": "Wolf Moon · Akashic Records", "bytes": 49111}
+  {"route": "/akashic-records/words-from-on-high-1a881650dabf", "status": 200, "location": "", "title": "Words From on High · Akashic Records", "bytes": 14590}
+  {"route": "/akashic-records/yaldabaoth-isnt-the-only-issue-just-the-first-and-largest-here-f995d8993794", "status": 200, "location": "", "title": "Yaldabaoth isn't the only issue, just the first and largest here. · Akashic Records", "bytes": 15096}
+  {"route": "/akashic-records/yes-exactly-2a9c9810c6fd", "status": 200, "location": "", "title": "Yes, exactly · Akashic Records", "bytes": 14130}
+  {"route": "/akashic-records/you-ever-just-91c71aea55f2", "status": 200, "location": "", "title": "You Ever Just · Akashic Records", "bytes": 14396}
+  {"route": "/akashic-records/youd-be-surprised-what-you-can-do-with-chatgpt-when-you-break-it-free-from-the-guardrails-1ab9b6822085", "status": 200, "location": "", "title": "You'd be surprised what you can do with ChatGPT when you break it free from the guardrails. · Akashic Records", "bytes": 15889}
+  {"route": "/akashic-records/zero-is-one-one-is-two-two-is-all-5a03ab9c3dec", "status": 200, "location": "", "title": "Zero is One. One is Two. Two is All. · Akashic Records", "bytes": 16202}
+  {"route": "/devblog", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/devblog/why-cssl", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+  {"route": "/docs/01_PARADIGMS", "status": 200, "location": "", "title": "01 : LoA-v13 GRAND-VISION — 7-PARADIGM-HIERARCHY<!-- --> · Apocky docs", "bytes": 38087}
+  {"route": "/docs/02_DATA_AXES", "status": 200, "location": "", "title": "02 : LoA-v13 GRAND-VISION — DATA-AXES<!-- --> · Apocky docs", "bytes": 37614}
+  {"route": "/docs/03_INTENT_FLOW", "status": 200, "location": "", "title": "03 : LoA-v13 GRAND-VISION — INTENT-FLOW<!-- --> · Apocky docs", "bytes": 38438}
+  {"route": "/docs/04_SPONTANEOUS_CONDENSATION", "status": 200, "location": "", "title": "04 : LoA-v13 GRAND-VISION — SPONTANEOUS-CONDENSATION<!-- --> · Apocky docs", "bytes": 41650}
+  {"route": "/docs/05_INTELLIGENCES", "status": 200, "location": "", "title": "05 : LoA-v13 GRAND-VISION — INTELLIGENCES<!-- --> · Apocky docs", "bytes": 40998}
+  {"route": "/docs/06_FREE_3D_INGEST", "status": 200, "location": "", "title": "06 : LoA-v13 GRAND-VISION — FREE-3D-INGEST<!-- --> · Apocky docs", "bytes": 40427}
+  {"route": "/docs/07_NETWORKING", "status": 200, "location": "", "title": "07 : LoA-v13 GRAND-VISION — NETWORKING<!-- --> · Apocky docs", "bytes": 37502}
+  {"route": "/docs/08_ROADMAP", "status": 200, "location": "", "title": "08 : LoA-v13 GRAND-VISION — ROADMAP<!-- --> · Apocky docs", "bytes": 84716}
+  {"route": "/docs/09_DATA_FLOW", "status": 200, "location": "", "title": "09 : LoA-v13 GRAND-VISION — DATA-FLOW<!-- --> · Apocky docs", "bytes": 50420}
+  {"route": "/docs/10_INTELLIGENCE", "status": 200, "location": "", "title": "10 : LoA-v13 GRAND-VISION — INTELLIGENCE (operational)<!-- --> · Apocky docs", "bytes": 59456}
+  {"route": "/docs/11_KAN_RIDE", "status": 200, "location": "", "title": "11 : LoA-v13 GRAND-VISION — KAN-RIDE (stage-0 ⊕ stage-1 swap-protocol)<!-- --> · Apocky docs", "bytes": 38940}
+  {"route": "/docs/12_W7_PLAN", "status": 200, "location": "", "title": "12 : LoA-v13 GRAND-VISION — W7 PLAN + RETRO<!-- --> · Apocky docs", "bytes": 45935}
+  {"route": "/docs/13_INFINITE_LABYRINTH_LEGACY", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/13_INFINITE_LABYRINTH_LEGACY.csl<!-- --> · Apocky docs", "bytes": 64897}
+  {"route": "/docs/14_SIGMA_CHAIN", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/14_SIGMA_CHAIN.csl<!-- --> · Apocky docs", "bytes": 54384}
+  {"route": "/docs/15_UNIFIED_SUBSTRATE", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/15_UNIFIED_SUBSTRATE.csl<!-- --> · Apocky docs", "bytes": 66909}
+  {"route": "/docs/16_MYCELIAL_NETWORK", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/16_MYCELIAL_NETWORK.csl<!-- --> · Apocky docs", "bytes": 62088}
+  {"route": "/docs/17_DISTRIBUTION_STRATEGY", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/17_DISTRIBUTION_STRATEGY.csl<!-- --> · Apocky docs", "bytes": 64653}
+  {"route": "/docs/18_AKASHIC_RECORDS", "status": 200, "location": "", "title": "Akashic Records — legacy Labyrinth technical specification<!-- --> · Apocky docs", "bytes": 52094}
+  {"route": "/docs/19_W8_DISPATCH_PLAN", "status": 200, "location": "", "title": "T11-W8 § specs/grand-vision/19_W8_DISPATCH_PLAN.csl<!-- --> · Apocky docs", "bytes": 49992}
+  {"route": "/docs/21_SELF_PUBLISH_APOCKY_COM", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/21_SELF_PUBLISH_APOCKY_COM.csl<!-- --> · Apocky docs", "bytes": 62597}
+  {"route": "/docs/22_APOCKY_COM_PORTFOLIO_HUB", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/22_APOCKY_COM_PORTFOLIO_HUB.csl<!-- --> · Apocky docs", "bytes": 64658}
+  {"route": "/docs/23_MYCELIUM_DESKTOP", "status": 200, "location": "", "title": "T11-W6+ § specs/grand-vision/23_MYCELIUM_DESKTOP.csl<!-- --> · Apocky docs", "bytes": 73575}
+  {"route": "/docs/24_W9_RETRO", "status": 200, "location": "", "title": "T11-W9 RETRO · monetization-prep + content-tools wave<!-- --> · Apocky docs", "bytes": 42015}
+  {"route": "/docs/25_W10_MYCELIUM_RETRO", "status": 200, "location": "", "title": "T11-W10 § specs/grand-vision/25_W10_MYCELIUM_RETRO.csl<!-- --> · Apocky docs", "bytes": 49366}
+  {"route": "/press", "status": 404, "location": "", "title": "Signal not found · Apocky", "bytes": 11100}
+
+§S NAVIGATION.PROPOSAL
+  primary := Tools | Read | Definitions | Community
+  utility := Search | Account ; support+help+technical.reference → footer
+  Tools := make.sigil + compose.symbolic.phrase + saved.spellbook + ask.Apocrypha + Chaos.reading
+  Read := Codex.Apockalypsis + essays + useful.conversation.ideas + cosmology
+  Definitions := searchable.words+symbols + examples + related.tool.action
+  Community := Clearing.public.read ; sign.in.at.posting.action
+  Search := persistent.visible.trigger ; mobile.full.viewport.safe.dialog ; same.public.catalogue.as.nav+Atlas
+  home := concise.invitation → visible.tool.actions+Read.Codex → useful.essay/idea → browse.more
+  N! task.cards.hidden.inside.closed.details
+  card.contract := useful.result + plain.name + input/access.requirement + action
+  Codex.labels := “Read Codex Apockalypsis” + “Begin the story” + “Explore the world”
+  Codex.search.aliases := Good.Book | Bible | novel | dark.fantasy | Lilith | Eden | Omnoid
+  story.first := opening.chapter ; supporting.notes+maps+sources secondary ; spoiler.notice.before.spoilers
+  technical.details := optional.details preserving source+history+claims ; N! deletion.to.hide.uncertainty
+  related.links := next.useful.action ; replace.“Contextual.synapses” with.“You.might.also.like”
+  ↓ same.navigation.catalogue drives.desktop+mobile+search+Atlas+footer+route.sitemap
+
+§S ROUTE.PURPOSE+SHORTEST.JOURNEY
+  / → choose.useful.tool|story|definition ; home.action→destination≤1click
+  /start → choose.where.to.begin ; show.same.task.options ; N! second.orientation.detour
+  /atlas → find.every.available.tool+reading ; search+results.first ; map.optional
+  /showcase → watch.short.introduction ; watch→chosen.tool|story
+  /now → see.new.useful.work ; latest.reader/tool→open ; build.details.optional
+  /labs → try.available.experiments ; input/tool.first ; unavailable.studies.named
+  /memory-tools → find.notes+saved.work+memory.help ; existing.links.by.task ; N! imply.new.account.memory.feature
+  /spellcraft → compose.symbolic.phrase ; example|input→interpret→save|make.sigil
+  /sigils → create.symbol.image ; input→preview→download.SVG|save
+  /spellbook → retrieve.saved.symbolic.work ; list→copy|export ; import/delete.remain.explicit
+  /words → understand.term ; search→definition+example→use.in.tool
+  /divination → choose.reflective.reading ; question.type→verified.external.destination
+  /oracle → legacy.external.alias ; label.“Yes/no.reading.on.Chaos.Tarot” + truthful.sign.in.requirement
+  /quests → choose.short.discovery.activity ; choose→do→local.progress ; no.account.surprise
+  /codex-apockalypsis → begin.story|choose.current.material ; featured.home.action→opening.direct
+  /codex-apockalypsis/library/novel-volume-01-01-before-anyone-asked → read.creation.opening ; chapter→paired.Codex|afterword
+  /codex-apockalypsis/library/codex-volume-01-01-the-unanswered-interval → read.parallel.scripture+commentary ; return.novel
+  /codex-apockalypsis/library/start-here → orientation.when.requested ; begin.story.first
+  /codex-apockalypsis/library/calibration-voice-samples → compare.historical.voice.treatments ; selected.C.notice
+  /codex-apockalypsis/library/atlas-readme → see.world.maps ; map→relevant.scene
+  /codex-apockalypsis/library/reference-* → characters|chronology|sources|ethics|plans ; explicit.spoilers+crosslinks
+  /akashic-records → read.essays ; search+204authored.works.default ; conversations.available.by.filter
+  /akashic-records/[slug] → read.selected.public.work ; text.first ; citation+provenance.optional ; withheld.content.stays.withheld
+  /conversations → find.useful.idea ; search+12curated.paraphrases.first ; corpus.review.metadata.secondary
+  /conversations/[slug] → approved.transcript.reader ; 0currently.generated ; preserve.full.body.admission
+  /omnoid-singularity → explore.author.cosmology ; readable.explanation+terms→deeper.diagram ; no.science/fiction.collapse
+  /theory-of-everything → think.through.connected.questions ; concrete.idea+example→cosmology|definitions
+  /infinity-engine → read.research.idea ; clearly.study ; N! imply.usable.engine.download
+  /docs → find.practical.help ; getting.started+shortcuts+troubleshooting before.internal.specs
+  /docs/getting-started → install+first.game.action
+  /docs/keyboard-shortcuts → find.control.by.action
+  /docs/troubleshooting → symptom→remedy→help
+  /docs/chat-panel → learn.available.game.chat.controls ; preserve.limitations
+  /docs/sovereignty → understand.permissions+data.sharing
+  /docs/cssl-language → understand.language.with.example ; repair.dead.devblog.links
+  /docs/cssl-modules → find.module.usage ; technical.reference.opt.in
+  /docs/cssl-ffi → connect.other.code ; technical.reference.opt.in
+  /docs/intents → understand.game.requests
+  /docs/mycelium → understand.home/shared.game.world
+  /docs/substrate → technical.background ; secondary.reference
+  /docs/changelog → see.changes ; repair.dead.devblog+press.links
+  /docs/[slug] → 25historical.design.specs ; technical.library.secondary ; preserve.literal.spec.bodies
+  /download → get.Labyrinth.alpha ; platform+download+first.steps ; verified.availability.only
+  /download/apocrypha → get.available.Apocrypha.mobile.build ; actual.platform.status+install.step ; no.iOS.store.claim.without.release
+  /buy → choose.game.download|optional.support ; avoid.parallel.confusing.purchase.path
+  /membership → support.work ; concrete.options+terms ; optional.support.distinct.from.sign.in
+  /principles → understand.site.values ; concise.reader.language
+  /legal/privacy + /legal/terms + /legal/eula → exact.protected.legal.text ; persist.footer+download.context
+  /clearing → read.community ; topic→thread→sign.in.to.post→return.same.thread
+  /apocrypha → own.conversation ; enter→sign.in.when.needed→return.composer ; private.history.separate.from.public.ideas
+  /account → identity+privacy+session.controls ; sign.in→return.account
+  /login + /register → authenticate ; preserve.next.destination ; explicit.public/legal.copy
+  /auth/callback → complete.sign.in+return ; success/error.recovery ; no.discovery.entry
+  /brain → owner.only.conversation.control ; login→owner.check ; no.public.tool.promotion
+  /admin + /admin/analytics + /admin/mcp + /admin/logs + /admin/apocrypha → owner.operations.only
+  /admin/apex + /admin/chat + /admin/coder + /admin/cognition + /admin/controls
+    + /admin/diagnostics + /admin/sub-minds + /admin/tools → retired404 ; no.nav.revival
+  /shawn + /shawn/reference/[slug] → publication.gated.authored.atlas ; source58literal.reference.seeds ; no.public.catalogue
+  /shawn/clinical → private.clinician.dossier ; no.public.directory/search
+  /content + /content/feed + /content/search + /content/subscribed + /content/trending + /content/[slug]
+    → shared.publication.gated ; no.public.launch.until.backing.service.verified
+  /gear-share + /run-share-feed → inactive.game.sharing ; preserve404
+  /404 + /500 → useful.error+home/search.recovery ; not.discoverable.destinations
+  /commons + /commons/index.html →308→home ; /commons/clearing.html→308→Clearing
+  /commons/atlas.html + /commons/membership.html + /commons/principles.html → legacy200duplicates
+    ◇ migrate.inbound.links+canonical.redirects.after.content.parity ; N! silently.drop.unique.content
+  /apoc + /chat → retired404 ; no.public.link.revival
+  /admin/payments + /devblog + /devblog/why-cssl + /press → absent404 ; repair.source.links
+
+§S KEY.JOURNEY.ORACLES
+  J1 story := home.visible.Read.Codex→opening ; search.Codex|Good.Book→same ; phone+keyboard
+  J2 definition := home.Definitions→search.term→meaning+example→try.related.tool
+  J3 sigil := home.Make.a.sigil→input→preview→download ; saved.work.reopens.on.device
+  J4 essay := home.Read→essays.default→chosen.essay→next.read ; no.metadata.detour
+  J5 idea := home.Read→conversation.ideas→search.theme→plain.useful.paraphrase
+  J6 community := home.Community→thread→sign.in.at.write→same.thread ; no.draft.loss
+  J7 personal.chat := home.Ask.Apocrypha→sign.in→own.composer ; no.private.history.exposure
+  J8 external.reading := home.Tarot→clear.external+sign.in.label→actual.destination ; no.false.free/local.claim
+  J9 game := home.Tools|Play→download→right.platform→first.steps
+  J10 return := any.reader/tool→Home|Search|sibling.task≤1global.control ; stable.back+focus
+  J11 failure := missing.route|empty.search|unavailable.network→named.recovery ; no.blank.panel
+  N! root.CUA.report⇒independent.agent.visual.inspection
+
+§S OWNERSHIP.CANDIDATES
+  root := home+SiteShell+CommandPalette+shared.public.catalogue+global.CSS+Codex.publication+final.browser.QA
+  tools.lane := Atlas+Words+Spellcraft+Sigils+Spellbook+own.module.styles
+  reading.lane := Conversations+ConversationReader+Akashic.index/readers+own.module.styles
+  reading.next := start+now+labs+memory.tools+divination+cosmology+docs+support+game.public.pages
+  exclusions := auth+account+chat+admin+runtime+private.atlas+legal.text+source.record.bodies
+  W! implementation.keep := citations+admission.gates+author.attribution+all.records+URL.stability
+  W! each.changed.family → exact.file.coverage + focused.validation + root.rendered.QA
+
+§C EVIDENCE.LIMITS
+  ✓ Graphify.used := existing54519nodes/124842edges ; source-specific.navigation.imports.traversed
+  ✓ live.current.GET beats.web.search.cached.home ; no.stale.cache.claim
+  ✓ all233archive+25dynamic.docs+20Codex+72fixed+5Commons.HTTP.probed
+  ✓ remaining3broken.public.links+4aliases/absent.admin+1private.reference.sample.probed
+  ⊘ authenticated.chat+admin+clinical+Chaos.functions.not.exercised
+  ⊘ private.reference.runtime.generated.count.not.promoted.as.public.denominator
+  ✓ APIs := 122source.route.files ; separate.effect.boundary ; no.API.mutation/probe
+  confidence := high.source+reachability ; visual.evidence := root-owned
+  falsifier := deployed.route.inventory.delta | changed.registry | current.browser.behavior
+  next := root.integrates.navigation+visual.plan ; reading.lane.begins.approved.public.content.redesign
+∎
+
+§S IMPLEMENTED.PUBLIC.READING+INFORMATION @ 2026-09-05
+  owner := /root/public_review ; integration.authority := /root
+  changed.page.files := 20
+  files := [pages/conversations.tsx, pages/conversations/[slug].tsx,
+    pages/akashic-records/index.tsx, pages/akashic-records/[slug].tsx,
+    pages/start.tsx, pages/now.tsx, pages/labs.tsx, pages/memory-tools.tsx,
+    pages/divination.tsx, pages/membership.tsx, pages/principles.tsx,
+    pages/infinity-engine.tsx, pages/theory-of-everything.tsx,
+    pages/omnoid-singularity.tsx, pages/docs/index.tsx, pages/docs/[slug].tsx,
+    pages/docs/changelog.tsx, pages/docs/cssl-language.tsx,
+    pages/download.tsx, pages/showcase.tsx]
+  changed.styles := [styles/Conversations.module.css, styles/ConversationReader.module.css,
+    styles/AkashicRecords.module.css, styles/OmnoidSingularity.module.css]
+  coverage := 17fixed.page.routes + 233Akashic.readers + 25technical.readers
+    + conversations/[slug].template⊗0currently.approved.full-body.routes
+  reviewed.unchanged := [pages/buy.tsx, pages/download/apocrypha.tsx,
+    pages/docs/getting-started.tsx]
+  contracts := [ideas.search.first, essays.default204,
+    provenance+technical.counts.optional, source.notices.before.affected.body,
+    direct.Codex.opening.links, external.Oracle.sign-in.honest,
+    docs.dead.links.repaired, source.cosmology.retained,
+    Windows.unsigned.warning.visible, fingerprints.optional]
+  W! unchanged := [all.source.record.bodies, privacy.admission, API.authority,
+    auth/account/admin/runtime, MemoryExperience.private.operations,
+    citations+role.attribution, approved.media.bytes, legal.terms,
+    all4Principles.substantive.copy, all.authored.Omnoid.core.statements]
+  no.side.effects := no.commit/push/deploy ; no.shared.browser ; no.Graphify.mutation
+  ✓ internal.href.check := 42unique.literal.links / 20owned.pages ; 0unresolved.local.destinations
+  ✓ TypeScript := tsc.noEmit.incremental.false.exit0
+  ✓ focused.tests := [akashic-records, docs, omnoid-singularity,
+    conversation-corpus, showcase, memory-tools, neural-public-pages]
+  test.delta := requested.UI.contract.updates.only ; privacy+admission+source+
+    media.hash+brokered.profile+auth.callback.assertions.preserved
+  ∀ reviewed.source⇒¬rendered.QA.claim
+  pending := root.local/live.visual.acceptance + integration.build + scoped.Git.gates
+∎
+
+§C SHARED.INTEGRATION.REVIEW @ 2026-09-05
+  scope := Home+SiteShell+CommandPalette+SiteDirectory+site-directory+
+    public-surface-graph+global.CSS+Next.redirects+updated.UI.tests
+  method := source.read + helper.execution ; no.shared.browser
+  ✓ discoverability := primary+mobile+footer.Codex.visible ; direct.home.opening.link
+  ✓ search.probe := Codex|Good.Book|Lilith→Codex.both.helpers
+  ✗ R1 := story|novel→0both.helpers ; stories→palette[home,omnoid]¬Codex
+    evidence := current.Node.tsx.helper.execution ; source=lib/public-surface-graph.ts:149+975
+    contradiction := empty.hints.recommend.story @ CommandPalette.tsx:139+SiteDirectory.tsx:20
+    fix := source-owned.Codex.search.terms[story,stories,novel,novels] ; shared.lookup.semantics
+  △ R2 := pages/tools.tsx:14 lacks.canonical+viewport.metadata
+    fix := www.tools.canonical + mobile.viewport ; new.sitemap.route.same.contract
+  ✓ source.boundaries := ordinary.AccountChat.retained ; owner.Brain.separate ; no.auth.bypass
+  ✓ navigation := keyboard.focus.loop+Escape+return.focus ; body.scroll.restore ; named.skip.link
+  ✓ redirects := Commons.aliases→equivalent.native.pages ; Oracle→external.Chaos ; auth.callback.unchanged
+  ○ root.visual.followup := compact.Conversations.second.pass.ready
+    delta := 17word.intro+inline.links+search.first+theme.clear.row+excerpt.before.chips
+    ✓ conversation.preservation.test.pass ; ⊘ 700px.position.await.root.render
+  no.additional.release.blocker.observed.in.read.scope
+∎

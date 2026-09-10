@@ -1,8 +1,9 @@
-// cssl-edge · tests/pages/buy.test.ts
-// Smoke: /buy page module + product-catalog shape.
-
-import Buy from '@/pages/buy';
-import { PRODUCT_CATALOG } from '@/lib/stripe';
+import Buy, {
+  CHAOS_TAROT_BUY_BUTTON_ID,
+  CHAOS_TAROT_PRICE_LABEL,
+  CHAOS_TAROT_REFUND_DAYS,
+  SUPPORT_LINKS,
+} from '@/pages/buy';
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`assert failed : ${msg}`);
@@ -12,43 +13,27 @@ export function testBuyDefaultExport(): void {
   assert(typeof Buy === 'function', 'buy default export must be a component');
 }
 
-export function testProductCatalogShape(): void {
-  assert(PRODUCT_CATALOG.length >= 4, `expected ≥4 products, got ${PRODUCT_CATALOG.length}`);
-  const ids = new Set<string>();
-  for (const p of PRODUCT_CATALOG) {
-    assert(!ids.has(p.id), `duplicate product_id : ${p.id}`);
-    ids.add(p.id);
-    assert(
-      ['alpha-free', 'cosmetic', 'subscription', 'continuation'].includes(p.tier),
-      `tier value : ${p.tier}`,
-    );
-    assert(p.price_cents >= 0, `price non-negative : ${p.id}`);
-    assert(p.currency === 'usd', `currency usd : ${p.id}`);
-    assert(typeof p.stripe_price_env === 'string' && p.stripe_price_env.startsWith('STRIPE_PRICE_'), 'env-var prefix');
+export function testSupportLinks(): void {
+  assert(SUPPORT_LINKS.length === 2, 'Ko-fi and Patreon are the two support destinations');
+  const names = new Set(SUPPORT_LINKS.map((link) => link.name));
+  assert(names.has('Ko-fi'), 'Ko-fi link is present');
+  assert(names.has('Patreon'), 'Patreon link is present');
+  assert(SUPPORT_LINKS.find((link) => link.name === 'Ko-fi')?.href === 'https://ko-fi.com/oneinfinity', 'Ko-fi destination remains exact');
+  assert(SUPPORT_LINKS.find((link) => link.name === 'Patreon')?.href === 'https://www.patreon.com/0ne1nfinity', 'Patreon destination remains exact');
+  for (const link of SUPPORT_LINKS) {
+    assert(link.href.startsWith('https://'), `${link.name} uses HTTPS`);
+    assert(link.description.length > 0, `${link.name} has a plain-language description`);
+    assert(link.label.startsWith('Support on '), `${link.name} has a clear action label`);
   }
 }
 
-export function testLegacyProductsAbsent(): void {
-  const ids = new Set(PRODUCT_CATALOG.map((product) => product.id));
-  const retiredIds = [
-    'harness-starter',
-    'harness-pro',
-    'harness-studio',
-    'harness-lifetime',
-    'apocky-early-access',
-    'apocky-studio',
-    'apocky-lifetime',
-  ];
-  for (const id of retiredIds) {
-    assert(!ids.has(id), `retired product must remain absent : ${id}`);
-  }
-}
-
-export function testCosmeticChannelOnly(): void {
-  // Honor cosmetic-channel-only-axiom : NO product can be tagged 'pay-for-power'.
-  for (const p of PRODUCT_CATALOG) {
-    assert(p.tier !== ('pay-for-power' as unknown), `forbidden tier on ${p.id}`);
-  }
+export function testLiveChaosCheckoutContract(): void {
+  assert(
+    CHAOS_TAROT_BUY_BUTTON_ID === 'buy_btn_1UD2TD2M59SA2Ef7B02nUiO9',
+    'live Chaos Tarot Stripe buy-button ID remains exact',
+  );
+  assert(CHAOS_TAROT_PRICE_LABEL === '$3.33 per month', 'monthly price remains $3.33');
+  assert(CHAOS_TAROT_REFUND_DAYS === 14, 'refund period remains 14 days');
 }
 
 declare const require: { main?: unknown } | undefined;
@@ -60,11 +45,10 @@ const isMain =
 if (isMain) {
   try {
     testBuyDefaultExport();
-    testProductCatalogShape();
-    testCosmeticChannelOnly();
-    testLegacyProductsAbsent();
+    testSupportLinks();
+    testLiveChaosCheckoutContract();
     // eslint-disable-next-line no-console
-    console.log('buy.test : OK · 4 tests passed');
+    console.log('buy.test : OK · 3 tests passed');
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(err);

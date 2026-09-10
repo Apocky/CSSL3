@@ -1,0 +1,79 @@
+{
+  "schema": "apocky.apocrypha-public-plan.v1",
+  "version": "1.0.0",
+  "release_state": "RELEASED",
+  "generated_at": "2026-09-05T18:52:00.650Z",
+  "project": "Apocrypha",
+  "track": "local-living",
+  "summary": "Apocrypha 1.0 is the browser-delivered web/PWA release for responsive desktop, iOS, and Android surfaces. The exact candidate passed local automated desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks covering owner access, manifest identity, service-worker scope, offline encrypted continuity, no private API caching, accessibility, safe areas, and overflow. No downloadable native binary is part of this release, and this record does not claim App Store or Play Store packaging, physical-device verification, phone-to-desktop live acceptance, or production deployment.",
+  "objective": "Keep Apocrypha useful, local, private, evidence-linked, and quietly alive between prompts while every external effect remains governed.",
+  "principles": [
+    "Local operation remains useful when network access is removed.",
+    "Memory, claims, and actions retain source and authority boundaries.",
+    "Unavailable capabilities remain visibly degraded instead of simulated.",
+    "Public distribution waits for integrity, signature, install, rollback, and privacy proof."
+  ],
+  "milestones": [
+    {
+      "id": "web-pwa",
+      "label": "1.0 cross-platform web/PWA",
+      "state": "RELEASED_PWA_AUTOMATED_MATRIX_PASSED",
+      "summary": "Version 1.0.0 is an installable browser-delivered PWA release. The local automated matrix passed desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks for access, manifest identity, service-worker scope, offline encrypted continuity, private-cache exclusion, accessibility, safe areas, and overflow. No App Store, Play Store, desktop-native, or downloadable package is claimed; production deployment and physical-device verification remain separate operational acceptance gates."
+    },
+    {
+      "id": "brain",
+      "label": "Personal Brain",
+      "state": "MNEME_SCHEMA_LIVE_BOOTSTRAP_IMPLEMENTED_ACCEPTANCE_OPEN",
+      "summary": "The simplified public shell, owner gate, and row-secured Mneme schema are live. Candidate 6 adds an explicit, authenticated, idempotent first-owner bootstrap instead of creating a profile silently; live owner creation and readback remain acceptance gates."
+    },
+    {
+      "id": "mobile-lobe",
+      "label": "Mobile mini Brain and desktop sync",
+      "state": "AUTOMATED_DESKTOP_ANDROID_IOS_WEBKIT_MATRIX_PASSED",
+      "summary": "The 1.0 PWA release includes an AES-GCM device-local vault, deterministic no-model recall and refusal, an installable offline shell, signed cursor and outbox synchronization, replay and conflict controls, and a restricted desktop relay. Desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks passed in local automation; no physical-phone or end-to-end phone-to-desktop verification is claimed."
+    },
+    {
+      "id": "conversation-corpus",
+      "label": "Conversation constellations",
+      "state": "REVIEW_HELD_PROTOTYPE_LIVE",
+      "summary": "A privacy-safe aggregate exposes corpus scale and curated constellations without publishing raw conversation bodies; every held record remains unavailable until individual review and approval."
+    },
+    {
+      "id": "humanity",
+      "label": "Humanity source admission",
+      "state": "COMPONENT_CHECKS_PASSED",
+      "summary": "A digest-bound admission gate separates reputation, factual trust, and human value while quarantining testimony and rejecting prohibited material."
+    },
+    {
+      "id": "interoception",
+      "label": "Causal interoception and recovery",
+      "state": "FOCUSED_CHECKS_PASSED",
+      "summary": "Redacted causal traces, stable errors, stage latency fields, differential backups, and restore verification are implemented in the compatibility runtime."
+    },
+    {
+      "id": "native-core",
+      "label": "CSL, NIL, and CSSL native core",
+      "state": "RUST_SHADOW_REPAIR_AND_PARITY_ACTIVE",
+      "summary": "CSLv3 defines the contract, NIL defines the ordered timing graph, and CSSLv3 is the compiled target. The hardened native context frame is 1,780 tokenizer tokens, but the first canary exposed missing child-exit evidence; semantic parity, executable CSSLv3 policy, latency, and stable canary gates remain open."
+    },
+    {
+      "id": "proprietary-language-stack",
+      "label": "Own executable language stack",
+      "state": "THREE_EXECUTION_PROOFS_ACTIVE",
+      "summary": "An authored artifact must change bounded behavior through a verified compiler or runtime to count. The first proofs are context selection, Graphify traversal, and mobile reconciliation under one inspectable NIL trace, with plain-language CSLv3 expansion and rollback."
+    },
+    {
+      "id": "trinity-organs",
+      "label": "Trinity-native cognitive organs",
+      "state": "GRAPHIFY_NATIVE_QUERY_POLICY_MEASURED",
+      "summary": "Graphify is the first differential replacement. A read-only Rust query and path slice preserved exact fixed-query results, retained the Python oracle's morphology results, reduced cold-start cost, and proved that a sealed CSSLv3 policy changes bounded traversal while emitting a non-authoritative NIL trace. Product integration and a self-hosted CSSLv3 compiler remain open."
+    },
+    {
+      "id": "distribution",
+      "label": "Signed local distribution",
+      "state": "MIGRATION_CANDIDATE_HELD",
+      "summary": "A reversible Windows migration package exists and passed focused checks, but remains withheld pending native cryptographic signing, SBOM, and clean-machine lifecycle proof."
+    }
+  ],
+  "release_boundary": "This plan is the public-safe 1.0 web/PWA release record. It is not a deployment receipt, production acceptance result, native-app claim, or physical-device verification."
+}

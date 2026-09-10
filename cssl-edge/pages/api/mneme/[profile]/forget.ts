@@ -10,14 +10,19 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
 import { getMnemeClient, forgetMemory } from '@/lib/mneme/store';
 import type { ForgetResponse } from '@/lib/mneme/types';
+import {
+    requireStoredMnemeProfile,
+    respondMnemeMemberFailure,
+} from '@/lib/mneme/member-profile';
+import { MNEME_CAPABILITIES, requireMnemeRouteAccess } from '@/lib/mneme/route-access';
 
 interface ErrorResponse {
     error:     string;
+    code?:     string;
     served_by: string;
     ts:        string;
 }
 
-const PROFILE_RE = /^[a-z0-9-]{1,64}$/;
 const UUID_RE    = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isObject(b: unknown): b is Record<string, unknown> {
@@ -40,15 +45,9 @@ export default async function handler(
         return;
     }
 
-    const profile_id = String(req.query['profile'] ?? '');
-    if (!PROFILE_RE.test(profile_id)) {
-        const env = envelope();
-        res.status(422).json({
-            error: 'Invalid profile_id',
-            served_by: env.served_by, ts: env.ts,
-        });
-        return;
-    }
+    const binding = await requireMnemeRouteAccess(req, res, MNEME_CAPABILITIES.forget);
+    if (!binding) return;
+    const profile_id = binding.profileId;
 
     const body: unknown = req.body;
     if (!isObject(body)) {
@@ -79,16 +78,15 @@ export default async function handler(
     }
 
     const sb = getMnemeClient();
+    const storageFailure = await requireStoredMnemeProfile(sb, profile_id);
+    if (storageFailure) {
+        respondMnemeMemberFailure(res, storageFailure);
+        return;
+    }
+    const client = sb!;
     try {
         const env = envelope();
-        if (!sb) {
-            res.status(200).json({
-                ok: true, revoked: false, cascade: 0,
-                served_by: env.served_by, ts: env.ts,
-            });
-            return;
-        }
-        const r = await forgetMemory(sb, profile_id, memory_id, reason);
+        const r = await forgetMemory(client, profile_id, memory_id, reason);
         res.status(200).json({
             ok: true,
             revoked: r.revoked,
@@ -97,9 +95,8 @@ export default async function handler(
         });
     } catch (e) {
         const env = envelope();
-        const msg = e instanceof Error ? e.message : String(e);
         // eslint-disable-next-line no-console
-        console.error(JSON.stringify({ evt: 'mneme.forget.fail', err: msg }));
-        res.status(502).json({ error: msg, served_by: env.served_by, ts: env.ts });
+        console.error(JSON.stringify({ evt: 'mneme.forget.fail', code: e instanceof Error ? e.name : 'UNKNOWN' }));
+        res.status(502).json({ error: 'Private forgetting could not complete. Retry before assuming the memory is inactive.', code: 'MNEME_FORGET_FAILED', served_by: env.served_by, ts: env.ts });
     }
 }

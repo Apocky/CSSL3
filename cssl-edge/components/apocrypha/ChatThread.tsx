@@ -1,15 +1,10 @@
-// Modern Apocrypha chat — sidebar + bubble thread + streaming via SSE.
-//
-// Wires /api/admin/apocrypha/chat_stream to the native V2 turn route. The
-// proxy preserves the existing SSE event contract while the V2 body returns
-// its governed response envelope.
+// Modern Apocrypha chat — durable job submission, recovery, and partial output.
 //
 // Per HANDOFF_v10 § TRACK-A polish-pass (replaces the cockpit-monospace draft).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authFetch } from '../../lib/browser-auth';
-import { DeadlineExceededError, withDeadline } from '../../lib/apocrypha/deadline';
 import { ApocryphaAvatar } from './ApocryphaAvatar';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -59,44 +54,45 @@ interface ApocryphaEnvelope<T> {
   data: T;
 }
 
-// ─── Streaming SSE helpers ─────────────────────────────────────────
-
-interface SseEvent {
-  type: string;
-  data: Record<string, unknown>;
+interface JobSnapshotResponse {
+  ok: boolean;
+  job?: {
+    id: string;
+    status: 'queued' | 'leased' | 'running' | 'cancel_requested' | 'succeeded' | 'failed' | 'cancelled';
+    error_code?: string | null;
+    error_detail?: string | null;
+  };
+  chunks?: Array<{ seq: number; delta: string }>;
+  revisions?: Array<{
+    content: string;
+    provenance?: { tool_calls?: ToolCallChip[] };
+    usage?: { elapsed_s?: number; total_cost_usd?: number };
+  }>;
 }
 
-const CHAT_BROWSER_DEADLINE_MS = 115_000;
-const CHAT_BACKEND_TIMEOUT_S = 100;
+interface ActiveJobRecord {
+  id: string;
+  prompt: string;
+  submittedAt: string;
+}
+
+const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
+const JOB_POLL_MS = 1_500;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
 const CONVERSATION_MENU_WIDTH = 176;
 const CONVERSATION_MENU_MAX_HEIGHT = 160;
 const VIEWPORT_GUTTER = 8;
 const MUTED_TEXT = '#85859a';
 
-function parseSseBuffer(buffer: string): { events: SseEvent[]; remainder: string } {
-  const events: SseEvent[] = [];
-  let remainder = buffer;
-  while (true) {
-    const idx = remainder.indexOf('\n\n');
-    if (idx === -1) break;
-    const block = remainder.slice(0, idx);
-    remainder = remainder.slice(idx + 2);
-    let eventType = 'message';
-    const dataLines: string[] = [];
-    for (const line of block.split('\n')) {
-      if (line.startsWith('event:')) eventType = line.slice(6).trim();
-      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
-    }
-    if (dataLines.length === 0) continue;
-    try {
-      const data = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
-      events.push({ type: eventType, data });
-    } catch {
-      // skip malformed event
-    }
-  }
-  return { events, remainder };
+function waitForPoll(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = window.setTimeout(resolve, JOB_POLL_MS);
+    signal.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
 }
 
 // ─── Component ─────────────────────────────────────────────────────
@@ -108,6 +104,9 @@ export function ChatThread() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
+  const [streamingPhase, setStreamingPhase] = useState('Preparing your place in the queue…');
+  const [activeJob, setActiveJob] = useState<ActiveJobRecord | null>(null);
   const [streamingTools, setStreamingTools] = useState<ToolCallChip[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -121,6 +120,21 @@ export function ChatThread() {
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const newChatButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(ACTIVE_JOB_KEY);
+      if (!raw) return;
+      const recovered = JSON.parse(raw) as ActiveJobRecord;
+      if (!recovered?.id || !recovered?.prompt) return;
+      setActiveJob(recovered);
+      setMessages([{ role: 'user', text: recovered.prompt, ts: new Date(recovered.submittedAt) }]);
+      setStreaming(true);
+      setStreamingPhase('Reconnected. Apocrypha is continuing this answer…');
+    } catch {
+      window.localStorage.removeItem(ACTIVE_JOB_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia(COMPACT_CHAT_QUERY);
@@ -343,7 +357,86 @@ export function ChatThread() {
     }
   }, [convs, currentConv, loadConvs, menu, newChat, restoreMenuFocus, scope]);
 
-  // ── send + stream-consume ─────────────────────────────────────
+  useEffect(() => {
+    if (!activeJob) return;
+    const controller = new AbortController();
+    let disposed = false;
+    void (async () => {
+      while (!controller.signal.aborted) {
+        try {
+          const response = await authFetch(`/api/admin/apocrypha/jobs/${encodeURIComponent(activeJob.id)}`, {
+            cache: 'no-store',
+            credentials: 'include',
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(response.status === 404
+            ? 'The accepted job could not be found.'
+            : `Status service returned ${response.status}.`);
+          const snapshot = await response.json() as JobSnapshotResponse;
+          if (!snapshot.job) throw new Error('The job status response was incomplete.');
+          const partial = [...(snapshot.chunks ?? [])]
+            .sort((left, right) => left.seq - right.seq)
+            .map((chunk) => chunk.delta)
+            .join('');
+          const revision = snapshot.revisions?.[0];
+          const visibleText = revision?.content || partial;
+          if (!disposed) {
+            setError(null);
+            setStreamingText(visibleText);
+            setStreamingPhase(snapshot.job.status === 'queued'
+              ? 'Accepted. Waiting for the local Qwen node…'
+              : snapshot.job.status === 'leased'
+                ? 'The Qwen node has claimed this thought…'
+                : snapshot.job.status === 'cancel_requested'
+                  ? 'Stopping after the current safe boundary…'
+                  : 'Apocrypha is composing the answer…');
+          }
+          if (snapshot.job.status === 'succeeded') {
+            if (!disposed) {
+              setMessages((previous) => [...previous, {
+                role: 'apocrypha',
+                text: visibleText || 'Apocrypha completed the thought without words.',
+                ts: new Date(),
+                toolCalls: revision?.provenance?.tool_calls ?? [],
+                elapsed_s: revision?.usage?.elapsed_s,
+                cost_usd: revision?.usage?.total_cost_usd,
+              }]);
+              setStreamingText('');
+              setStreamingTools([]);
+              setStreaming(false);
+              setActiveJob(null);
+              window.localStorage.removeItem(ACTIVE_JOB_KEY);
+              void loadConvs();
+            }
+            return;
+          }
+          if (snapshot.job.status === 'failed' || snapshot.job.status === 'cancelled') {
+            if (!disposed) {
+              setError(snapshot.job.status === 'cancelled'
+                ? 'This answer was cancelled.'
+                : 'The model attempt failed and was preserved. Retry sends a fresh attempt without losing this request.');
+              setStreaming(false);
+              setStreamingText(partial);
+              setActiveJob(null);
+              window.localStorage.removeItem(ACTIVE_JOB_KEY);
+            }
+            return;
+          }
+        } catch (pollError) {
+          if (controller.signal.aborted) return;
+          if (!disposed) {
+            setStreamingPhase('Connection interrupted. The job is safe; reconnecting…');
+            setError(pollError instanceof Error ? pollError.message : 'Connection interrupted.');
+          }
+        }
+        await waitForPoll(controller.signal);
+      }
+    })();
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
+  }, [activeJob, loadConvs]);
 
   const handleSend = useCallback(async () => {
     const text = draft.trim();
@@ -351,124 +444,48 @@ export function ChatThread() {
     setDraft('');
     setError(null);
     setStreamingTools([]);
-    setMessages((prev) => [...prev, { role: 'user', text, ts: new Date() }]);
+    setStreamingText('');
+    setMessages((previous) => [...previous, { role: 'user', text, ts: new Date() }]);
     setStreaming(true);
-
-    const controller = new AbortController();
+    setStreamingPhase('Saving your message…');
     try {
-      await withDeadline((async () => {
-        const r = await authFetch('/api/admin/apocrypha/chat_stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-          credentials: 'include',
-          signal: controller.signal,
-          body: JSON.stringify({
-            text,
-            conversation_id: currentConv,
-            max_tokens: 128,
-            timeout_s: CHAT_BACKEND_TIMEOUT_S,
-          }),
-        });
-        if (!r.ok || !r.body) {
-          const errText = await r.text().catch(() => '');
-          throw new Error(`HTTP ${r.status} ${errText.slice(0, 200)}`);
-        }
-        const reader = r.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let gotFinal = false;
-        let streamError: string | null = null;
-        let facultyFailed = false;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const { events, remainder } = parseSseBuffer(buffer);
-          buffer = remainder;
-          for (const ev of events) {
-            if (ev.type === 'conversation') {
-              const id = ev.data['conversation_id'];
-              if (typeof id === 'number') setCurrentConv(id);
-            } else if (ev.type === 'tool_event') {
-              setStreamingTools((prev) => [
-                ...prev,
-                {
-                  name: String(ev.data['tool_name'] ?? '?'),
-                  ok: ev.data['ok'] !== false,
-                  elapsed_ms: typeof ev.data['elapsed_ms'] === 'number' ? ev.data['elapsed_ms'] : undefined,
-                  error: typeof ev.data['error'] === 'string' ? ev.data['error'] : null,
-                },
-              ]);
-            } else if (ev.type === 'final') {
-              gotFinal = true;
-              const halt = typeof ev.data['halted_reason'] === 'string' ? ev.data['halted_reason'] : undefined;
-              const responseText = String(ev.data['final_response'] ?? '');
-              facultyFailed = halt === 'unified_faculty_error';
-              if (facultyFailed) continue;
-              const finalMsg: ChatMessage = {
-                role: 'apocrypha',
-                text: responseText || (halt === 'unified_faculty_error'
-                  ? 'Apocrypha lost the thread before the thought was complete. Try again.'
-                  : 'Apocrypha completed the thought without words.'),
-                ts: new Date(),
-                toolCalls: Array.isArray(ev.data['tool_calls'])
-                  ? (ev.data['tool_calls'] as ToolCallChip[])
-                  : [],
-                halt,
-                elapsed_s: typeof ev.data['elapsed_s'] === 'number' ? ev.data['elapsed_s'] : undefined,
-                cost_usd: typeof ev.data['total_cost_usd'] === 'number' ? ev.data['total_cost_usd'] : undefined,
-              };
-              setMessages((prev) => [...prev, finalMsg]);
-              setStreamingTools([]);
-            } else if (ev.type === 'error') {
-              streamError = String(ev.data['error'] ?? 'stream error');
-              setError(streamError);
-            }
-          }
-        }
-        // A cold or transient worker can emit a typed faculty error after the SSE
-        // connection is healthy. Retry once through the non-streaming path so the
-        // public chat does not strand the user on a synthetic empty answer.
-        if (facultyFailed && !streamError) {
-          const retry = await authFetch('/api/admin/apocrypha/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              text,
-              conversation_id: currentConv,
-              max_tokens: 128,
-              timeout_s: CHAT_BACKEND_TIMEOUT_S,
-            }),
-          });
-          if (retry.ok) {
-            const payload = await retry.json() as { data?: Record<string, unknown> };
-            const data = payload.data ?? {};
-            const responseText = String(data.final_response ?? '');
-            if (responseText) {
-              setMessages((prev) => [...prev, {
-                role: 'apocrypha', text: responseText, ts: new Date(),
-                halt: typeof data.halted_reason === 'string' ? data.halted_reason : undefined,
-                elapsed_s: typeof data.elapsed_s === 'number' ? data.elapsed_s : undefined,
-              }]);
-              facultyFailed = false;
-            }
-          }
-          if (facultyFailed) setError('Apocrypha is still waking its language faculty. Try again shortly.');
-        }
-        if (!gotFinal && !streamError) {
-          setError('Apocrypha lost the thread before the thought was complete. Try again.');
-        }
-        void loadConvs();
-      })(), CHAT_BROWSER_DEADLINE_MS, () => controller.abort());
-    } catch (err) {
-      setError(err instanceof DeadlineExceededError
-        ? 'Apocrypha took too long to answer. Try again.'
-        : err instanceof Error ? err.message : String(err));
-    } finally {
+      const idempotencyKey = window.crypto.randomUUID();
+      const response = await authFetch('/api/admin/apocrypha/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          prompt: text,
+          conversation_id: currentConv == null ? null : String(currentConv),
+          output_budget: 2048,
+          response_mode: text.length > 1200 ? 'deep' : 'standard',
+          idempotency_key: idempotencyKey,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { job?: { id?: string }; error?: string } | null;
+      if (!response.ok || !payload?.job?.id) throw new Error(payload?.error ?? `Request was not accepted (${response.status}).`);
+      const record: ActiveJobRecord = { id: payload.job.id, prompt: text, submittedAt: new Date().toISOString() };
+      window.localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(record));
+      setActiveJob(record);
+      setStreamingPhase('Accepted. Waiting for the local Qwen node…');
+    } catch (sendError) {
       setStreaming(false);
+      setError(sendError instanceof Error ? sendError.message : String(sendError));
     }
-  }, [draft, streaming, currentConv, loadConvs]);
+  }, [currentConv, draft, streaming]);
+
+  const cancelActiveJob = useCallback(async () => {
+    if (!activeJob) return;
+    try {
+      await authFetch(`/api/admin/apocrypha/jobs/${encodeURIComponent(activeJob.id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      setStreamingPhase('Cancellation requested…');
+    } catch {
+      setError('Cancellation could not be delivered. The job remains recoverable.');
+    }
+  }, [activeJob]);
 
   const handleKey = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -762,6 +779,9 @@ export function ChatThread() {
               {messages.map((m, i) => (
                 <MessageBubble key={i} msg={m} showTrace={showTrace} />
               ))}
+              {streamingText && (
+                <MessageBubble msg={{ role: 'apocrypha', text: streamingText, ts: new Date() }} showTrace={showTrace} />
+              )}
             </div>
 
             {streaming && (
@@ -797,7 +817,15 @@ export function ChatThread() {
                   gap: '0.4rem',
                 }}>
                   <PulsingDot />
-                  <span>Apocrypha is thinking…</span>
+                  <span>{streamingPhase}</span>
+                  {activeJob && (
+                    <button type="button" onClick={() => void cancelActiveJob()} style={{
+                      marginLeft: '0.5rem', border: '1px solid #4a4058', borderRadius: 999,
+                      padding: '0.3rem 0.55rem', color: '#c5bfd0', background: 'transparent', cursor: 'pointer',
+                    }}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </div>
             )}

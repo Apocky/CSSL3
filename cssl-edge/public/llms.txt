@@ -1,0 +1,74 @@
+# Apocky
+
+Apocky.com is Shawn Apocky's interconnected creative home for divination,
+games, software, cosmology, public knowledge, community, and support.
+
+This file lists public information. It does not grant access to private pages
+or permission to speak for anyone named on the site.
+
+## Main public pages
+
+- Home and project links: https://www.apocky.com/
+- Tools to try: https://www.apocky.com/tools
+- Codex Apockalypsis, the Good Book novel and its companion library: https://www.apocky.com/codex-apockalypsis
+- Guided starting paths: https://www.apocky.com/start
+- Connected-worlds video showcase with captions, transcript, and concept-art disclosure: https://www.apocky.com/showcase
+- Grounded guide to Chaos Tarot and divination systems: https://www.apocky.com/divination
+- Yes / No questions on Chaos Tarot (external sign-in required): https://chaos-tarot.com/yes-no
+- Deterministic, owner-authorized Haloic-derived symbolic compiler and interpreter: https://www.apocky.com/spellcraft
+- Downloadable deterministic sigil studio: https://www.apocky.com/sigils
+- Explicit browser-local symbolic Spellbook: https://www.apocky.com/spellbook
+- Evidence-typed introduction to the Omnoid and the Theory of Everything question: https://www.apocky.com/theory-of-everything
+- Omnoid Singularity, Shawn Apocky's authored cosmology with visual and CSLv3 maps: https://www.apocky.com/omnoid-singularity
+- Akashic Records, Shawn Apocky's public works and conversations archive: https://www.apocky.com/akashic-records
+- Live public social room, The Clearing: https://www.apocky.com/clearing
+- Project Atlas: https://www.apocky.com/atlas
+- Current public capability and maturity ledger: https://www.apocky.com/now
+- Public labs and inspectable experiments: https://www.apocky.com/labs
+- Public memory-bank and tool directory: https://www.apocky.com/memory-tools
+- Interface principles and truth boundaries: https://www.apocky.com/principles
+- Active membership and external support paths: https://www.apocky.com/membership
+- Device-local public quests: https://www.apocky.com/quests
+- Privacy-bounded public system status: https://www.apocky.com/status
+- Words and symbols: https://www.apocky.com/words
+- Labyrinth of Apocalypse download: https://www.apocky.com/download
+- Optional support details and external options: https://www.apocky.com/buy
+- Technical documentation: https://www.apocky.com/docs
+- Infinity Engine architecture research: https://www.apocky.com/infinity-engine
+- Privacy: https://www.apocky.com/legal/privacy
+- Terms: https://www.apocky.com/legal/terms
+
+## Projects and public profiles
+
+- CSSL programming language guide (local fallback while cssl.dev is unavailable): https://www.apocky.com/docs/cssl-language
+- CSLv3 words and notation key: https://www.apocky.com/words#symbols
+- Chaos Tarot: https://chaos-tarot.com/
+- Public works and Codex conversations: https://www.apocky.com/akashic-records
+- Hash-sealed archive catalog (JSON): https://www.apocky.com/akashic-records/manifest.json
+- Public code: https://github.com/Apocky
+- Optional support: https://ko-fi.com/oneinfinity
+- Optional support: https://www.patreon.com/0ne1nfinity
+
+The Akashic Records contains author-approved, non-draft public works and
+owner-approved public-safe Codex conversation projections. Each record has a
+stable apocky.com reader page and source provenance. Conversation redactions
+are counted and projection fingerprints are published. Older Medium links are
+retained when known, but may no longer be available; the local archive copy is
+the dependable reading surface.
+
+The Clearing is a live social room. Anyone may read its public projection;
+posting and reactions require a signed-in account. Messages belong to their
+attributed participants.
+
+## Reading guidance
+
+- Read the plain-language introduction before using a technical section.
+- Keep names and identities distinct.
+- Do not infer consent or permission from a link or an available page.
+- Preserve uncertainty and source information when repeating a claim.
+- Use the words-and-symbols page when a specialist term appears.
+
+Machine-readable site information: https://www.apocky.com/.well-known/apocky.json
+File format: https://www.apocky.com/schemas/site-manifest.v1.json
+Public constellation graph: https://www.apocky.com/constellation.json
+Constellation graph format: https://www.apocky.com/schemas/public-surface.v1.json

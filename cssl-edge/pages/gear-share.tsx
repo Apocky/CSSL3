@@ -10,7 +10,6 @@
 import type { GetServerSideProps, NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
-import { MARKETPLACE_CAP_LIST } from '@/lib/cap';
 
 interface GearShareReceipt {
   receipt_id: string;
@@ -31,8 +30,6 @@ interface MarketplaceShareProps {
   filter: { rarity: string; slot: string };
   fetch_failed: boolean;
 }
-
-const PAGE_SIZE = 20;
 
 function rarityBadgeColor(rarity: string): { bg: string; fg: string } {
   switch (rarity.toLowerCase()) {
@@ -57,10 +54,10 @@ const MarketplaceShare: NextPage<MarketplaceShareProps> = ({
   return (
     <>
       <Head>
-        <title>Gear-Share Marketplace · cssl-edge</title>
+        <title>Shared game seeds · Apocky</title>
         <meta
           name="description"
-          content="LoA-v13 gear-share marketplace · gift-economy · no leaderboards · echo-back bonus only"
+          content="An experimental Labyrinth of Apocalypse page for game seeds people deliberately share."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
@@ -81,13 +78,12 @@ const MarketplaceShare: NextPage<MarketplaceShareProps> = ({
             ← back
           </Link>
           <h1 style={{ fontSize: '1.75rem', marginTop: '0.5rem', marginBottom: '0.25rem' }}>
-            Gear-Share Marketplace
+            Shared game seeds
           </h1>
           <p style={{ color: '#9aa0a6', marginTop: 0 }}>
-            {total} share-receipt{total === 1 ? '' : 's'}
-            {filter.rarity ? ` · rarity=${filter.rarity}` : ''}
-            {filter.slot ? ` · slot=${filter.slot}` : ''}
-            {fetch_failed ? ' · upstream fetch failed' : ''}
+            {total} shared record{total === 1 ? '' : 's'}
+            {filter.rarity ? ` · rarity: ${filter.rarity}` : ''}
+            {filter.slot ? ` · item slot: ${filter.slot}` : ''}
           </p>
         </header>
 
@@ -102,34 +98,18 @@ const MarketplaceShare: NextPage<MarketplaceShareProps> = ({
             fontSize: '0.9rem',
           }}
         >
-          <strong style={{ color: '#fbbf24' }}>Gift-economy disclaimer.</strong>{' '}
-          These are <em>share-receipts</em>, not commerce listings. The poster
-          shares a seed; you re-roll your own gear from it. The poster receives
-          an echo-back bonus when you complete a run with their seed. There are
-          no leaderboards · no PvP scoring · no rank · no commerce. You may
-          revoke any share-receipt you posted at any time using the sovereign-revoke
-          widget below.
+          <strong style={{ color: '#fbbf24' }}>Experimental sharing, not a shop.</strong>{' '}
+          A <strong>seed</strong> is a value the game can use to reproduce a generated starting point. A shared
+          record lets another player try a seed; it does not transfer an item or charge money. Design notes
+          call a possible thank-you reward an “echo-back bonus.” That name means an in-game acknowledgment, not
+          a payment or public ranking.
         </section>
 
-        <section
-          style={{
-            marginBottom: '2rem',
-            padding: '0.75rem 1rem',
-            border: '1px dashed #1f1f29',
-            background: '#0f0f15',
-            borderRadius: 6,
-            color: '#9aa0a6',
-            fontSize: '0.85rem',
-          }}
-        >
-          <strong style={{ color: '#7dd3fc' }}>Sovereign-revoke widget</strong>
-          {' · '}
-          Posted a receipt and changed your mind? Submit{' '}
-          <code style={{ color: '#fbbf24' }}>DELETE /api/marketplace/post</code> with
-          your <code>receipt_id</code> + sovereign-cap header. Your friend keeps
-          any echo-back bonus they already earned; new replays simply stop
-          counting toward your bonus.
-        </section>
+        {fetch_failed ? (
+          <p role="status" style={{ color: '#fbbf24' }}>
+            The sharing service could not be reached, so no current listing is being claimed.
+          </p>
+        ) : null}
 
         {empty ? (
           <section
@@ -142,7 +122,7 @@ const MarketplaceShare: NextPage<MarketplaceShareProps> = ({
             }}
           >
             <p style={{ fontSize: '1rem', margin: 0 }}>
-              No share-receipts in this filter — try a different rarity or slot.
+              No shared seeds match this filter.
             </p>
           </section>
         ) : (
@@ -224,59 +204,11 @@ const MarketplaceShare: NextPage<MarketplaceShareProps> = ({
   );
 };
 
-function originFromReq(reqHeaders: Record<string, string | string[] | undefined>): string {
-  if (process.env['VERCEL_URL']) return `https://${process.env['VERCEL_URL']}`;
-  const host = reqHeaders['host'];
-  const h = Array.isArray(host) ? host[0] : host;
-  return h ? `http://${h}` : 'http://localhost:3000';
-}
-
-export const getServerSideProps: GetServerSideProps<MarketplaceShareProps> = async (
-  ctx
-) => {
-  const rarityRaw = ctx.query['rarity'];
-  const slotRaw = ctx.query['slot'];
-  const pageRaw = ctx.query['page'];
-  const rarity = (Array.isArray(rarityRaw) ? rarityRaw[0] : rarityRaw) ?? '';
-  const slot = (Array.isArray(slotRaw) ? slotRaw[0] : slotRaw) ?? '';
-  const pageStr = (Array.isArray(pageRaw) ? pageRaw[0] : pageRaw) ?? '1';
-  const page = Math.max(1, parseInt(pageStr, 10) || 1);
-
-  const origin = originFromReq(ctx.req.headers as Record<string, string | string[] | undefined>);
-  const params = new URLSearchParams();
-  params.set('cap', String(MARKETPLACE_CAP_LIST));
-  params.set('page', String(page));
-  params.set('page_size', String(PAGE_SIZE));
-  if (rarity.length > 0) params.set('rarity', rarity);
-  if (slot.length > 0) params.set('slot', slot);
-
-  let listings: GearShareReceipt[] = [];
-  let total = 0;
-  let fetch_failed = false;
-  try {
-    const r = await fetch(`${origin}/api/marketplace/list?${params.toString()}`);
-    if (r.ok) {
-      const j = (await r.json()) as { listings?: GearShareReceipt[]; total?: number };
-      listings = Array.isArray(j.listings) ? j.listings : [];
-      total = typeof j.total === 'number' ? j.total : listings.length;
-    } else {
-      fetch_failed = true;
-    }
-  } catch {
-    fetch_failed = true;
-  }
-
-  return {
-    props: {
-      listings,
-      total,
-      page,
-      page_size: PAGE_SIZE,
-      filter: { rarity, slot },
-      fetch_failed,
-    },
-  };
-};
+// No verified listing service is connected. Do not publish an empty gallery
+// or demonstration records as though this were an available feature.
+export const getServerSideProps: GetServerSideProps<MarketplaceShareProps> = async () => ({
+  notFound: true,
+});
 
 // ─── Inline test : page export is function · gift-economy framing visible ──
 export function _testPageExportsAndFraming(): boolean {

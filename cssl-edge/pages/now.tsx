@@ -1,0 +1,129 @@
+import type { NextPage } from 'next';
+import Head from 'next/head';
+import Link from 'next/link';
+
+import styles from '../styles/NeuralPages.module.css';
+
+const Now: NextPage = () => (
+  <>
+    <Head>
+      <title>What is alive now · Apocky</title>
+      <meta
+        name="description"
+        content="A candid map of what people can use on Apocky now, what remains experimental, and which connections still require verification."
+      />
+      <meta property="og:title" content="What is alive now · Apocky" />
+      <meta property="og:description" content="Available, experimental, and still unwired—without roadmap theater." />
+      <meta property="og:url" content="https://www.apocky.com/now" />
+      <link rel="canonical" href="https://www.apocky.com/now" />
+    </Head>
+
+    <main className={styles.page}>
+      <div className={styles.wrap}>
+        <p className={styles.eyebrow}>New &amp; worth exploring</p>
+        <h1 className={styles.title}>Something to read. <em>Something to try.</em></h1>
+        <p className={styles.lead}>
+          Read the newest story, make something of your own, or explore a question that has been on your mind.
+        </p>
+        <p className={styles.note}><time dateTime="2026-09-03">Last reviewed September 3, 2026.</time> Runtime status may change between reviews.</p>
+
+        <section className={styles.section} aria-labelledby="alive-title">
+          <div className={styles.sectionHead}>
+            <h2 id="alive-title">Alive now</h2>
+            <p>These paths deliver public value before requiring payment or participation.</p>
+          </div>
+          <div className={styles.grid3}>
+            <article className={`${styles.card} ${styles.tierFeatured}`}>
+              <span className={styles.tag}>New writing</span><h3>Codex Apockalypsis</h3>
+              <p>Dark fantasy, dark comedy, and the Good Book. Begin with creation, then explore the world and its sources.</p>
+              <Link className={styles.cardLink} href="/codex-apockalypsis">Begin reading →</Link>
+            </article>
+            <article className={`${styles.card} ${styles.tierFeatured}`}>
+              <span className={styles.tag}>Interactive</span>
+              <h3>Constellation Atlas</h3>
+              <p>Relationship map, kind × access matrix, index, dictionary, filters, shareable state, and explicit links across the public work.</p>
+              <Link className={styles.cardLink} href="/atlas">Explore the whole map →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Public memory</span>
+              <h3>Akashic Records</h3>
+              <p>Essays on meaning, myth, and ordinary life, alongside selected conversations.</p>
+              <Link className={styles.cardLink} href="/akashic-records">Read essays →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Independent live product</span>
+              <h3>Chaos Tarot</h3>
+              <p>Free readings, symbolic systems, study tools, journals, and a separate optional Oracle membership.</p>
+              <a className={styles.cardLink} href="https://chaos-tarot.com/free-reading?source=apocky-now" target="_blank" rel="noopener noreferrer">Begin free on Chaos Tarot ↗</a>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Public room</span>
+              <h3>The Clearing</h3>
+              <p>Read without an account. Sign in only if you decide to speak or react.</p>
+              <Link className={styles.cardLink} href="/clearing">Enter the room →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Playable alpha</span>
+              <h3>Labyrinth of Apocalypse</h3>
+              <p>Try the unfinished Windows game, with installation help and its current limitations.</p>
+              <Link className={styles.cardLink} href="/download">Get the game →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Help</span>
+              <h3>Service status</h3>
+              <p>See whether the site is responding and find a way back if something fails.</p>
+              <Link className={styles.cardLink} href="/status">Check availability →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Saved work</span>
+              <h3>Notes, memory &amp; tools</h3>
+              <p>Find saved symbolic work, browse public writing, and manage your own notes.</p>
+              <Link className={styles.cardLink} href="/memory-tools">Find your work →</Link>
+            </article>
+            <article className={styles.card}>
+              <span className={styles.tag}>Private symbolic tools</span>
+              <h3>Phrases, sigils &amp; saved work</h3>
+              <p>Compose a symbolic phrase, turn it into a sigil, and save it in this browser.</p>
+              <Link className={styles.cardLink} href="/spellcraft">Make something →</Link>
+            </article>
+          </div>
+        </section>
+
+        <section className={styles.section} aria-labelledby="becoming-title">
+          <div className={styles.sectionHead}>
+            <h2 id="becoming-title">Explore a little further.</h2>
+            <p>The lab collects usable experiments and design studies without relabeling a prototype as a finished service.</p>
+          </div>
+          <div className={styles.grid2}>
+            <article className={styles.card}>
+              <h3>Public experiments</h3>
+              <p>Device-local quests, live diagnostics, cross-system divination, symbolic compilation, visual cosmology, and architecture research.</p>
+              <Link className={styles.cardLink} href="/labs">Enter the labs →</Link>
+            </article>
+            <article className={styles.card}>
+              <h3>Documentation</h3>
+              <p>Plain-language guides lead; technical specifications remain available when their detail helps.</p>
+              <Link className={styles.cardLink} href="/docs">Read the documentation →</Link>
+            </article>
+          </div>
+        </section>
+
+        <p className={styles.truth}>
+          <strong>Still unwired.</strong>
+          <span>
+            Apocky and Chaos Tarot do not yet share one account or entitlement system. First-party Apocky paid
+            membership is not offered as live. A public route, configured flag, or plan is not proof that an
+            end-to-end account, payment, or provider journey succeeded.
+          </span>
+        </p>
+
+        <div className={styles.actions}>
+          <Link className={styles.primary} href="/start">Choose your path →</Link>
+          <Link className={styles.secondary} href="/membership">Fund what should become real →</Link>
+        </div>
+      </div>
+    </main>
+  </>
+);
+
+export default Now;

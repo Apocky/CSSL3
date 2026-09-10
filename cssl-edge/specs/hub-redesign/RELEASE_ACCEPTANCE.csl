@@ -1,0 +1,46 @@
+§ APOCKY.REDESIGN.RELEASE ✓ @2026-09-05T23:42Z
+§P
+  latest.user := every destination → full visible homepage panel;
+    N! More-of-Apocky disclosure | compact secondary tier.
+  published := https://www.apocky.com/ ∧ https://apocky.com/.
+§S
+  home :=34 registered destinations; same full-panel component;
+    Codex first + direct openingchapter; Apocrypha+Atlas+Chaos+remaining tools/ideas/writing/community/support visible.
+  navigation := Tools | Words | Thoughts | Codex; searchable shared registry.
+  design := coherent reading+tools+account entry+recovery families;
+    technical detail optional; usable controls+definitions+examples foregrounded.
+  content :=47 protected Codex assets +19 reader article bodies unchanged.
+§T
+  implementation.commit :=3af5e56d9c133ae94c3fe8151eb14c3a3cc0900f;
+    tree :=0ea75de3b5e82a9cefbb21c3dbfed5c6e5ce7c02.
+  Git := ✓push +independent ls-remote +GitHub commit/tree verification.
+  final.build := ✓320 pages;727 sources;91 authorized overlays;636 retained live refs.
+  manifest.sha256 :=a4bf8996a5f320e2319c3d428b8b99be7b75cb91aabf5fd35ff50899def7dbb5.
+  production :=dpl_AjgK4VYHXQH3iWWWmRjPnYfx4oRi;
+    bothdomains+all727 refs verified @23:40:34UTC.
+  source.tests :=13 focused groups ✓; typecheck ✓.
+  browser.tests :=15 scenarios × desktop+390px =30 passes.
+  candidate+live.route.probes :=457/457 each;0 unexpected;113 static hashes exact;
+    observed :=423×200 +24×404 +1×500 +2×307 +7×308;
+    explicit500/privategates/legacyredirects intentional; N! treat non200 automatically defect.
+  Codex.candidate+live :=89/89 each;69 static files+20 clean readers exactSHA256.
+  live.header.spots :=17/17; securityheaders unchanged;7 redirects exact.
+  mobile.accessibility :=8 representative pages;0 serious+critical;0 overflow+duplicateIDs;
+    focus visible; searchtrap+Escape+triggerreturn verified.
+  root.visual := actual local320/390/768/1440 +exactbuild390 +candidate390 +live390;
+    live home→Thoughts; live home→openingchapter;
+    candidate home→Words→Metaphor→Codex→reader→Paper+largertype;
+    candidate Tools→Sigils→Boundaries→visible sigil+save/download/variation controls.
+§C
+  live.conclusion := ✓full panels published +direct reading/useful destination flows observed.
+  evidence.limits := template+sample visual checks ≠ every457 URL visually inspected;
+    no authenticated submission/payment/communitypost; no new native-app completion claim.
+  nonblocking.accessibility := manual contrast/ARIA checks; moderate Conversations heading-order finding.
+  literary.scope := one novelchapter+pairedCodex+references published;12volume manuscript remains work-in-progress.
+  rollback :=dpl_2ZHuztZ6UNVozb61U9qGhFz9ExLv; preserved source refs+versions.
+  private.receipts := publication/redesign-git-verification.json;
+    publication/redesign-candidate-acceptance.json;
+    publication/verification/receipts/20260905T234113Z-production-a59c624e.json;
+    publication/REDESIGN_LIVE_CODEX_HTTP_QA.json;
+    publication/REDESIGN_LIVE_SITE_SPOTS.json.
+∎

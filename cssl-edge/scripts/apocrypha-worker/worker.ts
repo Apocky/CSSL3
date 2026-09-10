@@ -1,0 +1,469 @@
+import { ControlPlaneClient, ControlPlaneError, fenceFromClaim } from './control-plane';
+import { AttemptJournal } from './journal';
+import { log } from './log';
+import { composeQwenRequest } from './prompt';
+import { QwenClient, QwenError } from './qwen';
+import { probeMemoryAdapters, retrieveMemory } from './retrieval';
+import type {
+  AttemptJournalState,
+  ClaimedJob,
+  FailurePayload,
+  OutputChunk,
+  QwenResult,
+  RetrievalBundle,
+  WorkerConfig,
+  WorkerRuntimeState,
+} from './types';
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
+
+function boundedError(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).replace(/[\r\n]+/g, ' ').slice(0, 2_000);
+}
+
+class LeaseLostError extends Error {
+  readonly code: string;
+  readonly cancelled: boolean;
+
+  constructor(message: string, code = 'LEASE_LOST', cancelled = false) {
+    super(message);
+    this.name = 'LeaseLostError';
+    this.code = code;
+    this.cancelled = cancelled;
+  }
+}
+
+interface Dependencies {
+  controlPlane?: ControlPlaneClient;
+  qwen?: QwenClient;
+  journal?: AttemptJournal;
+  env?: NodeJS.ProcessEnv;
+  fetchImpl?: typeof fetch;
+}
+
+export class ApocryphaWorker {
+  readonly runtime: WorkerRuntimeState;
+  readonly journal: AttemptJournal;
+  readonly qwen: QwenClient;
+  private readonly config: WorkerConfig;
+  private readonly controlPlane: ControlPlaneClient;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly fetchImpl: typeof fetch;
+  private readonly stopController = new AbortController();
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private heartbeatRetryAt = 0;
+  private heartbeatInFlight = false;
+  private memoryOperationTail: Promise<void> = Promise.resolve();
+
+  constructor(config: WorkerConfig, dependencies: Dependencies = {}) {
+    this.config = config;
+    this.env = dependencies.env ?? process.env;
+    this.fetchImpl = dependencies.fetchImpl ?? fetch;
+    this.controlPlane = dependencies.controlPlane ?? new ControlPlaneClient(config, this.fetchImpl);
+    this.qwen = dependencies.qwen ?? new QwenClient(config, this.fetchImpl);
+    this.journal = dependencies.journal ?? new AttemptJournal(config.journalDir, config.nodeToken, config.nodeId);
+    this.runtime = {
+      phase: 'starting',
+      currentJobId: null,
+      currentAttemptId: null,
+      startedAt: new Date().toISOString(),
+      lastClaimAt: null,
+      lastCompletionAt: null,
+      lastError: null,
+      completedJobs: 0,
+      failedJobs: 0,
+      recoveredAttempts: 0,
+      adapterStates: Object.fromEntries(config.manifest.memory.adapters.map((adapter) => [adapter.name, 'unconfigured'])),
+      adapterProbeAt: null,
+    };
+  }
+
+  stop(reason = 'worker stop requested'): void {
+    if (this.stopController.signal.aborted) return;
+    this.runtime.phase = 'stopping';
+    this.stopController.abort(new Error(reason));
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+  }
+
+  async initialize(): Promise<void> {
+    await this.journal.initialize();
+    await this.journal.pruneArchives();
+    await this.recoverPendingAttempts();
+    this.runtime.phase = 'idle';
+    if (this.config.heartbeatEnabled) this.startHeartbeat();
+  }
+
+  async run(): Promise<void> {
+    await this.initialize();
+    if (this.config.recoverOnly) {
+      this.runtime.phase = 'stopped';
+      return;
+    }
+    if (this.config.probeOnly) {
+      const probe = await this.qwen.probe(this.stopController.signal);
+      if (!probe.healthy) throw new QwenError(`Qwen probe failed: ${probe.detail}`, 'QWEN_NOT_READY', true);
+      log('info', 'worker.probe.ok', probe);
+      this.runtime.phase = 'stopped';
+      return;
+    }
+    do {
+      try {
+        await this.runOnce();
+      } catch (error) {
+        this.recordError(error instanceof ControlPlaneError ? error.code : 'WORKER_LOOP_ERROR', boundedError(error));
+        log('error', 'worker.loop.error', { code: this.runtime.lastError?.code, detail: this.runtime.lastError?.detail });
+      }
+      if (this.config.once || this.stopController.signal.aborted) break;
+      await sleep(this.config.pollIntervalMs, this.stopController.signal);
+    } while (!this.stopController.signal.aborted);
+    this.runtime.phase = 'stopped';
+  }
+
+  async runOnce(): Promise<boolean> {
+    if (this.stopController.signal.aborted) return false;
+    this.runtime.phase = 'idle';
+    const claim = await this.controlPlane.claim();
+    this.runtime.lastClaimAt = new Date().toISOString();
+    if (!claim) return false;
+    await this.processClaim(claim);
+    return true;
+  }
+
+  async recoverPendingAttempts(): Promise<void> {
+    const pending = await this.journal.list();
+    if (pending.length === 0) return;
+    this.runtime.phase = 'recovering';
+    for (const item of pending) {
+      const { state } = item;
+      const fence = fenceFromClaim(state.claim);
+      this.runtime.currentJobId = state.claim.jobId;
+      this.runtime.currentAttemptId = state.claim.attemptId;
+      try {
+        const lease = await this.controlPlane.renew(fence);
+        if (lease.cancelRequested) throw new LeaseLostError('job was cancelled while worker was offline', 'CANCELLED', true);
+        state.claim.leaseExpiresAt = lease.leaseExpiresAt;
+        await this.journal.save(state);
+        await this.replayPendingChunks(state);
+        if (state.terminal?.kind === 'complete') {
+          await this.controlPlane.complete(fence, state.terminal.payload);
+        } else if (state.terminal?.kind === 'fail') {
+          await this.controlPlane.fail(fence, state.terminal.payload);
+        } else {
+          const failure: FailurePayload = {
+            errorCode: 'WORKER_RESTART_INTERRUPTED_ATTEMPT',
+            errorDetail: 'The worker restarted during generation. The isolated attempt will be retried without appending abandoned output.',
+            retryable: true,
+          };
+          await this.journal.setFailure(state, failure);
+          await this.controlPlane.fail(fence, failure);
+        }
+        await this.journal.remove(state);
+        this.runtime.recoveredAttempts += 1;
+        log('info', 'worker.recovery.acknowledged', { job_id: state.claim.jobId, attempt_id: state.claim.attemptId });
+      } catch (error) {
+        if ((error instanceof ControlPlaneError && error.fenceLost) || error instanceof LeaseLostError) {
+          await this.journal.orphan(state, error instanceof LeaseLostError ? error.code : error.code);
+          log('warn', 'worker.recovery.fenced', { job_id: state.claim.jobId, attempt_id: state.claim.attemptId, detail: boundedError(error) });
+          continue;
+        }
+        this.recordError('RECOVERY_DEFERRED', boundedError(error));
+        log('warn', 'worker.recovery.deferred', { job_id: state.claim.jobId, attempt_id: state.claim.attemptId, detail: boundedError(error) });
+      }
+    }
+    this.runtime.currentJobId = null;
+    this.runtime.currentAttemptId = null;
+  }
+
+  private async processClaim(claim: ClaimedJob): Promise<void> {
+    this.runtime.currentJobId = claim.jobId;
+    this.runtime.currentAttemptId = claim.attemptId;
+    const state = await this.journal.create(claim);
+    const abortController = new AbortController();
+    const stopAbort = () => abortController.abort(this.stopController.signal.reason);
+    this.stopController.signal.addEventListener('abort', stopAbort, { once: true });
+    const lease = this.maintainLease(state, abortController);
+    let memory: RetrievalBundle | null = null;
+    const started = Date.now();
+    try {
+      this.assertCompatibleClaim(claim);
+      const probe = await this.qwen.probe(abortController.signal);
+      if (!probe.healthy) throw new QwenError(`Qwen is not ready: ${probe.detail}`, 'QWEN_NOT_READY', true);
+      this.runtime.phase = 'retrieving';
+      memory = await this.serializeMemoryOperation(
+        () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
+      );
+      this.runtime.adapterStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
+      if (memory.results.some((result) => result.state !== 'ok')) this.runtime.adapterProbeAt = null;
+      if (abortController.signal.aborted) throw abortController.signal.reason;
+      this.runtime.phase = 'generating';
+      let buffer = '';
+      let seq = state.lastAcknowledgedSeq + 1;
+      let lastFlushAt = Date.now();
+      let streamed = false;
+      const flush = async (force = false): Promise<void> => {
+        while (buffer.length >= this.config.chunkMaxChars || (force && buffer.length > 0)) {
+          const size = force ? Math.min(buffer.length, this.config.chunkMaxChars) : this.config.chunkMaxChars;
+          const delta = buffer.slice(0, size);
+          buffer = buffer.slice(size);
+          const chunk: OutputChunk = {
+            seq,
+            chunkKind: 'token',
+            delta,
+            metadata: { model_alias: this.config.modelAlias },
+          };
+          this.runtime.phase = 'delivering';
+          await this.sendChunk(state, chunk);
+          seq += 1;
+          lastFlushAt = Date.now();
+          this.runtime.phase = 'generating';
+        }
+      };
+      const onDelta = async (delta: string): Promise<void> => {
+        if (abortController.signal.aborted) throw abortController.signal.reason;
+        streamed = true;
+        buffer += delta;
+        if (buffer.length >= this.config.chunkMaxChars || Date.now() - lastFlushAt >= this.config.chunkFlushMs) {
+          await flush(false);
+          if (buffer.length > 0 && Date.now() - lastFlushAt >= this.config.chunkFlushMs) await flush(true);
+        }
+      };
+      const generate = async (overflowRetry = false): Promise<QwenResult> => {
+        const request = composeQwenRequest(this.config, claim, memory as RetrievalBundle, { overflowRetry });
+        return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);
+      };
+      let result: QwenResult;
+      try {
+        result = await generate();
+      } catch (error) {
+        if (!(error instanceof QwenError) || error.code !== 'QWEN_CONTEXT_OVERFLOW' || streamed) throw error;
+        log('warn', 'worker.qwen.context_retry', {
+          job_id: claim.jobId,
+          attempt_id: claim.attemptId,
+          detail: boundedError(error),
+        });
+        result = await generate(true);
+      }
+      await flush(true);
+      await lease.stop();
+      if (abortController.signal.aborted) throw abortController.signal.reason;
+      const completion = {
+        content: result.content,
+        revisionRole: 'primary' as const,
+        provenance: {
+          model_alias: result.model,
+          model_profile_hash: this.config.profileHash,
+          tool_registry_version: this.config.toolRegistryVersion,
+          memory_manifest_hash: this.config.memoryManifestHash,
+          memory_digest: memory.digest,
+          memory_sources: memory.results.map((item) => ({ name: item.name, state: item.state, records: item.records.length, duration_ms: item.durationMs })),
+          provenance_ids: memory.records.map((item) => `${item.source}:${item.provenanceId}`).slice(0, 100),
+        },
+        usage: {
+          prompt_tokens: result.usage.promptTokens,
+          completion_tokens: result.usage.completionTokens,
+          total_tokens: result.usage.totalTokens,
+          first_token_ms: result.firstTokenMs,
+          duration_ms: result.durationMs,
+        },
+      };
+      await this.journal.setCompletion(state, completion);
+      await this.controlPlane.complete(fenceFromClaim(claim), completion);
+      await this.journal.remove(state);
+      this.runtime.completedJobs += 1;
+      this.runtime.lastCompletionAt = new Date().toISOString();
+      log('info', 'worker.job.completed', {
+        job_id: claim.jobId,
+        attempt_id: claim.attemptId,
+        duration_ms: Date.now() - started,
+        output_chars: result.content.length,
+        first_token_ms: result.firstTokenMs,
+      });
+    } catch (error) {
+      let leaseError = this.asLeaseError(error, lease);
+      await lease.stop();
+      leaseError ??= lease.error();
+      if (leaseError || (error instanceof ControlPlaneError && error.fenceLost)) {
+        const fenceCode = leaseError?.code ?? (error instanceof ControlPlaneError ? error.code : 'LEASE_LOST');
+        await this.journal.orphan(state, fenceCode);
+        log('warn', 'worker.job.fenced', { job_id: claim.jobId, attempt_id: claim.attemptId, detail: boundedError(leaseError ?? error) });
+      } else {
+        const failure = this.failureFor(error, Date.now() - started, memory);
+        try {
+          await this.journal.setFailure(state, failure);
+          await this.controlPlane.fail(fenceFromClaim(claim), failure);
+          await this.journal.remove(state);
+        } catch (deliveryError) {
+          if (deliveryError instanceof ControlPlaneError && deliveryError.fenceLost) {
+            await this.journal.orphan(state, deliveryError.code);
+          }
+          this.recordError('FAILURE_DELIVERY_PENDING', boundedError(deliveryError));
+        }
+        this.runtime.failedJobs += 1;
+        this.recordError(failure.errorCode, failure.errorDetail);
+        log('error', 'worker.job.failed', { job_id: claim.jobId, attempt_id: claim.attemptId, ...failure });
+      }
+    } finally {
+      await lease.stop();
+      this.stopController.signal.removeEventListener('abort', stopAbort);
+      this.runtime.currentJobId = null;
+      this.runtime.currentAttemptId = null;
+      if (!this.stopController.signal.aborted) this.runtime.phase = 'idle';
+    }
+  }
+
+  private maintainLease(state: AttemptJournalState, abortController: AbortController): { stop: () => Promise<void>; error: () => LeaseLostError | null } {
+    let currentExpiry = Date.parse(state.claim.leaseExpiresAt);
+    let active = true;
+    let renewal: Promise<void> | null = null;
+    let leaseError: LeaseLostError | null = null;
+    const renew = async (): Promise<void> => {
+      if (!active || abortController.signal.aborted) return;
+      try {
+        const result = await this.controlPlane.renew(fenceFromClaim(state.claim));
+        currentExpiry = Date.parse(result.leaseExpiresAt);
+        state.claim.leaseExpiresAt = result.leaseExpiresAt;
+        await this.journal.save(state);
+        if (result.cancelRequested) {
+          leaseError = new LeaseLostError('job cancellation requested', 'CANCELLED_BY_USER', true);
+          abortController.abort(leaseError);
+        }
+      } catch (error) {
+        if (error instanceof ControlPlaneError && error.fenceLost) {
+          leaseError = new LeaseLostError(error.message, error.code);
+          abortController.abort(leaseError);
+        } else if (!Number.isFinite(currentExpiry) || Date.now() >= currentExpiry - this.config.leaseExpiryGraceMs) {
+          leaseError = new LeaseLostError(`lease could not be renewed before expiry: ${boundedError(error)}`, 'LEASE_RENEWAL_EXPIRED');
+          abortController.abort(leaseError);
+        } else {
+          log('warn', 'worker.lease.renew_retry', { job_id: state.claim.jobId, attempt_id: state.claim.attemptId, detail: boundedError(error) });
+        }
+      } finally {
+        // The scheduler clears the tracked promise after this call settles.
+      }
+    };
+    const triggerRenewal = (): void => {
+      if (renewal || !active || abortController.signal.aborted) return;
+      const current = renew();
+      renewal = current;
+      void current.finally(() => {
+        if (renewal === current) renewal = null;
+      });
+    };
+    const timer = setInterval(triggerRenewal, this.config.leaseRenewIntervalMs);
+    return {
+      stop: async () => {
+        active = false;
+        clearInterval(timer);
+        await renewal?.catch(() => undefined);
+      },
+      error: () => leaseError,
+    };
+  }
+
+  private asLeaseError(error: unknown, lease: { error: () => LeaseLostError | null }): LeaseLostError | null {
+    if (error instanceof LeaseLostError) return error;
+    if (lease.error()) return lease.error();
+    if (error instanceof QwenError && ['QWEN_CANCELLED', 'QWEN_ABORTED'].includes(error.code) && this.stopController.signal.aborted) {
+      return new LeaseLostError('worker stopped during generation', 'WORKER_STOPPED');
+    }
+    return null;
+  }
+
+  private async sendChunk(state: AttemptJournalState, chunk: OutputChunk): Promise<void> {
+    await this.journal.addPendingChunk(state, chunk);
+    await this.controlPlane.appendChunk(fenceFromClaim(state.claim), chunk);
+    await this.journal.acknowledgeChunk(state, chunk.seq);
+  }
+
+  private async replayPendingChunks(state: AttemptJournalState): Promise<void> {
+    for (const chunk of [...state.pendingChunks].sort((left, right) => left.seq - right.seq)) {
+      await this.controlPlane.appendChunk(fenceFromClaim(state.claim), chunk);
+      await this.journal.acknowledgeChunk(state, chunk.seq);
+    }
+  }
+
+  private assertCompatibleClaim(claim: ClaimedJob): void {
+    const mismatches = [
+      claim.modelAlias === this.config.modelAlias ? null : `model alias ${claim.modelAlias}`,
+      claim.profileHash === this.config.profileHash ? null : `profile hash ${claim.profileHash}`,
+      claim.toolRegistryVersion === this.config.toolRegistryVersion ? null : `tool registry ${claim.toolRegistryVersion}`,
+      claim.memoryManifestHash === this.config.memoryManifestHash ? null : `memory manifest ${claim.memoryManifestHash}`,
+      this.config.manifest.capabilities.includes(claim.capability) ? null : `capability ${claim.capability}`,
+    ].filter(Boolean);
+    if (mismatches.length) throw new QwenError(`worker manifest mismatch: ${mismatches.join(', ')}`, 'WORKER_MANIFEST_MISMATCH', true);
+  }
+
+  private failureFor(error: unknown, durationMs: number, memory: RetrievalBundle | null): FailurePayload {
+    const qwen = error instanceof QwenError ? error : null;
+    return {
+      errorCode: qwen?.code ?? (error instanceof ControlPlaneError ? error.code : 'WORKER_ATTEMPT_ERROR'),
+      errorDetail: boundedError(error),
+      retryable: qwen?.retryable ?? (error instanceof ControlPlaneError ? error.retryable : true),
+      metrics: {
+        duration_ms: durationMs,
+        memory_digest: memory?.digest,
+        adapter_states: memory?.results.map((item) => ({ name: item.name, state: item.state })),
+      },
+    };
+  }
+
+  private recordError(code: string, detail: string): void {
+    this.runtime.lastError = { code, detail, at: new Date().toISOString() };
+  }
+
+  private async serializeMemoryOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.memoryOperationTail;
+    let release!: () => void;
+    this.memoryOperationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  private startHeartbeat(): void {
+    const send = async (): Promise<void> => {
+      if (this.heartbeatInFlight || Date.now() < this.heartbeatRetryAt || this.stopController.signal.aborted) return;
+      this.heartbeatInFlight = true;
+      try {
+        const probe = await this.qwen.probe(this.stopController.signal);
+        const probeAge = this.runtime.adapterProbeAt
+          ? Date.now() - Date.parse(this.runtime.adapterProbeAt)
+          : Number.POSITIVE_INFINITY;
+        if (this.runtime.phase === 'idle' && probeAge >= 30_000) {
+          const memoryProbe = await this.serializeMemoryOperation(async () => {
+            if (this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return null;
+            return probeMemoryAdapters(this.config, this.env, this.fetchImpl);
+          });
+          if (memoryProbe) {
+            this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
+            this.runtime.adapterProbeAt = memoryProbe.probedAt;
+          }
+        }
+        const supported = await this.controlPlane.heartbeat(this.runtime, {
+          qwenHealthy: probe.healthy,
+          qwenProbeAt: new Date().toISOString(),
+        });
+        this.heartbeatRetryAt = supported ? 0 : Date.now() + 5 * 60_000;
+      } catch (error) {
+        this.recordError('HEARTBEAT_FAILED', boundedError(error));
+        log('warn', 'worker.heartbeat.failed', { detail: boundedError(error) });
+      } finally {
+        this.heartbeatInFlight = false;
+      }
+    };
+    void send();
+    this.heartbeatTimer = setInterval(() => void send(), this.config.heartbeatIntervalMs);
+  }
+}

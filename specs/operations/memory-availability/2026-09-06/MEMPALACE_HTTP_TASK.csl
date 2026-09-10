@@ -1,0 +1,163 @@
+§ MEMPALACE.HTTP.DURABLE.TASK @2026-09-06
+  status := ROOT_ACTIVATED_REPORTED ; lane.lifecycle.effects := 0.
+  owner := /root/write_source_review ; integration+lifecycle := /root.
+  authority := current user repair unreachable memory + durable availability;
+    reservation := this XML + this CSL only; N! service/task/corpus/secret mutation.
+
+§P evidence + scope
+  ✓ task.readback := Apocky-MemPalace-HTTP disabled; logon only; pwsh action;
+    IgnoreNew; PT0S; RestartOnFailure999×PT1M; InteractiveToken; batteries allowed.
+  ✓ installed.server := @USER_PROFILE@/AppData/Roaming/uv/tools/mempalace/Lib/site-packages/mempalace/mcp_server.py
+    @sha256:19a8c9a1371c61a648b2f6d2b21836dec69885e9387cb644612ed1f4f8154be4.
+  ✓ server:129..228 := MEMPALACE_LOG_FILE append;
+    :328..335+:5619..5647 := default idle8h→os._exit(0), env0 disables;
+    :5853..5903 := health outside serialized MCP dispatch lock.
+  ◐ failure-only restart misses clean idle exit.
+  ○ root.report := restored ordinary read-only service; status739162drawers + actual search.
+  ⊘ actual process disappearance cause := unproven; no final idle/crash/stop marker.
+  coverage := MemPalace ordinary read-only HTTP8766 only.
+  remaining.root+sibling := MetaHarness8765 + 3MNEME8787 + Trinity interfaces
+    + scoped checkpoint writer/capability renewal. N! this slice⇒all-memory-complete.
+  N! enable legacy MCP-Watchdog; sibling reports forced Claude-process termination
+    + command-line logging + no MCP freshness oracle.
+
+§D source delta
+  XML := MEMPALACE_HTTP_TASK.xml @sha256:fc5619d923d132f5db15b759bc57252d830b1d4d96d36f25719d8d9ad225cb7c ; UTF-8+LF.
+  retained := SID+InteractiveToken+logon UserId+URI+description+all Settings
+    except Enabled(false→true). ExecutionTimeLimitPT0S retains long server lifetime.
+  action := existing venv pythonw.exe -B -c fixed.bootstrap; CWD=.codex/services;
+    no detached server; scheduler-owned foreground lifetime; no shell.
+  trigger := existing logon + TimeTrigger local2026-09-06T00:00:00;
+    intervalPT1M; duration omitted=endless; StopAtDurationEnd=false.
+  clean-exit recovery := recurring trigger; failure recovery := retained policy+trigger.
+  IgnoreNew covers scheduled instance only; N! it prevents separate manual owner.
+  portability := exact host paths+SID intentionally retained; migration requires joint
+    executable/palace/log/CWD/SID/logon review; N! silently change corpus or package.
+
+§ bootstrap.literal
+  purpose := process startup configuration only; N! new cognitive Python implementation.
+  executable := @USER_PROFILE@/AppData/Roaming/uv/tools/mempalace/Scripts/pythonw.exe.
+  c.argument.sha256 := 284076fc83facba934b7571cdd8f3c6ab16f46821108b03cca33d99b33b4e3ba ; UTF-8, final newline excluded.
+```python
+import os, sys, runpy; os.environ.pop('MEMPALACE_MCP_HTTP_MEMORY_WRITE_TOKEN', None); os.environ['MEMPALACE_MCP_IDLE_HOURS'] = '0'; os.environ['MEMPALACE_LOG_FILE'] = '@USER_PROFILE@/.codex/logs/mempalace-http.task.service.log'; sys.stdin = open(os.devnull, 'r'); sys.stdout = open('@USER_PROFILE@/.codex/logs/mempalace-http.task.stdout.log', 'a', encoding='utf-8', buffering=1); sys.stderr = open('@USER_PROFILE@/.codex/logs/mempalace-http.task.stderr.log', 'a', encoding='utf-8', buffering=1); os.dup2(sys.stdin.fileno(), 0); os.dup2(sys.stdout.fileno(), 1); os.dup2(sys.stderr.fileno(), 2); sys.argv = ['mempalace.mcp_server', '--read-only', '--palace', '@USER_PROFILE@/.mempalace/palace', '--transport', 'http', '--host', '127.0.0.1', '--port', '8766']; runpy.run_module('mempalace.mcp_server', run_name='__main__')
+```
+  effects := process-local scoped-writer-token removal + idle/log env + append streams + standard descriptors
+    + exact existing module argv + runpy installed-module entrypoint.
+  no.subprocess := literal contains no child launch, system command, or shell.
+  no.secret.payload := task contains no token/password/grant; no credential extraction.
+  ✓ installed.server:5668+5743..5755+5834..5838 := only HTTP scoped-write grant env
+    MEMPALACE_MCP_HTTP_MEMORY_WRITE_TOKEN; literal pops process-local value before module load.
+  retained := MEMPALACE_MCP_HTTP_TOKEN read authentication; no credential-store/env-registry edits.
+  peer.writer.flag := MEMPALACE_MCP_ALLOW_PEER_WRITER controls lease contention,
+    does not bypass read-only dispatch; not a scoped-write credential.
+  root.verify := scoped writer absent in taskprocess; values never logged;
+    separate existing writer/checkpoint custody retained on disk and unactivated here.
+  logging.limit := existing server may log raw HTTP path/Host/Origin/exception text;
+    no universal redaction claim; Authorization/MCP payload not intentionally logged.
+  streams := stdin NUL; append task.stdout/task.stderr logs; server log append.
+  logs.directory := existing @USER_PROFILE@/.codex/logs; keep private ACL;
+    no rotation introduced; root monitors capacity; existing historical logs untouched.
+  W! root verifies installed module hash + executable + CWD without module shadow
+    + writable existing logs before activation; N! package upgrade/reinstall.
+
+§ preservation + activation prerequisites
+  W! preserve palace+SQLite/WAL+FTS+HNSW+KG+diary+checkpoint custody+pending histories.
+  N! rebuild/vacuum/migrate/delete locks/peer-writer override/global environment edit.
+  read-only flag ≠ promise zero internal package/cache writes; runtime behavior retained.
+  W! fresh task XML preimage + exact temporary leaf PID/creation/executable/args
+    + current in-flight requests inspected before quiet serialized transfer.
+  W! root derives private registration copy: Settings.Enabled=false only;
+    task template remains enabled; TimeTrigger.Enabled stays true; record derived hash.
+  W! register DISABLED copy first, read back action/principal/settings/triggers;
+    current restored service remains reachable during schema/readback validation.
+  W! root verifies current root-created PID tree+creation time+no active calls,
+    then releases ONLY that owned service tree; await exit+port8766closed.
+  W! enable/run only after quiet transfer; root reserves task+port throughout.
+  N! broad kill-by-name/shared-console signal/unrelated disabled task activation.
+  scoped.writer := prior recovery had ephemeral process-scoped checkpoint custody;
+    this literal does not renew/copy writer credentials; separate contract remains OPEN.
+
+§ root.apply — argv only; NOT EXECUTED
+  executable := C:/Windows/System32/schtasks.exe.
+  invocation := direct execFile; options={windowsHide:true,shell:false}.
+  preimage.argv := ["/Query","/TN","\\Apocky-MemPalace-HTTP","/XML"];
+    root preserves returned XML privately as TASK_PREIMAGE_XML + exact byte hash.
+  preflight := independent review+pins+fresh baseline diff; corpus unchanged.
+  DISABLED_TASK_XML := root-owned private staging copy of template;
+    semantic delta Settings.Enabled true→false only; TimeTrigger.Enabled retained.
+  registration.encoding := UTF-16LE + BOM bytes FF FE; XML declaration encoding=UTF-16;
+    repository template remains UTF-8, unchanged. Record derived byte hash+semantic diff.
+  serialization := replace declaration UTF-8→UTF-16 in disabled text;
+    bytes := Buffer.concat([Buffer.from([0xFF,0xFE]), Buffer.from(text, 'utf16le')]).
+  W! private staging payload declaration+actual encoding agree; do not register UTF-8 template directly.
+  register.argv := ["/Create","/TN","\\Apocky-MemPalace-HTTP","/XML",DISABLED_TASK_XML,"/F"];
+  readback.argv := ["/Query","/TN","\\Apocky-MemPalace-HTTP","/XML"];
+  status.argv := ["/Query","/TN","\\Apocky-MemPalace-HTTP","/V","/FO","CSV"];
+  transfer := after disabled readback, verify no active calls + exact root-created
+    service PID tree; root releases owned tree only; await port8766closed.
+  enable.argv := ["/Change","/TN","\\Apocky-MemPalace-HTTP","/Enable"];
+  start.argv := ["/Run","/TN","\\Apocky-MemPalace-HTTP"];
+    gate := only after transfer; if enable/recurrence already starts instance,
+    do not create another manual owner; retain IgnoreNew.
+
+§T running-system oracles — PARTIAL; per-gate status below
+  T1 := registered action+literal args+CWD+principal+settings+triggers exact readback;
+    no pwsh/cmd action.
+  T2 := task Running + one listener8766; fresh process ancestry/creation links
+    venv/base pythonw process to scheduled instance; no visible console.
+  T3 := actual MCP initialize+initialized+tools/list+status+bounded verbatim search;
+    ordinary tools read-only; no new mutating authority; private result provenance.
+  T4 := two trigger intervals pass; one listener; logs append; actual tools remain usable.
+  T5 := quiet root-controlled clean-exit and nonzero-exit recovery separately;
+    manual task /End semantics differ from process exit; no unobserved restart claim.
+  T6 := next real logon/resume observation; do not force logout/reboot during work.
+  T7 := separate bounded protocol freshness monitoring needed for wedged live process;
+    health/TCP alone insufficient; candidate does not auto-kill a hung task.
+  cadence1min ≠ guaranteed latency; measure scheduling/startup/warmup separately.
+  availability := signed-in powered-on awake desktop; no pre-logon/sleep/power-loss promise.
+
+§ rollback — root only
+  disable.argv := ["/Change","/TN","\\Apocky-MemPalace-HTTP","/Disable"];
+  stop.argv := ["/End","/TN","\\Apocky-MemPalace-HTTP"];
+    gate := candidate-owned instance only; verify descendant listener exit;
+    surviving leaf⇒fresh exact identity check before narrow root termination.
+  restore.argv := ["/Create","/TN","\\Apocky-MemPalace-HTTP","/XML",TASK_PREIMAGE_XML,"/F"];
+    read back original disabled state+action; N! enable old shell action.
+  root may restore captured direct no-console read-only service after portclosure.
+  retain logs+private evidence+preimage; no automatic corpus/config deletion.
+
+§ references
+  https://learn.microsoft.com/en-us/windows/win32/taskschd/repetitionpattern-duration
+  https://learn.microsoft.com/en-us/windows/win32/taskschd/repetitionpattern-interval
+  https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-timetrigger-triggergroup-element
+  ○ docs := contract; N! substitute registered-task/runtime proof.
+
+§ observed.activation @2026-09-06T19:46:03Z
+  provenance := /root direct tool observations reported to lane; no independent lane lifecycle probe.
+  ○ initial registration UTF-8 payload refused at (1,40), unable to switch encoding;
+    root verified registered task preimage hash unchanged after refusal.
+  ○ same task semantics serialized UTF-16LE+BOM + declaration UTF-16;
+    disabled registration succeeded; root completed task readback before transfer.
+  ○ old root-owned tree := parentPID3000→listenerPID29928; no active connections;
+    root terminated only that created tree, then enabled+ran registered candidate.
+  ○ resulting task := Running+Enabled; actual MCP status PASS,739162drawers;
+    pythonw logs confirm read-only startup.
+  T1 := ROOT_REPORTED_PASS disabled-first schema/configuration readback.
+  T2 := ROOT_REPORTED_PARTIAL task Running+Enabled+pythonw;
+    complete new-tree/no-console evidence remains root-owned.
+  T3 := ROOT_REPORTED_PARTIAL actual status PASS; preserve separate protocol/search evidence.
+  T4..T7 := OPEN unless separately evidenced by root;
+    runtime exit-recovery proof pending; N! activation implies recovery/all-memory completion.
+
+§C handoff
+  ✓ owned delta := exactly2 candidate source files; service/task mutations=0.
+  checks := source/args/retained-settings inspection + stdlib XML well-formedness
+    + ast.parse bootstrap syntax; bootstrap was not executed by lane.
+  ○ peer review accepted scoped source with disabled-first registration + runtime gates.
+  confidence := high scoped source delta; root-reported activation observed;
+    controlled exit recovery + next-logon/resume + all-service coverage remain OPEN.
+  countercase := healthy HTTP while serialized tool dispatch wedged;
+    candidate alone cannot resolve lock-held hangs or expired writer credentials.
+  falsifier := duplicate owner or failed actual MCP read after activation⇒root rollback.
+  next := root controlled exit-recovery proof + exact commit/backing delivery.
+∎

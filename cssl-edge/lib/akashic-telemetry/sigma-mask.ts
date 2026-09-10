@@ -21,7 +21,7 @@ import {
 // ─── Per-kind required-tier (which consent-tier unlocks this kind) ─────────
 // Spore = aggregate-only · Mycelium = + stack-traces · Akashic = + console + flow.
 const KIND_REQUIRED_TIER: Record<AkashicKind, ConsentTier> = {
-  // Always-on (even at None) for sovereignty-of-the-user themselves :
+  // Consent bookkeeping is eligible only after a positive tier is active.
   'consent.granted': 'none',
   'consent.revoked': 'none',
   'consent.purge_request': 'none',
@@ -65,17 +65,15 @@ const TIER_RANK: Record<ConsentTier, number> = {
 // Returns the effective sigma_mask (or SIGMA_NONE if denied). Caller writes
 // the returned mask into the event ; if NONE, drop the event entirely.
 //
-// Special case : the consent-bookkeeping kinds (consent.*) always emit, even
-// at none-tier ; these self-witness the user's sovereignty-actions. They get
-// SIGMA_AGGREGATE so the server retains the count without anything else.
 export function gateEvent(
   kind: AkashicKind,
   consent_tier: ConsentTier
 ): SigmaMask {
+  if (consent_tier === 'none') return SIGMA_NONE;
   const required = KIND_REQUIRED_TIER[kind];
   if (TIER_RANK[consent_tier] < TIER_RANK[required]) return SIGMA_NONE;
   const policy = CONSENT_TIERS[consent_tier];
-  // none-tier kinds (consent.*) always self-witness · force aggregate-mask.
+  // Bookkeeping events use the aggregate mask after positive consent.
   if (required === 'none') return SIGMA_AGGREGATE;
   return policy.default_mask;
 }
@@ -129,10 +127,16 @@ export function applyGate(
 ): AkashicEvent | null {
   const mask = gateEvent(ev.kind, consent_tier);
   if (mask === SIGMA_NONE) return null;
+  const payload = { ...ev.payload };
+  if (!CONSENT_TIERS[consent_tier].capture_stack) {
+    delete payload['stack'];
+    delete payload['component_stack'];
+    delete payload['componentStack'];
+  }
   return {
     ...ev,
     sigma_mask: mask,
-    payload: redactPayload(ev.payload),
+    payload: redactPayload(payload),
   };
 }
 

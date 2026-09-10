@@ -1,85 +1,54 @@
-// apocky.com/api/admin/apocrypha/status · backend-reachability probe
-//
-// Live backend-reachability probe through the configured cloudflared tunnel.
-// Missing configuration is a bounded 503, never a fake/stub success.
-
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { envelope } from '@/lib/response';
+import { getApocryphaServiceClient } from '@/lib/apocrypha/job-control';
+import { noStore } from '@/lib/apocrypha/job-http';
 import { requireAdmin } from '@/lib/require-admin';
 
-interface ApocryphaStatusResponse {
-  phase: 'tunnel';
-  reachable: boolean;
-  tunnel_host: string | null;
-  note: string;
-  next_gate: string;
-  spec: string;
-  upstream_status?: number;
-  upstream_payload?: unknown;
-  upstream_error?: string;
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  noStore(res);
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
-    return res.status(405).json({ error: 'Method not allowed', ...envelope() });
+    return res.status(405).json({ ok: false, code: 'METHOD_NOT_ALLOWED' });
   }
   if (!(await requireAdmin(req, res))) return;
-
-  const tunnelHost = process.env.APOCRYPHA_TUNNEL_HOST ?? null;
-
-  if (!tunnelHost) {
-    const unavailable: ApocryphaStatusResponse = {
-      phase: 'tunnel',
-      reachable: false,
-      tunnel_host: null,
-      note: 'Apocrypha tunnel is not configured; backend reachability is unknown.',
-      next_gate: 'Configure APOCRYPHA_TUNNEL_HOST and verify the live tunnel.',
-      spec: 'Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl',
-    };
-    return res.status(503).json({ ...unavailable, ...envelope() });
-  }
-
-  // Phase-1 active path · proxy to cloudflared tunnel
   try {
-    const upstream = await fetch(`https://${tunnelHost}/api/status`, {
-      method: 'GET',
-      headers: {
-        'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID ?? '',
-        'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET ?? '',
-        Accept: 'application/json',
-      },
-    });
-    let payload: unknown;
-    try {
-      payload = await upstream.json();
-    } catch {
-      payload = await upstream.text();
+    const client = getApocryphaServiceClient();
+    const staleBefore = new Date(Date.now() - 90_000).toISOString();
+    const [nodesResult, queueResult, runningResult, failedResult] = await Promise.all([
+      client.from('apocrypha_worker_node')
+        .select('id,node_key,display_name,status,allowed_capabilities,max_concurrency,model_profiles,last_seen_at,updated_at')
+        .neq('status', 'revoked')
+        .order('last_seen_at', { ascending: false, nullsFirst: false }),
+      client.from('apocrypha_job').select('id', { count: 'exact', head: true }).eq('status', 'queued'),
+      client.from('apocrypha_job').select('id', { count: 'exact', head: true }).in('status', ['leased', 'running', 'cancel_requested']),
+      client.from('apocrypha_job').select('id', { count: 'exact', head: true }).eq('status', 'failed')
+        .gte('updated_at', new Date(Date.now() - 86_400_000).toISOString()),
+    ]);
+    if (nodesResult.error || queueResult.error || runningResult.error || failedResult.error) {
+      throw nodesResult.error ?? queueResult.error ?? runningResult.error ?? failedResult.error;
     }
-    const body: ApocryphaStatusResponse = {
-      phase: 'tunnel',
-      reachable: upstream.ok,
-      tunnel_host: tunnelHost,
-      note: upstream.ok
-        ? 'live · proxied via cloudflared tunnel'
-        : `upstream returned HTTP ${upstream.status}`,
-      next_gate: 'G2 · Phase-1 · CF Access blocks non-Apocky principals',
-      spec: 'Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl',
-      upstream_status: upstream.status,
-      upstream_payload: payload,
-    };
-    return res.status(200).json({ ...body, ...envelope() });
-  } catch (err) {
-    const body: ApocryphaStatusResponse = {
-      phase: 'tunnel',
+    const nodes = (nodesResult.data ?? []).map((node) => ({
+      ...node,
+      reachable: Boolean(node.last_seen_at && node.last_seen_at >= staleBefore && node.status === 'active'),
+    }));
+    return res.status(200).json({
+      ok: true,
+      rail: 'durable-outbound-qwen',
+      reachable: nodes.some((node) => node.reachable),
+      model_alias: process.env.APOCRYPHA_MODEL_ALIAS ?? 'qwen35-35b-a3b-q4',
+      profile_hash: process.env.APOCRYPHA_PROFILE_HASH ?? 'qwen35-35b-a3b-q4-vulkan-hybrid-v1',
+      tool_registry_version: process.env.APOCRYPHA_TOOL_REGISTRY_VERSION ?? 'apocrypha-read-v1',
+      memory_manifest_hash: process.env.APOCRYPHA_MEMORY_MANIFEST_HASH ?? 'apocrypha-memory-fabric-v1',
+      queue: { queued: queueResult.count ?? 0, active: runningResult.count ?? 0, failed_24h: failedResult.count ?? 0 },
+      nodes,
+    });
+  } catch {
+    return res.status(503).json({
+      ok: false,
       reachable: false,
-      tunnel_host: tunnelHost,
-      note: 'tunnel proxy failed · cloudflared may be down OR Apocky-PC offline',
-      next_gate: 'G1 · Phase-1 · check cloudflared service status',
-      spec: 'Apocrypha/specs/12_APOCKY_COM_INTEGRATION.csl',
-      upstream_error: err instanceof Error ? err.message : String(err),
-    };
-    return res.status(502).json({ ...body, ...envelope() });
+      rail: 'durable-outbound-qwen',
+      code: 'CONTROL_PLANE_UNAVAILABLE',
+      message: 'Apocrypha job control is temporarily unavailable.',
+    });
   }
 }

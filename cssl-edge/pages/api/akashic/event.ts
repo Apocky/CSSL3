@@ -10,6 +10,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { envelope, logHit } from '@/lib/response';
 import { getSupabase } from '@/lib/supabase';
+import { isAkashicKind } from '@/lib/akashic-telemetry/event-types';
 
 // Server-side mirror of client-side redact (defense-in-depth).
 const EMAIL_RX = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
@@ -55,14 +56,12 @@ interface AkashicEventBody {
 interface OkResp { served_by: string; ts: string; ok: true; persisted: boolean; cell_id: string; }
 interface ErrResp { served_by: string; ts: string; error: string; }
 
-const KIND_RX = /^[a-z][a-z0-9._-]{2,63}$/;
-
 function validate(body: AkashicEventBody): { ok: true; cell_id: string } | { ok: false; reason: string } {
   if (typeof body.cell_id !== 'string' || body.cell_id.length < 8 || body.cell_id.length > 64) {
     return { ok: false, reason: 'cell_id required (8-64 chars)' };
   }
-  if (typeof body.kind !== 'string' || !KIND_RX.test(body.kind)) {
-    return { ok: false, reason: 'kind required (matches ^[a-z][a-z0-9._-]+$)' };
+  if (!isAkashicKind(body.kind)) {
+    return { ok: false, reason: 'kind is not in the public Akashic event catalog' };
   }
   if (typeof body.session_id !== 'string' || body.session_id.length < 8 || body.session_id.length > 64) {
     return { ok: false, reason: 'session_id required (8-64 chars)' };

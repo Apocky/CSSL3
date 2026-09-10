@@ -1,0 +1,64 @@
+{
+  "schema": "apocrypha.worker-manifest.v1",
+  "model": {
+    "alias": "qwen35-35b-a3b-q4",
+    "profileHash": "5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9",
+    "endpointEnv": "APOCRYPHA_QWEN_BASE_URL"
+  },
+  "tools": {
+    "registryVersion": "apocrypha-readonly-v1",
+    "mode": "read-only"
+  },
+  "memory": {
+    "manifestVersion": "apocrypha-memory-v1",
+    "tenantScoped": true,
+    "adapters": [
+      {
+        "name": "mempalace",
+        "urlEnv": "APOCRYPHA_MEMPALACE_READ_URL",
+        "tokenEnv": "APOCRYPHA_MEMPALACE_READ_TOKEN",
+        "timeoutMs": 3500,
+        "maxChars": 7000
+      },
+      {
+        "name": "brainmonsoon",
+        "urlEnv": "APOCRYPHA_BRAINMONSOON_READ_URL",
+        "tokenEnv": "APOCRYPHA_BRAINMONSOON_READ_TOKEN",
+        "timeoutMs": 3500,
+        "maxChars": 7000
+      },
+      {
+        "name": "anamnesis",
+        "urlEnv": "APOCRYPHA_ANAMNESIS_READ_URL",
+        "tokenEnv": "APOCRYPHA_ANAMNESIS_READ_TOKEN",
+        "timeoutMs": 3500,
+        "maxChars": 7000
+      },
+      {
+        "name": "graphify",
+        "urlEnv": "APOCRYPHA_GRAPHIFY_READ_URL",
+        "tokenEnv": "APOCRYPHA_GRAPHIFY_READ_TOKEN",
+        "timeoutMs": 3500,
+        "maxChars": 7000
+      },
+      {
+        "name": "mneme",
+        "urlEnv": "APOCRYPHA_MNEME_READ_URL",
+        "tokenEnv": "APOCRYPHA_MNEME_READ_TOKEN",
+        "timeoutMs": 3500,
+        "maxChars": 7000
+      },
+      {
+        "name": "metaharness",
+        "urlEnv": "APOCRYPHA_METAHARNESS_READ_URL",
+        "tokenEnv": "APOCRYPHA_METAHARNESS_READ_TOKEN",
+        "timeoutMs": 3500,
+        "maxChars": 7000
+      }
+    ]
+  },
+  "capabilities": [
+    "apocky_owner_chat",
+    "chaos_tarot_reading"
+  ]
+}
