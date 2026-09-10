@@ -1,0 +1,148 @@
+§ APOCKY.COMMUNITY.CHAT.BLUEPRINT v3
+
+§P PROBLEM
+  ✓ source := attached.dc.prototype + rejuvenated.v1|v2 + user.steering.2026-07-22
+  ✓ user.correction := "chatroom" ≠ spatial.dashboard|concept.exhibit
+  ✓ design.evidence :=
+       tree-of-thought.frames + tokenized.component.system
+       + anti-engagement-theater + UI.signifier|hierarchy|state.basics
+  ✗ v2.clearing := marketing.hero + room.below.fold ⇒ chat.secondary
+  W! goal := unmistakable.community.chat ⊗ Apocky.branching.context
+  W! authority := static.design.prototype.only
+  N! backend | auth | network | storage | live.presence | real.consent | payment | deployment
+  rollback := rejuvenated/.rollback/spatial-v1-20260722/
+
+§D ROLE.MAP
+  hub := rejuvenated/index.html
+       = compact.community.entry + sample.activity + destination.index
+  clearing := rejuvenated/clearing.html
+            = primary.community.chat + local.sample.interactions
+  atlas := rejuvenated/atlas.html
+         = project.context + outward.routes
+  principles := rejuvenated/principles.html
+              = truth+consent+projection.longform
+  membership := rejuvenated/membership.html
+              = hospitality+capacity+covenant.study
+  W! clearing recognizability := Discord|Teams-class chat.grammar ¬ brand.clone
+  W! Apocky.difference := Crosscut.message-context + branch|thread|resolution
+  N! cockpit.telemetry | portfolio.hero | ontology-first navigation
+
+§D CHAT.SHELL  ‼
+  desktop :=
+    global.bar
+    + space.rail
+    + channel|DM.hierarchy
+    + selected.room[header + message.log + scope.strip + composer]
+    + context[Members|Thread|Crosscut]
+  mobile := panel.selector[Channels|Chat|People]
+          + exactly.one.active.surface
+          + Chat.default
+          + direct.destination.dock[Hub|Atlas|Membership|Principles]
+          + composer.fixed-within-chat
+  W! document.fixed-to-visual.viewport
+  M? scroll.owner := channel.list | message.log | inspector.content | dialog.results
+  N! document.scroll | horizontal.pan | camera.drag | user.zoom-control | hidden.primary.route
+
+§D MESSAGE.GRAMMAR
+  message := avatar + author + authored.sample.status + timestamp + body
+           + optional{attachment|reaction|thread|Crosscut}
+  room.change ⇒ message.log.replace + draft.clear + offer.reset + inspector.refresh
+  composer.submit ⇒ append.local.memory.only + explicit.local-only.status
+  reaction.toggle ⇒ local.visual.feedback ¬ persistence|score
+  thread.resolve ⇒ meaningful.work.state + reversible.reopen
+  W! room + composer + transcript dominate first.visual.scan
+  W! sample.cast|timestamp|presence truth adjacent-to representation
+  N! empty.concept.card substitutes for conversation
+
+§D CROSSCUT.DIMENSIONALITY  ‼
+  attachment := selected.message|artifact → contextual.inspector
+  X := relation
+       source → artifact → audience
+  Y := containment
+       fragment|message → artifact|thread → room → project|system
+  Z := visibility
+       local.draft → room.visible → explicitly.offered
+  T := lineage
+       drafted → placed → selected → offered|withdrawn|resolved
+  W! axis.card reachable-from-message in 1.action
+  W! axis.meaning exists as text + DOM order; shimmer|depth = redundant cue
+  W! Crosscut enriches chat.action ¬ replaces chat
+  N! perspective|motion|color required-to-understand
+
+§D COMPONENT.SYSTEM
+  token.layers := bg.0 < bg.1 < bg.2 < raised < modal
+  token.roles := text.primary|muted + line + accent.gold|violet|cyan + state.success|danger
+  component.states := default + hover + active + focus-visible + disabled + error.when.applicable
+  signifier := button.shape|label|icon + selected.channel.rail + active.tab.underline
+  grouping := proximity + surface + divider + heading
+  hierarchy := room.title > message.author|body > metadata|truth.label
+  W! semantic.color redundant-with text|shape|state
+  W! target ≥ 44x44 except dense.desktop.metadata-actions ⊗ equivalent.keyboard.path
+
+§D CONTENT.COMPRESSION
+  always.visible :=
+    Apocky + STATIC.SAMPLE + local.only + network.off
+    + current.room + message.log + composer + offer.state
+    + channels|members.context + destination.rail
+  visual.indicator :=
+    selected.room + unread.marker + thread.state + attachment.type + offer.state
+  contextual := source + audience + purpose + duration + axis.projection
+  branch :=
+    project.details→atlas
+    + consent/projection.longform→principles
+    + community.entry→hub
+    + plans/covenant/capacity→membership
+  N! operational.truth hidden-behind{hover,color,unknown.glyph}
+
+§T MEANINGFUL.FEEDBACK
+  preferred := reply + reaction + thread + resolve/reopen + offer/withdraw
+  success := action changes local.task.state + acknowledgement adjacent-to action
+  W! autonomy + relatedness + competence
+  N! points | badge | leaderboard | streak | daily.obligation | progress-theater
+  N! gamification metric substitutes for actual.conversation.outcome
+
+§T CONSENT.TRUTH
+  initial.offer := idle
+  room.change ⇒ active.offer=∅ + local.draft.clear + deliberate.reoffer.required
+  summary.review ⇒ Crosscut.visible + state.unchanged
+  offer.sample ⇒ exact.artifact + audience + purpose + duration visible
+  W! actual.offer|withdraw control colocated-with exact.terms
+  withdraw.sample ⇒ active.path=∅ + receipt.statement.may-remain
+  W! one.authoritative.live-region per transition
+  W! sample|authored-example|offline labels adjacent-to represented.state
+  N! presence.dot|camera|listening|caption state implies live.actor
+  N! route.ready | visual.thread | historical.sample ⇒ current.consent
+
+§T MOTION.PERFORMANCE
+  W! zero.external.runtime.dependencies
+  W! zero.remote.font + zero.bitmap.hero + zero.canvas + zero.WebGL
+  W! compositor.animation := transform + opacity
+  W! event-driven + ≤1.pending.rAF + stop@equilibrium|hidden|motion.off
+  W! prefers-reduced-motion + save-data + manual.stillness
+  W! system.stillness ≻ manual.on
+  W! clearing.motion.choice := page-memory.only ¬ storage
+  W! translucency.degrades-to-opaque @ lite|forced-colors
+  N! perpetual.attention.motion | layout.thrash | animation⇒presence|consent
+
+§T VIEWPORT.CONTRACT  ‼
+  W! document.height ≤ visual.viewport + 1px @ 320x568..1440x900
+  W! document.width ≤ viewport.width + 1px
+  W! primary.chat.controls reachable without document.scroll|pan|zoom
+  W! focus.visible + unoccluded
+  W! keyboard + screen.reader + forced.color + 200%.zoom route.complete
+  W! short.landscape retains room.header + transcript + composer
+
+§C ACCEPTANCE
+  W! ≤5s identify : community.chat + current.room + transcript + composer
+  W! ≤5s identify : static.sample + local.only + network.off
+  W! ≤1.action reach : [Hub, Clearing, Atlas, Membership, Principles]
+  W! ≤1.action reach : [Channels, Chat, People] @ mobile
+  W! ≤1.action reach : [Members, Thread, Crosscut]
+  W! room.change resets draft+offer
+  W! local.message + reaction + thread + resolve/reopen + Crosscut + offer/withdraw verified
+  W! page.scroll=0 @ [320x568,390x844,568x320,768x1024,960x720,1280x720,1440x900]
+  W! changed.controls keyboard+touch verified
+  W! console.error=0 + local.refs=200 + node.syntax=pass
+  W! no remote.runtime.request
+  W! graphify.update after source.freeze
+∎

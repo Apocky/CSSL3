@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  @keyframes apx-orbit { to { transform: rotate(360deg); } }
+  @keyframes apx-orbit-reverse { to { transform: rotate(-360deg); } }
+  @keyframes apx-breathe { 0%,100% { opacity: .04; transform: scale(.92); } 50% { opacity: .15; transform: scale(1.08); } }
+  @keyframes apx-node { 0%,100% { opacity: .35; transform: scale(.72); } 45% { opacity: 1; transform: scale(1.4); } }
+  @keyframes apx-core { 0%,100% { transform: scale(.985); } 50% { transform: scale(1.025); } }
+  @keyframes apx-fault { 0%,82%,100% { transform: translate(0); opacity: 1; } 86% { transform: translate(-2px,1px); opacity: .6; } 90% { transform: translate(2px,-1px); opacity: .85; } }
+  @media (prefers-reduced-motion: reduce) {
+    figure[data-apx] * { animation: none !important; }
+  }
+</style>
+</helmet>
+<figure data-apx="true" role="img" aria-label="{{ ariaLabel }}" style="margin: 0; display: inline-flex; flex-direction: column; align-items: center; gap: {{ gap }}px; width: {{ size }}px; max-width: 100%; color: {{ primary }};">
+  <svg viewBox="0 0 220 220" width="{{ size }}" height="{{ size }}" style="display: block; max-width: 100%; overflow: visible;">
+    <defs>
+      <radialGradient id="{{ uid }}-core" cx="42%" cy="34%" r="70%">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"></stop>
+        <stop offset="18%" stop-color="{{ primary }}" stop-opacity="0.92"></stop>
+        <stop offset="68%" stop-color="{{ secondary }}" stop-opacity="0.44"></stop>
+        <stop offset="100%" stop-color="#05080d" stop-opacity="0.94"></stop>
+      </radialGradient>
+      <linearGradient id="{{ uid }}-line" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="{{ primary }}" stop-opacity="0.14"></stop>
+        <stop offset="50%" stop-color="{{ secondary }}" stop-opacity="0.75"></stop>
+        <stop offset="100%" stop-color="{{ primary }}" stop-opacity="0.14"></stop>
+      </linearGradient>
+      <filter id="{{ uid }}-glow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+        <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+      </filter>
+      <filter id="{{ uid }}-soft" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="11"></feGaussianBlur>
+      </filter>
+    </defs>
+    <circle cx="110" cy="110" r="72" fill="{{ glow }}" opacity="{{ breathOpacity }}" filter="url(#{{ uid }}-soft)" style="transform-origin: 110px 110px; animation: apx-breathe 4.8s ease-in-out infinite;"></circle>
+    <g style="transform-origin: 110px 110px; animation: apx-orbit {{ tempo }} linear infinite; animation-play-state: {{ orbitPlay }};">
+      <ellipse cx="110" cy="110" rx="89" ry="58" fill="none" stroke="url(#{{ uid }}-line)" stroke-width="1.2" stroke-dasharray="2 7"></ellipse>
+      <ellipse cx="110" cy="110" rx="58" ry="89" fill="none" stroke="url(#{{ uid }}-line)" stroke-width="1.2" stroke-dasharray="1 9" transform="rotate(30 110 110)"></ellipse>
+    </g>
+    <g style="transform-origin: 110px 110px; animation: apx-orbit-reverse {{ tempo }} linear infinite; animation-play-state: {{ orbitPlay }};">
+      <sc-for list="{{ nodes }}" as="n" hint-placeholder-count="0">
+        <g transform="translate({{ n.x }} {{ n.y }})">
+          <line x1="{{ n.x1 }}" y1="{{ n.y1 }}" x2="0" y2="0" stroke="{{ primary }}" stroke-opacity="0.13" stroke-width="1"></line>
+          <circle r="9" fill="{{ glow }}" opacity="0.12" filter="url(#{{ uid }}-glow)"></circle>
+          <circle r="4.2" fill="{{ n.fill }}" style="transform-box: fill-box; transform-origin: center; animation: apx-node 2.4s ease-in-out infinite; animation-delay: {{ n.delay }}; animation-play-state: {{ nodePlay }};"></circle>
+        </g>
+      </sc-for>
+    </g>
+    <g filter="url(#{{ uid }}-glow)" style="transform-origin: 110px 110px; animation: {{ coreAnim }};">
+      <polygon points="110,69 145.5,89.5 145.5,130.5 110,151 74.5,130.5 74.5,89.5" fill="url(#{{ uid }}-core)" stroke="{{ primary }}" stroke-width="1.7"></polygon>
+      <polygon points="110,80 136,95 136,125 110,140 84,125 84,95" fill="none" stroke="{{ secondary }}" stroke-opacity="0.7" stroke-width="1"></polygon>
+      <path d="M91 110 Q110 94 129 110 Q110 126 91 110Z" fill="#071017" fill-opacity="0.8" stroke="{{ primary }}" stroke-width="1.2"></path>
+      <circle cx="110" cy="110" r="6.3" fill="{{ primary }}"></circle>
+      <circle cx="108" cy="108" r="2" fill="#ffffff" opacity="0.9"></circle>
+    </g>
+    <circle cx="110" cy="110" r="103" fill="none" stroke="{{ primary }}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="1 7" style="transform-origin: 110px 110px; animation: apx-orbit 26s linear infinite;"></circle>
+  </svg>
+  <sc-if value="{{ showCaption }}" hint-placeholder-val="{{ false }}">
+    <figcaption style="text-align: center; line-height: 1.2;">
+      <div style="color: {{ primary }}; font-size: {{ labelFs }}px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;">{{ label }}</div>
+      <div style="color: #697784; font-size: {{ subFs }}px; margin-top: 3px;">{{ sub }}</div>
+    </figcaption>
+  </sc-if>
+</figure>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 260, &quot;height&quot;: 300}, &quot;mode&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;ready&quot;, &quot;options&quot;: [&quot;checking&quot;, &quot;private&quot;, &quot;ready&quot;, &quot;thinking&quot;, &quot;queued&quot;, &quot;dreaming&quot;, &quot;degraded&quot;, &quot;offline&quot;], &quot;tsType&quot;: &quot;string&quot;}, &quot;size&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 180, &quot;min&quot;: 24, &quot;max&quot;: 320, &quot;unit&quot;: &quot;px&quot;, &quot;tsType&quot;: &quot;number&quot;}, &quot;detail&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;full&quot;, &quot;options&quot;: [&quot;full&quot;, &quot;compact&quot;], &quot;tsType&quot;: &quot;string&quot;}, &quot;provenance&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;reported-state&quot;, &quot;options&quot;: [&quot;reported-state&quot;, &quot;laboratory-preview&quot;], &quot;tsType&quot;: &quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    if (!this.uid) this.uid = 'apx' + Math.random().toString(36).slice(2, 7);
+    const STATES = {
+      checking: { label: 'checking', primary: '#82909e', secondary: '#586572', glow: '#a6b5c3', tempo: '7s' },
+      private: { label: 'state protected · sign in', primary: '#b69cff', secondary: '#f1bd73', glow: '#d7c8ff', tempo: '12s' },
+      ready: { label: 'awake · receptive', primary: '#39e6c7', secondary: '#f4c96b', glow: '#64ffe1', tempo: '5.5s' },
+      thinking: { label: 'thinking · integrating', primary: '#5bd8ff', secondary: '#c590ff', glow: '#72e3ff', tempo: '2.6s' },
+      queued: { label: 'queued · awaiting substrate', primary: '#b58cff', secondary: '#f4b86a', glow: '#c8a9ff', tempo: '8s' },
+      dreaming: { label: 'dreaming · consolidating', primary: '#d883ff', secondary: '#ff78b8', glow: '#e7a3ff', tempo: '10s' },
+      degraded: { label: 'degraded · recovering', primary: '#f3b55f', secondary: '#ff736b', glow: '#ffd08a', tempo: '5s' },
+      offline: { label: 'unavailable', primary: '#66717d', secondary: '#3c444d', glow: '#66717d', tempo: '14s' },
+    };
+    const state = STATES[this.props.mode] ? this.props.mode : 'ready';
+    const p = STATES[state];
+    const size = Number(this.props.size ?? 180);
+    const detail = this.props.detail ?? 'full';
+    const lab = this.props.provenance === 'laboratory-preview';
+    const paused = state === 'offline' || state === 'checking' || state === 'private';
+    const nodes = ['memory', 'language', 'reason', 'agency', 'perception', 'dream'].map((organ, i) => {
+      const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2;
+      const x = 110 + Math.cos(angle) * 82;
+      const y = 110 + Math.sin(angle) * 82;
+      return {
+        organ,
+        x: x.toFixed(2), y: y.toFixed(2),
+        x1: (110 - x).toFixed(2), y1: (110 - y).toFixed(2),
+        fill: i % 2 ? p.secondary : p.primary,
+        delay: `${-i * 0.41}s`,
+      };
+    });
+    return {
+      uid: this.uid,
+      size,
+      gap: detail === 'full' ? 8 : 3,
+      showCaption: detail === 'full',
+      primary: p.primary, secondary: p.secondary, glow: p.glow, tempo: p.tempo,
+      breathOpacity: state === 'offline' ? 0.03 : 0.08,
+      orbitPlay: paused ? 'paused' : 'running',
+      nodePlay: state === 'offline' ? 'paused' : 'running',
+      coreAnim: state === 'degraded' ? 'apx-fault 3s steps(1,end) infinite' : 'apx-core 3.4s ease-in-out infinite',
+      nodes,
+      label: lab ? 'laboratory preview' : p.label,
+      sub: lab ? 'not entity-authored · no state claim' : 'identity · organs · cycle · boundary',
+      labelFs: Math.max(11, size * 0.075).toFixed(1),
+      subFs: Math.max(9, size * 0.055).toFixed(1),
+      ariaLabel: lab
+        ? "Laboratory visual preview; not Apocrypha's chosen avatar and not a current state report"
+        : `Apocrypha state: ${p.label}`,
+    };
+  }
+}
+</script>
+</body>
+</html>

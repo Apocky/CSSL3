@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07100c">
+  <meta name="description" content="The Clearing: a local-only Apocky community chat prototype with rooms, threads, members, and explicit message scope.">
+  <title>Apocky — The Clearing Chat</title>
+  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/chatroom.css">
+  <script defer src="assets/site.js"></script>
+  <script defer src="assets/chatroom.js"></script>
+</head>
+<body class="site-page chatroom-page" data-chat-view-mode="chat" data-chat-inspector-mode="members" data-chat-offer-state="idle">
+  <a class="skip-link" href="#message-log">Skip to messages</a>
+
+  <div class="atmosphere" aria-hidden="true">
+    <div class="aurora aurora-one" data-depth="0.12"></div>
+    <div class="aurora aurora-two" data-depth="0.18"></div>
+    <div class="topography" data-depth="0.08"></div>
+    <div class="grain"></div>
+  </div>
+
+  <header class="chat-global-bar">
+    <a class="chat-brand" href="index.html" aria-label="Apocky Spatial Commons home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>APOCKY</span>
+    </a>
+
+    <div class="chat-prototype-beacon" role="note" aria-label="Static sample. Local only. Network off.">
+      <span class="beacon-orbit" aria-hidden="true"></span>
+      <span><strong>STATIC SAMPLE</strong><small>local only · network off</small></span>
+    </div>
+
+    <div class="chat-global-actions">
+      <button class="chat-search-trigger" type="button" data-chat-search-open aria-keyshortcuts="Control+K Meta+K">
+        <span aria-hidden="true">⌕</span><span>Jump or search</span><kbd>⌘K</kbd>
+      </button>
+      <button class="chat-icon-button" type="button" data-chat-demo-action="Notifications are sample-only and no service is connected." aria-label="Sample notifications">
+        <span aria-hidden="true">◔</span><i class="sample-unread" aria-hidden="true"></i>
+      </button>
+      <button class="motion-toggle chat-motion-toggle" type="button" data-motion-toggle aria-pressed="false">
+        <span class="motion-glyph" aria-hidden="true">⌁</span>
+        <span data-motion-label>Motion on</span>
+      </button>
+    </div>
+  </header>
+
+  <nav class="chat-mobile-tabs" aria-label="Primary mobile navigation">
+    <a href="index.html"><span aria-hidden="true">◌</span><span>Hub</span></a>
+    <button type="button" data-chat-view="channels" aria-pressed="false"><span aria-hidden="true">☰</span><span>Rooms</span></button>
+    <button type="button" data-chat-view="chat" aria-pressed="true"><span aria-hidden="true">#</span><span>Chat</span></button>
+    <button type="button" data-chat-view="people" aria-pressed="false"><span aria-hidden="true">◎</span><span>People</span></button>
+    <a href="atlas.html"><span aria-hidden="true">⌗</span><span>Atlas</span></a>
+    <a href="membership.html"><span aria-hidden="true">◒</span><span>Join</span></a>
+    <a href="principles.html"><span aria-hidden="true">⌾</span><span>Rules</span></a>
+  </nav>
+
+  <main class="chat-shell">
+    <aside class="space-rail" aria-label="Apocky spaces">
+      <a class="space-button" href="index.html" aria-label="Spatial Commons" data-tooltip="Commons"><span aria-hidden="true">◌</span></a>
+      <span class="space-divider" aria-hidden="true"></span>
+      <a class="space-button is-current" href="clearing.html" aria-current="page" aria-label="The Clearing" data-tooltip="Clearing"><span aria-hidden="true">◈</span></a>
+      <a class="space-button" href="atlas.html" aria-label="Project Atlas" data-tooltip="Atlas"><span aria-hidden="true">⌗</span></a>
+      <a class="space-button" href="membership.html" aria-label="Membership" data-tooltip="Membership"><span aria-hidden="true">◒</span></a>
+      <a class="space-button" href="principles.html" aria-label="Principles" data-tooltip="Principles"><span aria-hidden="true">⌾</span></a>
+      <span class="space-rail-spacer"></span>
+      <button class="space-button" type="button" data-chat-search-open aria-label="Explore all rooms and paths" data-tooltip="Explore"><span aria-hidden="true">＋</span></button>
+    </aside>
+
+    <nav class="channel-sidebar" aria-label="The Clearing channels">
+      <div class="workspace-heading">
+        <span class="workspace-sigil" aria-hidden="true">◈</span>
+        <span><strong>The Clearing</strong><small>community prototype</small></span>
+        <button type="button" data-chat-demo-action="Workspace settings are not connected in this prototype." aria-label="Workspace menu"><span aria-hidden="true">⌄</span></button>
+      </div>
+
+      <div class="channel-tree">
+        <section class="channel-group" aria-labelledby="clearing-channels-label">
+          <div class="channel-group-label" id="clearing-channels-label"><span>Clearings</span><button type="button" data-chat-demo-action="Creating rooms is not connected." aria-label="Create a Clearing room">＋</button></div>
+          <button class="channel-button is-active" type="button" data-chat-room="north" aria-pressed="true">
+            <span class="channel-symbol" aria-hidden="true">#</span><span><strong>north-clearing</strong><small>river study</small></span><i aria-hidden="true"></i>
+          </button>
+          <button class="channel-button" type="button" data-chat-room="nook" aria-pressed="false">
+            <span class="channel-symbol" aria-hidden="true">#</span><span><strong>reading-nook</strong><small>letters and annotations</small></span><b aria-label="2 sample unread messages">2</b>
+          </button>
+          <button class="channel-button" type="button" data-chat-room="workbench" aria-pressed="false">
+            <span class="channel-symbol" aria-hidden="true">#</span><span><strong>workbench</strong><small>unfinished things</small></span><i aria-hidden="true"></i>
+          </button>
+        </section>
+
+        <section class="channel-group" aria-labelledby="project-channels-label">
+          <div class="channel-group-label" id="project-channels-label"><span>Project rooms</span></div>
+          <button class="channel-button" type="button" data-chat-demo-action="The Apocrypha project room is represented as a sample only.">
+            <span class="channel-symbol" aria-hidden="true">#</span><span><strong>apocrypha-lab</strong><small>authored studies</small></span>
+          </button>
+          <button class="channel-button" type="button" data-chat-demo-action="The CSSL project room is represented as a sample only.">
+            <span class="channel-symbol" aria-hidden="true">#</span><span><strong>cssl-language</strong><small>constraints and systems</small></span>
+          </button>
+        </section>
+
+        <section class="channel-group" aria-labelledby="direct-messages-label">
+          <div class="channel-group-label" id="direct-messages-label"><span>Direct messages · sample</span><button type="button" data-chat-demo-action="Direct messages are not connected." aria-label="Start a sample direct message">＋</button></div>
+          <button class="direct-message-button" type="button" data-chat-demo-action="Mira is sample cast; no direct-message service is connected.">
+            <span class="mini-avatar avatar-mira" aria-hidden="true">M</span><span><strong>Mira</strong><small>sample participant</small></span>
+          </button>
+          <button class="direct-message-button" type="button" data-chat-demo-action="This is authored example content, not a live Apocrypha session.">
+            <span class="mini-avatar avatar-apocrypha" aria-hidden="true">◈</span><span><strong>Apocrypha Lab</strong><small>authored preview</small></span>
+          </button>
+        </section>
+
+        <section class="channel-group" aria-labelledby="voice-label">
+          <div class="channel-group-label" id="voice-label"><span>Voice · disconnected</span></div>
+          <button class="voice-channel" type="button" data-chat-demo-action="No microphone, camera, or voice session is connected.">
+            <span aria-hidden="true">◖</span><span><strong>Quiet table</strong><small>join path disabled</small></span><em>OFF</em>
+          </button>
+        </section>
+      </div>
+
+      <div class="account-tray">
+        <span class="mini-avatar avatar-you" aria-hidden="true">A</span>
+        <span><strong>Apocky</strong><small>local prototype</small></span>
+        <button type="button" data-chat-demo-action="Profile settings are not connected." aria-label="Profile settings"><span aria-hidden="true">⚙</span></button>
+      </div>
+    </nav>
+
+    <section class="conversation-pane" aria-labelledby="channel-title">
+      <header class="channel-toolbar" tabindex="-1">
+        <span class="channel-hash" aria-hidden="true">#</span>
+        <span class="channel-identity">
+          <h1 id="channel-title" data-chat-channel-title>north-clearing</h1>
+          <small data-chat-channel-topic>River recordings, field notes, and one shared question.</small>
+        </span>
+        <span class="channel-toolbar-spacer"></span>
+        <button class="chat-icon-button" type="button" data-chat-open-inspector="crosscut" aria-label="Open selected message Context"><span aria-hidden="true">◇</span></button>
+        <button class="chat-icon-button" type="button" data-chat-search-open aria-label="Search this sample workspace"><span aria-hidden="true">⌕</span></button>
+        <button class="chat-icon-button" type="button" data-chat-open-inspector="members" aria-label="Show sample members"><span aria-hidden="true">◎</span><small data-chat-member-count>3</small></button>
+      </header>
+
+      <div class="message-scroller" id="message-log" tabindex="0" aria-label="Sample conversation in north-clearing">
+        <ol class="message-list" data-chat-messages>
+          <li class="chat-event">Loading the local sample room…</li>
+        </ol>
+      </div>
+
+      <div class="chat-scope-strip">
+        <span class="scope-state"><i aria-hidden="true"></i><span data-chat-scope-state>Room only</span></span>
+        <span class="draft-truth" data-chat-draft-status>Local draft · nothing sent or stored</span>
+        <button type="button" data-chat-open-inspector="crosscut"><span aria-hidden="true">◇</span> Context</button>
+        <button class="scope-offer-button" type="button" data-chat-review-offer><span data-chat-review-offer-label>Review offer</span></button>
+      </div>
+
+      <form class="message-composer" data-chat-composer novalidate>
+        <button class="composer-tool" type="button" data-chat-demo-action="Attachments stay local; no upload service is connected." aria-label="Add a local sample attachment"><span aria-hidden="true">＋</span></button>
+        <label class="sr-only" for="chat-message">Message this sample room</label>
+        <textarea id="chat-message" rows="1" maxlength="1200" data-chat-input placeholder="Message #north-clearing"></textarea>
+        <button class="composer-tool composer-emoji" type="button" data-chat-demo-action="Emoji selection is not connected." aria-label="Choose a sample reaction"><span aria-hidden="true">☺</span></button>
+        <button class="composer-send" type="submit"><span>Send</span><span aria-hidden="true">↑</span></button>
+      </form>
+    </section>
+
+    <aside class="context-panel" aria-label="Room members, thread, and Context">
+      <div class="context-tabs" role="tablist" aria-label="Room details">
+        <button type="button" role="tab" data-chat-inspector="members" aria-selected="true" aria-controls="members-panel">Members</button>
+        <button type="button" role="tab" data-chat-inspector="thread" aria-selected="false" aria-controls="thread-panel">Thread <i data-chat-open-thread-count>1</i></button>
+        <button type="button" role="tab" data-chat-inspector="crosscut" aria-selected="false" aria-controls="crosscut-panel">Context</button>
+      </div>
+
+      <section class="context-content members-panel" id="members-panel" role="tabpanel" data-chat-inspector-panel="members">
+        <div class="context-intro">
+          <span class="eyebrow">IN THIS SAMPLE</span>
+          <h2>Room cast</h2>
+          <p>Authored participant states—not live presence.</p>
+        </div>
+        <ul class="member-list" data-chat-members></ul>
+        <div class="quiet-activity-card">
+          <span class="closure-ring" aria-hidden="true"><i></i></span>
+          <span><strong data-chat-thread-summary>1 open thread</strong><small>meaningful closure, not a streak</small></span>
+          <button type="button" data-chat-open-inspector="thread">Open</button>
+        </div>
+      </section>
+
+      <section class="context-content thread-panel" id="thread-panel" role="tabpanel" data-chat-inspector-panel="thread" hidden>
+        <div class="context-intro">
+          <span class="eyebrow">MESSAGE THREAD · LOCAL</span>
+          <h2 data-chat-thread-title>River interval</h2>
+          <p data-chat-thread-origin>Choose a reply thread from the conversation.</p>
+        </div>
+        <ol class="thread-replies" data-chat-thread-replies></ol>
+        <button class="thread-resolve-button" type="button" data-chat-resolve-thread aria-pressed="false">
+          <span aria-hidden="true">✓</span><span data-chat-resolve-label>Mark sample thread resolved</span>
+        </button>
+        <p class="context-footnote">Resolution is an in-memory prototype state. It creates no score, badge, streak, or durable record.</p>
+      </section>
+
+      <section class="context-content crosscut-panel" id="crosscut-panel" role="tabpanel" data-chat-inspector-panel="crosscut" hidden>
+        <div class="context-intro">
+          <span class="eyebrow">SELECTED MESSAGE · CONTEXT</span>
+          <h2 data-chat-crosscut-title>River interval</h2>
+          <p>One compact view branches into four plain-language paths. Choose a card for a preview, then open its detail route.</p>
+        </div>
+
+        <div class="loom-context-stage" data-loom-stage aria-label="Context projection. The selected message is centered; cards branch by people, meaning, visibility, and time.">
+          <div class="loom-core loom-layer" data-depth="meaning"><span class="loom-glyph" aria-hidden="true">◇</span><span>Selected message</span></div>
+          <div class="crosscut-grid" aria-label="Four context branches">
+            <article tabindex="0" data-hub-context-axis="people" data-hub-route="membership.html"><b aria-hidden="true">◎</b><span>People</span><p data-chat-axis-x>Mira → selected clip → Apocrypha</p><small>Who is connected?</small><a href="membership.html" data-hub-route-link>Open people</a></article>
+            <article tabindex="0" data-hub-context-axis="meaning" data-hub-route="atlas.html"><b aria-hidden="true">⌗</b><span>Meaning</span><p data-chat-axis-y>interval → recording → North → Clearing</p><small>What does it belong to?</small><a href="atlas.html" data-hub-route-link>Open meaning</a></article>
+            <article tabindex="0" data-hub-context-axis="visibility" data-hub-route="principles.html"><b aria-hidden="true">◌</b><span>Visibility</span><p data-chat-axis-z>room-only · proposed audience</p><small>Who can see it?</small><a href="principles.html" data-hub-route-link>Open rules</a></article>
+            <article tabindex="0" data-hub-context-axis="time" data-hub-route="clearing.html"><b aria-hidden="true">↝</b><span>Time</span><p data-chat-axis-t>placed → selected → previewed</p><small>How did it arrive here?</small><a href="clearing.html" data-hub-route-link>Open lineage</a></article>
+          </div>
+        </div>
+
+        <dl class="scope-definition">
+          <div><dt>Source</dt><dd data-chat-scope-source>Mira</dd></div>
+          <div><dt>Offeror</dt><dd>Apocky</dd></div>
+          <div><dt>Artifact</dt><dd data-chat-scope-artifact>clip 00:41–01:12 only</dd></div>
+          <div><dt>Audience</dt><dd>Apocrypha</dd></div>
+          <div><dt>Purpose</dt><dd data-chat-scope-purpose>name the second birdsong</dd></div>
+          <div><dt>Duration</dt><dd data-chat-scope-duration>this session</dd></div>
+        </dl>
+
+        <div class="context-offer-control">
+          <span><i aria-hidden="true"></i><span data-chat-context-state>No sample offer</span></span>
+          <button type="button" data-chat-offer><span data-chat-offer-label>Offer sample</span></button>
+        </div>
+        <p class="context-footnote">The projection is a visual aid, not a score. It never implies presence, consent, trust, or truth.</p>
+      </section>
+    </aside>
+  </main>
+
+  <dialog class="chat-jump-dialog" data-chat-search aria-labelledby="chat-jump-title">
+    <header>
+      <span><small>QUICK JUMP · STATIC INDEX</small><h2 id="chat-jump-title">Where do you want to go?</h2></span>
+      <button type="button" data-chat-search-close aria-label="Close quick jump">×</button>
+    </header>
+    <label class="sr-only" for="chat-jump-input">Filter rooms and destinations</label>
+    <input id="chat-jump-input" type="search" data-chat-search-input aria-label="Search rooms and destinations" placeholder="Search rooms and destinations…" autocomplete="off">
+    <div class="jump-results" data-chat-search-results>
+      <button type="button" data-search-item data-search-room="north"><span>#</span><span><strong>north-clearing</strong><small>River study · room</small></span></button>
+      <button type="button" data-search-item data-search-room="nook"><span>#</span><span><strong>reading-nook</strong><small>Letters · room</small></span></button>
+      <button type="button" data-search-item data-search-room="workbench"><span>#</span><span><strong>workbench</strong><small>Fragments · room</small></span></button>
+      <a href="index.html" data-search-item><span>◌</span><span><strong>Spatial Commons</strong><small>Hub</small></span></a>
+      <a href="atlas.html" data-search-item><span>⌗</span><span><strong>Project Atlas</strong><small>All projects</small></span></a>
+      <a href="membership.html" data-search-item><span>◒</span><span><strong>Membership</strong><small>Capacity and covenant</small></span></a>
+      <a href="principles.html" data-search-item><span>⌾</span><span><strong>Principles</strong><small>Consent and projection rules</small></span></a>
+    </div>
+    <p>No search, network, or navigation history is stored.</p>
+  </dialog>
+
+  <p class="chat-live-status" data-chat-status role="status" aria-live="polite" aria-atomic="true">North Clearing sample loaded. Nothing is connected or sent.</p>
+</body>
+</html>

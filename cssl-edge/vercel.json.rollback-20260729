@@ -1,0 +1,86 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "regions": ["iad1"],
+  "functions": {
+    "pages/api/**/*.ts": {
+      "maxDuration": 30
+    },
+    "pages/api/admin/apocrypha/chat.ts": {
+      "maxDuration": 60
+    },
+    "pages/api/admin/apocrypha/chat_stream.ts": {
+      "maxDuration": 120
+    },
+    "pages/api/cron/**/*.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    { "path": "/api/cron/heartbeat", "schedule": "* * * * *" },
+    { "path": "/api/cron/playtest-cycle", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/mycelium-relay", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/hotfix-manifest-refresh", "schedule": "*/30 * * * *" },
+    { "path": "/api/cron/kan-rollup", "schedule": "0 * * * *" },
+    { "path": "/api/cron/sigma-chain-checkpoint", "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/shawn-reference-audit", "schedule": "0 16 * * 1" }
+  ],
+  "headers": [
+    {
+      "source": "/api/admin/apocrypha/:rest*",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://www.apocky.com" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PATCH, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-CSRF-Token" },
+        { "key": "X-Served-By", "value": "cssl-edge" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" },
+        { "key": "X-Served-By", "value": "cssl-edge" }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "X-Served-By", "value": "apocky-com-hub" }
+      ]
+    },
+    {
+      "source": "/:path((?:login|register|account|download|buy|docs|devblog|press))",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "X-Served-By", "value": "apocky-com-hub" }
+      ]
+    },
+    {
+      "source": "/admin/:rest*",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "X-Served-By", "value": "apocky-com-hub" }
+      ]
+    },
+    {
+      "source": "/legal/:rest*",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "X-Served-By", "value": "apocky-com-hub" }
+      ]
+    },
+    {
+      "source": "/auth/:rest*",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "X-Served-By", "value": "apocky-com-hub" }
+      ]
+    }
+  ]
+}

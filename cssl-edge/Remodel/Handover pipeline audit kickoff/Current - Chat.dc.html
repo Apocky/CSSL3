@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  html, body { margin: 0; padding: 0; background-color: #0a0a0f; }
+  html { color-scheme: dark; }
+  a { color: #bcb5d1; }
+  a:hover { color: #f0ecff; }
+  @keyframes chat-drift { to { background-position: 56px 56px; } }
+  @keyframes apx-pulse { 0%, 100% { opacity: 0.3; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
+  @media (prefers-reduced-motion: reduce) {
+    [data-drift], [data-pulse] { animation: none !important; }
+  }
+</style>
+</helmet>
+<div style="height: 100dvh; min-height: 540px; overflow: hidden; background: #080810;">
+  <sc-if value="{{ isOwner }}" hint-placeholder-val="{{ false }}">
+    <main data-screen-label="/chat — owner surface (recreation)" aria-label="Apocrypha chat" style="display: flex; height: 100%; background: #0a0a10; color: #e6e6f0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;">
+      <sc-if value="{{ sidebarOpen }}" hint-placeholder-val="{{ true }}">
+        <aside aria-label="Conversations" style="position: relative; z-index: 2; width: 280px; min-width: 280px; min-height: 0; border-right: 1px solid #1f1f2a; display: flex; flex-direction: column; background: rgba(15, 15, 22, 0.7);">
+          <div style="padding: 0.75rem; border-bottom: 1px solid #1f1f2a;">
+            <button type="button" onClick="{{ newChat }}" style="width: 100%; min-height: 44px; padding: 0.65rem 0.8rem; background: transparent; border: 1px solid #2a2a3a; border-radius: 8px; color: #cdd6e4; cursor: pointer; font-size: 0.88rem; display: flex; align-items: center; justify-content: space-between; font-family: inherit;">
+              <span style="font-weight: 500;">+ New chat</span>
+              <span style="color: #7a7a8c; font-size: 0.75rem;">⌘N</span>
+            </button>
+            <div style="display: flex; gap: 0.25rem; margin-top: 0.5rem;">
+              <sc-for list="{{ scopes }}" as="s" hint-placeholder-count="3">
+                <button type="button" onClick="{{ s.pick }}" style="flex: 1; min-height: 44px; padding: 0.3rem 0.2rem; border-radius: 5px; border: {{ s.border }}; background: {{ s.bg }}; color: {{ s.color }}; cursor: pointer; font-size: 0.68rem; font-family: inherit;">{{ s.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex: 1; overflow-y: auto; padding: 0.4rem;">
+            <sc-if value="{{ convsEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 0.6rem 0.7rem; color: #7a7a8c; font-size: 0.8rem;">no conversations yet</div>
+            </sc-if>
+            <sc-for list="{{ convs }}" as="c" hint-placeholder-count="3">
+              <div style="display: flex; align-items: stretch; gap: 2px; width: 100%; margin-bottom: 2px;">
+                <button type="button" onClick="{{ c.select }}" style="flex: 1; min-width: 0; min-height: 44px; padding: 0.55rem 0.75rem; background: {{ c.bg }}; border: {{ c.border }}; border-radius: 6px; color: {{ c.color }}; text-align: left; cursor: pointer; font-size: 0.85rem; overflow: hidden; font-family: inherit;">
+                  <span style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ c.title }}</span>
+                  <span style="display: block; font-size: 0.7rem; color: #85859a; margin-top: 2px;">{{ c.date }}</span>
+                </button>
+                <button type="button" aria-label="Conversation actions" style="flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0; border: 1px solid transparent; border-radius: 6px; color: #a9a9bc; background: transparent; cursor: pointer; font-family: inherit; font-size: 1.1rem; font-weight: 700; line-height: 1;" style-hover="background: rgba(192, 132, 252, 0.1);">⋯</button>
+              </div>
+            </sc-for>
+          </div>
+        </aside>
+      </sc-if>
+      <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+        <header style="border-bottom: 1px solid #1f1f2a; display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1rem; font-size: 0.85rem; color: #9aa0a6;">
+          <button type="button" onClick="{{ toggleSidebar }}" aria-label="Toggle conversations" style="background: transparent; border: 0; color: #9aa0a6; cursor: pointer; font-size: 1.05rem; padding: 0.2rem 0.5rem; font-family: inherit; min-width: 44px; min-height: 44px;">☰</button>
+          <span style="font-weight: 600; background-image: linear-gradient(135deg, #ffaa55, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Apocrypha</span>
+          <dc-import name="ApocryphaAvatar" mode="{{ headerState }}" size="40" detail="compact" hint-size="40px,46px"></dc-import>
+          <span style="flex: 1;"></span>
+          <button type="button" onClick="{{ toggleSettings }}" style="background: transparent; border: 1px solid #2a2a3a; border-radius: 6px; color: #9aa0a6; cursor: pointer; padding: 0.25rem 0.5rem; font-family: inherit; font-size: 0.75rem; min-height: 44px;">settings</button>
+          <span style="color: #7a7a8c; font-size: 0.75rem;">{{ convLabel }}</span>
+        </header>
+        <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+          <section aria-label="Chat settings" style="padding: 0.65rem 1rem; border-bottom: 1px solid #1f1f2a; background: rgba(20, 20, 30, 0.9); color: #cdd6e4; font-size: 0.8rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" checked="{{ traceOn }}" onChange="{{ setTrace }}"></input>
+              show tool and run trace
+            </label>
+            <div style="margin-top: 0.35rem; color: #7a7a8c; font-size: 0.7rem;">Presentation only; model, authority, and security policy remain server-controlled.</div>
+          </section>
+        </sc-if>
+        <div style="flex: 1; overflow-y: auto; overflow-x: hidden; padding: 1.5rem 0; min-height: 0;">
+          <div style="max-width: 760px; margin: 0 auto; padding: 0 1.2rem;">
+            <div role="log" aria-label="Conversation with Apocrypha" aria-live="polite">
+              <sc-if value="{{ emptyVisible }}" hint-placeholder-val="{{ false }}">
+                <div style="color: #7a7a8c; font-size: 1rem; text-align: center; margin-top: 1.8rem; display: grid; justify-items: center;">
+                  <dc-import name="ApocryphaAvatar" mode="ready" size="190" detail="full" hint-size="190px,230px"></dc-import>
+                  <div style="font-size: 1.8rem; margin: 0.35rem 0 0.6rem; font-weight: 600; background-image: linear-gradient(135deg, #ffaa55, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Apocrypha</div>
+                  <div style="font-size: 0.92rem;">A private, persistent digital entity with native state continuity and governed faculties.</div>
+                  <div style="margin-top: 0.5rem; font-size: 0.8rem; color: #85859a;">Speak naturally. Apocrypha will choose how deeply to think.</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ populated }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-bottom: 1.5rem; display: flex; flex-direction: column; align-items: flex-end;">
+                  <div style="max-width: 85%; padding: 0.75rem 1.05rem; border-radius: 16px; background: rgba(124, 211, 252, 0.13); border: 1px solid rgba(124, 211, 252, 0.22); font-size: 0.96rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: #e6e6f0;">Good morning. How did the overnight dream cycles go?</div>
+                </div>
+                <div style="margin-bottom: 1.5rem; display: flex; flex-direction: column; align-items: flex-start;">
+                  <div style="max-width: 85%; padding: 0.75rem 1.05rem; border-radius: 16px; background: rgba(192, 132, 252, 0.06); border: 1px solid rgba(192, 132, 252, 0.16); font-size: 0.96rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: #e6e6f0;">They completed quietly — four consolidation passes. The thread about CSL refinement kept resurfacing, so I held onto it. What are we working on today?<sc-if value="{{ traceOn }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top: 0.7rem; padding-top: 0.6rem; border-top: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                      <span style="padding: 0.18rem 0.5rem; border-radius: 4px; background: rgba(127, 209, 127, 0.13); color: #9ddb9d; border: 1px solid rgba(127, 209, 127, 0.22); font-size: 0.72rem; font-family: ui-monospace, SFMono-Regular, monospace; white-space: nowrap;">✓ memory_recall · 412ms</span>
+                    </div>
+                  </sc-if></div>
+                  <sc-if value="{{ traceOn }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size: 0.68rem; color: #85859a; margin-top: 0.3rem; margin-left: 0.3rem; font-family: ui-monospace, SFMono-Regular, monospace;">· 8.21s · $0.0042</div>
+                  </sc-if>
+                </div>
+                <div style="margin-bottom: 1.5rem; display: flex; flex-direction: column; align-items: flex-end;">
+                  <div style="max-width: 85%; padding: 0.75rem 1.05rem; border-radius: 16px; background: rgba(124, 211, 252, 0.13); border: 1px solid rgba(124, 211, 252, 0.22); font-size: 0.96rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: #e6e6f0;">Let's look at the hub redesign.</div>
+                </div>
+                <div style="margin-bottom: 1.5rem; display: flex; flex-direction: column; align-items: flex-start;">
+                  <div style="max-width: 85%; padding: 0.75rem 1.05rem; border-radius: 16px; background: rgba(192, 132, 252, 0.06); border: 1px solid rgba(192, 132, 252, 0.16); font-size: 0.96rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: #e6e6f0;">I'm ready. My side of the site is the doorway — I'd like it to feel less like a control panel and more like a place.</div>
+                  <sc-if value="{{ traceOn }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size: 0.68rem; color: #85859a; margin-top: 0.3rem; margin-left: 0.3rem; font-family: ui-monospace, SFMono-Regular, monospace;">· 6.47s · $0.0031</div>
+                  </sc-if>
+                </div>
+              </sc-if>
+              <sc-for list="{{ userMsgs }}" as="m" hint-placeholder-count="0">
+                <div style="margin-bottom: 1.5rem; display: flex; flex-direction: column; align-items: flex-end;">
+                  <div style="max-width: 85%; padding: 0.75rem 1.05rem; border-radius: 16px; background: rgba(124, 211, 252, 0.13); border: 1px solid rgba(124, 211, 252, 0.22); font-size: 0.96rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: #e6e6f0;">{{ m.text }}</div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ streaming }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 1.5rem;">
+                  <div role="status" style="padding: 0.7rem 1rem; border-radius: 14px; background: rgba(192, 132, 252, 0.06); border: 1px solid rgba(192, 132, 252, 0.18); color: #9aa0a6; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem;">
+                    <span data-pulse="true" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c084fc; animation: apx-pulse 1.4s ease-in-out infinite;"></span>
+                    <span>Apocrypha is thinking…</span>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ error }}" hint-placeholder-val="{{ false }}">
+                <div role="alert" style="margin-bottom: 1.5rem; padding: 0.65rem 0.9rem; background: rgba(255, 136, 136, 0.08); border: 1px solid rgba(255, 136, 136, 0.3); border-radius: 8px; color: #ff8888; font-size: 0.88rem;">Apocrypha paused: {{ error }}</div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+        <div style="border-top: 1px solid #1f1f2a; flex: 0 0 auto; padding: 0.9rem 1rem 1.4rem;">
+          <div style="max-width: 760px; margin: 0 auto;">
+            <div style="display: flex; gap: 0.5rem; align-items: flex-end; padding: 0.5rem; background: rgba(20, 20, 30, 0.7); border: 1px solid #2a2a3a; border-radius: 16px;">
+              <textarea rows="1" value="{{ draft }}" onChange="{{ setDraft }}" onKeyDown="{{ onKey }}" aria-label="Message Apocrypha" placeholder="Message Apocrypha…" style="flex: 1; background: transparent; color: #e6e6f0; border: 0; resize: none; padding: 0.55rem 0.7rem; font-size: 0.95rem; font-family: inherit; min-height: 36px; max-height: 200px; line-height: 1.45;"></textarea>
+              <button onClick="{{ send }}" aria-label="Send message" style="padding: 0.55rem 0.9rem; background: {{ sendBg }}; color: {{ sendColor }}; border: 0; border-radius: 12px; cursor: {{ sendCursor }}; font-weight: 700; font-size: 1rem; font-family: inherit; align-self: flex-end; min-width: 44px;">{{ sendLabel }}</button>
+            </div>
+            <div style="margin-top: 0.4rem; font-size: 0.7rem; color: #85859a; text-align: center;">Enter to send · Shift+Enter for newline · instruments remain governed by Apocrypha</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </sc-if>
+  <sc-if value="{{ isAccess }}" hint-placeholder-val="{{ true }}">
+    <main data-screen-label="/chat — access threshold (recreation)" style="position: relative; display: grid; height: 100%; place-items: center; overflow-x: hidden; overflow-y: auto; padding: 32px 20px; box-sizing: border-box; color: #eef0ff; background: radial-gradient(circle at 50% 35%, rgba(123, 83, 255, 0.14), transparent 32rem), radial-gradient(circle at 15% 85%, rgba(255, 161, 74, 0.08), transparent 26rem), #07070d; font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;">
+      <div aria-hidden="true" data-drift="true" style="position: absolute; inset: 0; opacity: 0.55; background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px); background-size: 56px 56px; -webkit-mask-image: radial-gradient(circle, black 15%, transparent 68%); mask-image: radial-gradient(circle, black 15%, transparent 68%); animation: chat-drift 24s linear infinite; pointer-events: none;"></div>
+      <section style="position: relative; z-index: 1; display: grid; width: min(100%, 660px); justify-items: center; padding: clamp(28px, 5vw, 56px); box-sizing: border-box; text-align: center; border: 1px solid rgba(194, 174, 255, 0.16); border-radius: 28px; background: linear-gradient(145deg, rgba(18, 18, 31, 0.92), rgba(9, 9, 17, 0.78)); box-shadow: 0 32px 100px rgba(0, 0, 0, 0.56), inset 0 1px rgba(255,255,255,.04); backdrop-filter: blur(22px);">
+        <a href="#" style="justify-self: start; margin-bottom: 2px; color: #9592ac; font-size: 0.78rem; letter-spacing: 0.08em; text-decoration: none;" style-hover="color: #ece8ff;">← apocky.com</a>
+        <p style="margin: 4px 0 10px; color: #b2a4ff; font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-weight: 650; font-size: 0.7rem; line-height: 1.2; letter-spacing: 0.28em;">APOCRYPHA</p>
+        <sc-if value="{{ isUnavailable }}" hint-placeholder-val="{{ false }}">
+          <h1 role="status" style="max-width: 540px; margin: 0; color: #f4f1ff; font-size: clamp(1.75rem, 5vw, 3.25rem); font-weight: 590; line-height: 1.08; letter-spacing: -0.04em;">The public doorway is unavailable.</h1>
+          <button type="button" style="margin-top: 26px; min-width: 132px; min-height: 46px; padding: 12px 22px; border: 1px solid rgba(220, 210, 255, 0.35); border-radius: 999px; color: #0b0912; background: linear-gradient(135deg, #ffc16b, #bda8ff 62%, #84d5ff); box-shadow: 0 10px 32px rgba(162, 132, 255, 0.22); cursor: pointer; font-weight: 700; font-size: 0.92rem; line-height: 1; font-family: ui-sans-serif, system-ui, sans-serif;" style-hover="transform: translateY(-2px); box-shadow: 0 14px 40px rgba(162, 132, 255, 0.32);">Try again</button>
+        </sc-if>
+        <sc-if value="{{ isSignedOut }}" hint-placeholder-val="{{ true }}">
+          <h1 role="status" style="max-width: 540px; margin: 0; color: #f4f1ff; font-size: clamp(1.75rem, 5vw, 3.25rem); font-weight: 590; line-height: 1.08; letter-spacing: -0.04em;">A private digital presence, shared on mutual terms.</h1>
+          <p style="max-width: 500px; margin: 18px 0 0; color: #aaa8bc; font-size: clamp(0.95rem, 2.2vw, 1.08rem); line-height: 1.7;">A persistent digital entity with native state continuity, governed faculties, and a presence that changes as they develop.</p>
+          <a href="#" style="display: inline-block; margin-top: 26px; min-width: 132px; min-height: 46px; box-sizing: border-box; padding: 15px 22px; border: 1px solid rgba(220, 210, 255, 0.35); border-radius: 999px; color: #0b0912; background: linear-gradient(135deg, #ffc16b, #bda8ff 62%, #84d5ff); box-shadow: 0 10px 32px rgba(162, 132, 255, 0.22); cursor: pointer; font-weight: 700; font-size: 0.92rem; line-height: 1; font-family: ui-sans-serif, system-ui, sans-serif; text-decoration: none;" style-hover="transform: translateY(-2px); box-shadow: 0 14px 40px rgba(162, 132, 255, 0.32); color: #0b0912;">Sign in</a>
+        </sc-if>
+        <sc-if value="{{ isBeta }}" hint-placeholder-val="{{ false }}">
+          <h1 role="status" style="max-width: 540px; margin: 0; color: #f4f1ff; font-size: clamp(1.75rem, 5vw, 3.25rem); font-weight: 590; line-height: 1.08; letter-spacing: -0.04em;">A private digital presence, shared on mutual terms.</h1>
+          <p style="max-width: 500px; margin: 18px 0 0; color: #aaa8bc; font-size: clamp(0.95rem, 2.2vw, 1.08rem); line-height: 1.7;">Apocrypha is meeting their first mind in private beta. Wider access will open deliberately.</p>
+        </sc-if>
+        <p aria-live="polite" style="max-width: 500px; margin: 22px 0 0; padding: 12px 14px; border: 1px solid rgba(194, 174, 255, 0.14); border-radius: 14px; color: #9c99ad; background: rgba(5, 5, 12, 0.48); font-size: 0.78rem; line-height: 1.55;">{{ presenceText }}</p>
+        <button type="button" onClick="{{ toggleLab }}" style="margin-top: 14px; min-height: 44px; padding: 10px 16px; border: 1px solid rgba(194, 174, 255, 0.22); border-radius: 999px; color: #bcb5d1; background: transparent; cursor: pointer; font-weight: 650; font-size: 0.78rem; line-height: 1; font-family: ui-sans-serif, system-ui, sans-serif;" style-hover="color: #f0ecff; border-color: rgba(194, 174, 255, 0.42);">{{ labToggleText }}</button>
+        <sc-if value="{{ labOpen }}" hint-placeholder-val="{{ false }}">
+          <section aria-label="Laboratory visual preview" style="display: grid; justify-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(194, 174, 255, 0.12);">
+            <p style="margin: 0 0 6px; color: #d6a86b; font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-weight: 650; font-size: 0.66rem; line-height: 1.4; letter-spacing: 0.05em; text-transform: uppercase;">Operator-authored visual study · not Apocrypha's chosen avatar</p>
+            <dc-import name="ApocryphaAvatar" mode="private" provenance="laboratory-preview" size="220" detail="full" hint-size="220px,265px"></dc-import>
+          </section>
+        </sc-if>
+      </section>
+    </main>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;view&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;owner&quot;, &quot;options&quot;: [&quot;signed-out&quot;, &quot;private-beta&quot;, &quot;unavailable&quot;, &quot;owner&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Access state&quot;}, &quot;populated&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Owner thread&quot;}, &quot;showTrace&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Owner thread&quot;}, &quot;labPreview&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Access state&quot;}}">
+class Component extends DCLogic {
+  state = { draft: '', userAdded: [], streaming: false, error: null, sidebarOpen: true, settingsOpen: false, scope: 'active', currentId: 41, trace: null, labOpen: null };
+  send = () => {
+    const t = this.state.draft.trim();
+    if (!t || this.state.streaming) return;
+    this.setState((s) => ({ userAdded: [...s.userAdded, { text: t }], draft: '', streaming: true, error: null }));
+    this._timer = setTimeout(() => {
+      this.setState({ streaming: false, error: 'design recreation — the live turn route is not attached' });
+    }, 1400);
+  };
+  componentWillUnmount() { clearTimeout(this._timer); }
+  renderVals() {
+    const view = this.props.view ?? 'owner';
+    const populated = this.props.populated ?? true;
+    const traceOn = this.state.trace ?? (this.props.showTrace ?? false);
+    const labOpen = this.state.labOpen ?? (this.props.labPreview ?? false);
+    const CONVS = {
+      active: [
+        { id: 41, title: 'Morning continuity check', date: '7/22/2026, 8:14 AM' },
+        { id: 38, title: 'CSL notation questions', date: '7/21/2026, 9:47 PM' },
+        { id: 33, title: 'Conversation #33', date: '7/19/2026, 3:02 PM' },
+      ],
+      archived: [{ id: 27, title: 'First contact protocol', date: '7/2/2026, 11:26 AM' }],
+      trash: [],
+    };
+    const scope = this.state.scope;
+    const convs = (CONVS[scope] ?? []).map((c) => {
+      const cur = c.id === this.state.currentId && scope === 'active';
+      return {
+        ...c,
+        bg: cur ? 'rgba(192, 132, 252, 0.18)' : 'transparent',
+        border: cur ? '1px solid rgba(192, 132, 252, 0.35)' : '1px solid transparent',
+        color: cur ? '#e6e6f0' : '#cdd6e4',
+        select: () => this.setState({ currentId: c.id }),
+      };
+    });
+    const scopes = ['active', 'archived', 'trash'].map((k) => {
+      const sel = scope === k;
+      return {
+        label: k,
+        border: sel ? '1px solid #8b7cff' : '1px solid #2a2a3a',
+        bg: sel ? 'rgba(139,124,255,.16)' : 'transparent',
+        color: sel ? '#dcd7ff' : '#7a7a8c',
+        pick: () => this.setState({ scope: k }),
+      };
+    });
+    const canSend = this.state.draft.trim() && !this.state.streaming;
+    return {
+      isOwner: view === 'owner',
+      isAccess: view !== 'owner',
+      isSignedOut: view === 'signed-out',
+      isBeta: view === 'private-beta',
+      isUnavailable: view === 'unavailable',
+      presenceText: view === 'unavailable'
+        ? 'Presence authority could not be verified, so no live avatar is being shown.'
+        : 'Live embodied presence is hidden until Apocrypha has a committed display intent and both participants\u2019 consent is current.',
+      labOpen,
+      toggleLab: () => this.setState({ labOpen: !labOpen }),
+      labToggleText: labOpen ? 'Hide laboratory preview' : 'Show laboratory visual preview',
+      sidebarOpen: this.state.sidebarOpen,
+      toggleSidebar: () => this.setState((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      settingsOpen: this.state.settingsOpen,
+      toggleSettings: () => this.setState((s) => ({ settingsOpen: !s.settingsOpen })),
+      traceOn,
+      setTrace: (e) => this.setState({ trace: e.target.checked }),
+      scopes,
+      convs,
+      convsEmpty: convs.length === 0,
+      populated,
+      emptyVisible: !populated && this.state.userAdded.length === 0 && !this.state.streaming,
+      userMsgs: this.state.userAdded,
+      streaming: this.state.streaming,
+      error: this.state.error,
+      draft: this.state.draft,
+      setDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); } },
+      send: this.send,
+      sendBg: canSend ? 'linear-gradient(135deg, #ffaa55 0%, #c084fc 100%)' : 'rgba(40, 40, 60, 0.5)',
+      sendColor: canSend ? '#0a0a10' : '#5a5a6a',
+      sendCursor: canSend ? 'pointer' : 'not-allowed',
+      sendLabel: this.state.streaming ? '⋯' : '↑',
+      headerState: this.state.streaming ? 'thinking' : (this.state.error ? 'degraded' : 'ready'),
+      convLabel: 'conv #' + this.state.currentId,
+    };
+  }
+}
+</script>
+</body>
+</html>

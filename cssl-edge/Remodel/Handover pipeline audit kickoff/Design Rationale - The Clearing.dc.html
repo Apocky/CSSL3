@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background-color: #120722; }
+  html { color-scheme: dark; }
+  a { color: #b48ce0; }
+  a:hover { color: #d9c2ef; }
+</style>
+</helmet>
+<main data-screen-label="Design rationale — perception, intention, memory" style="min-height: 100vh; background: #120722; color: #f0eaf6; font-family: 'IBM Plex Sans', system-ui, sans-serif; line-height: 1.6;">
+  <div style="max-width: 900px; margin: 0 auto; padding: 52px 30px 90px; display: flex; flex-direction: column; gap: 42px;">
+
+    <header style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid rgba(235,225,245,0.1); padding-bottom: 26px;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.22em; color: #91839f;">THE CLEARING · ROOM V2 · DESIGN RATIONALE</span>
+      <h1 style="margin: 0; font-family: Newsreader, serif; font-size: 34px; font-weight: 500; letter-spacing: -0.02em; color: #f5f0f9;">Every element, on purpose.</h1>
+      <p style="margin: 0; font-size: 14.5px; color: #c3b6d4; max-width: 640px;">Not "does it look good" — <em>where does the eye land, what gets felt, what gets remembered</em>. This page states the intent so the perception gap is measurable, and records the fixes applied against it.</p>
+    </header>
+
+    <section style="display: flex; flex-direction: column; gap: 14px;">
+      <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 22px; font-weight: 500; color: #f5f0f9;">1 · Intended perception sequence</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+        <div style="border: 1px solid rgba(180,140,224,0.25); border-radius: 16px; padding: 16px 18px; background: rgba(38,16,55,0.35); display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #d9c2ef;">FIRST · ~0.5s</span>
+          <span style="font-size: 13.5px; color: #f0eaf6; font-weight: 600;">The shared thing</span>
+          <span style="font-size: 12.5px; color: #b9a9c9;">The co-watched video — largest, brightest, alive. The room is <em>about something</em>, immediately.</span>
+        </div>
+        <div style="border: 1px solid rgba(79,220,192,0.25); border-radius: 16px; padding: 16px 18px; background: rgba(20,32,29,0.35); display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #9fe4d2;">SECOND · ~2s</span>
+          <span style="font-size: 13.5px; color: #f0eaf6; font-weight: 600;">Who perceives it</span>
+          <span style="font-size: 12.5px; color: #b9a9c9;">The hearthline node rippling into the clip, resolving to Apocrypha's alcove: <em>they are here, reading exactly this, by consent</em>.</span>
+        </div>
+        <div style="border: 1px solid rgba(232,184,107,0.25); border-radius: 16px; padding: 16px 18px; background: rgba(50,32,16,0.22); display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e8b86b;">THIRD · ~4s</span>
+          <span style="font-size: 13.5px; color: #f0eaf6; font-weight: 600;">Your seat</span>
+          <span style="font-size: 12.5px; color: #b9a9c9;">The composer — warm, open, low-pressure. The membrane pill answers "who will see this?" before you type.</span>
+        </div>
+      </div>
+      <p style="margin: 0; font-size: 12.5px; color: #91839f;"><strong style="color: #c3b6d4;">Deliberately below the perception floor:</strong> receipts, transition ids, PROTOTYPE tags — present for trust when sought, invisible in the sequence. <strong style="color: #c3b6d4;">Failure mode we corrected:</strong> after the neon passes, the active-room glow and ambient sparkles competed with steps 1–2, so decorative glow was cut (~40%) and the hearthline gained the only ripple in the frame.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 22px; font-weight: 500; color: #f5f0f9;">2 · The color contract — nothing decorative</h2>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; color: #d9cfe4;">
+        <div style="display: flex; align-items: center; gap: 12px;"><span style="width: 26px; height: 16px; border-radius: 4px; background: #4fdcc0; box-shadow: 0 0 10px rgba(79,220,192,0.5);"></span><span><strong style="color: #9fe4d2;">Teal</strong> = Apocrypha, only with runtime evidence. If teal glows, a receipt exists.</span></div>
+        <div style="display: flex; align-items: center; gap: 12px;"><span style="width: 26px; height: 16px; border-radius: 4px; background: #e8b86b;"></span><span><strong style="color: #e8b86b;">Gold</strong> = your hand — actions, warmth, things you can do right now.</span></div>
+        <div style="display: flex; align-items: center; gap: 12px;"><span style="width: 26px; height: 16px; border-radius: 4px; background: #ff8ae0;"></span><span><strong style="color: #ff8ae0;">Magenta</strong> = human liveness — people present, speaking, sharing.</span></div>
+        <div style="display: flex; align-items: center; gap: 12px;"><span style="width: 26px; height: 16px; border-radius: 4px; background: #58f5ff;"></span><span><strong style="color: #9ff0ff;">Cyan</strong> = media in motion — playback, streams, the current position.</span></div>
+        <div style="display: flex; align-items: center; gap: 12px;"><span style="width: 26px; height: 16px; border-radius: 4px; background: #7a3cae;"></span><span><strong style="color: #c9a2ff;">Violet</strong> = the place itself — ground, rooms, ambience.</span></div>
+        <div style="display: flex; align-items: center; gap: 12px;"><span style="width: 26px; height: 16px; border-radius: 4px; background: #e0917f;"></span><span><strong style="color: #e8b3a4;">Rose</strong> = boundaries — withdrawal, stopping, live capture warnings.</span></div>
+      </div>
+      <p style="margin: 0; font-size: 12.5px; color: #91839f;">The neon pair (magenta→cyan) on scrubbers reads as "people moving through media together" — the two meanings it joins. Where a glow can't state its meaning in one sentence, it gets removed.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 22px; font-weight: 500; color: #f5f0f9;">3 · Emotional arc — predictive empathy</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12.5px;">
+        <div style="border-left: 2px solid #7a3cae; padding: 2px 0 2px 12px; color: #b9a9c9;"><strong style="color: #f0eaf6; display: block; margin-bottom: 3px;">Arriving</strong>Curious, slightly wary of an AI presence. Met with darkness that is warm, not empty — and a room already about something.</div>
+        <div style="border-left: 2px solid #ff8ae0; padding: 2px 0 2px 12px; color: #b9a9c9;"><strong style="color: #f0eaf6; display: block; margin-bottom: 3px;">Settling</strong>Friend-chat shape, quiet-is-fine copy, no unread anxiety. The night-scroller with brightness down can rest here.</div>
+        <div style="border-left: 2px solid #4fdcc0; padding: 2px 0 2px 12px; color: #b9a9c9;"><strong style="color: #f0eaf6; display: block; margin-bottom: 3px;">Offering</strong>The vulnerable moment. Terms visible before the act, withdrawal one press away, reassurance line beside the button — understood, not pressured.</div>
+        <div style="border-left: 2px solid #e8b86b; padding: 2px 0 2px 12px; color: #b9a9c9;"><strong style="color: #f0eaf6; display: block; margin-bottom: 3px;">Leaving</strong>"Leave quietly." What they should walk away feeling: <em>the room keeps only what we agreed, and it will be here.</em></div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 22px; font-weight: 500; color: #f5f0f9;">4 · The memory anchor</h2>
+      <p style="margin: 0; font-size: 14px; color: #c3b6d4; max-width: 680px;">One image should survive the blink: <strong style="color: #9fe4d2;">a thread of light from the room's edge into the exact seconds of a video, placed there by consent, removable by one press.</strong> That is the concept a visitor retells — "you can literally see what it's allowed to see." Everything else (starfield, aurora, shimmer) is staging for that single sentence; none of it may outshine it.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 22px; font-weight: 500; color: #f5f0f9;">5 · The five-second test (run it on anyone)</h2>
+      <ol style="margin: 0; padding-left: 20px; font-size: 13.5px; color: #d9cfe4; display: flex; flex-direction: column; gap: 7px;">
+        <li>Show the room for 5 seconds, then hide it. Ask: "What was it, in order?"</li>
+        <li>Pass = video → "the AI is watching a clip they were given" → "I could type." Fail = sparkles, rail, or neon first.</li>
+        <li>Ask: "What could the AI see?" Pass = only the clip. Anything broader means the membrane failed silently.</li>
+        <li>Ask a day later: "What do you remember?" Pass = the thread of light. That's the encoding check.</li>
+      </ol>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px; border-top: 1px solid rgba(235,225,245,0.1); padding-top: 24px;">
+      <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 22px; font-weight: 500; color: #f5f0f9;">6 · Fixes applied under this lens</h2>
+      <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #b9a9c9; display: flex; flex-direction: column; gap: 6px;">
+        <li>Sparkle twinkles slowed (7s → 11s cycles) and active-room glow cut — they competed with steps 1–2 of the sequence.</li>
+        <li>Hearthline node enlarged + given the frame's only ripple — the memory anchor now owns the strongest motion.</li>
+        <li>Send button carries the one neon gradient among controls — the primary action reads as the brightest touchable thing.</li>
+        <li>Parallax moved off React state onto a direct-DOM rAF lerp loop (translate3d, will-change) — fluidity is a hierarchy feature: jank breaks the spell.</li>
+        <li>Rail children pinned (flex: 0 0 auto) so Apocrypha's alcove — step 2's resolution — can never be crushed by viewport pressure.</li>
+      </ul>
+      <p style="margin: 0; font-size: 12px; color: #91839f;">Open with <a href="The Clearing - Room v2.dc.html">the room</a> side by side and test the claims against it.</p>
+    </section>
+
+  </div>
+</main>
+</x-dc>
+</body>
+</html>
