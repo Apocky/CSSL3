@@ -320,19 +320,39 @@ export function canonicalMemberChatVerifiedIdentity(value: string): string {
   return value.toLowerCase();
 }
 
+/**
+ * Check a presented conversation id and return it.
+ *
+ * This required `presented === verifiedAuthUserId` until migration 0057. That
+ * equality made "this conversation belongs to this member" true by
+ * construction - and also made a member own exactly one conversation forever.
+ *
+ * The guarantee has NOT been dropped, it has moved to where it is stronger.
+ * `apocrypha_open_member_conversation` looks the id up across the tenant and
+ * refuses it unless the row's principal is this member's. That check is TOTAL,
+ * because `UNIQUE (tenant_id, conversation_id)` means an id has at most one
+ * owner - and it runs inside the same transaction as the write, which a check
+ * here never could.
+ *
+ * What is genuinely given up: this used to refuse a foreign id without ever
+ * reaching the database. It now forwards it and the database refuses it. That
+ * is one fewer layer, traded knowingly for a member being able to have more
+ * than one conversation.
+ */
 export function requireMemberChatConversationBinding(
   verifiedAuthUserId: string,
   presentedConversationId: string,
 ): string {
-  const verified = canonicalMemberChatVerifiedIdentity(verifiedAuthUserId);
-  if (!isMemberChatUuid(presentedConversationId) || presentedConversationId.toLowerCase() !== verified) {
+  // Still validated: an unusable session must not reach the database at all.
+  canonicalMemberChatVerifiedIdentity(verifiedAuthUserId);
+  if (!isMemberChatUuid(presentedConversationId)) {
     throw new MemberChatStoreError(
       403,
       'MEMBER_CHAT_CONVERSATION_MISMATCH',
       'This conversation is not bound to the verified member session.',
     );
   }
-  return verified;
+  return presentedConversationId.toLowerCase();
 }
 
 export function setMemberChatPrivateHeaders(res: NextApiResponse): void {
@@ -392,6 +412,11 @@ export async function enqueueMemberChat(
   },
   client: MemberChatRpcClient = configuredClient(),
 ): Promise<MemberChatJobReceipt> {
+  // Kept apart deliberately. Until 0057 these were one value, because a
+  // conversation id had to EQUAL the auth user id; collapsing them again would
+  // hand the database two copies of the same identity and destroy its ability
+  // to refuse a foreign conversation.
+  const verifiedAuthUserId = canonicalMemberChatVerifiedIdentity(input.verifiedAuthUserId);
   const conversationId = requireMemberChatConversationBinding(
     input.verifiedAuthUserId,
     input.conversationId,
@@ -401,7 +426,7 @@ export async function enqueueMemberChat(
     throw new MemberChatStoreError(500, 'MEMBER_CHAT_SERVER_BINDING_INVALID', 'The verified member binding is invalid.');
   }
   const { data, error } = await client.rpc('apocrypha_enqueue_member_chat_v2', {
-    p_verified_auth_user_id: conversationId,
+    p_verified_auth_user_id: verifiedAuthUserId,
     p_presented_conversation_id: conversationId,
     p_request_id: requestId,
     p_message: input.message,
@@ -439,10 +464,13 @@ export async function getMemberChatJob(
   const row = rows(data)[0];
   if (!row) return null;
   const job = normalizeHistoryEntry(row);
-  if (
-    job.job_id.toLowerCase() !== jobId
-    || job.conversation_id.toLowerCase() !== verifiedAuthUserId
-  ) {
+  // The conversation id is no longer compared to the auth user id: a job now
+  // legitimately belongs to any conversation the member owns, and that
+  // comparison would reject every one except their oldest. The boundary is
+  // held by apocrypha_get_member_chat_job, which is passed the verified auth
+  // user id and selects only that principal's rows - a foreign job is not
+  // returned at all, rather than returned and then caught here.
+  if (job.job_id.toLowerCase() !== jobId || !isMemberChatUuid(job.conversation_id)) {
     invalidProjection('The job projection escaped its verified member binding.');
   }
   return job;
@@ -456,6 +484,11 @@ export async function listMemberChatHistory(
   },
   client: MemberChatRpcClient = configuredClient(),
 ): Promise<MemberChatHistoryPage> {
+  // Kept apart deliberately. Until 0057 these were one value, because a
+  // conversation id had to EQUAL the auth user id; collapsing them again would
+  // hand the database two copies of the same identity and destroy its ability
+  // to refuse a foreign conversation.
+  const verifiedAuthUserId = canonicalMemberChatVerifiedIdentity(input.verifiedAuthUserId);
   const conversationId = requireMemberChatConversationBinding(
     input.verifiedAuthUserId,
     input.conversationId,
@@ -465,7 +498,7 @@ export async function listMemberChatHistory(
     throw new MemberChatStoreError(400, 'MEMBER_CHAT_HISTORY_CURSOR_INVALID', 'The member chat history cursor is invalid.');
   }
   const { data, error } = await client.rpc('apocrypha_list_member_chat_history_v2', {
-    p_verified_auth_user_id: conversationId,
+    p_verified_auth_user_id: verifiedAuthUserId,
     p_presented_conversation_id: conversationId,
     p_before_turn_sequence: beforeCursor,
     p_limit: MEMBER_CHAT_HISTORY_LIMIT,

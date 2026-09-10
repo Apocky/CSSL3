@@ -44,6 +44,13 @@ function isDefinitivePreAcceptanceRejection(error: unknown): error is MemberChat
     && error.status !== 401;
 }
 
+/** One of the member's conversations, as the picker shows it. */
+interface ConversationSummary {
+  conversation_id: string;
+  title: string;
+  turn_count: number;
+}
+
 export default function AccountChat(
   { onPendingChange }: { onPendingChange?: (pending: boolean) => void } = {},
 ): JSX.Element {
@@ -65,6 +72,11 @@ export default function AccountChat(
   const panelRegion = useRef<HTMLElement | null>(null);
   const followingRef = useRef(true);
 
+  // Which conversation this member had open, remembered per account. Without
+  // it every reload lands on the newest, and a member who deliberately opened
+  // an older one could never stay there.
+  const openKey = (account: string) => `apocky.apocrypha.member-conv.v1:${account}`;
+
   const [bound, setBound] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [history, setHistory] = useState<MemberChatHistoryEntry[]>([]);
@@ -78,6 +90,8 @@ export default function AccountChat(
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [switching, setSwitching] = useState(false);
   const [showLatest, setShowLatest] = useState(false);
 
   const current = Boolean(subject && subject === bound && conversationId);
@@ -178,8 +192,47 @@ export default function AccountChat(
     }
   }
 
+  async function refreshConversations(account: string): Promise<ConversationSummary[]> {
+    try {
+      const response = await authFetch('/api/apocrypha/member/conversations', { method: 'GET' });
+      if (!response.ok) return [];
+      const body = await response.json() as { conversations?: unknown };
+      const raw = Array.isArray(body.conversations) ? body.conversations : [];
+      const projected: ConversationSummary[] = [];
+      for (const entry of raw) {
+        const item = entry as Record<string, unknown>;
+        const id = typeof item.conversation_id === 'string' ? item.conversation_id.toLowerCase() : '';
+        if (!isMemberChatUuid(id)) continue;
+        projected.push({
+          conversation_id: id,
+          title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'New conversation',
+          turn_count: Number.isFinite(Number(item.turn_count)) ? Number(item.turn_count) : 0,
+        });
+      }
+      if (subjectRef.current === account) setConversations(projected);
+      return projected;
+    } catch {
+      // A failed listing must not take the conversation down with it: the
+      // member can still read and send in the one they have open.
+      return [];
+    }
+  }
+
+  function rememberOpen(account: string, id: string): void {
+    try { localStorage.setItem(openKey(account), id); } catch { /* storage blocked */ }
+  }
+
+  function startNewConversation(account: string): void {
+    // A fresh id, minted locally. The server creates the row on first send, so
+    // an abandoned blank conversation leaves nothing behind to clean up.
+    const id = crypto.randomUUID().toLowerCase();
+    rememberOpen(account, id);
+    void openConversation(account, id);
+  }
+
   async function openConversation(account: string, id: string): Promise<void> {
     const rev = ++generation.current;
+    void refreshConversations(account);
     active.current?.abort();
     earlierRequest.current?.abort();
     const controller = new AbortController();
@@ -275,8 +328,25 @@ export default function AccountChat(
       setNotice('Your account could not be verified for chat. Sign in again to continue.');
       return undefined;
     }
-    const id = account.toLowerCase();
-    void openConversation(account, id);
+    // Was `const id = account.toLowerCase()` - the conversation id WAS the
+    // account id, which is why a member had exactly one conversation and no way
+    // to start another. Now: the one they last had open, else their most
+    // recent, else the long-standing one (whose id is still the account id, so
+    // an existing member lands exactly where they always did).
+    void (async () => {
+      let remembered: string | null = null;
+      try {
+        const saved = localStorage.getItem(openKey(account));
+        if (saved && isMemberChatUuid(saved)) remembered = saved.toLowerCase();
+      } catch { /* storage blocked; the listing decides */ }
+      const listed = await refreshConversations(account);
+      if (subjectRef.current !== account) return;
+      const id = remembered && listed.some((c) => c.conversation_id === remembered)
+        ? remembered
+        : listed[0]?.conversation_id ?? account.toLowerCase();
+      if (subjectRef.current !== account) return;
+      void openConversation(account, id);
+    })();
     return () => {
       generation.current += 1;
       active.current?.abort();
@@ -422,6 +492,39 @@ export default function AccountChat(
         <h1>Apocrypha</h1>
         <p>{sending ? 'Responding…' : outstanding ? 'Message saved' : authenticated ? 'Your private conversation' : 'Room to think'}</p>
       </div>
+      {authenticated && subject && current ? <div className={styles.conversationControls}>
+        <label className={styles.visuallyHidden} htmlFor="apocrypha-conversation">Conversation</label>
+        <select
+          id="apocrypha-conversation"
+          className={styles.conversationPicker}
+          value={conversationId ?? ''}
+          disabled={switching || sending}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (!next || next === conversationId || !isMemberChatUuid(next)) return;
+            setSwitching(true);
+            rememberOpen(subject, next);
+            void openConversation(subject, next).finally(() => setSwitching(false));
+          }}
+        >
+          {/* The open conversation is always an option even before the listing
+              lands, so the control never renders blank or silently reselects. */}
+          {conversations.some((c) => c.conversation_id === conversationId) || !conversationId
+            ? null
+            : <option value={conversationId}>Current conversation</option>}
+          {conversations.map((c) => (
+            <option key={c.conversation_id} value={c.conversation_id}>
+              {c.turn_count > 0 ? `${c.title} (${c.turn_count})` : c.title}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className={styles.newConversation}
+          disabled={switching || sending}
+          onClick={() => { if (subject) startNewConversation(subject); }}
+        >+ New chat</button>
+      </div> : null}
       <nav aria-label="Apocrypha navigation">{authenticated && current ? <Link href="/account">Account</Link> : <>
         <Link href="/download/apocrypha">Get the app</Link>
         <Link href="/login?next=%2Fapocrypha">Sign in</Link>
