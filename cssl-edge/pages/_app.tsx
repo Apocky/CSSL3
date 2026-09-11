@@ -90,6 +90,26 @@ function detachGlobalErrorListeners(): void {
 export default function App({ Component, pageProps }: AppProps): JSX.Element {
   const router = useRouter();
 
+  // The site already ships a complete PWA manifest, so it advertises itself as
+  // installable; Chrome will not offer installation without a service worker
+  // carrying a fetch handler. Registered at root scope, which does NOT disturb
+  // the owner-only /brain worker: that one registers under `/brain`, and its
+  // cleanup pass in lib/brain/mini-brain.ts only unregisters a ROOT scope whose
+  // script is /brain-sw.js, which this is not.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const register = () => {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+        // A failed registration must never break the page. The site works
+        // without a worker - it just cannot be installed.
+      });
+    };
+    // After load, so registration never competes with the first paint for
+    // bandwidth on the visit that matters most.
+    if (document.readyState === 'complete') register();
+    else window.addEventListener('load', register, { once: true });
+  }, []);
+
   useEffect(() => {
     const opts = {
       dpl_id:
