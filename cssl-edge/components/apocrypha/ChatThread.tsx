@@ -82,15 +82,25 @@ const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
 // React tree. Without it, New chat cannot survive a reload: the mount decides
 // on its own to reopen the newest conversation, and every chat is the same chat.
 const NEW_CHAT_KEY = 'apocky.apocrypha.new-chat.v1';
-const JOB_POLL_MS = 1_500;
+// Polling cadence. The job path has no streaming transport - /api/apocrypha/
+// jobs/[id]/events is cursor-paginated JSON, not SSE - so the reader sees the
+// answer arrive only as fast as this loop asks.
+//
+// A flat 1500ms meant text landed in 1.5s jumps and every transition (queued ->
+// leased -> first token -> done) cost up to a full interval of nothing. So the
+// cadence follows the work: fast while the answer is actually growing, backing
+// off when nothing is changing. That is strictly fewer requests than a flat
+// interval when idle, and far more responsive when it matters.
+const JOB_POLL_FAST_MS = 250;
+const JOB_POLL_SLOW_MS = 1_500;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
 const MUTED_TEXT = '#85859a';
 const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function waitForPoll(signal: AbortSignal): Promise<void> {
+function waitForPoll(signal: AbortSignal, ms: number): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve();
-    const timer = window.setTimeout(resolve, JOB_POLL_MS);
+    const timer = window.setTimeout(resolve, ms);
     signal.addEventListener('abort', () => {
       window.clearTimeout(timer);
       resolve();
@@ -352,8 +362,13 @@ export function ChatThread() {
     if (!activeJob) return;
     const controller = new AbortController();
     let disposed = false;
+    // Seeded fast: the first tick after submitting is the one most worth
+    // spending a request on.
+    let pollDelay = JOB_POLL_FAST_MS;
+    let lastSeen = '';
     void (async () => {
       while (!controller.signal.aborted) {
+        let progressed = false;
         try {
           const response = await authFetch(`/api/admin/apocrypha/jobs/${encodeURIComponent(activeJob.id)}`, {
             cache: 'no-store',
@@ -386,6 +401,13 @@ export function ChatThread() {
               }
             }
             setStreamingText(visibleText);
+            // "Did anything move" is the whole input to the cadence below.
+            // Status counts as movement as well as text: queued -> leased is a
+            // transition the reader is waiting on even though no answer has
+            // appeared yet.
+            const mark = `${snapshot.job.status}:${visibleText.length}`;
+            progressed = mark !== lastSeen;
+            lastSeen = mark;
             setStreamingPhase(snapshot.job.status === 'queued'
               ? 'Accepted. Waiting for the local Apocrypha node…'
               : snapshot.job.status === 'leased'
@@ -442,7 +464,11 @@ export function ChatThread() {
             setError(pollError instanceof Error ? pollError.message : 'Connection interrupted.');
           }
         }
-        await waitForPoll(controller.signal);
+        // Something moved this tick, so the next answer is probably close:
+        // ask again soon. Nothing moved, so widen towards the slow cadence
+        // rather than hammering a job that is still sitting in a queue.
+        pollDelay = progressed ? JOB_POLL_FAST_MS : Math.min(Math.round(pollDelay * 1.5), JOB_POLL_SLOW_MS);
+        await waitForPoll(controller.signal, pollDelay);
       }
     })();
     return () => {
