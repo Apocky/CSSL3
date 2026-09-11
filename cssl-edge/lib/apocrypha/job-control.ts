@@ -816,7 +816,7 @@ export async function readExternalJobEventsPage(jobId: string, identity: JobIden
   const client = getApocryphaServiceClient();
   const { data: job, error: jobError } = await client
     .from('apocrypha_job')
-    .select('id')
+    .select('id,status')
     .eq('id', jobId)
     .eq('tenant_id', identity.tenantId)
     .eq('owner_principal_id', identity.principalId)
@@ -837,6 +837,10 @@ export async function readExternalJobEventsPage(jobId: string, identity: JobIden
     job_id: jobId,
     events,
     next_after: events.at(-1)?.sequence ?? null,
+    // Carried so a streaming reader can tell "no events yet" from "no events
+    // ever again" without a second round trip. Without it a stream has no way
+    // to end on its own and every consumer polls a finished job forever.
+    status: job.status as ApocryphaJobStatus,
   };
 }
 

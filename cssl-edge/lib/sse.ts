@@ -40,6 +40,29 @@ export class SseWriter {
     return `data: [DONE]\n\n`;
   }
 
+  // Wire-bytes for an event carrying an id.
+  //
+  // The `id:` field is what makes a dropped SSE connection recoverable: the
+  // browser remembers the last id it saw and sends it back as Last-Event-ID on
+  // reconnect, so the server can resume from that cursor instead of replaying
+  // from zero. Anything streaming out of a bounded serverless function needs
+  // this — the function WILL end mid-stream, and without an id every reconnect
+  // starts over.
+  static formatIdData(id: string | number, data: unknown): string {
+    return `id: ${id}\ndata: ${JSON.stringify(data)}\n\n`;
+  }
+
+  writeIdData(id: string | number, data: unknown): void {
+    if (this.closed) return;
+    this.res.write(SseWriter.formatIdData(id, data));
+  }
+
+  /** A comment frame. Keeps an idle connection from being reaped by a proxy. */
+  writeComment(text: string): void {
+    if (this.closed) return;
+    this.res.write(`: ${text}\n\n`);
+  }
+
   writeData(data: unknown): void {
     if (this.closed) return;
     this.res.write(SseWriter.formatData(data));
@@ -67,6 +90,16 @@ export class SseWriter {
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`assert failed : ${msg}`);
+}
+
+// 0. formatIdData puts an id line before the data line — what the browser
+//    reads back as Last-Event-ID on reconnect.
+export function testFormatIdDataCarriesCursor(): void {
+  const wire = SseWriter.formatIdData(42, { ordinal: 42 });
+  assert(
+    wire === 'id: 42\ndata: {\"ordinal\":42}\n\n',
+    `expected id line then data line, got ${JSON.stringify(wire)}`
+  );
 }
 
 // 1. writeData emits `data: <json>\n\n`.
@@ -117,9 +150,10 @@ const isMain =
   typeof module !== 'undefined' &&
   require.main === module;
 if (isMain) {
+  testFormatIdDataCarriesCursor();
   testWriteDataNewlineFormat();
   testWriteEventTypePrefix();
   testCloseFlushes();
   // eslint-disable-next-line no-console
-  console.log('sse.ts : OK · 3 inline tests passed');
+  console.log('sse.ts : OK · 4 inline tests passed');
 }
