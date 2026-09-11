@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.apocky.apocrypha",
+      "sha256_cert_fingerprints": [
+        "10:90:11:4F:51:E3:A9:22:A7:F0:3D:C9:DD:FB:D7:49:FE:14:98:41:66:0D:55:A5:99:28:26:F5:DF:31:1F:FD"
+      ]
+    }
+  }
+]
