@@ -123,14 +123,31 @@ export class ApocryphaWorker {
       return;
     }
     do {
+      // `runOnce` already reports whether it did work, and the loop used to
+      // throw that away and sleep regardless. The cost was paid by every queued
+      // turn: a worker that had just finished one job waited a full poll
+      // interval before looking for the next, and a turn submitted a moment
+      // after a poll waited most of an interval before being seen at all. With
+      // the default 1500ms that is up to 1.5s of latency per turn, on a path
+      // where the client is also polling at 1500ms.
+      let didWork = false;
       try {
-        await this.runOnce();
+        didWork = await this.runOnce();
       } catch (error) {
+        // Deliberately NOT treated as work. Looping straight back into a claim
+        // that just threw would spin against a failing control plane as fast as
+        // the network allows, which turns one outage into a self-inflicted
+        // flood. An error rests for the full interval.
+        didWork = false;
         this.recordError(error instanceof ControlPlaneError ? error.code : 'WORKER_LOOP_ERROR', boundedError(error));
         log('error', 'worker.loop.error', { code: this.runtime.lastError?.code, detail: this.runtime.lastError?.detail });
       }
       if (this.config.once || this.stopController.signal.aborted) break;
-      await sleep(this.config.pollIntervalMs, this.stopController.signal);
+      // Rest only when idle. `runOnce` returns false for "nothing to claim" AND
+      // for "the journal still has pending work", and both of those must back
+      // off - the second especially, since looping on it would be a hot spin
+      // against local state that only time resolves.
+      if (!didWork) await sleep(this.config.pollIntervalMs, this.stopController.signal);
     } while (!this.stopController.signal.aborted);
     this.runtime.phase = 'stopped';
   }
