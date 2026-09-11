@@ -791,7 +791,9 @@ export async function readExternalJobChunksPage(jobId: string, identity: JobIden
     .maybeSingle();
   if (jobError) throw new Error(`JOB_READ_FAILED:${jobError.code ?? 'unknown'}`);
   if (!job) return null;
-  if (!job.current_attempt_id) return { job_id: jobId, chunks: [], next_after: null };
+  if (!job.current_attempt_id) {
+    return { job_id: jobId, chunks: [], next_after: null, status: job.status as ApocryphaJobStatus };
+  }
 
   // Public sequences are raw worker ordinals + 1. Convert the exclusive public
   // cursor back to the raw ordinal used in the database query.
@@ -809,6 +811,9 @@ export async function readExternalJobChunksPage(jobId: string, identity: JobIden
     job_id: jobId,
     chunks,
     next_after: chunks.at(-1)?.sequence ?? null,
+    // Same reason as the events page: a streaming reader needs to know the job
+    // is finished, not merely quiet, or it never stops asking.
+    status: job.status as ApocryphaJobStatus,
   };
 }
 

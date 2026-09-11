@@ -82,9 +82,11 @@ const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
 // React tree. Without it, New chat cannot survive a reload: the mount decides
 // on its own to reopen the newest conversation, and every chat is the same chat.
 const NEW_CHAT_KEY = 'apocky.apocrypha.new-chat.v1';
-// Polling cadence. The job path has no streaming transport - /api/apocrypha/
-// jobs/[id]/events is cursor-paginated JSON, not SSE - so the reader sees the
-// answer arrive only as fast as this loop asks.
+// Polling cadence. The job path now HAS a push transport - /api/admin/
+// apocrypha/jobs/[id]/stream - and the loop below waits on whichever arrives
+// first, a pushed frame or this timer. So these intervals are the fallback
+// ceiling, not the latency: they are what the reader falls back to if the
+// stream never opens or dies mid-answer.
 //
 // A flat 1500ms meant text landed in 1.5s jumps and every transition (queued ->
 // leased -> first token -> done) cost up to a full interval of nothing. So the
@@ -96,6 +98,65 @@ const JOB_POLL_SLOW_MS = 1_500;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
 const MUTED_TEXT = '#85859a';
 const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Opens the job's push channel and calls `onAdvance` whenever the server says
+// something moved. Reconnects across the server's bounded windows, resuming
+// from the cursor it was handed.
+//
+// This deliberately does NOT parse the answer out of the stream. The snapshot
+// fetch below remains the single source of truth for what the reader sees; the
+// stream only says "now". Two code paths assembling the same text from two
+// transports is how they drift, and the one that drifts silently is the one
+// that is not authoritative.
+function subscribeJobAdvance(
+  jobId: string,
+  signal: AbortSignal,
+  onAdvance: () => void,
+): void {
+  void (async () => {
+    let cursor = 0;
+    while (!signal.aborted) {
+      try {
+        const response = await authFetch(
+          `/api/admin/apocrypha/jobs/${encodeURIComponent(jobId)}/stream?after=${cursor}`,
+          { cache: 'no-store', credentials: 'include', signal, headers: { Accept: 'text/event-stream' } },
+        );
+        if (!response.ok || !response.body) return;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finished = false;
+        while (!signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // Frames are separated by a blank line. Anything after the last one
+          // is a partial frame and has to stay in the buffer.
+          const frames = buffer.split('\n\n');
+          buffer = frames.pop() ?? '';
+          for (const frame of frames) {
+            for (const line of frame.split('\n')) {
+              if (line.startsWith('id: ')) {
+                const parsed = Number(line.slice(4));
+                if (Number.isSafeInteger(parsed) && parsed > cursor) cursor = parsed;
+              } else if (line.startsWith('event: complete')) {
+                finished = true;
+              }
+            }
+            if (frame.trim()) onAdvance();
+          }
+        }
+        if (finished || signal.aborted) return;
+        // Window closed or the connection dropped. Reopen from the cursor.
+      } catch {
+        // Network fault or abort. The caller's poll is still running, so the
+        // answer still arrives; retrying here is best-effort.
+        if (signal.aborted) return;
+        await waitForPoll(signal, 1_000);
+      }
+    }
+  })();
+}
 
 function waitForPoll(signal: AbortSignal, ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -366,6 +427,15 @@ export function ChatThread() {
     // spending a request on.
     let pollDelay = JOB_POLL_FAST_MS;
     let lastSeen = '';
+    // Resolved by the stream the moment the server reports movement. The loop
+    // waits on this OR the backoff timer, whichever comes first, so a pushed
+    // frame turns into a snapshot read immediately instead of at the next tick.
+    let releaseAdvance: (() => void) | null = null;
+    let advance = new Promise<void>((resolve) => { releaseAdvance = resolve; });
+    subscribeJobAdvance(activeJob.id, controller.signal, () => {
+      releaseAdvance?.();
+      advance = new Promise<void>((resolve) => { releaseAdvance = resolve; });
+    });
     void (async () => {
       while (!controller.signal.aborted) {
         let progressed = false;
@@ -468,7 +538,7 @@ export function ChatThread() {
         // ask again soon. Nothing moved, so widen towards the slow cadence
         // rather than hammering a job that is still sitting in a queue.
         pollDelay = progressed ? JOB_POLL_FAST_MS : Math.min(Math.round(pollDelay * 1.5), JOB_POLL_SLOW_MS);
-        await waitForPoll(controller.signal, pollDelay);
+        await Promise.race([waitForPoll(controller.signal, pollDelay), advance]);
       }
     })();
     return () => {
