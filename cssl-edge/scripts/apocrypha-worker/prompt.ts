@@ -126,22 +126,59 @@ function conversationHistory(request: Record<string, unknown>): QwenMessage[] {
   });
 }
 
+const PROMPT_CONTROL_KEYS = new Set(['apocrypha_policy', 'apocrypha_tier']);
+
+// The wire form carries schema/digest/ids/provenance for the control plane; the model
+// only needs card, position, orientation and meanings (717 -> ~290 tokens on a 3-card spread).
+function readingForPrompt(value: unknown): string {
+  const reading = asRecord(value);
+  if (Object.keys(reading).length === 0) return '';
+  const system = asRecord(reading.system);
+  const spread = asRecord(reading.spread);
+  const header = [
+    stringValue(system.name ?? system.id) ? `System: ${stringValue(system.name ?? system.id)}` : '',
+    stringValue(spread.name ?? spread.id) ? `Spread: ${stringValue(spread.name ?? spread.id)}${stringValue(spread.description) ? ` — ${stringValue(spread.description)}` : ''}` : '',
+  ].filter(Boolean);
+  const items = Array.isArray(reading.items)
+    ? reading.items.slice(0, 78).flatMap((item, index): string[] => {
+        const entry = asRecord(item);
+        const name = stringValue(entry.name);
+        if (!name) return [];
+        const position = asRecord(entry.position);
+        const meanings = asRecord(entry.meanings);
+        const reversed = entry.is_reversed === true;
+        const keywords = Array.isArray(reversed ? meanings.keywords_reversed : meanings.keywords)
+          ? (reversed ? meanings.keywords_reversed : meanings.keywords) as unknown[]
+          : [];
+        const meaning = stringValue(reversed ? meanings.reversed : meanings.upright) ?? stringValue(meanings.upright);
+        const line = [
+          `${index + 1}. ${stringValue(position.name) ?? `Position ${index + 1}`}: ${name}${reversed ? ' (reversed)' : ''}`,
+          stringValue(position.description) ? `   Position means: ${stringValue(position.description)}` : '',
+          keywords.length ? `   Keywords: ${keywords.slice(0, 12).map(String).join(', ')}` : '',
+          meaning ? `   Meaning: ${meaning.slice(0, 1_200)}` : '',
+        ].filter(Boolean);
+        return [line.join('\n')];
+      })
+    : [];
+  return [...header, ...items].join('\n');
+}
+
 function structuredRequestMessage(request: Record<string, unknown>): string | undefined {
   const question = stringValue(request.question);
   const source = stringValue(request.source_text)?.slice(0, 16_000);
-  const canonicalReading = request.canonical_reading
-    ? boundedJson(request.canonical_reading, 16_000)
-    : '';
-  const structuredContext = request.structured_context
-    ? boundedJson(request.structured_context, 12_000)
-    : '';
+  const canonicalReading = readingForPrompt(request.canonical_reading).slice(0, 16_000);
+  const structuredRaw = Object.fromEntries(
+    Object.entries(asRecord(request.structured_context)).filter(([key, value]) => !PROMPT_CONTROL_KEYS.has(key) && value !== null && value !== undefined
+      && !(Array.isArray(value) && value.length === 0)),
+  );
+  const structuredContext = Object.keys(structuredRaw).length ? boundedJson(structuredRaw, 12_000) : '';
   const options = request.options && Object.keys(asRecord(request.options)).length
     ? boundedJson(request.options, 2_000)
     : '';
   const content = [
     question ? `Question:\n${question}` : '',
     source ? `<saved-source>\n${source}\n</saved-source>` : '',
-    canonicalReading ? `<canonical-reading>\n${canonicalReading}\n</canonical-reading>` : '',
+    canonicalReading ? `<reading>\n${canonicalReading}\n</reading>` : '',
     structuredContext ? `<structured-context>\n${structuredContext}\n</structured-context>` : '',
     options ? `<response-options>\n${options}\n</response-options>` : '',
   ].filter(Boolean).join('\n\n');
