@@ -408,7 +408,9 @@ export function composeQwenRequest(
   const callerSystem = incoming.filter((message) => message.role === 'system').map((message) => message.content).join('\n\n').slice(-4_000);
   const rawConversation = incoming.filter((message) => message.role !== 'system');
   const generationRaw = asRecord(request.generation);
+  const policyOutput = numeric(asRecord(request.model_policy).max_output_tokens);
   const requestedOutput = numeric(generationRaw.max_tokens ?? request.max_tokens ?? request.output_budget)
+    ?? policyOutput
     ?? config.maxOutputTokens;
   const outputContextCeiling = Math.max(config.contextWindowTokens, QWEN_RUNTIME_CONTEXT_TOKENS_FLOOR)
     - OVERFLOW_RETRY_TEMPLATE_RESERVE_TOKENS - 128;
