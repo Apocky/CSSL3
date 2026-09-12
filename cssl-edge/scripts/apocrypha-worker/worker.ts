@@ -131,6 +131,20 @@ export class ApocryphaWorker {
   async runOnce(): Promise<boolean> {
     if (this.stopController.signal.aborted) return false;
     this.runtime.phase = 'idle';
+    // Claiming while Qwen is still loading burns every retry within seconds
+    // (control-plane backoff is 2^n s), so hold the claim until the probe passes.
+    const probe = await this.qwen.probe(this.stopController.signal);
+    if (!probe.healthy) {
+      if (this.runtime.lastError?.code !== 'QWEN_NOT_READY') {
+        log('warn', 'worker.claim.deferred', { code: 'QWEN_NOT_READY', detail: probe.detail });
+      }
+      this.recordError('QWEN_NOT_READY', probe.detail);
+      return false;
+    }
+    if (this.runtime.lastError?.code === 'QWEN_NOT_READY') {
+      log('info', 'worker.claim.resumed', { detail: probe.detail });
+      this.runtime.lastError = null;
+    }
     const claim = await this.controlPlane.claim();
     this.runtime.lastClaimAt = new Date().toISOString();
     if (!claim) return false;
