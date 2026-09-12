@@ -1,6 +1,6 @@
 export type JobKind = 'apocky_chat' | 'chaos_oracle' | 'tool_workflow' | string;
 
-export type CapabilityProfile = 'apocky_owner_chat' | 'chaos_tarot_reading' | string;
+export type CapabilityProfile = 'apocky_owner_chat' | 'chaos_tarot_reading' | 'apocky_member_chat' | string;
 
 export interface ClaimedJob {
   jobId: string;
@@ -118,6 +118,9 @@ export interface WorkerConfig {
   heartbeatIntervalMs: number;
   heartbeatEnabled: boolean;
   memoryReadConcurrency: number;
+  /** Authenticated resident gateway readiness; optional for standalone test/legacy hosts. */
+  memoryReadinessUrl?: string | null;
+  memoryReadinessToken?: string | null;
   memoryProbeTenantId: string | null;
   memoryProbePrincipalId: string;
   memoryProbeCapability: string;
@@ -150,6 +153,10 @@ export interface RetrievalBundle {
   records: RetrievalRecord[];
   digest: string;
   probedAt: string | null;
+  capabilityProbes?: Record<string, {
+    results: RetrievalAdapterResult[];
+    probedAt: string | null;
+  }>;
 }
 
 export interface QwenUsage {
@@ -197,4 +204,6 @@ export interface WorkerRuntimeState {
   recoveredAttempts: number;
   adapterStates: Record<string, AdapterState>;
   adapterProbeAt: string | null;
+  capabilityAdapterStates: Record<string, Record<string, AdapterState>>;
+  capabilityAdapterProbeAt: Record<string, string | null>;
 }

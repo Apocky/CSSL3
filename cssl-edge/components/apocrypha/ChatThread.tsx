@@ -3,6 +3,7 @@
 // Per HANDOFF_v10 § TRACK-A polish-pass (replaces the cockpit-monospace draft).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 
 import { authFetch } from '../../lib/browser-auth';
 import { ApocryphaAvatar } from './ApocryphaAvatar';
@@ -539,8 +540,10 @@ export function ChatThread() {
           }}
         >
           <div style={{ padding: '0.75rem', borderBottom: '1px solid #1f1f2a' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'stretch' }}>
             <button ref={newChatButtonRef} type="button" className="chat-new-button" onClick={newChat} style={{
-              width: '100%',
+              flex: 1,
+              minWidth: 0,
               padding: '0.65rem 0.8rem',
               background: 'transparent',
               border: '1px solid #2a2a3a',
@@ -556,6 +559,21 @@ export function ChatThread() {
               <span style={{ fontWeight: 500 }}>+ New chat</span>
               <span style={{ color: '#7a7a8c', fontSize: '0.75rem' }}>⌘N</span>
             </button>
+            {compactViewport && (
+              <button
+                type="button"
+                className="chat-icon-button"
+                aria-label="Close conversations"
+                onClick={closeCompactSidebar}
+                style={{
+                  flex: '0 0 44px', background: 'transparent', border: '1px solid #2a2a3a',
+                  borderRadius: 8, color: '#cdd6e4', cursor: 'pointer', fontSize: '1.1rem', fontFamily: 'inherit',
+                }}
+              >
+                ×
+              </button>
+            )}
+            </div>
             <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.5rem' }}>
               {(['active', 'archived', 'trash'] as ConversationScope[]).map((candidate) => (
                 <button
@@ -695,6 +713,11 @@ export function ChatThread() {
           </span>
           <ApocryphaAvatar className="chat-header-avatar" state={streaming ? 'thinking' : error ? 'degraded' : 'ready'} size={40} detail="compact" />
           <span style={{ flex: 1 }} />
+          {/* /apocrypha renders without SiteShell, so this is the only route back to the site. */}
+          <nav className="chat-site-nav" aria-label="Site">
+            <Link href="/" className="chat-site-link">Home</Link>
+            <Link href="/account" className="chat-site-link">Account</Link>
+          </nav>
           <button
             type="button"
             className="chat-settings-button"
@@ -967,6 +990,18 @@ export function ChatThread() {
           line-height: 1;
         }
         .chat-conversation-action:hover { background: rgba(192, 132, 252, .1); }
+        .chat-site-nav { display: flex; gap: .25rem; align-items: center; }
+        .chat-site-nav :global(.chat-site-link) {
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
+          padding: 0 .55rem;
+          border-radius: 6px;
+          color: #9aa0a6;
+          font-size: .78rem;
+          text-decoration: none;
+        }
+        .chat-site-nav :global(.chat-site-link:hover) { color: #e6e6f0; background: rgba(192, 132, 252, .1); }
         .chat-shell button:focus-visible,
         .chat-shell textarea:focus-visible,
         .chat-shell input:focus-visible {
@@ -997,6 +1032,7 @@ export function ChatThread() {
           }
           .chat-header { gap: .35rem; padding: .45rem .5rem; }
           .chat-conversation-id { display: none; }
+          .chat-site-nav :global(.chat-site-link) { padding: 0 .4rem; }
           .chat-composer {
             padding:
               .65rem
@@ -1004,6 +1040,9 @@ export function ChatThread() {
               calc(.65rem + env(safe-area-inset-bottom))
               max(.6rem, env(safe-area-inset-left));
           }
+        }
+        @media (max-width: 419px) {
+          .chat-site-nav :global(.chat-site-link[href="/account"]) { display: none; }
         }
         @media (max-width: 359px) {
           .chat-wordmark { display: none; }

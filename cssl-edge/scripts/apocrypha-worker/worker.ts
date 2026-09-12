@@ -60,8 +60,10 @@ export class ApocryphaWorker {
   private readonly fetchImpl: typeof fetch;
   private readonly stopController = new AbortController();
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private contextClampLogged = false;
   private heartbeatRetryAt = 0;
   private heartbeatInFlight = false;
+  private memoryProbeInFlight = false;
   private memoryOperationTail: Promise<void> = Promise.resolve();
 
   constructor(config: WorkerConfig, dependencies: Dependencies = {}) {
@@ -84,6 +86,11 @@ export class ApocryphaWorker {
       recoveredAttempts: 0,
       adapterStates: Object.fromEntries(config.manifest.memory.adapters.map((adapter) => [adapter.name, 'unconfigured'])),
       adapterProbeAt: null,
+      capabilityAdapterStates: Object.fromEntries(config.manifest.capabilities.map((capability) => [
+        capability,
+        Object.fromEntries(config.manifest.memory.adapters.map((adapter) => [adapter.name, 'unconfigured'])),
+      ])),
+      capabilityAdapterProbeAt: Object.fromEntries(config.manifest.capabilities.map((capability) => [capability, null])),
     };
   }
 
@@ -116,20 +123,41 @@ export class ApocryphaWorker {
       return;
     }
     do {
+      // `runOnce` already reports whether it did work, and the loop used to
+      // throw that away and sleep regardless. The cost was paid by every queued
+      // turn: a worker that had just finished one job waited a full poll
+      // interval before looking for the next, and a turn submitted a moment
+      // after a poll waited most of an interval before being seen at all. With
+      // the default 1500ms that is up to 1.5s of latency per turn, on a path
+      // where the client is also polling at 1500ms.
+      let didWork = false;
       try {
-        await this.runOnce();
+        didWork = await this.runOnce();
       } catch (error) {
+        // Deliberately NOT treated as work. Looping straight back into a claim
+        // that just threw would spin against a failing control plane as fast as
+        // the network allows, which turns one outage into a self-inflicted
+        // flood. An error rests for the full interval.
+        didWork = false;
         this.recordError(error instanceof ControlPlaneError ? error.code : 'WORKER_LOOP_ERROR', boundedError(error));
         log('error', 'worker.loop.error', { code: this.runtime.lastError?.code, detail: this.runtime.lastError?.detail });
       }
       if (this.config.once || this.stopController.signal.aborted) break;
-      await sleep(this.config.pollIntervalMs, this.stopController.signal);
+      // Rest only when idle. `runOnce` returns false for "nothing to claim" AND
+      // for "the journal still has pending work", and both of those must back
+      // off - the second especially, since looping on it would be a hot spin
+      // against local state that only time resolves.
+      if (!didWork) await sleep(this.config.pollIntervalMs, this.stopController.signal);
     } while (!this.stopController.signal.aborted);
     this.runtime.phase = 'stopped';
   }
 
   async runOnce(): Promise<boolean> {
     if (this.stopController.signal.aborted) return false;
+    if (await this.journal.pendingCount() > 0) {
+      await this.recoverPendingAttempts();
+      if (await this.journal.pendingCount() > 0) return false;
+    }
     this.runtime.phase = 'idle';
     // Claiming while Qwen is still loading burns every retry within seconds
     // (control-plane backoff is 2^n s), so hold the claim until the probe passes.
@@ -162,23 +190,63 @@ export class ApocryphaWorker {
       this.runtime.currentJobId = state.claim.jobId;
       this.runtime.currentAttemptId = state.claim.attemptId;
       try {
-        const lease = await this.controlPlane.renew(fence);
+        let lease: { leaseExpiresAt: string; cancelRequested: boolean };
+        try {
+          lease = await this.controlPlane.renew(fence);
+        } catch (renewError) {
+          // A terminal RPC may have committed remotely just before the worker
+          // crashed, leaving only the local acknowledgement cleanup undone.
+          // Terminal RPCs are idempotent; replay the exact saved action before
+          // treating a rejected renewal as a lost attempt.
+          if (!state.terminal || state.pendingChunks.length > 0) throw renewError;
+          if (state.terminal.kind === 'complete') {
+            await this.controlPlane.complete(fence, state.terminal.payload);
+          } else {
+            await this.controlPlane.fail(fence, state.terminal.payload);
+          }
+          await this.journal.remove(state);
+          this.runtime.recoveredAttempts += 1;
+          log('info', 'worker.recovery.terminal_replayed', {
+            job_id: state.claim.jobId,
+            attempt_id: state.claim.attemptId,
+          });
+          continue;
+        }
         if (lease.cancelRequested) throw new LeaseLostError('job was cancelled while worker was offline', 'CANCELLED', true);
         state.claim.leaseExpiresAt = lease.leaseExpiresAt;
         await this.journal.save(state);
-        await this.replayPendingChunks(state);
-        if (state.terminal?.kind === 'complete') {
-          await this.controlPlane.complete(fence, state.terminal.payload);
-        } else if (state.terminal?.kind === 'fail') {
-          await this.controlPlane.fail(fence, state.terminal.payload);
-        } else {
-          const failure: FailurePayload = {
-            errorCode: 'WORKER_RESTART_INTERRUPTED_ATTEMPT',
-            errorDetail: 'The worker restarted during generation. The isolated attempt will be retried without appending abandoned output.',
-            retryable: true,
-          };
-          await this.journal.setFailure(state, failure);
-          await this.controlPlane.fail(fence, failure);
+        const recoveryAbortController = new AbortController();
+        const maintainedLease = this.maintainLease(state, recoveryAbortController);
+        try {
+          await this.replayPendingChunks(state, recoveryAbortController.signal);
+          if (!state.terminal) {
+            const failure: FailurePayload = {
+              errorCode: 'WORKER_RESTART_INTERRUPTED_ATTEMPT',
+              errorDetail: 'The worker restarted during generation. The isolated attempt will be retried without appending abandoned output.',
+              retryable: true,
+            };
+            // Persist the exact terminal action while background renewal is
+            // still active; the final renew below then fences that durable
+            // action immediately before its remote commit.
+            await this.journal.setFailure(state, failure);
+          }
+          await maintainedLease.stop();
+          const recoveryLeaseError = maintainedLease.error();
+          if (recoveryLeaseError) throw recoveryLeaseError;
+          if (recoveryAbortController.signal.aborted) throw recoveryAbortController.signal.reason;
+          const terminalLease = await this.controlPlane.renew(fence);
+          if (terminalLease.cancelRequested) {
+            throw new LeaseLostError('job was cancelled before recovery completion', 'CANCELLED', true);
+          }
+          if (state.terminal?.kind === 'complete') {
+            await this.controlPlane.complete(fence, state.terminal.payload);
+          } else if (state.terminal?.kind === 'fail') {
+            await this.controlPlane.fail(fence, state.terminal.payload);
+          } else {
+            throw new Error('recovery terminal journal was not persisted');
+          }
+        } finally {
+          await maintainedLease.stop();
         }
         await this.journal.remove(state);
         this.runtime.recoveredAttempts += 1;
@@ -206,6 +274,8 @@ export class ApocryphaWorker {
     this.stopController.signal.addEventListener('abort', stopAbort, { once: true });
     const lease = this.maintainLease(state, abortController);
     let memory: RetrievalBundle | null = null;
+    let deliveryTail: Promise<void> = Promise.resolve();
+    let deliveryError: unknown = null;
     const started = Date.now();
     try {
       this.assertCompatibleClaim(claim);
@@ -215,14 +285,58 @@ export class ApocryphaWorker {
       memory = await this.serializeMemoryOperation(
         () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
       );
-      this.runtime.adapterStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
-      if (memory.results.some((result) => result.state !== 'ok')) this.runtime.adapterProbeAt = null;
+      const retrievalStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
+      if (memory.results.every((result) => result.state === 'ok')) {
+        this.runtime.adapterStates = retrievalStates;
+      } else {
+        // A turn-scoped read can time out on a large corpus without making the
+        // resident faculty unavailable. Preserve the last completed operational
+        // probe for admission/readiness and surface the partial read separately.
+        const failed = memory.results
+          .filter((result) => result.state !== 'ok')
+          .map((result) => `${result.name}:${result.state}`)
+          .join(', ');
+        this.recordError('MEMORY_READ_PARTIAL', failed || 'one or more memory readers returned no records');
+        log('warn', 'worker.memory_read.partial', {
+          job_id: claim.jobId,
+          attempt_id: claim.attemptId,
+          adapter_states: retrievalStates,
+          // Without the per-adapter detail a degraded faculty is invisible:
+          // the state alone cannot tell a misconfigured reader from a slow one.
+          adapter_details: Object.fromEntries(memory.results
+            .filter((result) => result.state !== 'ok' && result.detail)
+            .map((result) => [result.name, String(result.detail).slice(0, 300)])),
+        });
+      }
       if (abortController.signal.aborted) throw abortController.signal.reason;
       this.runtime.phase = 'generating';
       let buffer = '';
       let seq = state.lastAcknowledgedSeq + 1;
       let lastFlushAt = Date.now();
       let streamed = false;
+      const timedFlushChars = Math.min(this.config.chunkMaxChars, Math.max(64, Math.ceil(this.config.chunkMaxChars / 4)));
+      const enqueueChunk = async (chunk: OutputChunk): Promise<void> => {
+        // Persist every fragment before allowing Qwen to continue, then deliver
+        // it in order without placing a remote control-plane write in Qwen's
+        // token callback. A slow public endpoint can delay visibility, but it
+        // cannot stall local inference or starve the worker health server.
+        await this.journal.addPendingChunk(state, chunk);
+        const delivery = deliveryTail.then(async () => {
+          if (deliveryError) throw deliveryError;
+          await this.controlPlane.appendChunk(fenceFromClaim(state.claim), chunk);
+          await this.journal.acknowledgeChunk(state, chunk.seq);
+        });
+        deliveryTail = delivery.catch((error) => {
+          deliveryError ??= error;
+          if (error instanceof ControlPlaneError && error.fenceLost && !abortController.signal.aborted) {
+            abortController.abort(new LeaseLostError(error.message, error.code));
+          }
+        });
+      };
+      const drainDeliveries = async (): Promise<void> => {
+        await deliveryTail;
+        if (deliveryError) throw deliveryError;
+      };
       const flush = async (force = false): Promise<void> => {
         while (buffer.length >= this.config.chunkMaxChars || (force && buffer.length > 0)) {
           const size = force ? Math.min(buffer.length, this.config.chunkMaxChars) : this.config.chunkMaxChars;
@@ -235,7 +349,7 @@ export class ApocryphaWorker {
             metadata: { model_alias: this.config.modelAlias },
           };
           this.runtime.phase = 'delivering';
-          await this.sendChunk(state, chunk);
+          await enqueueChunk(chunk);
           seq += 1;
           lastFlushAt = Date.now();
           this.runtime.phase = 'generating';
@@ -245,13 +359,45 @@ export class ApocryphaWorker {
         if (abortController.signal.aborted) throw abortController.signal.reason;
         streamed = true;
         buffer += delta;
-        if (buffer.length >= this.config.chunkMaxChars || Date.now() - lastFlushAt >= this.config.chunkFlushMs) {
+        const timedFlushReady = buffer.length >= timedFlushChars && Date.now() - lastFlushAt >= this.config.chunkFlushMs;
+        if (buffer.length >= this.config.chunkMaxChars || timedFlushReady) {
           await flush(false);
-          if (buffer.length > 0 && Date.now() - lastFlushAt >= this.config.chunkFlushMs) await flush(true);
+          if (timedFlushReady && buffer.length > 0) await flush(true);
         }
       };
+      // The server's real window is authoritative; a larger configured window
+      // would only produce overflow rejections.
+      const serverContext = probe.contextTokens;
+      const effectiveConfig = serverContext && serverContext < this.config.contextWindowTokens
+        ? { ...this.config, contextWindowTokens: serverContext }
+        : this.config;
+      if (effectiveConfig !== this.config && !this.contextClampLogged) {
+        this.contextClampLogged = true;
+        log('warn', 'worker.qwen.context_clamped', {
+          configured: this.config.contextWindowTokens,
+          server_n_ctx: serverContext,
+        });
+      }
       const generate = async (overflowRetry = false): Promise<QwenResult> => {
-        const request = composeQwenRequest(this.config, claim, memory as RetrievalBundle, { overflowRetry });
+        let request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry });
+        if (!overflowRetry) {
+          // Exact count from the server; fall back to the byte estimate when unavailable.
+          const counter = (this.qwen as { tokenCount?: QwenClient['tokenCount'] }).tokenCount;
+          const count = counter ? await counter.call(this.qwen, request.messages, abortController.signal) : null;
+          const ceiling = effectiveConfig.contextWindowTokens - (request.generation.maxTokens ?? this.config.maxOutputTokens) - 64;
+          if (count !== null && count > ceiling) {
+            log('warn', 'worker.qwen.prompt_recompacted', { job_id: claim.jobId, prompt_tokens: count, ceiling });
+            request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry: true });
+          } else if (count !== null) {
+            log('info', 'worker.qwen.prompt_tokens', {
+              job_id: claim.jobId,
+              prompt_tokens: count,
+              ceiling,
+              memory_records: (memory as RetrievalBundle).records.length,
+              memory_sources: Object.fromEntries((memory as RetrievalBundle).results.map((result) => [result.name, result.records.length])),
+            });
+          }
+        }
         return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);
       };
       let result: QwenResult;
@@ -267,8 +413,6 @@ export class ApocryphaWorker {
         result = await generate(true);
       }
       await flush(true);
-      await lease.stop();
-      if (abortController.signal.aborted) throw abortController.signal.reason;
       const completion = {
         content: result.content,
         revisionRole: 'primary' as const,
@@ -289,7 +433,18 @@ export class ApocryphaWorker {
           duration_ms: result.durationMs,
         },
       };
+      // Once Qwen has returned and every byte is journaled, preserve the exact
+      // completion before any remote delivery wait. Recovery can then replay
+      // pending chunks and commit this same answer instead of regenerating it.
       await this.journal.setCompletion(state, completion);
+      this.runtime.phase = 'delivering';
+      await drainDeliveries();
+      await lease.stop();
+      if (abortController.signal.aborted) throw abortController.signal.reason;
+      const terminalLease = await this.controlPlane.renew(fenceFromClaim(claim));
+      if (terminalLease.cancelRequested) {
+        throw new LeaseLostError('job was cancelled before completion', 'CANCELLED_BY_USER', true);
+      }
       await this.controlPlane.complete(fenceFromClaim(claim), completion);
       await this.journal.remove(state);
       this.runtime.completedJobs += 1;
@@ -302,28 +457,77 @@ export class ApocryphaWorker {
         first_token_ms: result.firstTokenMs,
       });
     } catch (error) {
+      // A Qwen error, cancellation, or fence change can arrive while an
+      // already-journaled chunk is still being delivered. Join that delivery
+      // before writing terminal state so a late acknowledgement cannot save a
+      // removed journal again or race the fail/orphan transition. The lease
+      // remains active during this bounded join; control-plane requests have
+      // their own timeout.
+      await deliveryTail;
       let leaseError = this.asLeaseError(error, lease);
+      const fenceError = deliveryError instanceof ControlPlaneError && deliveryError.fenceLost
+        ? deliveryError
+        : error instanceof ControlPlaneError && error.fenceLost
+          ? error
+          : null;
+      let failure: FailurePayload | null = state.terminal?.kind === 'fail'
+        ? state.terminal.payload
+        : null;
+      let failureJournalError: unknown = null;
+      if (!leaseError && !fenceError && state.terminal?.kind !== 'complete' && !failure) {
+        failure = this.failureFor(error, Date.now() - started, memory);
+        try {
+          // Keep the maintainer running through the durable terminal write.
+          // A fresh explicit renewal below fences the saved action immediately
+          // before its remote acknowledgement.
+          await this.journal.setFailure(state, failure);
+        } catch (journalError) {
+          failureJournalError = journalError;
+        }
+      }
       await lease.stop();
       leaseError ??= lease.error();
-      if (leaseError || (error instanceof ControlPlaneError && error.fenceLost)) {
-        const fenceCode = leaseError?.code ?? (error instanceof ControlPlaneError ? error.code : 'LEASE_LOST');
+      if (leaseError || fenceError) {
+        const fenceCode = leaseError?.code ?? fenceError?.code ?? 'LEASE_LOST';
         await this.journal.orphan(state, fenceCode);
-        log('warn', 'worker.job.fenced', { job_id: claim.jobId, attempt_id: claim.attemptId, detail: boundedError(leaseError ?? error) });
+        log('warn', 'worker.job.fenced', { job_id: claim.jobId, attempt_id: claim.attemptId, detail: boundedError(leaseError ?? fenceError ?? error) });
+      } else if (state.terminal?.kind === 'complete') {
+        this.recordError('COMPLETION_DELIVERY_PENDING', boundedError(deliveryError ?? error));
+        log('warn', 'worker.job.completion_delivery_pending', {
+          job_id: claim.jobId,
+          attempt_id: claim.attemptId,
+          detail: boundedError(deliveryError ?? error),
+        });
+      } else if (failureJournalError) {
+        this.recordError('FAILURE_JOURNAL_FAILED', boundedError(failureJournalError));
+        log('error', 'worker.job.failure_journal_failed', {
+          job_id: claim.jobId,
+          attempt_id: claim.attemptId,
+          detail: boundedError(failureJournalError),
+        });
       } else {
-        const failure = this.failureFor(error, Date.now() - started, memory);
         try {
-          await this.journal.setFailure(state, failure);
+          const terminalLease = await this.controlPlane.renew(fenceFromClaim(claim));
+          if (terminalLease.cancelRequested) {
+            throw new LeaseLostError('job was cancelled before failure acknowledgement', 'CANCELLED_BY_USER', true);
+          }
+          if (!failure) throw new Error('failure terminal journal was not persisted');
           await this.controlPlane.fail(fenceFromClaim(claim), failure);
           await this.journal.remove(state);
-        } catch (deliveryError) {
-          if (deliveryError instanceof ControlPlaneError && deliveryError.fenceLost) {
-            await this.journal.orphan(state, deliveryError.code);
+        } catch (failureDeliveryError) {
+          if ((failureDeliveryError instanceof ControlPlaneError && failureDeliveryError.fenceLost) || failureDeliveryError instanceof LeaseLostError) {
+            await this.journal.orphan(
+              state,
+              failureDeliveryError instanceof LeaseLostError ? failureDeliveryError.code : failureDeliveryError.code,
+            );
           }
-          this.recordError('FAILURE_DELIVERY_PENDING', boundedError(deliveryError));
+          this.recordError('FAILURE_DELIVERY_PENDING', boundedError(failureDeliveryError));
         }
         this.runtime.failedJobs += 1;
-        this.recordError(failure.errorCode, failure.errorDetail);
-        log('error', 'worker.job.failed', { job_id: claim.jobId, attempt_id: claim.attemptId, ...failure });
+        if (failure) {
+          this.recordError(failure.errorCode, failure.errorDetail);
+          log('error', 'worker.job.failed', { job_id: claim.jobId, attempt_id: claim.attemptId, ...failure });
+        }
       }
     } finally {
       await lease.stop();
@@ -392,14 +596,9 @@ export class ApocryphaWorker {
     return null;
   }
 
-  private async sendChunk(state: AttemptJournalState, chunk: OutputChunk): Promise<void> {
-    await this.journal.addPendingChunk(state, chunk);
-    await this.controlPlane.appendChunk(fenceFromClaim(state.claim), chunk);
-    await this.journal.acknowledgeChunk(state, chunk.seq);
-  }
-
-  private async replayPendingChunks(state: AttemptJournalState): Promise<void> {
+  private async replayPendingChunks(state: AttemptJournalState, signal?: AbortSignal): Promise<void> {
     for (const chunk of [...state.pendingChunks].sort((left, right) => left.seq - right.seq)) {
+      if (signal?.aborted) throw signal.reason;
       await this.controlPlane.appendChunk(fenceFromClaim(state.claim), chunk);
       await this.journal.acknowledgeChunk(state, chunk.seq);
     }
@@ -446,6 +645,34 @@ export class ApocryphaWorker {
     }
   }
 
+  private startMemoryProbe(): void {
+    if (this.memoryProbeInFlight || this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return;
+    this.memoryProbeInFlight = true;
+    void this.serializeMemoryOperation(async () => {
+      if (this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return null;
+      return probeMemoryAdapters(this.config, this.env, this.fetchImpl);
+    }).then((memoryProbe) => {
+      if (!memoryProbe) return;
+      this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
+      this.runtime.adapterProbeAt = memoryProbe.probedAt;
+      for (const capability of this.config.manifest.capabilities) {
+        const capabilityProbe = memoryProbe.capabilityProbes?.[capability];
+        this.runtime.capabilityAdapterStates[capability] = Object.fromEntries(
+          (capabilityProbe?.results ?? this.config.manifest.memory.adapters.map((adapter) => ({
+            name: adapter.name,
+            state: 'unconfigured' as const,
+          }))).map((result) => [result.name, result.state]),
+        );
+        this.runtime.capabilityAdapterProbeAt[capability] = capabilityProbe?.probedAt ?? null;
+      }
+    }).catch((error) => {
+      this.recordError('MEMORY_PROBE_FAILED', boundedError(error));
+      log('warn', 'worker.memory_probe.failed', { detail: boundedError(error) });
+    }).finally(() => {
+      this.memoryProbeInFlight = false;
+    });
+  }
+
   private startHeartbeat(): void {
     const send = async (): Promise<void> => {
       if (this.heartbeatInFlight || Date.now() < this.heartbeatRetryAt || this.stopController.signal.aborted) return;
@@ -456,14 +683,9 @@ export class ApocryphaWorker {
           ? Date.now() - Date.parse(this.runtime.adapterProbeAt)
           : Number.POSITIVE_INFINITY;
         if (this.runtime.phase === 'idle' && probeAge >= 30_000) {
-          const memoryProbe = await this.serializeMemoryOperation(async () => {
-            if (this.runtime.phase !== 'idle' || this.stopController.signal.aborted) return null;
-            return probeMemoryAdapters(this.config, this.env, this.fetchImpl);
-          });
-          if (memoryProbe) {
-            this.runtime.adapterStates = Object.fromEntries(memoryProbe.results.map((result) => [result.name, result.state]));
-            this.runtime.adapterProbeAt = memoryProbe.probedAt;
-          }
+          // Publish the last completed adapter evidence while the next bounded
+          // probe runs. Its timestamp still expires normally if the probe stalls.
+          this.startMemoryProbe();
         }
         const supported = await this.controlPlane.heartbeat(this.runtime, {
           qwenHealthy: probe.healthy,

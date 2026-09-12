@@ -49,6 +49,10 @@ export function startHealthServer(
         memory_manifest_hash: config.memoryManifestHash,
         adapter_states: runtime.adapterStates,
         adapter_probe_at: runtime.adapterProbeAt,
+        capability_memory: Object.fromEntries(config.manifest.capabilities.map((capability) => [capability, {
+          adapter_states: runtime.capabilityAdapterStates[capability],
+          adapter_probe_at: runtime.capabilityAdapterProbeAt[capability] ?? null,
+        }])),
       },
     }));
   });
