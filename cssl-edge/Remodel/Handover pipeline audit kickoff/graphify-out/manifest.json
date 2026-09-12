@@ -1,0 +1,127 @@
+{
+  "rejuvenated/assets/site.js": {
+    "mtime": 1785258528.4105752,
+    "ast_hash": "b8f0fca3040e337a57af509e0d7da587",
+    "semantic_hash": ""
+  },
+  "support.js": {
+    "mtime": 1784752904.552255,
+    "ast_hash": "450f2a9297cd55032eb905780de3016b",
+    "semantic_hash": ""
+  },
+  "ApocryphaAvatar.dc.html": {
+    "mtime": 1784752904.5042539,
+    "ast_hash": "b28afa067036e981e5a18c7135995e9c",
+    "semantic_hash": ""
+  },
+  "Audit - Current State.dc.html": {
+    "mtime": 1784752904.509255,
+    "ast_hash": "295464762d5fe0ff4e1af91641d3a6ee",
+    "semantic_hash": ""
+  },
+  "Current - Chat.dc.html": {
+    "mtime": 1784752904.5142555,
+    "ast_hash": "632ed26a4ce4521f2d92dbb4056686b6",
+    "semantic_hash": ""
+  },
+  "Current - Hub.dc.html": {
+    "mtime": 1784752904.5192554,
+    "ast_hash": "eb00a2d6960e7d27f7d60eda7b2a7edb",
+    "semantic_hash": ""
+  },
+  "Design Rationale - The Clearing.dc.html": {
+    "mtime": 1784752904.523254,
+    "ast_hash": "d1fcd91bf972efab7c60d9489114461a",
+    "semantic_hash": ""
+  },
+  "Explorations - The Clearing.dc.html": {
+    "mtime": 1784752904.528254,
+    "ast_hash": "b399f78aa9db9d3929855988ca93ace9",
+    "semantic_hash": ""
+  },
+  "Membership - Offer.dc.html": {
+    "mtime": 1784752904.5322545,
+    "ast_hash": "d96b6956e34659d0e8689837a4a0f76f",
+    "semantic_hash": ""
+  },
+  "The Clearing - Room v2.dc.html": {
+    "mtime": 1784752904.5372548,
+    "ast_hash": "7f754cb53c7906b0a4f46ae5ff1013de",
+    "semantic_hash": ""
+  },
+  "The Clearing - Room.dc.html": {
+    "mtime": 1784752904.5422566,
+    "ast_hash": "543640e726e3e6e5a4416c422567bb41",
+    "semantic_hash": ""
+  },
+  "reference/CLAUDE_CODE_APXV2_DESIGN_HANDOVER.csl": {
+    "mtime": 1784752904.5472558,
+    "ast_hash": "59a6424732f5bed96a8f1d22ceed926e",
+    "semantic_hash": ""
+  },
+  "rejuvenated/clearing.html": {
+    "mtime": 1784767502.455169,
+    "ast_hash": "5eef38c3e0b2de7ea801a8405547d07e",
+    "semantic_hash": ""
+  },
+  "rejuvenated/index.html": {
+    "mtime": 1785258600.37268,
+    "ast_hash": "63541b1adaae2aa90770a257be14eba9",
+    "semantic_hash": ""
+  },
+  "rejuvenated/membership.html": {
+    "mtime": 1784759696.2223942,
+    "ast_hash": "dd759f63079b51d7853a677f3963c9da",
+    "semantic_hash": ""
+  },
+  "specs/APOCKY_REJUVENATION_BLUEPRINT.csl": {
+    "mtime": 1784765573.9102821,
+    "ast_hash": "36278986266b6da9287dc916ae9bf3c6",
+    "semantic_hash": ""
+  },
+  "rejuvenated/atlas.html": {
+    "mtime": 1785258637.2565024,
+    "ast_hash": "16dbec3ed4c41c865a43f192480737cc",
+    "semantic_hash": ""
+  },
+  "rejuvenated/principles.html": {
+    "mtime": 1785256843.993261,
+    "ast_hash": "1be192c07db8cf624feb1bd25f20bcfa",
+    "semantic_hash": ""
+  },
+  "rejuvenated/.rollback/spatial-v1-20260722/site.js": {
+    "mtime": 1784760251.1197724,
+    "ast_hash": "92e9f7e6a3de32f57f7937e947c145f3",
+    "semantic_hash": ""
+  },
+  "rejuvenated/assets/chatroom.js": {
+    "mtime": 1784767507.7656386,
+    "ast_hash": "762367a5b1e3e574bf411757aa6b6f47",
+    "semantic_hash": ""
+  },
+  "rejuvenated/.rollback/spatial-v1-20260722/APOCKY_REJUVENATION_BLUEPRINT.csl": {
+    "mtime": 1784759825.7132647,
+    "ast_hash": "11abd11a7fedb53f16f6ad58d1151ad7",
+    "semantic_hash": ""
+  },
+  "rejuvenated/.rollback/spatial-v1-20260722/clearing.html": {
+    "mtime": 1784759910.3110676,
+    "ast_hash": "c8f42226a4ec20db70dfc2a8926e68e7",
+    "semantic_hash": ""
+  },
+  "rejuvenated/assets/room-v3.js": {
+    "mtime": 1785257357.3320262,
+    "ast_hash": "3b40a1b0417a0a25d7e30a88958cc3ce",
+    "semantic_hash": ""
+  },
+  "The Clearing - Room v3.preview.html": {
+    "mtime": 1785258999.808068,
+    "ast_hash": "02e23bd747bb5e84af208c27347e9fe3",
+    "semantic_hash": ""
+  },
+  "specs/THE_CLEARING_ROOM_V3_PERCEPTUAL_MATERIAL_PLAN.csl": {
+    "mtime": 1785252402.5792587,
+    "ast_hash": "61670ff88934ec154c204082d880d375",
+    "semantic_hash": ""
+  }
+}

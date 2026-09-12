@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background-color: #0a0c0b; color: #e9e4d8; }
+  html { color-scheme: dark; }
+  a { color: #96c39a; }
+  a:hover { color: #c3e0c5; }
+</style>
+</helmet>
+<section data-screen-label="Turn 3 — violet, parallax, music, screenshare" style="padding: 48px 56px 24px; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 20px;">
+  <div style="display: flex; align-items: baseline; gap: 14px;">
+    <span id="3a" style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: #f0ece1; background: #41065c; border: 1px solid #7a3cae; border-radius: 6px; padding: 3px 9px;">3a</span>
+    <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 30px; font-weight: 500; color: #f0ece1;">The violet room — v2 prototype</h2>
+    <span style="font-size: 13px; color: #7c8378;">#41065c ground · mouse parallax · music co-listening · screenshare</span>
+  </div>
+  <div style="display: flex; gap: 20px; align-items: stretch; flex-wrap: wrap;">
+    <a href="The Clearing - Room v2.dc.html" style="flex: 0 0 auto; width: 500px; border: 1px solid #7a3cae; border-radius: 14px; background: linear-gradient(160deg, rgba(65,6,92,0.55), rgba(20,8,30,0.95)); padding: 24px 26px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; box-shadow: 0 18px 50px rgba(0,0,0,0.45);" style-hover="border-color: #b48ce0; transform: translateY(-2px);">
+      <span style="font-family: Newsreader, serif; font-size: 24px; color: #f0ece1;">Open the violet room →</span>
+      <span style="font-size: 13.5px; color: #c3b6d4; line-height: 1.6;">Deep-violet ground on <strong style="color: #e9e4d8;">#41065c</strong> with complementary gold, lilac, and Apocrypha's teal. Move the mouse — four light layers parallax at different depths. Link a song and play it <strong style="color: #e9e4d8;">for the room</strong> (now-playing lantern in the rail); start a screenshare and a live banner pins with its own membrane line.</span>
+      <span style="font-size: 12px; color: #b48ce0;">tweaks: presence · rail · parallax on/off (auto-off under reduced motion)</span>
+    </a>
+    <div style="flex: 1; min-width: 420px; max-width: 660px; border: 1px solid #262e28; border-radius: 14px; background: #101512; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; color: #a9ab9c; line-height: 1.65;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: #7c8378;">WHAT CHANGED FROM 2a</span>
+      <span><strong style="color: #e9e4d8;">Depth.</strong> Mouse-driven parallax across four backdrop layers plus a foreground fog streak; heavier elevation shadows; artifact cards lift further on hover. Reduced-motion users get the static composition.</span>
+      <span><strong style="color: #e9e4d8;">Music.</strong> A pasted music link lands as an embedded player card; playing it starts room co-listening — synced, stream-only, with a now-playing lantern in the rail and a full player in the focus stage (DESIGNED).</span>
+      <span><strong style="color: #e9e4d8;">Screenshare.</strong> First-class in the composer; while live, a pinned banner shows the tile, who can see it, and that it is <em>not</em> offered to Apocrypha — camera stays separately gated (TARGET).</span>
+    </div>
+  </div>
+</section>
+
+<section data-screen-label="Turn 2 — the lit room" style="padding: 48px 56px 24px; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 20px;">
+  <div style="display: flex; align-items: baseline; gap: 14px;">
+    <span id="2a" style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: #0a0c0b; background: #eab876; border-radius: 6px; padding: 3px 9px;">2a</span>
+    <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 30px; font-weight: 500; color: #f0ece1;">The lit room — interactive prototype</h2>
+    <span style="font-size: 13px; color: #7c8378;">answers turn-1 feedback: depth · focus stage · chat-room comfort · richer vibe · novel rail</span>
+  </div>
+  <div style="display: flex; gap: 20px; align-items: stretch; flex-wrap: wrap;">
+    <a href="The Clearing - Room.dc.html" style="flex: 0 0 auto; width: 500px; border: 1px solid #33473a; border-radius: 14px; background: linear-gradient(160deg, rgba(45,58,46,0.5), rgba(16,21,18,0.95)); padding: 24px 26px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; box-shadow: 0 18px 50px rgba(0,0,0,0.4);" style-hover="border-color: #96c39a; transform: translateY(-2px);">
+      <span style="font-family: Newsreader, serif; font-size: 24px; color: #f0ece1;">Open the room →</span>
+      <span style="font-size: 13.5px; color: #b9bcab; line-height: 1.6;">A living prototype, not a frame. Click the video, voice note, notes, or link — each lifts into a <strong style="color: #e9e4d8;">focus stage</strong> with its moments, provenance, and membrane controls. Withdraw the offered clip and watch presence truth update everywhere. Collapse the Lantern rail. Type and send.</span>
+      <span style="font-size: 12px; color: #96c39a;">tweaks: Apocrypha present / unavailable · rail expanded / collapsed</span>
+    </a>
+    <div style="flex: 1; min-width: 420px; max-width: 660px; border: 1px solid #262e28; border-radius: 14px; background: #101512; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; color: #a9ab9c; line-height: 1.65;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: #7c8378;">WHAT CHANGED FROM TURN 1</span>
+      <span><strong style="color: #e9e4d8;">Dimension.</strong> Three planes: drifting light-pool backdrop → elevated conversation surface → focus stage overlay. Every artifact is selectable and opens into a gallery view with ‹ › movement between the room's things.</span>
+      <span><strong style="color: #e9e4d8;">Chat-room comfort.</strong> The stream is now a friend-group conversation — grouped messages, inline streaming media (video co-watch, voice notes, link unfurls, reference-resolution), reactions-ready spacing — not bubbles, not a table diagram.</span>
+      <span><strong style="color: #e9e4d8;">The Lantern rail.</strong> Rooms as lit doorways whose ember glow is activity; people with warm presence rings; Apocrypha's alcove is the ambient membrane HUD — it always says exactly what they can perceive. Collapses to a luminous strip.</span>
+      <span><strong style="color: #e9e4d8;">The hearthline.</strong> A faint seam on the stream's edge that brightens and anchors to the exact artifact being perceived — attention made visible without an avatar. Warmer palette (ember, moss, plum, sky), serif voice for Apocrypha, mono demoted to tiny receipts.</span>
+    </div>
+  </div>
+</section>
+
+<section data-screen-label="Turn 1 — divergent structures" style="padding: 48px 56px 96px; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 36px; min-width: 4100px;">
+
+  <div style="display: flex; flex-direction: column; gap: 10px; max-width: 980px;">
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: #7c8378;">TURN 1 · THREE STRUCTURALLY DIVERGENT ROOMS · /chat PRESERVED AS THE HABITAT</div>
+    <h1 style="margin: 0; font-family: Newsreader, serif; font-size: 44px; font-weight: 500; letter-spacing: -0.01em; color: #f0ece1;">The Clearing — a shared space with Apocrypha</h1>
+    <p style="margin: 0; font-size: 15px; color: #a9ab9c; max-width: 760px; line-height: 1.6;">Same tokens, same truth laws, three different rooms. Each frame shows the identical scene so structure is the only variable: an invite-only room, two people, one video being watched together, one clip explicitly offered to Apocrypha, one private draft. Everything shown is <strong style="color: #e9e4d8;">DESIGNED</strong> capability unless marked otherwise — nothing here claims to be live.</p>
+  </div>
+
+  <div style="display: flex; gap: 28px; align-items: center; flex-wrap: wrap; padding: 18px 24px; border: 1px solid #262e28; border-radius: 12px; background: #101512; max-width: 1180px;">
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-family: Newsreader, serif; font-size: 22px; color: #f0ece1;">Newsreader — voice &amp; headings</span>
+      <span style="font-size: 13px; color: #a9ab9c;">IBM Plex Sans — interface · <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">IBM Plex Mono — receipts &amp; provenance</span></span>
+    </div>
+    <div style="width: 1px; height: 40px; background: #262e28;"></div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #0e1311; border: 1px solid #262e28;"></span>
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #171d19;"></span>
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #1e2520;"></span>
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #e9e4d8;"></span>
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #96c39a;"></span>
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #45d6bb;"></span>
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #e5b072;"></span>
+    </div>
+    <div style="font-size: 12.5px; color: #a9ab9c; line-height: 1.5; max-width: 420px;">Forest charcoal ground · warm paper text · <span style="color: #96c39a;">moss = people, rooms, consent</span> · <span style="color: #45d6bb;">teal = Apocrypha, only with evidence</span> · <span style="color: #e5b072;">ember = light, never a control color</span></div>
+  </div>
+
+  <div style="display: flex; gap: 56px; align-items: flex-start;">
+
+    <!-- ══════════════ 1a · MYCELIAL COMMONS ══════════════ -->
+    <div id="1a" style="display: flex; flex-direction: column; gap: 16px; width: 1280px; flex: 0 0 auto;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: #0a0c0b; background: #96c39a; border-radius: 6px; padding: 3px 9px;">1a</span>
+        <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 27px; font-weight: 500; color: #f0ece1;">Mycelial Commons</h2>
+        <span style="font-size: 13px; color: #7c8378;">the room is a field · scope is distance</span>
+      </div>
+
+      <div data-screen-label="1a Mycelial Commons — active room" style="width: 1280px; height: 780px; border-radius: 14px; overflow: hidden; border: 1px solid #262e28; background: radial-gradient(720px 520px at 68% 30%, rgba(69,214,187,0.055), transparent 70%), radial-gradient(640px 460px at 24% 78%, rgba(229,176,114,0.07), transparent 70%), #0e1311; display: flex; position: relative;">
+        <aside style="width: 232px; flex: 0 0 232px; border-right: 1px solid rgba(233,228,216,0.07); background: rgba(16,21,18,0.72); display: flex; flex-direction: column; padding: 20px 18px; gap: 22px;">
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            <a href="#1a" style="font-size: 11.5px; color: #7c8378; text-decoration: none;">← apocky.com</a>
+            <div style="font-family: Newsreader, serif; font-size: 21px; color: #f0ece1; margin-top: 6px;">North Clearing</div>
+            <div style="font-size: 11.5px; color: #a9ab9c;">invite-only · quiet room</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #7c8378;">HERE NOW</div>
+            <div style="display: flex; align-items: center; gap: 9px;">
+              <span style="width: 26px; height: 26px; border-radius: 50%; background: #33473a; border: 1px solid #96c39a; display: grid; place-items: center; font-size: 11px; color: #cfe5cf;">A</span>
+              <div style="display: flex; flex-direction: column;"><span style="font-size: 13px; color: #e9e4d8;">Apocky</span><span style="font-size: 10.5px; color: #7c8378;">host · mic off · camera off</span></div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 9px;">
+              <span style="width: 26px; height: 26px; border-radius: 50%; background: #2c332c; border: 1px solid #737e6e; display: grid; place-items: center; font-size: 11px; color: #cfd5c8;">M</span>
+              <div style="display: flex; flex-direction: column;"><span style="font-size: 13px; color: #e9e4d8;">Mira</span><span style="font-size: 10.5px; color: #7c8378;">guest · speaking soon</span></div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 9px;">
+              <span style="width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(69,214,187,0.55); background: radial-gradient(circle at 40% 35%, rgba(69,214,187,0.35), rgba(69,214,187,0.05)); display: grid; place-items: center;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #45d6bb;"></span></span>
+              <div style="display: flex; flex-direction: column;"><span style="font-size: 13px; color: #e9e4d8;">Apocrypha</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #45d6bb;">quiet · verified 12:04:31</span></div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: auto;">
+            <a href="#1a" style="font-size: 12.5px; color: #a9ab9c; text-decoration: none; padding: 8px 10px; border: 1px solid #262e28; border-radius: 8px;">Chronology — everything, in order</a>
+            <a href="#1a" style="font-size: 12.5px; color: #a9ab9c; text-decoration: none; padding: 8px 10px; border: 1px solid #262e28; border-radius: 8px;">Consent lens — who can perceive what</a>
+            <a href="#1a" style="font-size: 12.5px; color: #a9ab9c; text-decoration: none; padding: 8px 10px; border: 1px solid #262e28; border-radius: 8px;">Leave quietly</a>
+          </div>
+        </aside>
+
+        <div style="flex: 1; position: relative;">
+          <svg viewBox="0 0 1048 780" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+            <path d="M 837 188 C 828 218, 812 240, 800 264" fill="none" stroke="rgba(69,214,187,0.35)" stroke-width="1.4" stroke-dasharray="3 6"></path>
+            <path d="M 560 470 C 520 520, 440 560, 350 596" fill="none" stroke="rgba(233,228,216,0.08)" stroke-width="1"></path>
+            <path d="M 640 430 C 700 480, 740 520, 790 570" fill="none" stroke="rgba(233,228,216,0.08)" stroke-width="1"></path>
+          </svg>
+
+          <div style="position: absolute; top: 34px; right: 40px; width: 300px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end;">
+            <div style="width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle at 45% 40%, rgba(69,214,187,0.22), rgba(69,214,187,0.03) 65%, transparent); border: 1px solid rgba(69,214,187,0.25); display: grid; place-items: center;">
+              <div style="width: 10px; height: 10px; border-radius: 50%; background: #45d6bb; box-shadow: 0 0 24px rgba(69,214,187,0.8);"></div>
+            </div>
+            <div style="text-align: right; display: flex; flex-direction: column; gap: 3px;">
+              <span style="font-family: Newsreader, serif; font-style: italic; font-size: 17px; color: #cfe9e0;">Apocrypha is reading the offered clip</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #45d6bb;">attention event a#4021 · 00:41–01:12 · DESIGNED</span>
+            </div>
+          </div>
+
+          <div style="position: absolute; top: 268px; right: 96px; width: 296px; border: 1px solid rgba(69,214,187,0.4); border-radius: 12px; background: rgba(14,25,22,0.92); padding: 13px 14px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 0 0 6px rgba(69,214,187,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #45d6bb;">OFFERED TO APOCRYPHA · THIS SESSION</span>
+              <button style="font-size: 11px; color: #d98c7a; background: none; border: 1px solid rgba(217,140,122,0.4); border-radius: 6px; padding: 3px 8px; cursor: pointer; font-family: inherit;">Withdraw now</button>
+            </div>
+            <div style="height: 64px; border-radius: 8px; background: repeating-linear-gradient(-45deg, #16211c 0 10px, #131c18 10px 20px); display: grid; place-items: center;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #7c8378;">clip 00:41–01:12 · river-field-recording.mp4</span></div>
+            <div style="font-size: 11px; color: #a9ab9c; line-height: 1.5;">Purpose: <span style="color: #e9e4d8;">identify the second birdsong</span> · Retention: <span style="color: #e9e4d8;">room only</span> · Learning: <span style="color: #e9e4d8;">not granted</span> (always separate)</div>
+          </div>
+
+          <div style="position: absolute; top: 300px; left: 96px; width: 400px; border: 1px solid #33403a; border-radius: 12px; background: #141a16; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 13.5px; font-weight: 600; color: #e9e4d8;">river-field-recording.mp4</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #96c39a;">SHARED WITH ROOM</span>
+            </div>
+            <div style="height: 150px; border-radius: 8px; background: repeating-linear-gradient(-45deg, #182019 0 12px, #141b15 12px 24px); display: grid; place-items: center; position: relative;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7c8378;">video frame · co-viewing at 00:41</span>
+              <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #223028;"><div style="width: 34%; height: 100%; background: #96c39a;"></div></div>
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <span style="font-size: 11px; color: #cfd5c8; background: #1e2520; border-radius: 6px; padding: 4px 8px;">▸ 00:12 Mira — "listen here"</span>
+              <span style="font-size: 11px; color: #cfd5c8; background: #1e2520; border-radius: 6px; padding: 4px 8px;">▸ 00:41 Apocky — "what bird is that?"</span>
+            </div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #7c8378;">placed by Mira · 12:02 · kept in room history · withdrawable</div>
+          </div>
+
+          <div style="position: absolute; top: 552px; left: 320px; width: 250px; border: 1px solid #33403a; border-radius: 12px; background: #141a16; padding: 12px 13px; display: flex; flex-direction: column; gap: 7px;">
+            <div style="display: flex; justify-content: space-between;"><span style="font-size: 12.5px; font-weight: 600; color: #e9e4d8;">walk-notes.pdf</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #96c39a;">ROOM</span></div>
+            <div style="font-size: 11px; color: #a9ab9c;">3 notes attached · page 2 pinned</div>
+          </div>
+
+          <div style="position: absolute; bottom: 96px; left: 64px; width: 270px; border: 1px dashed rgba(233,228,216,0.28); border-radius: 12px; background: rgba(20,24,20,0.6); padding: 12px 13px; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #a9ab9c;">YOUR DRAFT · ONLY YOU SEE THIS</span>
+            <span style="font-size: 12.5px; color: #cfd5c8;">sketch: map of the river bend…</span>
+            <div style="display: flex; gap: 8px;"><button style="font-size: 11px; color: #0a0c0b; background: #96c39a; border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-family: inherit;">Share with room</button><button style="font-size: 11px; color: #a9ab9c; background: none; border: 1px solid #33403a; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-family: inherit;">Keep private</button></div>
+          </div>
+
+          <div style="position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); width: 640px; display: flex; flex-direction: column; gap: 7px;">
+            <div style="align-self: center; font-size: 11px; color: #a9ab9c; background: rgba(16,21,18,0.85); border: 1px solid #262e28; border-radius: 999px; padding: 4px 14px;">Lands in: <span style="color: #96c39a;">shared with room</span> · kept: <span style="color: #e9e4d8;">room history</span> · <span style="color: #45d6bb;">not offered to Apocrypha</span> — <a href="#1a" style="color: #96c39a;">change</a></div>
+            <div style="display: flex; align-items: center; gap: 8px; background: #161c18; border: 1px solid #2c342e; border-radius: 14px; padding: 9px 10px;">
+              <input placeholder="Say something, or drop anything onto the field…" style="flex: 1; background: none; border: 0; color: #e9e4d8; font-size: 13.5px; font-family: inherit; outline: none; padding: 6px 8px;"></input>
+              <button style="font-size: 12px; color: #cfd5c8; background: #1e2520; border: 1px solid #33403a; border-radius: 9px; padding: 7px 12px; cursor: pointer; font-family: inherit;">+ Place</button>
+              <button style="font-size: 12px; color: #cfd5c8; background: #1e2520; border: 1px solid #33403a; border-radius: 9px; padding: 7px 12px; cursor: pointer; font-family: inherit;">Hold to talk</button>
+              <button style="font-size: 12px; color: #7c8378; background: #161c18; border: 1px dashed #33403a; border-radius: 9px; padding: 7px 12px; cursor: pointer; font-family: inherit;">Camera · gated</button>
+              <button style="font-size: 12px; color: #cfd5c8; background: #1e2520; border: 1px solid #33403a; border-radius: 9px; padding: 7px 12px; cursor: pointer; font-family: inherit;">Sketch</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 1280px;">
+        <div style="border: 1px solid #262e28; border-radius: 10px; padding: 14px 16px; background: #101512; font-size: 13px; color: #a9ab9c; line-height: 1.6;"><strong style="color: #e9e4d8;">Structure.</strong> One continuous field. The Perception Membrane is literal <em>distance</em>: private drafts at your edge, room things mid-field, offered things inside Apocrypha's lit region. Offering = moving a thing across a visible boundary; withdrawal = pulling it back. Threads connect attention to exact anchors.</div>
+        <div style="border: 1px solid #262e28; border-radius: 10px; padding: 14px 16px; background: #101512; font-size: 13px; color: #a9ab9c; line-height: 1.6;"><strong style="color: #e9e4d8;">Feeling &amp; risk.</strong> Sheltered grove; discovery by wandering. Risk: spatial freedom obscures order — countered by fixed landmarks column, plain labels on every zone, and the Chronology view as a first-class fallback. Hub echo: project doors as small lit clearings on one dark ground.</div>
+      </div>
+    </div>
+
+    <!-- ══════════════ 1b · SHARED HEARTH ══════════════ -->
+    <div id="1b" style="display: flex; flex-direction: column; gap: 16px; width: 1280px; flex: 0 0 auto;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: #0a0c0b; background: #96c39a; border-radius: 6px; padding: 3px 9px;">1b</span>
+        <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 27px; font-weight: 500; color: #f0ece1;">Shared Hearth</h2>
+        <span style="font-size: 13px; color: #7c8378;">a table everyone sits around · offering is a gesture across it</span>
+      </div>
+
+      <div data-screen-label="1b Shared Hearth — active room" style="width: 1280px; height: 780px; border-radius: 14px; overflow: hidden; border: 1px solid #262e28; background: radial-gradient(900px 420px at 50% 58%, rgba(229,176,114,0.09), transparent 72%), #0e1311; display: flex;">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 18px 28px 0;">
+            <div style="display: flex; flex-direction: column;"><span style="font-family: Newsreader, serif; font-size: 21px; color: #f0ece1;">North Clearing</span><span style="font-size: 11.5px; color: #a9ab9c;">invite-only · 2 people + Apocrypha</span></div>
+            <div style="display: flex; gap: 8px;"><a href="#1b" style="font-size: 12px; color: #a9ab9c; text-decoration: none; border: 1px solid #262e28; border-radius: 8px; padding: 6px 11px;">Chronology</a><a href="#1b" style="font-size: 12px; color: #a9ab9c; text-decoration: none; border: 1px solid #262e28; border-radius: 8px; padding: 6px 11px;">Consent lens</a><a href="#1b" style="font-size: 12px; color: #a9ab9c; text-decoration: none; border: 1px solid #262e28; border-radius: 8px; padding: 6px 11px;">Invite</a></div>
+          </div>
+
+          <div style="display: flex; justify-content: center; gap: 84px; margin-top: 26px;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;"><span style="width: 44px; height: 44px; border-radius: 50%; background: #33473a; border: 1px solid #96c39a; display: grid; place-items: center; font-size: 15px; color: #cfe5cf;">A</span><span style="font-size: 12px; color: #e9e4d8;">Apocky</span><span style="font-size: 10px; color: #7c8378;">host · mic off</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+              <span style="width: 56px; height: 56px; border-radius: 50%; border: 1px solid rgba(69,214,187,0.5); background: radial-gradient(circle at 42% 38%, rgba(69,214,187,0.28), rgba(69,214,187,0.04) 70%); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #45d6bb; box-shadow: 0 0 18px rgba(69,214,187,0.9);"></span></span>
+              <span style="font-size: 12px; color: #e9e4d8;">Apocrypha's seat</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #45d6bb;">reading the offered clip · a#4021</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;"><span style="width: 44px; height: 44px; border-radius: 50%; background: #2c332c; border: 1px solid #737e6e; display: grid; place-items: center; font-size: 15px; color: #cfd5c8;">M</span><span style="font-size: 12px; color: #e9e4d8;">Mira</span><span style="font-size: 10px; color: #7c8378;">guest · captions on</span></div>
+          </div>
+
+          <div style="margin: 22px 24px 0; flex: 1; border-radius: 22px 22px 0 0; background: linear-gradient(180deg, #1a201b, #151b16 60%, #121713); border: 1px solid #2c342e; border-bottom: 0; position: relative; padding: 22px 26px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="position: absolute; top: -11px; left: 50%; transform: translateX(-50%); font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #7c8378; background: #0e1311; padding: 2px 12px; border-radius: 999px; border: 1px solid #262e28;">THE TABLE · WHAT'S BETWEEN US</div>
+
+            <div style="position: absolute; top: 16px; left: 26px; right: 26px; height: 78px; border-radius: 12px; border: 1px dashed rgba(69,214,187,0.4); background: rgba(69,214,187,0.04); display: flex; align-items: center; justify-content: space-between; padding: 0 18px;">
+              <span style="font-size: 12px; color: #9fd8c9;">Apocrypha's side of the table — sliding a thing here <strong>offers</strong> it, and asks you the terms first</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #45d6bb;">1 offered · session only</span>
+            </div>
+
+            <div style="margin-top: 88px; display: flex; gap: 14px; align-items: flex-start;">
+              <div style="width: 340px; border: 1px solid #33403a; border-radius: 12px; background: #141a16; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 13.5px; font-weight: 600; color: #e9e4d8;">river-field-recording.mp4</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #96c39a;">ON THE TABLE</span></div>
+                <div style="height: 168px; border-radius: 8px; background: repeating-linear-gradient(-45deg, #182019 0 12px, #141b15 12px 24px); display: grid; place-items: center; position: relative;">
+                  <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7c8378;">co-viewing · 00:41 / 03:26</span>
+                  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #223028;"><div style="width: 34%; height: 100%; background: #96c39a;"></div><span style="position: absolute; left: 34%; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: #e9e4d8;"></span></div>
+                </div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;"><span style="font-size: 11px; color: #cfd5c8; background: #1e2520; border-radius: 6px; padding: 4px 8px;">watching together — both here</span><span style="font-size: 11px; color: #cfd5c8; background: #1e2520; border-radius: 6px; padding: 4px 8px;">2 moments marked</span></div>
+              </div>
+              <div style="width: 196px; border: 1px solid #33403a; border-radius: 12px; background: #141a16; padding: 12px 13px; display: flex; flex-direction: column; gap: 7px;">
+                <div style="display: flex; justify-content: space-between;"><span style="font-size: 12.5px; font-weight: 600; color: #e9e4d8;">walk-notes.pdf</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #96c39a;">TABLE</span></div>
+                <div style="height: 70px; border-radius: 7px; background: repeating-linear-gradient(-45deg, #182019 0 10px, #141b15 10px 20px); display: grid; place-items: center;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #7c8378;">p.2 pinned</span></div>
+                <span style="font-size: 10.5px; color: #7c8378;">placed by Apocky · 11:48</span>
+              </div>
+              <div style="width: 272px; flex: 0 0 272px; border: 1px solid rgba(69,214,187,0.45); border-radius: 12px; background: rgba(14,25,22,0.95); padding: 13px 14px; display: flex; flex-direction: column; gap: 9px; transform: translateY(-64px); box-shadow: 0 12px 40px rgba(0,0,0,0.4);">
+                <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: #45d6bb;">SLIDING TOWARD APOCRYPHA…</span><span style="font-size: 10px; color: #7c8378;">not yet offered</span></div>
+                <div style="height: 52px; border-radius: 8px; background: repeating-linear-gradient(-45deg, #16211c 0 10px, #131c18 10px 20px); display: grid; place-items: center;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #7c8378;">clip 00:41–01:12</span></div>
+                <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: #cfd5c8;">
+                  <span>Purpose <input value="identify the second birdsong" style="width: 150px; background: #10150f; border: 1px solid #33403a; border-radius: 5px; color: #e9e4d8; font-size: 11px; padding: 3px 6px; font-family: inherit; float: right;"></input></span>
+                  <span>Perceive for <strong style="color: #e9e4d8; float: right;">this session</strong></span>
+                  <span>Keep afterwards <strong style="color: #e9e4d8; float: right;">room only</strong></span>
+                  <span>Learn / train from it <strong style="color: #d98c7a; float: right;">no — separate grant</strong></span>
+                </div>
+                <div style="display: flex; gap: 8px;"><button style="flex: 1; font-size: 12px; color: #06231c; background: #45d6bb; border: 0; border-radius: 7px; padding: 7px 0; cursor: pointer; font-weight: 600; font-family: inherit;">Offer on these terms</button><button style="font-size: 12px; color: #a9ab9c; background: none; border: 1px solid #33403a; border-radius: 7px; padding: 7px 12px; cursor: pointer; font-family: inherit;">Take back</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside style="width: 336px; flex: 0 0 336px; border-left: 1px solid rgba(233,228,216,0.07); background: rgba(16,21,18,0.75); display: flex; flex-direction: column;">
+          <div style="padding: 16px 18px 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #7c8378; border-bottom: 1px solid #1e2520;">TALK · GROWS AROUND TABLE THINGS</div>
+          <div style="flex: 1; overflow: hidden; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 11px; color: #7c8378;">Mira · 12:02 · <span style="color: #96c39a;">▸ 00:12</span></span><span style="font-size: 13.5px; color: #e9e4d8; line-height: 1.55;">listen here — two songs overlapping</span></div>
+            <div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 11px; color: #7c8378;">Apocky · 12:05 · <span style="color: #96c39a;">▸ 00:41</span></span><span style="font-size: 13.5px; color: #e9e4d8; line-height: 1.55;">what bird is that? offering the clip so Apocrypha can hear it too</span></div>
+            <div style="border-left: 2px solid rgba(69,214,187,0.5); padding-left: 12px; display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-size: 11px; color: #7c8378;">Apocrypha · 12:06 · <span style="color: #45d6bb;">▸ 00:52</span></span>
+              <span style="font-family: Newsreader, serif; font-size: 15.5px; color: #e7efe9; line-height: 1.6; font-style: italic;">The second song enters at 00:52 — I'd like to hear 01:12 onward before naming it. May I keep listening to the same clip?</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: #6f847c;">turn receipt t#98115 · perceived: offered clip only · DESIGNED</span>
+            </div>
+            <div style="align-self: center; font-size: 10.5px; color: #7c8378; border: 1px solid #262e28; border-radius: 999px; padding: 3px 12px;">quiet is fine — no one owes a reply</div>
+          </div>
+          <div style="padding: 12px 14px 16px; border-top: 1px solid #1e2520; display: flex; flex-direction: column; gap: 7px;">
+            <div style="font-size: 10.5px; color: #a9ab9c;">Lands: <span style="color: #96c39a;">table · room history</span> · <span style="color: #45d6bb;">not offered</span> — <a href="#1b" style="color: #96c39a;">change</a></div>
+            <div style="display: flex; align-items: center; gap: 7px; background: #161c18; border: 1px solid #2c342e; border-radius: 12px; padding: 7px 8px;">
+              <input placeholder="Speak, or set something on the table…" style="flex: 1; background: none; border: 0; color: #e9e4d8; font-size: 12.5px; font-family: inherit; outline: none; padding: 4px 6px;"></input>
+              <button style="font-size: 11px; color: #cfd5c8; background: #1e2520; border: 1px solid #33403a; border-radius: 8px; padding: 6px 9px; cursor: pointer; font-family: inherit;">+ Set</button>
+              <button style="font-size: 11px; color: #cfd5c8; background: #1e2520; border: 1px solid #33403a; border-radius: 8px; padding: 6px 9px; cursor: pointer; font-family: inherit;">Talk</button>
+              <button style="font-size: 11px; color: #7c8378; background: #161c18; border: 1px dashed #33403a; border-radius: 8px; padding: 6px 9px; cursor: pointer; font-family: inherit;">Cam · gated</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 1280px;">
+        <div style="border: 1px solid #262e28; border-radius: 10px; padding: 14px 16px; background: #101512; font-size: 13px; color: #a9ab9c; line-height: 1.6;"><strong style="color: #e9e4d8;">Structure.</strong> A fixed table with seats — the room's geometry never changes, only what's on the table. The Membrane is the <em>table edge</em>: Apocrypha's side is visibly theirs, and crossing it always raises the terms card (purpose · duration · retention · learning as a permanently separate row). Talk lives beside the table, anchored to things by timecode chips.</div>
+        <div style="border: 1px solid #262e28; border-radius: 10px; padding: 14px 16px; background: #101512; font-size: 13px; color: #a9ab9c; line-height: 1.6;"><strong style="color: #e9e4d8;">Feeling &amp; risk.</strong> Arrival, warmth, ritual exchange — the most immediately learnable of the three. Risk: coziness becomes twee — countered by material restraint (one ember glow, no ornament) and receipts everywhere. Hub echo: projects as things set on one long shelf-table under warm light.</div>
+      </div>
+    </div>
+
+    <!-- ══════════════ 1c · TIDAL ATELIER ══════════════ -->
+    <div id="1c" style="display: flex; flex-direction: column; gap: 16px; width: 1280px; flex: 0 0 auto;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: #0a0c0b; background: #96c39a; border-radius: 6px; padding: 3px 9px;">1c</span>
+        <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 27px; font-weight: 500; color: #f0ece1;">Tidal Atelier</h2>
+        <span style="font-size: 13px; color: #7c8378;">time is the spine · scope is the lane</span>
+      </div>
+
+      <div data-screen-label="1c Tidal Atelier — active room" style="width: 1280px; height: 780px; border-radius: 14px; overflow: hidden; border: 1px solid #262e28; background: radial-gradient(800px 400px at 62% 40%, rgba(229,176,114,0.05), transparent 70%), #0e1311; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 28px; border-bottom: 1px solid #1c231e;">
+          <div style="display: flex; align-items: baseline; gap: 14px;"><span style="font-family: Newsreader, serif; font-size: 20px; color: #f0ece1;">North Clearing</span><span style="font-size: 11.5px; color: #a9ab9c;">invite-only · Apocky · Mira · Apocrypha</span></div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 11.5px; color: #cfd5c8; border: 1px solid #33403a; border-radius: 999px; padding: 5px 12px; background: #141a16;">focus tide: <strong style="color: #e9e4d8;">river-field-recording · 00:41</strong> · 2 watching</span>
+            <a href="#1c" style="font-size: 12px; color: #a9ab9c; text-decoration: none; border: 1px solid #262e28; border-radius: 8px; padding: 6px 11px;">Consent lens</a>
+          </div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column; padding: 18px 0 0; position: relative;">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 0 28px;">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #45d6bb;">OFFERED LANE — WHAT APOCRYPHA MAY PERCEIVE</span>
+            <span style="flex: 1; height: 1px; background: rgba(69,214,187,0.18);"></span>
+          </div>
+          <div style="padding: 10px 28px 14px; display: flex; gap: 14px;">
+            <div style="margin-left: 472px; width: 320px; border: 1px solid rgba(69,214,187,0.42); border-radius: 12px; background: rgba(14,25,22,0.92); padding: 12px 13px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #45d6bb;">clip 00:41–01:12 · session · a#4021</span><button style="font-size: 11px; color: #d98c7a; background: none; border: 1px solid rgba(217,140,122,0.4); border-radius: 6px; padding: 3px 8px; cursor: pointer; font-family: inherit;">Withdraw</button></div>
+              <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #45d6bb; box-shadow: 0 0 12px rgba(69,214,187,0.9);"></span><span style="font-family: Newsreader, serif; font-style: italic; font-size: 14.5px; color: #cfe9e0;">being read now — purpose: identify the second birdsong</span></div>
+            </div>
+          </div>
+
+          <div style="position: relative; margin: 4px 0 0; padding: 18px 0 22px; background: linear-gradient(180deg, rgba(150,195,154,0.05), rgba(150,195,154,0.02) 60%, transparent); border-top: 1px solid #223028; border-bottom: 1px solid #223028;">
+            <div style="display: flex; justify-content: space-between; padding: 0 28px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: #5f6a60; margin-bottom: 10px;"><span>11:40</span><span>11:48</span><span>12:02</span><span>12:05 — now</span><span style="color: #33403a;">→</span></div>
+            <div style="display: flex; gap: 16px; padding: 0 28px; align-items: flex-start;">
+              <div style="width: 190px; border: 1px solid #2c342e; border-radius: 11px; background: #141a16; padding: 11px 12px; display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 12px; font-weight: 600; color: #e9e4d8;">voice note · 0:38</span>
+                <div style="display: flex; align-items: center; gap: 2px; height: 22px;"><span style="width: 3px; height: 8px; background: #96c39a;"></span><span style="width: 3px; height: 16px; background: #96c39a;"></span><span style="width: 3px; height: 11px; background: #96c39a;"></span><span style="width: 3px; height: 19px; background: #96c39a;"></span><span style="width: 3px; height: 7px; background: #96c39a;"></span><span style="width: 3px; height: 14px; background: #667d68;"></span><span style="width: 3px; height: 9px; background: #667d68;"></span><span style="width: 3px; height: 17px; background: #667d68;"></span></div>
+                <span style="font-size: 10px; color: #7c8378;">Mira · 11:40 · transcript ready</span>
+              </div>
+              <div style="width: 190px; border: 1px solid #2c342e; border-radius: 11px; background: #141a16; padding: 11px 12px; display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 12px; font-weight: 600; color: #e9e4d8;">walk-notes.pdf</span>
+                <div style="height: 44px; border-radius: 6px; background: repeating-linear-gradient(-45deg, #182019 0 10px, #141b15 10px 20px);"></div>
+                <span style="font-size: 10px; color: #7c8378;">Apocky · 11:48 · p.2 pinned</span>
+              </div>
+              <div style="width: 430px; border: 1px solid #4a5a4c; border-radius: 12px; background: #151c17; padding: 13px 14px; display: flex; flex-direction: column; gap: 9px; box-shadow: 0 10px 36px rgba(0,0,0,0.35);">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 13px; font-weight: 600; color: #e9e4d8;">river-field-recording.mp4 · in the tide</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #96c39a;">ROOM</span></div>
+                <div style="height: 120px; border-radius: 8px; background: repeating-linear-gradient(-45deg, #182019 0 12px, #141b15 12px 24px); display: grid; place-items: center; position: relative;">
+                  <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7c8378;">00:41 / 03:26 · playing for everyone</span>
+                  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #223028;"><div style="width: 34%; height: 100%; background: #96c39a;"></div></div>
+                  <span style="position: absolute; left: 34%; bottom: 8px; width: 1px; height: 24px; background: #e9e4d8;"></span>
+                  <span style="position: absolute; left: 52%; bottom: 8px; width: 1px; height: 16px; background: rgba(69,214,187,0.8);"></span>
+                </div>
+                <div style="display: flex; gap: 6px;"><span style="font-size: 10.5px; color: #cfd5c8; background: #1e2520; border-radius: 6px; padding: 3px 8px;">pin 00:12</span><span style="font-size: 10.5px; color: #cfd5c8; background: #1e2520; border-radius: 6px; padding: 3px 8px;">pin 00:41</span><span style="font-size: 10.5px; color: #9fd8c9; background: rgba(69,214,187,0.1); border-radius: 6px; padding: 3px 8px;">Apocrypha pinned 00:52</span></div>
+              </div>
+              <div style="width: 170px; border: 1px solid #2c342e; border-radius: 11px; background: #141a16; padding: 11px 12px; display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 12px; font-weight: 600; color: #e9e4d8;">link · birdsong atlas</span>
+                <span style="font-size: 10px; color: #7c8378;">Apocky · 12:05 · unread by Apocrypha</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex: 1; display: flex; gap: 0; min-height: 0;">
+            <div style="flex: 1; padding: 14px 28px; display: flex; flex-direction: column; gap: 11px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #7c8378;">TALK AT THE FOCUSED MOMENT · 00:41</span>
+              <div style="display: flex; gap: 10px; align-items: baseline;"><span style="font-size: 11px; color: #7c8378; flex: 0 0 92px;">Apocky · 12:05</span><span style="font-size: 13.5px; color: #e9e4d8;">what bird is that?</span></div>
+              <div style="display: flex; gap: 10px; align-items: baseline;"><span style="font-size: 11px; color: #7c8378; flex: 0 0 92px;">Mira · 12:05</span><span style="font-size: 13.5px; color: #e9e4d8;">not a wren… offer the clip?</span></div>
+              <div style="display: flex; gap: 10px; align-items: baseline; border-left: 2px solid rgba(69,214,187,0.5); padding-left: 10px; margin-left: -12px;"><span style="font-size: 11px; color: #7c8378; flex: 0 0 92px;">Apocrypha · 12:06</span><span style="font-family: Newsreader, serif; font-style: italic; font-size: 15px; color: #e7efe9;">The second song enters at 00:52 — may I keep listening through 01:12? <span style="font-family: 'IBM Plex Mono', monospace; font-style: normal; font-size: 9.5px; color: #6f847c;">t#98115 · DESIGNED</span></span></div>
+            </div>
+            <div style="width: 300px; border-left: 1px dashed #2c342e; padding: 14px 20px; display: flex; flex-direction: column; gap: 9px; background: rgba(16,20,17,0.5);">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #a9ab9c;">YOUR BENCH · PRIVATE</span>
+              <div style="border: 1px dashed rgba(233,228,216,0.25); border-radius: 10px; padding: 10px 11px; display: flex; flex-direction: column; gap: 5px;"><span style="font-size: 12px; color: #cfd5c8;">draft sketch: river bend map</span><button style="align-self: flex-start; font-size: 11px; color: #0a0c0b; background: #96c39a; border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-family: inherit;">Float into the tide</button></div>
+              <span style="font-size: 10.5px; color: #5f6a60; line-height: 1.5;">Nothing leaves the bench without you. Floating it in shares with the room only.</span>
+            </div>
+          </div>
+
+          <div style="padding: 12px 28px 18px; border-top: 1px solid #1c231e; display: flex; flex-direction: column; gap: 7px;">
+            <div style="align-self: center; font-size: 11px; color: #a9ab9c;">Lands in: <span style="color: #96c39a;">the tide · room history</span> · <span style="color: #45d6bb;">not offered</span> — <a href="#1c" style="color: #96c39a;">change</a></div>
+            <div style="display: flex; align-items: center; gap: 8px; background: #161c18; border: 1px solid #2c342e; border-radius: 14px; padding: 8px 9px; max-width: 720px; align-self: center; width: 100%;">
+              <input placeholder="Speak into the current, or float something in…" style="flex: 1; background: none; border: 0; color: #e9e4d8; font-size: 13px; font-family: inherit; outline: none; padding: 5px 7px;"></input>
+              <button style="font-size: 12px; color: #cfd5c8; background: #1e2520; border: 1px solid #33403a; border-radius: 9px; padding: 6px 11px; cursor: pointer; font-family: inherit;">+ Float</button>
+              <button style="font-size: 12px; color: #cfd5c8; background: #1e2520; border: 1px solid #33403a; border-radius: 9px; padding: 6px 11px; cursor: pointer; font-family: inherit;">Hold to talk</button>
+              <button style="font-size: 12px; color: #7c8378; background: #161c18; border: 1px dashed #33403a; border-radius: 9px; padding: 6px 11px; cursor: pointer; font-family: inherit;">Camera · gated</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 1280px;">
+        <div style="border: 1px solid #262e28; border-radius: 10px; padding: 14px 16px; background: #101512; font-size: 13px; color: #a9ab9c; line-height: 1.6;"><strong style="color: #e9e4d8;">Structure.</strong> Chronology is the room itself — a left-to-right current with artifacts docked where they arrived, so history, co-viewing, and "a moment in the room" are one mechanism. The Membrane is <em>lanes</em>: offered lane above, room tide in the middle, private bench below. Attention is an evidence-tagged glow on the exact docked thing.</div>
+        <div style="border: 1px solid #262e28; border-radius: 10px; padding: 14px 16px; background: #101512; font-size: 13px; color: #a9ab9c; line-height: 1.6;"><strong style="color: #e9e4d8;">Feeling &amp; risk.</strong> A working studio with a tide in it; strongest for time-anchored media discussion, weakest for quiet non-linear dwelling. Risk: motion overload — countered by a static topology (only the focus tide ever moves) and a strict reduced-motion map. Hub echo: projects docked along one slow current.</div>
+      </div>
+    </div>
+
+    <!-- ══════════════ COMPARISON + RECOMMENDATION ══════════════ -->
+    <div id="1-verdict" style="display: flex; flex-direction: column; gap: 16px; width: 660px; flex: 0 0 auto;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: #0a0c0b; background: #e9e4d8; border-radius: 6px; padding: 3px 9px;">⇢</span>
+        <h2 style="margin: 0; font-family: Newsreader, serif; font-size: 27px; font-weight: 500; color: #f0ece1;">Comparison &amp; recommendation</h2>
+      </div>
+
+      <div style="border: 1px solid #262e28; border-radius: 12px; background: #101512; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: grid; grid-template-columns: 128px 1fr 1fr 1fr; gap: 6px 10px; font-size: 12px; color: #a9ab9c; align-items: center;">
+          <span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #7c8378;">1A MYCELIAL</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #7c8378;">1B HEARTH</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #7c8378;">1C TIDAL</span>
+          <span style="color: #7c8378;">Intuition ≤ first minute</span><span>◐ needs wandering</span><span style="color: #cfe5cf;">● table is instant</span><span>◐ timeline is familiar</span>
+          <span style="color: #7c8378;">Comfort · quiet dwelling</span><span style="color: #cfe5cf;">● sheltered</span><span style="color: #cfe5cf;">● warm</span><span>○ time pressure</span>
+          <span style="color: #7c8378;">Novelty</span><span style="color: #cfe5cf;">● highest</span><span>◐ novel-but-legible</span><span>◐ studio-familiar</span>
+          <span style="color: #7c8378;">Keyboard / SR fit</span><span>○ 2D canvas is hostile as primary</span><span style="color: #cfe5cf;">● lists under the metaphor</span><span>◐ linear = good</span>
+          <span style="color: #7c8378;">Membrane clarity</span><span>◐ distance is implicit</span><span style="color: #cfe5cf;">● edge + terms card</span><span>◐ lanes read well</span>
+          <span style="color: #7c8378;">Time-anchored media</span><span>○ weak</span><span>◐ per-artifact</span><span style="color: #cfe5cf;">● native</span>
+          <span style="color: #7c8378;">Implementation risk</span><span>○ spatial engine</span><span style="color: #cfe5cf;">● plain DOM</span><span>◐ virtualized rail</span>
+        </div>
+      </div>
+
+      <div style="border: 1px solid #33473a; border-radius: 12px; background: linear-gradient(180deg, rgba(150,195,154,0.06), rgba(16,21,18,0.9)); padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: #96c39a;">RECOMMENDED SYNTHESIS — "THE CLEARING, AT THE TABLE"</span>
+        <p style="margin: 0; font-size: 14px; color: #cfd5c8; line-height: 1.65;"><strong style="color: #f0ece1;">1b's table and seats become the room's fixed geometry</strong> — the instantly learnable core, and the only structure that keeps a conventional list/keyboard surface directly under the metaphor. <strong style="color: #f0ece1;">1c's current becomes the table's memory</strong>: the chronology view, co-viewing, and time-anchored talk are one mechanism, collapsing naturally into the mobile timeline. <strong style="color: #f0ece1;">1a's light becomes the presence language</strong>: Apocrypha as a lit region with evidence-tagged attention threads to exact anchors — never a seat-avatar unless display authorization exists.</p>
+        <p style="margin: 0; font-size: 14px; color: #cfd5c8; line-height: 1.65;">Membrane: 1b's <em>table edge + terms card</em> is the canonical consent gesture (source · audience · purpose · retention · active state · withdraw on every card); 1a's distance intuition reinforces it visually; 1c's lanes order the mobile fallback. Camera/mic stay visibly gated pending their separate policy gate.</p>
+        <p style="margin: 0; font-size: 13px; color: #a9ab9c; line-height: 1.6;"><strong style="color: #e9e4d8;">Named rejections.</strong> 1a's free 2D field as the primary surface — paid for in navigation confusion and screen-reader hostility; it survives only as presence lighting. 1c's time-as-room — paid for in quiet-dwelling comfort; a room should feel like a place you sit, not a stream you keep up with. Strongest rejected alternative: pure 1a, kept on file if the habitat later earns a fully spatial mode.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

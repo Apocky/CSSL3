@@ -1,0 +1,32 @@
+{
+  "schema": "apocrypha.outbound-worker-profile.v1",
+  "control_plane": {
+    "poll_ms": 1500,
+    "request_timeout_ms": 15000,
+    "lease_seconds": 180,
+    "renew_ms": 10000,
+    "lease_grace_ms": 5000
+  },
+  "qwen": {
+    "base_url": "http://127.0.0.1:19124/v1",
+    "model_alias": "qwen35-35b-a3b-q4",
+    "profile_hash": "5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9",
+    "context_tokens": 16384,
+    "max_output_tokens": 2048,
+    "idle_timeout_ms": 180000,
+    "max_runtime_ms": 2700000,
+    "thinking": false
+  },
+  "delivery": {
+    "flush_ms": 1000,
+    "max_chunk_chars": 256,
+    "journal_encryption": "aes-256-gcm",
+    "journal_key_source": "worker-token-derived",
+    "terminal_role": "primary"
+  },
+  "health": {
+    "host": "127.0.0.1",
+    "port": 19126,
+    "heartbeat_ms": 15000
+  }
+}

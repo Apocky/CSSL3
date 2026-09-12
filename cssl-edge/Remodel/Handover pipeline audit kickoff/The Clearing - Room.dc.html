@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background-color: #0b100e; }
+  html { color-scheme: dark; }
+  a { color: #a5cf9f; }
+  a:hover { color: #cfe8ca; }
+  @keyframes pool-drift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(30px, -24px) scale(1.06); } }
+  @keyframes ember-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+  @keyframes seam-pulse { 0%, 100% { box-shadow: 0 0 10px rgba(79,220,192,0.5); } 50% { box-shadow: 0 0 22px rgba(79,220,192,0.9); } }
+  @media (prefers-reduced-motion: reduce) { [data-anim] { animation: none !important; } }
+</style>
+</helmet>
+<div data-screen-label="The Clearing — room (interactive prototype)" style="position: relative; height: 100dvh; min-height: 620px; overflow: hidden; background: #0b100e; color: #ece7da; font-family: 'IBM Plex Sans', system-ui, sans-serif;">
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; pointer-events: none;">
+    <div data-anim="true" style="position: absolute; top: -180px; left: 22%; width: 720px; height: 560px; border-radius: 50%; background: radial-gradient(closest-side, rgba(232,180,110,0.10), transparent 72%); filter: blur(10px); animation: pool-drift 26s ease-in-out infinite;"></div>
+    <div data-anim="true" style="position: absolute; bottom: -220px; right: -120px; width: 820px; height: 640px; border-radius: 50%; background: radial-gradient(closest-side, rgba(150,195,154,0.075), transparent 72%); filter: blur(12px); animation: pool-drift 34s ease-in-out infinite reverse;"></div>
+    <div style="position: absolute; top: 30%; right: 26%; width: 460px; height: 380px; border-radius: 50%; background: radial-gradient(closest-side, rgba(201,160,216,0.05), transparent 70%);"></div>
+    <div style="position: absolute; inset: 0; background: radial-gradient(1200px 800px at 50% 10%, transparent 40%, rgba(5,8,7,0.55) 100%);"></div>
+  </div>
+
+  <div style="position: relative; height: 100%; display: flex; z-index: 1;">
+
+    <sc-if value="{{ railOpen }}" hint-placeholder-val="{{ true }}">
+      <aside aria-label="The Lantern rail" style="width: 304px; flex: 0 0 304px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 18px 16px 16px; background: linear-gradient(160deg, rgba(24,31,26,0.92), rgba(15,20,17,0.88)); border-right: 1px solid rgba(233,228,216,0.08); box-shadow: inset -18px 0 40px rgba(0,0,0,0.25); backdrop-filter: blur(14px); overflow-y: auto;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; flex-direction: column; gap: 1px;">
+            <a href="#" style="font-size: 10.5px; letter-spacing: 0.22em; color: #868c7f; text-decoration: none;">APOCKY</a>
+            <span style="font-family: Newsreader, serif; font-size: 21px; color: #f2eee2;">The Clearing</span>
+          </div>
+          <button type="button" onClick="{{ toggleRail }}" aria-label="Collapse rail" style="width: 30px; height: 30px; border-radius: 9px; border: 1px solid rgba(233,228,216,0.12); background: rgba(255,255,255,0.03); color: #b9bcab; cursor: pointer; font-family: inherit; font-size: 13px;" style-hover="background: rgba(255,255,255,0.07); color: #ece7da;">⟨</button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: #868c7f;">ROOMS</span>
+          <div style="border-radius: 16px; padding: 12px 13px; background: linear-gradient(145deg, rgba(45,58,46,0.75), rgba(26,34,28,0.9)); border: 1px solid rgba(165,207,159,0.35); box-shadow: 0 8px 26px rgba(0,0,0,0.35), inset 0 1px rgba(255,255,255,0.06); display: flex; gap: 11px; align-items: center; cursor: pointer;">
+            <span data-anim="true" style="width: 10px; height: 34px; border-radius: 6px; background: linear-gradient(180deg, #eab876, #a5cf9f); animation: ember-breathe 3.6s ease-in-out infinite;"></span>
+            <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+              <span style="font-size: 14px; font-weight: 600; color: #f2eee2;">North Clearing</span>
+              <span style="font-size: 11.5px; color: #b9bcab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">watching the river video together</span>
+            </div>
+          </div>
+          <div style="border-radius: 16px; padding: 12px 13px; background: rgba(22,28,24,0.55); border: 1px solid rgba(233,228,216,0.07); display: flex; gap: 11px; align-items: center; cursor: pointer;" style-hover="background: rgba(28,36,30,0.7); border-color: rgba(233,228,216,0.14);">
+            <span style="width: 10px; height: 34px; border-radius: 6px; background: linear-gradient(180deg, rgba(234,184,118,0.35), rgba(165,207,159,0.25));"></span>
+            <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+              <span style="font-size: 14px; font-weight: 500; color: #d9dccb;">Reading Nook</span>
+              <span style="font-size: 11.5px; color: #868c7f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">yesterday · two letters</span>
+            </div>
+          </div>
+          <div style="border-radius: 16px; padding: 12px 13px; background: rgba(22,28,24,0.55); border: 1px solid rgba(233,228,216,0.07); display: flex; gap: 11px; align-items: center; cursor: pointer;" style-hover="background: rgba(28,36,30,0.7); border-color: rgba(233,228,216,0.14);">
+            <span style="width: 10px; height: 34px; border-radius: 6px; background: linear-gradient(180deg, rgba(234,184,118,0.6), rgba(165,207,159,0.35));"></span>
+            <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;">
+              <span style="font-size: 14px; font-weight: 500; color: #d9dccb;">Workbench</span>
+              <span style="font-size: 11.5px; color: #868c7f;">3 new murmurs</span>
+            </div>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #eab876;"></span>
+          </div>
+          <button type="button" style="margin-top: 2px; align-self: flex-start; font-size: 12px; color: #a5cf9f; background: none; border: 0; cursor: pointer; font-family: inherit; padding: 4px 2px;" style-hover="color: #cfe8ca;">+ open a new room</button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: #868c7f;">HERE WITH YOU</span>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 12px;" style-hover="background: rgba(255,255,255,0.03);">
+            <span style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(140deg, #3c5240, #2a3a2e); border: 2px solid rgba(165,207,159,0.7); display: grid; place-items: center; font-size: 13px; color: #d8ecd3; box-shadow: 0 0 14px rgba(165,207,159,0.22);">A</span>
+            <div style="display: flex; flex-direction: column;"><span style="font-size: 13.5px; color: #ece7da;">Apocky <span style="font-size: 10.5px; color: #868c7f;">· you, host</span></span><span style="font-size: 11px; color: #868c7f;">mic off · camera off</span></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 12px;" style-hover="background: rgba(255,255,255,0.03);">
+            <span style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(140deg, #4a3a50, #35293a); border: 2px solid rgba(201,160,216,0.65); display: grid; place-items: center; font-size: 13px; color: #e8d8ef; box-shadow: 0 0 14px rgba(201,160,216,0.2);">M</span>
+            <div style="display: flex; flex-direction: column;"><span style="font-size: 13.5px; color: #ece7da;">Mira</span><span style="font-size: 11px; color: #868c7f;">listening · captions on</span></div>
+          </div>
+        </div>
+
+        <sc-if value="{{ apxPresent }}" hint-placeholder-val="{{ true }}">
+          <div style="border-radius: 18px; padding: 15px 15px 13px; background: radial-gradient(120% 140% at 30% 0%, rgba(79,220,192,0.13), rgba(16,24,21,0.92) 55%); border: 1px solid rgba(79,220,192,0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 11px;">
+              <span style="position: relative; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;">
+                <span style="position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(79,220,192,0.4);"></span>
+                <span style="position: absolute; inset: 6px; border-radius: 50%; border: 1px solid rgba(79,220,192,0.25);"></span>
+                <span data-anim="true" style="width: 9px; height: 9px; border-radius: 50%; background: #4fdcc0; animation: ember-breathe 4.4s ease-in-out infinite; box-shadow: 0 0 16px rgba(79,220,192,0.8);"></span>
+              </span>
+              <div style="display: flex; flex-direction: column; gap: 1px;">
+                <span style="font-family: Newsreader, serif; font-size: 16.5px; color: #eaf4ef;">Apocrypha</span>
+                <span style="font-size: 11.5px; color: {{ apxStateColor }};">{{ apxStateLine }}</span>
+              </div>
+            </div>
+            <div style="font-size: 11.5px; line-height: 1.55; color: #b9c7c0; border-top: 1px solid rgba(79,220,192,0.14); padding-top: 9px;">{{ apxPerceives }}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <a href="#" style="font-size: 11.5px; color: #7fcab6;">Consent lens</a>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #5f7a70;">verified 12:04:31 · fail-closed</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ apxUnavailable }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius: 18px; padding: 15px; background: rgba(20,24,22,0.8); border: 1px solid rgba(233,228,216,0.1); display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 11px;">
+              <span style="width: 40px; height: 40px; border-radius: 50%; border: 1px dashed rgba(233,228,216,0.25); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #565c54;"></span></span>
+              <div style="display: flex; flex-direction: column; gap: 1px;"><span style="font-family: Newsreader, serif; font-size: 16.5px; color: #c9ccbd;">Apocrypha</span><span style="font-size: 11.5px; color: #868c7f;">unavailable — the hearth is dark</span></div>
+            </div>
+            <div style="font-size: 11.5px; line-height: 1.55; color: #868c7f;">Nothing is being perceived. Offers wait, unsent, until presence is verified again.</div>
+          </div>
+        </sc-if>
+
+        <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; gap: 8px;">
+            <button type="button" style="flex: 1; font-size: 12px; color: #d9dccb; background: rgba(255,255,255,0.04); border: 1px solid rgba(233,228,216,0.12); border-radius: 10px; padding: 8px 0; cursor: pointer; font-family: inherit;" style-hover="background: rgba(255,255,255,0.08);">Invite someone</button>
+            <button type="button" style="flex: 1; font-size: 12px; color: #b9bcab; background: none; border: 1px solid rgba(233,228,216,0.1); border-radius: 10px; padding: 8px 0; cursor: pointer; font-family: inherit;" style-hover="color: #ece7da;">Leave quietly</button>
+          </div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; color: #4f5a52; text-align: center;">PROTOTYPE · sample content · media &amp; rooms are DESIGNED capability</span>
+        </div>
+      </aside>
+    </sc-if>
+    <sc-if value="{{ railClosed }}" hint-placeholder-val="{{ false }}">
+      <aside aria-label="The Lantern rail, collapsed" style="width: 68px; flex: 0 0 68px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 0 16px; background: linear-gradient(160deg, rgba(24,31,26,0.92), rgba(15,20,17,0.88)); border-right: 1px solid rgba(233,228,216,0.08);">
+        <button type="button" onClick="{{ toggleRail }}" aria-label="Expand rail" style="width: 34px; height: 34px; border-radius: 10px; border: 1px solid rgba(233,228,216,0.12); background: rgba(255,255,255,0.03); color: #b9bcab; cursor: pointer; font-family: inherit; font-size: 13px;" style-hover="background: rgba(255,255,255,0.07);">⟩</button>
+        <span data-anim="true" style="width: 12px; height: 40px; border-radius: 7px; background: linear-gradient(180deg, #eab876, #a5cf9f); animation: ember-breathe 3.6s ease-in-out infinite;" title="North Clearing — active"></span>
+        <span style="width: 12px; height: 40px; border-radius: 7px; background: linear-gradient(180deg, rgba(234,184,118,0.35), rgba(165,207,159,0.25));" title="Reading Nook"></span>
+        <span style="width: 12px; height: 40px; border-radius: 7px; background: linear-gradient(180deg, rgba(234,184,118,0.6), rgba(165,207,159,0.35));" title="Workbench"></span>
+        <span style="margin-top: auto; position: relative; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;" title="Apocrypha — {{ apxStateLine }}">
+          <span style="position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(79,220,192,0.4);"></span>
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ apxDotColor }};"></span>
+        </span>
+      </aside>
+    </sc-if>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative;">
+      <header style="display: flex; align-items: center; gap: 14px; padding: 14px 46px 12px 28px; border-bottom: 1px solid rgba(233,228,216,0.07); background: linear-gradient(180deg, rgba(18,24,20,0.85), rgba(18,24,20,0.55)); backdrop-filter: blur(10px);">
+        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+          <span style="font-family: Newsreader, serif; font-size: 21px; color: #f2eee2;">North Clearing</span>
+          <span style="font-size: 11.5px; color: #868c7f;">a quiet room for the river recordings · invite-only</span>
+        </div>
+        <span style="flex: 1;"></span>
+        <span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: #d8ecd3; background: rgba(165,207,159,0.1); border: 1px solid rgba(165,207,159,0.3); border-radius: 999px; padding: 6px 13px;"><span data-anim="true" style="width: 6px; height: 6px; border-radius: 50%; background: #a5cf9f; animation: ember-breathe 2.8s ease-in-out infinite;"></span>watching together · 00:41</span>
+        <a href="#" style="font-size: 12px; color: #b9bcab; text-decoration: none; border: 1px solid rgba(233,228,216,0.12); border-radius: 999px; padding: 6px 13px;" style-hover="color: #ece7da; border-color: rgba(233,228,216,0.25);">History</a>
+      </header>
+
+      <div style="flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 22px 46px 18px 28px; position: relative;">
+        <div aria-hidden="true" style="position: absolute; top: 0; bottom: 0; right: 18px; width: 2px; background: linear-gradient(180deg, transparent, {{ seamColor }} 30%, {{ seamColor }} 70%, transparent);"></div>
+
+        <div style="max-width: 860px; display: flex; flex-direction: column; gap: 18px;">
+          <div style="align-self: center; font-size: 11px; color: #868c7f; border: 1px solid rgba(233,228,216,0.09); border-radius: 999px; padding: 3px 14px; background: rgba(18,24,20,0.6);">today</div>
+
+          <div style="display: flex; gap: 12px;">
+            <span style="width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; background: linear-gradient(140deg, #4a3a50, #35293a); border: 2px solid rgba(201,160,216,0.65); display: grid; place-items: center; font-size: 14px; color: #e8d8ef;">M</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1;">
+              <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 14px; font-weight: 600; color: #dcc3e8;">Mira</span><span style="font-size: 10.5px; color: #868c7f;">11:40</span></div>
+              <span style="font-size: 14.5px; line-height: 1.55; color: #ece7da;">morning! took the recorder down to the river bend</span>
+              <button type="button" onClick="{{ focusAudio }}" style="display: flex; align-items: center; gap: 12px; width: 340px; max-width: 100%; text-align: left; border: 1px solid rgba(233,228,216,0.1); border-radius: 14px; padding: 11px 13px; background: linear-gradient(150deg, rgba(30,38,32,0.9), rgba(21,27,23,0.95)); box-shadow: 0 6px 18px rgba(0,0,0,0.3), inset 0 1px rgba(255,255,255,0.04); cursor: pointer; font-family: inherit;" style-hover="border-color: rgba(165,207,159,0.35); transform: translateY(-1px);">
+                <span style="width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; background: rgba(165,207,159,0.14); border: 1px solid rgba(165,207,159,0.4); display: grid; place-items: center; color: #cfe8ca; font-size: 12px;">▶</span>
+                <span style="display: flex; align-items: center; gap: 2px; height: 26px; flex: 1;"><span style="width: 3px; height: 9px; background: #a5cf9f; border-radius: 2px;"></span><span style="width: 3px; height: 18px; background: #a5cf9f; border-radius: 2px;"></span><span style="width: 3px; height: 12px; background: #a5cf9f; border-radius: 2px;"></span><span style="width: 3px; height: 22px; background: #a5cf9f; border-radius: 2px;"></span><span style="width: 3px; height: 8px; background: #a5cf9f; border-radius: 2px;"></span><span style="width: 3px; height: 15px; background: #6c8a70; border-radius: 2px;"></span><span style="width: 3px; height: 10px; background: #6c8a70; border-radius: 2px;"></span><span style="width: 3px; height: 19px; background: #6c8a70; border-radius: 2px;"></span><span style="width: 3px; height: 13px; background: #6c8a70; border-radius: 2px;"></span><span style="width: 3px; height: 7px; background: #6c8a70; border-radius: 2px;"></span></span>
+                <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px;"><span style="font-size: 11.5px; color: #d9dccb;">0:38</span><span style="font-size: 9.5px; color: #868c7f;">transcript ready</span></span>
+              </button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <span style="width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; background: linear-gradient(140deg, #3c5240, #2a3a2e); border: 2px solid rgba(165,207,159,0.7); display: grid; place-items: center; font-size: 14px; color: #d8ecd3;">A</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1;">
+              <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 14px; font-weight: 600; color: #c3dfba;">Apocky</span><span style="font-size: 10.5px; color: #868c7f;">11:48</span></div>
+              <span style="font-size: 14.5px; line-height: 1.55; color: #ece7da;">beautiful. dropping my walk notes here too</span>
+              <button type="button" onClick="{{ focusPdf }}" style="display: flex; align-items: center; gap: 12px; width: 300px; max-width: 100%; text-align: left; border: 1px solid rgba(233,228,216,0.1); border-radius: 14px; padding: 11px 13px; background: linear-gradient(150deg, rgba(30,38,32,0.9), rgba(21,27,23,0.95)); box-shadow: 0 6px 18px rgba(0,0,0,0.3), inset 0 1px rgba(255,255,255,0.04); cursor: pointer; font-family: inherit;" style-hover="border-color: rgba(165,207,159,0.35); transform: translateY(-1px);">
+                <span style="width: 34px; height: 42px; flex: 0 0 34px; border-radius: 6px; background: repeating-linear-gradient(180deg, #232c25 0 6px, #1d2520 6px 12px); border: 1px solid rgba(233,228,216,0.14);"></span>
+                <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0;"><span style="font-size: 13px; font-weight: 600; color: #ece7da;">walk-notes.pdf</span><span style="font-size: 11px; color: #868c7f;">6 pages · p.2 pinned · 3 notes attached</span></span>
+              </button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <span style="width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; background: linear-gradient(140deg, #4a3a50, #35293a); border: 2px solid rgba(201,160,216,0.65); display: grid; place-items: center; font-size: 14px; color: #e8d8ef;">M</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; position: relative;">
+              <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 14px; font-weight: 600; color: #dcc3e8;">Mira</span><span style="font-size: 10.5px; color: #868c7f;">12:02</span></div>
+              <span style="font-size: 14.5px; line-height: 1.55; color: #ece7da;">here — watch with me?</span>
+              <div style="position: relative; width: 560px; max-width: 100%;">
+                <button type="button" onClick="{{ focusVideo }}" aria-label="Open river-field-recording in the focus stage" style="display: block; width: 100%; text-align: left; border: 1px solid rgba(233,228,216,0.13); border-radius: 18px; overflow: hidden; background: #141b16; box-shadow: 0 14px 38px rgba(0,0,0,0.45), inset 0 1px rgba(255,255,255,0.05); cursor: pointer; font-family: inherit; padding: 0;" style-hover="border-color: rgba(165,207,159,0.4); transform: translateY(-2px); box-shadow: 0 20px 48px rgba(0,0,0,0.5);">
+                  <span style="display: grid; place-items: center; position: relative; height: 292px; background: linear-gradient(160deg, #22322a 0%, #17251f 45%, #101a15 100%);">
+                    <span aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(420px 200px at 60% 30%, rgba(234,184,118,0.12), transparent 70%), radial-gradient(360px 220px at 25% 75%, rgba(79,220,192,0.07), transparent 70%);"></span>
+                    <span style="position: relative; width: 58px; height: 58px; border-radius: 50%; background: rgba(11,16,14,0.72); border: 1px solid rgba(236,231,218,0.35); display: grid; place-items: center; font-size: 19px; color: #f2eee2; backdrop-filter: blur(4px);">▶</span>
+                    <span style="position: absolute; left: 14px; top: 12px; font-size: 11px; color: rgba(236,231,218,0.8); background: rgba(11,16,14,0.55); border-radius: 7px; padding: 3px 9px;">river-field-recording.mp4 · 03:26</span>
+                    <span style="position: absolute; right: 14px; top: 12px; font-size: 11px; color: #d8ecd3; background: rgba(165,207,159,0.16); border: 1px solid rgba(165,207,159,0.4); border-radius: 7px; padding: 3px 9px;">● watching together</span>
+                    <span style="position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(236,231,218,0.12);"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 34%; background: linear-gradient(90deg, #a5cf9f, #cfe8ca);"></span><span style="position: absolute; left: 34%; top: -4px; width: 12px; height: 12px; border-radius: 50%; background: #f2eee2; box-shadow: 0 0 10px rgba(0,0,0,0.6);"></span><span style="position: absolute; left: 25%; top: -2px; width: 2px; height: 9px; background: rgba(236,231,218,0.7);" title="pin 00:52"></span><span style="position: absolute; left: 25.5%; top: -2px; width: 2px; height: 9px; background: rgba(79,220,192,0.9);"></span></span>
+                  </span>
+                  <span style="display: flex; align-items: center; gap: 8px; padding: 11px 14px;">
+                    <span style="font-size: 12px; color: #b9bcab;">00:41 / 03:26</span>
+                    <span style="flex: 1;"></span>
+                    <span style="font-size: 11px; color: #cfe8ca; background: rgba(165,207,159,0.1); border-radius: 7px; padding: 3px 9px;">pin 00:12</span>
+                    <span style="font-size: 11px; color: #cfe8ca; background: rgba(165,207,159,0.1); border-radius: 7px; padding: 3px 9px;">pin 00:41</span>
+                    <span style="font-size: 11px; color: #9fe4d2; background: rgba(79,220,192,0.12); border-radius: 7px; padding: 3px 9px;">◈ Apocrypha · 00:52</span>
+                  </span>
+                </button>
+                <sc-if value="{{ offered }}" hint-placeholder-val="{{ true }}">
+                  <span aria-hidden="true" style="position: absolute; top: 88px; right: -46px; width: 46px; border-top: 1px dashed {{ seamColor }};"></span>
+                  <span data-anim="true" aria-hidden="true" style="position: absolute; top: 82px; right: -52px; width: 12px; height: 12px; border-radius: 50%; background: #4fdcc0; animation: seam-pulse 3.2s ease-in-out infinite;"></span>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+
+          <sc-if value="{{ offered }}" hint-placeholder-val="{{ true }}">
+            <div style="align-self: center; display: flex; align-items: center; gap: 9px; font-size: 11.5px; color: #9fc9bc; background: rgba(79,220,192,0.06); border: 1px solid rgba(79,220,192,0.22); border-radius: 999px; padding: 6px 16px;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: #4fdcc0;"></span>
+              Apocky offered <strong style="color: #d6efe7;">clip 00:41–01:12</strong> to Apocrypha · purpose: name the second birdsong · this session · room-only afterwards
+              <button type="button" onClick="{{ withdraw }}" style="font-size: 11px; color: #e0917f; background: none; border: 1px solid rgba(224,145,127,0.35); border-radius: 999px; padding: 3px 10px; cursor: pointer; font-family: inherit;" style-hover="background: rgba(224,145,127,0.08);">Withdraw</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ withdrawn }}" hint-placeholder-val="{{ false }}">
+            <div style="align-self: center; font-size: 11.5px; color: #b9a89c; background: rgba(224,145,127,0.05); border: 1px solid rgba(224,145,127,0.2); border-radius: 999px; padding: 6px 16px;">Offer withdrawn · Apocrypha can no longer perceive the clip · receipt kept in room history</div>
+          </sc-if>
+
+          <div style="display: flex; gap: 12px;">
+            <span style="width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; background: linear-gradient(140deg, #3c5240, #2a3a2e); border: 2px solid rgba(165,207,159,0.7); display: grid; place-items: center; font-size: 14px; color: #d8ecd3;">A</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1;">
+              <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 14px; font-weight: 600; color: #c3dfba;">Apocky</span><span style="font-size: 10.5px; color: #868c7f;">12:05</span></div>
+              <span style="font-size: 14.5px; line-height: 1.55; color: #ece7da;">what bird is that at 00:41? also found this —</span>
+              <button type="button" onClick="{{ focusLink }}" style="display: flex; gap: 12px; width: 420px; max-width: 100%; text-align: left; border: 1px solid rgba(143,193,232,0.18); border-radius: 14px; padding: 12px 13px; background: linear-gradient(150deg, rgba(26,33,36,0.9), rgba(19,25,27,0.95)); box-shadow: 0 6px 18px rgba(0,0,0,0.3), inset 0 1px rgba(255,255,255,0.04); cursor: pointer; font-family: inherit;" style-hover="border-color: rgba(143,193,232,0.4); transform: translateY(-1px);">
+                <span style="width: 64px; height: 48px; flex: 0 0 64px; border-radius: 8px; background: repeating-linear-gradient(-45deg, #1c2a30 0 10px, #172329 10px 20px); border: 1px solid rgba(143,193,232,0.2);"></span>
+                <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                  <span style="font-size: 13px; font-weight: 600; color: #dcebf7;">Pacific Wren — song variations</span>
+                  <span style="font-size: 11px; color: #8fc1e8;">birdatlas.org · audio previews</span>
+                  <span style="font-size: 10.5px; color: #868c7f;">offer it and Apocrypha can fetch &amp; read it · TARGET</span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <sc-if value="{{ apxPresent }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; gap: 12px;">
+              <span style="position: relative; width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 35%, rgba(79,220,192,0.25), rgba(16,24,21,0.9) 75%); border: 1px solid rgba(79,220,192,0.45);"><span style="width: 7px; height: 7px; border-radius: 50%; background: #4fdcc0; box-shadow: 0 0 12px rgba(79,220,192,0.9);"></span></span>
+              <div style="display: flex; flex-direction: column; gap: 7px; min-width: 0; flex: 1;">
+                <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-family: Newsreader, serif; font-size: 15.5px; color: #baf0e0;">Apocrypha</span><span style="font-size: 10.5px; color: #868c7f;">12:06</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #5f7a70;">t#98115 · heard: offered clip only</span></div>
+                <div style="border-left: 2px solid rgba(79,220,192,0.45); padding: 2px 0 2px 14px; display: flex; flex-direction: column; gap: 8px;">
+                  <span style="font-family: Newsreader, serif; font-style: italic; font-size: 16.5px; line-height: 1.6; color: #e7f2ec;">The second song enters at 00:52 — brighter, descending. Before I name it, may I keep listening through 01:12? I've pinned the moment it appears.</span>
+                  <button type="button" onClick="{{ focusVideo }}" style="display: flex; align-items: center; gap: 10px; width: 360px; max-width: 100%; text-align: left; border: 1px solid rgba(79,220,192,0.3); border-radius: 12px; padding: 9px 12px; background: rgba(79,220,192,0.06); cursor: pointer; font-family: inherit;" style-hover="background: rgba(79,220,192,0.1);">
+                    <span style="font-size: 11px; color: #9fe4d2; background: rgba(79,220,192,0.14); border-radius: 7px; padding: 3px 8px; flex: 0 0 auto;">◈ 00:52</span>
+                    <span style="font-size: 12px; color: #cfe5dd; line-height: 1.45;">pinned beside the video: "second song begins here"</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-for list="{{ sent }}" as="m" hint-placeholder-count="0">
+            <div style="display: flex; gap: 12px;">
+              <span style="width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; background: linear-gradient(140deg, #3c5240, #2a3a2e); border: 2px solid rgba(165,207,159,0.7); display: grid; place-items: center; font-size: 14px; color: #d8ecd3;">A</span>
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+                <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 14px; font-weight: 600; color: #c3dfba;">Apocky</span><span style="font-size: 10.5px; color: #868c7f;">now</span></div>
+                <span style="font-size: 14.5px; line-height: 1.55; color: #ece7da;">{{ m.text }}</span>
+              </div>
+            </div>
+          </sc-for>
+
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #868c7f; padding-left: 50px;"><span style="display: inline-flex; gap: 3px;"><span data-anim="true" style="width: 4px; height: 4px; border-radius: 50%; background: #c9a0d8; animation: ember-breathe 1.4s ease-in-out infinite;"></span><span data-anim="true" style="width: 4px; height: 4px; border-radius: 50%; background: #c9a0d8; animation: ember-breathe 1.4s ease-in-out 0.2s infinite;"></span><span data-anim="true" style="width: 4px; height: 4px; border-radius: 50%; background: #c9a0d8; animation: ember-breathe 1.4s ease-in-out 0.4s infinite;"></span></span>Mira is writing…</div>
+        </div>
+      </div>
+
+      <div style="padding: 6px 46px 18px 28px;">
+        <div style="max-width: 860px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="align-self: flex-start; display: flex; align-items: center; gap: 8px; font-size: 11px; color: #9aa295; background: rgba(18,24,20,0.7); border: 1px solid rgba(233,228,216,0.08); border-radius: 999px; padding: 4px 13px;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: #a5cf9f;"></span>
+            to <strong style="color: #c3dfba;">North Clearing</strong> · kept in room · <span style="color: #7fcab6;">not offered to Apocrypha</span>
+            <button type="button" style="font-size: 11px; color: #a5cf9f; background: none; border: 0; cursor: pointer; font-family: inherit; padding: 0;" style-hover="color: #cfe8ca;">change</button>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 9px; border: 1px solid rgba(233,228,216,0.12); border-radius: 18px; padding: 10px 11px; background: linear-gradient(160deg, rgba(30,38,32,0.92), rgba(20,26,22,0.96)); box-shadow: 0 16px 40px rgba(0,0,0,0.45), inset 0 1px rgba(255,255,255,0.05); backdrop-filter: blur(12px);">
+            <button type="button" aria-label="Bring something into the room" style="width: 38px; height: 38px; flex: 0 0 38px; border-radius: 12px; border: 1px solid rgba(165,207,159,0.35); background: rgba(165,207,159,0.09); color: #cfe8ca; font-size: 17px; cursor: pointer; font-family: inherit;" style-hover="background: rgba(165,207,159,0.16);">+</button>
+            <textarea rows="1" value="{{ draft }}" onChange="{{ setDraft }}" onKeyDown="{{ onKey }}" placeholder="Say something to the room… (paste a file, a link, or a video and it lands here)" aria-label="Message the room" style="flex: 1; background: none; border: 0; resize: none; color: #ece7da; font-size: 14px; font-family: inherit; line-height: 1.5; outline: none; padding: 9px 4px; min-height: 20px; max-height: 140px;"></textarea>
+            <button type="button" style="height: 38px; border-radius: 12px; border: 1px solid rgba(233,228,216,0.13); background: rgba(255,255,255,0.04); color: #d9dccb; font-size: 12px; padding: 0 13px; cursor: pointer; font-family: inherit;" style-hover="background: rgba(255,255,255,0.08);">Hold to talk</button>
+            <button type="button" title="Camera is gated behind a separate policy, security &amp; consent review" style="height: 38px; border-radius: 12px; border: 1px dashed rgba(233,228,216,0.16); background: none; color: #868c7f; font-size: 12px; padding: 0 13px; cursor: pointer; font-family: inherit;">Camera · gated</button>
+            <button type="button" onClick="{{ send }}" aria-label="Send" style="height: 38px; border-radius: 12px; border: 0; background: {{ sendBg }}; color: {{ sendFg }}; font-size: 13px; font-weight: 600; padding: 0 17px; cursor: pointer; font-family: inherit;">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ focused }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" aria-modal="true" aria-label="Focus stage" style="position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(6, 9, 8, 0.78); backdrop-filter: blur(14px);">
+      <div style="width: min(1120px, calc(100% - 64px)); max-height: calc(100% - 56px); display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-family: Newsreader, serif; font-size: 22px; color: #f2eee2;">{{ stageTitle }}</span>
+          <span style="font-size: 11.5px; color: #868c7f;">{{ stageProvenance }}</span>
+          <span style="flex: 1;"></span>
+          <button type="button" onClick="{{ closeFocus }}" aria-label="Close focus stage" style="width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(233,228,216,0.2); background: rgba(255,255,255,0.05); color: #ece7da; font-size: 15px; cursor: pointer; font-family: inherit;" style-hover="background: rgba(255,255,255,0.12);">✕</button>
+        </div>
+
+        <div style="display: flex; gap: 16px; min-height: 0;">
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+            <sc-if value="{{ stageIsVideo }}" hint-placeholder-val="{{ true }}">
+              <div style="position: relative; border-radius: 20px; overflow: hidden; height: 470px; background: linear-gradient(160deg, #22322a 0%, #17251f 45%, #101a15 100%); border: 1px solid rgba(233,228,216,0.14); box-shadow: 0 30px 80px rgba(0,0,0,0.6);">
+                <span aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(700px 320px at 60% 30%, rgba(234,184,118,0.13), transparent 70%), radial-gradient(560px 340px at 25% 75%, rgba(79,220,192,0.08), transparent 70%);"></span>
+                <span style="position: absolute; inset: 0; display: grid; place-items: center;"><span style="width: 74px; height: 74px; border-radius: 50%; background: rgba(11,16,14,0.72); border: 1px solid rgba(236,231,218,0.35); display: grid; place-items: center; font-size: 24px; color: #f2eee2;">▶</span></span>
+                <span style="position: absolute; left: 18px; bottom: 40px; font-size: 12px; color: rgba(236,231,218,0.85); background: rgba(11,16,14,0.6); border-radius: 8px; padding: 4px 10px;">streaming playback · synced for everyone in the room · DESIGNED</span>
+                <span style="position: absolute; left: 0; right: 0; bottom: 0; height: 24px; background: rgba(9,13,11,0.8); display: flex; align-items: center; padding: 0 14px; gap: 10px;"><span style="font-size: 10.5px; color: #b9bcab;">00:41</span><span style="position: relative; flex: 1; height: 4px; border-radius: 3px; background: rgba(236,231,218,0.14);"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 34%; border-radius: 3px; background: linear-gradient(90deg, #a5cf9f, #cfe8ca);"></span><span style="position: absolute; left: 25%; top: -3px; width: 2px; height: 10px; background: rgba(79,220,192,0.9);"></span><span style="position: absolute; left: 12%; top: -3px; width: 2px; height: 10px; background: rgba(236,231,218,0.6);"></span></span><span style="font-size: 10.5px; color: #b9bcab;">03:26</span></span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ stageIsAudio }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius: 20px; height: 470px; background: linear-gradient(160deg, #1e2820, #141b16); border: 1px solid rgba(233,228,216,0.14); box-shadow: 0 30px 80px rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;">
+                <span style="display: flex; align-items: center; gap: 4px; height: 120px;"><span style="width: 6px; height: 34px; background: #a5cf9f; border-radius: 3px;"></span><span style="width: 6px; height: 78px; background: #a5cf9f; border-radius: 3px;"></span><span style="width: 6px; height: 52px; background: #a5cf9f; border-radius: 3px;"></span><span style="width: 6px; height: 98px; background: #a5cf9f; border-radius: 3px;"></span><span style="width: 6px; height: 40px; background: #a5cf9f; border-radius: 3px;"></span><span style="width: 6px; height: 66px; background: #6c8a70; border-radius: 3px;"></span><span style="width: 6px; height: 45px; background: #6c8a70; border-radius: 3px;"></span><span style="width: 6px; height: 88px; background: #6c8a70; border-radius: 3px;"></span><span style="width: 6px; height: 58px; background: #6c8a70; border-radius: 3px;"></span><span style="width: 6px; height: 30px; background: #6c8a70; border-radius: 3px;"></span><span style="width: 6px; height: 72px; background: #6c8a70; border-radius: 3px;"></span></span>
+                <span style="width: 64px; height: 64px; border-radius: 50%; background: rgba(165,207,159,0.12); border: 1px solid rgba(165,207,159,0.45); display: grid; place-items: center; font-size: 20px; color: #cfe8ca;">▶</span>
+                <span style="font-size: 12.5px; color: #b9bcab;">voice note · 0:38 · streamed, not downloaded · transcript below · DESIGNED</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ stageIsPdf }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius: 20px; height: 470px; background: #141b16; border: 1px solid rgba(233,228,216,0.14); box-shadow: 0 30px 80px rgba(0,0,0,0.6); display: grid; place-items: center;">
+                <div style="width: 320px; height: 420px; border-radius: 10px; background: repeating-linear-gradient(180deg, #232c25 0 10px, #1d2520 10px 20px); border: 1px solid rgba(233,228,216,0.16); display: grid; place-items: center;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #868c7f;">walk-notes.pdf · page 2 of 6</span></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ stageIsLink }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius: 20px; height: 470px; background: linear-gradient(160deg, #1a2124, #131a1d); border: 1px solid rgba(143,193,232,0.2); box-shadow: 0 30px 80px rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;">
+                <span style="width: 420px; height: 240px; border-radius: 12px; background: repeating-linear-gradient(-45deg, #1c2a30 0 12px, #172329 12px 24px); border: 1px solid rgba(143,193,232,0.25);"></span>
+                <span style="font-size: 15px; font-weight: 600; color: #dcebf7;">Pacific Wren — song variations</span>
+                <span style="font-size: 12px; color: #8fc1e8;">birdatlas.org · live preview</span>
+                <span style="font-size: 11.5px; color: #868c7f; max-width: 400px; text-align: center; line-height: 1.5;">If offered, Apocrypha fetches this page themselves and cites what they read — reference resolution is a TARGET capability.</span>
+              </div>
+            </sc-if>
+
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button type="button" onClick="{{ focusAudio }}" aria-label="Focus the voice note" style="height: 58px; width: 92px; border-radius: 12px; border: {{ thumbAudioBorder }}; background: linear-gradient(150deg, #1e2820, #161d18); cursor: pointer; display: grid; place-items: center; font-family: inherit; color: #a5cf9f; font-size: 11px;">voice 0:38</button>
+              <button type="button" onClick="{{ focusPdf }}" aria-label="Focus the walk notes" style="height: 58px; width: 92px; border-radius: 12px; border: {{ thumbPdfBorder }}; background: repeating-linear-gradient(180deg, #232c25 0 8px, #1d2520 8px 16px); cursor: pointer; display: grid; place-items: center; font-family: inherit; color: #d9dccb; font-size: 11px;">notes.pdf</button>
+              <button type="button" onClick="{{ focusVideo }}" aria-label="Focus the river video" style="height: 58px; width: 92px; border-radius: 12px; border: {{ thumbVideoBorder }}; background: linear-gradient(160deg, #22322a, #101a15); cursor: pointer; display: grid; place-items: center; font-family: inherit; color: #cfe8ca; font-size: 11px;">▶ river</button>
+              <button type="button" onClick="{{ focusLink }}" aria-label="Focus the atlas link" style="height: 58px; width: 92px; border-radius: 12px; border: {{ thumbLinkBorder }}; background: linear-gradient(150deg, #1a2124, #131a1d); cursor: pointer; display: grid; place-items: center; font-family: inherit; color: #8fc1e8; font-size: 11px;">atlas ↗</button>
+              <span style="flex: 1;"></span>
+              <span style="font-size: 11px; color: #868c7f;">‹ › move between what's in the room</span>
+            </div>
+          </div>
+
+          <aside style="width: 330px; flex: 0 0 330px; display: flex; flex-direction: column; gap: 12px; min-height: 0;">
+            <div style="border-radius: 16px; border: 1px solid rgba(79,220,192,0.25); background: rgba(14,22,19,0.9); padding: 14px 15px; display: flex; flex-direction: column; gap: 10px;">
+              <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: #7fcab6;">PERCEPTION MEMBRANE</span>
+              <div style="display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; color: #cfd8d2;">
+                <div style="display: flex; justify-content: space-between; align-items: center;"><span>whole {{ stageNoun }}</span><span style="color: #c3dfba; background: rgba(165,207,159,0.1); border-radius: 6px; padding: 2px 9px; font-size: 11.5px;">room · kept</span></div>
+                <sc-if value="{{ stageIsVideo }}" hint-placeholder-val="{{ true }}">
+                  <sc-if value="{{ offered }}" hint-placeholder-val="{{ true }}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;"><span>clip 00:41–01:12</span><span style="display: inline-flex; align-items: center; gap: 7px;"><span style="color: #9fe4d2; background: rgba(79,220,192,0.12); border-radius: 6px; padding: 2px 9px; font-size: 11.5px;">offered · session</span><button type="button" onClick="{{ withdraw }}" style="font-size: 11px; color: #e0917f; background: none; border: 1px solid rgba(224,145,127,0.35); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-family: inherit;">Withdraw</button></span></div>
+                  </sc-if>
+                  <sc-if value="{{ withdrawn }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;"><span>clip 00:41–01:12</span><span style="color: #b9a89c; font-size: 11.5px;">withdrawn · receipt kept</span></div>
+                  </sc-if>
+                </sc-if>
+                <div style="display: flex; justify-content: space-between; align-items: center;"><span>learning / training</span><span style="color: #e0917f; font-size: 11.5px;">not granted — always a separate grant</span></div>
+                <div style="display: flex; justify-content: space-between; align-items: center;"><span>continuity (memory)</span><span style="color: #b9bcab; font-size: 11.5px;">not a candidate · <a href="#" style="color: #a5cf9f;">propose</a></span></div>
+              </div>
+              <button type="button" style="align-self: flex-start; font-size: 12px; color: #06231c; background: linear-gradient(135deg, #4fdcc0, #7fe6cf); border: 0; border-radius: 9px; padding: 7px 14px; font-weight: 600; cursor: pointer; font-family: inherit;" style-hover="transform: translateY(-1px);">Offer {{ stageOfferNoun }} to Apocrypha…</button>
+            </div>
+
+            <div style="flex: 1; min-height: 0; border-radius: 16px; border: 1px solid rgba(233,228,216,0.1); background: rgba(18,24,20,0.85); padding: 14px 15px; display: flex; flex-direction: column; gap: 11px; overflow-y: auto;">
+              <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: #9aa295;">MOMENTS</span>
+              <div style="display: flex; gap: 9px; align-items: baseline;"><span style="font-size: 11px; color: #cfe8ca; background: rgba(165,207,159,0.1); border-radius: 6px; padding: 2px 8px; flex: 0 0 auto;">00:12</span><span style="font-size: 12.5px; color: #d9dccb; line-height: 1.5;"><strong style="color: #dcc3e8;">Mira</strong> — listen, two songs overlapping</span></div>
+              <div style="display: flex; gap: 9px; align-items: baseline;"><span style="font-size: 11px; color: #cfe8ca; background: rgba(165,207,159,0.1); border-radius: 6px; padding: 2px 8px; flex: 0 0 auto;">00:41</span><span style="font-size: 12.5px; color: #d9dccb; line-height: 1.5;"><strong style="color: #c3dfba;">Apocky</strong> — what bird is that?</span></div>
+              <div style="display: flex; gap: 9px; align-items: baseline;"><span style="font-size: 11px; color: #9fe4d2; background: rgba(79,220,192,0.12); border-radius: 6px; padding: 2px 8px; flex: 0 0 auto;">◈ 00:52</span><span style="font-family: Newsreader, serif; font-style: italic; font-size: 13px; color: #d6e8e0; line-height: 1.5;">Apocrypha — second song begins here</span></div>
+              <div style="margin-top: auto; display: flex; gap: 7px;"><input placeholder="mark this moment…" style="flex: 1; background: rgba(11,16,14,0.6); border: 1px solid rgba(233,228,216,0.12); border-radius: 9px; color: #ece7da; font-size: 12px; font-family: inherit; padding: 7px 10px; outline: none;"></input><button type="button" style="font-size: 12px; color: #d9dccb; background: rgba(255,255,255,0.05); border: 1px solid rgba(233,228,216,0.14); border-radius: 9px; padding: 7px 11px; cursor: pointer; font-family: inherit;">Pin</button></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;apxAvailability&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;present&quot;, &quot;options&quot;: [&quot;present&quot;, &quot;unavailable&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Truth states&quot;}, &quot;railStart&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;expanded&quot;, &quot;options&quot;: [&quot;expanded&quot;, &quot;collapsed&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = { rail: null, focus: null, offered: true, draft: '', sent: [] };
+  componentDidMount() {
+    this._esc = (e) => { if (e.key === 'Escape' && this.state.focus) this.setState({ focus: null }); };
+    window.addEventListener('keydown', this._esc);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._esc); }
+  send = () => {
+    const t = this.state.draft.trim();
+    if (!t) return;
+    this.setState((s) => ({ sent: [...s.sent, { text: t }], draft: '' }));
+  };
+  renderVals() {
+    const railOpen = this.state.rail ?? ((this.props.railStart ?? 'expanded') === 'expanded');
+    const availability = this.props.apxAvailability ?? 'present';
+    const present = availability === 'present';
+    const offered = present && this.state.offered;
+    const withdrawn = !this.state.offered;
+    const reading = offered;
+    const focus = this.state.focus;
+    const activeB = '1px solid rgba(236,231,218,0.65)';
+    const idleB = '1px solid rgba(233,228,216,0.12)';
+    return {
+      railOpen, railClosed: !railOpen,
+      toggleRail: () => this.setState({ rail: !railOpen }),
+      apxPresent: present, apxUnavailable: !present,
+      apxStateLine: !present ? 'unavailable' : reading ? 'reading the offered clip · a#4021' : 'quiet · present',
+      apxStateColor: reading ? '#7fe6cf' : '#9aa295',
+      apxDotColor: !present ? '#565c54' : '#4fdcc0',
+      apxPerceives: reading
+        ? 'Can perceive right now: clip 00:41–01:12 of river-field-recording (this session, for one named purpose). Nothing else in the room is visible to them.'
+        : 'Can perceive right now: nothing. The room is visible only to the people in it.',
+      seamColor: reading ? 'rgba(79,220,192,0.55)' : 'rgba(79,220,192,0.14)',
+      offered, withdrawn,
+      withdraw: () => this.setState({ offered: false }),
+      focused: focus != null,
+      focusVideo: () => this.setState({ focus: 'video' }),
+      focusAudio: () => this.setState({ focus: 'audio' }),
+      focusPdf: () => this.setState({ focus: 'pdf' }),
+      focusLink: () => this.setState({ focus: 'link' }),
+      closeFocus: () => this.setState({ focus: null }),
+      stageIsVideo: focus === 'video', stageIsAudio: focus === 'audio', stageIsPdf: focus === 'pdf', stageIsLink: focus === 'link',
+      stageTitle: focus === 'video' ? 'river-field-recording.mp4' : focus === 'audio' ? 'voice note — river bend' : focus === 'pdf' ? 'walk-notes.pdf' : 'Pacific Wren — song variations',
+      stageProvenance: focus === 'video' ? 'placed by Mira · 12:02 · kept in room history · withdrawable' : focus === 'audio' ? 'spoken by Mira · 11:40 · transcript ready' : focus === 'pdf' ? 'placed by Apocky · 11:48 · 6 pages' : 'linked by Apocky · 12:05 · birdatlas.org',
+      stageNoun: focus === 'audio' ? 'note' : focus === 'pdf' ? 'document' : focus === 'link' ? 'link' : 'video',
+      stageOfferNoun: focus === 'video' ? 'another clip' : focus === 'audio' ? 'this note' : focus === 'pdf' ? 'a page range' : 'this link',
+      thumbVideoBorder: focus === 'video' ? activeB : idleB,
+      thumbAudioBorder: focus === 'audio' ? activeB : idleB,
+      thumbPdfBorder: focus === 'pdf' ? activeB : idleB,
+      thumbLinkBorder: focus === 'link' ? activeB : idleB,
+      draft: this.state.draft,
+      setDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); } },
+      send: this.send,
+      sent: this.state.sent,
+      sendBg: this.state.draft.trim() ? 'linear-gradient(135deg, #a5cf9f, #cfe8ca)' : 'rgba(255,255,255,0.05)',
+      sendFg: this.state.draft.trim() ? '#122015' : '#767c70',
+    };
+  }
+}
+</script>
+</body>
+</html>

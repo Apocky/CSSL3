@@ -3,6 +3,7 @@
 // Per HANDOFF_v10 § TRACK-A polish-pass (replaces the cockpit-monospace draft).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 
 import { authFetch } from '../../lib/browser-auth';
 import { ApocryphaAvatar } from './ApocryphaAvatar';
@@ -27,6 +28,7 @@ interface ChatMessage {
   cost_usd?: number;
 }
 
+type ConversationScope = 'active' | 'archived' | 'trash';
 interface ConvSummary {
   id: string;
   title: string | null;
@@ -173,6 +175,7 @@ function waitForPoll(signal: AbortSignal, ms: number): Promise<void> {
 
 export function ChatThread() {
   const [convs, setConvs] = useState<ConvSummary[]>([]);
+  const [scope, setScope] = useState<ConversationScope>('active');
   const [currentConv, setCurrentConv] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -238,16 +241,16 @@ export function ChatThread() {
 
   // ── data loading ──────────────────────────────────────────────
 
-  const loadConvs = useCallback(async () => {
+  const loadConvs = useCallback(async (requestedScope: ConversationScope = scope) => {
     try {
-      const r = await authFetch('/api/admin/apocrypha/conversations?scope=active');
+      const r = await authFetch(`/api/admin/apocrypha/conversations?scope=${requestedScope}`);
       if (!r.ok) throw new Error(`Conversation history returned ${r.status}.`);
       const env = (await r.json()) as ApocryphaEnvelope<{ conversations: ConvSummary[] }>;
       setConvs(env.data?.conversations ?? []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Conversation history is unavailable.');
     }
-  }, []);
+  }, [scope]);
 
   const loadConv = useCallback(async (id: string, recoveringJob?: ActiveJobRecord) => {
     try {
@@ -656,8 +659,10 @@ export function ChatThread() {
           }}
         >
           <div style={{ padding: '0.75rem', borderBottom: '1px solid #1f1f2a' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'stretch' }}>
             <button ref={newChatButtonRef} type="button" className="chat-new-button" onClick={newChat} style={{
-              width: '100%',
+              flex: 1,
+              minWidth: 0,
               padding: '0.65rem 0.8rem',
               background: 'transparent',
               border: '1px solid #2a2a3a',
@@ -673,6 +678,39 @@ export function ChatThread() {
               <span style={{ fontWeight: 500 }}>+ New chat</span>
               <span style={{ color: '#7a7a8c', fontSize: '0.75rem' }}>⌘N</span>
             </button>
+            {compactViewport && (
+              <button
+                type="button"
+                className="chat-icon-button"
+                aria-label="Close conversations"
+                onClick={closeCompactSidebar}
+                style={{
+                  flex: '0 0 44px', background: 'transparent', border: '1px solid #2a2a3a',
+                  borderRadius: 8, color: '#cdd6e4', cursor: 'pointer', fontSize: '1.1rem', fontFamily: 'inherit',
+                }}
+              >
+                ×
+              </button>
+            )}
+            </div>
+            <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.5rem' }}>
+              {(['active', 'archived', 'trash'] as ConversationScope[]).map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  className="chat-scope-button"
+                  aria-pressed={scope === candidate}
+                  onClick={() => setScope(candidate)}
+                  style={{
+                  flex: 1, padding: '0.3rem 0.2rem', borderRadius: 5,
+                  border: scope === candidate ? '1px solid #8b7cff' : '1px solid #2a2a3a',
+                  background: scope === candidate ? 'rgba(139,124,255,.16)' : 'transparent',
+                  color: scope === candidate ? '#dcd7ff' : '#7a7a8c',
+                  cursor: 'pointer', fontSize: '0.68rem', fontFamily: 'inherit',
+                  }}
+                >{candidate}</button>
+              ))}
+            </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.4rem' }}>
             {convs.length === 0 && (
@@ -756,6 +794,11 @@ export function ChatThread() {
           </span>
           <ApocryphaAvatar className="chat-header-avatar" state={streaming ? 'thinking' : error ? 'degraded' : 'ready'} size={40} detail="compact" />
           <span style={{ flex: 1 }} />
+          {/* /apocrypha renders without SiteShell, so this is the only route back to the site. */}
+          <nav className="chat-site-nav" aria-label="Site">
+            <Link href="/" className="chat-site-link">Home</Link>
+            <Link href="/account" className="chat-site-link">Account</Link>
+          </nav>
           <button
             type="button"
             className="chat-settings-button"
@@ -1011,6 +1054,33 @@ export function ChatThread() {
           width: 100%;
           margin-bottom: 2px;
         }
+        .chat-conversation-action {
+          flex: 0 0 44px;
+          width: 44px;
+          padding: 0;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          color: #a9a9bc;
+          background: transparent;
+          cursor: pointer;
+          font-family: inherit;
+          font-size: 1.1rem;
+          font-weight: 700;
+          line-height: 1;
+        }
+        .chat-conversation-action:hover { background: rgba(192, 132, 252, .1); }
+        .chat-site-nav { display: flex; gap: .25rem; align-items: center; }
+        .chat-site-nav :global(.chat-site-link) {
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
+          padding: 0 .55rem;
+          border-radius: 6px;
+          color: #9aa0a6;
+          font-size: .78rem;
+          text-decoration: none;
+        }
+        .chat-site-nav :global(.chat-site-link:hover) { color: #e6e6f0; background: rgba(192, 132, 252, .1); }
         .chat-shell button:focus-visible,
         .chat-shell textarea:focus-visible,
         .chat-shell input:focus-visible {
@@ -1041,6 +1111,7 @@ export function ChatThread() {
           }
           .chat-header { gap: .35rem; padding: .45rem .5rem; }
           .chat-conversation-id { display: none; }
+          .chat-site-nav :global(.chat-site-link) { padding: 0 .4rem; }
           .chat-composer {
             padding:
               .65rem
@@ -1048,6 +1119,9 @@ export function ChatThread() {
               calc(.65rem + env(safe-area-inset-bottom))
               max(.6rem, env(safe-area-inset-left));
           }
+        }
+        @media (max-width: 419px) {
+          .chat-site-nav :global(.chat-site-link[href="/account"]) { display: none; }
         }
         @media (max-width: 359px) {
           .chat-wordmark { display: none; }
