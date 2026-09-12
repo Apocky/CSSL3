@@ -43,6 +43,25 @@ function parseUsage(raw: unknown): QwenUsage {
   };
 }
 
+async function readResponseTextBounded(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new QwenError('Qwen response exceeded the bounded transport size', 'QWEN_TRANSPORT_LIMIT_EXCEEDED', false);
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 function extractContent(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '';
   const root = payload as Record<string, unknown>;
@@ -52,13 +71,18 @@ function extractContent(payload: unknown): string {
   const item = choice as Record<string, unknown>;
   const delta = item.delta && typeof item.delta === 'object' ? item.delta as Record<string, unknown> : {};
   const message = item.message && typeof item.message === 'object' ? item.message as Record<string, unknown> : {};
+  
+  if (typeof delta.content === 'string' && delta.content.length > 0) return delta.content;
+  if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) return delta.reasoning_content;
+  if (typeof message.content === 'string' && message.content.length > 0) return message.content;
+  if (typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0) return message.reasoning_content;
+  if (typeof item.text === 'string' && item.text.length > 0) return item.text;
+
   return typeof delta.content === 'string'
     ? delta.content
     : typeof message.content === 'string'
       ? message.content
-      : typeof item.text === 'string'
-        ? item.text
-        : '';
+      : '';
 }
 
 export function isQwenContextOverflow(status: number, detail: string): boolean {
@@ -75,24 +99,66 @@ export class QwenClient {
     this.fetchImpl = fetchImpl;
   }
 
-  async probe(signal?: AbortSignal): Promise<{ healthy: boolean; model: string; detail: string }> {
+  /** Exact prompt token count from llama-server /tokenize; null when the endpoint is unavailable. */
+  async tokenCount(messages: QwenMessage[], signal?: AbortSignal): Promise<number | null> {
+    const base = this.config.qwenBaseUrl.replace(/\/v1$/, '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error('Qwen tokenize timeout')), 2_500);
+    const abort = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      const content = messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>\n`).join('');
+      const response = await this.fetchImpl(`${base}/tokenize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content, add_special: false, with_pieces: false }),
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+      const body = await response.json() as { tokens?: unknown[] };
+      return Array.isArray(body.tokens) ? body.tokens.length : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    }
+  }
+
+  async probe(signal?: AbortSignal): Promise<{ healthy: boolean; model: string; detail: string; contextTokens?: number }> {
     const base = this.config.qwenBaseUrl.replace(/\/v1$/, '');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('Qwen probe timeout')), 10_000);
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      const [healthResponse, modelsResponse] = await Promise.all([
+      const [healthResponse, modelsResponse, propsResponse] = await Promise.all([
         this.fetchImpl(`${base}/health`, { signal: controller.signal }),
         this.fetchImpl(`${this.config.qwenBaseUrl}/models`, { signal: controller.signal }),
+        this.fetchImpl(`${base}/props`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(1_500)]) }).catch(() => null),
       ]);
+      let contextTokens: number | undefined;
+      if (propsResponse?.ok) {
+        try {
+          const props = await propsResponse.json() as { default_generation_settings?: { n_ctx?: unknown } };
+          const nCtx = props.default_generation_settings?.n_ctx;
+          if (typeof nCtx === 'number' && Number.isFinite(nCtx) && nCtx > 0) contextTokens = Math.floor(nCtx);
+        } catch {
+          // props is advisory only
+        }
+      }
       if (!healthResponse.ok || !modelsResponse.ok) {
         return { healthy: false, model: this.config.modelAlias, detail: `health=${healthResponse.status} models=${modelsResponse.status}` };
       }
       const models = await modelsResponse.json() as { data?: Array<{ id?: string }> };
       const aliases = (models.data ?? []).map((model) => model.id).filter(Boolean);
       const healthy = aliases.includes(this.config.modelAlias);
-      return { healthy, model: this.config.modelAlias, detail: healthy ? 'ready' : `alias absent (${aliases.join(', ')})` };
+      return {
+        healthy,
+        model: this.config.modelAlias,
+        detail: healthy ? `ready${contextTokens ? ` n_ctx=${contextTokens}` : ''}` : `alias absent (${aliases.join(', ')})`,
+        ...(contextTokens ? { contextTokens } : {}),
+      };
     } catch (error) {
       return { healthy: false, model: this.config.modelAlias, detail: error instanceof Error ? error.message : 'probe failed' };
     } finally {
@@ -108,6 +174,9 @@ export class QwenClient {
     signal?: AbortSignal,
   ): Promise<QwenResult> {
     const started = Date.now();
+    const outputTokenLimit = Math.min(options.maxTokens ?? this.config.maxOutputTokens, this.config.maxOutputTokens);
+    const maxAcceptedOutputBytes = Math.max(4_096, outputTokenLimit * 16);
+    const maxTransportBytes = Math.max(65_536, outputTokenLimit * 256);
     const controller = new AbortController();
     let callbackError: unknown;
     let idleTimer: NodeJS.Timeout | null = null;
@@ -131,7 +200,7 @@ export class QwenClient {
         messages,
         stream: true,
         stream_options: { include_usage: true },
-        max_tokens: Math.min(options.maxTokens ?? this.config.maxOutputTokens, this.config.maxOutputTokens),
+        max_tokens: outputTokenLimit,
         temperature: options.temperature ?? 0.65,
         top_p: options.topP ?? 0.9,
         top_k: options.topK ?? 40,
@@ -147,7 +216,7 @@ export class QwenClient {
         signal: controller.signal,
       });
       if (!response.ok) {
-        const detail = (await response.text()).slice(0, 1_000);
+        const detail = (await readResponseTextBounded(response, maxTransportBytes)).slice(0, 1_000);
         if (isQwenContextOverflow(response.status, detail)) {
           throw new QwenError(`Qwen rejected the composed context: ${detail}`, 'QWEN_CONTEXT_OVERFLOW', true);
         }
@@ -156,8 +225,11 @@ export class QwenClient {
       resetIdle();
       const contentType = response.headers.get('content-type') ?? '';
       if (!response.body || contentType.includes('application/json')) {
-        const payload = await response.json() as Record<string, unknown>;
+        const payload = JSON.parse(await readResponseTextBounded(response, maxTransportBytes)) as Record<string, unknown>;
         const content = extractContent(payload);
+        if (Buffer.byteLength(content, 'utf8') > maxAcceptedOutputBytes) {
+          throw new QwenError('Qwen exceeded the bounded output transport size', 'QWEN_OUTPUT_LIMIT_EXCEEDED', false);
+        }
         if (content) await onDelta(content);
         return {
           content,
@@ -175,6 +247,8 @@ export class QwenClient {
       let usage: QwenUsage = {};
       let model = this.config.modelAlias;
       let firstTokenMs: number | undefined;
+      let transportBytes = 0;
+      let acceptedOutputBytes = 0;
       const consumeLine = async (line: string): Promise<void> => {
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) return;
@@ -191,6 +265,10 @@ export class QwenClient {
         if (typeof payload.model === 'string') model = payload.model;
         const delta = extractContent(payload);
         if (delta) {
+          acceptedOutputBytes += Buffer.byteLength(delta, 'utf8');
+          if (acceptedOutputBytes > maxAcceptedOutputBytes) {
+            throw new QwenError('Qwen exceeded the bounded output transport size', 'QWEN_OUTPUT_LIMIT_EXCEEDED', false);
+          }
           if (firstTokenMs === undefined) firstTokenMs = Date.now() - started;
           content += delta;
           try {
@@ -204,6 +282,11 @@ export class QwenClient {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        transportBytes += value.byteLength;
+        if (transportBytes > maxTransportBytes) {
+          await reader.cancel().catch(() => undefined);
+          throw new QwenError('Qwen response exceeded the bounded transport size', 'QWEN_TRANSPORT_LIMIT_EXCEEDED', false);
+        }
         resetIdle();
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split(/\r?\n/);
