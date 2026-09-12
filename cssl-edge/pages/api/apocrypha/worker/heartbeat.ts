@@ -134,6 +134,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true, node_id: data.id, last_seen_at: data.last_seen_at });
   } catch (error) {
     const safe = publicJobError(error);
+    // publicJobError hides the cause from the worker on purpose; keep it in the
+    // function log so a run of 503s can be attributed without guessing.
+    // eslint-disable-next-line no-console
+    console.error('[apocrypha/worker/heartbeat]', safe.code, error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300));
     return res.status(safe.status).json({ ok: false, code: safe.code, error: safe.message });
   }
 }

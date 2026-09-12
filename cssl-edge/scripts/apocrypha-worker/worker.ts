@@ -694,7 +694,13 @@ export class ApocryphaWorker {
         this.heartbeatRetryAt = supported ? 0 : Date.now() + 5 * 60_000;
       } catch (error) {
         this.recordError('HEARTBEAT_FAILED', boundedError(error));
-        log('warn', 'worker.heartbeat.failed', { detail: boundedError(error) });
+        // The control plane collapses most failures to a generic 503; its `code`
+        // (and whether it was a network fault at all) is the only signal we get.
+        log('warn', 'worker.heartbeat.failed', {
+          detail: boundedError(error),
+          code: error instanceof ControlPlaneError ? error.code : null,
+          status: error instanceof ControlPlaneError ? error.status : null,
+        });
       } finally {
         this.heartbeatInFlight = false;
       }
