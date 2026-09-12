@@ -75,6 +75,7 @@ export class ApocryphaWorker {
     this.journal = dependencies.journal ?? new AttemptJournal(config.journalDir, config.nodeToken, config.nodeId);
     this.runtime = {
       phase: 'starting',
+      recentErrors: [],
       currentJobId: null,
       currentAttemptId: null,
       startedAt: new Date().toISOString(),
@@ -630,7 +631,17 @@ export class ApocryphaWorker {
   }
 
   private recordError(code: string, detail: string): void {
-    this.runtime.lastError = { code, detail, at: new Date().toISOString() };
+    const at = new Date().toISOString();
+    this.runtime.lastError = { code, detail, at };
+    this.runtime.recentErrors.push({
+      code,
+      detail: detail.slice(0, 300),
+      at,
+      phase: this.runtime.phase,
+      jobId: this.runtime.currentJobId,
+      attemptId: this.runtime.currentAttemptId,
+    });
+    if (this.runtime.recentErrors.length > 20) this.runtime.recentErrors.splice(0, this.runtime.recentErrors.length - 20);
   }
 
   private async serializeMemoryOperation<T>(operation: () => Promise<T>): Promise<T> {

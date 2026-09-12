@@ -199,6 +199,8 @@ export interface WorkerRuntimeState {
   lastClaimAt: string | null;
   lastCompletionAt: string | null;
   lastError: { code: string; detail: string; at: string } | null;
+  /** The last errors with the state they happened in - the question is always "what was it doing". */
+  recentErrors: Array<{ code: string; detail: string; at: string; phase: string; jobId: string | null; attemptId: string | null }>;
   completedJobs: number;
   failedJobs: number;
   recoveredAttempts: number;

@@ -3,9 +3,14 @@ import { startHealthServer } from './health';
 import { acquireWorkerLock } from './lock';
 import { log } from './log';
 import { ApocryphaWorker } from './worker';
+import { join } from 'node:path';
+import { configureLogFile } from './log';
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  // Log to the journal directory whatever launched us - a manual start from a
+  // terminal must not be a start that leaves no trace.
+  configureLogFile(join(config.journalDir, 'worker.log'));
   const worker = new ApocryphaWorker(config);
   await worker.journal.initialize();
   const instanceLock = await acquireWorkerLock(config.journalDir);
