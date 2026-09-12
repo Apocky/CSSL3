@@ -84,6 +84,31 @@ export function workerDatabaseError(
   );
 }
 
+// A PostgREST/gateway failure arrives WITHOUT a SQLSTATE: the call never reached
+// Postgres. Production shows these as "Gateway Timeout" bursts on a database that
+// answers in milliseconds, so one short retry recovers the request instead of
+// surfacing a 503 to the worker (a missed claim) or to chaos-tarot (a false
+// "Apocrypha unavailable"). Only callers whose operation is safe to repeat use it.
+const GATEWAY_RETRY_DELAY_MS = 350;
+
+export async function retryOnGatewayError<T extends { error: { code?: string | null } | null }>(
+  call: () => PromiseLike<T>,
+  attempts = 2,
+): Promise<T> {
+  let last!: T;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    last = await call();
+    const gateway = Boolean(last.error) && !last.error?.code;
+    if (!gateway || attempt === attempts) return last;
+    await new Promise((resolve) => setTimeout(resolve, GATEWAY_RETRY_DELAY_MS));
+  }
+  return last;
+}
+
+// RPCs that replay safely: apocrypha_claim_job returns the existing attempt for a
+// repeated claim_key, so a retry after a gateway timeout can never double-claim.
+const RETRY_SAFE_RPCS = new Set(['apocrypha_claim_job']);
+
 export async function workerRpc(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -96,7 +121,11 @@ export async function workerRpc(
   try {
     const token = assertWorkerRequest(req.headers.authorization);
     const body = objectField(req.body, 'body');
-    const { data, error } = await getApocryphaServiceClient().rpc(rpc, map(body, token));
+    const args = map(body, token);
+    const client = getApocryphaServiceClient();
+    const { data, error } = RETRY_SAFE_RPCS.has(rpc)
+      ? await retryOnGatewayError(() => client.rpc(rpc, args))
+      : await client.rpc(rpc, args);
     if (error) throw workerDatabaseError(error);
     return res.status(200).json({ ok: true, ...project(data) });
   } catch (error) {

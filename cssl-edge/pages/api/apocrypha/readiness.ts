@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const client = getApocryphaServiceClient();
     const failedSince = new Date(Date.now() - 86_400_000).toISOString();
-    const [nodesResult, queuedResult, activeResult, failedResult] = await Promise.all([
+    const readAll = () => Promise.all([
       client.from('apocrypha_worker_node')
         .select('status,allowed_capabilities,model_profiles,last_seen_at')
         .eq('status', 'active')
@@ -36,6 +36,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       client.from('apocrypha_job').select('id', { count: 'exact', head: true }).in('status', ['leased', 'running', 'cancel_requested']),
       client.from('apocrypha_job').select('id', { count: 'exact', head: true }).eq('status', 'failed').gte('updated_at', failedSince),
     ]);
+    // These are reads: a gateway blip must not report Apocrypha as unavailable.
+    let [nodesResult, queuedResult, activeResult, failedResult] = await readAll();
+    const firstError = nodesResult.error ?? queuedResult.error ?? activeResult.error ?? failedResult.error;
+    if (firstError && !firstError.code) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      [nodesResult, queuedResult, activeResult, failedResult] = await readAll();
+    }
     const databaseError = nodesResult.error ?? queuedResult.error ?? activeResult.error ?? failedResult.error;
     if (databaseError) throw new Error(`READINESS_DATABASE_FAILED:${databaseError.code ?? 'unknown'}`);
 

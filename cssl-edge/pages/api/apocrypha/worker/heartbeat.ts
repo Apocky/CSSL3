@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { assertWorkerRequest, getApocryphaServiceClient, publicJobError } from '@/lib/apocrypha/job-control';
 import { methodNotAllowed, noStore, objectField } from '@/lib/apocrypha/job-http';
-import { required, workerDatabaseError } from '@/lib/apocrypha/worker-http';
+import { required, retryOnGatewayError, workerDatabaseError } from '@/lib/apocrypha/worker-http';
 import { APOCRYPHA_RUNTIME_CAPABILITIES, APOCRYPHA_RUNTIME_CONFIGURATION } from '@/lib/apocrypha/readiness';
 
 const ADAPTERS = ['mempalace', 'brainmonsoon', 'anamnesis', 'graphify', 'mneme', 'metaharness'] as const;
@@ -88,11 +88,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const body = objectField(req.body, 'body');
     const nodeId = required(body, 'node_id');
     const client = getApocryphaServiceClient();
-    const { data: authData, error: authError } = await client.rpc('apocrypha_require_worker', {
+    const { data: authData, error: authError } = await retryOnGatewayError(() => client.rpc('apocrypha_require_worker', {
       p_node_id: nodeId,
       p_node_token: token,
       p_require_active: true,
-    });
+    }));
     if (authError) throw workerDatabaseError(authError, 'HEARTBEAT_AUTH_FAILED');
     const authNode = (Array.isArray(authData) ? authData[0] : authData) as Record<string, unknown> | null;
     runtimeCapabilities(authNode?.allowed_capabilities, false);
