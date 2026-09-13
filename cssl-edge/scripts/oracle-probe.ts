@@ -149,7 +149,17 @@ async function main(): Promise<void> {
     }
 
     const lower = result.text.toLowerCase();
-    const missed = fixture.canonical.items.filter((item) => !lower.includes(item.name.toLowerCase()));
+    // Several systems name items as "Le Navire - Data Transport". The Oracle
+    // reformats that ("Le Navire (Data Transport)") and an exact-string check
+    // then reports a perfectly good reading as naming zero cards - which it did
+    // for lenormand and ogham before this. A card counts as named when either
+    // half of its compound name appears.
+    const named = (name: string): boolean => {
+      const parts = name.split(/\s+[-–—]\s+/).map((part) => part.trim().toLowerCase()).filter(Boolean);
+      const candidates = parts.length > 1 ? parts : [name.toLowerCase()];
+      return candidates.some((candidate) => lower.includes(candidate));
+    };
+    const missed = fixture.canonical.items.filter((item) => !named(item.name));
     const banned = BANNED.filter((w) => lower.includes(w.toLowerCase()));
     const words = result.text.split(/\s+/).filter(Boolean).length;
     const hasEsoteric = result.text.includes(LABEL_ESOTERIC);
