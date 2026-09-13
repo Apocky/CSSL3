@@ -1,0 +1,4 @@
+# Generated knowledge-graph state is rebuilt independently and may be locked.
+# The web project builds from cssl-edge and never consumes this directory.
+graphify-out/
+
