@@ -155,7 +155,7 @@ const NON_READING_KINDS = new Set<string>(['followup', 'summary', 'continuation'
 
 // The wire form carries schema/digest/ids/provenance for the control plane; the model
 // only needs card, position, orientation and meanings (717 -> ~290 tokens on a 3-card spread).
-function readingForPrompt(value: unknown): string {
+export function readingForPrompt(value: unknown): string {
   const reading = asRecord(value);
   if (Object.keys(reading).length === 0) return '';
   const system = asRecord(reading.system);
@@ -181,6 +181,7 @@ function readingForPrompt(value: unknown): string {
           stringValue(position.description) ? `   Position means: ${stringValue(position.description)}` : '',
           keywords.length ? `   Keywords: ${keywords.slice(0, 12).map(String).join(', ')}` : '',
           meaning ? `   Meaning: ${meaning.slice(0, 1_200)}` : '',
+          stringValue(meanings.description) ? `   About: ${stringValue(meanings.description)!.slice(0, 600)}` : '',
         ].filter(Boolean);
         return [line.join('\n')];
       })
@@ -236,7 +237,7 @@ function requestMessages(request: Record<string, unknown>): QwenMessage[] {
   return [{ role: 'user', content: prompt }];
 }
 
-function baseSystem(job: ClaimedJob): string {
+export function baseSystem(job: ClaimedJob): string {
   if (job.capability === 'chaos_tarot_reading') {
     if (NON_READING_KINDS.has(job.kind)) {
       return [
