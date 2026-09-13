@@ -660,7 +660,79 @@ async function main(): Promise<void> {
   }
   assert(transportLimitCode === 'QWEN_TRANSPORT_LIMIT_EXCEEDED', 'unterminated Qwen stream bypassed the raw transport limit');
 
-  console.log('apocrypha-worker.test : OK · serialized memory, bounded Qwen retry/output, durable ordered recovery, encrypted journal');
+  // A blank answer must never reach the reader. Nothing has been streamed when the
+  // model returns empty, so one retry is safe; a second blank has to fail loudly
+  // instead of publishing silence.
+  const emptyDir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-empty-completion-test-'));
+  try {
+    const emptyConfig = config('http://127.0.0.1:1', 'http://127.0.0.1:2', emptyDir);
+    const emptyJournal = new AttemptJournal(emptyDir, emptyConfig.nodeToken, emptyConfig.nodeId);
+    await emptyJournal.initialize();
+    let delivered = '';
+    const capturingControlPlane = {
+      appendChunk: async () => ({}),
+      complete: async (_fence: unknown, completion: { content: string }) => { delivered = completion.content; return {}; },
+      fail: async () => ({}),
+      renew: async () => ({ leaseExpiresAt: new Date(Date.now() + 180_000).toISOString(), cancelRequested: false }),
+    };
+    const recovered = 'The Oracle speaks on the second attempt.';
+    let attempts = 0;
+    let sawNudge = false;
+    const blankThenAnswering = {
+      probe: async () => ({ healthy: true, model: emptyConfig.modelAlias, detail: 'ok' }),
+      generate: async (
+        messages: Array<{ role: string; content: string }>,
+        _generation: unknown,
+        onDelta: (delta: string) => Promise<void>,
+      ) => {
+        attempts += 1;
+        if (attempts === 1) {
+          return { content: '   ', usage: { promptTokens: 10, completionTokens: 700, totalTokens: 710 }, model: emptyConfig.modelAlias, durationMs: 1 };
+        }
+        sawNudge = messages.some((message) => message.content.includes('produced no answer'));
+        await onDelta(recovered);
+        return { content: recovered, usage: { promptTokens: 12, completionTokens: 9, totalTokens: 21 }, model: emptyConfig.modelAlias, durationMs: 1 };
+      },
+    };
+    const retryWorker = new ApocryphaWorker(emptyConfig, {
+      controlPlane: capturingControlPlane as never,
+      qwen: blankThenAnswering as never,
+      journal: emptyJournal,
+      env: { NODE_ENV: 'test' },
+    });
+    await (retryWorker as unknown as { processClaim: (claim: ClaimedJob) => Promise<void> })
+      .processClaim(claimedJob(emptyConfig));
+    assert(attempts === 2, `blank answer was not retried (attempts=${attempts})`);
+    assert(sawNudge, 'the retry did not carry the empty-completion instruction');
+    assert(delivered === recovered, `blank answer was delivered instead of the retry (got ${JSON.stringify(delivered)})`);
+
+    let failureCode = '';
+    const failingControlPlane = {
+      appendChunk: async () => ({}),
+      complete: async () => { throw new Error('a blank answer must never be completed'); },
+      fail: async (_fence: unknown, payload: { errorCode?: string }) => { failureCode = payload?.errorCode ?? ''; return {}; },
+      renew: async () => ({ leaseExpiresAt: new Date(Date.now() + 180_000).toISOString(), cancelRequested: false }),
+    };
+    const alwaysBlank = {
+      probe: async () => ({ healthy: true, model: emptyConfig.modelAlias, detail: 'ok' }),
+      generate: async () => ({ content: '', usage: { promptTokens: 10, completionTokens: 700, totalTokens: 710 }, model: emptyConfig.modelAlias, durationMs: 1 }),
+    };
+    const blankJournal = new AttemptJournal(emptyDir, emptyConfig.nodeToken, emptyConfig.nodeId);
+    await blankJournal.initialize();
+    const blankWorker = new ApocryphaWorker(emptyConfig, {
+      controlPlane: failingControlPlane as never,
+      qwen: alwaysBlank as never,
+      journal: blankJournal,
+      env: { NODE_ENV: 'test' },
+    });
+    await (blankWorker as unknown as { processClaim: (claim: ClaimedJob) => Promise<void> })
+      .processClaim(claimedJob(emptyConfig));
+    assert(failureCode === 'QWEN_EMPTY_COMPLETION', `twice-blank answer did not fail loudly (code=${failureCode})`);
+  } finally {
+    await rm(emptyDir, { recursive: true, force: true });
+  }
+
+  console.log('apocrypha-worker.test : OK · serialized memory, bounded Qwen retry/output, durable ordered recovery, encrypted journal, no blank answers');
 }
 
 void main();

@@ -4,6 +4,11 @@ import { log } from './log';
 import { composeQwenRequest } from './prompt';
 import { QwenClient, QwenError } from './qwen';
 import { probeMemoryAdapters, retrieveMemory } from './retrieval';
+
+// Appended only after a blank answer. It names the failure rather than restating
+// the question, so the retry cannot drift into answering something else.
+const EMPTY_COMPLETION_NUDGE = 'Your previous attempt produced no answer at all.'
+  + ' Reply now with the answer itself, directly and in full, and nothing else.';
 import type {
   AttemptJournalState,
   ClaimedJob,
@@ -379,7 +384,7 @@ export class ApocryphaWorker {
           server_n_ctx: serverContext,
         });
       }
-      const generate = async (overflowRetry = false): Promise<QwenResult> => {
+      const generate = async (overflowRetry = false, nudge?: string): Promise<QwenResult> => {
         let request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry });
         if (!overflowRetry) {
           // Exact count from the server; fall back to the byte estimate when unavailable.
@@ -399,7 +404,8 @@ export class ApocryphaWorker {
             });
           }
         }
-        return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);
+        const messages = nudge ? [...request.messages, { role: 'system' as const, content: nudge }] : request.messages;
+        return this.qwen.generate(messages, request.generation, onDelta, abortController.signal);
       };
       let result: QwenResult;
       try {
@@ -412,6 +418,32 @@ export class ApocryphaWorker {
           detail: boundedError(error),
         });
         result = await generate(true);
+      }
+      // An answer can come back empty: the model can spend its whole output budget
+      // before it says anything, or stop at a boundary having said nothing. Delivered
+      // as-is that reaches the reader as a blank turn with nothing to explain it --
+      // the same silent-absence failure the expectation ledger exists to catch. Nothing
+      // has been streamed in that case, so one retry is safe; a second blank fails the
+      // job loudly rather than publishing silence.
+      if (!result.content.trim() && !streamed) {
+        log('warn', 'worker.qwen.empty_completion', {
+          job_id: claim.jobId,
+          attempt_id: claim.attemptId,
+          prompt_tokens: result.usage.promptTokens,
+          completion_tokens: result.usage.completionTokens,
+          phase: 'first_attempt',
+        });
+        result = await generate(false, EMPTY_COMPLETION_NUDGE);
+        if (!result.content.trim()) {
+          log('error', 'worker.qwen.empty_completion', {
+            job_id: claim.jobId,
+            attempt_id: claim.attemptId,
+            prompt_tokens: result.usage.promptTokens,
+            completion_tokens: result.usage.completionTokens,
+            phase: 'after_retry',
+          });
+          throw new QwenError('Qwen produced no answer twice', 'QWEN_EMPTY_COMPLETION', true);
+        }
       }
       await flush(true);
       const completion = {
