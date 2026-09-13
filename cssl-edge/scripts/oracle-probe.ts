@@ -34,7 +34,8 @@ const LABEL_PLAIN = 'What It Means for You';
 
 function arg(name: string, fallback = ''): string {
   const index = process.argv.indexOf(`--${name}`);
-  return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : fallback;
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value ?? fallback;
 }
 
 interface CanonicalItemLike {
