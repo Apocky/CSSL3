@@ -37,6 +37,8 @@
     "test:public-web-retirement": "node --import tsx tests/security/public-web-retirement.test.ts",
     "test:akashic-records": "node tests/akashic/akashic-records.test.mjs && node --import tsx tests/pages/akashic-records.test.ts",
     "test:e2e": "playwright test",
+    "test:apocrypha-live-oracle": "node --import tsx scripts/apocrypha-production-browser-oracle.ts",
+    "test:apocrypha-live-oracle-guards": "node --import tsx tests/scripts/apocrypha-production-browser-oracle.test.ts",
     "test:companion": "node --import tsx tests/api/companion.test.ts",
     "test:sovereign": "node --import tsx tests/lib/sovereign.test.ts",
     "test:signaling": "node --import tsx tests/api/signaling.test.ts",

@@ -137,6 +137,9 @@ async function main(): Promise<void> {
     if (url.pathname.endsWith('/rest/v1/rpc/apocrypha_ensure_owner_principal')) {
       return jsonResponse({ tenant_id: TENANT_ID, principal_id: PRINCIPAL_ID });
     }
+    if (url.pathname.endsWith('/rest/v1/rpc/apocrypha_owner_chat_conversation_visible')) {
+      return jsonResponse(true);
+    }
     if (url.pathname.endsWith('/rest/v1/rpc/apocrypha_list_owner_chat_conversations')) {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
       assert.equal(body.p_tenant_id, TENANT_ID);

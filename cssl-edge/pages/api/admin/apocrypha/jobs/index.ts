@@ -10,6 +10,7 @@ import {
   type ApocryphaJobKind,
 } from '@/lib/apocrypha/job-control';
 import { methodNotAllowed, noStore, objectField, requireOwnerIdentity, respondJobError, stringField } from '@/lib/apocrypha/job-http';
+import { ownerChatConversationVisible, ownerOracleUuid, registerOwnerChatOracleJob } from '@/lib/apocrypha/owner-oracle-control';
 import { isOpaqueConversationId } from '@/lib/apocrypha/proxy';
 
 function isSameOwnerChatRequest(
@@ -74,10 +75,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     const conversationId = conversationIdForAdmission(body.conversation_id, identity, idempotencyKey);
+    if (!await ownerChatConversationVisible(identity, conversationId)) {
+      return res.status(404).json({ ok: false, code: 'CONVERSATION_NOT_FOUND' });
+    }
     const outputBudget = Math.min(4096, Math.max(128, Number(body.output_budget) || 1536));
     const responseMode = body.response_mode === 'deep' ? 'deep' : 'standard';
     const retryJobId = body.retry_job_id == null ? null : stringField(body.retry_job_id, 'retry_job_id', 36).toLowerCase();
     let retrySource = null;
+    let oracleRunId: string | null = null;
     if (retryJobId) {
       if (!isOpaqueConversationId(retryJobId)) throw new Error('OWNER_RETRY_JOB_ID_INVALID');
       retrySource = await readOwnerChatRetrySource(identity, retryJobId);
@@ -85,6 +90,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (retrySource.job.status !== 'failed') throw new Error('OWNER_RETRY_NOT_FAILED');
       if (retrySource.request.prompt !== prompt || retrySource.request.conversation_id !== conversationId) {
         throw new Error('OWNER_RETRY_MISMATCH');
+      }
+      if (Object.prototype.hasOwnProperty.call(retrySource.request, 'oracle_run_id')) {
+        oracleRunId = ownerOracleUuid(retrySource.request.oracle_run_id, 'run_id');
       }
     }
     const expectedRequest = { prompt, conversationId, outputBudget, responseMode, retryJobId } as const;
@@ -94,6 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!isSameOwnerChatRequest(existing.request, expectedRequest)) {
           throw new Error('IDEMPOTENCY_CONFLICT');
         }
+        if (oracleRunId) await registerOwnerChatOracleJob(identity, oracleRunId, String(existing.job.id));
         return res.status(202).json({
           ok: true,
           accepted: true,
@@ -121,6 +130,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       privacy_class: 'restricted',
       memory_scope: 'owner-authorized',
       ...(retryJobId ? { retry_of_job_id: retryJobId } : {}),
+      ...(oracleRunId ? { oracle_run_id: oracleRunId } : {}),
     };
     let replayed = false;
     let job;
@@ -144,6 +154,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       job = existing.job;
       replayed = true;
     }
+    if (oracleRunId) await registerOwnerChatOracleJob(identity, oracleRunId, String(job.id));
     return res.status(202).json({ ok: true, accepted: true, replayed, conversation_id: conversationId, job });
   } catch (error) {
     return respondJobError(res, error);

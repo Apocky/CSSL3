@@ -165,6 +165,7 @@ function createHarness(
         },
       };
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
+      if (name === 'next/link') return { __esModule: true, default: 'a' };
       if (name.endsWith('/browser-auth')) return { authFetch };
       if (name.endsWith('/ApocryphaAvatar')) return { ApocryphaAvatar: 'ApocryphaAvatar' };
       throw new Error(`Unexpected ChatThread dependency: ${name}`);
@@ -234,6 +235,9 @@ async function main(): Promise<void> {
       assert.equal(body.conversation_id, CONVERSATION_ID, 'follow-up admission preserves the selected durable conversation UUID');
       admitted = true;
       return jsonResponse({ ok: true, accepted: true, conversation_id: CONVERSATION_ID, job: { id: JOB_ID } }, 202);
+    }
+    if (url.startsWith(`/api/admin/apocrypha/jobs/${JOB_ID}/stream?`)) {
+      return new Response(null, { status: 204 });
     }
     if (url === `/api/admin/apocrypha/jobs/${JOB_ID}`) {
       statusReads.push(jobStatus);
