@@ -95,7 +95,8 @@ function claimedJob(workerConfig: WorkerConfig): ClaimedJob {
     ownerPrincipalId: '40000000-0000-4000-8000-000000000001',
     kind: 'chaos_oracle',
     capability: 'chaos_tarot_reading',
-    request: { prompt: 'PROMPT_MARKER Interpret the Tower crossing the Star with practical specificity.', output_budget: 384 },
+    // This scenario asserts admitted-memory provenance reaches Qwen, so it must pass the recall gate.
+    request: { prompt: 'PROMPT_MARKER Interpret the Tower crossing the Star with practical specificity.', output_budget: 384, memory_requested: true },
     modelAlias: workerConfig.modelAlias,
     profileHash: workerConfig.profileHash,
     toolRegistryVersion: workerConfig.toolRegistryVersion,

@@ -1,4 +1,4 @@
-import { MEMORY_READINESS_QUERY, probeMemoryAdapters, queryFromJob, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
+import { MEMORY_READINESS_QUERY, isMemoryNeeded, probeMemoryAdapters, queryFromJob, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -69,7 +69,8 @@ const job: ClaimedJob = {
   ownerPrincipalId: '40000000-0000-4000-8000-000000000001',
   kind: 'followup',
   capability: 'chaos_tarot_reading',
-  request: { retrieval_query: 'bounded retry test' },
+  // These tests exercise adapter behaviour, so the job must pass the recall gate.
+  request: { retrieval_query: 'bounded retry test', memory_requested: true },
   modelAlias: config.modelAlias,
   profileHash: config.profileHash,
   toolRegistryVersion: config.toolRegistryVersion,
@@ -269,8 +270,24 @@ async function operationalProbeAvoidsSelfContention(): Promise<void> {
   assert(peak === 3, 'live retrieval lost its configured concurrency');
 }
 
+async function plainReadingsSkipMemory(): Promise<void> {
+  let calls = 0;
+  const fetchImpl = (async () => { calls += 1; return response(200, { records: [{ id: 'memory:1', text: 'admitted memory' }] }); }) as typeof fetch;
+  const plain: ClaimedJob = { ...job, request: { question: 'What should I focus on this week?', canonical_reading: { items: [{ name: 'The Star' }] } } };
+  assert(!isMemoryNeeded(plain), 'an ordinary reading question was treated as a recall task');
+  const bundle = await retrieveMemory(config, plain, env, fetchImpl);
+  assert(calls === 0, 'a plain reading reached a memory adapter');
+  assert(bundle.records.length === 0, 'a plain reading received memory records');
+  assert(bundle.results.every((result) => result.state === 'ok'), 'gated-off adapters were not reported as ok');
+
+  assert(isMemoryNeeded({ ...job, request: { question: 'Recall what we discussed about The Tower last time.' } }), 'an explicit recall request did not open the memory gate');
+  assert(isMemoryNeeded({ ...job, request: { prompt: 'What did we decide about the vault yesterday?' } }), 'a "what did we" question did not open the memory gate');
+  assert(isMemoryNeeded({ ...job, request: { prompt: 'Interpret this.', memory_requested: true } }), 'memory_requested did not open the memory gate');
+}
+
 async function main(): Promise<void> {
   currentPromptPrecedesLegacyHistory();
+  await plainReadingsSkipMemory();
   await transientServerErrorRecovers();
   await timeoutRecovers();
   await finalFailureRemainsVisible();
