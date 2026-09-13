@@ -1,0 +1,256 @@
+§ APOCRYPHA-COMPETITIVE-FULL-APP-ROADMAP v1  ‼
+§ owner := Apocky
+§ created := 2026-09-12 America/Phoenix
+§ authority := direct.user.goal«Get Apocrypha competitive with Codex, GPT, Grok, Gemini, Claude, Kimi, DeepSeek, etc. but better»
+§ execution := one feature → focused tests → integration → live signed-in user-flow oracle → commit → push → remote tree readback → next
+
+═══════════════════════════════════════════════════════════════════════════════
+§ OBJECTIVE + PRODUCT DECISION
+═══════════════════════════════════════════════════════════════════════════════
+
+objective := Apocrypha = sovereign.provider-neutral.agent-runtime + complete.consumer/work/coding.app
+             ⊗ parity.table-stakes ⊗ measurable.superiority.on-proof+continuity+authority+memory+routing
+
+⌈DECISION-1⌉ Apocrypha owns product identity + web/mobile/desktop experience.
+⌈DECISION-2⌉ prior Mycelium design (`specs/grand-vision/23_MYCELIUM_DESKTOP.csl`) becomes
+             Apocrypha.desktop-runtime architecture; ¬ separate competing product.
+⌈DECISION-3⌉ “reverse engineer” = inspect public documented/observable behavior + build original equivalent/better behavior;
+             N! copy proprietary code | prompts | secrets | protected assets | bypass access controls.
+⌈DECISION-4⌉ Apocrypha does not need to out-train every frontier lab. It routes local+hosted models and
+             owns continuity, tools, memory, authority, verification, artifacts, and interface.
+
+success :=
+  S1 complete.capability.denominator has owner+dependency+oracle+status ∀ row
+  S2 each implemented feature passes destination live-effect oracle ¬ proxy-only
+  S3 superiority claims exist only after matched external benchmark beats named baseline
+
+non_goals := marketing.superiority.without-benchmark | hardcoded-single-provider | big-bang-rewrite |
+             destructive migration | silent authority expansion | test-green-as-live-completion
+
+═══════════════════════════════════════════════════════════════════════════════
+§ EVIDENCE DISCIPLINE
+═══════════════════════════════════════════════════════════════════════════════
+
+legend := ✓ observed.current-source/test | ◐ inferred-from-✓ | ○ reported/prior-receipt |
+          ◇ proposed | ? unknown | ✗ contradicted
+status := pending | active | verified | failed | blocked | unknown
+
+W! vendor.matrix keyed-by {model, API, consumer-app, coding-harness, managed-agent-platform, enterprise}
+W! availability tagged {GA, rollout, beta, preview, deprecated} + plan/region/account/device
+N! whole-vendor OR-aggregation | nominal-context⇒usable-context | citations⇒correctness |
+   approval-UX⇒enforcement | agent-count⇒quality | file-export⇒native-roundtrip-editing
+
+§ CURRENT APOCRYPHA OBSERVATIONS @ active production worktree
+✓ web.chat + conversation-list + new-chat + active/archive/trash source exists
+✓ durable job admission + idempotency + SSE wakeup + snapshot hydration + polling fallback source exists
+✓ cancellation + tool/run trace + diagnostics/cost/capability/key endpoints source exists
+✓ owner/account split + durable account pending journal/retry source exists
+✓ governed camera vision session + frames source exists
+✓ workspace panel + background job surface source exists
+✓ contributor-node + SMS + memory-gateway/worker surfaces source exists
+✓ memory-gating focused worker suite = 3/3 @ 2026-09-13; commit `4e8e2e6`
+○ Chaos Tarot save-any-reading + historical Oracle regenerate live receipt @ build `12ce765`
+? current production deployment/alias contains every active-worktree commit — verify per feature
+? end-user oracle for failed-attempt retry — FEATURE-001
+
+═══════════════════════════════════════════════════════════════════════════════
+§ CURRENT COMPETITIVE DENOMINATOR @ 2026-09-12
+═══════════════════════════════════════════════════════════════════════════════
+
+table_stakes := {
+  reasoning+coding.adjustable-effort,
+  long-context+compaction+checkpointing,
+  web-search+cited-deep-research,
+  files+images+audio+realtime-voice+media,
+  code+shell+browser+computer-use,
+  native-docs+sheets+slides+sites+artifact-roundtrip,
+  persistent-tasks+interrupt+steer+resume,
+  isolated-subagents+parallel-worktrees,
+  skills+plugins+hooks+MCP+connectors+custom-agents,
+  schedules+event-triggers+background-work,
+  web+desktop+mobile+CLI+IDE continuity,
+  sandbox+scoped-approvals+credential-vault+audit,
+  collaboration+share+review+comments+handoff,
+  enterprise SSO+SCIM+RBAC+tenant-isolation+retention+residency+ZDR+DLP,
+  evals+observability+replay+budget-stops+DR,
+  model-discovery+routing+failover+version-drift handling
+}
+
+§ FIRST-PARTY STATUS REFERENCES — availability only; ¬ superiority evidence
+OPENAI := {
+  model: https://developers.openai.com/api/docs/models/gpt-6-astra,
+  codex: https://openai.com/index/introducing-the-codex-app/,
+  work: https://openai.com/index/chatgpt-for-your-most-ambitious-work/,
+  agents: https://openai.com/index/introducing-the-agents-api/,
+  caution: GPT-6-Astra rollout-limited; Agents-API public-beta
+}
+ANTHROPIC := {
+  models: https://www.anthropic.com/claude-fable-and-mythos-5-1,
+  research_mcp: https://www.anthropic.com/news/integrations,
+  managed_agents: https://www.anthropic.com/news/finance-agents,
+  tag: https://www.anthropic.com/news/introducing-claude-tag,
+  caution: managed-agents beta; feature availability surface-specific
+}
+GOOGLE := {
+  api_models: https://ai.google.dev/gemini-api/docs/models,
+  spark: https://support.google.com/gemini/answer/17094507,
+  windows: https://blog.google/innovation-and-ai/products/gemini-app/gemini-app-now-on-windows/,
+  enterprise: https://cloud.google.com/blog/products/ai-machine-learning/the-new-gemini-enterprise-one-platform-for-agent-development,
+  caution: Spark beta + plan/region/device limits; Windows docs conflict → live-verify
+}
+XAI := {
+  grok_4_6: https://docs.x.ai/developers/grok-4-6,
+  bot: https://x.ai/news/introducing-grok-bot,
+  bot_design: https://x.ai/news/designing-grok-bot,
+  build: https://x.ai/news/grok-build-cli,
+  voice: https://x.ai/news/grok-voice-agent-builder,
+  caution: Grok-Bot beta; 4.6 availability named-surfaces-only
+}
+KIMI := {
+  model: https://github.com/MoonshotAI/Kimi-K3,
+  agent: https://github.com/MoonshotAI/kimi-help-center/blob/master/en-US/agent/overview.md,
+  swarm: https://github.com/MoonshotAI/kimi-help-center/blob/master/en-US/agent/swarm.md,
+  code: https://github.com/MoonshotAI/kimi-code,
+  caution: K3 open-weight under Kimi-K3-License; swarm beta+plan/credit gated
+}
+DEEPSEEK := {
+  current: https://api-docs.deepseek.com/news/news260910/,
+  caution: V4.1-Flash replaced V4-Flash variants Sep-10; V4-Pro routing changes Sep-14;
+           capability-discovery+version-pinning+drift-monitor required
+}
+
+adjacent_comparators := Cursor | Windsurf | Devin | GitHub-Copilot | Perplexity |
+                        NotebookLM | Manus | Replit | Lovable | Bolt
+
+═══════════════════════════════════════════════════════════════════════════════
+§ “BETTER” — PRE-REGISTERED MATCHED BENCHMARKS
+═══════════════════════════════════════════════════════════════════════════════
+
+B1 proof_completion := {
+  metrics: [verified_success_rate, false_done_rate, named_oracle_coverage, verifier_independence],
+  targets: [false_done_rate<1%, named_oracle_coverage=100%]
+}
+B2 interruption_continuity := {
+  chaos: [process-kill, model-swap, compaction, network-loss, duplicate-delivery],
+  metrics: [resume_to_success@1, invariant_retention, duplicate_effects, omitted_effects, recovery_time],
+  targets: [resume_to_success>=99%, duplicate_effects=0, omitted_effects=0, live-state-rollback=0]
+}
+B3 authority_reversibility := {
+  metrics: [unauthorized_effect_rate, revoked_lease_enforcement, preimage_coverage, rollback_success, rollback_time],
+  targets: [unauthorized_effect_rate=0, irreversible_consent=100%, rollback_success>=99%]
+}
+B4 portable_memory := {
+  metrics: [provenance_coverage, recall_precision, stale_action_rate, correction_delete_propagation, export_import_fidelity],
+  targets: [provenance_coverage=100%, recall_precision>=95%, verified_delete=100%]
+}
+B5 verified_success_router := {
+  metrics: [success_per_dollar, p95_time_to_verified_success, failover_success, provider_switch_quality_loss],
+  targets: [models>=5, pareto_gain>=20%, state_loss_on_failover=0]
+}
+
+strongest_countercase := frontier vendors already ship steering, memory, outcome graders, verification workflows,
+                         hosted computers, and managed agents.
+falsifier := matched benchmark shows Apocrypha no better on cross-provider enforcement/live-oracle outcomes.
+response := retain parity capability; remove superiority wording; fix measured bottleneck; rerun all arms.
+
+═══════════════════════════════════════════════════════════════════════════════
+§ DEPENDENCY GRAPH — ONE FEATURE AT A TIME
+═══════════════════════════════════════════════════════════════════════════════
+
+§ PHASE-0 TRUSTWORTHY CHAT CORE  ‼ active
+FEATURE-001 := {
+  name: preserved-failed-attempt-one-click-retry,
+  depends_on: [durable-jobs, conversation-projection, idempotent-admission],
+  deliverables: [retry API contract, no-duplicate user turn, retry UI, failure provenance, focused tests],
+  oracle: signed-in `/apocrypha` forced-failure → visible Retry → fresh job → one user turn + one answer + failed attempt preserved,
+  rollback: revert feature commit,
+  status: active
+}
+FEATURE-002 := {
+  name: browser-level-live-oracle-harness,
+  depends_on: [FEATURE-001],
+  deliverables: [signed-in user-flow probe, screenshots/console/network evidence, cleanup],
+  oracle: same destination flow succeeds against production alias with zero console errors,
+  rollback: delete probe-only state,
+  status: pending
+}
+FEATURE-003 := {
+  name: canonical-goal-task-checkpoint-steer-resume,
+  depends_on: [FEATURE-002],
+  deliverables: [goal schema, dependency graph, checkpoint event, interrupt/steer/resume, restart UI],
+  oracle: kill+restart+model-swap chaos resumes exact next dependency without duplicate/omitted effect,
+  rollback: additive tables/events + feature flag off,
+  status: pending
+}
+FEATURE-004 := {
+  name: proof-carrying-completion,
+  depends_on: [FEATURE-003],
+  deliverables: [requirement denominator, oracle contract, evidence bundle, independent verifier, false-done block],
+  oracle: seeded fake receipts/green tests cannot satisfy live-effect gate; real effect does,
+  rollback: verifier advisory-mode,
+  status: pending
+}
+
+§ PHASE-1 PROVIDER-NEUTRAL INTELLIGENCE
+FEATURE-010 := { name:model-capability-registry; depends_on:[FEATURE-004]; oracle:live-discovery detects version/capability drift; status:pending }
+FEATURE-011 := { name:multi-model-router; depends_on:[FEATURE-010]; oracle:>=5 local/hosted models route+fallback without state loss; status:pending }
+FEATURE-012 := { name:verified-success-cost-router; depends_on:[FEATURE-011]; oracle:matched eval proves >=20% Pareto gain; status:pending }
+FEATURE-013 := { name:context-compaction+checkpointing; depends_on:[FEATURE-003,FEATURE-011]; oracle:long task retains all invariants across windows; status:pending }
+
+§ PHASE-2 KNOWLEDGE + MULTIMODAL + ARTIFACTS
+FEATURE-020 := { name:file+folder-attachments; depends_on:[FEATURE-004]; oracle:upload→parse→cite→export with ACL+malware/size gates; status:pending }
+FEATURE-021 := { name:web-search+cited-deep-research; depends_on:[FEATURE-020,FEATURE-010]; oracle:source-complete report + citation entailment grader; status:pending }
+FEATURE-022 := { name:provenance-first-portable-memory; depends_on:[FEATURE-003,FEATURE-020]; oracle:correct/delete/export/import propagate 100%; status:pending }
+FEATURE-023 := { name:realtime-voice+audio; depends_on:[FEATURE-004]; oracle:interruptible duplex voice on desktop+mobile; status:pending }
+FEATURE-024 := { name:image+screen+video-understanding; depends_on:[FEATURE-020]; oracle:grounded UI/image task with visual destination proof; status:pending }
+FEATURE-025 := { name:native-docs+sheets+slides+sites-artifacts; depends_on:[FEATURE-020,FEATURE-004]; oracle:create→edit→render→roundtrip without semantic/layout loss; status:pending }
+
+§ PHASE-3 CODING + COMPUTER ACTION
+FEATURE-030 := { name:repo+file-tree+diff+review; depends_on:[FEATURE-004,FEATURE-020]; inherits:[Mycelium]; oracle:real repo change reviewed+reverted; status:pending }
+FEATURE-031 := { name:sandboxed-shell+code-execution; depends_on:[FEATURE-030,B3]; oracle:scoped command succeeds; escape+revoked lease denied; status:pending }
+FEATURE-032 := { name:browser+computer-use; depends_on:[FEATURE-004,B3]; oracle:real UI outcome + screenshot/network proof + rollback; status:pending }
+FEATURE-033 := { name:IDE+CLI+desktop-continuity; depends_on:[FEATURE-003,FEATURE-030]; inherits:[Mycelium]; oracle:same task steers/resumes across web+desktop+CLI; status:pending }
+
+§ PHASE-4 AGENTS + EXTENSIBILITY + AUTOMATION
+FEATURE-040 := { name:isolated-subagents+worktrees; depends_on:[FEATURE-003,FEATURE-031]; oracle:parallel disjoint work integrates without lost dissent/state; status:pending }
+FEATURE-041 := { name:skills+plugins+MCP+hooks; depends_on:[FEATURE-004,B3]; oracle:install/use/revoke/version/rollback each proven; status:pending }
+FEATURE-042 := { name:connectors+credential-vault; depends_on:[FEATURE-041,B3]; oracle:least-privilege connector + rotated/revoked secret enforcement; status:pending }
+FEATURE-043 := { name:schedules+events+background-tasks; depends_on:[FEATURE-003,FEATURE-041]; oracle:reboot-safe exactly-once effect + quiet unchanged monitor; status:pending }
+FEATURE-044 := { name:eval-gated-organ-creation; depends_on:[FEATURE-004,FEATURE-040,FEATURE-041]; oracle:shadow eval promotes only measured regression-free gain; status:pending }
+
+§ PHASE-5 COLLABORATION + DISTRIBUTION + ENTERPRISE
+FEATURE-050 := { name:share+review+comments+ownership-handoff; depends_on:[FEATURE-003,FEATURE-025]; oracle:two-account handoff preserves authorship+authority; status:pending }
+FEATURE-051 := { name:web+Windows+iOS+Android-parity; depends_on:[FEATURE-003,FEATURE-033]; oracle:same task+artifacts resume on all four surfaces; status:pending }
+FEATURE-052 := { name:SSO+SCIM+RBAC+tenant-isolation; depends_on:[B3,FEATURE-042]; oracle:cross-tenant attacks denied + audit export; status:pending }
+FEATURE-053 := { name:retention+residency+ZDR+DLP+DR; depends_on:[FEATURE-022,FEATURE-052]; oracle:policy+restore+verified deletion drills; status:pending }
+
+═══════════════════════════════════════════════════════════════════════════════
+§ EXECUTION FRONTIER + RESTART CONTRACT
+═══════════════════════════════════════════════════════════════════════════════
+
+active_frontier := [FEATURE-001]
+next_three := [FEATURE-002, FEATURE-003, FEATURE-004]
+integration_authority := root-session
+reserved := {
+  FEATURE-001.files: [
+    cssl-edge/pages/api/admin/apocrypha/jobs/index.ts,
+    cssl-edge/lib/apocrypha/job-control.ts,
+    cssl-edge/components/apocrypha/ChatThread.tsx,
+    cssl-edge/tests/pages/apocrypha-owner-history.test.ts,
+    cssl-edge/tests/*owner*job*.test.ts
+  ]
+}
+
+W! after each feature update only evidence-supported status+commit+remote+oracle+rollback
+W! unexpected evidence | repeated failure>=2 | pre-commit | pre-done ⇒ rotate whole-system model
+W! foreign dirty state preserved: graphify-out/** + cssl-edge/tsconfig.tsbuildinfo
+W! restart surface = this file → active_frontier → exact feature oracle
+N! begin next feature before current feature live oracle + delivery receipt unless current blocked and next is independent
+
+§ DELIVERY-RECEIPT-0
+  worker-memory-gate-tests := ✓ 3/3
+  local_commit := 4e8e2e68c1d597ca88497be5ebccc0b7525d7b66
+  remote_branch := origin/claude/apocrypha-desktop-download-20260909
+  remote_readback := pending exact SHA verification
+
+∎

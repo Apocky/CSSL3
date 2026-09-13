@@ -183,6 +183,7 @@ export function ChatThread() {
   const [streamingText, setStreamingText] = useState('');
   const [streamingPhase, setStreamingPhase] = useState('Preparing your place in the queue…');
   const [activeJob, setActiveJob] = useState<ActiveJobRecord | null>(null);
+  const [retryableJob, setRetryableJob] = useState<ActiveJobRecord | null>(null);
   const [streamingTools, setStreamingTools] = useState<ToolCallChip[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -341,6 +342,7 @@ export function ChatThread() {
     setCurrentConv(null);
     setStreamingTools([]);
     setError(null);
+    setRetryableJob(null);
     // The persisted active-job record has to go too, and this is the whole bug
     // it fixes: clearing only React state left ACTIVE_JOB_KEY in localStorage,
     // so the mount effect above read it back on the next load and restored
@@ -513,6 +515,7 @@ export function ChatThread() {
               setStreamingTools([]);
               setStreaming(false);
               setActiveJob(null);
+              setRetryableJob(null);
               window.localStorage.removeItem(ACTIVE_JOB_KEY);
               void loadConvs();
             }
@@ -526,6 +529,7 @@ export function ChatThread() {
               setStreaming(false);
               setStreamingText(partial);
               setActiveJob(null);
+              setRetryableJob(snapshot.job.status === 'failed' ? activeJob : null);
               window.localStorage.removeItem(ACTIVE_JOB_KEY);
             }
             return;
@@ -550,18 +554,19 @@ export function ChatThread() {
     };
   }, [activeJob, hydrateActiveConversation, loadConvs]);
 
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
+  const handleSend = useCallback(async (retryJob?: ActiveJobRecord) => {
+    const text = retryJob?.prompt ?? draft.trim();
     if (!text || streaming) return;
-    setDraft('');
+    if (!retryJob) setDraft('');
     setError(null);
+    if (!retryJob) setRetryableJob(null);
     setStreamingTools([]);
     setStreamingText('');
-    setMessages((previous) => [...previous, { role: 'user', text, ts: new Date() }]);
+    if (!retryJob) setMessages((previous) => [...previous, { role: 'user', text, ts: new Date() }]);
     setStreaming(true);
     setStreamingPhase('Saving your message…');
     try {
-      const conversationId = currentConv ?? window.crypto.randomUUID();
+      const conversationId = retryJob?.conversationId ?? currentConv ?? window.crypto.randomUUID();
       const idempotencyKey = window.crypto.randomUUID();
       const response = await authFetch('/api/admin/apocrypha/jobs', {
         method: 'POST',
@@ -573,6 +578,7 @@ export function ChatThread() {
           output_budget: 2048,
           response_mode: text.length > 1200 ? 'deep' : 'standard',
           idempotency_key: idempotencyKey,
+          ...(retryJob ? { retry_job_id: retryJob.id } : {}),
         }),
       });
       const payload = await response.json().catch(() => null) as {
@@ -596,9 +602,11 @@ export function ChatThread() {
       window.localStorage.removeItem(NEW_CHAT_KEY);
       setCurrentConv(conversationId);
       setActiveJob(record);
+      setRetryableJob(null);
       setStreamingPhase('Accepted. Waiting for the local Apocrypha node…');
     } catch (sendError) {
       setStreaming(false);
+      if (retryJob) setRetryableJob(retryJob);
       setError(sendError instanceof Error ? sendError.message : String(sendError));
     }
   }, [currentConv, draft, streaming]);
@@ -944,7 +952,21 @@ export function ChatThread() {
                 color: '#ff8888',
                 fontSize: '0.88rem',
               }}>
-                Apocrypha paused: {error}
+                <div>Apocrypha paused: {error}</div>
+                {retryableJob && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSend(retryableJob)}
+                    disabled={streaming}
+                    style={{
+                      marginTop: '0.65rem', border: '1px solid rgba(255, 170, 85, 0.65)', borderRadius: 8,
+                      padding: '0.45rem 0.7rem', color: '#ffd0a0', background: 'rgba(255, 170, 85, 0.08)',
+                      cursor: streaming ? 'not-allowed' : 'pointer', fontWeight: 650, fontFamily: 'inherit',
+                    }}
+                  >
+                    Retry failed attempt
+                  </button>
+                )}
               </div>
             )}
 

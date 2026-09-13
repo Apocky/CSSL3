@@ -405,6 +405,22 @@ function ownerChatPrompt(request: Record<string, unknown>): string | null {
     : null;
 }
 
+function ownerChatRetryOf(request: Record<string, unknown>): string | null {
+  return ownerChatConversationId(request.retry_of_job_id);
+}
+
+export async function readOwnerChatRetrySource(identity: JobIdentity, jobId: string) {
+  const normalized = ownerChatConversationId(jobId);
+  if (!normalized) throw new Error('OWNER_RETRY_JOB_ID_INVALID');
+  const client = getApocryphaServiceClient();
+  const { data, error } = await client.from('apocrypha_job').select('*')
+    .eq('id', normalized).eq('tenant_id', identity.tenantId)
+    .eq('owner_principal_id', identity.principalId).eq('kind', 'apocky_chat')
+    .eq('capability', 'apocky_owner_chat').limit(1).maybeSingle();
+  if (error) throw new Error(`OWNER_RETRY_READ_FAILED:${error.code ?? 'unknown'}`);
+  return data ? { job: data as ApocryphaJobRow, request: record((data as ApocryphaJobRow).request) } : null;
+}
+
 function utf8Prefix(value: string, maximumBytes: number): string {
   if (Buffer.byteLength(value, 'utf8') <= maximumBytes) return value;
   let result = '';
@@ -441,7 +457,7 @@ async function readOwnerChatJobRows(
   const client = getApocryphaServiceClient();
   const query = () => client
     .from('apocrypha_job')
-    .select('id,status,request_prompt:request->>prompt,request_conversation_id:request->>conversation_id,terminal_revision_id,created_at,updated_at,completed_at')
+    .select('id,status,request_prompt:request->>prompt,request_conversation_id:request->>conversation_id,request_retry_of_job_id:request->>retry_of_job_id,terminal_revision_id,created_at,updated_at,completed_at')
     .eq('tenant_id', identity.tenantId)
     .eq('owner_principal_id', identity.principalId)
     .eq('kind', 'apocky_chat')
@@ -464,6 +480,9 @@ async function readOwnerChatJobRows(
       conversation_id: typeof row.request_conversation_id === 'string'
         ? row.request_conversation_id
         : storedRequest.conversation_id,
+      retry_of_job_id: typeof row.request_retry_of_job_id === 'string'
+        ? row.request_retry_of_job_id
+        : storedRequest.retry_of_job_id,
     };
     if (typeof row.id !== 'string'
       || typeof row.status !== 'string'
@@ -556,14 +575,18 @@ function summarizeOwnerChatConversation(
     (latest, job) => latest.localeCompare(job.updated_at) >= 0 ? latest : job.updated_at,
     ordered[0]?.updated_at ?? ordered[0]?.created_at ?? new Date(0).toISOString(),
   );
+  const seenJobIds = new Set<string>();
+  const messageCount = ordered.reduce((count, job) => {
+    const suppressPrompt = Boolean(ownerChatRetryOf(job.request) && seenJobIds.has(ownerChatRetryOf(job.request)!));
+    seenJobIds.add(job.id);
+    return count + (!suppressPrompt && ownerChatPrompt(job.request) ? 1 : 0)
+      + (job.status === 'succeeded' && job.terminal_revision_id ? 1 : 0);
+  }, 0);
   return {
     id: conversationId,
     title: firstPrompt.replace(/\s+/g, ' ').slice(0, 80),
     last_active_iso: lastActive,
-    message_count: ordered.reduce((count, job) => (
-      count + (ownerChatPrompt(job.request) ? 1 : 0)
-        + (job.status === 'succeeded' && job.terminal_revision_id ? 1 : 0)
-    ), 0),
+    message_count: messageCount,
     message_count_is_lower_bound: messageCountIsLowerBound,
     state: 'active',
   };
@@ -601,9 +624,11 @@ function projectOwnerChatConversation(
   const ordered = orderedOwnerChatJobs(conversationId, jobs);
   if (ordered.length === 0) return null;
   const messages: OwnerChatMessage[] = [];
+  const seenJobIds = new Set<string>();
   for (const job of ordered) {
     const prompt = ownerChatPrompt(job.request);
-    if (prompt) messages.push({
+    const suppressPrompt = Boolean(ownerChatRetryOf(job.request) && seenJobIds.has(ownerChatRetryOf(job.request)!));
+    if (prompt && !suppressPrompt) messages.push({
       id: `${job.id}:user`, role: 'user', text: prompt, ts_iso: job.created_at, tool_trace: [],
     });
     const revision = job.status === 'succeeded' && job.terminal_revision_id
@@ -617,6 +642,7 @@ function projectOwnerChatConversation(
       tool_trace: ownerChatToolTrace(revision.provenance?.tool_calls),
       truncated: revision.content_truncated,
     });
+    seenJobIds.add(job.id);
   }
   const conversation = summarizeOwnerChatConversation(conversationId, ordered, rowWindowTruncated);
   if (!conversation) return null;
@@ -705,9 +731,11 @@ export async function readOwnerChatConversationHistory(
   const selectedJobs = jobs.filter((job) => ownerChatJobConversationId(job) === normalized);
   const revisions = await readOwnerChatRevisionRows(identity, selectedJobs);
   const candidates: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  const seenJobIds = new Set<string>();
   for (const job of orderedOwnerChatJobs(normalized, selectedJobs)) {
     const prompt = ownerChatPrompt(job.request);
-    if (prompt) candidates.push({
+    const suppressPrompt = Boolean(ownerChatRetryOf(job.request) && seenJobIds.has(ownerChatRetryOf(job.request)!));
+    if (prompt && !suppressPrompt) candidates.push({
       role: 'user',
       content: utf8Prefix(prompt, OWNER_CHAT_HISTORY_MESSAGE_BYTES),
     });
@@ -718,6 +746,7 @@ export async function readOwnerChatConversationHistory(
       role: 'assistant',
       content: utf8Prefix(revision.content, OWNER_CHAT_HISTORY_MESSAGE_BYTES),
     });
+    seenJobIds.add(job.id);
   }
   const recentCandidates = candidates.slice(-OWNER_CHAT_HISTORY_MESSAGES);
   const selected: typeof recentCandidates = [];
@@ -900,6 +929,11 @@ export function publicJobError(error: unknown): { status: number; code: string; 
   if (raw.includes('UNAUTHORIZED')) return { status: 401, code: 'UNAUTHORIZED', message: 'Authentication failed.' };
   if (raw.includes('WORKER_FENCE_LOST')) return { status: 409, code: 'STALE_FENCE', message: 'This worker lease is no longer active.' };
   if (raw.includes('IDEMPOTENCY_CONFLICT')) return { status: 409, code: 'IDEMPOTENCY_CONFLICT', message: 'This request key was already used for different content.' };
+  if (raw.includes('OWNER_RETRY_JOB_ID_INVALID') || raw.includes('OWNER_RETRY_MISMATCH')) {
+    return { status: 400, code: 'RETRY_INVALID', message: 'This failed attempt cannot be retried with changed content.' };
+  }
+  if (raw.includes('OWNER_RETRY_NOT_FOUND')) return { status: 404, code: 'RETRY_NOT_FOUND', message: 'The failed attempt was not found.' };
+  if (raw.includes('OWNER_RETRY_NOT_FAILED')) return { status: 409, code: 'RETRY_NOT_FAILED', message: 'Only a failed attempt can be retried.' };
   if (raw.includes('UNCONFIGURED')) return { status: 503, code: 'CONTROL_PLANE_UNAVAILABLE', message: 'Apocrypha cannot accept work right now.' };
   return { status: 503, code: 'APOCRYPHA_JOB_ERROR', message: 'Apocrypha could not update this request. It is safe to retry.' };
 }

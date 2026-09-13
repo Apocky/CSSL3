@@ -26,6 +26,9 @@ const OLD_JOB_ID = '88888888-8888-4888-8888-888888888889';
 const OLD_REVISION_ID = '88888888-8888-4888-8888-888888888890';
 const RETRY_KEY = 'owner-history-retry-key';
 const NULL_CONVERSATION_RETRY_KEY = 'owner-history-null-conversation-retry-key';
+const FAILED_JOB_ID = '99999999-9999-4999-8999-999999999991';
+const RETRIED_JOB_ID = '99999999-9999-4999-8999-999999999992';
+const RETRIED_REVISION_ID = '99999999-9999-4999-8999-999999999993';
 
 function reqRes(
   method: string,
@@ -385,6 +388,43 @@ async function main(): Promise<void> {
     await jobsHandler(conflictingAdmission.req, conflictingAdmission.res);
     assert.equal(conflictingAdmission.out.statusCode, 409, 'same key with different content remains a conflict');
 
+    const failedPrompt = 'Preserve this failed attempt exactly once.';
+    jobs.push({
+      id: FAILED_JOB_ID, status: 'failed',
+      request: { prompt: failedPrompt, conversation_id: CONVERSATION_ID }, terminal_revision_id: null,
+      created_at: '2026-09-08T10:03:00.000Z', updated_at: '2026-09-08T10:03:30.000Z', completed_at: '2026-09-08T10:03:30.000Z',
+    });
+    const retryAttempt = reqRes('POST', { body: {
+      prompt: failedPrompt, conversation_id: CONVERSATION_ID, retry_job_id: FAILED_JOB_ID,
+    } });
+    await jobsHandler(retryAttempt.req, retryAttempt.res);
+    assert.equal(retryAttempt.out.statusCode, 202);
+    const retryRequest = enqueueCalls.at(-1)!.p_request as Record<string, unknown>;
+    assert.equal(retryRequest.retry_of_job_id, FAILED_JOB_ID);
+    assert.equal((retryRequest.messages as Array<{ content: string }>).filter((message) => message.content === failedPrompt).length, 1);
+
+    jobs.push({
+      id: RETRIED_JOB_ID, status: 'succeeded',
+      request: { prompt: failedPrompt, conversation_id: CONVERSATION_ID, retry_of_job_id: FAILED_JOB_ID },
+      terminal_revision_id: RETRIED_REVISION_ID,
+      created_at: '2026-09-08T10:04:00.000Z', updated_at: '2026-09-08T10:04:30.000Z', completed_at: '2026-09-08T10:04:30.000Z',
+    });
+    revisions.push({
+      id: RETRIED_REVISION_ID, job_id: RETRIED_JOB_ID, content: 'Recovered answer.', provenance: {}, usage: {},
+      created_at: '2026-09-08T10:04:29.000Z',
+    });
+    const retriedDetail = reqRes('GET', { query: { id: CONVERSATION_ID } });
+    await conversationsHandler(retriedDetail.req, retriedDetail.res);
+    const retriedBody = retriedDetail.out.body as { data: { messages: Array<Record<string, unknown>> } };
+    assert.equal(retriedBody.data.messages.filter((message) => message.text === failedPrompt).length, 1, 'retry never duplicates the user turn');
+    assert.equal(retriedBody.data.messages.at(-1)?.text, 'Recovered answer.');
+
+    const retrySucceeded = reqRes('POST', { body: {
+      prompt: 'Remember this durable opening.', conversation_id: CONVERSATION_ID, retry_job_id: FIRST_JOB_ID,
+    } });
+    await jobsHandler(retrySucceeded.req, retrySucceeded.res);
+    assert.equal(retrySucceeded.out.statusCode, 409, 'a succeeded attempt cannot be retried');
+
     jobs.splice(0, jobs.length);
     revisions.splice(0, revisions.length);
     for (let index = 1; index <= 65; index += 1) {
@@ -459,9 +499,12 @@ async function main(): Promise<void> {
       assert.equal(url.searchParams.get('owner_principal_id'), `eq.${PRINCIPAL_ID}`);
       assert.equal(url.searchParams.get('kind'), 'eq.apocky_chat');
       assert.equal(url.searchParams.get('capability'), 'eq.apocky_owner_chat');
-      assert.ok(['1', '65'].includes(url.searchParams.get('limit') ?? ''), 'history reads are explicitly bounded');
+      assert.ok(['1', '65'].includes(url.searchParams.get('limit') ?? ''), 'owner job reads are explicitly bounded');
     }
-    for (const url of jobReads.filter((candidate) => !candidate.searchParams.has('idempotency_key'))) {
+    for (const url of jobReads.filter((candidate) => (
+      !candidate.searchParams.has('idempotency_key')
+      && (candidate.searchParams.get('select') ?? '').includes('request_prompt')
+    ))) {
       const fields = (url.searchParams.get('select') ?? '').split(',');
       assert.ok(!fields.includes('request'), 'history projection never transfers the full request document');
       assert.ok(fields.some((field) => field.includes('request->>prompt')), 'history projection selects only the prompt scalar');
@@ -469,6 +512,7 @@ async function main(): Promise<void> {
         fields.some((field) => field.includes('request->>conversation_id')),
         'history projection selects only the conversation identifier scalar',
       );
+      assert.ok(fields.some((field) => field.includes('request->>retry_of_job_id')), 'history projection selects the retry link scalar');
       if ((url.searchParams.get('limit') ?? '') === '65') {
         assert.match(
           url.searchParams.get('request->>conversation_id') ?? '',
