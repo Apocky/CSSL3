@@ -50,8 +50,8 @@ N! whole-vendor OR-aggregation | nominal-context⇒usable-context | citations⇒
 ✓ contributor-node + SMS + memory-gateway/worker surfaces source exists
 ✓ memory-gating focused worker suite = 3/3 @ 2026-09-13; commit `4e8e2e6`
 ○ Chaos Tarot save-any-reading + historical Oracle regenerate live receipt @ build `12ce765`
-? current production deployment/alias contains every active-worktree commit — verify per feature
-? end-user oracle for failed-attempt retry — FEATURE-001
+✓ production alias contained FEATURE-001 through commit `9e60e50` @ deployment `dpl_EauZowU3GVs2jpVJUYSkGYMcTR1X`
+✓ end-user forced-failure→reload→Retry→fresh-answer oracle passed — FEATURE-001
 
 ═══════════════════════════════════════════════════════════════════════════════
 § CURRENT COMPETITIVE DENOMINATOR @ 2026-09-12
@@ -164,7 +164,7 @@ FEATURE-001 := {
   deliverables: [retry API contract, no-duplicate user turn, retry UI, failure provenance, focused tests],
   oracle: signed-in `/apocrypha` forced-failure → visible Retry → fresh job → one user turn + one answer + failed attempt preserved,
   rollback: revert feature commit,
-  status: active
+  status: verified
 }
 FEATURE-002 := {
   name: browser-level-live-oracle-harness,
@@ -172,7 +172,7 @@ FEATURE-002 := {
   deliverables: [signed-in user-flow probe, screenshots/console/network evidence, cleanup],
   oracle: same destination flow succeeds against production alias with zero console errors,
   rollback: delete probe-only state,
-  status: pending
+  status: active
 }
 FEATURE-003 := {
   name: canonical-goal-task-checkpoint-steer-resume,
@@ -228,8 +228,8 @@ FEATURE-053 := { name:retention+residency+ZDR+DLP+DR; depends_on:[FEATURE-022,FE
 § EXECUTION FRONTIER + RESTART CONTRACT
 ═══════════════════════════════════════════════════════════════════════════════
 
-active_frontier := [FEATURE-001]
-next_three := [FEATURE-002, FEATURE-003, FEATURE-004]
+active_frontier := [FEATURE-002]
+next_three := [FEATURE-003, FEATURE-004, FEATURE-010]
 integration_authority := root-session
 reserved := {
   FEATURE-001.files: [
@@ -251,6 +251,27 @@ N! begin next feature before current feature live oracle + delivery receipt unle
   worker-memory-gate-tests := ✓ 3/3
   local_commit := 4e8e2e68c1d597ca88497be5ebccc0b7525d7b66
   remote_branch := origin/claude/apocrypha-desktop-download-20260909
-  remote_readback := pending exact SHA verification
+  remote_readback := ✓ 4e8e2e68c1d597ca88497be5ebccc0b7525d7b66
+
+§ DELIVERY-RECEIPT-1
+  feature := FEATURE-001
+  commits := [f1bfa9d94400dec6ec954d594e57b0a6e716b3ec,
+              4a24cb201e58a5083a3e3eb0812227c065172946,
+              9e60e50824f7905acea78f7e5cfcce6b18b0509f]
+  remote_branch := origin/claude/apocrypha-desktop-download-20260909
+  remote_readback := ✓ 9e60e50824f7905acea78f7e5cfcce6b18b0509f
+  production := ✓ dpl_EauZowU3GVs2jpVJUYSkGYMcTR1X → https://www.apocky.com
+  tests := ✓ owner-history + durable-job + release-lint + production-build
+  live_oracle := ✓ conversation `695aa244-f133-436e-bf50-c6baecb19597`
+                 failed job `39cf1d75-17fc-4075-930a-5461926ee22c`
+                 fresh signed-in page showed Retry after reload
+                 active transition retained exactly one visible user turn
+                 fresh retry completed with exact visible answer `RETRY ORACLE PASSED`
+  visual := ✓ desktop 2560x2048 rendered completion inspected; button accessible-name observed
+  security := ✓ same-owner/tenant lookup + failed-only gate + prompt/conversation match + bounded public errors
+  discovered_defect := first live attempt exposed transient duplicate during active hydration
+  repair := ✓ commit 9e60e50 + repeated live oracle
+  cleanup := synthetic oracle records intentionally retained as immutable acceptance provenance;
+             temporary env+seed script deleted
 
 ∎
