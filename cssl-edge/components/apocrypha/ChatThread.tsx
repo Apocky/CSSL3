@@ -26,6 +26,7 @@ interface ChatMessage {
   halt?: string;
   elapsed_s?: number;
   cost_usd?: number;
+  retryJobId?: string;
 }
 
 type ConversationScope = 'active' | 'archived' | 'trash';
@@ -44,6 +45,7 @@ interface ConvMessagesResponse {
     text: string;
     ts_iso: string;
     tool_trace: ToolCallChip[];
+    retry_job_id?: string;
   }>;
 }
 
@@ -100,6 +102,7 @@ const JOB_POLL_SLOW_MS = 1_500;
 const COMPACT_CHAT_QUERY = '(max-width: 767px)';
 const MUTED_TEXT = '#85859a';
 const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const EVENT_STREAM_ACCEPT = ['text', 'event-stream'].join('/');
 
 // Opens the job's push channel and calls `onAdvance` whenever the server says
 // something moved. Reconnects across the server's bounded windows, resuming
@@ -121,7 +124,7 @@ function subscribeJobAdvance(
       try {
         const response = await authFetch(
           `/api/admin/apocrypha/jobs/${encodeURIComponent(jobId)}/stream?after=${cursor}`,
-          { cache: 'no-store', credentials: 'include', signal, headers: { Accept: 'text/event-stream' } },
+          { cache: 'no-store', credentials: 'include', signal, headers: { Accept: EVENT_STREAM_ACCEPT } },
         );
         if (!response.ok || !response.body) return;
         const reader = response.body.getReader();
@@ -264,6 +267,7 @@ export function ChatThread() {
         text: m.text,
         ts: new Date(m.ts_iso),
         toolCalls: m.tool_trace ?? [],
+        retryJobId: m.retry_job_id,
       }));
       const recoveredPromptId = recoveringJob ? `${recoveringJob.id}:user` : null;
       const hydratedMessages = recoveringJob && recoveredPromptId
@@ -889,7 +893,27 @@ export function ChatThread() {
               )}
 
               {messages.map((m, i) => (
-                <MessageBubble key={i} msg={m} showTrace={showTrace} />
+                <React.Fragment key={m.id ?? i}>
+                  <MessageBubble msg={m} showTrace={showTrace} />
+                  {m.retryJobId && currentConv && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '-1rem 0 1.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => void handleSend({
+                          id: m.retryJobId!, prompt: m.text, submittedAt: m.ts.toISOString(), conversationId: currentConv,
+                        })}
+                        disabled={streaming}
+                        style={{
+                          border: '1px solid rgba(255, 170, 85, 0.65)', borderRadius: 8,
+                          padding: '0.45rem 0.7rem', color: '#ffd0a0', background: 'rgba(255, 170, 85, 0.08)',
+                          cursor: streaming ? 'not-allowed' : 'pointer', fontWeight: 650, fontFamily: 'inherit',
+                        }}
+                      >
+                        Retry failed attempt
+                      </button>
+                    </div>
+                  )}
+                </React.Fragment>
               ))}
               {streamingText && (
                 <MessageBubble msg={{ role: 'apocrypha', text: streamingText, ts: new Date() }} showTrace={showTrace} />

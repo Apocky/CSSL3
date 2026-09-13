@@ -418,6 +418,14 @@ async function main(): Promise<void> {
     const retriedBody = retriedDetail.out.body as { data: { messages: Array<Record<string, unknown>> } };
     assert.equal(retriedBody.data.messages.filter((message) => message.text === failedPrompt).length, 1, 'retry never duplicates the user turn');
     assert.equal(retriedBody.data.messages.at(-1)?.text, 'Recovered answer.');
+    assert.equal(retriedBody.data.messages.find((message) => message.text === failedPrompt)?.retry_job_id, undefined, 'completed retry retires the durable retry control');
+
+    jobs.pop();
+    revisions.pop();
+    const failedDetail = reqRes('GET', { query: { id: CONVERSATION_ID } });
+    await conversationsHandler(failedDetail.req, failedDetail.res);
+    const failedBody = failedDetail.out.body as { data: { messages: Array<Record<string, unknown>> } };
+    assert.equal(failedBody.data.messages.find((message) => message.text === failedPrompt)?.retry_job_id, FAILED_JOB_ID, 'an unretried failure remains retryable after reload');
 
     const retrySucceeded = reqRes('POST', { body: {
       prompt: 'Remember this durable opening.', conversation_id: CONVERSATION_ID, retry_job_id: FIRST_JOB_ID,

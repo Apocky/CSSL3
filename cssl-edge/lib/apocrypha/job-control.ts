@@ -77,6 +77,7 @@ export interface OwnerChatMessage {
   ts_iso: string;
   tool_trace: OwnerChatToolCall[];
   truncated?: boolean;
+  retry_job_id?: string;
 }
 
 export interface OwnerChatConversationSummary {
@@ -624,12 +625,14 @@ function projectOwnerChatConversation(
   const ordered = orderedOwnerChatJobs(conversationId, jobs);
   if (ordered.length === 0) return null;
   const messages: OwnerChatMessage[] = [];
+  const retriedJobIds = new Set(ordered.flatMap((job) => ownerChatRetryOf(job.request) ?? []));
   const seenJobIds = new Set<string>();
   for (const job of ordered) {
     const prompt = ownerChatPrompt(job.request);
     const suppressPrompt = Boolean(ownerChatRetryOf(job.request) && seenJobIds.has(ownerChatRetryOf(job.request)!));
     if (prompt && !suppressPrompt) messages.push({
       id: `${job.id}:user`, role: 'user', text: prompt, ts_iso: job.created_at, tool_trace: [],
+      ...(job.status === 'failed' && !retriedJobIds.has(job.id) ? { retry_job_id: job.id } : {}),
     });
     const revision = job.status === 'succeeded' && job.terminal_revision_id
       ? revisions.get(job.terminal_revision_id)
