@@ -76,6 +76,7 @@ interface ActiveJobRecord {
   prompt: string;
   submittedAt: string;
   conversationId?: string;
+  retryOfJobId?: string;
 }
 
 const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
@@ -269,7 +270,7 @@ export function ChatThread() {
         toolCalls: m.tool_trace ?? [],
         retryJobId: m.retry_job_id,
       }));
-      const recoveredPromptId = recoveringJob ? `${recoveringJob.id}:user` : null;
+      const recoveredPromptId = recoveringJob && !recoveringJob.retryOfJobId ? `${recoveringJob.id}:user` : null;
       const hydratedMessages = recoveringJob && recoveredPromptId
         && !msgs.some((message) => message.id === recoveredPromptId)
         ? [...msgs, {
@@ -282,7 +283,7 @@ export function ChatThread() {
       setMessages((previous) => {
         if (!recoveringJob) return hydratedMessages;
         const activeIds = new Set([
-          `${recoveringJob.id}:user`,
+          ...(recoveringJob.retryOfJobId ? [] : [`${recoveringJob.id}:user`]),
           `${recoveringJob.id}:apocrypha`,
         ]);
         const activeMessagesById = new Map(previous.flatMap((message) => (
@@ -598,6 +599,7 @@ export function ChatThread() {
         prompt: text,
         submittedAt: new Date().toISOString(),
         conversationId,
+        ...(retryJob ? { retryOfJobId: retryJob.id } : {}),
       };
       window.localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(record));
       // The blank chat has been used, so the preference is spent. From here on

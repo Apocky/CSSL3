@@ -73,6 +73,7 @@ for (const contract of [
   'retry_job_id: retryJob.id',
   'Retry failed attempt',
   'retryJobId: m.retry_job_id',
+  'recoveringJob && !recoveringJob.retryOfJobId',
 ]) {
   assert(thread.includes(contract), `durable browser contract missing: ${contract}`);
 }
