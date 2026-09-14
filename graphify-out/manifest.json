@@ -9020,8 +9020,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/components/apocrypha/ChatThread.tsx": {
-    "mtime": 1789020622.149948,
-    "ast_hash": "4a54fd14ba82b8d3c53ff743f4b7e599",
+    "mtime": 1789266906.418018,
+    "ast_hash": "f39201f9f40ca1b68a2e3a1cd636701e",
     "semantic_hash": ""
   },
   "cssl-edge/components/apocrypha/CognitionView.tsx": {
@@ -9320,13 +9320,13 @@
     "semantic_hash": ""
   },
   "cssl-edge/lib/specs-snapshot.ts": {
-    "mtime": 1788991806.3608282,
+    "mtime": 1789267921.4725583,
     "ast_hash": "fc49fb5df40d6ed6bf5262dee3353f26",
     "semantic_hash": ""
   },
   "cssl-edge/lib/sse.ts": {
-    "mtime": 1788982608.7297382,
-    "ast_hash": "90528c7c857d2f338f6f7d33b97a28d8",
+    "mtime": 1789158342.234644,
+    "ast_hash": "acc883ca6a944f38845179780b18f48f",
     "semantic_hash": ""
   },
   "cssl-edge/lib/stripe.ts": {
@@ -9350,13 +9350,13 @@
     "semantic_hash": ""
   },
   "cssl-edge/package.json": {
-    "mtime": 1788983949.3687136,
-    "ast_hash": "481a9d1070d3c1c147e522a31e3d35f7",
+    "mtime": 1789267439.9270446,
+    "ast_hash": "394023c2f5802da013b9f3a38e23f07a",
     "semantic_hash": ""
   },
   "cssl-edge/pages/_app.tsx": {
-    "mtime": 1788982608.7397406,
-    "ast_hash": "1c5de2a639c44ac4cf8369f988c5fcf7",
+    "mtime": 1789156908.286592,
+    "ast_hash": "efeca08311fc9faca2f7a297b4ee8a11",
     "semantic_hash": ""
   },
   "cssl-edge/pages/_document.tsx": {
@@ -9440,8 +9440,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/admin/apocrypha/conversations.ts": {
-    "mtime": 1788982608.755652,
-    "ast_hash": "0559e89af7f43fc31c0b4fd2b94d747e",
+    "mtime": 1789267675.4174168,
+    "ast_hash": "608a7718241398162e50f6ad3f2691e0",
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/admin/apocrypha/cost.ts": {
@@ -11445,13 +11445,13 @@
     "semantic_hash": ""
   },
   "cssl-edge/lib/apocrypha/job-control.ts": {
-    "mtime": 1788982608.6387353,
-    "ast_hash": "219fe5060aacfb18b109611c36a2471b",
+    "mtime": 1789266581.5277572,
+    "ast_hash": "1f93207276f2dbfe598dd05f1e21a786",
     "semantic_hash": ""
   },
   "cssl-edge/lib/apocrypha/job-http.ts": {
-    "mtime": 1788982608.6397343,
-    "ast_hash": "0d6601dfde9b86167fda8c5021647ed3",
+    "mtime": 1789251560.446092,
+    "ast_hash": "1751ed714d9835d9a0d434e348e2bb75",
     "semantic_hash": ""
   },
   "cssl-edge/lib/apocrypha/member-chat-client.ts": {
@@ -11520,8 +11520,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/lib/apocrypha/worker-http.ts": {
-    "mtime": 1788982608.650792,
-    "ast_hash": "5284e8ec5bd9391d681a4a6b817e266b",
+    "mtime": 1789238140.484292,
+    "ast_hash": "3b0e3bc7f7f57fbedd247e392ef32c1c",
     "semantic_hash": ""
   },
   "cssl-edge/lib/apocv4/cloudflare-runtime-transport.ts": {
@@ -11920,8 +11920,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/admin/apocrypha/jobs/index.ts": {
-    "mtime": 1788982608.7596526,
-    "ast_hash": "86238393f6aa8941cfb9ec98a34ac14a",
+    "mtime": 1789267675.4184172,
+    "ast_hash": "bcf4f2822db4edcc81f5ea2aa9e4178c",
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/admin/apocrypha/ma.ts": {
@@ -12025,8 +12025,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/apocrypha/jobs/[id]/events.ts": {
-    "mtime": 1788982608.7856536,
-    "ast_hash": "295d08506090b5b5167ca51958476faf",
+    "mtime": 1789158366.6463902,
+    "ast_hash": "e668e0bd7135d7f4dd9fd1a5bee54e22",
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/apocrypha/jobs/[id]/index.ts": {
@@ -12060,8 +12060,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/apocrypha/readiness.ts": {
-    "mtime": 1788982608.7896519,
-    "ast_hash": "67d1b3c078a4fc50327eb216bb63458a",
+    "mtime": 1789238140.501855,
+    "ast_hash": "413f4106dce0b5142d6b87603da3cb27",
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/apocrypha/sessions.ts": {
@@ -12105,8 +12105,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/apocrypha/worker/heartbeat.ts": {
-    "mtime": 1788982608.795652,
-    "ast_hash": "3021f4daf7d8430ad85794995ece0989",
+    "mtime": 1789238140.4942963,
+    "ast_hash": "7e052787f5080030003a20eb2e295687",
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/apocrypha/worker/lease.ts": {
@@ -12135,8 +12135,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/brain/mobile/sync.ts": {
-    "mtime": 1788982608.807656,
-    "ast_hash": "3274dce1caffcfc62f7cd17603fc1757",
+    "mtime": 1789059892.8862376,
+    "ast_hash": "ee312733112bc24ed6eb423d7e3dfc1d",
     "semantic_hash": ""
   },
   "cssl-edge/pages/api/brain/observe.ts": {
@@ -12360,7 +12360,7 @@
     "semantic_hash": ""
   },
   "cssl-edge/playwright.config.ts": {
-    "mtime": 1788982608.909448,
+    "mtime": 1789267289.5080914,
     "ast_hash": "011970a46ced547a128d9d609fc80eef",
     "semantic_hash": ""
   },
@@ -12470,7 +12470,7 @@
     "semantic_hash": ""
   },
   "cssl-edge/public/constellation.json": {
-    "mtime": 1788991807.0853057,
+    "mtime": 1789267922.249766,
     "ast_hash": "c69227fd77923921e508c1f5188df0aa",
     "semantic_hash": ""
   },
@@ -12490,23 +12490,23 @@
     "semantic_hash": ""
   },
   "cssl-edge/public/releases/apocrypha-living/changelog.json": {
-    "mtime": 1788991806.6885555,
+    "mtime": 1789267921.822703,
     "ast_hash": "9bc08b1d912c52645b78c445ea833fd4",
     "semantic_hash": ""
   },
   "cssl-edge/public/releases/apocrypha-living/manifest.json": {
-    "mtime": 1788991806.68956,
+    "mtime": 1789267921.822703,
     "ast_hash": "6373d729d062022b601025e983aaa8fc",
     "semantic_hash": ""
   },
   "cssl-edge/public/releases/apocrypha-living/plan.json": {
-    "mtime": 1788991806.6885555,
+    "mtime": 1789267921.822703,
     "ast_hash": "75ee50dd9c506dd3f78cd28fbe0dda49",
     "semantic_hash": ""
   },
   "cssl-edge/public/releases/apocrypha-mobile/manifest.json": {
-    "mtime": 1788982609.0661733,
-    "ast_hash": "736c3dad7a0ea3c95b6fa6dd43b3d900",
+    "mtime": 1789157605.914066,
+    "ast_hash": "545293c6e262157c6d5a8720f4db84c9",
     "semantic_hash": ""
   },
   "cssl-edge/public/schemas/apocrypha-release-manifest.v1.json": {
@@ -12600,8 +12600,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/control-plane.ts": {
-    "mtime": 1788982609.141211,
-    "ast_hash": "ea20d025e76e720b9d2005337027ebda",
+    "mtime": 1789251887.3316638,
+    "ast_hash": "166c1fdda0dd1e8dd620bd9df8b4ee0b",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/crypto.ts": {
@@ -12610,8 +12610,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/health.ts": {
-    "mtime": 1788982609.1432111,
-    "ast_hash": "2fe457a99c7ee53af54101253f8d44de",
+    "mtime": 1789251887.3705745,
+    "ast_hash": "6b9be5fa12da43029ba50dd5f5e44ae9",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/journal.ts": {
@@ -12625,8 +12625,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/log.ts": {
-    "mtime": 1788982609.1442115,
-    "ast_hash": "9f5dd56d1045555689b5306fa14ed497",
+    "mtime": 1789251887.3016634,
+    "ast_hash": "7f7b98a5f8be075cb592a282b6a3980c",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/manifest.production.json": {
@@ -12640,13 +12640,13 @@
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/prompt.ts": {
-    "mtime": 1788982609.1462114,
-    "ast_hash": "1fbfae4c09d28f540be4ba296c4c3e5d",
+    "mtime": 1789266985.6408098,
+    "ast_hash": "e4c6b1ad0f475cb16059fdf2dd13781a",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/qwen.ts": {
-    "mtime": 1788982609.1472116,
-    "ast_hash": "94f13a446b6ba099f675c0a9d893701a",
+    "mtime": 1789183390.1603942,
+    "ast_hash": "dae0ae4e092d6efce08f79aac1db620d",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/register-worker-task.ps1": {
@@ -12655,8 +12655,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/retrieval.ts": {
-    "mtime": 1788982609.149211,
-    "ast_hash": "94b7127d2441ed89b472c61970313d0e",
+    "mtime": 1789177560.9866612,
+    "ast_hash": "fdec6ac27e23800ba0f1f11b49b1573d",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/run-production.ps1": {
@@ -12665,8 +12665,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/runner.ts": {
-    "mtime": 1788982609.150211,
-    "ast_hash": "d5e610996ad855c18c43747f87c2c3b1",
+    "mtime": 1789251887.3715758,
+    "ast_hash": "d63571db44bf62035c90e925f557c403",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/synthesis.ts": {
@@ -12675,13 +12675,13 @@
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/types.ts": {
-    "mtime": 1788982609.151212,
-    "ast_hash": "11e3268534c2fcc8ea8e73005b43a612",
+    "mtime": 1789251887.3316638,
+    "ast_hash": "b7eff9cdcec5e998c9bdb9501d6366d4",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocrypha-worker/worker.ts": {
-    "mtime": 1788982609.1529882,
-    "ast_hash": "ce8e7641aa1594178d5838e5299804ce",
+    "mtime": 1789281167.1961794,
+    "ast_hash": "c19cc75fda3f8152443e66f90d20b971",
     "semantic_hash": ""
   },
   "cssl-edge/scripts/apocv4-owner-acceptance.mjs": {
@@ -12840,8 +12840,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/tests/api/apocrypha-owner-history.test.ts": {
-    "mtime": 1788982609.2103734,
-    "ast_hash": "cfce8d5f17023c4a6ecdfd368289bc26",
+    "mtime": 1789267697.4758983,
+    "ast_hash": "6445e854e7d1f4a16e2bc5ffa16a7567",
     "semantic_hash": ""
   },
   "cssl-edge/tests/api/apocrypha-presence.test.ts": {
@@ -12945,8 +12945,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/tests/apocrypha-jobs.test.ts": {
-    "mtime": 1788982609.2378912,
-    "ast_hash": "e198ded24dfb02d2fc2a54e0fa8a5406",
+    "mtime": 1789266906.4185214,
+    "ast_hash": "fba02d978fa570f06718ebdbf227f4c4",
     "semantic_hash": ""
   },
   "cssl-edge/tests/apocrypha-member-runtime.test.ts": {
@@ -12985,13 +12985,13 @@
     "semantic_hash": ""
   },
   "cssl-edge/tests/apocrypha-worker-retrieval.test.ts": {
-    "mtime": 1788982609.2438917,
-    "ast_hash": "4eb31ecd8b365b9277a6b4192b32b999",
+    "mtime": 1789251984.550069,
+    "ast_hash": "a0a7a5021b4a9ab9255e5a4f0d2803e2",
     "semantic_hash": ""
   },
   "cssl-edge/tests/apocrypha-worker.test.ts": {
-    "mtime": 1788982609.2448895,
-    "ast_hash": "9fa598bb916b49098e0e168e31fa7c7b",
+    "mtime": 1789281222.40748,
+    "ast_hash": "9e48b600c384a9838ce31aabf11d0d7f",
     "semantic_hash": ""
   },
   "cssl-edge/tests/chaos-public-job-contract.test.ts": {
@@ -13365,8 +13365,8 @@
     "semantic_hash": ""
   },
   "cssl-edge/tests/pages/apocrypha-owner-history.test.ts": {
-    "mtime": 1789020561.5557444,
-    "ast_hash": "b98b85563efe582f63ee68f02d667459",
+    "mtime": 1789267657.276707,
+    "ast_hash": "0bfb5e5971bc5755353c388a46e38032",
     "semantic_hash": ""
   },
   "cssl-edge/tests/pages/atlas.test.ts": {
@@ -13615,8 +13615,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1788982607.0523145,
-    "ast_hash": "82efb97a359f5c7290bf2513d14686be",
+    "mtime": 1789237385.8362477,
+    "ast_hash": "73d3249c74a6f3cae4e0dbc7f5cb03d1",
     "semantic_hash": ""
   },
   "HANDOFF_phase-a_item-19_to_depth-1.csl": {
@@ -15522,6 +15522,396 @@
   "cssl-edge/tests/api/apocrypha-member-conversations-migration.test.ts": {
     "mtime": 1789057907.564273,
     "ast_hash": "8233c9ee33a4905df1e366f3f4f2b635",
+    "semantic_hash": ""
+  },
+  ".codex/hooks.json": {
+    "mtime": 1789237385.8252506,
+    "ast_hash": "64d1ded9263ec58e53f941a5a8cbb70c",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX.ps1": {
+    "mtime": 1789237385.8372476,
+    "ast_hash": "0c47f4d6e112c443e26749c9da455d89",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX10.ps1": {
+    "mtime": 1789237385.838247,
+    "ast_hash": "bf6da386bd512c62095874067a5644b2",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX11.ps1": {
+    "mtime": 1789237385.8392487,
+    "ast_hash": "3c55c98b29d1ec7fdd9bf208e907b0a7",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX2.ps1": {
+    "mtime": 1789237385.8402479,
+    "ast_hash": "d414341b0e85edd0ae7b71ea729d8830",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX3.ps1": {
+    "mtime": 1789237385.841248,
+    "ast_hash": "ce66a222c7fe5375d5f186dadf340587",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX4.ps1": {
+    "mtime": 1789237385.8422475,
+    "ast_hash": "14014581ccf26718d6933ba30c18d768",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX5.ps1": {
+    "mtime": 1789237385.8432474,
+    "ast_hash": "186d90bc3d4ace404d45adb6de4c7f8d",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX6.ps1": {
+    "mtime": 1789237385.8442483,
+    "ast_hash": "77e3a624b7378833c09d7559122627c1",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX7.ps1": {
+    "mtime": 1789237385.8462484,
+    "ast_hash": "0812ac411246299fa6c91a66e587aae2",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX8.ps1": {
+    "mtime": 1789237385.847248,
+    "ast_hash": "5e46026fc52cf775a7f564d6aa601371",
+    "semantic_hash": ""
+  },
+  "APPLY_APOCRYPHA_FIX9.ps1": {
+    "mtime": 1789237385.8482478,
+    "ast_hash": "d8c9e40793c845b2888e3ac9afe5482f",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/pages/api/admin/apocrypha/jobs/index.ts": {
+    "mtime": 1789237385.8512478,
+    "ast_hash": "8c8e31099211840e33fab7b7acd4de99",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/scripts/apocrypha-worker/profile.production.json": {
+    "mtime": 1789237385.8532515,
+    "ast_hash": "5338c82a3d7c94b3ba437cf66e98d35d",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/scripts/apocrypha-worker/prompt.ts": {
+    "mtime": 1789237385.8542514,
+    "ast_hash": "1fbfae4c09d28f540be4ba296c4c3e5d",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/scripts/apocrypha-worker/qwen.ts": {
+    "mtime": 1789237385.8552513,
+    "ast_hash": "a4c4151b0e36b0b63048740174749339",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/scripts/apocrypha-worker/retrieval.ts": {
+    "mtime": 1789237385.8562512,
+    "ast_hash": "d9f7620e8eb13199386a9c3271a41639",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/scripts/apocrypha-worker/synthesis.ts": {
+    "mtime": 1789237385.8572514,
+    "ast_hash": "78dd1f2c066f40bf56964ed8a005f76e",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/scripts/apocrypha-worker/worker.ts": {
+    "mtime": 1789237385.8592515,
+    "ast_hash": "ce8e7641aa1594178d5838e5299804ce",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/tests/apocrypha-retrieval-synthesis.test.ts": {
+    "mtime": 1789237385.860253,
+    "ast_hash": "e163e77cd794b94c8dbef6037c3a932e",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/tests/apocrypha-worker.test.ts": {
+    "mtime": 1789237385.8612518,
+    "ast_hash": "9fa598bb916b49098e0e168e31fa7c7b",
+    "semantic_hash": ""
+  },
+  "_apocrypha-fix/cssl-edge/tests/chaos-worker-payload-contract.test.ts": {
+    "mtime": 1789237385.8632517,
+    "ast_hash": "9f22c9b4feb415a99060c2753adca988",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/.rollback/spatial-v1-20260722/site.js": {
+    "mtime": 1789237385.940479,
+    "ast_hash": "92e9f7e6a3de32f57f7937e947c145f3",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/assets/chatroom.js": {
+    "mtime": 1789237385.942479,
+    "ast_hash": "762367a5b1e3e574bf411757aa6b6f47",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/assets/room-v3.js": {
+    "mtime": 1789237385.9449818,
+    "ast_hash": "3b40a1b0417a0a25d7e30a88958cc3ce",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/assets/site.js": {
+    "mtime": 1789237385.9469848,
+    "ast_hash": "b8f0fca3040e337a57af509e0d7da587",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/support.js": {
+    "mtime": 1789237385.956996,
+    "ast_hash": "450f2a9297cd55032eb905780de3016b",
+    "semantic_hash": ""
+  },
+  "cssl-edge/pages/api/admin/apocrypha/jobs/[id]/stream.ts": {
+    "mtime": 1789158416.9272106,
+    "ast_hash": "e0f4a1ba0a4ee1e1a07460a2a675fddf",
+    "semantic_hash": ""
+  },
+  "cssl-edge/public/.well-known/assetlinks.json": {
+    "mtime": 1789155867.0100324,
+    "ast_hash": "bbd06daa5ae1d7a75e82eabf4c75fc21",
+    "semantic_hash": ""
+  },
+  "cssl-edge/public/commons/assets/chatroom.js": {
+    "mtime": 1789237385.9609962,
+    "ast_hash": "762367a5b1e3e574bf411757aa6b6f47",
+    "semantic_hash": ""
+  },
+  "cssl-edge/public/sw.js": {
+    "mtime": 1789156898.90686,
+    "ast_hash": "3a602f9adac51d8f7ac9972fd3812cc2",
+    "semantic_hash": ""
+  },
+  "cssl-edge/scripts/apocrypha-worker/audit-jobs.mjs": {
+    "mtime": 1789237385.961996,
+    "ast_hash": "5ac4d64698982b275804d62b56e5893d",
+    "semantic_hash": ""
+  },
+  "cssl-edge/scripts/apocrypha-worker/prompt-breakdown.mjs": {
+    "mtime": 1789237385.961996,
+    "ast_hash": "cb2682b3612a8e7c0b6dd1a68cda25e4",
+    "semantic_hash": ""
+  },
+  "cssl-edge/scripts/verify-apocrypha-nav.mjs": {
+    "mtime": 1789237385.963996,
+    "ast_hash": "32a5e4293e242d99a43c01514dccec35",
+    "semantic_hash": ""
+  },
+  "cssl-edge/supabase/.temp/linked-project.json": {
+    "mtime": 1789237385.9659967,
+    "ast_hash": "c1d126f0fb88ccc322b453b582518764",
+    "semantic_hash": ""
+  },
+  "cssl-edge/tests/lib/apocrypha-worker-http.test.ts": {
+    "mtime": 1789059893.147594,
+    "ast_hash": "805f5325f1cfdf9c9cfaea7eb7f8e900",
+    "semantic_hash": ""
+  },
+  "cssl-supabase/migrations/0048_apocrypha_artifacts.sql": {
+    "mtime": 1789237385.9679961,
+    "ast_hash": "75d696388f3289c584ce61b3db78bf16",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/SKILL.md": {
+    "mtime": 1789237385.8172436,
+    "ast_hash": "384e1711f49f7c99954507a6517b6b12",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/add-watch.md": {
+    "mtime": 1789237385.8182497,
+    "ast_hash": "0df0589623217ca38a12bdcabfb42f4c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/exports.md": {
+    "mtime": 1789237385.8182497,
+    "ast_hash": "7fb1a81aca17a462db70684a324fcfb0",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/extraction-spec.md": {
+    "mtime": 1789237385.819249,
+    "ast_hash": "24808b03abfeaf5f6435bb69c0125b2c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/github-and-merge.md": {
+    "mtime": 1789237385.8202484,
+    "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/hooks.md": {
+    "mtime": 1789237385.8212507,
+    "ast_hash": "3f545db6ce646650bb9de588f5512a27",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/query.md": {
+    "mtime": 1789237385.822249,
+    "ast_hash": "c2a8e798674a81b02aa9975f43023819",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/transcribe.md": {
+    "mtime": 1789237385.8232489,
+    "ast_hash": "70f6aa30d6211f3a2c7e9fc45479f50c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/references/update.md": {
+    "mtime": 1789237385.8242488,
+    "ast_hash": "0dad167a95bdb389f02fecffb60b1bc8",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/ApocryphaAvatar.dc.html": {
+    "mtime": 1789237385.902258,
+    "ast_hash": "b28afa067036e981e5a18c7135995e9c",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/Audit - Current State.dc.html": {
+    "mtime": 1789237385.9032607,
+    "ast_hash": "295464762d5fe0ff4e1af91641d3a6ee",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/Current - Chat.dc.html": {
+    "mtime": 1789237385.904261,
+    "ast_hash": "632ed26a4ce4521f2d92dbb4056686b6",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/Current - Hub.dc.html": {
+    "mtime": 1789237385.9052608,
+    "ast_hash": "eb00a2d6960e7d27f7d60eda7b2a7edb",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/Design Rationale - The Clearing.dc.html": {
+    "mtime": 1789237385.9062612,
+    "ast_hash": "d1fcd91bf972efab7c60d9489114461a",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/Explorations - The Clearing.dc.html": {
+    "mtime": 1789237385.9072607,
+    "ast_hash": "b399f78aa9db9d3929855988ca93ace9",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/Membership - Offer.dc.html": {
+    "mtime": 1789237385.9082613,
+    "ast_hash": "d96b6956e34659d0e8689837a4a0f76f",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/The Clearing - Room v2.dc.html": {
+    "mtime": 1789237385.9102614,
+    "ast_hash": "7f754cb53c7906b0a4f46ae5ff1013de",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/The Clearing - Room v3.preview.html": {
+    "mtime": 1789237385.9112625,
+    "ast_hash": "02e23bd747bb5e84af208c27347e9fe3",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/The Clearing - Room.dc.html": {
+    "mtime": 1789237385.9122615,
+    "ast_hash": "543640e726e3e6e5a4416c422567bb41",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/reference/CLAUDE_CODE_APXV2_DESIGN_HANDOVER.csl": {
+    "mtime": 1789237385.934479,
+    "ast_hash": "59a6424732f5bed96a8f1d22ceed926e",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/.rollback/spatial-v1-20260722/APOCKY_REJUVENATION_BLUEPRINT.csl": {
+    "mtime": 1789237385.9364789,
+    "ast_hash": "11abd11a7fedb53f16f6ad58d1151ad7",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/.rollback/spatial-v1-20260722/clearing.html": {
+    "mtime": 1789237385.9374788,
+    "ast_hash": "c8f42226a4ec20db70dfc2a8926e68e7",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/atlas.html": {
+    "mtime": 1789237385.9489853,
+    "ast_hash": "16dbec3ed4c41c865a43f192480737cc",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/clearing.html": {
+    "mtime": 1789237385.9499867,
+    "ast_hash": "5eef38c3e0b2de7ea801a8405547d07e",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/index.html": {
+    "mtime": 1789237385.9509847,
+    "ast_hash": "63541b1adaae2aa90770a257be14eba9",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/membership.html": {
+    "mtime": 1789237385.951985,
+    "ast_hash": "dd759f63079b51d7853a677f3963c9da",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/rejuvenated/principles.html": {
+    "mtime": 1789237385.952985,
+    "ast_hash": "1be192c07db8cf624feb1bd25f20bcfa",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/specs/APOCKY_REJUVENATION_BLUEPRINT.csl": {
+    "mtime": 1789237385.954375,
+    "ast_hash": "36278986266b6da9287dc916ae9bf3c6",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/specs/APOCKY_SPATIAL_COMMONS_LIVE_RECEIPT_2026-07-28.csl": {
+    "mtime": 1789237385.954993,
+    "ast_hash": "6cb6d730a12cf16b97737b7bd8f76e56",
+    "semantic_hash": ""
+  },
+  "cssl-edge/Remodel/Handover pipeline audit kickoff/specs/THE_CLEARING_ROOM_V3_PERCEPTUAL_MATERIAL_PLAN.csl": {
+    "mtime": 1789237385.9559963,
+    "ast_hash": "61670ff88934ec154c204082d880d375",
+    "semantic_hash": ""
+  },
+  "cssl-edge/scripts/oracle-probe.ts": {
+    "mtime": 1789266494.654824,
+    "ast_hash": "3fdcaee0e75b8d0a25f7e38c3bf8477f",
+    "semantic_hash": ""
+  },
+  "specs/APOCRYPHA_COMPETITIVE_FULL_APP_ROADMAP.csl": {
+    "mtime": 1789267129.8675294,
+    "ast_hash": "de52e8a11dcff88f3d52af315cae1583",
+    "semantic_hash": ""
+  },
+  "cssl-edge/lib/apocrypha/owner-oracle-control.ts": {
+    "mtime": 1789267592.0002744,
+    "ast_hash": "ed01ffea4cdda72ddde8fcf6909e5120",
+    "semantic_hash": ""
+  },
+  "cssl-edge/pages/api/admin/apocrypha/oracles/index.ts": {
+    "mtime": 1789267453.8692236,
+    "ast_hash": "997f735c781d1eac5396f9438fe0e6ec",
+    "semantic_hash": ""
+  },
+  "cssl-edge/scripts/apocrypha-production-browser-oracle.ts": {
+    "mtime": 1789267816.0315638,
+    "ast_hash": "c78b528e5d6e470541983c9c65844f5f",
+    "semantic_hash": ""
+  },
+  "cssl-edge/tests/api/apocrypha-owner-oracle.test.ts": {
+    "mtime": 1789267693.759095,
+    "ast_hash": "0361a6b6ac14db7b9706c454db13510e",
+    "semantic_hash": ""
+  },
+  "cssl-edge/tests/api/apocrypha-owner-oracles-migration.test.ts": {
+    "mtime": 1789267888.9581594,
+    "ast_hash": "e1e6307cbb1c145b09eed09938af5c06",
+    "semantic_hash": ""
+  },
+  "cssl-edge/tests/scripts/apocrypha-production-browser-oracle.test.ts": {
+    "mtime": 1789267816.0315638,
+    "ast_hash": "bcc48315d092d06fbf8ded65626f40a8",
+    "semantic_hash": ""
+  },
+  "cssl-supabase/migrations/0059_apocrypha_owner_chat_oracles.sql": {
+    "mtime": 1789267916.711583,
+    "ast_hash": "1c1d610d1dfdef9470c112606aff826a",
+    "semantic_hash": ""
+  },
+  "cssl-edge/test-results/playwright-report/index.html": {
+    "mtime": 1789267252.3663993,
+    "ast_hash": "16ab89af62b9cf2bc1c0cb00714e7905",
+    "semantic_hash": ""
+  },
+  "cssl-edge/test-results/apocrypha-production-oracle/5d764560-c9e8-41a8-bbe8-1ab38efd2e60/receipt.json": {
+    "mtime": 1789268236.6402705,
+    "ast_hash": "6124023ca96478e7f124a27afea2c712",
     "semantic_hash": ""
   }
 }
