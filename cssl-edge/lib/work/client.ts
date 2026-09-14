@@ -7,9 +7,10 @@ export interface WorkRoot { label: string; path: string; writable: boolean }
 
 export interface ArbiterStatus {
   mode: 'off' | 'manual' | 'auto';
+  /** Whose MODEL is loaded. One engine serves both lanes, whichever model that is. */
   resident: 'chat' | 'work' | 'none';
-  chatUp: boolean;
-  workUp: boolean;
+  engineUp: boolean;
+  residentModel: string | null;
   chatBusy: boolean | null;
   handoverInFlight: boolean;
   lastHandoverAt: string | null;

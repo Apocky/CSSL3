@@ -125,9 +125,8 @@ async function gpu(): Promise<void> {
 async function ports(config: WorkConfig): Promise<void> {
   const lanes: [string, number][] = [
     ['chat worker', 19126], ['memory gateway', 19127],
-    ['chat engine', config.arbiter.chatPort],
+    ['engine (shared)', config.arbiter.enginePort],
     ['work service', config.port],
-    ['work engine', Number(new URL(config.engine.baseUrl).port || 19131)],
   ];
   for (const [label, port] of lanes) {
     const owner = await pwsh(`$c = Get-NetTCPConnection -LocalPort ${port} -State Listen -EA SilentlyContinue | Select-Object -First 1; if ($c) { (Get-CimInstance Win32_Process -Filter "ProcessId=$($c.OwningProcess)").Name + ' pid ' + $c.OwningProcess } else { '' }`);
@@ -136,22 +135,25 @@ async function ports(config: WorkConfig): Promise<void> {
 }
 
 async function engines(config: WorkConfig): Promise<void> {
-  const workPort = Number(new URL(config.engine.baseUrl).port || 19131);
-  const chat = await props(config.arbiter.chatPort);
-  const work = await props(workPort);
+  const port = config.arbiter.enginePort;
+  const live = await props(port);
+  if (!live) { add('engine', 'resident model', 'FAIL', `nothing serving on ${port} -- BOTH lanes are down`); return; }
 
-  add('engine', 'resident lane', work ? 'OK' : chat ? 'OK' : 'FAIL',
-    work ? `work (${work.alias})` : chat ? `chat (${chat.alias})` : 'NEITHER lane has an engine');
-  if (work && chat) add('engine', 'exclusivity', 'FAIL', 'BOTH engines are up -- measured to exhaust RAM and OOM one of them');
-  else add('engine', 'exclusivity', 'OK', 'exactly one engine holds the GPU');
+  const isWork = (live.path ?? '').toLowerCase() === config.arbiter.workModelPath.toLowerCase();
+  add('engine', 'resident model', 'OK', `${isWork ? 'work' : 'chat'} :: ${live.alias}`);
+  add('engine', 'serves both lanes', 'OK', `chat worker and work service share :${port}; llama-server ignores the model field`);
+  add('engine', 'context', 'OK', `${live.ctx} tokens`);
+  if (isWork) add('engine', 'model on fast disk', live.path?.toUpperCase().startsWith('C:') ? 'OK' : 'WARN', live.path ?? 'unknown');
 
-  if (work) {
-    add('engine', 'work model path', work.path?.startsWith('C:') ? 'OK' : 'WARN', work.path ?? 'unknown');
-    add('engine', 'work context', 'OK', `${work.ctx} tokens`);
-    if (work.alias !== config.engine.alias) {
-      add('engine', 'alias match', 'FAIL', `engine says "${work.alias}", config says "${config.engine.alias}" -- completions will 404`);
-    } else add('engine', 'alias match', 'OK', work.alias);
-  }
+  // Both lanes must actually point at this port, or one of them is talking to nothing.
+  const workTarget = Number(new URL(config.engine.baseUrl).port || 0);
+  add('engine', 'work service target', workTarget === port ? 'OK' : 'FAIL',
+    workTarget === port ? `:${port}` : `work service targets :${workTarget} but the engine is on :${port}`);
+
+  // A second engine anywhere is the OOM condition; check the old split port is genuinely empty.
+  const stray = await props(19131);
+  add('engine', 'no second engine', stray ? 'FAIL' : 'OK',
+    stray ? `a second engine is serving on :19131 (${stray.alias}) -- measured to exhaust RAM` : 'only one engine is running');
 }
 
 /**
@@ -163,8 +165,7 @@ async function engines(config: WorkConfig): Promise<void> {
  * Neither shows up in /health, /props, or any unit test; both look like "the model is just bad".
  */
 async function capability(config: WorkConfig): Promise<void> {
-  const workPort = Number(new URL(config.engine.baseUrl).port || 19131);
-  const port = (await props(workPort)) ? workPort : config.arbiter.chatPort;
+  const port = config.arbiter.enginePort;
   const alias = (await props(port))?.alias;
   if (!alias) { add('capability', 'tool calling', 'SKIP', 'no engine resident'); return; }
 

@@ -3,9 +3,11 @@ import styles from './WorkConsole.module.css';
 import { workApi, type ArbiterStatus } from '@/lib/work/client';
 
 /**
- * The GPU is single-tenant on this host, so the Work tab has to say plainly which lane holds it
- * and let the operator move it. Taking the card stops the public Chat engine, so the control
- * names that consequence rather than reading as a harmless toggle.
+ * One engine serves both lanes, so this is a MODEL switch, not a handover.
+ *
+ * Chat does not go down when Work is selected -- it is answered by the coding model instead, on
+ * the same endpoint. The only thing that changes is which model is loaded, and the only cost is
+ * the ~75 s swap plus a change of voice on the chat side. Nothing switches back on its own.
  */
 export function EngineControl({
   arbiter, onChange, onNotice,
@@ -20,11 +22,11 @@ export function EngineControl({
   const act = async (take: boolean, force = false): Promise<void> => {
     setBusy(true);
     onNotice(take
-      ? 'Handing the GPU to Work. The chat engine stops and the coding model loads — this takes a few minutes.'
-      : 'Returning the GPU to Chat.');
+      ? 'Loading the coding model. Chat keeps working and will be answered by it too. About 75 seconds.'
+      : 'Loading the chat model back. The Work lane will use it until you switch again.');
     try {
       onChange(take ? await workApi.acquire(force) : await workApi.release());
-      onNotice(take ? 'Work holds the GPU.' : 'Chat holds the GPU.');
+      onNotice(take ? 'Coding model loaded — serving both lanes.' : 'Chat model loaded — serving both lanes.');
     } catch (error) {
       onNotice(error instanceof Error ? error.message : 'The handover failed.');
     } finally {
@@ -32,16 +34,16 @@ export function EngineControl({
     }
   };
 
-  const holder = arbiter.resident === 'work' ? 'Work' : arbiter.resident === 'chat' ? 'Chat' : 'nobody';
+  const holder = arbiter.resident === 'work' ? 'coder' : arbiter.resident === 'chat' ? 'chat' : 'none';
   const busyNow = busy || arbiter.handoverInFlight;
 
   return (
-    <div className={styles.status} role="group" aria-label="GPU assignment">
+    <div className={styles.status} role="group" aria-label="Loaded model">
       <span className={`${styles.dot} ${arbiter.resident === 'work' ? styles.dotOk : arbiter.resident === 'chat' ? styles.dotBusy : styles.dotBad}`} />
-      GPU: {holder}
+      model: {holder}
       {busyNow ? <span> · moving…</span> : arbiter.resident === 'work' ? (
         <button type="button" className={styles.newTask} style={{ width: 'auto', padding: '2px 8px' }} onClick={() => { void act(false); }}>
-          give back to Chat
+          use chat model
         </button>
       ) : (
         <button
@@ -49,9 +51,9 @@ export function EngineControl({
           className={styles.newTask}
           style={{ width: 'auto', padding: '2px 8px' }}
           onClick={() => { void act(true); }}
-          title={arbiter.chatBusy ? 'Chat is mid-job; the handover will wait for it to finish.' : 'Stops the chat engine and loads the coding model.'}
+          title={arbiter.chatBusy ? 'Chat is mid-job; the swap waits for it to finish.' : 'Swaps the loaded model. Chat stays up and is answered by the coder too.'}
         >
-          take for Work
+          use coding model
         </button>
       )}
     </div>

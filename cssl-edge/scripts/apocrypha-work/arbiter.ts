@@ -8,15 +8,25 @@ export type ArbiterMode = 'off' | 'manual' | 'auto';
 
 export interface LaneProfile {
   readonly lane: Lane;
-  readonly port: number;
-  /** PowerShell launcher that brings this lane's engine up. Run detached; it blocks while serving. */
+  /** PowerShell launcher that brings this lane's model up on the shared engine port. */
   readonly launcher: string;
   readonly launcherArgs: readonly string[];
   readonly label: string;
+  /** Absolute .gguf path, used to identify which model is currently loaded. */
+  readonly modelPath: string;
 }
 
 export interface ArbiterConfig {
   readonly mode: ArbiterMode;
+  /**
+   * The ONE port an engine ever listens on.
+   *
+   * llama-server ignores the `model` field in an OpenAI request and simply serves whatever it has
+   * loaded (verified: a nonsense model name was accepted and answered). So both lanes can point at
+   * the same endpoint and neither needs to know which model is behind it. Selecting Work swaps the
+   * model; it does not move the socket, and the Chat worker's configuration never changes.
+   */
+  readonly enginePort: number;
   readonly chat: LaneProfile;
   readonly work: LaneProfile;
   /** Worker health endpoint that reports whether a Chat job is in flight. */
@@ -30,9 +40,10 @@ export interface ArbiterConfig {
 
 export interface ArbiterStatus {
   mode: ArbiterMode;
+  /** Which lane's MODEL is loaded. Both lanes are served by it, whichever it is. */
   resident: Lane | 'none';
-  chatUp: boolean;
-  workUp: boolean;
+  engineUp: boolean;
+  residentModel: string | null;
   chatBusy: boolean | null;
   handoverInFlight: boolean;
   lastHandoverAt: string | null;
@@ -48,6 +59,24 @@ async function portIsServing(port: number, timeoutMs = 3_000): Promise<boolean> 
   }
 }
 
+/** The .gguf the engine currently has open, or null if nothing is serving. */
+async function loadedModel(port: number, timeoutMs = 5_000): Promise<string | null> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/props`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) return null;
+    const body = await response.json() as { model_path?: string };
+    return body.model_path ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function sameModel(a: string | null, b: string): boolean {
+  if (!a) return false;
+  const norm = (value: string): string => value.split('/').join('\\').toLowerCase();
+  return norm(a) === norm(b);
+}
+
 function pwsh(command: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn('pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true });
@@ -61,13 +90,17 @@ function pwsh(command: string, timeoutMs: number): Promise<string> {
 }
 
 /**
- * Owner of the single GPU slot.
+ * Owner of the single GPU slot: ONE engine on ONE port, and a choice of which model it holds.
  *
- * Measured on this host 2026-09-14: the Chat engine commits 19.7 GB (3.9 dedicated + 15.8 shared)
- * against a 15.9 GB card whose WDDM shared pool is capped at 15.9 GB. Bringing a second engine up
- * beside it drove free system RAM from 19.4 GB to 1.1 GB, pushed the D: queue to 26, and the
- * second engine died out-of-memory mid-generation. Two engines do not fit. So they take turns,
- * and this class is the thing that makes the turn-taking safe.
+ * Measured on this host 2026-09-14: the Chat engine commits 19.7 GB against a 15.9 GB card whose
+ * WDDM shared pool is capped at 15.9 GB. A second engine beside it drove free RAM from 19.4 GB to
+ * 1.1 GB and died out-of-memory mid-generation. Two engines do not fit.
+ *
+ * The first design answered that by making the lanes take turns on the card, which meant Chat
+ * went DOWN whenever Work held it. That was unnecessary. llama-server ignores the `model` field in
+ * an OpenAI request and serves whatever it has loaded, so both lanes can share one endpoint and
+ * Chat is simply answered by whichever model is resident. Selecting Work swaps the model once;
+ * Chat keeps working throughout, in the coder's voice. Nothing switches back on its own.
  */
 export class EngineArbiter {
   private readonly config: ArbiterConfig;
@@ -85,15 +118,15 @@ export class EngineArbiter {
   }
 
   async status(): Promise<ArbiterStatus> {
-    const [chatUp, workUp] = await Promise.all([
-      portIsServing(this.config.chat.port),
-      portIsServing(this.config.work.port),
-    ]);
+    const model = await loadedModel(this.config.enginePort);
+    const resident: Lane | 'none' = sameModel(model, this.config.work.modelPath) ? 'work'
+      : sameModel(model, this.config.chat.modelPath) ? 'chat'
+        : model === null ? 'none' : 'work';
     return {
       mode: this.config.mode,
-      resident: workUp ? 'work' : chatUp ? 'chat' : 'none',
-      chatUp,
-      workUp,
+      resident: model === null ? 'none' : resident,
+      engineUp: model !== null,
+      residentModel: model,
       chatBusy: await this.chatBusy(),
       handoverInFlight: this.handover !== null,
       lastHandoverAt: this.lastHandoverAt,
@@ -120,29 +153,29 @@ export class EngineArbiter {
     }
   }
 
-  private async stopLane(lane: Lane): Promise<void> {
-    const profile = this.profile(lane);
+  private async stopEngine(): Promise<void> {
+    const port = this.config.enginePort;
     // Resolve the PID from the listening socket, never from a command-line pattern: a pattern
     // match once killed this session's own process alongside its target.
     const pidText = await pwsh(
-      `$c = Get-NetTCPConnection -LocalPort ${profile.port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.OwningProcess } else { '' }`,
+      `$c = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.OwningProcess } else { '' }`,
       15_000,
     );
     const pid = Number(pidText.trim());
-    if (!Number.isInteger(pid) || pid <= 0) { log('info', 'arbiter.stop.not_running', { lane, port: profile.port }); return; }
-    log('warn', 'arbiter.stop', { lane, pid, port: profile.port, label: profile.label });
+    if (!Number.isInteger(pid) || pid <= 0) { log('info', 'arbiter.stop.not_running', { port }); return; }
+    log('warn', 'arbiter.stop', { pid, port });
     await pwsh(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`, 15_000);
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      if (!await portIsServing(profile.port, 1_500)) return;
+      if (!await portIsServing(port, 1_500)) return;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
-    throw new Error(`${lane} engine on ${profile.port} did not stop`);
+    throw new Error(`the engine on ${port} did not stop`);
   }
 
   private async startLane(lane: Lane): Promise<void> {
     const profile = this.profile(lane);
     const transcript = join(this.config.launcherLogDir, `arbiter-${lane}-launch.log`);
-    log('info', 'arbiter.start', { lane, port: profile.port, label: profile.label, transcript });
+    log('info', 'arbiter.start', { lane, port: this.config.enginePort, label: profile.label, transcript });
 
     // Capture the launcher's own stdout/stderr to a file. The first version of this used
     // stdio:'ignore', and when the launcher threw before llama-server ever ran, the failure was
@@ -186,17 +219,15 @@ export class EngineArbiter {
       }
     };
 
-    const deadline = Date.now() + this.config.startTimeoutMs;
+    const started = Date.now();
+    const deadline = started + this.config.startTimeoutMs;
     while (Date.now() < deadline) {
-      if (await portIsServing(profile.port, 2_000)) {
-        // The port binds before the weights finish loading, so wait for a real answer.
-        const ready = await fetch(`http://127.0.0.1:${profile.port}/props`, { signal: AbortSignal.timeout(4_000) })
-          .then((response) => response.ok).catch(() => false);
-        if (ready) {
-          if (sink !== null) closeSync(sink);
-          log('info', 'arbiter.start.ready', { lane, port: profile.port, seconds: Math.round((Date.now() - (deadline - this.config.startTimeoutMs)) / 1_000) });
-          return;
-        }
+      // The port binds before the weights finish loading, so wait until /props names the model we
+      // actually asked for -- otherwise a lingering previous engine reads as a successful start.
+      if (sameModel(await loadedModel(this.config.enginePort, 3_000), profile.modelPath)) {
+        if (sink !== null) closeSync(sink);
+        log('info', 'arbiter.start.ready', { lane, port: this.config.enginePort, seconds: Math.round((Date.now() - started) / 1_000) });
+        return;
       }
       if (spawnError !== null) {
         if (sink !== null) closeSync(sink);
@@ -241,17 +272,20 @@ export class EngineArbiter {
     if (this.handover) { await this.handover; return this.status(); }
 
     const profile = this.profile(lane);
-    if (await portIsServing(profile.port)) { this.cancelIdleYield(); return this.status(); }
+    const current = await loadedModel(this.config.enginePort);
+    // Already the right model: nothing to do. This is the common case once Work is selected,
+    // because Chat is served by the same engine and no longer forces a swap back.
+    if (sameModel(current, profile.modelPath)) { this.cancelIdleYield(); return this.status(); }
 
-    const other: Lane = lane === 'work' ? 'chat' : 'work';
     const run = (async () => {
-      if (lane === 'work' && await portIsServing(this.config.chat.port)) {
+      // Swapping the model interrupts whatever the Chat worker is doing, so drain it first.
+      if (current !== null) {
         const drained = await this.drainChat();
         if (!drained && opts.force !== true) {
-          throw new Error('the Chat lane is busy or unreachable, so the GPU was not taken from it; retry when Chat is idle, or force the handover');
+          throw new Error('the Chat lane is busy or unreachable, so the model was not swapped; retry when Chat is idle, or force it');
         }
       }
-      await this.stopLane(other);
+      await this.stopEngine();
       await this.startLane(lane);
       this.lastHandoverAt = new Date().toISOString();
       this.lastError = null;
@@ -268,11 +302,18 @@ export class EngineArbiter {
     return this.status();
   }
 
-  /** Hand the GPU back to Chat. Safe to call when Chat already holds it. */
+  /**
+   * Put the Chat model back on the engine.
+   *
+   * This is now OPTIONAL rather than something the system does to protect Chat. The Chat lane is
+   * served by whatever model is loaded, so leaving the coder resident costs Chat nothing but a
+   * change of voice. Call this only when you actually want the chat model back.
+   */
   async release(): Promise<ArbiterStatus> {
     this.cancelIdleYield();
     if (this.config.mode === 'off') return this.status();
-    if (await portIsServing(this.config.chat.port)) return this.status();
+    const current = await loadedModel(this.config.enginePort);
+    if (sameModel(current, this.config.chat.modelPath)) return this.status();
     return this.acquire('chat');
   }
 
