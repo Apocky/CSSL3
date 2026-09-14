@@ -17,6 +17,12 @@ const NAV: ReadonlyArray<NavItem> = [
   { href: '/apocrypha', label: 'Apocrypha' },
 ];
 
+// Owner-only. The Work lane drives a coding agent with filesystem and shell access on the machine
+// that hosts it, so it is never advertised to members or signed-out visitors.
+const OWNER_NAV: ReadonlyArray<NavItem> = [
+  { href: '/work', label: 'Work' },
+];
+
 const EXPLORE: ReadonlyArray<NavItem> = [
   { href: '/tools', label: 'Tools to try' },
   { href: '/words', label: 'Words & meanings' },
@@ -46,7 +52,7 @@ function isActivePath(pathname: string, href: string): boolean {
 
 export default function SiteShell({ children }: { children: React.ReactNode }): JSX.Element {
   const { pathname } = useRouter();
-  const { authenticated } = useSiteSession();
+  const { authenticated, access } = useSiteSession();
   const mobileMenu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (mobileMenu.current) mobileMenu.current.open = false; }, [pathname]);
   useEffect(() => {
@@ -56,7 +62,8 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
   }, []);
 
-  const navLinks = (className = 'apx-nav-link') => NAV.map((item) => {
+  const navItems = access === 'owner' ? [...NAV, ...OWNER_NAV] : NAV;
+  const navLinks = (className = 'apx-nav-link') => navItems.map((item) => {
     const visibleLabel = className === 'apx-mobile-menu-link' ? item.label : (item.shortLabel ?? item.label);
     return (
       <Link

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConsentCard } from './ConsentCard';
@@ -158,7 +159,9 @@ export default function WorkConsole(): JSX.Element {
   return (
     <div className={styles.shell}>
       <header className={styles.bar}>
-        <div className={styles.brand}>Apocrypha Work<span>local coding agent</span></div>
+        <Link href="/apocrypha" className={styles.brand} aria-label="Back to Apocrypha chat">
+          Apocrypha Work<span>local coding agent &middot; back to chat</span>
+        </Link>
         <div className={styles.status}><span className={`${styles.dot} ${engineDot}`} />{engineLabel}</div>
         {health?.arbiter ? <EngineControl arbiter={health.arbiter} onChange={(next) => setHealth((h) => (h ? { ...h, arbiter: next } : h))} onNotice={setNotice} /> : null}
         <div className={styles.spacer} />

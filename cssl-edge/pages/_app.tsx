@@ -35,6 +35,7 @@ function isBare(pathname: string): boolean {
     pathname === '/register' ||
     pathname.startsWith('/auth') ||
     pathname === '/apocrypha' ||
+    pathname === '/work' ||
     pathname === '/brain' ||
     pathname.startsWith('/admin') ||
     pathname === '/clearing' ||
@@ -207,7 +208,7 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
   }, [router.events]);
 
   const bare = isBare(router.pathname);
-  const privateBrainSurface = router.pathname === '/apocrypha' || router.pathname === '/brain';
+  const privateBrainSurface = router.pathname === '/apocrypha' || router.pathname === '/work' || router.pathname === '/brain';
   const content = (
     <>
       {!privateBrainSurface ? (

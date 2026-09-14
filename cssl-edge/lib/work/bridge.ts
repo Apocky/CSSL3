@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const WORK_STATE_DIR = process.env.APOCRYPHA_WORK_STATE_DIR?.trim() || 'D:/Apocrypha/work';
+export const WORK_STATE_DIR = process.env.APOCRYPHA_WORK_STATE_DIR?.trim() || 'C:/Apocrypha/work';
 export const WORK_BASE_URL = (process.env.APOCRYPHA_WORK_URL?.trim() || 'http://127.0.0.1:19130').replace(/\/+$/, '');
 
 export class WorkLaneUnavailable extends Error {
