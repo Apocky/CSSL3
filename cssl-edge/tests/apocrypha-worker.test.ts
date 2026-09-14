@@ -282,7 +282,13 @@ async function main(): Promise<void> {
     assert(qwenRequests.every((request) => request.max_tokens === 384), 'worker ignored the claimed output_budget');
     assert((qwenRequest.chat_template_kwargs as Record<string, unknown>).enable_thinking === false, 'ordinary reading left model thinking enabled');
     const messages = qwenRequest.messages as Array<{ role: string; content: string }>;
-    assert(messages[0]?.content.includes('tarot:tower-star'), 'admitted memory provenance was not supplied to Qwen');
+    // Provenance must reach Qwen -- unchanged. WHERE it rides changed: the compaction path now
+    // carries evidence in its own message beside the question instead of folding it into the
+    // system message, so that the stable half stays a reusable prefix across turns.
+    const compactedPrompt = messages.map((message) => message.content).join('\n');
+    assert(compactedPrompt.includes('tarot:tower-star'), 'admitted memory provenance was not supplied to Qwen');
+    assert(!(messages[0]?.content.includes('tarot:tower-star')),
+      'evidence leaked back into the compacted system message, which re-prefills the whole prompt every turn');
     assert(messages.some((message) => message.content.includes('PROMPT_MARKER')), 'overflow retry lost the user prompt');
     const firstBytes = Buffer.byteLength(JSON.stringify(qwenRequests[0]?.messages), 'utf8');
     const retryBytes = Buffer.byteLength(JSON.stringify(qwenRequests[1]?.messages), 'utf8');
