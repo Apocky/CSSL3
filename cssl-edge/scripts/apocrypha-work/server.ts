@@ -71,6 +71,7 @@ async function main(): Promise<void> {
     drainTimeoutMs: config.arbiter.drainTimeoutMs,
     startTimeoutMs: config.arbiter.startTimeoutMs,
     idleYieldMs: config.arbiter.idleYieldMs,
+    launcherLogDir: config.arbiter.launcherLogDir,
   });
 
   const server = createServer((request, response) => {

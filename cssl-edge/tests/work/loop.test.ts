@@ -17,8 +17,8 @@ import { join } from 'node:path';
 
 import { WorkAgent } from '../../scripts/apocrypha-work/agent';
 import { loadWorkConfig } from '../../scripts/apocrypha-work/config';
-import type { EngineLike, EngineReply } from '../../scripts/apocrypha-work/engine';
-import type { ConsentDecision, ConsentRequest, WorkConfig, WorkEvent, WorkSession, WorkTurn } from '../../scripts/apocrypha-work/types';
+import type { EngineLike, EngineMessage, EngineReply } from '../../scripts/apocrypha-work/engine';
+import type { ConsentDecision, ConsentRequest, ToolDefinition, WorkConfig, WorkEvent, WorkSession, WorkTurn } from '../../scripts/apocrypha-work/types';
 import { Workspace } from '../../scripts/apocrypha-work/workspace';
 
 function assert(condition: boolean, message: string): void {
@@ -40,12 +40,13 @@ class ScriptedEngine implements EngineLike {
   }
 
   async complete(
-    messages: readonly { role: string; content: string }[],
-    _tools: unknown,
+    messages: readonly EngineMessage[],
+    _tools: readonly ToolDefinition[],
     onToken: (delta: string) => void,
+    _signal?: AbortSignal,
   ): Promise<EngineReply> {
     const last = messages[messages.length - 1];
-    if (last) this.seen.push(`${last.role}:${last.content.slice(0, 120)}`);
+    if (last) this.seen.push(`${last.role}:${last.content.slice(0, 600)}`);
     const next = this.script.shift() ?? (this.repeatLast ? this.script[0] : undefined);
     const result = next ?? reply({ content: 'nothing left in the script' });
     if (result.content) onToken(result.content);
@@ -270,8 +271,40 @@ async function main(): Promise<void> {
     assert(agent.tools.length >= 5, 'disabling shell also removed the file tools');
   }
 
+  // 13 — a refused tool is WITHDRAWN, not merely discouraged.
+  //
+  // Layer 3 measured the real model making four write attempts after an explicit refusal, so the
+  // limit is enforced mechanically. This pins it: after two denials the tool must vanish from the
+  // set offered to the engine, and the model must be told in the tool result.
+  {
+    await reset();
+    const attempt = reply({ toolCalls: [{ id: 'c', name: 'edit_file', args: { path: 'a.ts', old_text: 'x = 1', new_text: 'x = 4' } }] });
+    const engine = new ScriptedEngine([attempt, attempt, attempt, attempt, attempt], true);
+    const offeredPerCall: string[][] = [];
+    const spy: EngineLike = {
+      complete: (messages, tools, onToken, signal) => {
+        offeredPerCall.push(tools.map((tool) => tool.name));
+        return engine.complete(messages, tools, onToken, signal);
+      },
+    };
+    const out = await drive(h, spy, 'keep trying', () => 'deny');
+
+    const firstOffer = offeredPerCall[0] ?? [];
+    const lastOffer = offeredPerCall[offeredPerCall.length - 1] ?? [];
+    assert(firstOffer.includes('edit_file'), 'edit_file was not offered on the first call');
+    assert(!lastOffer.includes('edit_file'), `edit_file was still offered after repeated denial: ${lastOffer.join(',')}`);
+    assert(lastOffer.includes('read_file'), 'withdrawing one tool removed the others too');
+
+    const prompted = out.prompts.filter((request) => request.tool === 'edit_file');
+    assert(prompted.length === 2, `the operator was asked about edit_file ${prompted.length} times; the limit is 2`);
+    const shortCircuited = out.turn.toolCalls.filter((call) => call.name === 'edit_file' && /withdrawn/.test(call.error ?? ''));
+    assert(shortCircuited.length > 0, 'later edit_file calls were not short-circuited by the withdrawal');
+    assert((await readFile(target, 'utf8')).includes('x = 1'), 'a denied edit reached disk');
+    assert(engine.seen.some((entry) => entry.includes('WITHDRAWN')), 'the model was never told the tool was withdrawn');
+  }
+
   await rm(base, { recursive: true, force: true });
-  console.log('loop: 13 scenarios across engine-behaviour x consent x tool-outcome x lifecycle');
+  console.log('loop: 14 scenarios across engine-behaviour x consent x tool-outcome x lifecycle');
 }
 
 main().then(() => console.log('work/loop OK')).catch((error) => {

@@ -106,6 +106,7 @@ export interface ArbiterSettings {
   readonly drainTimeoutMs: number;
   readonly startTimeoutMs: number;
   readonly idleYieldMs: number;
+  readonly launcherLogDir: string;
 }
 
 export interface WorkConfig {

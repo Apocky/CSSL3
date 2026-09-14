@@ -153,6 +153,7 @@ export function loadWorkConfig(env: Env = process.env): WorkConfig {
       drainTimeoutMs: integer(env, 'APOCRYPHA_WORK_DRAIN_TIMEOUT_MS', 120_000, 5_000, 900_000),
       startTimeoutMs: integer(env, 'APOCRYPHA_WORK_START_TIMEOUT_MS', 420_000, 30_000, 1_800_000),
       idleYieldMs: integer(env, 'APOCRYPHA_WORK_IDLE_YIELD_MS', 900_000, 0, 86_400_000),
+      launcherLogDir: env.APOCRYPHA_WORK_LAUNCHER_LOG_DIR?.trim() || stateDir,
     },
   };
 }

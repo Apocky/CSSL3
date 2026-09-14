@@ -16,6 +16,9 @@ import type {
 } from './types';
 import type { Workspace } from './workspace';
 
+/** Refusals of one tool, within one turn, before it is withdrawn outright. */
+const DENIAL_LIMIT = 2;
+
 export interface PendingConsent {
   readonly request: ConsentRequest;
   resolve: (decision: ConsentDecision) => void;
@@ -42,7 +45,8 @@ function buildSystemPrompt(workspace: Workspace, config: WorkConfig): string {
     '',
     'Consent:',
     `- Reads run immediately. ${config.autoApprove.includes('write') ? '' : 'Writes and '}commands are shown to the operator for approval before they run.`,
-    '- A denied call is a real answer, not an error. Adapt your plan; do not retry the same call in a loop.',
+    `- A denied call is a real answer, not an error. Adapt your plan. A tool you get refused ${String(DENIAL_LIMIT)} times`,
+    '  is WITHDRAWN for the rest of the task and you will not be able to call it again.',
     '',
     'You have a hard budget of ' + String(config.maxToolIterations) + ' tool steps for this turn. Spend them deliberately.',
   ].join('\n');
@@ -120,13 +124,24 @@ export class WorkAgent {
     ];
     const ctx: ToolContext = { workspace: this.workspace, signal };
 
+    // Denials per tool, for this turn only.
+    //
+    // Telling the model "a denied call is a real answer, do not retry" is a request, and a model
+    // under 2-bit quantization treats it as a suggestion: measured, Qwen3-Coder-Next made FOUR
+    // write attempts after an explicit refusal. Asking more firmly is not an engineering answer.
+    // After DENIAL_LIMIT refusals the tool is withdrawn from the advertised set for the rest of
+    // the turn, so the retry becomes impossible rather than merely discouraged.
+    const denials = new Map<string, number>();
+    const withdrawn = new Set<string>();
+
     for (let iteration = 0; iteration < this.config.maxToolIterations; iteration += 1) {
       if (signal.aborted) { turn.phase = 'cancelled'; emit({ kind: 'phase', data: { phase: 'cancelled' } }); return; }
 
       turn.phase = 'thinking';
       emit({ kind: 'phase', data: { phase: 'thinking', iteration } });
 
-      const reply = await this.engine.complete(messages, this.tools, (delta) => {
+      const offered = this.tools.filter((tool) => !withdrawn.has(tool.name));
+      const reply = await this.engine.complete(messages, offered, (delta) => {
         turn.output += delta;
         emit({ kind: 'token', data: { delta } });
       }, signal);
@@ -172,14 +187,38 @@ export class WorkAgent {
 
       for (const call of reply.toolCalls) {
         if (signal.aborted) { turn.phase = 'cancelled'; emit({ kind: 'phase', data: { phase: 'cancelled' } }); return; }
-        const outcome = await this.settle(session, turn, call, ctx, emit, requestConsent);
+        // Withdrawal has to bite HERE, not only in the advertised tool list. Models routinely call
+        // a tool that is no longer offered, and if the loop still honours it then "withdrawn" was
+        // decoration. Refused without prompting: the operator already said no twice.
+        const outcome = withdrawn.has(call.name)
+          ? {
+            id: call.id, name: call.name, ok: false, elapsedMs: 0, denied: true,
+            summary: `${call.name} is withdrawn for this task`, content: '',
+            error: `${call.name} was withdrawn after repeated refusal and cannot be called again in this task.`,
+          } satisfies ToolCallOutcome
+          : await this.settle(session, turn, call, ctx, emit, requestConsent);
+        if (withdrawn.has(call.name)) emit({ kind: 'tool_result', data: { ...outcome } });
         turn.toolCalls.push(outcome);
+
+        let note = '';
+        if (outcome.denied === true) {
+          const count = (denials.get(call.name) ?? 0) + 1;
+          denials.set(call.name, count);
+          if (count >= DENIAL_LIMIT && !withdrawn.has(call.name)) {
+            withdrawn.add(call.name);
+            note = `\n\n${call.name} has now been refused ${count} times and has been WITHDRAWN for the`
+              + ' rest of this task. It is no longer available to you. Report what you could not do and stop.';
+            log('info', 'work.tool.withdrawn', { tool: call.name, denials: count, turn: turn.id });
+            emit({ kind: 'tool_result', data: { id: `${call.id}-withdrawn`, name: call.name, ok: false, elapsedMs: 0, denied: true, summary: `${call.name} withdrawn after ${count} refusals`, content: '' } });
+          }
+        }
+
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
           content: outcome.ok
             ? outcome.content.slice(0, 24_000)
-            : `ERROR: ${outcome.error ?? 'tool failed'}`,
+            : `ERROR: ${outcome.error ?? 'tool failed'}${note}`,
         });
       }
     }
