@@ -562,9 +562,14 @@ export function composeQwenRequest(
   // character reached the reader. Attached to the final user turn instead, the system message and
   // every prior turn stay a reusable prefix and only this turn's evidence is new. Measured on this
   // host: 1076 tok/s on a cache hit against 303 tok/s cold.
-  const memoryBlock = [
+  // No records means no envelope. An empty <admitted-memory></admitted-memory> is not free: it is
+  // a whole extra message, and its envelope bytes pushed a prompt that used to fit over the byte
+  // budget and into the compaction path, which then reshaped the payload and dropped the canonical
+  // reading. Caught by the chaos payload contract rather than by reading.
+  const memoryRecords = renderMemoryContext(memory, memoryChars);
+  const memoryBlock = memoryRecords.trim().length === 0 ? '' : [
     `<admitted-memory manifest="${job.memoryManifestHash}" digest="${memory.digest}" availability="${memoryStatus}">`,
-    renderMemoryContext(memory, memoryChars),
+    memoryRecords,
     '</admitted-memory>',
   ].join('\n');
   const messages = [
