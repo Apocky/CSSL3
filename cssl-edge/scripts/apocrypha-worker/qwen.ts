@@ -1,3 +1,4 @@
+import { log } from './log';
 import type { QwenResult, QwenUsage, WorkerConfig } from './types';
 
 type Fetch = typeof fetch;
@@ -146,12 +147,36 @@ export class QwenClient {
         return { healthy: false, model: this.config.modelAlias, detail: `health=${healthResponse.status} models=${modelsResponse.status}` };
       }
       const models = await modelsResponse.json() as { data?: Array<{ id?: string }> };
-      const aliases = (models.data ?? []).map((model) => model.id).filter(Boolean);
-      const healthy = aliases.includes(this.config.modelAlias);
+      const aliases = (models.data ?? []).map((model) => model.id).filter((id): id is string => Boolean(id));
+
+      // FOLLOW the resident model; do not pin one alias.
+      //
+      // This check used to require the CONFIGURED alias to appear in /v1/models, which made sense
+      // when one engine served one model forever. The arbiter now swaps the model deliberately, so
+      // that check failed by design the moment it did -- the worker went degraded, and because it
+      // probes before claiming, it stopped claiming at all. Public chat did not get slower; it
+      // stopped. llama-server ignores the model field in a completion and serves whatever it has
+      // loaded, so the alias was never load-bearing for correctness, only for provenance.
+      //
+      // Healthy now means an engine is up and serving something. The alias it is ACTUALLY serving
+      // is reported back so job provenance records the model that really answered, and a
+      // divergence from config is logged rather than silently tolerated.
+      const served = aliases[0];
+      const healthy = aliases.length > 0;
+      const matchesConfig = served !== undefined && aliases.includes(this.config.modelAlias);
+      if (healthy && !matchesConfig) {
+        log('warn', 'worker.qwen.alias_divergence', {
+          configured: this.config.modelAlias,
+          serving: served,
+          note: 'following the resident model; provenance records the serving alias',
+        });
+      }
       return {
         healthy,
-        model: this.config.modelAlias,
-        detail: healthy ? `ready${contextTokens ? ` n_ctx=${contextTokens}` : ''}` : `alias absent (${aliases.join(', ')})`,
+        model: matchesConfig ? this.config.modelAlias : (served ?? this.config.modelAlias),
+        detail: healthy
+          ? `ready${contextTokens ? ` n_ctx=${contextTokens}` : ''}${matchesConfig ? '' : ` serving=${served}`}`
+          : 'engine served no models',
         ...(contextTokens ? { contextTokens } : {}),
       };
     } catch (error) {
