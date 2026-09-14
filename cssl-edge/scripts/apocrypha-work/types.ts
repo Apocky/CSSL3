@@ -98,7 +98,9 @@ export interface EngineProfile {
 
 export interface ArbiterSettings {
   readonly mode: 'off' | 'manual' | 'auto';
-  readonly chatPort: number;
+  readonly enginePort: number;
+  readonly chatModelPath: string;
+  readonly workModelPath: string;
   readonly chatLauncher: string;
   readonly workLauncher: string;
   readonly workProfile: string;

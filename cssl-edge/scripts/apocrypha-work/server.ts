@@ -53,19 +53,20 @@ async function main(): Promise<void> {
   const runner = new TurnRunner(config, agent, store);
   const arbiter = new EngineArbiter({
     mode: config.arbiter.mode,
+    enginePort: config.arbiter.enginePort,
     chat: {
       lane: 'chat',
-      port: config.arbiter.chatPort,
       launcher: config.arbiter.chatLauncher,
       launcherArgs: [],
-      label: 'chat engine',
+      label: 'chat model',
+      modelPath: config.arbiter.chatModelPath,
     },
     work: {
       lane: 'work',
-      port: Number(new URL(config.engine.baseUrl).port || 19131),
       launcher: config.arbiter.workLauncher,
       launcherArgs: ['-Profile', config.arbiter.workProfile],
       label: config.engine.alias,
+      modelPath: config.arbiter.workModelPath,
     },
     chatWorkerHealthUrl: config.arbiter.chatWorkerHealthUrl,
     drainTimeoutMs: config.arbiter.drainTimeoutMs,

@@ -148,8 +148,10 @@ export default function WorkConsole(): JSX.Element {
   const engineDot = offline || !health ? styles.dotBad : running ? styles.dotBusy : health.engine.healthy ? styles.dotOk : styles.dotBad;
   const engineLabel = offline ? 'service offline'
     : !health ? 'checking…'
-      : !health.engine.healthy ? (health.arbiter?.resident === 'chat' ? 'Chat holds the GPU' : `engine down — ${health.engine.detail ?? 'no answer'}`)
-        : `${health.engine.model} · ${phaseLabel(live)}`;
+      : !health.engine.healthy ? `engine down — ${health.engine.detail ?? 'no answer'}`
+        : health.arbiter?.resident === 'chat'
+          ? `${health.engine.model} · chat model loaded — switch for coding strength`
+          : `${health.engine.model} · ${phaseLabel(live)}`;
 
   const roots = useMemo(() => health?.workspace ?? [], [health]);
 
@@ -210,7 +212,7 @@ export default function WorkConsole(): JSX.Element {
           ) : turns.length === 0 && live.prompt === null ? (
             <div className={styles.empty}>
               <h2>Give it a job</h2>
-              <p>This lane reads and edits files on your machine and runs commands you approve. It is separate from Chat and shares nothing with it.</p>
+              <p>This lane reads and edits files on your machine and runs commands you approve. It keeps its own sessions, separate from Chat — they only share the engine.</p>
               <p><code>fix the failing test in lib/oracle.ts</code></p>
             </div>
           ) : null}

@@ -143,7 +143,13 @@ export function loadWorkConfig(env: Env = process.env): WorkConfig {
       // own initiative. 'auto' lets a Work turn trigger the handover once Chat reports idle.
       mode: (['off', 'manual', 'auto'].includes(env.APOCRYPHA_WORK_ARBITER?.trim() ?? '')
         ? env.APOCRYPHA_WORK_ARBITER?.trim() : 'manual') as 'off' | 'manual' | 'auto',
-      chatPort: integer(env, 'APOCRYPHA_WORK_CHAT_PORT', 19128, 1024, 65535),
+      // One port for both lanes. Defaults to the port the Chat worker already talks to, so the
+      // worker needs no reconfiguration and never notices which model is answering.
+      enginePort: integer(env, 'APOCRYPHA_WORK_ENGINE_PORT', 19128, 1024, 65535),
+      chatModelPath: env.APOCRYPHA_WORK_CHAT_MODEL?.trim()
+        || 'D:\Apocrypha\models\Qwen3.5-35B-A3B-Q4\Qwen3.5-35B-A3B-Q4_K_S.gguf',
+      workModelPath: env.APOCRYPHA_WORK_MODEL?.trim()
+        || 'C:\Apocrypha\models\work-lane\Qwen3-Coder-Next-UD-Q2_K_XL.gguf',
       chatLauncher: env.APOCRYPHA_WORK_CHAT_LAUNCHER?.trim()
         || 'C:\\Users\\Apocky\\source\\repos\\apocrypha-core\\tools\\run-qwen35-vulkan.ps1',
       workLauncher: env.APOCRYPHA_WORK_ENGINE_LAUNCHER?.trim()
