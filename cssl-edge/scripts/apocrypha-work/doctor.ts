@@ -14,7 +14,7 @@
  *   node --import tsx scripts/apocrypha-work/doctor.ts --json
  */
 import { execFile } from 'node:child_process';
-import { openSync, readSync, closeSync, statSync } from 'node:fs';
+import { openSync, readFileSync, readSync, closeSync, statSync } from 'node:fs';
 import { promisify } from 'node:util';
 
 import { loadWorkConfig } from './config';
@@ -250,6 +250,30 @@ async function launchers(config: WorkConfig): Promise<void> {
     } catch {
       add('launcher', `${label} script`, 'FAIL', `missing: ${path}`);
     }
+  }
+
+  // EARNED. The chat engine's SCHEDULED TASK does not run the launcher above -- it runs a separate
+  // copy on D:, and the two drift independently. The embedded-quote bug was fixed in one and left
+  // live in the other for hours, invisible to every other probe here, because they all look at the
+  // configured path rather than the one the task names.
+  const taskCopy = 'D:\\Apocrypha\\models\\Qwen3.5-35B-A3B-Q4\\run-qwen35-vulkan.ps1';
+  try {
+    const live = readFileSync(taskCopy, 'utf8');
+    const canonical = readFileSync(config.arbiter.chatLauncher, 'utf8');
+    const code = (text: string): string =>
+      text.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
+    if (/'--model',\s*"`"/.test(code(live))) {
+      add('launcher', 'chat task copy (D:)', 'FAIL', 'the copy the SCHEDULED TASK runs still wraps the model path in embedded quotes');
+    } else if (code(live).trim() !== code(canonical).trim()) {
+      add('launcher', 'chat task copy (D:)', 'WARN', `drifted from ${config.arbiter.chatLauncher} -- two launchers, one of them wrong eventually`);
+    } else {
+      add('launcher', 'chat task copy (D:)', 'OK', 'identical to the canonical launcher');
+    }
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    const missing = /ENOENT/.test(why);
+    add('launcher', 'chat task copy (D:)', missing ? 'WARN' : 'FAIL',
+      missing ? `not present at ${taskCopy}` : `probe itself failed: ${why}`);
   }
 }
 
