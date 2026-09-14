@@ -320,7 +320,9 @@ export class ApocryphaWorker {
       let seq = state.lastAcknowledgedSeq + 1;
       let lastFlushAt = Date.now();
       let streamed = false;
-      const timedFlushChars = Math.min(this.config.chunkMaxChars, Math.max(64, Math.ceil(this.config.chunkMaxChars / 4)));
+      // Floor of 16 rather than 64: at the coder's measured ~95 char/s, 64 characters is another
+      // two-thirds of a second of blank screen on top of prefill, for no benefit.
+      const timedFlushChars = Math.min(this.config.chunkMaxChars, Math.max(16, Math.ceil(this.config.chunkMaxChars / 8)));
       const enqueueChunk = async (chunk: OutputChunk): Promise<void> => {
         // Persist every fragment before allowing Qwen to continue, then deliver
         // it in order without placing a remote control-plane write in Qwen's
@@ -361,10 +363,22 @@ export class ApocryphaWorker {
           this.runtime.phase = 'generating';
         }
       };
+      let firstFragmentSent = false;
       const onDelta = async (delta: string): Promise<void> => {
         if (abortController.signal.aborted) throw abortController.signal.reason;
         streamed = true;
         buffer += delta;
+        // The FIRST fragment leaves the instant it exists, whatever its length.
+        //
+        // Prefill emits nothing at all, and at an 11k-token prompt that silence was measured at
+        // 36 s. Making the reader then wait for a 64-character buffer on top of it is the
+        // difference between "slow" and "frozen" -- and a reader who believes it is frozen gives
+        // up or reloads, which is what the timeout reports look like. Later fragments still batch.
+        if (!firstFragmentSent) {
+          firstFragmentSent = true;
+          await flush(true);
+          return;
+        }
         const timedFlushReady = buffer.length >= timedFlushChars && Date.now() - lastFlushAt >= this.config.chunkFlushMs;
         if (buffer.length >= this.config.chunkMaxChars || timedFlushReady) {
           await flush(false);

@@ -108,6 +108,8 @@ export interface WorkerConfig {
   controlPlaneTimeoutMs: number;
   chunkFlushMs: number;
   chunkMaxChars: number;
+  /** Optional: prompt.ts falls back to 12_000 when a partial config omits it. */
+  memoryContextChars?: number;
   qwenIdleTimeoutMs: number;
   qwenMaxRuntimeMs: number;
   contextWindowTokens: number;

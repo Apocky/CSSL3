@@ -155,8 +155,17 @@ export function loadConfig(
     leaseRenewIntervalMs: integerEnv(env, 'APOCRYPHA_WORKER_RENEW_MS', 10_000, 1_000, 60_000),
     leaseExpiryGraceMs: integerEnv(env, 'APOCRYPHA_WORKER_LEASE_GRACE_MS', 5_000, 1_000, 30_000),
     controlPlaneTimeoutMs: integerEnv(env, 'APOCRYPHA_CONTROL_PLANE_TIMEOUT_MS', 15_000, 1_000, 60_000),
-    chunkFlushMs: integerEnv(env, 'APOCRYPHA_WORKER_CHUNK_FLUSH_MS', 1_000, 100, 10_000),
-    chunkMaxChars: integerEnv(env, 'APOCRYPHA_WORKER_CHUNK_CHARS', 256, 32, 4_096),
+    // 250 ms matches the chat UI's fast poll interval, so a fragment is never sitting in the
+    // worker waiting while the browser is already asking for it.
+    chunkFlushMs: integerEnv(env, 'APOCRYPHA_WORKER_CHUNK_FLUSH_MS', 250, 100, 10_000),
+    chunkMaxChars: integerEnv(env, 'APOCRYPHA_WORKER_CHUNK_CHARS', 96, 32, 4_096),
+    // The admitted-evidence block is the single largest part of the prompt and it changes every
+    // turn, so it is re-prefilled in full every turn -- no cache strategy avoids that. MEASURED
+    // 2026-09-14: prefill runs at ~185 tok/s on this host, so 28,000 chars of evidence is ~8k
+    // tokens and roughly 45 s of silence before the reader sees anything. 12,000 keeps the
+    // recall that answers questions and gives that time back. Raise it if answers start missing
+    // context; the cost is paid in seconds of blank screen.
+    memoryContextChars: integerEnv(env, 'APOCRYPHA_WORKER_MEMORY_CHARS', 12_000, 1_000, 28_000),
     qwenIdleTimeoutMs: integerEnv(env, 'APOCRYPHA_QWEN_IDLE_TIMEOUT_MS', 180_000, 10_000, 900_000),
     qwenMaxRuntimeMs: integerEnv(env, 'APOCRYPHA_QWEN_MAX_RUNTIME_MS', 2_700_000, 60_000, 7_200_000),
     contextWindowTokens: integerEnv(env, 'APOCRYPHA_QWEN_CONTEXT_TOKENS', 4_096, 1_024, 131_072),
