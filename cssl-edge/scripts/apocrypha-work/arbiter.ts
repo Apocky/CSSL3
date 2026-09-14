@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { closeSync, openSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { log } from './log';
 
 export type Lane = 'chat' | 'work';
@@ -22,6 +24,8 @@ export interface ArbiterConfig {
   readonly drainTimeoutMs: number;
   readonly startTimeoutMs: number;
   readonly idleYieldMs: number;
+  /** Where the launcher's own stdout/stderr is captured, so a failed start leaves evidence. */
+  readonly launcherLogDir: string;
 }
 
 export interface ArbiterStatus {
@@ -137,14 +141,50 @@ export class EngineArbiter {
 
   private async startLane(lane: Lane): Promise<void> {
     const profile = this.profile(lane);
-    log('info', 'arbiter.start', { lane, port: profile.port, label: profile.label });
-    // Detached and windowless: a console here steals focus from whatever is fullscreen.
+    const transcript = join(this.config.launcherLogDir, `arbiter-${lane}-launch.log`);
+    log('info', 'arbiter.start', { lane, port: profile.port, label: profile.label, transcript });
+
+    // Capture the launcher's own stdout/stderr to a file. The first version of this used
+    // stdio:'ignore', and when the launcher threw before llama-server ever ran, the failure was
+    // indistinguishable from a slow load: the poll below simply ran out its 420 s and reported a
+    // timeout, having destroyed the one artifact that said why. G2 -- a detector that reports the
+    // same thing for "still working" and "died instantly" has measured nothing.
+    let sink: number | null = null;
+    try {
+      sink = openSync(transcript, 'w');
+    } catch {
+      // A missing log directory must not be the reason the engine cannot start.
+    }
+
+    // windowsHide (CREATE_NO_WINDOW) and NOT detached.
+    //
+    // detached:true on Windows means DETACHED_PROCESS, which gives the child no console at all.
+    // pwsh is a console application: with no console it exits 0 immediately, having run nothing.
+    // That is exactly what happened here -- an instant exit 0 with an empty transcript, which the
+    // old poll-only loop then reported as a 420 s load timeout. CREATE_NO_WINDOW still gives the
+    // child a console, just an invisible one, so the script runs and nothing steals focus from a
+    // fullscreen game. The engine outlives this service either way: Windows does not cascade-kill
+    // children on parent exit unless they share a Job Object.
     const child = spawn('pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', profile.launcher, ...profile.launcherArgs], {
-      detached: true,
       windowsHide: true,
-      stdio: 'ignore',
+      stdio: sink === null ? 'ignore' : ['ignore', sink, sink],
     });
+
+    let exited: { code: number | null; signal: string | null } | null = null;
+    let spawnError: string | null = null;
+    // An 'error' event with no listener is itself an unhandled throw, which would take the whole
+    // service down for what is a recoverable condition.
+    child.on('error', (error) => { spawnError = error.message; });
+    child.on('exit', (code, signal) => { exited = { code, signal }; });
     child.unref();
+
+    const readTranscript = (): string => {
+      try {
+        return readFileSync(transcript, 'utf8').trim().split('\n').slice(-12).join('\n');
+      } catch {
+        return '(no launcher output captured)';
+      }
+    };
 
     const deadline = Date.now() + this.config.startTimeoutMs;
     while (Date.now() < deadline) {
@@ -152,11 +192,30 @@ export class EngineArbiter {
         // The port binds before the weights finish loading, so wait for a real answer.
         const ready = await fetch(`http://127.0.0.1:${profile.port}/props`, { signal: AbortSignal.timeout(4_000) })
           .then((response) => response.ok).catch(() => false);
-        if (ready) { log('info', 'arbiter.start.ready', { lane, port: profile.port }); return; }
+        if (ready) {
+          if (sink !== null) closeSync(sink);
+          log('info', 'arbiter.start.ready', { lane, port: profile.port, seconds: Math.round((Date.now() - (deadline - this.config.startTimeoutMs)) / 1_000) });
+          return;
+        }
+      }
+      if (spawnError !== null) {
+        if (sink !== null) closeSync(sink);
+        throw new Error(`could not launch the ${lane} engine: ${spawnError}`);
+      }
+      // Fail on the child's own exit rather than outliving it by seven minutes.
+      if (exited !== null) {
+        if (sink !== null) closeSync(sink);
+        const { code, signal } = exited as { code: number | null; signal: string | null };
+        throw new Error(
+          `the ${lane} launcher exited (${signal ? `signal ${signal}` : `code ${code}`}) without the engine coming up.\n${readTranscript()}`,
+        );
       }
       await new Promise((resolve) => setTimeout(resolve, 3_000));
     }
-    throw new Error(`${lane} engine did not become ready within ${Math.round(this.config.startTimeoutMs / 1_000)}s`);
+    if (sink !== null) closeSync(sink);
+    throw new Error(
+      `${lane} engine did not become ready within ${Math.round(this.config.startTimeoutMs / 1_000)}s.\n${readTranscript()}`,
+    );
   }
 
   /** Wait for the Chat lane to finish whatever it is doing. Returns false if it never went idle. */
