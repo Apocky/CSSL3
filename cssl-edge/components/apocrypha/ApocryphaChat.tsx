@@ -608,6 +608,10 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
 
   return <main id="main-content" className={styles.page} style={height ? { height } : undefined}>
     <header className={styles.header}>
+      {/* The toggle and the way home used to be an EITHER/OR: a lane with conversations got the
+          hamburger INSTEAD of the brand, so the moment you signed in the only link out of the room
+          disappeared and the page became a dead end. They are both here now, because they were
+          never alternatives — one opens a rail, the other leaves. */}
       {can.conversations ? <button
         ref={sidebarToggleRef}
         type="button"
@@ -618,9 +622,10 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
       >
         <span aria-hidden="true">☰</span>
         <span className={styles.srOnly}>Conversations</span>
-      </button> : <Link href="/" className={styles.brand} aria-label="Apocky home">
+      </button> : null}
+      <Link href="/" className={styles.brand} aria-label="Apocky home">
         <span className="apx-brand-mark" aria-hidden="true" />
-      </Link>}
+      </Link>
 
       <div className={styles.title}>
         <h1>Apocrypha</h1>
@@ -910,6 +915,17 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             {streaming ? 'Sending…' : 'Send'}
           </button>
         </form>
+
+        {/* Following the Clearing, which is the other full-height surface on this site: a focused
+            room still has to say where the rest of it is. In the header these four would crowd a
+            phone; here they are always present and never in the way. */}
+        <nav className={styles.returnLinks} aria-label="Explore Apocky">
+          <Link href="/">Home</Link>
+          <Link href="/tools">Tools</Link>
+          <Link href="/words">Words</Link>
+          <Link href="/conversations">Thoughts</Link>
+          <Link href="/codex-apockalypsis">Codex</Link>
+        </nav>
 
         <p id="apocrypha-composer-help" className={styles.footnote}>
           {can.durableHistory

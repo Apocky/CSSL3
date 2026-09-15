@@ -101,4 +101,33 @@ assert.ok(
   'forgetting a thread is offered only where the thread really is local',
 );
 
-console.log('chat-prefs.test : OK · preferences persist, survive junk, and every one is consumed');
+// ── the room is not a dead end ────────────────────────────────────────────────────────────────
+//
+// The header used to choose BETWEEN the conversations toggle and the link home, so signing in
+// removed the only way out and the page became a trap. They are independent controls; the test
+// pins that they both exist rather than trusting the markup to stay that way.
+assert.ok(
+  room.includes('aria-controls="apocrypha-conversations"'),
+  'the conversations toggle exists',
+);
+assert.ok(
+  room.includes('<Link href="/" className={styles.brand} aria-label="Apocky home">'),
+  'the way home exists',
+);
+const togglesAt = room.indexOf('aria-controls="apocrypha-conversations"');
+const brandAt = room.indexOf('className={styles.brand}');
+assert.ok(brandAt > togglesAt, 'the way home sits beside the toggle, not as its alternative');
+// The defect exactly: the brand link appearing as the ELSE of the toggle's ternary. Matching the
+// `: <Link ... brand` junction rather than mere proximity, because the corrected code legitimately
+// has `: null}` followed by that same link a few characters later.
+assert.ok(
+  !/:\s*<Link href="\/" className=\{styles\.brand\}/u.test(room),
+  'the way home must not be the ELSE branch of having conversations',
+);
+for (const href of ['/tools', '/words', '/conversations', '/codex-apockalypsis']) {
+  assert.ok(room.includes(`<Link href="${href}">`), `the room links back to ${href}`);
+}
+assert.ok(room.includes('aria-label="Explore Apocky"'), 'the return links are a named landmark');
+assert.ok(style.includes('.returnLinks'), 'the return links are styled rather than raw');
+
+console.log('chat-prefs.test : OK · preferences persist and are consumed; the room has a way out');
