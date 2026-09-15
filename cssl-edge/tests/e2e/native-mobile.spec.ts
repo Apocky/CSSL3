@@ -25,7 +25,10 @@ test('public browser entry and native downloads are usable at phone, tablet and 
   for (const width of [360, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/apocrypha');
-    await expect(page.getByRole('link', { name: 'Sign in to chat', exact: true })).toHaveAttribute('href', '/login?next=%2Fapocrypha');
+    // Was a "Sign in to chat" link. The room is open to guests, so that link no longer exists and
+    // asserting it would pin a claim the product contradicts. What must hold is that a signed-out
+    // visitor reaches something they can actually TYPE IN.
+    await expect(page.getByRole('textbox', { name: 'Message Apocrypha' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Create an account', exact: true })).toHaveAttribute('href', '/register?next=%2Fapocrypha');
     await expect(page.getByRole('link', { name: 'Private Brain', exact: true })).toHaveCount(0);
     await accessible(page);

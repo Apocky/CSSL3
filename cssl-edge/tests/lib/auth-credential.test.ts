@@ -17,6 +17,7 @@ import { resolve } from 'node:path';
 import { credentialFromInput, EMAIL_CREDENTIAL_MAX_LENGTH } from '@/lib/auth-credential';
 
 const login = readFileSync(resolve(process.cwd(), 'pages/login.tsx'), 'utf8');
+const register = readFileSync(resolve(process.cwd(), 'pages/register.tsx'), 'utf8');
 
 // A Supabase magic link, in the shapes it actually arrives in.
 const QUERY_LINK = 'https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/verify?token_hash=pkce_8f2c1d4a9b7e6f3c0d5a2b8e4f1c7a9d&type=magiclink&redirect_to=https%3A%2F%2Fwww.apocky.com%2Fauth%2Fcallback%3Fnext%3D%252Fapocrypha';
@@ -50,6 +51,31 @@ assert.ok(
   !/maxLength=\{\d+\}/u.test(element),
   'a literal cap on this field is how the original truncation happened',
 );
+
+// The SAME checks against register, because there are two of these fields and only one was
+// guarded. /login was fixed for the pasted-link defect; /register kept maxLength={8} AND a
+// numeric `pattern` — which blocks submit in the browser before any handler runs, so a link was
+// refused even with the cap raised. A guard covering one of two identical fields is how the
+// second one survived a full commit cycle.
+const FIELDS: ReadonlyArray<readonly [string, string, string]> = [
+  ['login', login, 'login-code'],
+  ['register', register, 'register-code'],
+];
+for (const [name, source, id] of FIELDS) {
+  const at = source.indexOf(`id="${id}"`);
+  assert.ok(at > 0, `${name}: the pasteable field must exist`);
+  const element = source.slice(at, source.indexOf('/>', at));
+  assert.equal(
+    /maxLength=\{([^}]+)\}/u.exec(element)?.[1]?.trim(),
+    'EMAIL_CREDENTIAL_MAX_LENGTH',
+    `${name}: the field must take its bound from the parser, not a literal`,
+  );
+  assert.ok(!/maxLength=\{\d+\}/u.test(element), `${name}: a literal cap is the original truncation`);
+  assert.ok(!/pattern=/u.test(element), `${name}: a pattern attribute silently refuses a pasted link before any handler runs`);
+  assert.ok(!/inputMode="numeric"/u.test(element), `${name}: a numeric keypad makes a link impossible to type and awkward to paste`);
+  assert.ok(element.includes('paste the link'), `${name}: the field must advertise what it accepts`);
+  assert.ok(source.includes('credentialFromInput'), `${name}: the pasted value must reach the parser`);
+}
 
 // ── codes stay codes ──────────────────────────────────────────────────────────────────────────
 assert.deepEqual(credentialFromInput('123456'), { kind: 'code', token: '123456' }, 'a plain code is a code');
@@ -94,4 +120,4 @@ assert.equal(
   'an already-established session is not a token to verify here',
 );
 
-console.log('auth-credential.test : OK · pasted links fit the field and resolve to a token');
+console.log('auth-credential.test : OK · both sign-in fields accept a pasted link and resolve it');

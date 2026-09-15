@@ -7,7 +7,7 @@ const TOOLS = [
   { href: '/spellcraft', title: 'Build an intention', description: 'Play with words for change, protection, growth, and more.', mark: '↗', note: 'Try a starting idea' },
   { href: '/spellbook', title: 'Open your spellbook', description: 'Return to the symbols and intentions you saved here.', mark: '▤', note: 'Saved on this device' },
   { href: 'https://chaos-tarot.com/free-reading?source=apocky-tools', title: 'Get a tarot reading', description: 'Bring a question and explore a different way to look at it.', mark: '☾', note: 'Free reading · Chaos Tarot', external: true },
-  { href: '/apocrypha', title: 'Talk it through', description: 'Ask Apocrypha a question and keep the conversation going.', mark: '“', note: 'Sign in to chat' },
+  { href: '/apocrypha', title: 'Talk it through', description: 'Ask Apocrypha a question and keep the conversation going.', mark: '“', note: 'No account needed' },
   { href: '/words', title: 'Find a meaning', description: 'Look up a word or symbol in plain language.', mark: 'Aa', note: 'Search the definitions' },
 ];
 export default function Tools(): JSX.Element {

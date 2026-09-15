@@ -194,11 +194,11 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
     "title": "Talk with Apocrypha",
     "shortTitle": "Apocrypha",
     "eyebrow": "A conversation of your own",
-    "summary": "Sign in to ask a question and keep your conversations together.",
+    "summary": "Ask a question with no account; sign in to keep your conversations across devices.",
     "href": "/apocrypha",
     "action": "Talk with Apocrypha",
     "external": false,
-    "availability": "account_required",
+    "availability": "public",
     "kind": "community",
     "axes": [
       "People",
@@ -207,8 +207,8 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
     ],
     "coordinates": {
       "People": "Talk with Apocrypha",
-      "Meaning": "Sign in to ask a question and keep your conversations together.",
-      "Visibility": "Sign-in required",
+      "Meaning": "Ask a question with no account; sign in to keep your conversations across devices.",
+      "Visibility": "Open to everyone",
       "Time": "Available to explore"
     }
   },

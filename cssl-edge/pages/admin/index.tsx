@@ -63,7 +63,9 @@ const Dashboard: NextPage = () => {
       value: health?.stripe_configured ? '✓ configured' : '◐ stub-mode',
       glyph: '$',
       accent: health?.stripe_configured ? '#34d399' : '#fbbf24',
-      href: '/admin/payments',
+      // No href: pages/admin/payments does not exist and never has, so this card sent the owner to
+      // a 404 from their own dashboard. Rendered link-less it behaves like the Supabase, Mycelium
+      // and Sigma-Chain cards beside it, which are also status-only.
     },
     {
       label: 'Supabase',

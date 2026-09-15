@@ -1,19 +1,19 @@
 const DEFAULT_AUTH_RETURN_PATH = '/account';
 
-// These routes are intentionally retired by middleware. Never complete an
-// otherwise-successful sign-in by sending a person into a known 404.
+// Paths that do not resolve for an authorized owner. Never complete an otherwise-successful
+// sign-in by sending a person somewhere that 404s — they would land on /account with no
+// explanation and have to retype the URL they were already on.
+//
+// The old comment said these were "intentionally retired by middleware", and that claim is what
+// let the list rot: middleware.ts retires /apoc and /apx and nothing else, but this listed eight
+// /admin/* consoles and /chat as well. All nine resolve live — the consoles return 200 and /chat
+// 308s to /apocrypha, an explicitly allowed return target. The effect was that signing in from any
+// admin console silently dropped the owner on /account instead of the page they were on.
+//
+// Check membership against whether a page FILE exists, not against middleware.
 const RETIRED_AUTH_RETURN_EXACT = new Set([
   '/apoc',
   '/apx',
-  '/chat',
-  '/admin/apex',
-  '/admin/chat',
-  '/admin/coder',
-  '/admin/cognition',
-  '/admin/controls',
-  '/admin/diagnostics',
-  '/admin/sub-minds',
-  '/admin/tools',
 ]);
 
 const RETIRED_AUTH_RETURN_PREFIXES = ['/apoc/', '/apocrypha/', '/apx/', '/chat/', '/admin/apocrypha/'] as const;

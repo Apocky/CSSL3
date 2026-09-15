@@ -63,11 +63,13 @@ const ClinicalPage: NextPage<ClinicalPageProps> = (props) => {
       </Head>
 
       <main style={panelStyle}>
+        {/* Was href="/shawn", which 404s while the atlas publication gate is shut — so the only
+            way off this page led nowhere. apocky.com is correct under both regimes. */}
         <a
-          href="/shawn"
+          href="/"
           style={{ color: '#9fc6c0', fontFamily: 'ui-monospace, monospace', fontSize: '0.82rem' }}
         >
-          ← public atlas
+          ← apocky.com
         </a>
 
         <header style={{ margin: '3rem 0 2.5rem', borderBottom: '1px solid #354039', paddingBottom: '1.5rem' }}>

@@ -65,7 +65,16 @@ assert.equal(getPublicSurfaceNode('cslv3')?.href, '/words#symbols');
 assert.equal(getPublicSurfaceNode('cslv3')?.external, false);
 assert.deepEqual(getExternalRelayNodes().map((node) => node.id).sort(), ['chaos-tarot', 'oracle', 'ko-fi', 'patreon'].sort());
 assert.equal(getPublicSurfaceNode('oracle')?.availability, 'account_required');
-assert.equal(getPublicSurfaceNode('apocrypha')?.availability, 'account_required');
+// Apocrypha is open: a guest can ask a question with no account (pages/api/apocrypha/guest/chat.ts
+// admits a guest principal, and the room itself says "Ask anything. No account needed."). Pinning
+// 'account_required' here is what kept the homepage, /tools and /atlas telling signed-out visitors
+// the opposite of what the page does.
+assert.equal(getPublicSurfaceNode('apocrypha')?.availability, 'public');
+assert.doesNotMatch(
+  String(getPublicSurfaceNode('apocrypha')?.summary ?? ''),
+  /sign in to ask|sign-in required/iu,
+  'the directory must not claim an account is needed to ask',
+);
 assert.equal(getPublicSurfaceNode('codex-apockalypsis')?.href, '/codex-apockalypsis');
 assert.equal(findPublicSurfaceNodeForPath('/akashic-records/example-record?view=reader')?.id, 'akashic-records');
 assert.equal(findPublicSurfaceNodeForPath('/atlas?axis=Meaning')?.id, 'atlas');

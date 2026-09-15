@@ -69,6 +69,11 @@ export function ClearingRoom(props: ClearingRoomProps): JSX.Element {
 
   return (
     <main className={styles.clearing} aria-label="The Clearing public room">
+      {/* /clearing is bare, so SiteShell's skip link never renders here and a keyboard user had to
+          tab past every message — seven stops each — to reach the box. Anchored on the FORM, not
+          the textarea: the textarea only exists in the signed-in branch, so #clearing-composer
+          would not exist for the signed-out visitor who is served by default. */}
+      <a className="apx-skip-link" href="#clearing-composer">Skip to the message box</a>
       <div className={styles.world} aria-hidden="true"><span className={styles.orbit} /><span className={styles.glow} /></div>
       <div className={styles.frame}>
         <header className={styles.header}>
@@ -130,7 +135,7 @@ export function ClearingRoom(props: ClearingRoomProps): JSX.Element {
                 </article>
               ))}
             </div>
-            <form className={styles.composer} onSubmit={submit}>
+            <form className={styles.composer} id="clearing-composer" tabIndex={-1} onSubmit={submit}>
               {props.session === 'signed-in' ? (
                 <>
                   {localReply && <div className={styles.replyNotice}>Replying in thread <button type="button" onClick={() => setLocalReply(null)}>cancel</button></div>}

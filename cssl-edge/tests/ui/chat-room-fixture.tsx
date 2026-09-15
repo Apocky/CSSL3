@@ -20,7 +20,7 @@ const previewMessages: LaneMessage[] = [
 ];
 const previewLane: ChatLane = {
   id: 'owner',
-  capabilities: { conversations: true, newConversation: true, trace: true, cancel: true, durableHistory: true },
+  capabilities: { conversations: true, newConversation: true, trace: true, cancel: true, durableHistory: true, byteLimit: null },
   async send() { return { jobId: 'preview-job', conversationId: 'f1000000-0000-4000-8000-000000000001' }; },
   async poll() { return { done: true, status: 'succeeded', text: 'A synthetic reply for layout only.' }; },
   async listConversations() {

@@ -9,7 +9,9 @@
 // same thing: submit a turn, poll a job, show an answer. So that shape lives here once, and the UI
 // is written once against it.
 
+import { GUEST_MESSAGE_MAX_BYTES } from '@/lib/apocrypha/guest-chat';
 import {
+  MEMBER_CHAT_MESSAGE_MAX_BYTES,
   fetchMemberChatHistoryPage,
   fetchMemberChatJob,
   isMemberChatUuid,
@@ -36,6 +38,8 @@ export interface LaneCapabilities {
   readonly cancel: boolean;
   /** False for guests: their thread lives in their own browser and nowhere else. */
   readonly durableHistory: boolean;
+  /** Server-side message ceiling in BYTES, so the composer can refuse before it clears itself. */
+  readonly byteLimit: number | null;
 }
 
 export interface LaneMessage {
@@ -90,6 +94,25 @@ export interface ChatLane {
 const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TERMINAL = new Set(['succeeded', 'completed', 'failed', 'cancelled', 'dead']);
 
+/**
+ * An error that carries what the server actually said.
+ *
+ * A plain `new Error(message)` loses the status, and the room decides whether a turn is
+ * recoverable by reading exactly that. Without it every refusal — a quota, a bad request, a job
+ * that no longer exists — looked identical to a dropped connection, so the room kept the turn
+ * "in flight", left the composer disabled, and waited out its full 20-minute follow deadline.
+ */
+export class LaneError extends Error {
+  readonly publicStatus: number;
+  readonly code: string | null;
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message);
+    this.name = 'LaneError';
+    this.publicStatus = status;
+    this.code = code;
+  }
+}
+
 export function isConversationId(value: unknown): value is string {
   return typeof value === 'string' && CONVERSATION_ID.test(value);
 }
@@ -108,7 +131,7 @@ function newId(): string {
 export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
   return {
     id: 'guest',
-    capabilities: { conversations: false, newConversation: false, trace: false, cancel: false, durableHistory: false },
+    capabilities: { conversations: false, newConversation: false, trace: false, cancel: false, durableHistory: false, byteLimit: GUEST_MESSAGE_MAX_BYTES },
 
     async send(input, signal) {
       const response = await fetchImpl('/api/apocrypha/guest/chat', {
@@ -124,9 +147,14 @@ export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
           })),
         }),
       });
-      const payload = await response.json().catch(() => null) as { job_id?: string; error?: string } | null;
+      const payload = await response.json().catch(() => null) as
+        { job_id?: string; error?: string; code?: string } | null;
       if (!response.ok || !payload?.job_id) {
-        throw new Error(payload?.error ?? 'Apocrypha could not take that message right now.');
+        throw new LaneError(
+          payload?.error ?? 'Apocrypha could not take that message right now.',
+          response.status,
+          payload?.code ?? null,
+        );
       }
       return { jobId: payload.job_id, conversationId: null };
     },
@@ -137,7 +165,14 @@ export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
         signal,
       });
       const payload = await response.json().catch(() => null) as
-        { status?: string; terminal?: boolean; answer?: string | null; error_code?: string | null } | null;
+        { status?: string; terminal?: boolean; answer?: string | null; error_code?: string | null; code?: string } | null;
+      // A 4xx is the server ANSWERING: this job is gone, or was never yours. Returning
+      // `done: false` for it — which is what this did — made the room poll a job that would never
+      // exist for the whole 20-minute deadline, with the composer disabled the entire time. A 5xx
+      // is different: that is the server failing, and the caller's retry path handles it.
+      if (response.status >= 400 && response.status < 500) {
+        return { done: true, status: 'failed', text: '', failure: payload?.error_code ?? payload?.code ?? 'GUEST_CHAT_NOT_FOUND' };
+      }
       if (!response.ok || !payload) return { done: false, status: 'unknown', text: '' };
       return {
         done: payload.terminal === true,
@@ -161,7 +196,7 @@ export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
 export function memberLane(authFetch: LaneFetch): ChatLane {
   return {
     id: 'member',
-    capabilities: { conversations: true, newConversation: true, trace: false, cancel: false, durableHistory: true },
+    capabilities: { conversations: true, newConversation: true, trace: false, cancel: false, durableHistory: true, byteLimit: MEMBER_CHAT_MESSAGE_MAX_BYTES },
 
     async send(input, signal) {
       const conversationId = input.conversationId ?? newId();
@@ -226,7 +261,7 @@ export function memberLane(authFetch: LaneFetch): ChatLane {
 export function ownerLane(authFetch: LaneFetch): ChatLane {
   return {
     id: 'owner',
-    capabilities: { conversations: true, newConversation: true, trace: true, cancel: true, durableHistory: true },
+    capabilities: { conversations: true, newConversation: true, trace: true, cancel: true, durableHistory: true, byteLimit: null },
 
     async send(input, signal) {
       const conversationId = input.conversationId ?? newId();

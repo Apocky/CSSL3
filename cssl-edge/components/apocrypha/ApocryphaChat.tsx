@@ -109,9 +109,14 @@ function waitFor(signal: AbortSignal, ms: number): Promise<void> {
 // origin, rejected size. Nothing is in flight, so the message can be handed straight back. Anything
 // else — a dropped connection, a 5xx, a timeout — leaves the outcome genuinely unknown, and
 // pretending otherwise is how a sent message silently disappears.
+// Codes that mean "the server decided, and the answer is no" even though they arrive as 429 —
+// which the status rule below deliberately treats as retryable.
+const DEFINITE_CODES = new Set(['GUEST_CHAT_QUOTA', 'GUEST_CHAT_BUSY', 'GUEST_CHAT_INVALID', 'GUEST_ID_INVALID']);
+
 function isDefiniteRefusal(error: unknown): boolean {
-  const status = (error as { publicStatus?: number; status?: number } | null)?.publicStatus
-    ?? (error as { status?: number } | null)?.status;
+  const detail = error as { publicStatus?: number; status?: number; code?: string } | null;
+  if (detail?.code && DEFINITE_CODES.has(detail.code)) return true;
+  const status = detail?.publicStatus ?? detail?.status;
   return typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
@@ -364,7 +369,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             if (failed) {
               setError(snapshot.status === 'cancelled'
                 ? 'This answer was stopped. You can send another message.'
-                : 'Apocrypha could not finish that reply. Your message is saved — sending it again is safe.');
+                : 'Apocrypha could not finish that reply. Nothing was lost — sending it again is safe.');
               setStreamingText(snapshot.text);
             } else {
               setMessages((prior) => {
@@ -405,7 +410,15 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
         if (Date.now() > deadline) {
           if (!disposed) {
             setStreaming(false);
-            setError('Apocrypha is still working. Your message is saved — reopen this conversation later for the reply.');
+            // Clearing the record matters as much as clearing the spinner: left in storage, the
+            // next mount recovers it and the room opens straight back into a dead turn.
+            setActiveJob(null);
+            dropStored(activeJobKey(laneId));
+            setError(can.durableHistory
+              ? 'Apocrypha is still working. Your message is saved — reopen this conversation later for the reply.'
+              // A guest thread is not saved anywhere the reader can return to, so promising they
+              // can reopen it is a promise this lane cannot keep.
+              : 'Apocrypha did not finish that one in time. Nothing was saved — you can ask again.');
           }
           return;
         }
@@ -424,6 +437,13 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   const send = useCallback(async (raw: string) => {
     const text = raw.trim().slice(0, MAX_TEXT);
     if (!text || streaming) return;
+    // Checked in BYTES and BEFORE the draft is cleared. MAX_TEXT counts UTF-16 units, the server
+    // counts bytes, so ~4,100 characters of any non-Latin script passed here and was refused
+    // there — by which point the composer had been emptied and the words were gone.
+    if (can.byteLimit && new TextEncoder().encode(text).length > can.byteLimit) {
+      setError('That message is too long to send. Shorten it and try again — your text is still here.');
+      return;
+    }
     setDraft('');
     setError(null);
     setUnresolved(null);
@@ -633,7 +653,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
       </div>
 
       <nav aria-label="Apocrypha navigation" className={styles.nav}>
-        {signedIn ? <button
+        {/* Was gated on `signedIn`, which made the panel — and therefore the only "Forget it on
+            this device" control — unreachable on the one lane whose thread really is local. */}
+        {signedIn || !can.durableHistory ? <button
           ref={settingsToggleRef}
           type="button"
           className={settingsOpen ? styles.iconButtonActive : styles.iconButton}
@@ -795,7 +817,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           </details> : null}
         </section>
 
-        <section className={styles.settingsGroup} aria-labelledby="apx-set-account">
+        {signedIn ? <section className={styles.settingsGroup} aria-labelledby="apx-set-account">
           <h3 id="apx-set-account">Account</h3>
           {/* Setting up an authenticator was only reachable by knowing to visit /account while
               already signed in — which is exactly the thing you cannot do when your sign-in is the
@@ -805,7 +827,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             then sign in with a 6-digit code.
           </p>
           <p className={styles.settingLink}><Link href="/account">Your account</Link></p>
-        </section>
+        </section> : null}
 
         <p className={styles.settingNote}>
           These are display choices only. The model, authority, and security policy remain server-controlled.

@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AuthFrame } from '../components/hub/AuthFrame';
+import { credentialFromInput, EMAIL_CREDENTIAL_MAX_LENGTH } from '@/lib/auth-credential';
 import { AUTH_PROVIDERS, getAuthClient, persistSessionToCookie } from '../lib/auth';
 import { buildAuthCallbackUrl, normalizeAuthReturnPath } from '../lib/auth-return';
 
@@ -124,11 +125,16 @@ const Register: NextPage = () => {
         }
         accessToken = data.session.access_token;
       } else {
-        const { data, error } = await client.auth.verifyOtp({
-          email: pendingEmail,
-          token: otp.trim(),
-          type: 'email',
-        });
+        // A pasted link carries a token_hash, which verifies WITHOUT an email address; a typed
+        // code verifies against the address. Same call, two shapes — mirroring pages/login.tsx.
+        const credential = credentialFromInput(otp);
+        if (!credential) {
+          setNotice({ tone: 'error', text: 'That did not look like a code or a sign-in link. Paste the whole link, or type the 6-digit code.' });
+          return;
+        }
+        const { data, error } = credential.kind === 'link'
+          ? await client.auth.verifyOtp({ token_hash: credential.token, type: 'email' })
+          : await client.auth.verifyOtp({ email: pendingEmail, token: credential.token, type: 'email' });
         if (error || !data.session) {
           setNotice({ tone: 'error', text: 'That code could not be verified. It may have expired or already been used.' });
           return;
@@ -242,24 +248,28 @@ const Register: NextPage = () => {
           ) : (
             <form className="apx-auth-form" onSubmit={handleVerifyCode}>
               <p className="apx-field-help" id="register-code-destination">Code sent to <strong>{pendingEmail}</strong>.</p>
-              <label className="apx-label" htmlFor="register-code">One-time verification code</label>
+              <label className="apx-label" htmlFor="register-code">Code or sign-in link</label>
+              {/* The same defect that was fixed on /login and left here: this field is told to
+                  accept a pasted sign-in link, and then refused one three ways. `pattern` is the
+                  load-bearing one — the browser blocks submit before any handler runs, so raising
+                  maxLength alone would still reject a link. inputMode="numeric" also brings up a
+                  digits-only keyboard on a phone, where pasting is the only way in. */}
               <input
                 id="register-code"
                 className="apx-input"
                 type="text"
                 autoComplete="one-time-code"
-                inputMode="numeric"
-                pattern="[0-9]{6,8}"
+                inputMode="text"
                 minLength={6}
-                maxLength={8}
+                maxLength={EMAIL_CREDENTIAL_MAX_LENGTH}
                 required
                 value={otp}
                 onChange={(event) => setOtp(event.target.value)}
                 aria-describedby="register-code-destination register-code-help"
-                placeholder="000000"
+                placeholder="000000 or paste the link"
                 autoFocus
               />
-              <p className="apx-field-help" id="register-code-help">Codes are single-use. Do not share this code with anyone.</p>
+              <p className="apx-field-help" id="register-code-help">If the email shows a code, type it. If it only shows a link, press and hold the link, copy it, and paste it here — that keeps you signed in to this app instead of handing the session to your browser. Either one is single-use; do not share it.</p>
               <button className="apx-button apx-button--primary" type="submit" disabled={Boolean(operation) || (!serverSessionPending && otp.trim().length < 6)} style={{ width: '100%', marginTop: 18 }}>
                 {operation === 'verify'
                   ? 'Verifying…'

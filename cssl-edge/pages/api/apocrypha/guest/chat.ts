@@ -8,6 +8,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { hasSameOrigin } from '@/lib/auth-session';
 import {
+  GUEST_MESSAGE_MAX_BYTES,
   GuestChatError, enqueueGuestChat, guestCookie, newGuestId, readGuestCookie,
   type GuestTurn,
 } from '@/lib/apocrypha/guest-chat';
@@ -57,8 +58,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(400).json({ ok: false, code: 'REQUEST_ID_INVALID' });
     return;
   }
-  if (message === '' || Buffer.byteLength(message, 'utf8') > 8_192) {
-    res.status(400).json({ ok: false, code: 'MESSAGE_INVALID' });
+  if (message === '' || Buffer.byteLength(message, 'utf8') > GUEST_MESSAGE_MAX_BYTES) {
+    // An `error` as well as a `code`: without it the browser had nothing to show but a bare
+    // identifier, so an over-long message read as a generic failure rather than as "this is too
+    // long, shorten it" — and the text was already gone from the composer by then.
+    res.status(400).json({
+      ok: false,
+      code: 'MESSAGE_INVALID',
+      error: message === ''
+        ? 'That message was empty.'
+        : 'That message is too long to send. Shorten it and try again.',
+    });
     return;
   }
 

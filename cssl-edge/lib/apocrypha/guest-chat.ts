@@ -24,6 +24,15 @@ const MAX_HISTORY_TURNS = 12;
 
 export interface GuestTurn { readonly role: 'user' | 'assistant'; readonly content: string }
 
+/**
+ * The largest message the guest queue accepts, in BYTES.
+ *
+ * Exported because the browser was capping the composer at 8000 UTF-16 units while this rejected
+ * at 8192 bytes — so ~4,100 characters of any non-Latin script passed the client check and was
+ * refused by the server, after the composer had already been cleared.
+ */
+export const GUEST_MESSAGE_MAX_BYTES = 8_192;
+
 export class GuestChatError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
     super(message);
