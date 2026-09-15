@@ -63,3 +63,64 @@
  .toolGrid{grid-template-columns:1fr;gap:14px}.toolCard{padding:23px}.toolCard h2{font-size:1.7rem}
 }
 @media(prefers-reduced-motion:reduce){.rowLink{transition:none}}
+
+/* -- lead emphasis: register, not decoration -------------------------------------------------
+   Four destinations lead the index. As cards they carried bespoke gradient borders; as rows they
+   get no border, no tint, and no extra height. The emphasis is a change of typographic REGISTER,
+   and the size step is paid out of the leading rather than out of the page.
+
+   This is the winner of a judged three-way panel ("Set, Not Listed") plus three grafts from the
+   runners-up. Two of the winner's own rules were rejected and are deliberately absent:
+     - muting the five other group headings. That is emphasis by subtraction applied to the
+       page's only structural navigation aid, across 33 items.
+     - an unguarded line-height:1.02. Its no-growth argument was derived from font metrics and
+       never measured, so it is not shipped on trust. The size step here is measured instead.
+   Every contrast ratio quoted in all three proposals was also rejected: they were computed
+   against apocky-system.css tokens that pages/_app.tsx does not actually resolve to. */
+.row:is([data-destination="codex-apockalypsis"],[data-destination="apocrypha"],[data-destination="atlas"],[data-destination="chaos-tarot"]) .rowName {
+  font-size: 1.16rem;
+  letter-spacing: -0.026em;
+  /* The size step is paid out of the leading so the row keeps its 48px pitch. Base .rowName is
+     1.02rem/1.35 = 22.03px of line box; 1.16rem at 1.187 = 22.03px. MEASURED, not derived: with
+     this absent the page was +11px, with it the page is level. */
+  line-height: 1.187;
+}
+/* A second channel that is neither colour nor size, so it survives colour-blind vision and
+   forced-colors, where a tint is discarded outright. Reuses the underline the rows already use
+   on hover, and costs no height. */
+.row:is([data-destination="codex-apockalypsis"],[data-destination="apocrypha"],[data-destination="atlas"],[data-destination="chaos-tarot"]) .rowAction {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* Hue-stripped marker. Absolute, so it contributes exactly zero height. */
+.row:is([data-destination="codex-apockalypsis"],[data-destination="apocrypha"],[data-destination="atlas"],[data-destination="chaos-tarot"]) .rowLink {
+  position: relative;
+}
+.row:is([data-destination="codex-apockalypsis"],[data-destination="apocrypha"],[data-destination="atlas"],[data-destination="chaos-tarot"]) .rowLink::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 2px; height: 56%;
+  border-radius: 2px;
+  background: var(--apx-ink, #f5f3ff);
+  opacity: 0.5;
+}
+/* The leads read as one field rather than four separated items. The border stays in the box, so
+   the rows below keep their exact pitch. The FOURTH lead keeps its rule: that one is the group's
+   closing edge, and without it "Start here" bleeds into "Tools". */
+.row:is([data-destination="codex-apockalypsis"],[data-destination="apocrypha"],[data-destination="atlas"]) {
+  border-bottom-color: transparent;
+}
+/* "Start here" is not a louder category, it is a different KIND of thing, so it changes register
+   rather than volume. Leading pinned to the value the label already computes to (0.8rem * 1.4),
+   so the swap costs zero pixels at any root font size. */
+.group[aria-label="Start here"] > h3 {
+  font: 600 1.1rem/1.12rem var(--apx-display, Georgia, serif);
+  letter-spacing: -0.012em;
+  text-transform: none;
+}
+/* Benefits all 33 rows, not only the four leads. */
+@media (prefers-contrast: more) {
+  .rowSummary { color: var(--apx-ink, #f5f3ff); }
+}
