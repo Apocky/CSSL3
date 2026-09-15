@@ -44,6 +44,14 @@ const ORDINARY = [
   'Fix the streaming bug.',
 ];
 
+// noUncheckedIndexedAccess is on: an indexed read is T | undefined. Asserting presence here
+// keeps the strictness that catches real off-by-one bugs in source, without every test
+// assertion drowning in optional chaining.
+function need<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error('missing : ' + what);
+  return value;
+}
+
 async function main(): Promise<void> {
   // 1 -- default ON. This is the whole point; every one of these used to load nothing.
   for (const prompt of ORDINARY) {
@@ -59,40 +67,43 @@ async function main(): Promise<void> {
 
   // 3 -- residency. A fake clock, so the windows are asserted rather than slept through.
   let clock = 1_000_000;
-  let loads = 0;
+  const counter = { loads: 0 };
+  // Read through a call: `assert` is an asserts-condition, so comparing the property
+  // directly narrows it to a literal and TypeScript cannot see the closure mutate it.
+  const loadCount = (): number => counter.loads;
   const memory = new WorkingMemory({
     freshMs: 100, staleMs: 200, maxAgeMs: 500, maxRecords: 4, maxConversations: 2,
     now: () => clock,
   });
   const load = async (): Promise<RetrievalBundle> => {
-    loads += 1;
-    return bundle([record('anamnesis', `r${loads}`)]);
+    counter.loads += 1;
+    return bundle([record('anamnesis', `r${counter.loads}`)]);
   };
 
   const cold = await memory.ensure('k', load);
-  assert(cold.origin === 'cold' && loads === 1, 'a cold conversation must actually read');
+  assert(cold.origin === 'cold' && loadCount() === 1, 'a cold conversation must actually read');
 
   clock += 50;
   const fresh = await memory.ensure('k', load);
-  assert(fresh.origin === 'fresh' && loads === 1, 'a fresh turn must not re-read');
+  assert(fresh.origin === 'fresh' && loadCount() === 1, 'a fresh turn must not re-read');
   assert(fresh.bundle.records.length === 1, 'the warm turn carried no records');
 
   // Past fresh, inside stale: served warm, no refresh yet.
   clock += 100;
   const warm = await memory.ensure('k', load);
-  assert(warm.origin === 'revalidating' && loads === 1, 'refreshed too eagerly');
+  assert(warm.origin === 'revalidating' && loadCount() === 1, 'refreshed too eagerly');
 
   // Past stale: still served immediately, refresh runs BEHIND the turn.
   clock += 150;
   const revalidating = await memory.ensure('k', load);
   assert(revalidating.origin === 'revalidating', 'stale turn should still serve warm');
   await new Promise((resolve) => setImmediate(resolve));
-  assert(loads === 2, 'the background revalidation did not run');
+  assert(loadCount() === 2, 'the background revalidation did not run');
 
   // 4 -- the ceiling. "Warm" must never mean "indefinitely old".
   clock += 10_000;
   const expired = await memory.ensure('k', load);
-  assert(expired.origin === 'expired' && loads === 3, 'an entry past maxAgeMs was served anyway');
+  assert(expired.origin === 'expired' && loadCount() === 3, 'an entry past maxAgeMs was served anyway');
 
   // 5 -- episodic: what was recalled on an earlier turn is still there later, without re-recall.
   const early = revalidating.bundle.records.some((r) => r.provenanceId === 'r1');
@@ -100,7 +111,7 @@ async function main(): Promise<void> {
     'the episodic set dropped an earlier turn instead of accumulating');
   assert(mergeEpisodic([record('a', '1')], [record('a', '2')], 10).length === 2, 'merge lost a record');
   assert(mergeEpisodic([record('a', '1')], [record('a', '1')], 10).length === 1, 'merge failed to dedupe');
-  assert(mergeEpisodic([record('a', '1')], [record('a', '2')], 10)[0].provenanceId === '2',
+  assert(need(mergeEpisodic([record('a', '1')], [record('a', '2')], 10)[0], 'merged head').provenanceId === '2',
     'the newest record must lead');
   assert(mergeEpisodic(
     [record('a', '1'), record('a', '2')], [record('a', '3')], 2,
@@ -144,7 +155,7 @@ async function main(): Promise<void> {
     }],
     ['cache never expires', () => {
       // If maxAgeMs were ignored, the expired turn would have served warm and not re-read.
-      return expired.origin === 'expired' && loads >= 3;
+      return expired.origin === 'expired' && loadCount() >= 3;
     }],
     ['episodic replaces instead of merging', () => mergeEpisodic([record('a', '1')], [record('a', '2')], 10).length === 2],
     ['failed read reported as fresh', () => failing.origin === 'failed'],
