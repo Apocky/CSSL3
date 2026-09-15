@@ -30,13 +30,40 @@ export const config = { api: { bodyParser: { sizeLimit: '8kb' } } };
  * which accounts are worth attacking. The lockout is the only state worth revealing, because a
  * person who is locked out needs to know to stop trying.
  */
+/**
+ * Why a sign-in was refused — recorded server-side only.
+ *
+ * The client deliberately gets one identical answer for every failure, which is right: telling an
+ * attacker apart "no such account" from "wrong code" turns this into an account-discovery oracle.
+ * But it left NOBODY able to diagnose a real failure, including the account holder and the person
+ * fixing it — six consecutive refusals had to be reconstructed from access-log timing. The reason
+ * belongs in the server's own log, where the attacker cannot read it.
+ */
+function record(reason: string, detail?: Record<string, unknown>): void {
+  // No email, no code, no secret, no user id: a log line that identifies the account is a log line
+  // that leaks the account.
+  console.log(JSON.stringify({
+    at: new Date().toISOString(),
+    level: 'info',
+    event: 'auth.totp.refused',
+    reason,
+    ...detail,
+  }));
+}
+
 function deny(res: NextApiResponse, locked = false): void {
   res.status(locked ? 429 : 401).json({
     ok: false,
     code: locked ? 'TOTP_LOCKED' : 'TOTP_REJECTED',
     error: locked
       ? 'Too many incorrect codes. Try again in about 15 minutes.'
-      : 'That code was not accepted. Check your authenticator and try the current code.',
+      // The second sentence is generic — it is the SAME answer for a wrong code, an unknown
+      // account and an unconfirmed enrolment, so it reveals nothing about which. It is here
+      // because the previous wording said only "check your authenticator", which pointed at the
+      // one thing that was working: an account whose enrolment was never confirmed produces this
+      // exact refusal, and six attempts in a row read as a broken authenticator.
+      : 'That code was not accepted. Try the current code — and if you have just scanned a QR, '
+        + 'finish setup on your account page first: a scanned code does nothing until you confirm it.',
   });
 }
 
@@ -82,6 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const code = typeof body.code === 'string' ? body.code.replace(/\D/gu, '') : '';
   if (email === '' || email.length > 320 || code.length !== 6) {
+    record('malformed_request');
     deny(res);
     return;
   }
@@ -105,21 +133,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: userRows, error: lookupError } = await service
       .schema('public')
       .rpc('apocky_totp_user_by_email', { p_email: email });
-    if (lookupError) { deny(res); return; }
+    if (lookupError) { record('account_lookup_failed', { code: lookupError.code }); deny(res); return; }
     const userId = Array.isArray(userRows) && userRows.length > 0
       ? (userRows[0] as { user_id?: string }).user_id
       : null;
-    if (!userId) { deny(res); return; }
+    if (!userId) { record('no_such_account'); deny(res); return; }
 
     const { data: beginRows, error: beginError } = await service.rpc('apocky_totp_begin', { p_user_id: userId });
     if (beginError) {
       // P4291 is the lockout; anything else is "no confirmed authenticator", which must look
       // exactly like a wrong code.
+      // P4041 here is the one that looked like a broken authenticator for six attempts: the
+      // account started enrolment and never confirmed it, so there is no credential to check.
+      record(beginError.code === 'P4291' ? 'locked_out' : 'no_confirmed_authenticator', { code: beginError.code });
       deny(res, beginError.code === 'P4291');
       return;
     }
     const factor = Array.isArray(beginRows) ? beginRows[0] as { secret: string; last_used_step: string | number | null } : null;
-    if (!factor?.secret) { deny(res); return; }
+    if (!factor?.secret) { record('factor_row_without_secret'); deny(res); return; }
 
     const lastUsedStep = factor.last_used_step === null || factor.last_used_step === undefined
       ? null
@@ -130,6 +161,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const locked = Array.isArray(failRows) && failRows[0]
         ? Boolean((failRows[0] as { locked_until: string | null }).locked_until)
         : false;
+      // Distinguishes a genuinely wrong code from a REPLAY of one already spent — the latter is
+      // what "I confirmed and then immediately signed in with the same code" produces.
+      record(lastUsedStep !== null && verifyTotp(factor.secret, code, { lastUsedStep: null }).ok
+        ? 'code_already_spent'
+        : 'code_mismatch', { locked });
       deny(res, locked);
       return;
     }
@@ -137,7 +173,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Spend the step BEFORE minting anything. If this write fails the request fails, because a
     // token handed out against a code that was never marked used is a replayable credential.
     const { error: spendError } = await service.rpc('apocky_totp_succeed', { p_user_id: userId, p_step: verdict.step });
-    if (spendError) { deny(res); return; }
+    if (spendError) { record('step_spend_failed', { code: spendError.code }); deny(res); return; }
 
     const { data: link, error: linkError } = await service.auth.admin.generateLink({
       type: 'magiclink',

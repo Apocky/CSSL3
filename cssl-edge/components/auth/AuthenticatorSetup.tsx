@@ -11,7 +11,7 @@
 // wrong generalisation: the QR is what people expect and what works when the authenticator lives
 // on different hardware from the screen.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type Stage = 'idle' | 'starting' | 'showing' | 'confirming' | 'done';
 
@@ -39,6 +39,21 @@ export function AuthenticatorSetup({ onComplete, hideDoneState }: AuthenticatorS
   const [code, setCode] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Whether this account ALREADY has a working authenticator. Without it the panel looked identical
+  // whether enrolment had been completed or merely started, so "did that work?" had no answer
+  // anywhere in the product — which is how an unconfirmed enrolment survived six sign-in attempts.
+  const [enrolled, setEnrolled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void fetch('/api/auth/totp/setup', { method: 'GET', cache: 'no-store', credentials: 'same-origin' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload: { ok?: boolean; enrolled?: boolean } | null) => {
+        if (live && payload?.ok === true && typeof payload.enrolled === 'boolean') setEnrolled(payload.enrolled);
+      })
+      .catch(() => { /* status is a courtesy; the panel works without it */ });
+    return () => { live = false; };
+  }, [stage]);
 
   const start = useCallback(async () => {
     setStage('starting');
@@ -105,6 +120,7 @@ export function AuthenticatorSetup({ onComplete, hideDoneState }: AuthenticatorS
       <h2>Authenticator</h2>
       <p className="apx-totp-ok">Set up. From now on you sign in with your email and the 6-digit code.</p>
       <button type="button" onClick={() => { setStage('idle'); setNotice(null); }}>Set up a different authenticator</button>
+      <p className="apx-totp-hint">Replacing it invalidates the current one — delete the old Apocky entry in your app.</p>
       <style jsx>{STYLE}</style>
     </section>;
   }
@@ -114,6 +130,14 @@ export function AuthenticatorSetup({ onComplete, hideDoneState }: AuthenticatorS
     <p className="apx-totp-lede">
       Sign in with a 6-digit code from an authenticator app instead of waiting for an email.
     </p>
+
+    {enrolled === true && stage === 'idle' ? <p className="apx-totp-state apx-totp-state-on" role="status">
+      <strong>Set up.</strong> This account signs in with an authenticator code.
+    </p> : null}
+    {enrolled === false && stage === 'idle' ? <p className="apx-totp-state apx-totp-state-off" role="status">
+      <strong>Not set up.</strong> This account has no authenticator yet, so authenticator codes will
+      be refused at sign-in until you finish the steps below.
+    </p> : null}
 
     {stage === 'idle' ? (
       <button type="button" className="apx-totp-primary" onClick={() => { void start(); }}>
@@ -149,8 +173,10 @@ export function AuthenticatorSetup({ onComplete, hideDoneState }: AuthenticatorS
             }}
           >{copied ? 'Copied' : 'Copy key'}</button>
         </li>
-        <li>
-          Then type the 6-digit code it shows, to prove it arrived:
+        <li className="apx-totp-final">
+          <strong>Finish setup.</strong> Type the 6-digit code your authenticator now shows. Scanning
+          alone does not switch anything on — until this code is accepted, the account has no
+          authenticator and signing in with one will be refused.
           <form onSubmit={confirm} className="apx-totp-confirm">
             <label className="apx-totp-srlabel" htmlFor="totp-confirm">Authenticator code</label>
             <input
@@ -168,8 +194,18 @@ export function AuthenticatorSetup({ onComplete, hideDoneState }: AuthenticatorS
           </form>
         </li>
       </ol>
+      {/* This banner exists because of a real sign-in failure. The QR was scanned, setup was
+          started twice, and the code was then typed into the SIGN-IN page — which can only ever
+          refuse it, because the secret is still pending. Six rejections later it still read as "the
+          authenticator is broken". The step that was missed is the one that has to shout. */}
+      <p className="apx-totp-unfinished" role="status">
+        Not finished yet. Enter the code <em>here</em>, not on the sign-in page — the sign-in page
+        cannot accept it until this step is done.
+      </p>
       <p className="apx-totp-hint">
         Nothing changes until you confirm — your current way of signing in keeps working until then.
+        Starting setup again replaces this code, so an authenticator that scanned an earlier one
+        will stop matching; delete the old Apocky entry if you start over.
       </p>
     </> : null}
 
@@ -210,8 +246,21 @@ const STYLE = `
 }
 .apx-totp-confirm button:disabled { opacity: .45; cursor: default; }
 .apx-totp-hint { display: block; margin-top: 6px; color: #a9b5ff90; font-size: 12.5px; }
+.apx-totp-final { padding: 12px 14px; border: 1px solid #b1dfeb55; border-left-width: 3px; border-radius: 10px; background: #0f1724; }
+.apx-totp-final strong { color: #b1dfeb; }
+.apx-totp-unfinished {
+  margin: 14px 0 0; padding: 11px 14px; border-radius: 10px;
+  border: 1px solid #fbbf2455; background: rgba(251, 191, 36, .08);
+  color: #f3e2bd; font-size: 13px; line-height: 1.5;
+}
+.apx-totp-unfinished em { color: #fbbf24; font-style: normal; font-weight: 600; }
 .apx-totp-error { margin-top: 12px; color: #ffb4b4; font-size: 13.5px; }
 .apx-totp-ok { color: #b1dfeb; font-size: 14px; }
+.apx-totp-state { margin: 0 0 14px; padding: 10px 13px; border-radius: 10px; font-size: 13px; line-height: 1.5; border: 1px solid; }
+.apx-totp-state-on { border-color: #34d39955; background: rgba(52, 211, 153, .08); color: #cfe9df; }
+.apx-totp-state-on strong { color: #34d399; }
+.apx-totp-state-off { border-color: #fbbf2455; background: rgba(251, 191, 36, .08); color: #f3e2bd; }
+.apx-totp-state-off strong { color: #fbbf24; }
 .apx-totp-srlabel {
   position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%);
 }

@@ -277,7 +277,51 @@ async function main(): Promise<void> {
   await post({ code: '123456' });
   assert.equal(hub.calls.length, before, 'an anonymous confirm reaches the database not at all');
 
-  console.log('auth-totp-enrolment.test : OK · 7 stages, QR verified, replay and expiry refused');
+  // ── 8 · the refusal an unconfirmed enrolment produces ───────────────────────────────────────
+  //
+  // This is the failure that actually happened: setup was started, the QR was scanned, the code was
+  // typed into the SIGN-IN page, and six attempts were refused with "check your authenticator" —
+  // which was the one thing that was fine. A started-but-unconfirmed enrolment has no credential at
+  // all, so the sign-in path cannot accept anything.
+  hub.rows.delete(OWNER);
+  session = { user: { id: OWNER, email: EMAIL } };
+  const pendingOnly = await post({});
+  assert.equal(pendingOnly.status, 200, 'enrolment starts');
+  const unconfirmedSecret = String(pendingOnly.body.secret);
+  const begun = await hub.rpc('apocky_totp_begin', { p_user_id: OWNER });
+  assert.equal(
+    (begun.error as { code?: string } | null)?.code,
+    undefined,
+    'apocky_totp_begin is the first read the sign-in path makes',
+  );
+  // The in-memory stand-in mirrors the SQL: no confirmed_at means no row comes back at all.
+  assert.deepEqual(begun.data, [], 'an unconfirmed enrolment yields no credential to verify against');
+  // And a perfectly correct code for the pending secret still cannot sign in, because nothing has
+  // promoted that secret yet. The code is right; the account has no authenticator.
+  assert.equal(
+    Array.isArray(begun.data) && begun.data.length,
+    0,
+    'a correct code against a pending secret has nothing to be checked against',
+  );
+  assert.ok(codeForStep(unconfirmedSecret, currentStep()).length === 6, 'the code itself is well-formed — that was never the problem');
+
+  // The refusal the reader sees must not send them back to the authenticator.
+  const signInSource = readFileSync(resolve(process.cwd(), 'pages/api/auth/totp.ts'), 'utf8');
+  assert.ok(
+    signInSource.includes('finish setup on your account page first'),
+    'the refusal must name unfinished setup, since that produces this exact refusal',
+  );
+  assert.ok(
+    signInSource.includes("record('no_confirmed_authenticator'")
+      || signInSource.includes("'no_confirmed_authenticator'"),
+    'the server must record WHY it refused, since the client answer is deliberately uniform',
+  );
+  assert.ok(
+    !signInSource.includes('record(') || !/record\([^)]*email/u.test(signInSource),
+    'the refusal log must not carry the account it refused',
+  );
+
+  console.log('auth-totp-enrolment.test : OK · 8 stages, unconfirmed enrolment diagnosed, replay and expiry refused');
 }
 
 void main().catch((error: unknown) => {
