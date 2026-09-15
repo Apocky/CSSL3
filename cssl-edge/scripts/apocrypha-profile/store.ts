@@ -87,10 +87,12 @@ export class ProfileStore {
     }
   }
 
-  beginPass(model: string, watermark: string | null): number {
+  // No watermark at begin: an unfinished pass must never look like progress. finishPass writes
+  // the position actually distilled.
+  beginPass(model: string, _watermark: string | null = null): number {
     const result = this.database
-      .prepare('INSERT INTO passes(started_at, corpus_watermark, model) VALUES(?,?,?)')
-      .run(new Date().toISOString(), watermark, model);
+      .prepare('INSERT INTO passes(started_at, model) VALUES(?,?)')
+      .run(new Date().toISOString(), model);
     return Number(result.lastInsertRowid);
   }
 
@@ -147,14 +149,21 @@ export class ProfileStore {
       readonly chunksRead: number; readonly claimsOffered: number; readonly claimsGrounded: number;
       readonly claimsNew: number; readonly claimsCorroborated: number;
       readonly rejected: Record<Rejection, number>;
+      readonly watermark: string | null;
     },
   ): void {
+    // The watermark is written HERE, not at beginPass, and it is the position actually DISTILLED
+    // rather than the position read. A pass that reads 7,512 chunks and distils 24 of them has
+    // made 24 chunks of progress; recording the read position would let the next run resume past
+    // everything it skipped, and those chunks would never be looked at again. Same failure family
+    // as an indexer recording a file as done after extracting nothing from it.
     this.database.prepare(
       'UPDATE passes SET finished_at = ?, chunks_read = ?, claims_offered = ?, claims_grounded = ?, '
-      + 'claims_new = ?, claims_corroborated = ?, rejected_json = ? WHERE id = ?',
+      + 'claims_new = ?, claims_corroborated = ?, rejected_json = ?, corpus_watermark = ? WHERE id = ?',
     ).run(
       new Date().toISOString(), totals.chunksRead, totals.claimsOffered, totals.claimsGrounded,
-      totals.claimsNew, totals.claimsCorroborated, JSON.stringify(totals.rejected), passId,
+      totals.claimsNew, totals.claimsCorroborated, JSON.stringify(totals.rejected),
+      totals.watermark, passId,
     );
   }
 
@@ -199,6 +208,21 @@ export class ProfileStore {
       'SELECT statement, corroborations, last_seen AS lastSeen FROM claims '
       + "WHERE axis = ? AND status = 'live' ORDER BY corroborations DESC, last_seen DESC LIMIT ?",
     ).all(axis, limit) as unknown as Array<{ statement: string; corroborations: number; lastSeen: string | null }>;
+  }
+
+  /**
+   * The corpus position of the last pass that actually finished.
+   *
+   * Only FINISHED passes count. Resuming from an interrupted pass's watermark would skip every
+   * chunk it read but had not yet distilled -- silent, permanent gaps in the profile that nothing
+   * downstream could detect.
+   */
+  lastWatermark(): string | null {
+    const row = this.database.prepare(
+      'SELECT corpus_watermark FROM passes WHERE finished_at IS NOT NULL '
+      + 'AND corpus_watermark IS NOT NULL ORDER BY id DESC LIMIT 1',
+    ).get() as { corpus_watermark: string | null } | undefined;
+    return row?.corpus_watermark ?? null;
   }
 
   counts(): Record<string, number> {

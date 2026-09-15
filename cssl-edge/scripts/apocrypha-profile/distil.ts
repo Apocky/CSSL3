@@ -119,13 +119,23 @@ export interface PassResult {
 
 export async function runPass(options: {
   readonly since?: string | null;
+  readonly resume?: boolean;
   readonly limit?: number;
   readonly batches?: number;
   readonly timeoutMs?: number;
   readonly onProgress?: (line: string) => void;
 } = {}): Promise<PassResult> {
   const say = options.onProgress ?? (() => {});
-  const corpus = readCorpus(ANAMNESIS, { since: options.since ?? null });
+  // Resume from the last FINISHED pass unless told otherwise, so a scheduled run reads only what
+  // arrived since. Passing `since: null` explicitly still forces a full re-read.
+  let since = options.since ?? null;
+  if (since === null && options.resume !== false) {
+    const previous = new ProfileStore(PROFILE_DB);
+    since = previous.lastWatermark();
+    previous.close();
+    if (since) say(`resuming from watermark ${since}`);
+  }
+  const corpus = readCorpus(ANAMNESIS, { since });
   let admitted = corpus.admitted;
   if (options.limit) admitted = admitted.slice(-options.limit);
   say(`corpus: ${admitted.length} admitted chunks (scanned ${corpus.scanned})`);
@@ -140,6 +150,8 @@ export async function runPass(options: {
   ) as Record<Rejection, number>;
 
   let offered = 0, groundedCount = 0, fresh = 0, corroborated = 0, duplicate = 0, batchesFailed = 0;
+  // Advances only over batches that were actually distilled.
+  let distilledWatermark: string | null = since;
   const totalBatches = Math.ceil(admitted.length / BATCH);
   const cap = options.batches ?? totalBatches;
 
@@ -169,6 +181,11 @@ export async function runPass(options: {
       else if (outcome === 'corroborated') corroborated += 1;
       else duplicate += 1;
     }
+    for (const chunk of slice) {
+      if (chunk.eventTs && (distilledWatermark === null || chunk.eventTs > distilledWatermark)) {
+        distilledWatermark = chunk.eventTs;
+      }
+    }
     if ((index + 1) % 10 === 0 || index + 1 === Math.min(cap, totalBatches)) {
       say(`batch ${index + 1}/${Math.min(cap, totalBatches)} | offered ${offered} | grounded ${groundedCount} `
         + `| new ${fresh} corrob ${corroborated} | failed ${batchesFailed}`);
@@ -178,6 +195,7 @@ export async function runPass(options: {
   store.finishPass(passId, {
     chunksRead: admitted.length, claimsOffered: offered, claimsGrounded: groundedCount,
     claimsNew: fresh, claimsCorroborated: corroborated, rejected,
+    watermark: distilledWatermark,
   });
   const drift = store.audit();
   if (drift.length) say(`WARNING: ${drift.length} claims violate corroborations == evidence`);
@@ -194,7 +212,8 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/gu, 
   runPass({
     limit: arg('limit') ? Number(arg('limit')) : undefined,
     batches: arg('batches') ? Number(arg('batches')) : undefined,
-    since: arg('since') ?? null,
+    since: arg('since') ?? undefined,
+    resume: process.argv.includes('--full') ? false : undefined,
     onProgress: (line) => console.log(line),
   }).then((result) => {
     console.log(JSON.stringify(result, null, 2));
