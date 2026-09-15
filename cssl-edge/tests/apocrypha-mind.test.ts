@@ -135,7 +135,10 @@ async function main(): Promise<void> {
     // 9 -- G5: press it. Each mutation is a plausible regression; each must be caught above.
     const mutants: ReadonlyArray<readonly [string, () => boolean]> = [
       ['persona restated instead of imported', () => {
-        const copy = 'You are Apocrypha, a candid, useful digital intelligence speaking with the signed-in user.';
+        // Deliberately the CURRENT first sentence. A stale one would make this mutation trivially
+        // detectable and stop testing what it is for: that a hand-copied persona, however faithful
+        // it looks, is not the imported one.
+        const copy = 'You are Apocrypha, a candid, useful digital intelligence in conversation with one person.';
         return copy !== personaFor(); // a partial copy must not equal the real persona
       }],
       ['evidence folded into the system message', () => !need(built.messages[0], 'first').content.includes('anamnesis:')],
