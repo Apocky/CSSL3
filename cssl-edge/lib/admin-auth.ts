@@ -86,7 +86,11 @@ export async function getRequestUser(req: NextApiRequest, timeoutMs = 5000): Pro
       user: null,
       authConfigured: true,
       failureKind: 'unauthenticated',
-      reason: 'Not signed in · sign in at /login with admin email.',
+      // This reason travels to /api/auth/me and is rendered on the PUBLIC account page, so it is
+      // read by every signed-out visitor, not by an operator. The old text told all of them to
+      // "sign in with admin email" — confusing for a member, and an unnecessary hint that admin
+      // access is email-allowlisted. The fact itself is the same for everyone: no session.
+      reason: 'You are not signed in.',
     };
   }
 
