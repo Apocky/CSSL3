@@ -15,8 +15,7 @@
       "package_signature": "verified",
       "emulator_launch": "pending",
       "account_sign_in_and_chat": "pending",
-      "physical_device": "pending",
-      "app_links_assetlinks": "verified"
+      "physical_device": "pending"
     }
   },
   "ios": {
