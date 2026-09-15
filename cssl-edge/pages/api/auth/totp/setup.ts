@@ -15,6 +15,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getRequestUser } from '@/lib/admin-auth';
 import { getApocryphaServiceClient } from '@/lib/apocrypha/job-control';
 import { hasSameOrigin } from '@/lib/auth-session';
+import QRCode from 'qrcode';
+
 import { generateSecret, provisioningUri, verifyTotp } from '@/lib/auth-totp';
 
 export const config = { api: { bodyParser: { sizeLimit: '8kb' } } };
@@ -63,11 +65,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.status(502).json({ ok: false, code: 'ENROLMENT_FAILED' });
         return;
       }
+      const uri = provisioningUri(secret, session.user.email);
+      // Three ways in, because which one is usable depends on where you are standing: a QR when a
+      // second device is doing the scanning, the link when the authenticator is on THIS device and
+      // cannot photograph its own screen, and the key when neither works.
+      //
+      // Rendered server-side and inlined as a data URI: the alternative is a URL holding the
+      // provisioning secret, and a credential in a URL ends up in history, logs and referrers.
+      let qr: string | null = null;
+      try {
+        qr = await QRCode.toDataURL(uri, { width: 320, margin: 1, errorCorrectionLevel: 'M' });
+      } catch {
+        qr = null; // The link and the key still work; a missing QR is not a failed enrolment.
+      }
       res.status(200).json({
         ok: true,
-        // Both forms: the URI opens an authenticator app directly on a phone, and the key covers
-        // the case where setup happens on the same screen the QR would have been on.
-        uri: provisioningUri(secret, session.user.email),
+        uri,
+        qr,
         secret,
         account: session.user.email,
       });

@@ -1,8 +1,15 @@
-// Add an authenticator, from the device you are holding.
+// Add an authenticator.
 //
-// No QR. On a phone the setup screen and the authenticator are on the SAME screen, so a QR code is
-// the one thing you cannot scan — the otpauth:// link opens the authenticator app and adds the
-// account in one tap. The key is shown too, for a desktop or for typing it into a password manager.
+// Three routes in, because which one is usable depends entirely on where you are standing:
+//
+//   QR   — the normal case: setting up on a desktop, or scanning with a second device.
+//   link — the otpauth:// URI, for when the authenticator is on THIS device. A camera cannot
+//          photograph its own screen, so the QR is the one thing that does not work there.
+//   key  — typed by hand, or pasted into a password manager, when neither of the above fits.
+//
+// I shipped this with only the link at first, reasoning from the phone case alone. That was the
+// wrong generalisation: the QR is what people expect and what works when the authenticator lives
+// on different hardware from the screen.
 
 import { useCallback, useState } from 'react';
 
@@ -10,6 +17,7 @@ type Stage = 'idle' | 'starting' | 'showing' | 'confirming' | 'done';
 
 interface Started {
   readonly uri: string;
+  readonly qr: string | null;
   readonly secret: string;
   readonly account: string;
 }
@@ -40,7 +48,7 @@ export function AuthenticatorSetup(): JSX.Element {
         setStage('idle');
         return;
       }
-      setStarted({ uri: payload.uri, secret: payload.secret, account: payload.account });
+      setStarted({ uri: payload.uri, qr: payload.qr ?? null, secret: payload.secret, account: payload.account });
       setStage('showing');
     } catch {
       setNotice('Setup could not be reached. Try again.');
@@ -100,7 +108,14 @@ export function AuthenticatorSetup(): JSX.Element {
 
     {started && (stage === 'showing' || stage === 'confirming') ? <>
       <ol className="apx-totp-steps">
+        {started.qr ? <li>
+          Scan this with your authenticator app:
+          {/* On a white plate on purpose: scanners cope badly with an inverted code, and this page
+              is nearly black. */}
+          <img className="apx-totp-qr" src={started.qr} alt={`Authenticator setup code for ${started.account}`} width={320} height={320} />
+        </li> : null}
         <li>
+          Setting up on this same device? A camera cannot scan its own screen:
           <a className="apx-totp-primary apx-totp-link" href={started.uri}>Add to authenticator app</a>
           <span className="apx-totp-hint">Opens your authenticator and adds {started.account}.</span>
         </li>
@@ -158,6 +173,10 @@ const STYLE = `
 .apx-totp-link { line-height: 1.4; }
 .apx-totp-steps { margin: 0; padding-left: 20px; display: grid; gap: 16px; font-size: 14px; }
 .apx-totp-steps li { line-height: 1.6; }
+.apx-totp-qr {
+  display: block; margin: 10px 0; width: min(280px, 100%); height: auto;
+  background: #fff; padding: 10px; border-radius: 12px;
+}
 .apx-totp-key {
   display: block; margin: 8px 0; padding: 10px 12px; border-radius: 10px;
   border: 1px solid #a9b5ff40; background: #111524; color: #b1dfeb;
