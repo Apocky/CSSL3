@@ -1229,3 +1229,38 @@
   .filterFooter .resetButton { width: auto; }
   .indexCard { padding: 18px; }
 }
+
+/* -- Directory view: rows, not cards ----------------------------------------------------------
+   The Directory tab is the DEFAULT view of /atlas, and its job is "show me what exists" -- the
+   same job the homepage index does, one route away, where 33 cards became 33 rows. This was still
+   34 cards at 3-up. Same treatment, CSS only: the markup already carries every hook needed.
+   Flex rather than grid because a card has 3 or 4 children depending on whether the destination
+   carries an availability badge, and `margin-left:auto` pins the action right in both cases where
+   a fixed column count would leave a ragged edge on the rows without one. */
+.indexGrid { grid-template-columns: 1fr; gap: 0; border-top: 1px solid var(--atlas-line); }
+.indexGrid > li { border-bottom: 1px solid var(--atlas-line); }
+.indexCard {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 14px;
+  padding: 11px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+}
+.indexCard:hover { background: rgba(48, 39, 55, 0.5); }
+.cardHeading { flex: 0 0 clamp(9rem, 18vw, 16rem); flex-direction: row; align-items: baseline; gap: 8px; }
+.indexCard h2 { font-size: 1rem; line-height: 1.3; font-weight: 600; letter-spacing: -0.015em; }
+.indexCard > p { flex: 1 1 auto; min-width: 0; font-size: 0.875rem; line-height: 1.45; }
+.kind { font-size: 0.75rem; white-space: nowrap; }
+.availability { flex: 0 0 auto; font-size: 0.75rem; white-space: nowrap; padding: 2px 8px; }
+.cardLink { flex: 0 0 auto; margin-left: auto; border-top: 0; padding: 0; white-space: nowrap; }
+
+/* Below 760 the row stops being a row. Placed after the file's own 600px block so it wins. */
+@media (max-width: 760px) {
+  .indexCard { flex-direction: column; align-items: flex-start; gap: 3px; padding: 12px 8px; }
+  .cardHeading { flex: 0 0 auto; }
+  .cardLink { margin-left: 0; }
+  .availability { white-space: normal; }
+}

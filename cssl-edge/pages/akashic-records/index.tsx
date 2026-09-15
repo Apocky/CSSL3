@@ -215,40 +215,31 @@ const AkashicRecordsIndex: NextPage<AkashicRecordsIndexProps> = ({ records }) =>
             </p>
 
             {filteredRecords.length > 0 ? (
-              <div id="akashic-record-list" className={styles.recordList}>
+              <ul id="akashic-record-list" className={styles.recordList}>
                 {filteredRecords.map((record) => (
-                  <article key={record.slug} className={styles.recordCard}>
-                    <div className={styles.recordMeta}>
-                      <span>{record.source}</span>
-                      <span aria-hidden="true">·</span>
-                      <time dateTime={record.publishedAt}>{formatDate(record.publishedAt)}</time>
-                      <span aria-hidden="true">·</span>
-                      <span>{record.type}</span>
-                      {(record.parts ?? 1) > 1 ? (
-                        <><span aria-hidden="true">·</span><span>{record.parts} parts</span></>
-                      ) : null}
-                      {record.publicationState === 'withheld' ? (
-                        <><span aria-hidden="true">·</span><span>Transcript withheld</span></>
-                      ) : null}
-                    </div>
-                    <h3>
-                      <Link href={`/akashic-records/${record.slug}`}>{record.title}</Link>
-                    </h3>
-                    <p>{record.excerpt}</p>
-                    {record.topics.length > 0 ? (
-                      <ul className={styles.topicList} aria-label="Topics">
-                        {record.topics.map((value) => <li key={value}>{value}</li>)}
-                      </ul>
-                    ) : null}
-                    <Link className={styles.readLink} href={`/akashic-records/${record.slug}`}>
-                      {record.publicationState === 'withheld'
-                        ? 'View withheld record'
-                        : record.type === 'Conversation transcript' ? 'Read transcript' : 'Read essay'}{' '}
-                      <span aria-hidden="true">→</span>
+                  <li key={record.slug} className={styles.recordCard}>
+                    <Link className={styles.recordLink} href={`/akashic-records/${record.slug}`}>
+                      <span className={styles.recordTitle}>{record.title}</span>
+                      <span className={styles.recordExcerpt}>{record.excerpt}</span>
+                      <span className={styles.recordMeta}>
+                        <time dateTime={record.publishedAt}>{formatDate(record.publishedAt)}</time>
+                        {" · "}{record.type}
+                        {(record.parts ?? 1) > 1 ? ` · ${record.parts} parts` : ""}
+                        {record.publicationState === "withheld" ? " · withheld" : ""}
+                      </span>
+                      {/* The action verb stays -- it was the duplicate ANCHOR that was the defect,
+                          not the wording. A withheld record must never say "Read transcript", so
+                          this copy is load-bearing and gated by tests/pages/akashic-records.test.ts. */}
+                      <span className={styles.recordAction}>
+                        {record.publicationState === "withheld"
+                          ? "View withheld record"
+                          : record.type === "Conversation transcript" ? "Read transcript" : "Read essay"}
+                        <span aria-hidden="true">{" →"}</span>
+                      </span>
                     </Link>
-                  </article>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
               <div id="akashic-record-list" className={styles.emptyState}>
                 <h3>No records match these filters.</h3>

@@ -239,27 +239,51 @@
   text-transform: uppercase;
 }
 
+/* 204 essays were 102 rows of 2-up cards at 161px each -- 18,242px of a 19,896px page, on a
+   surface whose entire job is "find something to read". Same pattern the homepage shed: one row
+   per record, title | excerpt | date. Nothing is removed from the DOM, only the box around it. */
 .recordList {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
   min-width: 0;
+  border-top: 1px solid var(--apx-line);
 }
 
 .recordCard {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  gap: 8px;
   min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--apx-line);
-  border-radius: 14px;
-  background: rgba(8, 10, 27, 0.72);
-  padding: 16px 18px 12px;
-  transition: border-color 160ms ease, background 160ms ease;
+  border-bottom: 1px solid var(--apx-line);
+}
+
+.recordLink {
+  display: grid;
+  grid-template-columns: minmax(11rem, 22rem) minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 3px 18px;
+  padding: 11px 10px;
+  min-height: 44px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+}
+
+.recordLink:hover { background: rgba(12, 15, 38, 0.92); }
+.recordLink:focus-visible { outline: 2px solid var(--apx-mint-bright, #b6e4e9); outline-offset: -2px; }
+
+.recordTitle {
+  font-family: var(--apx-display);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  color: var(--apx-ink);
+  overflow-wrap: anywhere;
+}
+
+.recordExcerpt {
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--apx-copy);
 }
 
 .recordCard:hover {
@@ -267,14 +291,21 @@
   background: rgba(12, 15, 38, 0.92);
 }
 .recordMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  justify-self: end;
+  white-space: nowrap;
   color: var(--apx-muted);
   font-family: var(--apx-mono);
   font-size: 0.66rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* Three columns at 375px would be three words per line. Same rows, stacked -- and the date stops
+   hugging the right edge, because there is no right edge to hug. */
+@media (max-width: 760px) {
+  .recordLink { grid-template-columns: 1fr; gap: 2px; padding: 12px 8px; }
+  .recordMeta { justify-self: start; white-space: normal; }
+  .recordTitle { font-size: 1rem; }
 }
 
 .recordCard h3 {
@@ -1015,4 +1046,36 @@
   .readingLinks { gap: 0 16px; font-size: .9rem; }
   .recordCard { padding: 20px; }
   .readerHeader { padding-top: 20px; }
+}
+
+/* -- row container owns no padding ------------------------------------------------------------
+   .recordCard was a card; it is now just the <li> that holds the row, and the padding lives on
+   .recordLink so the whole padded area is clickable. Three earlier blocks in this file still give
+   the old card its padding and borders at narrow widths (the 640px block sets padding:20px, which
+   was adding 40px to every one of 204 rows on a phone). This block is last, so it wins. */
+.recordCard { padding: 0; background: none; box-shadow: none; }
+@media (max-width: 640px) {
+  .recordCard { padding: 0; border-radius: 0; }
+}
+/* On a phone the title and the date are what you choose by. The excerpt stays, bounded to two
+   lines, so a long one cannot turn a 204-item list into a scroll with no end. */
+@media (max-width: 760px) {
+  .recordExcerpt {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.recordAction {
+  justify-self: end;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: #d5bde9;
+}
+.recordLink:hover .recordAction { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 760px) {
+  .recordAction { justify-self: start; }
 }
