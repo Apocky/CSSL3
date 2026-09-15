@@ -51,9 +51,11 @@ const Membership: NextPage = () => {
           <p className={styles.truth}>
             <strong>Before you pay.</strong>
             <span>
-              Patreon, Ko-fi, and Chaos Tarot handle their own checkout and publish the current price,
-              benefits, renewal, and cancellation terms. Apocky does not invent a countdown, hide a free
-              public basic behind a surprise paywall, or claim a benefit that is not wired.
+              Patreon and Ko-fi handle their own checkout and publish the current price, benefits,
+              renewal, and cancellation terms. Chaos Tarot membership is bought here — see{' '}
+              <a href="/buy">the Chaos Tarot membership terms</a>. Apocky does not invent a
+              countdown, hide a free public basic behind a surprise paywall, or claim a benefit
+              that is not wired.
             </span>
           </p>
 

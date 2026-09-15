@@ -47,7 +47,6 @@ export type PublicSurfaceId =
   | 'akashic-records'
   | 'words'
   | 'omnoid'
-  | 'labyrinth'
   | 'support'
   | 'membership'
   | 'principles'
@@ -468,9 +467,12 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
     title: 'The Clearing',
     shortTitle: "Community",
     eyebrow: "The Clearing",
-    summary: "Read the community conversation. Sign in when you want to join in.",
+    // Was "Read the community conversation." — live, signed out, there is one message, a 48-day-old
+    // deployment check. The rooms are genuinely public and unarchived; they are just empty, so the
+    // copy describes an open room rather than a conversation that is not there yet.
+    summary: "A public room, newly opened. Sign in to be one of the first to post.",
     href: '/clearing',
-    action: "Visit the community",
+    action: "Open the room",
     external: false,
     availability: 'public_read_account_write',
     kind: 'community',
@@ -537,25 +539,6 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
       Meaning: 'Authored cosmology with evidence labels',
       Visibility: 'Public',
       Time: 'Evolving work',
-    },
-  },
-  {
-    id: 'labyrinth',
-    title: 'Labyrinth of Apocalypse',
-    shortTitle: 'Labyrinth',
-    eyebrow: "A game in progress",
-    summary: "Explore Labyrinth of Apocalypse and the available game download.",
-    href: '/download',
-    action: "Explore the game",
-    external: false,
-    availability: 'public',
-    kind: 'game',
-    axes: ['People', 'Meaning', 'Time'],
-    coordinates: {
-      People: 'Download and try an early build',
-      Meaning: 'Playable game project',
-      Visibility: 'Public test build',
-      Time: 'Alpha; unfinished and changing',
     },
   },
   {
@@ -834,7 +817,6 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'home', target: 'spellcraft', relation: 'features', statement: 'The public home features the symbolic compiler, sigil, and local Spellbook loop.' },
   { source: 'home', target: 'theory-of-everything', relation: 'features', statement: 'The public home features the evidence-typed Theory of Everything question.' },
   { source: 'home', target: 'omnoid', relation: 'features', statement: 'The public home features the authored cosmology.' },
-  { source: 'home', target: 'labyrinth', relation: 'features', statement: 'The public home features the game project.' },
   { source: 'home', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The public home offers a direct handoff to Chaos Tarot.' },
   { source: 'home', target: 'cssl', relation: 'opens', statement: 'The public home opens the same-origin CSSL language guide.' },
   { source: 'home', target: 'cslv3', relation: 'defines', statement: 'The public words page defines the symbols used in CSLv3 notation.' },
@@ -852,7 +834,6 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'atlas', target: 'akashic-records', relation: 'indexes', statement: 'The Atlas indexes the approved public archive.' },
   { source: 'atlas', target: 'words', relation: 'defines', statement: 'The Atlas dictionary uses the public words and symbols reference.' },
   { source: 'atlas', target: 'omnoid', relation: 'indexes', statement: 'The Atlas indexes the authored cosmology.' },
-  { source: 'atlas', target: 'labyrinth', relation: 'indexes', statement: 'The Atlas indexes the public game page.' },
   { source: 'atlas', target: 'support', relation: 'indexes', statement: 'The Atlas indexes the published download and support terms.' },
   { source: 'atlas', target: 'membership', relation: 'indexes', statement: 'The Atlas indexes the active membership and support guide.' },
   { source: 'atlas', target: 'quests', relation: 'indexes', statement: 'The Atlas indexes the device-local public quests.' },
@@ -883,7 +864,6 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'quests', target: 'akashic-records', relation: 'opens', statement: 'A public quest asks visitors to open an approved archive record.' },
   { source: 'quests', target: 'words', relation: 'opens', statement: 'A public quest asks visitors to learn a word or symbol.' },
   { source: 'quests', target: 'omnoid', relation: 'opens', statement: 'A public quest asks visitors to examine the Omnoid evidence boundaries.' },
-  { source: 'quests', target: 'labyrinth', relation: 'opens', statement: 'A public quest asks visitors to inspect the game build before downloading.' },
   { source: 'quests', target: 'clearing', relation: 'opens', statement: 'A public quest opens The Clearing while keeping participation optional.' },
   { source: 'quests', target: 'membership', relation: 'supports', statement: 'The final public quest asks visitors to review active support paths without requiring payment.' },
   { source: 'quests', target: 'oracle', relation: 'opens', statement: 'A public quest asks visitors to use a bounded Yes / No signal without ceding decision authority.' },
@@ -917,7 +897,6 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'now', target: 'status', relation: 'opens', statement: 'The current-state ledger opens a live bounded health probe.' },
   { source: 'now', target: 'labs', relation: 'opens', statement: 'The current-state ledger separates experimental work into the public lab.' },
   { source: 'now', target: 'akashic-records', relation: 'features', statement: 'The current-state ledger identifies the public archive as available now.' },
-  { source: 'now', target: 'labyrinth', relation: 'features', statement: 'The current-state ledger identifies the downloadable Labyrinth alpha as available now.' },
   { source: 'now', target: 'chaos-tarot', relation: 'hands_off_to', statement: 'The current-state ledger hands off to the independent live Chaos Tarot product.' },
   { source: 'now', target: 'membership', relation: 'supports', statement: 'The current-state ledger opens truthful active support paths.' },
   { source: 'labs', target: 'quests', relation: 'features', statement: 'The lab features the device-local quest engine.' },
@@ -931,9 +910,7 @@ export const PUBLIC_SURFACE_EDGES: readonly PublicSurfaceEdge[] = [
   { source: 'documentation', target: 'cssl', relation: 'defines', statement: 'The documentation library contains the public CSSL guide.' },
   { source: 'documentation', target: 'cslv3', relation: 'defines', statement: 'The documentation library points to the shared CSLv3 notation key.' },
   { source: 'documentation', target: 'infinity-engine', relation: 'opens', statement: 'The documentation library opens the shared-architecture research overview.' },
-  { source: 'documentation', target: 'labyrinth', relation: 'opens', statement: 'The documentation library explains the public Labyrinth build.' },
   { source: 'infinity-engine', target: 'cssl', relation: 'opens', statement: 'Infinity Engine research identifies CSSL as a connected language project.' },
-  { source: 'infinity-engine', target: 'labyrinth', relation: 'opens', statement: 'Infinity Engine research identifies Labyrinth as a connected game and engine test.' },
   { source: 'home', target: 'memory-tools', relation: 'opens', statement: 'The public home opens the memory-bank and tool directory.' },
   { source: 'atlas', target: 'memory-tools', relation: 'indexes', statement: 'The Atlas indexes a task-first guide to public, device-local, and signed-in private memory.' },
   { source: 'memory-tools', target: 'akashic-records', relation: 'indexes', statement: 'The directory identifies Akashic Records as approved public memory.' },

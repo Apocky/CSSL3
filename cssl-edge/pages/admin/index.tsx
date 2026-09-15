@@ -78,7 +78,7 @@ const Dashboard: NextPage = () => {
       value: '✓ shipped',
       glyph: '※',
       accent: '#c084fc',
-      href: '/download',
+      // The alpha is withdrawn from the site; /download no longer resolves.
     },
     {
       label: 'Mycelium',

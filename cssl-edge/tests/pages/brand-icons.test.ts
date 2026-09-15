@@ -139,7 +139,6 @@ for (const relative of [
   'pages/content/trending.tsx',
   'pages/content/[slug].tsx',
   'pages/docs/[slug].tsx',
-  'pages/download.tsx',
 ]) {
   assert.doesNotMatch(read(relative), /theme-color" content="#0a0a0f"/);
   assert.match(read(relative), /theme-color" content="#000000"/);

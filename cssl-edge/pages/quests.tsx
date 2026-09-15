@@ -54,17 +54,8 @@ const QUESTS = [
     external: false,
   },
   {
-    id: 'scout-labyrinth',
-    rank: '06 · Play',
-    title: 'Try the Labyrinth',
-    copy: 'See what the game offers and which devices it supports before you decide to download it.',
-    href: '/download',
-    action: 'See the game',
-    external: false,
-  },
-  {
     id: 'join-clearing',
-    rank: '07 · Connect',
+    rank: '06 · Connect',
     title: 'Visit the community',
     copy: 'Read a conversation in the Clearing. Sign in if you want to join in.',
     href: '/clearing',
@@ -73,7 +64,7 @@ const QUESTS = [
   },
   {
     id: 'sustain-system',
-    rank: '08 · Support',
+    rank: '07 · Support',
     title: 'Choose what you want to support',
     copy: 'Look at the ways to support the work. Deciding to keep reading is a valid choice too; this activity never requires payment.',
     href: '/membership',
@@ -82,7 +73,7 @@ const QUESTS = [
   },
   {
     id: 'ask-oracle',
-    rank: '09 · Ask',
+    rank: '08 · Ask',
     title: 'Ask a question, notice your reaction',
     copy: 'Sign in on Chaos Tarot for a yes-or-no reading. Treat the answer as a prompt and notice what you think about it.',
     href: 'https://chaos-tarot.com/yes-no?source=apocky-quests',
@@ -91,7 +82,7 @@ const QUESTS = [
   },
   {
     id: 'compose-working',
-    rank: '10 · Make',
+    rank: '09 · Make',
     title: 'Make a spell of your own',
     copy: 'Choose something to focus on, create a reflection, and save the words you want to keep.',
     href: '/spellcraft',
@@ -100,7 +91,7 @@ const QUESTS = [
   },
   {
     id: 'craft-sigil',
-    rank: '11 · Draw',
+    rank: '10 · Draw',
     title: 'Make a mark that matters to you',
     copy: 'Choose a meaning, make a sigil, and try a few shapes. Download the one you like.',
     href: '/sigils',

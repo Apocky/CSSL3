@@ -3,7 +3,11 @@
   "schema_href": "/schemas/site-manifest.v1.json",
   "name": "Apocky",
   "canonical_url": "https://www.apocky.com/",
-  "audiences": ["people", "software_readers", "developers"],
+  "audiences": [
+    "people",
+    "software_readers",
+    "developers"
+  ],
   "declared_release_state": "public",
   "entry_points": [
     {
@@ -218,15 +222,6 @@
     {
       "rel": "words_and_symbols",
       "href": "/words",
-      "method": "GET",
-      "media_type": "text/html",
-      "authn": "none",
-      "authorization": "public",
-      "availability": "public"
-    },
-    {
-      "rel": "game_download",
-      "href": "/download",
       "method": "GET",
       "media_type": "text/html",
       "authn": "none",

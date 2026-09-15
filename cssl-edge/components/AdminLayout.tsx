@@ -42,6 +42,26 @@ const NAV: ReadonlyArray<NavItem> = [
     tip: 'Consented visitors · creation ledger · operational events' },
   { href: '/admin/apocrypha', label: 'Apocrypha', glyph: '∞', mobile: true,
     tip: 'Account inspection · desktop actions · diagnostics' },
+  // Eight consoles were reachable only by typing their URL: commit 83c5352 took them out of
+  // middleware's retired list — so they resolve, and have since — but never restored their nav
+  // entries, and lib/auth-return.ts went on believing they were 404s. Labels follow each page's
+  // own <title>.
+  { href: '/admin/chat', label: 'Chat', glyph: '“',
+    tip: 'The owner conversation, inside the console' },
+  { href: '/admin/cognition', label: 'Cognition', glyph: '∞',
+    tip: 'Live cognition view · event stream' },
+  { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬',
+    tip: 'Apocrypha runtime diagnostics' },
+  { href: '/admin/controls', label: 'Controls', glyph: '⎈',
+    tip: 'Operational controls' },
+  { href: '/admin/tools', label: 'Tools', glyph: '⊑',
+    tip: 'Tool registry and invocation surface' },
+  { href: '/admin/sub-minds', label: 'Sub-Minds', glyph: 'Ω',
+    tip: 'Sub-mind roster and state' },
+  { href: '/admin/coder', label: 'Agent workspace', glyph: '⌨',
+    tip: 'Coding agent workspace' },
+  { href: '/admin/apex', label: 'Relay', glyph: '△',
+    tip: 'Relay status' },
 ];
 
 const MOBILE_NAV = NAV.filter((item) => item.mobile);

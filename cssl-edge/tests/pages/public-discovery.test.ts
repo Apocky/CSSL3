@@ -133,7 +133,11 @@ assert.doesNotMatch(homePanels, /href="\/(?:apoc|apx|chat)(?:[?"/])|href="\/(?:a
 
 const entryPoints = JSON.stringify(manifest['entry_points']);
 assert.match(entryPoints, /words_and_symbols/);
-assert.match(entryPoints, /game_download/);
+// The Labyrinth alpha is withdrawn from the site (Apocky, 2026-09-15): /download is gone, the
+// signed ZIP is gone, and every surface that advertised it has been stripped. Asserting the
+// opposite — which this did — is what kept "See the game" pointing at a donation page.
+assert.doesNotMatch(entryPoints, /game_download/, 'the withdrawn alpha must not be advertised');
+assert.doesNotMatch(entryPoints, /"href":"\/download"/, 'nothing may point at the withdrawn download route');
 assert.match(entryPoints, /"rel":"optional_support","href":"\/buy"/);
 assert.match(entryPoints, /works_archive/);
 assert.match(entryPoints, /conversations_archive/);
@@ -170,7 +174,9 @@ assert.match(sitemap, /https:\/\/www\.apocky\.com\/spellbook/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/theory-of-everything/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/clearing/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/words/);
-assert.match(sitemap, /https:\/\/www\.apocky\.com\/download/);
+// /download is withdrawn, so the sitemap must not advertise it. /download/apocrypha is a different,
+// live page — asserted separately so this cannot pass on a prefix match.
+assert.doesNotMatch(sitemap, /https:\/\/www\.apocky\.com\/download<\/loc>/, 'the withdrawn route must not be in the sitemap');
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/buy/);
 assert.match(sitemap, /https:\/\/www\.apocky\.com\/akashic-records/);
 assert.doesNotMatch(sitemap, /\/admin|\/api|\/account|\/login|\/register|\/chat|\/content/);

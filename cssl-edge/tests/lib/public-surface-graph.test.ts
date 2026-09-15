@@ -14,7 +14,15 @@ import {
   type PublicSurfaceId,
 } from '../../lib/public-surface-graph';
 
-assert.equal(PUBLIC_SURFACE_NODES.length, 35, 'the directory includes tools, Codex, thoughts, account chat, and app availability');
+// 34 since the Labyrinth alpha was withdrawn (Apocky, 2026-09-15) and its node and six edges were
+// removed. A bare count is a weak assertion — it says nothing about WHICH node left — so the
+// withdrawal is pinned by identity below as well.
+assert.equal(PUBLIC_SURFACE_NODES.length, 34, 'the directory includes tools, Codex, thoughts, account chat, and app availability');
+assert.equal(
+  PUBLIC_SURFACE_NODES.some((node) => node.id === 'labyrinth'),
+  false,
+  'the withdrawn Labyrinth alpha must not be advertised in the directory',
+);
 assert.equal(PUBLIC_SURFACE_AXES.length, 4);
 
 const ids = PUBLIC_SURFACE_NODES.map((node) => node.id);

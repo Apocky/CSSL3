@@ -31,7 +31,6 @@ or permission to speak for anyone named on the site.
 - Device-local public quests: https://www.apocky.com/quests
 - Privacy-bounded public system status: https://www.apocky.com/status
 - Words and symbols: https://www.apocky.com/words
-- Labyrinth of Apocalypse download: https://www.apocky.com/download
 - Optional support details and external options: https://www.apocky.com/buy
 - Technical documentation: https://www.apocky.com/docs
 - Infinity Engine architecture research: https://www.apocky.com/infinity-engine
