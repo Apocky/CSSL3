@@ -776,7 +776,7 @@ fn select_select(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
 fn select_memref_load(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
     // § Checked-array metadata → refusal; N! erase bounds or element units.
     if op.attributes.iter().any(|(name, _)| {
-        matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned")
+        matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned" | "array_write" | "element_type")
     }) {
         return Err(SelectError::UnsupportedOp {
             fn_name: ctx.src.name.clone(),
@@ -810,6 +810,10 @@ fn select_memref_load(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> 
 /// Select `memref.store` : `Store { src, addr }`.
 /// Operand shape : `(val : T, ptr : i64 [, offset : i64]) -> ()`.
 fn select_memref_store(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
+    // § Checked writes must not fall through to unchecked byte offsets.
+    if op.attributes.iter().any(|(name, _)| matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned" | "array_write" | "element_type")) {
+        return Err(SelectError::UnsupportedOp { fn_name: ctx.src.name.clone(), op: "memref.store: checked array writes are not implemented by native-x64".to_string() });
+    }
     if op.operands.len() < 2 || op.operands.len() > 3 {
         return Err(SelectError::OperandCountMismatch {
             fn_name: ctx.src.name.clone(),
@@ -843,6 +847,9 @@ fn select_memref_store(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError>
 /// are mapped into vregs. G3 lowers the abstract call into the System-V or
 /// MS-x64 ABI ; G1 just records the operand list.
 fn select_func_call(ctx: &mut Ctx<'_>, op: &MirOp) -> Result<(), SelectError> {
+    if op.attributes.iter().any(|(name, _)| name == "checked_array_abi") {
+        return Err(SelectError::UnsupportedOp { fn_name: ctx.src.name.clone(), op: "func.call: checked array helper ABI is not implemented by native-x64".to_string() });
+    }
     let callee = op
         .attributes
         .iter()
@@ -1823,12 +1830,52 @@ mod tests {
     }
 
     #[test]
+    fn func_call_rejects_checked_array_abi_metadata() {
+        for marker in ["true", "false", ""] {
+            let mut f = MirFunc::new("checked_caller", vec![i64_ty()], vec![i64_ty()]);
+            f.next_value_id = 2;
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i64_ty())];
+            entry.ops.push(MirOp::std("func.call").with_operand(ValueId(0)).with_result(ValueId(1), i64_ty()).with_attribute("callee", "opaque_test_helper").with_attribute("checked_array_abi", marker));
+            entry.ops.push(MirOp::std("func.return").with_operand(ValueId(1)));
+            let module = marked_module(f);
+            assert!(matches!(select_function(&module, &module.funcs[0]), Err(SelectError::UnsupportedOp { op, .. }) if op.contains("checked array helper ABI")));
+        }
+    }
+
+    #[test]
+    fn memref_store_rejects_checked_array_metadata() {
+        let cases: &[&[(&str, &str)]] = &[
+            &[("array_extent", "4")], &[("index_units", "elements")], &[("index_unsigned", "true")],
+            &[("array_write", "mutable")], &[("array_write", "shared")], &[("element_type", "i32")],
+            &[("array_extent", "4"), ("index_units", "elements"), ("index_unsigned", "false"), ("array_write", "mutable"), ("element_type", "i32")],
+        ];
+        for (case, attributes) in cases.iter().enumerate() {
+            let name = format!("checked_store_{case}");
+            let mut f = MirFunc::new(name.clone(), vec![i32_ty(), i64_ty(), i64_ty()], vec![]);
+            f.next_value_id = 3;
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i32_ty()), MirValue::new(ValueId(1), i64_ty()), MirValue::new(ValueId(2), i64_ty())];
+            let mut store = MirOp::std("memref.store").with_operand(ValueId(0)).with_operand(ValueId(1)).with_operand(ValueId(2));
+            for &(key, value) in *attributes { store.attributes.push((key.to_string(), value.to_string())); }
+            entry.ops.push(store); entry.ops.push(MirOp::std("func.return"));
+            let module = marked_module(f);
+            match select_function(&module, &module.funcs[0]).unwrap_err() {
+                SelectError::UnsupportedOp { fn_name, op } => { assert_eq!(fn_name, name); assert!(op.contains("checked array writes")); }
+                other => panic!("expected checked-store refusal, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn memref_load_rejects_checked_array_metadata() {
         let cases: &[&[(&str, &str)]] = &[
             &[("array_extent", "4")],
             &[("index_units", "elements")],
             &[("index_unsigned", "true")],
             &[("index_unsigned", "false")],
+            &[("array_write", "mutable")],
+            &[("element_type", "i8")],
             &[("array_extent", "4"), ("index_units", "elements")],
             &[("array_extent", "invalid")],
             &[("index_units", "bytes")],

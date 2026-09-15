@@ -169,11 +169,36 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
             mir_mod.push_func(cssl_mir::lower::lower_extern_fn_signature(&lower_ctx, ef));
         }
     }
+    // § Fixed-array helper ABI derives from all parsed source signatures before body lowering.
+    // § Per-source producer owns types; merge by emitted symbol across independent interners.
+    let main_functions: Vec<&cssl_hir::HirFn> = hir_mod.items.iter().filter_map(|item| {
+        if let cssl_hir::HirItem::Fn(function) = item { Some(function) } else { None }
+    }).collect();
+    let mut checked_functions = match cssl_mir::body_lower::build_checked_function_contracts(&interner, Some(&file), &main_functions) {
+        Ok(contracts) => contracts,
+        Err(reason) => { eprintln!("csslc: checked helper signature error: {reason}"); return ExitCode::from(exit_code::USER_ERROR); }
+    };
+    for ((aux_hir, aux_interner), aux_file) in aux_hirs.iter().zip(aux_files.iter()) {
+        let functions: Vec<&cssl_hir::HirFn> = aux_hir.items.iter().filter_map(|item| {
+            if let cssl_hir::HirItem::Fn(function) = item { Some(function) } else { None }
+        }).collect();
+        let contracts = match cssl_mir::body_lower::build_checked_function_contracts(aux_interner, Some(aux_file), &functions) {
+            Ok(contracts) => contracts,
+            Err(reason) => { eprintln!("csslc: checked helper signature error: {reason}"); return ExitCode::from(exit_code::USER_ERROR); }
+        };
+        for (name, contract) in contracts {
+            if checked_functions.insert(name.clone(), contract).is_some() {
+                eprintln!("csslc: duplicate helper symbol across source modules: {name}");
+                return ExitCode::from(exit_code::USER_ERROR);
+            }
+        }
+    }
+
     // Second pass : lower regular fn signatures + bodies.
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
-            cssl_mir::lower_fn_body(&interner, Some(&file), f, &mut mf);
+            cssl_mir::body_lower::lower_fn_body_with_checked_functions(&interner, Some(&file), None, &checked_functions, f, &mut mf);
             mir_mod.push_func(mf);
         }
     }
@@ -211,7 +236,7 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         for item in &aux_hir.items {
             if let cssl_hir::HirItem::Fn(f) = item {
                 let mut mf = cssl_mir::lower_function_signature(&aux_lower_ctx, f);
-                cssl_mir::lower_fn_body(aux_interner, Some(aux_file), f, &mut mf);
+                cssl_mir::body_lower::lower_fn_body_with_checked_functions(aux_interner, Some(aux_file), None, &checked_functions, f, &mut mf);
                 mir_mod.push_func(mf);
             }
         }

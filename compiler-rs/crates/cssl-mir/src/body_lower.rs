@@ -51,6 +51,63 @@ use crate::op::CsslOp;
 use crate::trait_dispatch::TraitImplTable;
 use crate::value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
 
+/// Owned source contract for a scalar or fixed borrowed array ABI value.
+#[derive(Debug, Clone)]
+pub struct CheckedAbiType {
+    pub mir_type: MirType,
+    pub integer_unsigned: Option<bool>,
+    pub borrow_mutable: Option<bool>,
+}
+
+/// Function signature retained without interner or source-file lifetimes.
+#[derive(Debug, Clone)]
+pub struct CheckedFunctionContract {
+    pub params: Vec<Option<CheckedAbiType>>,
+    pub result: Option<CheckedAbiType>,
+    pub array_boundary: bool,
+    pub defined: bool,
+}
+
+/// Checked helper signatures keyed by the same resolved name emitted by func.call.
+pub type CheckedFunctionContracts = HashMap<String, CheckedFunctionContract>;
+
+/// Build source-owned helper contracts. Unsupported signatures remain unavailable
+/// for checked calls; unrelated functions can still use their existing lowering.
+pub fn build_checked_function_contracts(
+    interner: &Interner, source: Option<&SourceFile>, functions: &[&HirFn],
+) -> Result<CheckedFunctionContracts, String> {
+    let mut contracts = HashMap::new();
+    for function in functions {
+        let name = interner.resolve(function.name).to_string();
+        let array_boundary = function.params.iter().any(|param| matches!(lower_hir_type_at(interner, source, &param.ty), MirType::Memref { .. }))
+            || function.return_ty.as_ref().is_some_and(|ty| matches!(lower_hir_type_at(interner, source, ty), MirType::Memref { .. }));
+        let params = function.params.iter().map(|param| checked_abi_type(interner, source, &param.ty)).collect();
+        let result = function.return_ty.as_ref().map_or_else(
+            || Some(CheckedAbiType { mir_type: MirType::None, integer_unsigned: None, borrow_mutable: None }),
+            |ty| checked_abi_type(interner, source, ty));
+        let contract = CheckedFunctionContract { params, result, array_boundary, defined: function.body.is_some() };
+        if contracts.insert(name.clone(), contract).is_some() { return Err(format!("duplicate checked helper name: {name}")); }
+    }
+    Ok(contracts)
+}
+
+fn checked_abi_type(interner: &Interner, source: Option<&SourceFile>, ty: &HirType) -> Option<CheckedAbiType> {
+    let mir_type = lower_hir_type_at(interner, source, ty);
+    let borrow_mutable = hir_borrow_mutability(ty);
+    let integer_unsigned = match &mir_type {
+        MirType::Memref { .. } => {
+            if borrow_mutable.is_none() || hir_array_borrow_mutability(ty) != borrow_mutable { return None; }
+            let (array_ty, unsigned) = checked_alias_type(interner, source, ty)?;
+            let MirType::Memref { elem, .. } = array_ty else { return None; };
+            matches!(elem.as_ref(), MirType::Int(_)).then_some(unsigned)
+        }
+        MirType::Int(_) if borrow_mutable.is_none() => Some(hir_integer_unsigned(interner, ty)),
+        MirType::Float(FloatWidth::F32 | FloatWidth::F64) | MirType::Bool if borrow_mutable.is_none() => None,
+        _ => return None,
+    };
+    Some(CheckedAbiType { mir_type, integer_unsigned, borrow_mutable })
+}
+
 /// Per-fn lowering context.
 ///
 /// Carries an optional [`SourceFile`] reference so literal-value extraction
@@ -70,6 +127,10 @@ pub struct BodyLowerCtx<'a> {
     /// `lower_call` consults this for any field-callee call BEFORE
     /// falling through to `cssl.field` + opaque indirect-call.
     pub trait_impl_table: Option<&'a TraitImplTable>,
+    /// Source-owned exact helper contracts; absence never grants array ABI permission.
+    pub checked_functions: Option<&'a CheckedFunctionContracts>,
+    // § Checked helper result cannot launder unknown width/sign or borrowed ownership.
+    checked_return_type: Option<CheckedAbiType>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
     /// § Source unsignedness for checked indices; signless MIR width alone cannot select extension.
@@ -79,6 +140,8 @@ pub struct BodyLowerCtx<'a> {
     // § Cast provenance follows actual SSA values, not signless MIR widths or mutable names.
     pub integer_unsigned_values: HashMap<ValueId, bool>,
     pub array_unsigned_values: HashMap<ValueId, bool>,
+    // § Borrow permission follows SSA identity; annotations/calls cannot mint write authority.
+    pub array_borrow_values: HashMap<ValueId, bool>,
     pub integer_unsigned_cells: HashMap<ValueId, bool>,
     /// T11-D35 : mapping from HIR vec-param-symbol → N consecutive scalar value-ids
     /// + lane-count + element width. A `vec3<f32>` param `p` maps to `(vec![v0, v1, v2], 3, F32)`.
@@ -178,11 +241,14 @@ impl<'a> BodyLowerCtx<'a> {
             interner,
             source: None,
             trait_impl_table: None,
+            checked_functions: None,
+            checked_return_type: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
             checked_alias_types: HashMap::new(),
             integer_unsigned_values: HashMap::new(),
             array_unsigned_values: HashMap::new(),
+            array_borrow_values: HashMap::new(),
             integer_unsigned_cells: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
@@ -201,11 +267,14 @@ impl<'a> BodyLowerCtx<'a> {
             interner,
             source: Some(source),
             trait_impl_table: None,
+            checked_functions: None,
+            checked_return_type: None,
             param_vars: HashMap::new(),
             index_unsigned_vars: HashMap::new(),
             checked_alias_types: HashMap::new(),
             integer_unsigned_values: HashMap::new(),
             array_unsigned_values: HashMap::new(),
+            array_borrow_values: HashMap::new(),
             integer_unsigned_cells: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
@@ -263,11 +332,14 @@ impl<'a> BodyLowerCtx<'a> {
             interner: self.interner,
             source: self.source,
             trait_impl_table: self.trait_impl_table,
+            checked_functions: self.checked_functions,
+            checked_return_type: self.checked_return_type.clone(),
             param_vars: self.param_vars.clone(),
             index_unsigned_vars: self.index_unsigned_vars.clone(),
             checked_alias_types: self.checked_alias_types.clone(),
             integer_unsigned_values: self.integer_unsigned_values.clone(),
             array_unsigned_values: self.array_unsigned_values.clone(),
+            array_borrow_values: self.array_borrow_values.clone(),
             integer_unsigned_cells: self.integer_unsigned_cells.clone(),
             vec_param_vars: self.vec_param_vars.clone(),
             local_vars: self.local_vars.clone(),
@@ -319,6 +391,21 @@ pub fn lower_fn_body_with_table(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
+    lower_fn_body_with_optional_checked_functions(interner, source, table, None, hir_fn, mir_fn);
+}
+
+/// Lower with source-owned exact helper ABI contracts, including cross-module signatures.
+pub fn lower_fn_body_with_checked_functions(
+    interner: &Interner, source: Option<&SourceFile>, table: Option<&TraitImplTable>,
+    contracts: &CheckedFunctionContracts, hir_fn: &HirFn, mir_fn: &mut MirFunc,
+) {
+    lower_fn_body_with_optional_checked_functions(interner, source, table, Some(contracts), hir_fn, mir_fn);
+}
+
+fn lower_fn_body_with_optional_checked_functions(
+    interner: &Interner, source: Option<&SourceFile>, table: Option<&TraitImplTable>,
+    contracts: Option<&CheckedFunctionContracts>, hir_fn: &HirFn, mir_fn: &mut MirFunc,
+) {
     let Some(body) = &hir_fn.body else {
         return;
     };
@@ -329,6 +416,7 @@ pub fn lower_fn_body_with_table(
     if let Some(t) = table {
         ctx.trait_impl_table = Some(t);
     }
+    ctx.checked_functions = contracts;
     // Entry-block args = flat-scalarized fn params. Each vec2/vec3/vec4 param
     // occupies N consecutive entry-block ids (matches the flat signature emitted
     // by `lower_function_signature`) ; everything else occupies one id. The
@@ -336,6 +424,7 @@ pub fn lower_fn_body_with_table(
     // (vec) so downstream lowering (notably `lower_call` for `length`) can
     // dispatch correctly.
     let mut next_id: u32 = 0;
+    let mut unsupported_nested_array_reference = false;
     for p in &hir_fn.params {
         let sym = extract_pattern_symbol(&p.pat);
         if let Some((lanes, width)) = hir_type_as_vec_lanes(interner, &p.ty) {
@@ -353,8 +442,12 @@ pub fn lower_fn_body_with_table(
             if let Some(arg) = mir_fn.body.entry_mut().and_then(|entry| entry.args.get_mut(id.0 as usize)) {
                 arg.ty = ty.clone();
             }
-            if let HirTypeKind::Reference { mutable, .. } = &p.ty.kind {
-                mir_fn.attributes.push((format!("borrow.{}", id.0), if *mutable { "mutable" } else { "shared" }.to_owned()));
+            if let Some(mutable) = hir_borrow_mutability(&p.ty) {
+                mir_fn.attributes.push((format!("borrow.{}", id.0), if mutable { "mutable" } else { "shared" }.to_owned()));
+                if matches!(&ty, MirType::Memref { .. }) {
+                    if hir_array_borrow_mutability(&p.ty) == Some(mutable) { ctx.array_borrow_values.insert(id, mutable); }
+                    else { unsupported_nested_array_reference = true; }
+                }
             }
             if let Some(sym) = sym {
                 ctx.index_unsigned_vars.insert(sym, hir_integer_unsigned(interner, &p.ty));
@@ -371,9 +464,18 @@ pub fn lower_fn_body_with_table(
         }
     }
     ctx.next_value_id = next_id;
+    if unsupported_nested_array_reference {
+        checked_contract_error(&mut ctx, "cssl.array.parameter.contract.unverified", "nested array references require a distinct ABI; only a direct borrowed array is supported", body.span);
+    }
+    if let Some(contract) = contracts.and_then(|contracts| contracts.get(&interner.resolve(hir_fn.name).to_string())).filter(|contract| contract.array_boundary) {
+        if contract.params.iter().any(Option::is_none) || contract.result.as_ref().is_none_or(|result| result.borrow_mutable.is_some() || matches!(&result.mir_type, MirType::Memref { .. })) {
+            checked_contract_error(&mut ctx, "cssl.array.call.contract.unverified", "checked helper definition requires known borrowed parameters and scalar or unit return", body.span);
+        } else { ctx.checked_return_type = contract.result.clone(); }
+    }
 
     // Lower the body. If a trailing value exists, emit `func.return`.
-    let trailing = lower_block(&mut ctx, body);
+    for statement in &body.stmts { lower_stmt(&mut ctx, statement); }
+    let trailing = body.trailing.as_deref().and_then(|expr| lower_return_value(&mut ctx, expr));
     emit_return(&mut ctx, trailing, body.span);
 
     // Install the ops into the entry-block.
@@ -513,6 +615,28 @@ fn lower_hir_type_at(interner: &Interner, source: Option<&SourceFile>, t: &HirTy
             MirType::Memref { shape: vec![extent], elem: Box::new(lower_hir_type_light(interner, elem)) }
         }
         _ => lower_hir_type_light(interner, t),
+    }
+}
+
+// § Only explicit outer reference establishes borrow authority; nested/refined metadata stays exact.
+fn hir_borrow_mutability(ty: &HirType) -> Option<bool> {
+    match &ty.kind {
+        HirTypeKind::Reference { mutable, .. } => Some(*mutable),
+        HirTypeKind::Refined { base, .. } => hir_borrow_mutability(base),
+        _ => None,
+    }
+}
+
+// § Array ABI means one explicit reference directly to an array/slice, never reference-to-reference storage.
+fn hir_array_borrow_mutability(ty: &HirType) -> Option<bool> {
+    match &ty.kind {
+        HirTypeKind::Refined { base, .. } => hir_array_borrow_mutability(base),
+        HirTypeKind::Reference { mutable, inner, .. } => {
+            let mut target = inner.as_ref();
+            while let HirTypeKind::Refined { base, .. } = &target.kind { target = base; }
+            matches!(&target.kind, HirTypeKind::Array { .. } | HirTypeKind::Slice { .. }).then_some(*mutable)
+        }
+        _ => None,
     }
 }
 
@@ -690,6 +814,48 @@ fn lower_contextual_integer_literal(
     }
 }
 
+// § Context supplies literal representation only; integer values never become floats through annotation.
+fn lower_contextual_scalar_literal(
+    ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr, target: &MirType, integer_unsigned: Option<bool>,
+) -> Option<Result<(ValueId, MirType), ValueId>> {
+    if let Some(unsigned) = integer_unsigned { return lower_contextual_integer_literal(ctx, expr, target, unsigned); }
+    let MirType::Float(width @ (FloatWidth::F32 | FloatWidth::F64)) = target else { return None; };
+    fn float_literal(expr: &HirExpr) -> Option<(Span, bool)> {
+        match &expr.kind {
+            HirExprKind::Literal(literal) if matches!(literal.kind, HirLiteralKind::Float) => Some((literal.span, false)),
+            HirExprKind::Paren(inner) => float_literal(inner),
+            HirExprKind::Unary { op: HirUnOp::Neg, operand } => float_literal(operand).map(|(span, negative)| (span, !negative)),
+            _ => None,
+        }
+    }
+    let (literal_span, negative) = float_literal(expr)?;
+    let parsed = (|| -> Result<f64, &'static str> {
+        let raw = ctx.source.and_then(|source| source.slice(literal_span.start, literal_span.end))
+            .ok_or("float literal source unavailable")?.trim();
+        if strip_float_type_suffix(raw) != raw && parse_float_literal_width(raw) != *width {
+            return Err("float literal suffix differs from declared type");
+        }
+        let value = parse_float_literal(raw).ok_or("invalid float literal")?;
+        if !value.is_finite() || (*width == FloatWidth::F32 && value.abs() > f64::from(f32::MAX)) {
+            return Err("float literal outside declared finite range");
+        }
+        Ok(if negative { -value } else { value })
+    })();
+    let id = ctx.fresh_value_id();
+    match parsed {
+        Ok(value) => {
+            ctx.ops.push(MirOp::std("arith.constant").with_result(id, target.clone())
+                .with_attribute("value", format!("{value:?}")).with_attribute("source_loc", format!("{:?}", expr.span)));
+            Some(Ok((id, target.clone())))
+        }
+        Err(reason) => {
+            ctx.ops.push(MirOp::std("cssl.float.literal.contract.unverified").with_result(id, MirType::None)
+                .with_attribute("reason", reason).with_attribute("source_loc", format!("{:?}", expr.span)));
+            Some(Err(id))
+        }
+    }
+}
+
 fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
     match &stmt.kind {
         HirStmtKind::Let {
@@ -699,13 +865,15 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
             ..
         } => {
             if let Some(e) = value {
-                let integer_contract = declared_ty.as_ref().and_then(|ty| checked_alias_type(ctx.interner, ctx.source, ty))
-                    .filter(|(ty, _)| matches!(ty, MirType::Int(_)));
-                let lowered = if let Some((target, unsigned)) = integer_contract {
-                    match lower_contextual_integer_literal(ctx, e, &target, unsigned) {
-                        Some(Ok(value)) => Some(value), Some(Err(_)) => return, None => lower_expr(ctx, e),
-                    }
-                } else { lower_expr(ctx, e) };
+                let contextual = declared_ty.as_ref().and_then(|ty| {
+                    let target = lower_hir_type_at(ctx.interner, ctx.source, ty);
+                    let integer_unsigned = checked_alias_type(ctx.interner, ctx.source, ty)
+                        .filter(|(ty, _)| matches!(ty, MirType::Int(_))).map(|(_, unsigned)| unsigned);
+                    lower_contextual_scalar_literal(ctx, e, &target, integer_unsigned)
+                });
+                let lowered = match contextual {
+                    Some(Ok(value)) => Some(value), Some(Err(_)) => return, None => lower_expr(ctx, e),
+                };
                 if let Some((vid, ty)) = lowered {
                     // § T11-D77 (S6-C5 redo) : bind the let-pattern's name → its
                     //   lowered ValueId so subsequent path-refs resolve, AND so
@@ -751,12 +919,20 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
                         let must_match = (declared_ty.is_some() && array_alias) || declared_integer_alias;
                         let refusal = if mutable && array_alias {
                             Some("mutable checked-array aliases require validated assignment contracts")
+                        } else if declared_ty.is_some() && matches!(&final_ty, MirType::Float(_) | MirType::Bool) && ty != final_ty {
+                            Some("scalar alias requires the exact lowered source type; annotations cannot convert integers, pointers, or scalar widths")
+                        } else if array_alias && declared_ty.is_some()
+                            && declared_ty.as_ref().and_then(hir_borrow_mutability) != ctx.array_borrow_values.get(&vid).copied() {
+                            Some("checked array alias requires exact source borrow permission; shared annotations cannot retain mutable authority")
                         } else if must_match && (declared_contract.is_none()
                             || source_contract != declared_contract || ty != final_ty) {
                             Some("checked alias requires the exact known source extent, element type, width, and signedness")
                         } else {
                             None
                         };
+                        // § RHS resolves before shadow commit; stale parameter mappings must not restore old borrow authority.
+                        ctx.param_vars.remove(&sym);
+                        ctx.vec_param_vars.remove(&sym);
                         if let Some(reason) = refusal {
                             let id = ctx.fresh_value_id();
                             ctx.ops.push(MirOp::std("cssl.alias.contract.unverified")
@@ -834,7 +1010,7 @@ fn lower_expr(ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr) -> Option<(ValueId, Mi
             type_args,
         } => lower_call(ctx, callee, args, type_args, expr.span, expr.id),
         HirExprKind::Return { value } => {
-            let trailing = value.as_deref().and_then(|e| lower_expr(ctx, e));
+            let trailing = value.as_deref().and_then(|e| lower_return_value(ctx, e));
             emit_return(ctx, trailing, expr.span);
             None
         }
@@ -1120,6 +1296,62 @@ fn lower_index(
     (id, MirType::None)
 }
 
+// § Checked output write: exact source permission + extent + index sign + scalar contract; no implicit conversion.
+fn lower_checked_array_store(
+    ctx: &mut BodyLowerCtx<'_>, compound: Option<HirBinOp>, obj: &HirExpr,
+    index: &HirExpr, rhs: &HirExpr, span: Span,
+) -> (ValueId, MirType) {
+    if compound.is_some() {
+        return checked_contract_error(ctx, "cssl.array.store.contract.unverified", "compound indexed assignment requires a checked read-modify-write contract", span);
+    }
+    let Some((base_id, base_ty)) = lower_expr(ctx, obj) else {
+        return checked_contract_error(ctx, "cssl.array.store.contract.unverified", "array store base unavailable", span);
+    };
+    let (extent, elem_ty) = match &base_ty {
+        MirType::Memref { shape, elem } if matches!(shape.as_slice(), [Some(_)])
+            && crate::memref_typed::TypedMemrefElem::from_mir_type(elem).is_some() => (shape[0].unwrap(), elem.as_ref().clone()),
+        _ => return checked_contract_error(ctx, "cssl.array.store.contract.unverified", "array store requires known fixed scalar extent", span),
+    };
+    if ctx.array_borrow_values.get(&base_id) != Some(&true) {
+        return checked_contract_error(ctx, "cssl.array.store.contract.unverified", "array store requires an explicitly mutable borrowed SSA value", span);
+    }
+    let Some((index_id, index_ty)) = lower_expr(ctx, index) else {
+        return checked_contract_error(ctx, "cssl.array.store.contract.unverified", "array store index unavailable", span);
+    };
+    let Some(index_unsigned) = ctx.integer_unsigned_values.get(&index_id).copied().filter(|_| matches!(&index_ty, MirType::Int(_))) else {
+        return checked_contract_error(ctx, "cssl.array.index.signedness.unverified", "array store index requires known integer width and signedness", span);
+    };
+    let elem_unsigned = ctx.array_unsigned_values.get(&base_id).copied();
+    let contextual = lower_contextual_scalar_literal(ctx, rhs, &elem_ty, elem_unsigned);
+    let (value_id, value_ty) = match contextual {
+        Some(Ok(value)) => value,
+        Some(Err(id)) => return (id, MirType::None),
+        None => match lower_expr(ctx, rhs) {
+            Some(value) => value,
+            None => return checked_contract_error(ctx, "cssl.array.store.contract.unverified", "array store value unavailable", span),
+        },
+    };
+    if value_ty != elem_ty || (matches!(&elem_ty, MirType::Int(_)) && (elem_unsigned.is_none()
+        || ctx.integer_unsigned_values.get(&value_id).copied() != elem_unsigned)) {
+        return checked_contract_error(ctx, "cssl.array.store.contract.unverified", "array store value requires exact element width and signedness; use explicit conversion", span);
+    }
+    ctx.ops.push(MirOp::std("memref.store").with_operand(value_id).with_operand(base_id).with_operand(index_id)
+        .with_attribute("array_extent", extent.to_string()).with_attribute("index_units", "elements")
+        .with_attribute("index_unsigned", index_unsigned.to_string()).with_attribute("array_write", "mutable")
+        .with_attribute("element_type", elem_ty.to_string()).with_attribute("source_loc", format!("{span:?}")));
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(MirOp::std("cssl.assign").with_result(id, MirType::None)
+        .with_attribute("target", "checked_array").with_attribute("source_loc", format!("{span:?}")));
+    (id, MirType::None)
+}
+
+fn checked_contract_error(ctx: &mut BodyLowerCtx<'_>, name: &str, reason: &str, span: Span) -> (ValueId, MirType) {
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(MirOp::std(name).with_result(id, MirType::None)
+        .with_attribute("reason", reason).with_attribute("source_loc", format!("{span:?}")));
+    (id, MirType::None)
+}
+
 fn lower_assign(
     ctx: &mut BodyLowerCtx<'_>,
     op: Option<HirBinOp>,
@@ -1127,11 +1359,10 @@ fn lower_assign(
     rhs: &HirExpr,
     span: Span,
 ) -> (ValueId, MirType) {
-    // § Array writes require checked mutable-borrow and output-buffer lowering; fail closed meanwhile.
-    if matches!(&lhs.kind, HirExprKind::Index { .. }) {
-        let id = ctx.fresh_value_id();
-        ctx.ops.push(MirOp::std("cssl.array.store.unimplemented").with_result(id, MirType::None));
-        return (id, MirType::None);
+    // § Indexed writes share read-side extent/sign proof and require explicit mutable borrowed provenance.
+    if let HirExprKind::Paren(inner) = &lhs.kind { return lower_assign(ctx, op, inner, rhs, span); }
+    if let HirExprKind::Index { obj, index } = &lhs.kind {
+        return lower_checked_array_store(ctx, op, obj, index, rhs, span);
     }
     // § T11-D318 (W-CC-mut-assign) — Detect path-LHS to a `let mut` cell
     //   FIRST, before lowering the LHS as an expression. Lowering the LHS
@@ -1145,12 +1376,15 @@ fn lower_assign(
         if segments.len() == 1 {
             if let Some((cell_id, elem_ty)) = ctx.local_cells.get(&segments[0]).cloned() {
                 let cell_unsigned = ctx.integer_unsigned_cells.get(&cell_id).copied();
-                let contextual = cell_unsigned.and_then(|unsigned| lower_contextual_integer_literal(ctx, rhs, &elem_ty, unsigned));
+                let contextual = lower_contextual_scalar_literal(ctx, rhs, &elem_ty, cell_unsigned);
                 let (rhs_id, rhs_ty) = match contextual {
                     Some(Ok(value)) => value,
                     Some(Err(id)) => return (id, MirType::None),
                     None => lower_expr(ctx, rhs).unwrap_or((ctx.fresh_value_id(), MirType::None)),
                 };
+                if matches!(&elem_ty, MirType::Float(_) | MirType::Bool) && rhs_ty != elem_ty {
+                    return checked_contract_error(ctx, "cssl.scalar.assignment.contract.unverified", "scalar assignment requires exact cell type or explicit conversion", span);
+                }
                 if matches!(&elem_ty, MirType::Int(_)) && (rhs_ty != elem_ty || cell_unsigned.is_none()
                     || ctx.integer_unsigned_values.get(&rhs_id).copied() != cell_unsigned) {
                     let id = ctx.fresh_value_id();
@@ -1270,8 +1504,8 @@ fn lower_cast(ctx: &mut BodyLowerCtx<'_>, inner: &HirExpr, target_hir_ty: &cssl_
     //   Prior behavior emitted MirType::None, leaving cgen no choice but to-pass-the-source-bits-unchanged
     //   (silently producing wrong results for `(int) as f32` in loops).
     let target_mir_ty = lower_hir_type_light(ctx.interner, target_hir_ty);
-    // § Array casts cannot manufacture a checked backing buffer.
-    if matches!(&target_mir_ty, MirType::Memref { .. }) {
+    // § Array casts cannot manufacture a checked buffer or export borrowed storage as a scalar address.
+    if matches!(&target_mir_ty, MirType::Memref { .. }) || matches!(&in_ty, MirType::Memref { .. }) {
         ctx.ops.push(MirOp::std("cssl.array.cast.unverified")
             .with_result(id, MirType::None)
             .with_attribute("source_loc", format!("{span:?}")));
@@ -1533,6 +1767,11 @@ fn lower_lambda(
     body: &HirExpr,
     span: Span,
 ) -> (ValueId, MirType) {
+    // § Closure array parameters/returns require ownership contracts beyond direct checked helpers.
+    if params.iter().any(|param| param.ty.as_ref().is_some_and(|ty| matches!(lower_hir_type_at(ctx.interner, ctx.source, ty), MirType::Memref { .. })))
+        || return_ty.is_some_and(|ty| matches!(lower_hir_type_at(ctx.interner, ctx.source, ty), MirType::Memref { .. })) {
+        return checked_contract_error(ctx, "cssl.array.call.contract.unverified", "array closure parameters and returns require explicit closure borrow contracts", span);
+    }
     // § 1. Collect lambda-param symbols (these are NOT free-vars).
     let mut param_syms: Vec<Symbol> = Vec::with_capacity(params.len());
     for p in params {
@@ -1562,6 +1801,10 @@ fn lower_lambda(
         }
         // else : unresolved — dropped from capture-list silently. The body's
         // `cssl.path_ref` placeholder retains the name for diagnostic trail.
+    }
+
+    if captures.iter().any(|(_, _, ty)| matches!(ty, MirType::Memref { .. })) {
+        return checked_contract_error(ctx, "cssl.array.call.contract.unverified", "array closure capture requires an explicit retained-borrow contract", span);
     }
 
     // § 3b. Record the descriptor we'll need at call-site inline-expansion.
@@ -1647,6 +1890,7 @@ fn lower_lambda(
     // § 5. Build the body sub-region. The inner lowerer runs in a sub-context
     //   so lambda-param names don't leak to the outer fn.
     let mut sub = ctx.sub();
+    sub.checked_return_type = None;
     for (i, p) in params.iter().enumerate() {
         let pid = ValueId(u32::try_from(i).unwrap_or(0));
         let pty =
@@ -1831,6 +2075,7 @@ fn lower_closure_call(
     //   refs resolve to the freshly-loaded values rather than the construct-
     //   time source ValueIds (those are a different SSA-domain at this point).
     let mut sub = ctx.sub();
+    sub.checked_return_type = None;
     sub.next_value_id = ctx.next_value_id;
     if let Some(env_ptr_id) = descriptor.env_ptr_id {
         for cap in &descriptor.captures {
@@ -2490,14 +2735,8 @@ fn strip_char_quotes(raw: &str) -> Option<&str> {
 }
 
 fn lower_path(ctx: &mut BodyLowerCtx<'_>, segments: &[Symbol], span: Span) -> (ValueId, MirType) {
-    // Single-segment path : check param_vars first, then local_cells
-    // (T11-D318), then local_vars (T11-D77). Param shadowing-by-local is
-    // handled by the lookup order : param_vars wins because params are
-    // declared first ; if a let inside the body uses the same name,
-    // `local_vars.insert` overwrites are still visible to post-shadow refs
-    // because we check local_vars second only when the param-lookup misses.
-    // (Stage-0 single-pass lowering can't preserve real lexical scoping ;
-    // later-shadowing is rare in practice.)
+    // § Parameters resolve until lower_stmt commits a shadow binding and removes their symbol mapping.
+    // Actual SSA provenance remains intact; stale parameter names cannot restore mutable permission.
     //
     // § T11-D318 (W-CC-mut-assign) — `let mut x` bindings live in
     // `local_cells` ; reads of those bindings emit a fresh `memref.load
@@ -2670,6 +2909,87 @@ fn lower_unary(
 // recognizers so user-named closure locals win over stdlib idents ; the
 // trait-dispatch path runs at well-defined positions to avoid claiming syntax
 // reserved by the recognizer chain).
+// § Output-shape preflight protects earlier intrinsic/closure recognizers from swallowing borrowed arrays.
+// Actual SSA contracts below remain authoritative; this check grants no permission.
+fn expr_carries_array(ctx: &BodyLowerCtx<'_>, expr: &HirExpr) -> bool {
+    match &expr.kind {
+        HirExprKind::Path { segments, .. } if segments.len() == 1 => ctx.param_vars.get(&segments[0])
+            .or_else(|| ctx.local_vars.get(&segments[0])).is_some_and(|(_, ty)| matches!(ty, MirType::Memref { .. })),
+        HirExprKind::Paren(inner) | HirExprKind::Run { expr: inner } | HirExprKind::Try { expr: inner } => expr_carries_array(ctx, inner),
+        HirExprKind::Cast { expr: inner, ty } => matches!(lower_hir_type_at(ctx.interner, ctx.source, ty), MirType::Memref { .. }) || expr_carries_array(ctx, inner),
+        HirExprKind::Unary { operand, .. } => expr_carries_array(ctx, operand),
+        HirExprKind::Array(_) => true,
+        HirExprKind::Block(block) => block.trailing.as_deref().is_some_and(|expr| expr_carries_array(ctx, expr)),
+        HirExprKind::If { then_branch, else_branch, .. } => then_branch.trailing.as_deref().is_some_and(|expr| expr_carries_array(ctx, expr))
+            || else_branch.as_deref().is_some_and(|expr| expr_carries_array(ctx, expr)),
+        HirExprKind::Match { arms, .. } => arms.iter().any(|arm| expr_carries_array(ctx, &arm.body)),
+        HirExprKind::Tuple(values) => values.iter().any(|value| expr_carries_array(ctx, value)),
+        HirExprKind::TryDefault { expr, default } => expr_carries_array(ctx, expr) || expr_carries_array(ctx, default),
+        _ => false,
+    }
+}
+
+fn checked_abi_value_matches(ctx: &BodyLowerCtx<'_>, value: &(ValueId, MirType), expected: &CheckedAbiType) -> bool {
+    if value.1 != expected.mir_type { return false; }
+    match &expected.mir_type {
+        MirType::Memref { elem, .. } => ctx.array_borrow_values.get(&value.0).copied() == expected.borrow_mutable
+            && expected.borrow_mutable.is_some()
+            && (!matches!(elem.as_ref(), MirType::Int(_)) || ctx.array_unsigned_values.get(&value.0).copied() == expected.integer_unsigned),
+        MirType::Int(_) => expected.integer_unsigned.is_some()
+            && ctx.integer_unsigned_values.get(&value.0).copied() == expected.integer_unsigned,
+        MirType::Float(_) | MirType::Bool => expected.borrow_mutable.is_none(),
+        _ => false,
+    }
+}
+
+fn lower_checked_helper_call(
+    ctx: &mut BodyLowerCtx<'_>, target: &str, contract: &CheckedFunctionContract,
+    args: &[HirCallArg], type_args: &[HirType], span: Span, hir_id: cssl_hir::HirId,
+) -> Option<(ValueId, MirType)> {
+    if !contract.defined || contract.params.iter().any(Option::is_none) || contract.result.is_none()
+        || contract.result.as_ref().is_some_and(|result| result.borrow_mutable.is_some() || matches!(&result.mir_type, MirType::Memref { .. })) {
+        return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "checked helper requires a defined exact signature and scalar or unit result; borrowed returns are unavailable", span));
+    }
+    if args.len() != contract.params.len() || !type_args.is_empty() || args.iter().any(|arg| matches!(arg, HirCallArg::Named { .. })) {
+        return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "checked helper requires exact positional arity and no unresolved type arguments", span));
+    }
+    let mut values = Vec::with_capacity(args.len());
+    let mut borrowed_values: HashMap<ValueId, bool> = HashMap::new();
+    for (arg, expected) in args.iter().zip(&contract.params) {
+        let expected = expected.as_ref().unwrap();
+        let expr = match arg { HirCallArg::Positional(expr) | HirCallArg::Named { value: expr, .. } => expr };
+        let contextual = lower_contextual_scalar_literal(ctx, expr, &expected.mir_type, expected.integer_unsigned);
+        let value = match contextual {
+            Some(Ok(value)) => value,
+            Some(Err(id)) => return Some((id, MirType::None)),
+            None => match lower_expr(ctx, expr) {
+                Some(value) => value,
+                None => return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "checked helper argument produced no value", span)),
+            },
+        };
+        if !checked_abi_value_matches(ctx, &value, expected) {
+            return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "checked helper argument requires exact known scalar type, signedness, extent, and borrow permission", span));
+        }
+        if let Some(mutable) = expected.borrow_mutable {
+            if borrowed_values.get(&value.0).is_some_and(|previous_mutable| *previous_mutable || mutable) {
+                return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "checked helper cannot alias the same borrowed value when either parameter is mutable", span));
+            }
+            borrowed_values.insert(value.0, mutable);
+        }
+        values.push(value.0);
+    }
+    let result = contract.result.as_ref().unwrap();
+    let mut op = MirOp::std("func.call").with_attribute("callee", target)
+        .with_attribute("checked_array_abi", "true").with_attribute("hir_id", hir_id.0.to_string())
+        .with_attribute("source_loc", format!("{span:?}"));
+    for value in values { op = op.with_operand(value); }
+    if result.mir_type == MirType::None { ctx.ops.push(op); return None; }
+    let id = ctx.fresh_value_id();
+    if let Some(unsigned) = result.integer_unsigned { ctx.integer_unsigned_values.insert(id, unsigned); }
+    ctx.ops.push(op.with_result(id, result.mir_type.clone()));
+    Some((id, result.mir_type.clone()))
+}
+
 #[allow(clippy::cognitive_complexity)]
 fn lower_call(
     ctx: &mut BodyLowerCtx<'_>,
@@ -2679,6 +2999,22 @@ fn lower_call(
     span: Span,
     hir_id: cssl_hir::HirId,
 ) -> Option<(ValueId, MirType)> {
+    // § Known array signatures are checked even when supplied operands are raw scalars or absent.
+    let checked_target = match &callee.kind {
+        HirExprKind::Path { segments, .. } if !(segments.len() == 1 && (ctx.local_vars.contains_key(&segments[0]) || ctx.param_vars.contains_key(&segments[0]))) =>
+            Some(segments.iter().map(|symbol| ctx.interner.resolve(*symbol)).collect::<Vec<_>>().join(".")),
+        _ => None,
+    };
+    if let Some((target, contract)) = checked_target.as_ref().and_then(|target| ctx.checked_functions
+        .and_then(|contracts| contracts.get(target)).filter(|contract| contract.array_boundary).map(|contract| (target, contract.clone()))) {
+        return lower_checked_helper_call(ctx, target, &contract, args, type_args, span, hir_id);
+    }
+    if args.iter().any(|arg| {
+        let expr = match arg { HirCallArg::Positional(expr) | HirCallArg::Named { value: expr, .. } => expr };
+        expr_carries_array(ctx, expr)
+    }) || matches!(&callee.kind, HirExprKind::Field { obj, .. } if expr_carries_array(ctx, obj)) {
+        return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "array ABI call requires an available exact source helper signature", span));
+    }
     // § T11-D100 (J2 — closures callable) — closure-call recognizer.
     //   Fires FIRST (before intrinsic / sum-type / Box::new / format / fs::* /
     //   net::* recognizers) because closure-typed locals are user-introduced
@@ -3255,6 +3591,9 @@ fn lower_call(
             operand_ids.push(id);
             operand_tys.push(ty);
         }
+    }
+    if operand_tys.iter().any(|ty| matches!(ty, MirType::Memref { .. })) {
+        return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "array ABI call lacks an exact source helper signature", span));
     }
     // Emit `func.call @target` op. For known-intrinsic math callees
     // (min/max/abs/sqrt/sin/cos/exp/log), infer the result type from the
@@ -6340,7 +6679,11 @@ fn lower_call_arg(ctx: &mut BodyLowerCtx<'_>, arg: &HirCallArg) -> Option<(Value
     let expr = match arg {
         HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
     };
-    lower_expr(ctx, expr)
+    let value = lower_expr(ctx, expr)?;
+    if matches!(&value.1, MirType::Memref { .. }) {
+        return Some(checked_contract_error(ctx, "cssl.array.call.contract.unverified", "unvalidated recognizer cannot accept an array ABI value", expr.span));
+    }
+    Some(value)
 }
 
 /// Known math-intrinsic callees whose result-type equals the first operand's
@@ -6470,7 +6813,28 @@ fn lower_sub_region_from(ctx: &mut BodyLowerCtx<'_>, block: &HirBlock) -> MirReg
     r
 }
 
+fn lower_return_value(ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr) -> Option<(ValueId, MirType)> {
+    if let Some(expected) = ctx.checked_return_type.clone() {
+        match lower_contextual_scalar_literal(ctx, expr, &expected.mir_type, expected.integer_unsigned) {
+            Some(Ok(value)) => return Some(value),
+            Some(Err(id)) => return Some((id, MirType::None)),
+            None => {},
+        }
+    }
+    lower_expr(ctx, expr)
+}
+
 fn emit_return(ctx: &mut BodyLowerCtx<'_>, trailing: Option<(ValueId, MirType)>, span: Span) {
+    if let Some(expected) = ctx.checked_return_type.clone() {
+        if trailing.is_none() && ctx.ops.last().is_some_and(|op| op.name == "func.return") { return; }
+        let valid = if expected.mir_type == MirType::None { trailing.as_ref().is_none_or(|(_, ty)| *ty == MirType::None) }
+            else { trailing.as_ref().is_some_and(|value| checked_abi_value_matches(ctx, value, &expected)) };
+        if !valid {
+            checked_contract_error(ctx, "cssl.array.call.return.unverified", "checked helper return requires exact scalar width and signedness or explicit conversion", span);
+            return;
+        }
+        if expected.mir_type == MirType::None { ctx.ops.push(MirOp::std("func.return").with_attribute("source_loc", format!("{span:?}"))); return; }
+    }
     let mut op = MirOp::std("func.return").with_attribute("source_loc", format!("{span:?}"));
     if let Some((id, _)) = trailing {
         op = op.with_operand(id);
@@ -7033,11 +7397,338 @@ mod tests {
         assert!(!op_names(&f).contains(&"memref.load"));
     }
 
+    fn has_parse_errors(src: &str) -> bool {
+        let source = SourceFile::new(SourceId::first(), "<rejection>", src, Surface::RustHybrid);
+        let tokens = cssl_lex::lex(&source);
+        let (_, diagnostics) = cssl_parse::parse(&source, &tokens);
+        diagnostics.error_count() > 0
+    }
+
     #[test]
-    fn indexed_array_store_requires_a_checked_mutable_output_contract() {
-        let (f, _) = lower_one("fn put(src: &mut [u8; 4], i: i64, v: u8) { src[i] = v; }");
-        assert!(op_names(&f).contains(&"cssl.array.store.unimplemented"));
+    fn unsupported_compound_and_contiguous_reference_syntax_refuse_at_parse_phase() {
+        for source in [
+            "fn put(dst: &mut [u8; 4], v: u8) { dst[0] += v; }",
+            "fn unused(src: &&[u8; 4]) {}",
+        ] {
+            assert!(has_parse_errors(source), "{source}");
+            let (f, _) = lower_one(source);
+            assert!(!op_names(&f).contains(&"memref.store"), "{source}");
+        }
+    }
+
+    #[test]
+    fn actual_hir_compound_array_assignment_refuses_without_write() {
+        let text = "fn put(dst: &mut [u8; 4], v: u8) { dst[0] = v; }";
+        assert!(!has_parse_errors(text));
+        let (mut hir, interner, source) = hir_from(text);
+        let function = hir.items.iter_mut().find_map(|item| if let cssl_hir::HirItem::Fn(function) = item { Some(function) } else { None }).unwrap();
+        let body = function.body.as_mut().unwrap();
+        let cssl_hir::HirStmtKind::Expr(expr) = &mut body.stmts[0].kind else { panic!("expected assignment statement"); };
+        let cssl_hir::HirExprKind::Assign { op, .. } = &mut expr.kind else { panic!("expected assignment expression"); };
+        *op = Some(cssl_hir::HirBinOp::Add);
+        let lower = LowerCtx::new(&interner);
+        let mut mir = lower_function_signature(&lower, function);
+        lower_fn_body(&interner, Some(&source), function, &mut mir);
+        assert!(op_names(&mir).contains(&"cssl.array.store.contract.unverified"));
+        assert!(!op_names(&mir).contains(&"memref.store"));
+    }
+
+    #[test]
+    fn borrowed_array_scalar_cast_cannot_export_an_address() {
+        for source in [
+            "fn leak(src: &[u8; 4]) -> i64 { src as i64 }",
+            "fn leak(src: &mut [u8; 4]) -> u64 { src as u64 }",
+            "fn leak(src: &[u8; 4]) -> f64 { src as f64 }",
+            "fn leak(src: &[u8; 4]) -> bool { src as bool }",
+            "fn leak(src: &[u8; 4]) -> i64 { let alias = src; alias as i64 }",
+        ] {
+            assert!(!has_parse_errors(source), "{source}");
+            let functions = lower_checked_module(source);
+            assert!(op_names(&functions[0]).contains(&"cssl.array.cast.unverified"), "{source}");
+            assert!(!op_names(&functions[0]).contains(&"arith.bitcast"), "{source}");
+        }
+        let (f, _) = lower_one("fn convert(value: i64) -> f64 { value as f64 }");
+        assert!(op_names(&f).contains(&"arith.bitcast"));
+        assert!(!op_names(&f).contains(&"cssl.array.cast.unverified"));
+    }
+
+    #[test]
+    fn scalar_annotation_cannot_relabel_integer_or_borrowed_ssa() {
+        for source in [
+            "fn bad(src: &[u8; 4], value: i64) -> f64 { let forged: f64 = value; forged }",
+            "fn bad(src: &[u8; 4]) -> f64 { let forged: f64 = src; forged }",
+            "fn bad(src: &[u8; 4]) -> bool { let forged: bool = src; forged }",
+            "fn bad(src: &[u8; 4], value: f32) -> f64 { let forged: f64 = value; forged }",
+            "fn bad(src: &[u8; 4], value: i64) -> bool { let forged: bool = value; forged }",
+            "fn bad(src: &[u8; 4], value: i64) -> f64 { let mut forged: f64 = value; forged }",
+        ] {
+            assert!(!has_parse_errors(source), "{source}");
+            let functions = lower_checked_module(source);
+            let names = op_names(&functions[0]);
+            assert!(names.contains(&"cssl.alias.contract.unverified"), "{source}");
+            assert!(!names.contains(&"memref.store"), "{source}");
+        }
+        for source in [
+            "fn bad(dst: &mut [f64; 1], value: i64) { let forged: f64 = value; dst[0] = forged; }",
+            "fn bad(dst: &mut [bool; 1], value: i64) { let forged: bool = value; dst[0] = forged; }",
+            "fn bad(dst: &mut [f64; 1], value: i64) { let forged: f64 = value; write(dst, forged); } fn write(dst: &mut [f64; 1], value: f64) { dst[0] = value; }",
+        ] {
+            assert!(!has_parse_errors(source), "{source}");
+            let functions = lower_checked_module(source);
+            let names = op_names(&functions[0]);
+            assert!(names.contains(&"cssl.alias.contract.unverified"), "{source}");
+            assert!(!names.contains(&"memref.store"), "{source}");
+            assert!(!names.contains(&"func.call"), "{source}");
+        }
+    }
+
+    #[test]
+    fn exact_float_bool_literals_and_explicit_casts_remain_valid() {
+        for source in [
+            "fn good(src: &[u8; 4]) -> f64 { let value: f64 = 1.0; value }",
+            "fn good(src: &[u8; 4]) -> f64 { let mut value: f64 = 1.0; value = -2.0; value }",
+            "fn good(src: &[u8; 4]) -> bool { let mut value: bool = true; value = false; value }",
+            "fn good(src: &[u8; 4], value: i64) -> f64 { let cast: f64 = value as f64; cast }",
+            "fn good(dst: &mut [f64; 1]) { write(dst, 1.5); } fn write(dst: &mut [f64; 1], value: f64) { dst[0] = value; }",
+        ] {
+            assert!(!has_parse_errors(source), "{source}");
+            let functions = lower_checked_module(source);
+            assert!(functions.iter().all(|function| !op_names(function).iter().any(|name| name.ends_with(".unverified"))), "{source}");
+        }
+        let functions = lower_checked_module("fn good(src: &[u8; 4]) -> f64 { let mut value: f64 = 1.0; value = 2.0; value }");
+        let ops = &functions[0].body.entry().unwrap().ops;
+        for store in ops.iter().filter(|op| op.name == "memref.store") {
+            assert!(ops.iter().any(|op| op.results.iter().any(|value| value.id == store.operands[0] && value.ty == MirType::Float(super::FloatWidth::F64))));
+        }
+        for source in [
+            "fn bad(src: &[u8; 4]) -> f64 { let value: f64 = 1.0f32; value }",
+            "fn bad(src: &[u8; 4]) -> f64 { let mut value: f64 = 1.0; value = 2; value }",
+            "fn bad(src: &[u8; 4]) -> bool { let mut value: bool = true; value = 1; value }",
+        ] {
+            let functions = lower_checked_module(source);
+            assert!(op_names(&functions[0]).iter().any(|name| name.ends_with(".unverified")), "{source}");
+        }
+    }
+
+    #[test]
+    fn nested_array_parameter_reference_refuses_even_when_unused() {
+        for source in [
+            "fn unused(src: & &[u8; 4]) {}",
+            "fn unused(src: &mut &[u8; 4]) {}",
+            "fn unused(src: &mut &mut [u8; 4]) {}",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(op_names(&f).contains(&"cssl.array.parameter.contract.unverified"), "{source}");
+            let registered = lower_checked_module(source);
+            assert!(op_names(&registered[0]).contains(&"cssl.array.parameter.contract.unverified"), "{source}");
+        }
+        let (f, _) = lower_one("fn bad(dst: &mut &[u8; 4], value: u8) { dst[0] = value; }");
         assert!(!op_names(&f).contains(&"memref.store"));
+        for source in ["fn shared(src: &[u8; 4]) {}", "fn mutable(src: &mut [u8; 4]) {}"] {
+            let (f, _) = lower_one(source);
+            assert!(!op_names(&f).contains(&"cssl.array.parameter.contract.unverified"), "{source}");
+        }
+    }
+
+    #[test]
+    fn array_closure_boundaries_refuse_before_raw_environment_pack() {
+        for source in [
+            "fn f(dst: &mut [u8; 4]) { let closure = || { dst[0] = 1; }; }",
+            "fn f(src: &[u8; 4]) { let closure = || src[0]; }",
+            "fn f() { let closure = |src: &[u8; 4]| src[0]; }",
+            "fn f() { let closure = |dst: &mut [u8; 4]| { dst[0] = 1; }; }",
+        ] {
+            let (f, _) = lower_one(source);
+            let names = op_names(&f);
+            assert!(names.contains(&"cssl.array.call.contract.unverified"), "{source}: {names:?}");
+            assert!(!names.contains(&"cssl.heap.alloc"), "{source}");
+            assert!(!names.contains(&"cssl.closure"), "{source}");
+        }
+        let (f, _) = lower_one("fn f(value: i32) { let closure = |offset: i32| value + offset; }");
+        assert!(op_names(&f).contains(&"cssl.closure"));
+        assert!(!op_names(&f).contains(&"cssl.array.call.contract.unverified"));
+    }
+
+    #[test]
+    fn indexed_array_store_emits_exact_mutable_output_contract() {
+        let (f, _) = lower_one("fn put(dst: &mut [u8; 4], i: i64, v: u8) { dst[i] = v; }");
+        let store = f.body.entry().unwrap().ops.iter().find(|op| op.name == "memref.store").expect("checked store");
+        assert_eq!(store.operands, vec![super::ValueId(2), super::ValueId(0), super::ValueId(1)]);
+        assert!(store.results.is_empty());
+        for (key, value) in [("array_extent", "4"), ("index_units", "elements"), ("index_unsigned", "false"), ("array_write", "mutable"), ("element_type", "i8")] {
+            assert_eq!(store.attributes.iter().filter(|(k, _)| k == key).count(), 1);
+            assert!(store.attributes.iter().any(|(k, v)| k == key && v == value), "{key}");
+        }
+    }
+
+    #[test]
+    fn indexed_array_store_preserves_mutable_aliases_and_loaded_index_sign() {
+        let (f, _) = lower_one("fn put(dst: &mut [u8; 300], ix: &[u8; 1], value: u8) { let first = dst; let second: &mut [u8; 300] = first; second[ix[0]] = value; }");
+        let store = f.body.entry().unwrap().ops.iter().find(|op| op.name == "memref.store").unwrap();
+        assert_eq!(store.operands[1], super::ValueId(0));
+        assert!(store.attributes.iter().any(|(k, v)| k == "index_unsigned" && v == "true"));
+        assert!(!op_names(&f).contains(&"cssl.alias.contract.unverified"));
+    }
+
+    #[test]
+    fn indexed_array_store_contextual_literals_have_exact_width_and_sign() {
+        for (source, width, bits) in [
+            ("fn put(dst: &mut [u8; 4]) { dst[0] = 255; }", IntWidth::I8, "255"),
+            ("fn put(dst: &mut [i8; 4]) { dst[0] = -128; }", IntWidth::I8, "-128"),
+            ("fn put(dst: &mut [u64; 4]) { dst[0] = 18446744073709551615; }", IntWidth::I64, "-1"),
+            ("fn put(dst: &mut [i64; 4]) { dst[0] = 0; }", IntWidth::I64, "0"),
+        ] {
+            let (f, _) = lower_one(source);
+            let ops = &f.body.entry().unwrap().ops;
+            let store = ops.iter().find(|op| op.name == "memref.store").expect(source);
+            let value = ops.iter().find(|op| op.results.iter().any(|result| result.id == store.operands[0])).unwrap();
+            assert_eq!(value.results[0].ty, MirType::Int(width), "{source}");
+            assert!(value.attributes.iter().any(|(k, v)| k == "value" && v == bits), "{source}");
+        }
+    }
+
+    #[test]
+    fn indexed_array_store_refuses_unknown_permissions_and_unchecked_values() {
+        for source in [
+            "fn put(dst: &[u8; 4], v: u8) { dst[0] = v; }",
+            "fn put(dst: &mut [u8; 4], shared: &[u8; 4], v: u8) { let dst = shared; dst[0] = v; }",
+            "fn put(dst: [u8; 4], v: u8) { dst[0] = v; }",
+            "fn put(dst: &mut [u8], v: u8) { dst[0] = v; }",
+            "fn put() { let dst = [0, 0]; dst[0] = 1; }",
+            "fn put(dst: &mut [u8; 4], v: i8) { dst[0] = v; }",
+            "fn put(dst: &mut [u8; 4], v: u16) { dst[0] = v; }",
+            "fn put(dst: &mut [u8; 4], a: u8, b: i8) { dst[0] = a + b; }",
+
+            "fn put(dst: &mut [u8; 4], a: u8, b: i8, v: u8) { dst[a + b] = v; }",
+            "fn put(dst: &mut [u8; 4]) { dst[0] = 256; }",
+            "fn put(dst: &mut [u8; 4]) { dst[0] = -1; }",
+            "fn put(dst: &mut [u8; 4]) { dst[0] = 1i8; }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(!op_names(&f).contains(&"memref.store"), "{source}");
+            assert!(op_names(&f).iter().any(|name| name.ends_with(".unverified")), "{source}");
+        }
+        let (f, _) = lower_one("fn put(dst: &mut [u8; 4], v: i16) { dst[0] = v as u8; }");
+        assert!(op_names(&f).contains(&"memref.store"));
+    }
+
+    #[test]
+    fn checked_shared_alias_cannot_launder_or_poison_original_write_permission() {
+        let (f, _) = lower_one("fn put(dst: &mut [u8; 4], v: u8) { let shared: &[u8; 4] = dst; shared[0] = v; dst[0] = v; }");
+        assert!(op_names(&f).contains(&"cssl.alias.contract.unverified"));
+        let stores: Vec<_> = f.body.entry().unwrap().ops.iter().filter(|op| op.name == "memref.store").collect();
+        assert_eq!(stores.len(), 1);
+        assert_eq!(stores[0].operands[1], super::ValueId(0));
+        for source in [
+            "fn put(dst: &[u8; 4], v: u8) { let mutable: &mut [u8; 4] = dst; mutable[0] = v; }",
+            "fn put(dst: &mut [u8; 4], v: u8) { let raw: [u8; 4] = dst; raw[0] = v; }",
+            "fn put(dst: &mut [u8; 4], v: u8) { (dst as &mut [u8; 4])[0] = v; }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(!op_names(&f).contains(&"memref.store"), "{source}");
+        }
+    }
+
+    #[test]
+    fn checked_array_store_retains_permission_inside_while_body() {
+        let (f, _) = lower_one("fn put(dst: &mut [u8; 4], n: i64) { let mut i: i64 = 0; while i < n { dst[i] = 255; i = i + 1; } }");
+        let loop_op = f.body.entry().unwrap().ops.iter().find(|op| op.name == "scf.while").unwrap();
+        assert!(loop_op.regions[1].entry().unwrap().ops.iter().any(|op| op.name == "memref.store" && op.operands.len() == 3));
+    }
+
+    fn lower_checked_module(src: &str) -> Vec<crate::func::MirFunc> {
+        let (hir, interner, source) = hir_from(src);
+        let functions: Vec<_> = hir.items.iter().filter_map(|item| if let cssl_hir::HirItem::Fn(function) = item { Some(function) } else { None }).collect();
+        let contracts = super::build_checked_function_contracts(&interner, Some(&source), &functions).unwrap();
+        let lower = LowerCtx::new(&interner);
+        functions.iter().map(|function| {
+            let mut mir = lower_function_signature(&lower, function);
+            super::lower_fn_body_with_checked_functions(&interner, Some(&source), None, &contracts, function, &mut mir);
+            mir
+        }).collect()
+    }
+
+    #[test]
+    fn checked_helper_call_emits_exact_scalar_result_and_preserves_unsigned_provenance() {
+        let functions = lower_checked_module("fn caller(src: &[u8; 4], i: i64) -> i64 { read(src, i) as i64 } fn read(src: &[u8; 4], i: i64) -> u8 { src[i] }");
+        let caller = &functions[0];
+        let call = caller.body.entry().unwrap().ops.iter().find(|op| op.name == "func.call").unwrap();
+        assert_eq!(call.operands.len(), 2);
+        assert_eq!(call.results[0].ty, MirType::Int(IntWidth::I8));
+        assert!(call.attributes.iter().any(|(k, v)| k == "checked_array_abi" && v == "true"));
+        assert!(op_names(caller).contains(&"arith.extui"));
+        assert!(functions.iter().all(|function| !op_names(function).iter().any(|name| name.ends_with(".unverified"))));
+    }
+
+    #[test]
+    fn checked_mutable_helper_call_has_no_unit_result_and_contextual_exact_arguments() {
+        let functions = lower_checked_module("fn caller(dst: &mut [u8; 4]) { put(dst, 0, 255); } fn put(dst: &mut [u8; 4], i: i64, v: u8) { dst[i] = v; }");
+        let ops = &functions[0].body.entry().unwrap().ops;
+        let call = ops.iter().find(|op| op.name == "func.call").unwrap();
+        assert_eq!(call.operands.len(), 3);
+        assert!(call.results.is_empty());
+        for (operand, width) in [(call.operands[1], IntWidth::I64), (call.operands[2], IntWidth::I8)] {
+            assert!(ops.iter().any(|op| op.results.iter().any(|result| result.id == operand && result.ty == MirType::Int(width))));
+        }
+        assert!(functions.iter().all(|function| !op_names(function).iter().any(|name| name.ends_with(".unverified"))));
+    }
+
+    #[test]
+    fn checked_helper_calls_reject_arity_type_extent_sign_permission_and_unknown_values() {
+        for call in ["put()", "put(dst)", "put(dst, i, v, v)", "put(0, i, v)", "put(dst, v, v)", "put(dst, i, signed)", "put(short, i, v)", "put(shared, i, v)", "put(wide, i, v)", "put(dst, if flag { 0 } else { 1 }, v)"] {
+            let source = format!("fn caller(dst: &mut [u8; 4], short: &mut [u8; 3], shared: &[u8; 4], wide: &mut [u16; 4], i: i64, v: u8, signed: i8, flag: bool) {{ {call}; }} fn put(dst: &mut [u8; 4], i: i64, v: u8) {{ dst[i] = v; }}");
+            let functions = lower_checked_module(&source);
+            assert!(op_names(&functions[0]).contains(&"cssl.array.call.contract.unverified"), "{call}");
+            assert!(!op_names(&functions[0]).contains(&"func.call"), "{call}");
+        }
+    }
+
+    #[test]
+    fn checked_array_calls_refuse_missing_signature_and_borrowed_returns() {
+        for source in [
+            "fn caller(dst: &mut [u8; 4]) { unknown(dst); }",
+            "fn caller(dst: &mut [u8; 4]) { let alias = dst; unknown(alias); }",
+            "fn caller(dst: &mut [u8; 4], flag: bool) { unknown(if flag { dst } else { dst }); }",
+            "fn caller(dst: &mut [u8; 4]) { Box::new(dst); }",
+        ] {
+            let (f, _) = lower_one(source);
+            assert!(op_names(&f).contains(&"cssl.array.call.contract.unverified"), "{source}");
+            assert!(!op_names(&f).contains(&"func.call"), "{source}");
+        }
+        let functions = lower_checked_module("fn caller(dst: &mut [u8; 4]) { let alias = identity(dst); alias[0] = 1; } fn identity(dst: &mut [u8; 4]) -> &mut [u8; 4] { dst }");
+        assert!(op_names(&functions[0]).contains(&"cssl.array.call.contract.unverified"));
+        assert!(!op_names(&functions[0]).contains(&"memref.store"));
+        assert!(op_names(&functions[1]).contains(&"cssl.array.call.contract.unverified"));
+    }
+
+    #[test]
+    fn checked_helper_same_mutable_ssa_arguments_refuse_but_shared_repeat_is_valid() {
+        let functions = lower_checked_module("fn caller(dst: &mut [u8; 4]) { let alias = dst; pair(dst, alias); } fn pair(a: &mut [u8; 4], b: &mut [u8; 4]) { a[0] = 1; b[0] = 2; }");
+        assert!(op_names(&functions[0]).contains(&"cssl.array.call.contract.unverified"));
+        assert!(!op_names(&functions[0]).contains(&"func.call"));
+        let functions = lower_checked_module("fn caller(src: &[u8; 4]) -> u8 { pair(src, src) } fn pair(a: &[u8; 4], b: &[u8; 4]) -> u8 { a[0] + b[0] }");
+        assert!(op_names(&functions[0]).contains(&"func.call"));
+        assert!(functions.iter().all(|function| !op_names(function).iter().any(|name| name.ends_with(".unverified"))));
+    }
+
+    #[test]
+    fn checked_helper_return_requires_known_declared_scalar_contract() {
+        for source in [
+            "fn bad(src: &[i8; 1]) -> u8 { src[0] }",
+            "fn bad(src: &[u8; 1]) -> i64 { src[0] }",
+            "fn bad(src: &[u8; 1], signed: i8) -> u8 { src[0] + signed }",
+        ] {
+            let functions = lower_checked_module(source);
+            assert!(op_names(&functions[0]).contains(&"cssl.array.call.return.unverified"), "{source}");
+        }
+        for source in [
+            "fn good(src: &[i8; 1]) -> u8 { src[0] as u8 }",
+            "fn good(src: &[u8; 1]) -> i64 { return src[0] as i64; }",
+            "fn good(src: &[u8; 1]) -> u8 { 255 }",
+        ] {
+            let functions = lower_checked_module(source);
+            assert!(!op_names(&functions[0]).contains(&"cssl.array.call.return.unverified"), "{source}");
+        }
     }
 
     #[test]

@@ -41,7 +41,7 @@
 //!     output. Name mangling is identity (CSSLv3 names already use
 //!     `[a-zA-Z0-9_]` after monomorphization).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use cranelift_codegen::ir::{
     types as cl_types, AbiParam, Block as ClBlock, InstBuilder, Signature, UserFuncName,
@@ -1455,12 +1455,30 @@ fn emit_fmod_call(
 #[derive(Default)]
 struct CalleeImports {
     refs: HashMap<String, cranelift_codegen::ir::FuncRef>,
+    defined: HashSet<String>,
 }
 
 impl CalleeImports {
     fn get(&self, callee: &str) -> Option<cranelift_codegen::ir::FuncRef> {
         self.refs.get(callee).copied()
     }
+}
+
+// § Checked-call marker: present ⇒ unique true + unique callee; malformed refuses.
+fn obj_checked_call_abi(op: &MirOp, fn_name: &str) -> Result<bool, ObjectError> {
+    let tags: Vec<_> = op.attributes.iter().filter(|(name, _)| name == "checked_array_abi").collect();
+    if tags.is_empty() {
+        return Ok(false);
+    }
+    if tags.len() != 1 || tags[0].1 != "true"
+        || op.attributes.iter().filter(|(name, _)| name == "callee").count() != 1
+    {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_owned(),
+            detail: "checked array call requires a unique true marker and a unique callee".to_owned(),
+        });
+    }
+    Ok(true)
 }
 
 /// Build a `ValueId → MirType` map by walking the entry block once.
@@ -1550,12 +1568,19 @@ fn declare_callee_imports_for_fn(
     collect_callees(&entry_block.ops, &mut call_ops);
 
     for op in call_ops {
+        let checked = obj_checked_call_abi(op, &mir_fn.name)?;
         let Some((_, callee)) = op.attributes.iter().find(|(k, _)| k == "callee") else {
             // Malformed `func.call` lacking a callee attribute — defer the
             // diagnostic to body lowering where we already produce a
             // descriptive `LoweringFailed`.
             continue;
         };
+        if checked && !fn_table.contains_key(callee) {
+            return Err(ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("checked array call requires a module-defined callee: {callee}"),
+            });
+        }
         if imports.refs.contains_key(callee) {
             continue;
         }
@@ -1564,6 +1589,7 @@ fn declare_callee_imports_for_fn(
         if let Some(&callee_id) = fn_table.get(callee) {
             let fref = obj_module.declare_func_in_func(callee_id, &mut codegen_ctx.func);
             imports.refs.insert(callee.clone(), fref);
+            imports.defined.insert(callee.clone());
             continue;
         }
 
@@ -1860,7 +1886,7 @@ fn lower_one_op(
         // § T11-D59 (S6-C3) — memref.load + memref.store. See
         // `specs/02_IR.csl § MEMORY-OPS` and the JIT-side mirror in `jit.rs`.
         "memref.load" => obj_lower_memref_load(op, builder, value_map, fn_name, ptr_ty),
-        "memref.store" => obj_lower_memref_store(op, builder, value_map, fn_name),
+        "memref.store" => obj_lower_memref_store(op, builder, value_map, fn_name, ptr_ty),
         "func.return" => {
             // § T11-W19 · int-literal-coercion at func.return
             //   MIR int-literals default to I32 ; fn-signatures may declare
@@ -1952,7 +1978,7 @@ fn lower_one_op(
         //   Stage-0 single-result : the first cranelift result-value is bound
         //   into `value_map` under the op's first result-id. Void callees
         //   produce no result and are valid (callsite carries no `.results`).
-        "func.call" => obj_lower_func_call(op, builder, value_map, fn_name, callee_refs),
+        "func.call" => obj_lower_func_call(op, builder, value_map, fn_name, callee_refs, ptr_ty),
         // § T11-D58 (S6-C1) — structured-control-flow lowering. `scf.if`
         //   delegates to the shared `crate::scf::lower_scf_if` helper which
         //   creates the then/else/merge blocks + emits `brif`. `scf.yield`
@@ -2767,7 +2793,9 @@ fn obj_lower_func_call(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     callee_refs: &CalleeImports,
+    ptr_ty: cranelift_codegen::ir::Type,
 ) -> Result<bool, ObjectError> {
+    let checked = obj_checked_call_abi(op, fn_name)?;
     let (_, callee) = op
         .attributes
         .iter()
@@ -2812,6 +2840,48 @@ fn obj_lower_func_call(
         let sig = &builder.func.dfg.signatures[ext_func.signature];
         sig.params.iter().map(|p| p.value_type).collect()
     };
+    if checked {
+        let fail = |detail: &str| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_owned(), detail: detail.to_owned(),
+        };
+        if !callee_refs.defined.contains(callee) {
+            return Err(fail("checked array call requires a module-defined callee"));
+        }
+        let result_tys: Vec<_> = {
+            let ext_func = &builder.func.dfg.ext_funcs[func_ref];
+            builder.func.dfg.signatures[ext_func.signature].returns.iter()
+                .map(|result| result.value_type).collect()
+        };
+        if op.operands.len() != callee_param_tys.len()
+            || op.results.len() != result_tys.len() || result_tys.len() > 1
+        {
+            return Err(fail("checked array call operand/result count must match its declared signature"));
+        }
+        for (result, expected) in op.results.iter().zip(&result_tys) {
+            let actual = match &result.ty {
+                MirType::Int(_) | MirType::Float(FloatWidth::F32 | FloatWidth::F64) | MirType::Bool => mir_type_to_cl(&result.ty, ptr_ty),
+                _ => None,
+            };
+            if actual != Some(*expected) {
+                return Err(fail("checked array call result must match its declared scalar type"));
+            }
+        }
+        for (id, expected) in op.operands.iter().zip(&callee_param_tys) {
+            let value = *value_map.get(id).ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_owned(), value_id: id.0,
+            })?;
+            if builder.func.dfg.value_type(value) != *expected {
+                return Err(fail("checked array call operand type must exactly match its declared signature"));
+            }
+            args.push(value);
+        }
+        // § Exact signature proven; N! coercion | padding | truncation | default substitution.
+        let inst = builder.ins().call(func_ref, &args);
+        if let Some(result) = op.results.first() {
+            value_map.insert(result.id, builder.inst_results(inst)[0]);
+        }
+        return Ok(false);
+    }
     for (idx, vid) in op.operands.iter().enumerate() {
         let mut v = *value_map
             .get(vid)
@@ -3911,6 +3981,81 @@ fn obj_memref_effective_addr(
     }
 }
 
+// § Fixed-array address: unique complete metadata → scalar/width proof → bounds trap → byte offset.
+fn obj_checked_array_addr(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &HashMap<ValueId, cranelift_codegen::ir::Value>,
+    ptr_id: ValueId,
+    index_id: Option<ValueId>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+    elem_ty: cranelift_codegen::ir::Type,
+    store_element: Option<&MirType>,
+) -> Result<Option<cranelift_codegen::ir::Value>, ObjectError> {
+    let keys = ["array_extent", "index_units", "index_unsigned", "array_write", "element_type"];
+    if !op.attributes.iter().any(|(name, _)| keys.contains(&name.as_str())) {
+        return Ok(None);
+    }
+    let fail = |detail: &str| ObjectError::LoweringFailed {
+        fn_name: fn_name.to_owned(),
+        detail: detail.to_owned(),
+    };
+    let required = if store_element.is_some() { &keys[..] } else { &keys[..3] };
+    if required.iter().any(|key| op.attributes.iter().filter(|(name, _)| name == key).count() != 1)
+        || (store_element.is_none()
+            && op.attributes.iter().any(|(name, _)| keys[3..].contains(&name.as_str())))
+    {
+        return Err(fail("incomplete or invalid fixed-array metadata"));
+    }
+    let attribute = |key: &str| op.attributes.iter()
+        .find(|(name, _)| name == key).map(|(_, value)| value.as_str());
+    if attribute("index_units") != Some("elements") {
+        return Err(fail("fixed-array index units must be elements"));
+    }
+    let unsigned = match attribute("index_unsigned") {
+        Some("true") => true,
+        Some("false") => false,
+        _ => return Err(fail("fixed-array index signedness must be true or false")),
+    };
+    if let Some(expected) = store_element {
+        if attribute("array_write") != Some("mutable") {
+            return Err(fail("fixed-array store requires mutable write authority"));
+        }
+        if attribute("element_type") != Some(expected.to_string().as_str()) {
+            return Err(fail("fixed-array store element type must match the scalar value type"));
+        }
+    }
+    let stride = u64::from(elem_ty.bytes());
+    let extent = attribute("array_extent").and_then(|text| text.parse::<u64>().ok())
+        .filter(|n| stride != 0 && *n <= i64::MAX as u64 / stride)
+        .ok_or_else(|| fail("invalid fixed-array extent"))?;
+    let index_id = index_id.ok_or_else(|| fail("fixed-array index missing"))?;
+    let index = *value_map.get(&index_id).ok_or_else(|| ObjectError::UnknownValueId {
+        fn_name: fn_name.to_owned(), value_id: index_id.0,
+    })?;
+    let base = *value_map.get(&ptr_id).ok_or_else(|| ObjectError::UnknownValueId {
+        fn_name: fn_name.to_owned(), value_id: ptr_id.0,
+    })?;
+    let index_ty = builder.func.dfg.value_type(index);
+    if !index_ty.is_int() || index_ty.bits() > ptr_ty.bits()
+        || builder.func.dfg.value_type(base) != ptr_ty
+    {
+        return Err(fail("fixed-array index/base width invalid"));
+    }
+    let index = if index_ty.bits() < ptr_ty.bits() {
+        if unsigned { builder.ins().uextend(ptr_ty, index) }
+        else { builder.ins().sextend(ptr_ty, index) }
+    } else { index };
+    // § Unsigned bounds rejects signed negatives; trap precedes memory effect.
+    let in_bounds = builder.ins().icmp_imm(
+        cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, index, extent as i64,
+    );
+    builder.ins().trapz(in_bounds, cranelift_codegen::ir::TrapCode::HEAP_OUT_OF_BOUNDS);
+    let bytes = builder.ins().imul_imm(index, stride as i64);
+    Ok(Some(builder.ins().iadd(base, bytes)))
+}
+
 fn obj_lower_memref_load(
     op: &MirOp,
     builder: &mut FunctionBuilder<'_>,
@@ -3952,37 +4097,11 @@ fn obj_lower_memref_load(
         slot: 0,
         ty: format!("{}", r.ty),
     })?;
-    // § Checked-array metadata forms one complete contract; partial/duplicate attributes refuse.
-    let checked_keys = ["array_extent", "index_units", "index_unsigned"];
-    let checked = op.attributes.iter().any(|(name, _)| checked_keys.contains(&name.as_str()));
-    if checked && (checked_keys.iter().any(|key| op.attributes.iter().filter(|(name, _)| name == key).count() != 1)
-        || !op.attributes.iter().any(|(name, value)| name == "index_unsigned" && matches!(value.as_str(), "true" | "false"))) {
-        return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "incomplete or invalid fixed-array metadata".to_owned() });
-    }
-    let addr = if let Some((_, extent_text)) = op.attributes.iter().find(|(name, _)| name == "array_extent") {
-        let extent = extent_text.parse::<u64>().ok().filter(|n| *n <= i64::MAX as u64 / u64::from(elem_ty.bytes()))
-            .ok_or_else(|| ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "invalid fixed-array extent".to_owned() })?;
-        if !op.attributes.iter().any(|(name, value)| name == "index_units" && value == "elements") {
-            return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index unit missing".to_owned() });
-        }
-        let index_id = offset_id.ok_or_else(|| ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index missing".to_owned() })?;
-        let index = *value_map.get(&index_id).ok_or_else(|| ObjectError::UnknownValueId { fn_name: fn_name.to_owned(), value_id: index_id.0 })?;
-        let base = *value_map.get(&ptr_id).ok_or_else(|| ObjectError::UnknownValueId { fn_name: fn_name.to_owned(), value_id: ptr_id.0 })?;
-        let index_ty = builder.func.dfg.value_type(index);
-        if !index_ty.is_int() || index_ty.bits() > ptr_ty.bits() || builder.func.dfg.value_type(base) != ptr_ty {
-            return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index/base width invalid".to_owned() });
-        }
-        let unsigned = op.attributes.iter().any(|(name, value)| name == "index_unsigned" && value == "true");
-        let index = if index_ty.bits() < ptr_ty.bits() {
-            if unsigned { builder.ins().uextend(ptr_ty, index) } else { builder.ins().sextend(ptr_ty, index) }
-        } else { index };
-        // § Unsigned comparison rejects negative signed indices as well as the upper bound.
-        let in_bounds = builder.ins().icmp_imm(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, index, extent as i64);
-        builder.ins().trapz(in_bounds, cranelift_codegen::ir::TrapCode::HEAP_OUT_OF_BOUNDS);
-        let bytes = builder.ins().imul_imm(index, i64::from(elem_ty.bytes()));
-        builder.ins().iadd(base, bytes)
-    } else {
-        obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?
+    let addr = match obj_checked_array_addr(
+        op, builder, value_map, ptr_id, offset_id, fn_name, ptr_ty, elem_ty, None,
+    )? {
+        Some(addr) => addr,
+        None => obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?,
     };
     let flags = obj_memref_flags(align);
     let v = builder.ins().load(elem_ty, flags, addr, 0);
@@ -3995,6 +4114,7 @@ fn obj_lower_memref_store(
     builder: &mut FunctionBuilder<'_>,
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
 ) -> Result<bool, ObjectError> {
     if !op.results.is_empty() {
         return Err(ObjectError::LoweringFailed {
@@ -4044,7 +4164,12 @@ fn obj_lower_memref_store(
             fn_name: fn_name.to_string(),
             detail: format!("memref.store value type `{val_ty}` has no natural alignment"),
         })?;
-    let addr = obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?;
+    let addr = match obj_checked_array_addr(
+        op, builder, value_map, ptr_id, offset_id, fn_name, ptr_ty, val_ty, mir_elem.as_ref(),
+    )? {
+        Some(addr) => addr,
+        None => obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?,
+    };
     let flags = obj_memref_flags(align);
     builder.ins().store(flags, val, addr, 0);
     Ok(false)
@@ -5647,6 +5772,10 @@ mod tests {
     #[test]
     fn obj_checked_array_metadata_requires_complete_unambiguous_contract() {
         let cases: &[&[(&str, &str)]] = &[
+            &[("array_write", "mutable")],
+            &[("element_type", "i8")],
+            &[("array_extent", "4"), ("index_units", "elements"), ("index_unsigned", "true"), ("array_write", "mutable")],
+            &[("array_extent", "4"), ("index_units", "elements"), ("index_unsigned", "true"), ("element_type", "i8")],
             &[("index_units", "elements")],
             &[("index_unsigned", "true")],
             &[("array_extent", "4"), ("index_units", "elements")],
@@ -5664,6 +5793,151 @@ mod tests {
             let mut module = MirModule::new();
             module.push_func(f);
             assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "accepted malformed contract: {attrs:?}");
+        }
+    }
+
+    fn checked_store_op(element_type: &str) -> MirOp {
+        MirOp::std("memref.store")
+            .with_operand(ValueId(0)).with_operand(ValueId(1)).with_operand(ValueId(2))
+            .with_attribute("array_extent", "300")
+            .with_attribute("index_units", "elements")
+            .with_attribute("index_unsigned", "true")
+            .with_attribute("array_write", "mutable")
+            .with_attribute("element_type", element_type)
+    }
+
+    fn checked_store_module(value_ty: MirType, base_ty: MirType, index_ty: MirType, op: MirOp) -> MirModule {
+        let mut function = MirFunc::new("checked_store", vec![value_ty, base_ty, index_ty], vec![]);
+        function.push_op(op);
+        function.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(function);
+        module
+    }
+
+    #[test]
+    fn obj_checked_stores_accept_scalar_types_and_explicit_signedness() {
+        for value_ty in [
+            MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I16),
+            MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I64),
+            MirType::Float(FloatWidth::F32), MirType::Float(FloatWidth::F64),
+        ] {
+            for (index_ty, unsigned) in [
+                (IntWidth::I8, "true"), (IntWidth::I8, "false"), (IntWidth::I64, "false"),
+            ] {
+                let mut op = checked_store_op(&value_ty.to_string());
+                op.attributes.iter_mut().find(|(key, _)| key == "index_unsigned").unwrap().1 = unsigned.to_owned();
+                let module = checked_store_module(value_ty.clone(), MirType::Int(IntWidth::I64), MirType::Int(index_ty), op);
+                let bytes = emit_object_module(&module).expect("checked scalar store compiles");
+                assert!(bytes.starts_with(magic_prefix(host_default_format())));
+            }
+        }
+    }
+
+    #[test]
+    fn obj_checked_stores_reject_incomplete_duplicate_and_invalid_metadata() {
+        let valid = checked_store_op("i64");
+        let mut cases = Vec::new();
+        for index in 0..valid.attributes.len() {
+            let mut missing = valid.clone();
+            missing.attributes.remove(index);
+            cases.push(missing);
+            let mut duplicate = valid.clone();
+            duplicate.attributes.push(valid.attributes[index].clone());
+            cases.push(duplicate);
+            let mut partial = valid.clone();
+            partial.attributes = vec![valid.attributes[index].clone()];
+            cases.push(partial);
+        }
+        for (key, value) in [
+            ("array_extent", "-1"), ("array_extent", "invalid"), ("array_extent", ""),
+            ("array_extent", "18446744073709551616"),
+            ("array_extent", "1152921504606846976"),
+            ("index_units", "bytes"), ("index_unsigned", "maybe"),
+            ("array_write", "shared"), ("array_write", "true"),
+            ("element_type", "unknown"), ("element_type", "u64"),
+        ] {
+            let mut op = valid.clone();
+            op.attributes.iter_mut().find(|(name, _)| name == key).unwrap().1 = value.to_owned();
+            cases.push(op);
+        }
+        for op in cases {
+            let attrs = op.attributes.clone();
+            let module = checked_store_module(MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64), op);
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "accepted malformed checked store: {attrs:?}");
+        }
+    }
+
+    #[test]
+    fn obj_checked_stores_reject_element_type_or_width_mismatch() {
+        for (value_ty, element) in [
+            (MirType::Int(IntWidth::I8), "i16"),
+            (MirType::Int(IntWidth::I16), "i8"),
+            (MirType::Int(IntWidth::I64), "f64"),
+            (MirType::Float(FloatWidth::F64), "i64"),
+            (MirType::Int(IntWidth::I32), "f32"),
+            (MirType::Float(FloatWidth::F32), "i32"),
+        ] {
+            let module = checked_store_module(value_ty.clone(), MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64), checked_store_op(element));
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "accepted {value_ty:?} as {element}");
+        }
+    }
+
+    #[test]
+    fn obj_checked_stores_reject_bad_arity_index_and_base() {
+        let valid = checked_store_op("i8");
+        let mut missing_index = valid.clone();
+        missing_index.operands.pop();
+        let mut extra_operand = valid.clone();
+        extra_operand.operands.push(ValueId(2));
+        let with_result = valid.clone().with_result(ValueId(3), MirType::Int(IntWidth::I8));
+        for op in [missing_index, extra_operand, with_result] {
+            let module = checked_store_module(MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64), op);
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })));
+        }
+        for (base_ty, index_ty) in [
+            (MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I64)),
+            (MirType::Int(IntWidth::I64), MirType::Float(FloatWidth::F64)),
+        ] {
+            let module = checked_store_module(MirType::Int(IntWidth::I8), base_ty, index_ty, valid.clone());
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })));
+        }
+    }
+
+    #[test]
+    fn obj_checked_stores_accept_zero_and_maximum_nonoverflowing_extent() {
+        for extent in ["0", "1152921504606846975"] {
+            let mut op = checked_store_op("i64");
+            op.attributes.iter_mut().find(|(key, _)| key == "array_extent").unwrap().1 = extent.to_owned();
+            let module = checked_store_module(MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64), op);
+            assert!(emit_object_module(&module).is_ok(), "rejected bounded extent {extent}");
+        }
+    }
+
+    #[test]
+    fn obj_checked_store_trap_precedes_write_and_index_extension_matches_metadata() {
+        for (unsigned, extension) in [("true", "uextend"), ("false", "sextend")] {
+            let mut context = Context::new();
+            context.func.signature.params = vec![AbiParam::new(cl_types::I8), AbiParam::new(cl_types::I64), AbiParam::new(cl_types::I8)];
+            let mut builder_context = FunctionBuilderContext::new();
+            let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+            let block = builder.create_block();
+            builder.append_block_params_for_function_params(block);
+            builder.switch_to_block(block);
+            let mut values: HashMap<_, _> = builder.block_params(block).iter().enumerate()
+                .map(|(index, value)| (ValueId(index as u32), *value)).collect();
+            let mut op = checked_store_op("i8");
+            op.attributes.iter_mut().find(|(key, _)| key == "index_unsigned").unwrap().1 = unsigned.to_owned();
+            obj_lower_memref_store(&op, &mut builder, &mut values, "checked_store", cl_types::I64).expect("lower checked store");
+            builder.ins().return_(&[]);
+            builder.seal_all_blocks();
+            builder.finalize();
+            let ir = context.func.display().to_string();
+            let trap = ir.find("trapz").expect("bounds trap");
+            let store = ir.find("store").expect("memory write");
+            assert!(ir.contains(extension), "missing {extension}: {ir}");
+            assert!(ir.contains("icmp_imm ult"), "missing unsigned bounds comparison: {ir}");
+            assert!(trap < store, "memory effect precedes bounds trap: {ir}");
         }
     }
 
@@ -6257,6 +6531,144 @@ mod tests {
         );
         f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
         f
+    }
+
+    fn checked_call_op() -> MirOp {
+        MirOp::std("func.call").with_attribute("callee", "checked_helper")
+            .with_attribute("checked_array_abi", "true")
+            .with_operand(ValueId(0)).with_result(ValueId(1), MirType::Int(IntWidth::I32))
+    }
+
+    fn checked_call_module(caller_ty: MirType, helper_ty: MirType, returns_value: bool, op: MirOp, defined: bool) -> MirModule {
+        let mut caller = MirFunc::new("checked_caller", vec![caller_ty], vec![]);
+        caller.push_op(op);
+        caller.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(caller);
+        if defined {
+            let results = if returns_value { vec![helper_ty.clone()] } else { vec![] };
+            let mut helper = MirFunc::new("checked_helper", vec![helper_ty], results);
+            let mut ret = MirOp::std("func.return");
+            if returns_value { ret.operands.push(ValueId(0)); }
+            helper.push_op(ret);
+            module.push_func(helper);
+        }
+        module
+    }
+
+    #[test]
+    fn obj_checked_calls_accept_exact_scalar_and_void_signatures() {
+        for ty in [
+            MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I16),
+            MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I64),
+            MirType::Float(FloatWidth::F32), MirType::Float(FloatWidth::F64),
+            MirType::Bool,
+        ] {
+            for returns_value in [false, true] {
+                let mut op = checked_call_op();
+                if returns_value { op.results[0].ty = ty.clone(); }
+                else { op.results.clear(); }
+                let module = checked_call_module(ty.clone(), ty.clone(), returns_value, op, true);
+                assert!(emit_object_module(&module).is_ok(), "exact checked call rejected: {ty:?}, returns {returns_value}");
+            }
+        }
+        let mut pointer_op = checked_call_op();
+        pointer_op.results.clear();
+        let module = checked_call_module(MirType::Ptr, MirType::Ptr, false, pointer_op, true);
+        assert!(emit_object_module(&module).is_ok(), "borrowed pointer operand must remain pointer-width");
+    }
+
+    #[test]
+    fn obj_checked_calls_reject_malformed_markers_and_callees() {
+        let valid = checked_call_op();
+        let mut cases = Vec::new();
+        for value in ["false", "", "TRUE", "unknown"] {
+            let mut op = valid.clone();
+            op.attributes.iter_mut().find(|(key, _)| key == "checked_array_abi").unwrap().1 = value.to_owned();
+            cases.push(op);
+        }
+        let mut duplicate_tag = valid.clone();
+        duplicate_tag.attributes.push(("checked_array_abi".to_owned(), "true".to_owned()));
+        cases.push(duplicate_tag);
+        let mut duplicate_callee = valid.clone();
+        duplicate_callee.attributes.push(("callee".to_owned(), "checked_helper".to_owned()));
+        cases.push(duplicate_callee);
+        let mut missing_callee = valid.clone();
+        missing_callee.attributes.retain(|(key, _)| key != "callee");
+        cases.push(missing_callee);
+        for op in cases {
+            let module = checked_call_module(MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32), true, op, true);
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })));
+        }
+    }
+
+    #[test]
+    fn obj_checked_calls_reject_arity_and_result_type_mismatch() {
+        let valid = checked_call_op();
+        let mut cases = Vec::new();
+        let mut missing_arg = valid.clone();
+        missing_arg.operands.clear();
+        cases.push(missing_arg);
+        let mut extra_arg = valid.clone();
+        extra_arg.operands.push(ValueId(0));
+        cases.push(extra_arg);
+        let mut missing_result = valid.clone();
+        missing_result.results.clear();
+        cases.push(missing_result);
+        cases.push(valid.clone().with_result(ValueId(2), MirType::Int(IntWidth::I32)));
+        for ty in [MirType::Int(IntWidth::I64), MirType::Float(FloatWidth::F32), MirType::Ptr, MirType::None] {
+            let mut op = valid.clone();
+            op.results[0].ty = ty;
+            cases.push(op);
+        }
+        for op in cases {
+            let module = checked_call_module(MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32), true, op, true);
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })));
+        }
+        let module = checked_call_module(MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32), false, valid, true);
+        assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "void callee cannot fabricate a result");
+    }
+
+    #[test]
+    fn obj_checked_calls_reject_operand_conversion_and_external_callees() {
+        for actual in [MirType::Int(IntWidth::I8), MirType::Int(IntWidth::I64), MirType::Float(FloatWidth::F32), MirType::Float(FloatWidth::F64)] {
+            let module = checked_call_module(actual, MirType::Int(IntWidth::I32), true, checked_call_op(), true);
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "checked call must not coerce arguments");
+        }
+        let module = checked_call_module(MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32), true, checked_call_op(), false);
+        assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "checked call cannot infer an external ABI");
+    }
+
+    #[test]
+    fn obj_checked_calls_reject_cached_external_imports() {
+        for same_caller in [true, false] {
+            let ty = MirType::Int(IntWidth::I32);
+            let mut prior = MirFunc::new("prior_caller", vec![ty.clone()], vec![]);
+            let mut unmarked = checked_call_op();
+            unmarked.attributes.retain(|(key, _)| key != "checked_array_abi");
+            prior.push_op(unmarked);
+            if same_caller {
+                let mut marked = checked_call_op();
+                marked.results[0].id = ValueId(2);
+                prior.push_op(marked);
+            }
+            prior.push_op(MirOp::std("func.return"));
+            let mut module = MirModule::new();
+            module.push_func(prior);
+            if !same_caller {
+                let mut next = MirFunc::new("next_caller", vec![ty], vec![]);
+                next.push_op(checked_call_op());
+                next.push_op(MirOp::std("func.return"));
+                module.push_func(next);
+            }
+            match emit_object_module(&module) {
+                Err(ObjectError::LoweringFailed { detail, .. }) => assert_eq!(
+                    detail, "checked array call requires a module-defined callee: checked_helper",
+                    "wrong refusal gate, same caller: {same_caller}",
+                ),
+                other => panic!("expected pre-cache callee refusal, same caller: {same_caller}, got {other:?}"),
+            }
+        }
     }
 
     #[test]

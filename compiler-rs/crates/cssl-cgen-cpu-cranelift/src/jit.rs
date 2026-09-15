@@ -1405,6 +1405,9 @@ fn lower_intrinsic_call(
     fn_name: &str,
     callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
 ) -> Result<bool, JitError> {
+    if op.attributes.iter().any(|(name, _)| name == "checked_array_abi") {
+        return Err(JitError::UnsupportedFeature { fn_name: fn_name.to_string(), reason: "checked array helper ABI is not implemented by the JIT backend".to_string() });
+    }
     let (_, callee) = op
         .attributes
         .iter()
@@ -1784,7 +1787,7 @@ fn lower_memref_load(
 ) -> Result<bool, JitError> {
     // § Checked-array metadata → refusal; N! erase bounds or element units.
     if op.attributes.iter().any(|(name, _)| {
-        matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned")
+        matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned" | "array_write" | "element_type")
     }) {
         return Err(JitError::UnsupportedFeature {
             fn_name: fn_name.to_string(),
@@ -1888,6 +1891,10 @@ fn lower_memref_store(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
 ) -> Result<bool, JitError> {
+    // § Checked writes retain bounds+borrow contract; unsupported backend refuses every partial key.
+    if op.attributes.iter().any(|(name, _)| matches!(name.as_str(), "array_extent" | "index_units" | "index_unsigned" | "array_write" | "element_type")) {
+        return Err(JitError::UnsupportedFeature { fn_name: fn_name.to_string(), reason: "checked array writes are not implemented by the JIT backend".to_string() });
+    }
     if !op.results.is_empty() {
         return Err(JitError::LoweringFailed {
             fn_name: fn_name.to_string(),
@@ -4062,12 +4069,52 @@ mod tests {
     }
 
     #[test]
+    fn func_call_rejects_checked_array_abi_metadata() {
+        for marker in ["true", "false", ""] {
+            let mut f = MirFunc::new("checked_caller", vec![i64_ty()], vec![i64_ty()]);
+            f.next_value_id = 2;
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i64_ty())];
+            entry.ops.push(MirOp::std("func.call").with_operand(ValueId(0)).with_result(ValueId(1), i64_ty()).with_attribute("callee", "opaque_test_helper").with_attribute("checked_array_abi", marker));
+            entry.ops.push(MirOp::std("func.return").with_operand(ValueId(1)));
+            let mut module = JitModule::new();
+            assert!(matches!(module.compile(&f), Err(JitError::UnsupportedFeature { reason, .. }) if reason.contains("checked array helper ABI")));
+        }
+    }
+
+    #[test]
+    fn memref_store_rejects_checked_array_metadata() {
+        let cases: &[&[(&str, &str)]] = &[
+            &[("array_extent", "4")], &[("index_units", "elements")], &[("index_unsigned", "true")],
+            &[("array_write", "mutable")], &[("array_write", "shared")], &[("element_type", "i32")],
+            &[("array_extent", "4"), ("index_units", "elements"), ("index_unsigned", "false"), ("array_write", "mutable"), ("element_type", "i32")],
+        ];
+        for (case, attributes) in cases.iter().enumerate() {
+            let name = format!("checked_store_{case}");
+            let mut f = MirFunc::new(name.clone(), vec![i32_ty(), i64_ty(), i64_ty()], vec![]);
+            f.next_value_id = 3;
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i32_ty()), MirValue::new(ValueId(1), i64_ty()), MirValue::new(ValueId(2), i64_ty())];
+            let mut store = MirOp::std("memref.store").with_operand(ValueId(0)).with_operand(ValueId(1)).with_operand(ValueId(2));
+            for &(key, value) in *attributes { store.attributes.push((key.to_string(), value.to_string())); }
+            entry.ops.push(store); entry.ops.push(MirOp::std("func.return"));
+            let mut module = JitModule::new();
+            match module.compile(&f).unwrap_err() {
+                JitError::UnsupportedFeature { fn_name, reason } => { assert_eq!(fn_name, name); assert!(reason.contains("checked array writes")); }
+                other => panic!("expected checked-store refusal, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn memref_load_rejects_checked_array_metadata() {
         let cases: &[&[(&str, &str)]] = &[
             &[("array_extent", "4")],
             &[("index_units", "elements")],
             &[("index_unsigned", "true")],
             &[("index_unsigned", "false")],
+            &[("array_write", "mutable")],
+            &[("element_type", "i8")],
             &[("array_extent", "4"), ("index_units", "elements")],
             &[("array_extent", "invalid")],
             &[("index_units", "bytes")],
