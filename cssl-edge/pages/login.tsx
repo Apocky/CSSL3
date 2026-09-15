@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AuthFrame } from '../components/hub/AuthFrame';
+import { credentialFromInput } from '@/lib/auth-credential';
 import { AUTH_PROVIDERS, getAuthClient, persistSessionToCookie } from '../lib/auth';
 import { buildAuthCallbackUrl, normalizeAuthReturnPath } from '../lib/auth-return';
 
@@ -84,8 +85,8 @@ const Login: NextPage = () => {
       setNotice({
         tone: 'info',
         text: kind === 'resend'
-          ? `A new sign-in email was sent to ${normalizedEmail}. Enter its code if shown, or use its secure link.`
-          : `Check ${normalizedEmail}. Enter the one-time code if the email shows one, or use its secure link.`,
+          ? `A new sign-in email was sent to ${normalizedEmail}. Enter its code, or paste its link below.`
+          : `Check ${normalizedEmail}. Enter the code if the email shows one; otherwise copy the link from the email and paste it below.`,
       });
     } catch {
       setNotice({ tone: 'error', text: 'The sign-in service could not be reached. Please try again.' });
@@ -123,13 +124,19 @@ const Login: NextPage = () => {
         }
         accessToken = data.session.access_token;
       } else {
-        const { data, error } = await client.auth.verifyOtp({
-          email: pendingEmail,
-          token: otp.trim(),
-          type: 'email',
-        });
+        const credential = credentialFromInput(otp);
+        if (!credential) {
+          setNotice({
+            tone: 'error',
+            text: 'Paste either the code from the email or the whole sign-in link. If you pasted a link, it did not contain a usable token.',
+          });
+          return;
+        }
+        const { data, error } = credential.kind === 'link'
+          ? await client.auth.verifyOtp({ token_hash: credential.token, type: 'email' })
+          : await client.auth.verifyOtp({ email: pendingEmail, token: credential.token, type: 'email' });
         if (error || !data.session) {
-          setNotice({ tone: 'error', text: 'That code could not be verified. It may have expired or already been used.' });
+          setNotice({ tone: 'error', text: 'That code or link could not be verified. It may have expired or already been used.' });
           return;
         }
         accessToken = data.session.access_token;
@@ -215,7 +222,7 @@ const Login: NextPage = () => {
         <div className="apx-auth-card">
           <p className="apx-auth-context">Continue to {destination}</p>
           <h1>Sign in to Apocky</h1>
-          <p className="apx-auth-subtitle">Use a one-time email code, the secure link in that email, or a provider you already trust. No password required.</p>
+          <p className="apx-auth-subtitle">Use the code in the email, or paste the email&rsquo;s link here. No password required.</p>
 
           {localhostCallback && (
             <details className="apx-auth-warning">
@@ -249,24 +256,23 @@ const Login: NextPage = () => {
           ) : (
             <form className="apx-auth-form" onSubmit={handleVerifyCode}>
               <p className="apx-field-help" id="login-code-destination">Code sent to <strong>{pendingEmail}</strong>.</p>
-              <label className="apx-label" htmlFor="login-code">One-time code</label>
+              <label className="apx-label" htmlFor="login-code">Code or sign-in link</label>
               <input
                 id="login-code"
                 className="apx-input"
                 type="text"
                 autoComplete="one-time-code"
-                inputMode="numeric"
-                pattern="[0-9]{6,8}"
+                inputMode="text"
                 minLength={6}
                 maxLength={8}
                 required
                 value={otp}
                 onChange={(event) => setOtp(event.target.value)}
                 aria-describedby="login-code-destination login-code-help"
-                placeholder="000000"
+                placeholder="000000 or paste the link"
                 autoFocus
               />
-              <p className="apx-field-help" id="login-code-help">Codes are single-use. Do not share this code with anyone.</p>
+              <p className="apx-field-help" id="login-code-help">If the email shows a code, type it. If it only shows a link, press and hold the link, copy it, and paste it here — that keeps you signed in to this app instead of handing the session to your browser. Either one is single-use; do not share it.</p>
               <button className="apx-button apx-button--primary" type="submit" disabled={Boolean(operation) || (!serverSessionPending && otp.trim().length < 6)} style={{ width: '100%', marginTop: 18 }}>
                 {operation === 'verify'
                   ? 'Verifying…'

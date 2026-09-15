@@ -15,7 +15,9 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px clamp(16px, 4vw, 32px);
+  /* Matches AccountChat: the app shell draws under the status bar, so the header adds the inset
+     back or the title sits behind the clock. */
+  padding: calc(14px + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 32px) 14px;
   border-bottom: 1px solid #a9b5ff26;
   flex: 0 0 auto;
 }
@@ -179,7 +181,7 @@
 
 .footnote {
   flex: 0 0 auto;
-  margin: 10px 0 14px;
+  margin: 10px 0 max(14px, env(safe-area-inset-bottom, 0px));
   font-size: 12.5px;
   color: #a9b5ffa0;
   text-align: center;

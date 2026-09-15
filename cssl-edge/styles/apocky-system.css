@@ -809,6 +809,12 @@ select { font: inherit; }
 .apx-home .apx-auth-message { font-size: 0.95rem; }
 
 .apx-auth-page {
+  /* The auth pages ship viewport-fit=cover, which is what lets the background reach the edges of a
+     phone screen -- and also what puts the first row of content underneath the notification bar
+     unless the inset is added back here. On a desktop the inset is 0 and nothing moves. */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
   min-height: 100svh;
   display: grid;
   grid-template-columns: minmax(320px, 0.86fr) minmax(430px, 1.14fr);
