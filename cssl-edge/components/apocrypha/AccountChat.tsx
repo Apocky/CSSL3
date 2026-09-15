@@ -29,6 +29,9 @@ import { authFetch } from '@/lib/browser-auth';
 import styles from '@/styles/AccountChat.module.css';
 import { GuestChat } from '@/components/apocrypha/GuestChat';
 
+// How long a pending session check may hold the room closed before the room opens anyway.
+const GUEST_FALLTHROUGH_MS = 900;
+
 function errorText(error: unknown, fallback: string): string {
   if (error instanceof MemberChatClientError) return error.message;
   if (error instanceof Error && error.name === 'AbortError') {
@@ -476,6 +479,18 @@ export default function AccountChat(
     }
   }
 
+  // Session resolution is usually fast, but "usually" is not a first impression. While it is
+  // pending the page showed the old sign-in panel, so a new visitor's FIRST PAINT was the wall
+  // this change exists to remove, and it then swapped under them. After a short grace period the
+  // room is shown regardless; a member whose check is merely slow is swapped INTO their account
+  // the moment it resolves, which is the cheaper of the two wrong states.
+  const [checkOverran, setCheckOverran] = useState(false);
+  useEffect(() => {
+    if (access !== 'checking') { setCheckOverran(false); return undefined; }
+    const deadline = setTimeout(() => { setCheckOverran(true); }, GUEST_FALLTHROUGH_MS);
+    return () => { clearTimeout(deadline); };
+  }, [access]);
+
   // A signed-out visitor gets the open room, not a sign-in wall. This used to render a headline
   // and two buttons: you could read about a conversation but not have one. AccountChat takes back
   // over the moment the session resolves to a real account, so signing in changes what you get
@@ -483,7 +498,7 @@ export default function AccountChat(
   //
   // `access === 'checking'` deliberately still falls through to the welcome panel below: swapping
   // a member into the guest room for a moment and back out would lose whatever they had typed.
-  if (access !== 'checking' && (!authenticated || !subject)) return <GuestChat />;
+  if ((access !== 'checking' || checkOverran) && (!authenticated || !subject)) return <GuestChat />;
 
   return <main
     id="main-content"
