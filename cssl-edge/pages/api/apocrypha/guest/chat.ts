@@ -7,8 +7,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { hasSameOrigin } from '@/lib/auth-session';
+import { GUEST_MESSAGE_MAX_BYTES } from '@/lib/apocrypha/chat-limits';
 import {
-  GUEST_MESSAGE_MAX_BYTES,
   GuestChatError, enqueueGuestChat, guestCookie, newGuestId, readGuestCookie,
   type GuestTurn,
 } from '@/lib/apocrypha/guest-chat';

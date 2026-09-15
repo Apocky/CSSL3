@@ -130,4 +130,25 @@ for (const href of ['/tools', '/words', '/conversations', '/codex-apockalypsis']
 assert.ok(room.includes('aria-label="Explore Apocky"'), 'the return links are a named landmark');
 assert.ok(style.includes('.returnLinks'), 'the return links are styled rather than raw');
 
+// ── the browser lane must not import a server module ──────────────────────────────────────────
+//
+// chat-lanes.ts runs in the browser. Importing a single constant from lib/apocrypha/guest-chat.ts
+// — a server module that imports node:crypto — made webpack try to bundle node:crypto for the
+// client and broke the production build. tsc and the test suite BOTH passed; only `next build`
+// caught it, which is why this guard exists at all.
+const lanes = readFileSync(resolve(process.cwd(), 'lib/apocrypha/chat-lanes.ts'), 'utf8');
+// member-chat-client is deliberately absent: the browser lane imports it on purpose, and it is
+// client-safe. What must never appear is a module that reaches for node builtins.
+const SERVER_ONLY = ['guest-chat', 'job-control', 'node:crypto', 'node:fs', '@supabase/supabase-js'];
+for (const mod of SERVER_ONLY) {
+  assert.ok(
+    !new RegExp(`from '[^']*${mod}`, 'u').test(lanes),
+    `chat-lanes runs in the browser and must not import ${mod}`,
+  );
+}
+assert.ok(
+  /from '@\/lib\/apocrypha\/chat-limits'/u.test(lanes),
+  'the shared size ceilings come from the dependency-free module',
+);
+
 console.log('chat-prefs.test : OK · preferences persist and are consumed; the room has a way out');

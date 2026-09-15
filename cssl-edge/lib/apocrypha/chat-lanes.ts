@@ -9,9 +9,8 @@
 // same thing: submit a turn, poll a job, show an answer. So that shape lives here once, and the UI
 // is written once against it.
 
-import { GUEST_MESSAGE_MAX_BYTES } from '@/lib/apocrypha/guest-chat';
+import { GUEST_MESSAGE_MAX_BYTES, MEMBER_MESSAGE_MAX_BYTES } from '@/lib/apocrypha/chat-limits';
 import {
-  MEMBER_CHAT_MESSAGE_MAX_BYTES,
   fetchMemberChatHistoryPage,
   fetchMemberChatJob,
   isMemberChatUuid,
@@ -196,7 +195,7 @@ export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
 export function memberLane(authFetch: LaneFetch): ChatLane {
   return {
     id: 'member',
-    capabilities: { conversations: true, newConversation: true, trace: false, cancel: false, durableHistory: true, byteLimit: MEMBER_CHAT_MESSAGE_MAX_BYTES },
+    capabilities: { conversations: true, newConversation: true, trace: false, cancel: false, durableHistory: true, byteLimit: MEMBER_MESSAGE_MAX_BYTES },
 
     async send(input, signal) {
       const conversationId = input.conversationId ?? newId();
