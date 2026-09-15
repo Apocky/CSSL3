@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07100c">
+  <meta name="description" content="Apocky Spatial Commons: a conversation-first social hub with plain-language People, Meaning, Visibility, and Time context.">
+  <title>Apocky — Spatial Commons</title>
+  <link rel="canonical" href="https://www.apocky.com/">
+  <meta property="og:title" content="Apocky — Spatial Commons">
+  <meta property="og:description" content="A conversation-first hub for Apocky projects, people, rooms, and paths.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.apocky.com/">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/commons/assets/site.css">
+  <script src="/commons/assets/site.js" defer></script>
+</head>
+<body class="site-page spatial-hub-page" data-hub-view-mode="chat">
+  <a class="skip-link" href="#hub-chat">Skip to conversation</a>
+
+  <div class="atmosphere" aria-hidden="true">
+    <div class="aurora aurora-forest" data-depth="0.05"></div>
+    <div class="aurora aurora-violet" data-depth="0.1"></div>
+    <div class="topographic-field" data-depth="0.025"></div>
+    <div class="film-grain"></div>
+  </div>
+
+  <header class="site-header spatial-header">
+    <a class="brand" href="/" aria-label="Apocky Spatial Commons home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>APOCKY</span>
+    </a>
+
+    <div class="prototype-beacon" role="status" aria-label="Authored interaction sample. No live network presence.">
+      <span class="beacon-orbit" aria-hidden="true"><i></i></span>
+      <span><strong>SAMPLE</strong><small>authored · nothing sent</small></span>
+    </div>
+
+    <div class="spatial-header-tools">
+      <a class="icon-action" href="/apocrypha" aria-label="Open The Clearing">
+        <span aria-hidden="true">◉</span>
+        <span class="tool-label">Live chat</span>
+      </a>
+      <a class="icon-action" href="/account" aria-label="Open your account">
+        <span aria-hidden="true">◎</span>
+        <span class="tool-label">Account</span>
+      </a>
+      <button class="icon-action" type="button" data-index-open aria-label="Open the complete path index" aria-keyshortcuts="Control+K Meta+K">
+        <span aria-hidden="true">⌘</span>
+        <span class="tool-label">Paths</span>
+      </button>
+      <button class="motion-toggle" type="button" data-motion-toggle aria-pressed="false">
+        <span class="motion-toggle-glyph" aria-hidden="true"></span>
+        <span data-motion-label>Motion</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="hub-view-switcher" role="group" aria-label="Hub panel">
+    <button type="button" data-hub-view="chat" aria-pressed="true"><span aria-hidden="true">◌</span> Chat</button>
+    <button type="button" data-hub-view="axes" aria-pressed="false"><span aria-hidden="true">✦</span> Context</button>
+    <button type="button" data-hub-view="rooms" aria-pressed="false"><span aria-hidden="true">⌂</span> Rooms</button>
+  </div>
+
+  <main class="hub-shell" id="main">
+    <aside class="hub-rail" aria-label="Destinations and rooms">
+      <nav class="rail-destinations" aria-label="Primary destinations">
+        <a href="/" aria-current="page"><span aria-hidden="true">◌</span><span>Commons</span><kbd>H</kbd></a>
+        <a href="/apocrypha"><span aria-hidden="true">◈</span><span>Clearing</span><kbd>C</kbd></a>
+        <a href="/atlas"><span aria-hidden="true">⌗</span><span>Atlas</span><kbd>A</kbd></a>
+        <a href="/membership"><span aria-hidden="true">◒</span><span>Membership</span><kbd>M</kbd></a>
+        <a href="/principles"><span aria-hidden="true">⌾</span><span>Principles</span><kbd>P</kbd></a>
+      </nav>
+
+      <div class="rail-divider" aria-hidden="true"></div>
+
+      <div class="hub-room-group">
+        <div class="rail-label"><span>ROOMS</span><small>03</small></div>
+        <button class="hub-room-button is-active" type="button" data-hub-room="north" aria-pressed="true">
+          <span class="room-tab-sigil river-sigil" aria-hidden="true"></span>
+          <span><strong>North</strong><small>river · sample</small></span>
+          <i aria-hidden="true"></i>
+        </button>
+        <button class="hub-room-button" type="button" data-hub-room="nook" aria-pressed="false">
+          <span class="room-tab-sigil nook-sigil" aria-hidden="true"></span>
+          <span><strong>Nook</strong><small>letters · sample</small></span>
+          <i aria-hidden="true"></i>
+        </button>
+        <button class="hub-room-button" type="button" data-hub-room="workbench" aria-pressed="false">
+          <span class="room-tab-sigil workbench-sigil" aria-hidden="true"></span>
+          <span><strong>Workbench</strong><small>fragments · sample</small></span>
+          <i aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="presence-cluster" aria-label="Sample participants. No live presence.">
+        <span class="person-mark person-you" title="Apocky · sample host">A</span>
+        <span class="person-mark person-mira" title="Mira · sample participant">M</span>
+        <span class="person-mark person-apx" title="Apocrypha · laboratory preview">◈</span>
+        <span class="presence-count"><strong>3</strong><small>samples</small></span>
+      </div>
+    </aside>
+
+    <section class="hub-chat" id="hub-chat" aria-labelledby="hub-room-title">
+      <header class="hub-chat-header">
+        <div class="hub-room-identity">
+          <span class="hub-room-glyph" data-hub-room-glyph aria-hidden="true">⌁</span>
+          <span>
+            <small>SHARED FOCUS · SAMPLE</small>
+            <h1 id="hub-room-title" data-hub-room-title>North Clearing</h1>
+          </span>
+        </div>
+        <a class="enter-room-link" href="/apocrypha?room=north-clearing" data-hub-enter>
+          Open room <span aria-hidden="true">↗</span>
+        </a>
+      </header>
+
+      <div class="hub-transcript" data-hub-transcript>
+        <div class="shared-object" data-hub-artifact-kind="north">
+          <div class="shared-object-visual" aria-hidden="true">
+            <span class="object-plane object-plane-back"></span>
+            <span class="object-plane object-plane-mid"></span>
+            <span class="object-plane object-plane-front"><i></i><i></i><i></i></span>
+          </div>
+          <div class="shared-object-label">
+            <span data-hub-artifact-icon aria-hidden="true">▶</span>
+            <span><strong data-hub-artifact-title>River field recording</strong><small data-hub-artifact-meta>clip · 00:41–01:12</small></span>
+          </div>
+          <button type="button" data-prototype-action="The sample artifact is visual only in this prototype." aria-label="Preview the sample artifact">Preview</button>
+        </div>
+
+        <ol class="message-stream" data-hub-messages aria-label="Sample conversation">
+          <li data-speaker="mira"><span class="message-avatar">M</span><p><strong>Mira</strong><span>River recording placed.</span></p><time>11:40</time></li>
+          <li data-speaker="you"><span class="message-avatar">A</span><p><strong>Apocky</strong><span>00:41–01:12 selected for one question.</span></p><time>12:05</time></li>
+          <li data-speaker="apx"><span class="message-avatar">◈</span><p><strong>Authored example</strong><span>“Second song enters at 00:52.”</span></p><time>study</time></li>
+        </ol>
+      </div>
+
+      <div class="lineage-rail" aria-label="Sample event lineage" data-hub-lineage>
+        <span class="lineage-step is-complete"><i aria-hidden="true"></i><small>11:40</small><strong>placed</strong></span>
+        <span class="lineage-step is-complete"><i aria-hidden="true"></i><small>12:05</small><strong>selected</strong></span>
+        <span class="lineage-step is-current"><i aria-hidden="true"></i><small>study</small><strong>previewed</strong></span>
+        <span class="lineage-step"><i aria-hidden="true"></i><small>—</small><strong>receipt</strong></span>
+      </div>
+
+      <form class="hub-composer" data-hub-composer>
+        <button class="composer-add" type="button" data-prototype-action="Attachment paths are designed, not connected." aria-label="Add an artifact">+</button>
+        <label class="sr-only" for="hub-message">Write a local prototype message</label>
+        <input id="hub-message" data-hub-input autocomplete="off" maxlength="180" placeholder="Write locally…" aria-describedby="hub-draft-state">
+        <button class="composer-send" type="submit" aria-label="Place this local prototype message"><span aria-hidden="true">↑</span></button>
+        <p id="hub-draft-state" data-hub-inline-status role="status" aria-live="polite"><span aria-hidden="true">◇</span> local draft · never sent</p>
+      </form>
+    </section>
+
+    <aside class="ontology-panel" aria-labelledby="ontology-title" data-ontology-lens="all">
+      <header class="ontology-header">
+        <span>
+          <small>SELECTED ITEM · CONTEXT</small>
+          <h2 id="ontology-title" data-hub-axis-title>River interval</h2>
+        </span>
+        <output class="axis-code" data-axis-code aria-live="polite">People · Meaning · Visibility · Time</output>
+      </header>
+
+      <div class="axis-lenses" role="toolbar" aria-label="Context views">
+        <button type="button" data-ontology-focus="all" aria-pressed="true" aria-label="Show all four context views">ALL</button>
+        <button type="button" data-ontology-focus="x" aria-pressed="false" aria-label="Show People: who is connected"><span aria-hidden="true">◎</span><span class="sr-only">People</span></button>
+        <button type="button" data-ontology-focus="y" aria-pressed="false" aria-label="Show Meaning: what this belongs to"><span aria-hidden="true">⌗</span><span class="sr-only">Meaning</span></button>
+        <button type="button" data-ontology-focus="z" aria-pressed="false" aria-label="Show Visibility: who can see this"><span aria-hidden="true">◌</span><span class="sr-only">Visibility</span></button>
+        <button type="button" data-ontology-focus="t" aria-pressed="false" aria-label="Show Time: how this arrived"><span aria-hidden="true">↝</span><span class="sr-only">Time</span></button>
+      </div>
+
+      <div class="ontology-volume" data-depth="0.18" role="img" aria-label="People, Meaning, Visibility, and Time context map" aria-describedby="ontology-description">
+        <div class="volume-plane plane-local" aria-hidden="true"></div>
+        <div class="volume-plane plane-room" aria-hidden="true"></div>
+        <div class="volume-plane plane-offer" aria-hidden="true"></div>
+
+        <div class="axis-module axis-module-x">
+          <span class="axis-name"><b aria-hidden="true">◎</b> People · who is connected</span>
+          <div class="relation-path" aria-hidden="true"><i></i><i></i></div>
+          <ol>
+            <li><small>source</small><strong data-axis-source>Mira</strong></li>
+            <li class="is-object"><small>object</small><strong data-axis-object>clip 00:41–01:12</strong></li>
+            <li><small>audience</small><strong data-axis-audience>Apocrypha</strong></li>
+          </ol>
+        </div>
+
+        <div class="axis-module axis-module-y">
+          <span class="axis-name"><b aria-hidden="true">⌗</b> Meaning · what it belongs to</span>
+          <ol data-axis-containment>
+            <li>interval</li><li>recording</li><li>North</li><li>Clearing</li>
+          </ol>
+        </div>
+
+        <div class="axis-module axis-module-z">
+          <span class="axis-name"><b aria-hidden="true">◌</b> Visibility · who can see it</span>
+          <div class="membrane-stack" aria-hidden="true">
+            <span>local</span><span class="is-active">room</span><span data-axis-offer-plane>proposed</span>
+          </div>
+          <p data-axis-depth>No offer is active; the named audience is only a proposed path.</p>
+        </div>
+
+        <div class="axis-module axis-module-t">
+          <span class="axis-name"><b aria-hidden="true">↝</b> Time · how it arrived</span>
+          <ol data-axis-events>
+            <li><small>11:40</small><strong>placed</strong></li>
+            <li><small>12:05</small><strong>selected</strong></li>
+            <li><small>study</small><strong>previewed</strong></li>
+          </ol>
+        </div>
+      </div>
+
+      <p class="sr-only" id="ontology-description">
+        A fixed four-view context map. People shows the source and connected audience. Meaning shows where the item belongs, from fragment to room and project. Visibility shows whether it is local, room-visible, or explicitly offered. Time shows the ordered history. Geometry is explanatory; every relationship is also written as text.
+      </p>
+
+      <dl class="scope-tokens">
+        <div><dt><span aria-hidden="true">◎</span> Purpose</dt><dd data-axis-purpose>name the second birdsong</dd></div>
+        <div><dt><span aria-hidden="true">◷</span> Duration</dt><dd data-axis-duration>this session</dd></div>
+      </dl>
+
+      <div class="hub-consent-control">
+        <span class="offer-indicator"><i aria-hidden="true"></i><span data-hub-offer-status>no sample offer</span></span>
+        <button class="button boundary" type="button" data-hub-offer>
+          <span data-hub-offer-label>Offer sample</span>
+        </button>
+      </div>
+      <p class="ontology-status" data-hub-status role="status" aria-live="polite">No offer is active. The sample path is only proposed.</p>
+    </aside>
+  </main>
+
+  <div class="mobile-scope-bar">
+    <span><i aria-hidden="true"></i><span data-mobile-offer-state>no sample offer</span></span>
+    <button type="button" data-mobile-offer>Offer sample</button>
+  </div>
+
+  <nav class="hub-dock" aria-label="Quick destinations">
+    <a href="/" aria-current="page"><span aria-hidden="true">◌</span><small>Hub</small></a>
+    <a href="/apocrypha"><span aria-hidden="true">◈</span><small>Room</small></a>
+    <a href="/apocrypha"><span aria-hidden="true">◉</span><small>Live</small></a>
+    <a href="/atlas"><span aria-hidden="true">⌗</span><small>Atlas</small></a>
+    <a href="/membership"><span aria-hidden="true">◒</span><small>Member</small></a>
+  </nav>
+
+  <dialog class="path-index-dialog" data-path-index aria-labelledby="path-index-title">
+    <div class="path-index-head">
+      <span><small>ACCESSIBLE EQUIVALENT</small><h2 id="path-index-title">Every path</h2></span>
+      <button type="button" data-index-close aria-label="Close path index">×</button>
+    </div>
+    <p class="path-index-note">The spatial model never hides a route. People, Meaning, Visibility, and Time describe context; they never rank worth, trust, or importance.</p>
+    <nav class="path-index-grid" aria-label="Complete destination index">
+      <a href="/apocrypha"><span aria-hidden="true">◈</span><strong>The Clearing</strong><small>People · Meaning · Visibility · Time</small></a>
+      <a href="/apocrypha"><span aria-hidden="true">◉</span><strong>Live room</strong><small>Connected public conversation</small></a>
+      <a href="/account"><span aria-hidden="true">◎</span><strong>Your account</strong><small>Sign in, account status, and personal controls</small></a>
+      <a href="/atlas"><span aria-hidden="true">⌗</span><strong>Project Atlas</strong><small>All projects and outward doors</small></a>
+      <a href="/membership"><span aria-hidden="true">◒</span><strong>Membership</strong><small>Hospitality, capacity, and covenant</small></a>
+      <a href="/principles"><span aria-hidden="true">⌾</span><strong>Principles</strong><small>Consent, sovereignty, and projection rules</small></a>
+      <a href="/download"><span aria-hidden="true">↓</span><strong>Game download</strong><small>Labyrinth of Apocalypse Windows build</small></a>
+      <a href="https://cssl.dev" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">W!</span><strong>CSSL</strong><small>Programming language · external ↗</small></a>
+      <a href="https://cssl.dev/CSLv3" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">§</span><strong>CSL</strong><small>Reasoning notation · external ↗</small></a>
+      <a href="https://chaos-tarot.com" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">✦</span><strong>Chaos Tarot</strong><small>Divination and attractors · external ↗</small></a>
+      <a href="https://medium.com/@noneisone.oneisall" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">✎</span><strong>Writing</strong><small>Read on Medium · external ↗</small></a>
+      <a href="https://github.com/Apocky" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">⌘</span><strong>Code</strong><small>Public repositories · external ↗</small></a>
+      <a href="https://ko-fi.com/oneinfinity" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">♡</span><strong>Support</strong><small>Optional support on Ko-fi · external ↗</small></a>
+    </nav>
+  </dialog>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
