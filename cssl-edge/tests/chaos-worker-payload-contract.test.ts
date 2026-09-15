@@ -80,7 +80,29 @@ assert(conversation[1]?.role === 'assistant' && conversation[1].content.includes
 const final = conversation.at(-1);
 assert(final?.role === 'user', 'structured Chaos payload did not become a user turn');
 assert(final.content.includes('Question:\nWhat boundary does this pattern ask for?'), 'question was absent from the model prompt');
-assert(final.content.includes('<canonical-reading>') && final.content.includes('The Tower'), 'canonical reading was absent from the model prompt');
+// The reading must reach the model COMPLETELY. This used to assert a '<canonical-reading>' tag
+// containing a JSON dump of the spread; the worker now renders it through readingForPrompt as
+// numbered position lines, which carries the same facts in a fraction of the tokens. That is an
+// improvement, and the old assertion failed on it -- pinning the FORMAT rather than the contract.
+//
+// So this checks the property instead: every card supplied, under its own position, with reversal
+// marked, plus the system and spread identity. That is strictly stronger than the tag check was --
+// it would catch a card silently dropped or a position mismatched, which a tag-presence assertion
+// never could -- and it survives the next format change, because the contract is the content.
+// The prompt itself demands this ("Every card supplied must appear in the reading by name").
+const suppliedCards = (job.request.canonical_reading as { items: Array<{ name: string; is_reversed?: boolean; position: { name: string } }> }).items;
+for (const card of suppliedCards) {
+  assert(final.content.includes(card.name), `card "${card.name}" never reached the model prompt`);
+  assert(final.content.includes(card.position.name), `position "${card.position.name}" never reached the model prompt`);
+  const line = final.content.split('\n').find((row) => row.includes(card.name));
+  assert(line !== undefined && line.includes(card.position.name),
+    `card "${card.name}" was not presented under its own position "${card.position.name}"`);
+  if (card.is_reversed) {
+    assert(/revers/i.test(line ?? ''), `reversal of "${card.name}" was lost on the way to the model`);
+  }
+}
+assert(final.content.includes('Chaos Tarot') && final.content.includes('Three Signals'),
+  'the system and spread identity were absent from the model prompt');
 assert(final.content.includes('<saved-source>') && final.content.includes('paired the Tower with the Star'), 'saved interpretation context was absent');
 assert(final.content.includes('saved_reading_followup'), 'structured task context was absent');
 assert(composed.generation.maxTokens === 1_024, 'existing generation defaults changed');
