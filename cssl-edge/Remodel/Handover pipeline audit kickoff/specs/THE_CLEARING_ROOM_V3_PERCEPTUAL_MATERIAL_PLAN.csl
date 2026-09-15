@@ -1,0 +1,110 @@
+!csl4
+#P visual problem
+#E room_v2 -> violet_nocturne + conversation + focus_stage + parallax + gloss
+#E room_v2 -> uniform_effect_density + weak_surface_hierarchy + perpetual_attention_motion
+#E room_v2 -> live_like_indicators + static_prototype_truth_conflict
+#K goal -> simple + readable + tactile + glossy + mystical + social
+#K design_law -> one_focal_object + three_visible_material_layers + four_context_directions + zero_competing_dashboards
+#K authority -> static_prototype_plan
+#X backend + auth + network + persistence + actual_presence + actual_screen_share + deployment
+#W implementation_requires_explicit_user_signoff
+
+#D implementation boundary
+#K room_v2 -> immutable_baseline
+#K room_v3 -> derivative_visual_study
+#K integration -> room_v3_acceptance -> rejuvenated_clearing_proposal
+#W preserve -> room_selection + conversation + composer + attachments + threads + context + focus_stage
+#W preserve -> static_local_truth
+#X preserve_visual_implementation_only_because_behavior_remains
+#W rollback -> delete_room_v3 + retain_room_v2
+
+#D perception hierarchy
+#K perception_stack -> ambient_substrate -> structural_navigation -> conversation_content -> selected_action -> modal_focus
+#W conversation -> largest_area + sharpest_type + highest_sustained_contrast
+#W navigation -> lower_luminance + simpler_surfaces
+#W context -> selection_or_explicit_action
+#X atmosphere_over_body_text
+#W five_second_scan -> room + conversation + composer + context
+
+#D material system
+#K obsidian -> background
+#K glass -> structural_navigation + contextual_container
+#K pearl -> selected_surface + immediate_action
+#K fiber -> message_attachment + authored_artifact
+#K liquid_light -> focus + selection + route_transition
+#K ember -> authored_intent
+#W each_material -> base + texture + edge + elevation + interaction_response
+#W one_primary_material_role_per_surface
+#X universal_glass_card
+#X identical_glow_for_unrelated_states
+
+#D gloss and texture
+#K gloss -> resting_edge_light + hover_specular + focus_rim + selected_wet_bloom + pressed_compression
+#W specular -> geometry_following + interaction_triggered
+#W selected_bloom -> play_once + settle
+#W active_specular_budget -> one_per_interaction_region
+#X perpetual_shimmer
+#K texture -> atmospheric_grain + glass_microtexture + paper_fiber + audio_ridges + crystalline_project_edge
+#W texture -> semantic_material_cue + low_interference
+#W forced_colors_or_lite -> remove_texture + preserve_information
+
+#D conversation and context
+#K conversation_ribbon -> chronological_spine + author_clusters + temporal_seams + selected_message_lift
+#W message_body -> flat_readable_plane
+#W selected_message -> edge + shadow + bounded_transform
+#W actions -> reply + react + thread + context
+#X equal_weight_card_per_message
+#K context_bloom -> selected_message + people + meaning + visibility + time
+#W context_branch -> icon + plain_label + one_line_preview + route
+#W context_projection -> fixed_camera + auto_fit + list_equivalent
+#X pan + zoom + free_rotation
+#W ordinary_chat_use -> context_optional
+
+#D motion and truth
+#K motion_budget -> two_ambient_layers + one_focal_transition + one_route_trail
+#W recurring_motion -> transform + opacity
+#W motion_stop -> hidden + idle + reduced_motion + save_data + lite
+#X typing_dots + breathing_presence + fake_equalizer + live_share_pulse
+#K watching_together -> authored_watch_study
+#K live_screen_share -> screen_share_layout_preview
+#K synchronized_playback -> designed_sync_state
+#W sample_offline_authored_labels -> adjacent_to_represented_state
+
+#D responsive system
+#K desktop -> room_index + conversation + contextual_rail
+#K tablet -> conversation + room_sheet + context_sheet
+#K mobile -> room_switcher + conversation + composer + context_sheet
+#X shrink_desktop_panels_into_mobile
+#W document_scroll -> zero
+#W primary_actions -> reachable_without_pan_or_zoom
+#W touch_target -> forty_four_pixels
+
+#T implementation sequence
+#K signoff -> approve_plan + approve_room_v3_derivative + freeze_room_v2
+#K baseline -> hash + screenshots + control_inventory + state_inventory + motion_inventory
+#K skeleton -> duplicate_room_v2 + reduce_simultaneous_panels + establish_scan_hierarchy
+#K tokens -> implement_material_roles + map_surfaces
+#K ribbon -> group_messages + reduce_boundaries + temporal_seams + selected_elevation
+#K gloss -> geometry_specular + focus_rim + one_shot_bloom + press_compression
+#K context -> one_context_control + four_branches + preview_then_route + list_parity
+#K truth_motion -> rewrite_false_live + enforce_motion_budget + stillness_modes
+#K responsive -> tablet_sheets + mobile_single_surface + short_landscape
+#K verification -> rendered_states + viewports + accessibility + performance
+#K selection -> compare_v2_v3 + user_visual_signoff + integration_proposal
+
+#C acceptance
+#K focal_competition -> maximum_two_regions
+#K first_scan -> room + conversation + composer + context
+#K materials -> distinguishable_without_explanation
+#K gloss -> communicates_interaction + settles
+#K texture -> material_identity + text_unoccluded
+#K visible_motion -> maximum_two_ambient + one_focal
+#K truth -> no_live_presence_typing_sharing_or_sync_implication
+#K accessibility -> keyboard + focus + names + contrast + reduced_motion + forced_colors + zoom
+#K viewports -> 320x568 + 390x844 + 568x320 + 768x1024 + 960x720 + 1280x720 + 1440x900
+#K performance -> zero_remote_runtime + zero_layout_animation + zero_console_error
+#K behavior -> rooms + messages + composer + attachments + threads + context + focus_stage
+#K countercase -> reduced_effects_may_erase_distinctiveness
+#K countermeasure -> preserve_atmosphere + material_specificity + episodic_reveal
+#K falsifier -> no_hierarchy_gain + materials_need_explanation + conversation_loses_warmth
+#K completion -> acceptance_verified + room_v2_preserved + user_signoff

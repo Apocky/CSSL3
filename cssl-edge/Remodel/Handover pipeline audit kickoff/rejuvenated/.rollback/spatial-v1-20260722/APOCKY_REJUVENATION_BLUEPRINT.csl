@@ -1,0 +1,130 @@
+§ APOCKY.SPATIAL.COMMONS.BLUEPRINT v2
+
+§P PROBLEM
+  ✓ source := attached.dc.prototype + rejuvenated.v1 + user.steering.2026-07-22
+  ✓ v1 := mystical.visual.depth + semantic.color + consent.thread
+  ✗ v1.topology := hero→portfolio→doorway→essay = decorated.document
+  ✓ latest.steering :=
+       less.text + social/chat.hub
+       + important.controls.reachable ¬ page.scroll|pan|zoom
+       + insufficient.context ⇒ branch.route
+       + dimensionality := ontological.axes + spatial.data.arrangement
+  W! goal := viewport-first.social.instrument ⊗ magical.materiality + explicit.relationship.geometry
+  W! authority := static.design.prototype.only
+  N! production.route | dependency | schema | auth | live.presence | real.consent | payment | deployment mutation
+  rollback := remove(rejuvenated/) + remove(this) ; attached.dc.prototype remains unchanged
+
+§D ROLE.MAP
+  hub := rejuvenated/index.html
+       = compact.social.overview + sample.conversation + destination.rail + four-axis.inspector
+  clearing := rejuvenated/clearing.html
+            = full.room+artifact+composer+consent study
+  atlas := rejuvenated/atlas.html
+         = project.context + outward.routes
+  principles := rejuvenated/principles.html
+              = truth+consent+projection explanation
+  membership := rejuvenated/membership.html
+              = hospitality+capacity+covenant study
+  W! hub.conversation = summary.study ¬ live.habitat
+  W! clearing = full.habitat.prototype
+  N! hub+clearing role collapse
+
+§D SPATIAL.MODEL  ‼
+  model := fixed.orthographic.social.shell + switchable.axis.focus + complete.2D.index
+  center := conversation + shared.object + local.composer
+  left := destinations + rooms
+  right := selected.object + ontology + visible.offer.action
+  mobile := one.active.panel(chat|axes|rooms) + persistent.scope.action + bottom.destinations
+  N! camera.drag | free.rotation | user.pan | user.zoom | hidden.route
+
+  X := agency.relation
+       source → shared.object → named.audience
+       preserve(direction + roles)
+       lose(arbitrary.hyperedge + trust.distance)
+  Y := containment.granularity
+       fragment|message → artifact|thread → room → project|system
+       preserve(nesting)
+       lose(capacity + importance)
+  Z := perception.consent.depth
+       local.draft → room.visible → explicitly.offered
+       preserve(scope + boundary)
+       lose(legal/semantic nuance unless text-equivalent)
+  T := event.lineage
+       drafted → placed → offered → withdrawn|expired|receipt
+       preserve(order + state-transition)
+       lose(live-time claim ; sample.timestamps ≠ runtime)
+
+  W! geometry = typed.projection ¬ decoration
+  W! axis.labels.visible + semantic.DOM.equivalent
+  W! CSS.visual.order N! alter DOM.logical.order
+  W! color+depth redundant-with text+shape+state
+
+§D DECISION
+  winner := fixed.projection + axis.lenses
+  runner.up := free.rotating.3D.world
+  criteria := reachability + consent.legibility + keyboard + mobile + performance
+  tradeoff := gain(no.occlusion + no.pan + stable.targets + list.parity)
+              ; surrender(cinematic.camera + literal.freeform.volume)
+  counter := conventional.2D.three-pane.chat may outperform semantic.3D
+  falsifier := any.primary.control.outside.viewport
+            ∨ offer/audience/artifact recognition >10%.slower-than.2D
+            ∨ geometry required-to-complete.action
+  revisit := tested.user.confusion ∨ arbitrary.hyperedge.requirement
+
+§D CONTENT.COMPRESSION
+  always.visible :=
+    prototype.offline + room + shared.object + sample.messages≤3
+    + local.draft.never.sent + current.offer.state + direct.offer|withdraw
+    + destinations + motion.state
+  visual.indicator :=
+    room.glyph + participant.sample.avatar + object.type + lineage.node + scope.boundary
+  contextual :=
+    source + audience + purpose + duration + aftermath + learning
+  branch :=
+    project.details→atlas
+    + consent/projection.longform→principles
+    + room.full-context→clearing
+    + plans/covenant/capacity→membership
+  N! operational.truth hidden-behind{hover,color,unknown.glyph}
+
+§T VIEWPORT.CONTRACT  ‼
+  desktop := header[60px] + grid[rail|minmax(0,conversation)|inspector]
+  mobile := header + panel.selector + active.panel + scope.action + bottom.nav
+  W! document.height ≤ visual.viewport + 1px @ 320x568..1440x900
+  W! document.width ≤ viewport.width + 1px
+  M? transcript|dialog internal.scroll ⊗ named.scroll.owner + overscroll.contain
+  N! nested.scroll.maze
+  W! target ≥ 44x44
+  W! focus.visible + unoccluded
+  W! keyboard + screen.reader + forced.color + 200%.zoom route.complete
+
+§T CONSENT.TRUTH
+  initial.offer := idle
+  room.change ⇒ active.offer=∅ + local.draft.clear + deliberate.reoffer.required
+  offer.sample ⇒ exact.artifact + audience + purpose + duration visible
+  withdraw.sample ⇒ active.path=∅ + receipt.statement.may-remain
+  W! one.authoritative.live-region per consent.transition
+  W! sample|authored-example|offline labels adjacent-to represented.state
+  N! presence.dot|camera|listening|caption state implies live.actor
+  N! route.ready | visual.thread | historical.sample ⇒ current.consent
+
+§T MOTION.PERFORMANCE
+  W! zero.external.runtime.dependencies
+  W! zero.remote.font + zero.bitmap.hero + zero.canvas + zero.WebGL
+  W! one.pointer.listener + one.scroll.listener + ≤1.pending.rAF
+  W! event-driven.rAF stops @ equilibrium + cancels @ hidden|motion.off
+  W! compositor.properties := transform + opacity
+  W! stillness + prefers-reduced-motion + save-data
+  N! animation ⇒ capability | presence | consent claim
+
+§C ACCEPTANCE
+  W! ≤5s identify : prototype.offline + current.room + shared.object + offer.state
+  W! ≤1.action reach : [Hub, Clearing, Atlas, Membership, Principles]
+  W! ≤1.action reach : [Chat, Axes, Rooms] @ mobile
+  W! all.axis.meaning readable without perspective|motion|color
+  W! initial.offer=idle + room-change reset + draft non-transfer
+  W! page.scroll=0 @ [320x568,390x844,568x320,768x1024,960x720,1280x720,1440x900]
+  W! changed.controls keyboard+touch verified
+  W! console.error=0 + local.refs=200 + node.syntax=pass
+  W! graphify.update after source.freeze
+∎

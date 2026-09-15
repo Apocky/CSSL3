@@ -1,4 +1,4 @@
-import { isMemoryNeeded, MEMORY_READINESS_QUERY, probeMemoryAdapters, queryFromJob, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
+import { MEMORY_READINESS_QUERY, isMemoryNeeded, probeMemoryAdapters, queryFromJob, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -69,7 +69,8 @@ const job: ClaimedJob = {
   ownerPrincipalId: '40000000-0000-4000-8000-000000000001',
   kind: 'followup',
   capability: 'chaos_tarot_reading',
-  request: { retrieval_query: 'bounded retry test' },
+  // These tests exercise adapter behaviour, so the job must pass the recall gate.
+  request: { retrieval_query: 'bounded retry test', memory_requested: true },
   modelAlias: config.modelAlias,
   profileHash: config.profileHash,
   toolRegistryVersion: config.toolRegistryVersion,

@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { assertWorkerRequest, getApocryphaServiceClient, publicJobError } from '@/lib/apocrypha/job-control';
 import { methodNotAllowed, noStore, objectField } from '@/lib/apocrypha/job-http';
-import { required, workerDatabaseError } from '@/lib/apocrypha/worker-http';
+import { required, retryOnGatewayError, workerDatabaseError } from '@/lib/apocrypha/worker-http';
 import { APOCRYPHA_RUNTIME_CAPABILITIES, APOCRYPHA_RUNTIME_CONFIGURATION } from '@/lib/apocrypha/readiness';
 
 const ADAPTERS = ['mempalace', 'brainmonsoon', 'anamnesis', 'graphify', 'mneme', 'metaharness'] as const;
@@ -88,11 +88,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const body = objectField(req.body, 'body');
     const nodeId = required(body, 'node_id');
     const client = getApocryphaServiceClient();
-    const { data: authData, error: authError } = await client.rpc('apocrypha_require_worker', {
+    const { data: authData, error: authError } = await retryOnGatewayError(() => client.rpc('apocrypha_require_worker', {
       p_node_id: nodeId,
       p_node_token: token,
       p_require_active: true,
-    });
+    }));
     if (authError) throw workerDatabaseError(authError, 'HEARTBEAT_AUTH_FAILED');
     const authNode = (Array.isArray(authData) ? authData[0] : authData) as Record<string, unknown> | null;
     runtimeCapabilities(authNode?.allowed_capabilities, false);
@@ -134,6 +134,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true, node_id: data.id, last_seen_at: data.last_seen_at });
   } catch (error) {
     const safe = publicJobError(error);
+    // publicJobError hides the cause from the worker on purpose; keep it in the
+    // function log so a run of 503s can be attributed without guessing.
+    // eslint-disable-next-line no-console
+    console.error('[apocrypha/worker/heartbeat]', safe.code, error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300));
     return res.status(safe.status).json({ ok: false, code: safe.code, error: safe.message });
   }
 }

@@ -78,4 +78,20 @@ for (const contract of ["authFetch('/api/admin/apocrypha/jobs'", 'chunk.delta'])
   assert(lanes.includes(contract), `durable owner transport contract missing: ${contract}`);
 }
 
+// RETRY OF A FAILED ATTEMPT — server side only, for now.
+//
+// The retired ChatThread carried a "Retry failed attempt" control that re-submitted a failed job
+// with retry_job_id, so the retry was linked to the attempt it replaced instead of becoming an
+// unrelated turn. Unifying the three chat surfaces into one room dropped that CONTROL; it did not
+// drop the capability. The route still accepts and threads it, and these assertions keep it alive
+// so the seam stays usable when the control is rebuilt.
+const jobsRoute = readFileSync(resolve(process.cwd(), 'pages/api/admin/apocrypha/jobs/index.ts'), 'utf8');
+for (const contract of ['retry_job_id', 'retry_of_job_id']) {
+  assert(jobsRoute.includes(contract), `owner retry seam missing from the route: ${contract}`);
+}
+assert(
+  !room.includes('Retry failed attempt'),
+  'the room has no retry control yet — if one is added, restore its assertions above rather than deleting this line',
+);
+
 console.log('apocrypha-jobs.test: OK');

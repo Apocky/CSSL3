@@ -10,6 +10,17 @@ import type {
   WorkerRuntimeState,
 } from './types';
 
+// Counters the health endpoint exposes. A run of gateway 503s used to be
+// invisible from the worker side unless someone tailed the right log.
+export const controlPlaneMetrics = {
+  requests: 0,
+  failures: 0,
+  by_code: {} as Record<string, number>,
+  by_status: {} as Record<string, number>,
+  last_failure: null as null | { at: string; path: string; code: string; status: number | null; detail: string },
+  last_success_at: null as null | string,
+};
+
 export class ControlPlaneError extends Error {
   readonly status: number | null;
   readonly code: string;
@@ -294,6 +305,8 @@ export class ControlPlaneClient {
             },
           );
         }
+        controlPlaneMetrics.requests += 1;
+        controlPlaneMetrics.last_success_at = new Date().toISOString();
         if (payload.ok === false) {
           const status = typeof payload.status === 'number' ? payload.status : 500;
           const code = typeof payload.code === 'string' ? payload.code : 'CONTROL_PLANE_REJECTED';
@@ -312,6 +325,17 @@ export class ControlPlaneClient {
             retryable: true,
           });
         lastError = normalized;
+        controlPlaneMetrics.failures += 1;
+        controlPlaneMetrics.by_code[normalized.code] = (controlPlaneMetrics.by_code[normalized.code] ?? 0) + 1;
+        const statusKey = String(normalized.status ?? 'network');
+        controlPlaneMetrics.by_status[statusKey] = (controlPlaneMetrics.by_status[statusKey] ?? 0) + 1;
+        controlPlaneMetrics.last_failure = {
+          at: new Date().toISOString(),
+          path,
+          code: normalized.code,
+          status: normalized.status,
+          detail: normalized.message.slice(0, 200),
+        };
         if (!normalized.retryable || normalized.fenceLost || attempt === attempts) throw normalized;
         await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, 200 * 2 ** (attempt - 1))));
       } finally {

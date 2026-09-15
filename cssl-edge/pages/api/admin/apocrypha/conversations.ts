@@ -10,6 +10,7 @@ import {
   respondJobError,
 } from '@/lib/apocrypha/job-http';
 import { isOpaqueConversationId, setPrivateNoStore } from '@/lib/apocrypha/proxy';
+import { ownerChatConversationVisible } from '@/lib/apocrypha/owner-oracle-control';
 import { envelope } from '@/lib/response';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
@@ -24,6 +25,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const id = req.query.id;
       if (keys.length !== 1 || typeof id !== 'string' || !isOpaqueConversationId(id)) {
         res.status(400).json({ ok: false, code: 'CONVERSATION_ID_INVALID', ...envelope() });
+        return;
+      }
+      if (!await ownerChatConversationVisible(identity, id)) {
+        res.status(404).json({ ok: false, code: 'CONVERSATION_NOT_FOUND', ...envelope() });
         return;
       }
       const conversation = await readOwnerChatConversation(identity, id);

@@ -6,9 +6,11 @@ import {
   enqueueApocryphaJob,
   readOwnerChatIdempotentJob,
   readOwnerChatConversationHistory,
+  readOwnerChatRetrySource,
   type ApocryphaJobKind,
 } from '@/lib/apocrypha/job-control';
 import { methodNotAllowed, noStore, objectField, requireOwnerIdentity, respondJobError, stringField } from '@/lib/apocrypha/job-http';
+import { ownerChatConversationVisible, ownerOracleUuid, registerOwnerChatOracleJob } from '@/lib/apocrypha/owner-oracle-control';
 import { isOpaqueConversationId } from '@/lib/apocrypha/proxy';
 
 function isSameOwnerChatRequest(
@@ -18,6 +20,7 @@ function isSameOwnerChatRequest(
     conversationId: string;
     outputBudget: number;
     responseMode: 'standard' | 'deep';
+    retryJobId: string | null;
   },
 ): boolean {
   return Boolean(prior
@@ -25,6 +28,7 @@ function isSameOwnerChatRequest(
     && prior.conversation_id === expected.conversationId
     && prior.output_budget === expected.outputBudget
     && prior.response_mode === expected.responseMode
+    && (prior.retry_of_job_id ?? null) === expected.retryJobId
     && prior.source === 'apocky.com'
     && prior.privacy_class === 'restricted'
     && prior.memory_scope === 'owner-authorized');
@@ -71,15 +75,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     const conversationId = conversationIdForAdmission(body.conversation_id, identity, idempotencyKey);
+    if (!await ownerChatConversationVisible(identity, conversationId)) {
+      return res.status(404).json({ ok: false, code: 'CONVERSATION_NOT_FOUND' });
+    }
     const outputBudget = Math.min(4096, Math.max(128, Number(body.output_budget) || 1536));
     const responseMode = body.response_mode === 'deep' ? 'deep' : 'standard';
-    const expectedRequest = { prompt, conversationId, outputBudget, responseMode } as const;
+    const retryJobId = body.retry_job_id == null ? null : stringField(body.retry_job_id, 'retry_job_id', 36).toLowerCase();
+    let retrySource = null;
+    let oracleRunId: string | null = null;
+    if (retryJobId) {
+      if (!isOpaqueConversationId(retryJobId)) throw new Error('OWNER_RETRY_JOB_ID_INVALID');
+      retrySource = await readOwnerChatRetrySource(identity, retryJobId);
+      if (!retrySource) throw new Error('OWNER_RETRY_NOT_FOUND');
+      if (retrySource.job.status !== 'failed') throw new Error('OWNER_RETRY_NOT_FAILED');
+      if (retrySource.request.prompt !== prompt || retrySource.request.conversation_id !== conversationId) {
+        throw new Error('OWNER_RETRY_MISMATCH');
+      }
+      if (Object.prototype.hasOwnProperty.call(retrySource.request, 'oracle_run_id')) {
+        oracleRunId = ownerOracleUuid(retrySource.request.oracle_run_id, 'run_id');
+      }
+    }
+    const expectedRequest = { prompt, conversationId, outputBudget, responseMode, retryJobId } as const;
     if (suppliedIdempotencyKey) {
       const existing = await readOwnerChatIdempotentJob(identity, conversationId, idempotencyKey);
       if (existing) {
         if (!isSameOwnerChatRequest(existing.request, expectedRequest)) {
           throw new Error('IDEMPOTENCY_CONFLICT');
         }
+        if (oracleRunId) await registerOwnerChatOracleJob(identity, oracleRunId, String(existing.job.id));
         return res.status(202).json({
           ok: true,
           accepted: true,
@@ -90,11 +113,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     const conversationHistory = await readOwnerChatConversationHistory(identity, conversationId);
+    const promptAlreadyInHistory = retrySource && conversationHistory.at(-1)?.role === 'user'
+      && conversationHistory.at(-1)?.content === prompt;
     const request = {
       prompt,
       messages: [
         ...conversationHistory,
-        { role: 'user' as const, content: prompt },
+        ...(!promptAlreadyInHistory ? [{ role: 'user' as const, content: prompt }] : []),
       ],
       conversation_id: conversationId,
       conversation_history: conversationHistory,
@@ -104,6 +129,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       source: 'apocky.com',
       privacy_class: 'restricted',
       memory_scope: 'owner-authorized',
+      ...(retryJobId ? { retry_of_job_id: retryJobId } : {}),
+      ...(oracleRunId ? { oracle_run_id: oracleRunId } : {}),
     };
     let replayed = false;
     let job;
@@ -127,6 +154,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       job = existing.job;
       replayed = true;
     }
+    if (oracleRunId) await registerOwnerChatOracleJob(identity, oracleRunId, String(job.id));
     return res.status(202).json({ ok: true, accepted: true, replayed, conversation_id: conversationId, job });
   } catch (error) {
     return respondJobError(res, error);

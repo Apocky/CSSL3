@@ -1,7 +1,57 @@
+import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
+import { controlPlaneMetrics } from './control-plane';
+import { currentLogFile, recentEvents } from './log';
 import type { AttemptJournal } from './journal';
 import type { WorkerConfig, WorkerRuntimeState } from './types';
 import type { QwenClient } from './qwen';
+
+const STARTED_MS = Date.now();
+
+// Which code is actually running. Resolved once; a health call must stay cheap.
+let checkoutHead: string | null | undefined;
+function resolveCheckoutHead(): string | null {
+  if (checkoutHead !== undefined) return checkoutHead;
+  try {
+    checkoutHead = execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], { cwd: process.cwd(), encoding: 'utf8', timeout: 3_000 }).trim();
+  } catch {
+    checkoutHead = null;
+  }
+  return checkoutHead;
+}
+
+// Names only. The values are the secrets; the names tell a reader what the
+// process was configured with, which is what a wrong-env diagnosis needs.
+function presentEnvNames(): string[] {
+  return Object.keys(process.env).filter((key) => key.startsWith('APOCRYPHA_')).sort();
+}
+
+function diagnostics(config: WorkerConfig, runtime: WorkerRuntimeState) {
+  return {
+    uptime_s: Math.round((Date.now() - STARTED_MS) / 1000),
+    pid: process.pid,
+    node: process.version,
+    cwd: process.cwd(),
+    checkout_head: resolveCheckoutHead(),
+    log_file: currentLogFile(),
+    recent_events: recentEvents(20),
+    recent_errors: runtime.recentErrors,
+    control_plane: controlPlaneMetrics,
+    config: {
+      control_plane_url: config.controlPlaneUrl,
+      qwen_base_url: config.qwenBaseUrl,
+      poll_interval_ms: config.pollIntervalMs,
+      heartbeat_interval_ms: config.heartbeatIntervalMs,
+      control_plane_timeout_ms: config.controlPlaneTimeoutMs,
+      qwen_idle_timeout_ms: config.qwenIdleTimeoutMs,
+      qwen_max_runtime_ms: config.qwenMaxRuntimeMs,
+      context_window_tokens: config.contextWindowTokens,
+      max_output_tokens: config.maxOutputTokens,
+      journal_dir: config.journalDir,
+    },
+    env_present: presentEnvNames(),
+  };
+}
 
 export function startHealthServer(
   config: WorkerConfig,
@@ -54,6 +104,7 @@ export function startHealthServer(
           adapter_probe_at: runtime.capabilityAdapterProbeAt[capability] ?? null,
         }])),
       },
+      diagnostics: diagnostics(config, runtime),
     }));
   });
   server.listen(config.healthPort, config.healthHost);

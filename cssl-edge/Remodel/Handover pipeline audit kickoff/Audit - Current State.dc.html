@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  html, body { margin: 0; padding: 0; background-color: #0b0d0e; color: #d9e2e0; }
+  html { color-scheme: dark; }
+  a { color: #8fb3b0; }
+  a:hover { color: #e6f0ef; }
+</style>
+</helmet>
+<main data-screen-label="Current-state audit" style="min-height: 100vh; background: #0b0d0e; color: #d9e2e0; font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif; line-height: 1.55;">
+  <div style="max-width: 880px; margin: 0 auto; padding: 56px 28px 80px; display: flex; flex-direction: column; gap: 40px;">
+
+    <header style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid #1c2426; padding-bottom: 28px;">
+      <div style="font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; letter-spacing: 0.22em; color: #6b7d80;">APOCKY.COM REDESIGN · STEP 1 OF PIPELINE · READ-ONLY</div>
+      <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: #eef6f4;">Current-state audit</h1>
+      <p style="margin: 0; color: #9fb8b4; font-size: 15px; max-width: 640px;">Evidence read directly from <code style="font-family: ui-monospace, monospace; font-size: 13px; color: #b8ccc9;">cssl-edge</code> source (the required read-set plus middleware, consent, and public assets). No files were modified. Every claim is tagged <strong style="color: #7fd1a8;">OBSERVED</strong> (read in source), <strong style="color: #d9b96b;">REPORTED</strong> (handoff docs, unverified), or <strong style="color: #b39ddb;">INFERRED</strong>.</p>
+      <div style="display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: #6b7d80; font-family: ui-monospace, monospace;">
+        <span>branch wip/ckpt-2026-07-10 · dirty worktree — REPORTED</span>
+        <span>·</span>
+        <span>recreations: <a href="Current - Hub.dc.html">hub</a> · <a href="Current - Chat.dc.html">chat</a></span>
+      </div>
+    </header>
+
+    <section style="display: flex; flex-direction: column; gap: 14px;">
+      <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">1 · Surfaces <span style="font-size: 11px; color: #7fd1a8; font-family: ui-monospace, monospace; letter-spacing: 0.08em; vertical-align: middle;">OBSERVED</span></h2>
+      <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 9px; font-size: 14.5px; color: #b8ccc9;">
+        <li><strong style="color: #e6f0ef;">/</strong> — auth-aware hub inside SiteShell chrome (sticky 54px nav, footer). Teal identity, "The work." headline, four project doors (Apocrypha · CSSL · CSL · Chaos Tarot) in an auto-fill card grid. All styling inline per-page; no shared tokens.</li>
+        <li><strong style="color: #e6f0ef;">/chat</strong> — bare immersive route. Access resolves to <em>signed-out · private-beta · owner · unavailable</em> (15s deadline). Non-owner states share one glass card on purple/orange radials with a drifting grid atmosphere; presence copy is honest; a laboratory avatar preview is opt-in and provenance-labeled.</li>
+        <li><strong style="color: #e6f0ef;">/chat (owner)</strong> — 280px conversation sidebar (active/archived/trash scopes; pin/archive/trash/restore with optimistic concurrency), header with gradient wordmark + 40px state avatar, bubble thread (user cyan / Apocrypha purple), single composer, diagnostics behind a settings toggle.</li>
+        <li><strong style="color: #e6f0ef;">/apocrypha</strong> — 302 redirect to /chat. Legal, docs, account, admin routes exist and stay out of redesign scope except shared chrome.</li>
+      </ul>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 14px;">
+      <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">2 · Capability truth at the code level</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div style="border: 1px solid #1e3328; border-radius: 8px; padding: 16px 18px; background: rgba(20, 34, 27, 0.25);">
+          <div style="font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.14em; color: #7fd1a8; margin-bottom: 10px;">LIVE TODAY — OBSERVED</div>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; color: #b8ccc9;">
+            <li>One governed text turn per send: proxy → <code style="font-family: ui-monospace, monospace; font-size: 12px;">/v2/turn</code>, privacy_class <em>restricted</em>, max_tokens 128, owner-only (admin allowlist)</li>
+            <li>Single <code style="font-family: ui-monospace, monospace; font-size: 12px;">final</code> SSE event — no token streaming on the V2 path</li>
+            <li>Conversation lifecycle with <code style="font-family: ui-monospace, monospace; font-size: 12px;">expected_version</code> guard</li>
+            <li>Tool-trace chips, elapsed/cost diagnostics (opt-in toggle)</li>
+            <li>Faculty-error retry via non-streaming route; honest failure copy</li>
+            <li>Presence endpoint that can only ever say <em>hidden</em> or <em>unavailable</em></li>
+          </ul>
+        </div>
+        <div style="border: 1px solid #33251e; border-radius: 8px; padding: 16px 18px; background: rgba(34, 26, 20, 0.25);">
+          <div style="font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.14em; color: #d9a06b; margin-bottom: 10px;">ABSENT FROM /chat — OBSERVED</div>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; color: #b8ccc9;">
+            <li>File / image / media upload of any kind in the composer</li>
+            <li>Audio conversation, voice notes, live voice</li>
+            <li>Video sharing, co-viewing, screen share</li>
+            <li>Multi-user rooms, invitations, participant presence</li>
+            <li>Persistent shared artifacts or room history surface</li>
+            <li><strong style="color: #e0c9a8;">Camera + microphone are denied site-wide</strong> by Permissions-Policy in <code style="font-family: ui-monospace, monospace; font-size: 12px;">middleware.ts</code> — any live-media design is a policy change, not just UI</li>
+          </ul>
+        </div>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #8fa6a3;">The brief's "independently consented camera-perception session" was <strong style="color: #d9b96b;">not found in this web codebase</strong> — if it exists it lives in the native APXv2 runtime. Treated as REPORTED, not live web capability. Multiplayer signaling APIs exist (<code style="font-family: ui-monospace, monospace; font-size: 12px;">/api/signaling/*</code>, <code style="font-family: ui-monospace, monospace; font-size: 12px;">/api/mp-rendezvous</code>) but serve game rendezvous, not chat rooms.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 14px;">
+      <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">3 · Presence contract <span style="font-size: 11px; color: #7fd1a8; font-family: ui-monospace, monospace; letter-spacing: 0.08em; vertical-align: middle;">OBSERVED</span></h2>
+      <p style="margin: 0; font-size: 14.5px; color: #b8ccc9;"><code style="font-family: ui-monospace, monospace; font-size: 13px;">/api/apocrypha/presence</code> validates a canonical envelope from the upstream presence authority and re-emits only <em>hidden</em> or <em>unavailable</em>: <code style="font-family: ui-monospace, monospace; font-size: 12.5px; color: #a8c0bd;">display_authorized: false · entity_authorship: unverified · mutual_consent: not_established · committed_intent: absent · rendering: null</code>. Anything non-canonical returns 502. The UI renders one of three truthful sentences and never fabricates an embodied presence. The avatar component carries an eight-state vocabulary (checking · private · ready · thinking · queued · dreaming · degraded · offline) plus a <em>reported-state / laboratory-preview</em> provenance flag with distinct accessible labels.</p>
+      <p style="margin: 0; font-size: 13px; color: #8fa6a3;">This is the strongest asset in the current system: consent and truthfulness are already load-bearing product mechanics, not copy. The redesign's Perception Membrane extends this contract; it must not weaken it.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 14px;">
+      <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">4 · Token inventory <span style="font-size: 11px; color: #7fd1a8; font-family: ui-monospace, monospace; letter-spacing: 0.08em; vertical-align: middle;">OBSERVED</span></h2>
+      <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; color: #b8ccc9;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span style="width: 150px; color: #8fa6a3;">Four near-blacks</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 18px; border-radius: 3px; background: #06080a; border: 1px solid #263033;"></span><code style="font-family: ui-monospace, monospace; font-size: 12px;">#06080a hub</code></span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 18px; border-radius: 3px; background: #07070d; border: 1px solid #263033;"></span><code style="font-family: ui-monospace, monospace; font-size: 12px;">#07070d chat access</code></span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 18px; border-radius: 3px; background: #0a0a10; border: 1px solid #263033;"></span><code style="font-family: ui-monospace, monospace; font-size: 12px;">#0a0a10 owner</code></span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 18px; border-radius: 3px; background: #0a0a0f; border: 1px solid #263033;"></span><code style="font-family: ui-monospace, monospace; font-size: 12px;">#0a0a0f document</code></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span style="width: 150px; color: #8fa6a3;">Three accent families</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 18px; border-radius: 3px; background: #5fe6d6;"></span><span style="width: 26px; height: 18px; border-radius: 3px; background: #2fd6c6;"></span><code style="font-family: ui-monospace, monospace; font-size: 12px;">hub teal</code></span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 18px; border-radius: 3px; background: #c084fc;"></span><span style="width: 26px; height: 18px; border-radius: 3px; background: #ffaa55;"></span><code style="font-family: ui-monospace, monospace; font-size: 12px;">chat purple·orange</code></span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 18px; border-radius: 3px; background: #5a4cff;"></span><code style="font-family: ui-monospace, monospace; font-size: 12px;">consent indigo</code></span>
+        </div>
+        <ul style="margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px;">
+          <li>No loaded webfont anywhere — "Inter" is referenced on /chat but never served; everything renders in system stacks. Typography is therefore an open field for the redesign.</li>
+          <li>No spacing or radius scale: radii 4 / 5 / 6 / 8 / 10 / 12 / 14 / 16 / 28 all occur. No shared component grammar between hub and chat.</li>
+          <li>Verdict: there is no token layer to preserve — the redesign establishes the first one. The presence-state palette (8 states) is the only systematic color vocabulary worth carrying forward.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">5 · Keep</h2>
+        <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; color: #b8ccc9;">
+          <li>Truth-state discipline: presence copy, provenance labels, "no false presence" as product law</li>
+          <li>Consent tiering culture (Akashic: silence → spore → mycelium → akashic; revocable, purgeable)</li>
+          <li>Reduced-motion coverage on every animation</li>
+          <li>44px targets, focus-visible outlines, aria-live status, menu focus management</li>
+          <li>Honest failure voice ("Apocrypha lost the thread before the thought was complete")</li>
+          <li>The 8-state presence vocabulary + provenance flag</li>
+          <li>Auth, presence, and consent semantics — untouched by law</li>
+        </ul>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">6 · Retire</h2>
+        <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; color: #b8ccc9;">
+          <li>AI-purple radial + glass card + drifting grid on the chat threshold (on the explicit avoid list)</li>
+          <li>Purple→orange gradient CTA pill and gradient wordmark</li>
+          <li>Bubble-wall-only conversation model</li>
+          <li>Palette fragmentation: three accent families and four blacks across two surfaces</li>
+          <li>System-font-only identity (no typographic voice)</li>
+          <li>Cockpit-monospace tendencies on public (non-admin) surfaces</li>
+        </ul>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">7 · Inferred architecture <span style="font-size: 11px; color: #b39ddb; font-family: ui-monospace, monospace; letter-spacing: 0.08em; vertical-align: middle;">INFERRED</span></h2>
+      <p style="margin: 0; font-size: 14px; color: #b8ccc9;">APXv2 ("Apocrypha V2") is a native runtime reached through a Cloudflare Access tunnel at <code style="font-family: ui-monospace, monospace; font-size: 12.5px;">apocrypha.apocky.com</code>, exposing at least <code style="font-family: ui-monospace, monospace; font-size: 12.5px;">/v2/turn</code> and <code style="font-family: ui-monospace, monospace; font-size: 12.5px;">/v2/presence</code>. The web app is a thin, truth-preserving proxy. Room events, uploads, transduction, WebRTC, retention — none of it exists in this layer today; the entire Clearing backend is <strong>proposed</strong>.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px; border-top: 1px solid #1c2426; padding-top: 24px;">
+      <h2 style="margin: 0; font-size: 19px; font-weight: 650; color: #eef6f4;">8 · Recreation deliverables & known deltas</h2>
+      <p style="margin: 0; font-size: 14px; color: #b8ccc9;"><a href="Current - Hub.dc.html">Current — Hub</a> and <a href="Current - Chat.dc.html">Current — Chat</a> recreate the live surfaces value-for-value from source (colors, spacing, copy, avatar geometry). <a href="ApocryphaAvatar.dc.html">ApocryphaAvatar</a> is a faithful port of the SVG presence component with all 8 states. Not recreated: mobile drawer/backdrop behaviors (media queries; desktop-first per handover, mobile arrives with the redesign frames), the conversation context menu, textarea auto-grow, and live network behavior. The chat recreation's sample conversation is sample content, labeled as such in its failure state.</p>
+      <p style="margin: 0; font-size: 13px; color: #8fa6a3;">Next per handover: divergent directions A · Mycelial Commons, B · Shared Hearth, C · Tidal Atelier — structurally different frames, then comparison and synthesis.</p>
+    </section>
+
+  </div>
+</main>
+</x-dc>
+</body>
+</html>

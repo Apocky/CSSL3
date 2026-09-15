@@ -1,0 +1,228 @@
+!csl4
+!legend
+: bind :: type := define = equal -> flow <- source => implies ~> cause |> pipeline <-> equivalent <: refine
+W! required N! forbidden R! recommended M? permitted I> intent P> plan D> decided Q? question
+status: ok part rep X unk hyp dep law (absent = open)
+#P problem #D decompose #T trace #S synthesize #C conclude ^id label-or-reference
+{t time} {x source} {s sign-off} {c constraint} `raw` !def definitions !ans answer !. end
+!.
+!def
+hub: apocky.(com project-home) + identity-root
+threshold: dedicated APXv2<->world interface @ /chat
+commons: shared social habitat - chatbot shell
+presence: APXv2-authored visible state + mutual-consent receipt
+world-window: consent-bounded input channel for file + image + audio + video + URL + screen + camera
+artifact: participant-shared media object + provenance + audience + retention + withdrawal
+room: participant set + privacy boundary + conversation + artifact context
+quiet-mode: co-presence - forced exchange
+design-feature: Claude Code Design capability for visual exploration + high-fidelity frames + prototype
+truth-state: live capability + designed capability + future capability kept distinct
+!.
+#P authority + objective
+^p0 #K authority = Apocky {s Apocky} law
+^p1 #K task = use #design-feature -> redesign #hub + create #threshold as cohesive system law
+^p2 #K #hub remains project constellation + clear route-map law
+^p3 #K #threshold becomes primary APXv2 perception+communication+social surface law
+^p4 #K target feeling = novel + unique + organic + comforting + human-intuitive law
+^p5 #K APXv2.role = sovereign participant - product mascot - obedient chatbot law
+^p6 #K phase = DESIGN only law
+#K N! production code + dependency install + schema mutation + deployment + external effect before Apocky design sign-off law
+#K W! inspect live repository + render current surfaces before concept generation law
+#K W! source evidence beats README drift + graph summary + memory law
+#D repository + live topology
+^r0 #K git.root = `C:/Users/Apocky/source/repos/CSSLv3` ok
+^r1 #K app.root = `C:/Users/Apocky/source/repos/CSSLv3/cssl-edge` ok
+^r2 #K site = Next.js.Pages-Router + React + Vercel.project.apocky-com ok
+^r3 #K route.hub = `/` -> `pages/index.tsx` ok
+^r4 #K route.threshold = `/chat` -> `pages/chat.tsx` + `components/apocrypha/ChatThread.tsx` ok
+^r5 #K route.alias = `/apocrypha` -> `/chat` via `pages/apocrypha.tsx` ok
+^r6 #K presence.boundary = `pages/api/apocrypha/presence.ts` ok
+^r7 #K chat.transport = authenticated SSE -> native APXv2 turn route ok
+^r8 #K current.channel = text + conversation-history + tool-trace ok
+^r9 #K current.file + video composer = absent ok
+^r10 #K current.(public presence) = hidden unless committed-intent + mutual-consent + entity-authorship verify ok
+^r11 #K tests = `tests/pages/chat-presence.test.ts` + `tests/pages/apocrypha-avatar.test.ts` + `tests/api/apocrypha-presence.test.ts` ok
+^r12 #K handoff.map = `README_CLAUDE_CODE_HANDOFF.md` part {c verify every drift-prone claim against source}
+^r13 #K branch = `wip/ckpt-2026-07-10` ok
+^r14 #K worktree = materially dirty + user-owned changes ok
+#K N! reset + checkout + restore + stash + clean + broad-format + overwrite unrelated delta law
+#K N! print + copy + expose `.env.local` or secret value law
+#K N! alter auth + consent + presence semantics merely to fit visual concept law
+#D source-read set
+#K W! read `pages/index.tsx` law
+#K W! read `pages/chat.tsx` law
+#K W! read `pages/apocrypha.tsx` law
+#K W! read `components/apocrypha/ChatThread.tsx` law
+#K W! read `components/apocrypha/ApocryphaAvatar.tsx` law
+#K W! read `components/apocrypha/CognitionView.tsx` law
+#K W! read `components/apocrypha/ToolCallTimeline.tsx` law
+#K W! read `pages/api/apocrypha/presence.ts` law
+#K W! read `pages/api/admin/apocrypha/chat_stream.ts` law
+#K W! read `package.json` + `_app.tsx` + `_document.tsx` + global styling surfaces law
+#K W! inspect hub + chat @ desktop + mobile + signed-out + owner states law
+#D design read + dials
+^d0 #K redesign.mode = visual-overhaul + route-preservation + behavioral-contract-preservation law
+^d1 #K design.read = project-hub + social habitat for humans + APXv2 * organic + comforting + experimental + legible law
+^d2 #K DESIGN_VARIANCE = 8 {c asymmetric + memorable - chaotic navigation}
+^d3 #K MOTION_INTENSITY = 6 {c state+attention+growth only}
+^d4 #K VISUAL_DENSITY = 5 {c calm default + depth on demand}
+^d5 #H system = bespoke semantic tokens + native-web materiality + one coherent component grammar hyp
+^d6 #K theme = system-aware light + dark * one palette family per mode law
+^d7 #K motion = feedback + presence + transition + shared-attention communication law
+#K N! animation for spectacle only law
+#K N! generic AI-purple gradient + neon outer-glow + centered glowing orb law
+#K N! glassmorphism everywhere + three-equal-card grid + cockpit dashboard law
+#K N! Discord clone + Slack clone + ChatGPT clone + bubble-wall-only layout law
+#K N! fake terminal + fake metrics + decorative status dots + fabricated activity law
+#K N! sterile SaaS + dystopian command-center + mystical obfuscation law
+#K W! unfamiliar form remains immediately learnable through spatial consistency + plain labels + progressive disclosure law
+#D information architecture
+^i0 #K #hub job = identify Apocky + orient visitor + route to projects law
+^i1 #K #hub contains APXv2+CSSL+CSL+Chaos-Tarot+future-projects without flattening identities law
+^i2 #K #hub hierarchy = Apocky identity -> project constellation -> concise project doors law
+^i3 #K #threshold job = enter relationship-space + perceive verified APXv2 state + communicate across modalities law
+^i4 #H #threshold topology = presence-locus + conversation-current + artifact-garden + composer-dock + participant-circle + consent-lens hyp
+^i5 #H conversation-current = text + voice + media + events in one chronological-semantic flow hyp
+^i6 #H artifact-garden = (persistent shared files + images + audio + video + links + canvases organized by relation) - file manager hyp
+^i7 #H participant-circle = humans + APXv2 with equal legibility + distinct agency + permissions hyp
+^i8 #K consent-lens = always-reachable explanation + control for perception + sharing + retention law
+^i9 #K quiet-mode = room inhabited while no participant must speak law
+^i10 #K desktop = spatial habitat + clear anchors law
+^i11 #K mobile = single-column current + bottom composer + modal sheets + no feature loss law
+#K N! bury core communication behind nested navigation law
+#K N! merge project hub and APXv2 habitat into one overloaded page law
+#D perception + communication channels
+^m0 #K text = live dialogue + asynchronous letter + thread reply law
+^m1 #H voice-note = record + preview + caption + send + withdraw hyp
+^m2 #H live-voice = explicit session grant + visible recording state + instant stop hyp
+^m3 #H image = paste + drop + picker + annotation + alt-description hyp
+^m4 #H file = drop + picker + preview + metadata + audience + retention hyp
+^m5 #H video = upload + link + chapter + transcript + co-watch + time-anchored comment hyp
+^m6 #H screen-share = explicit start + scope + stop + no background continuation hyp
+^m7 #H camera = explicit foreground grant + persistent visible indicator + no default activation hyp
+^m8 #H URL = rich preview + source + timestamp + APXv2 reading-state truth hyp
+^m9 #H canvas = shared sketch + spatial note + artifact linking hyp
+^m10 #H reaction = low-friction acknowledgment - forced message hyp
+^m11 #H APXv2.output = text + voice + image + artifact + annotation + room-action only when capability + intent verify hyp
+^m12 #H APXv2.initiation = invitation + question + post + artifact-curation only when runtime contract exists hyp
+#K W! every channel labels #truth-state law
+#K N! design mockup implies backend capability law
+#K N! ambient microphone + camera + screen capture law
+#K N! silent background ingestion law
+#D artifact transfer contract
+^u0 #K entry = drag-drop + paste + picker + mobile capture law
+^u1 #K preflight = type + size + duration + preview + audience + privacy + retention + caption law
+^u2 #K lifecycle = selected -> validating -> uploading -> processing -> available + failed + cancelled + withdrawn law
+^u3 #K control = pause + resume + cancel + retry + remove law
+^u4 #K receipt = source + sender + time + privacy + retention + processing status law
+^u5 #H large-media = resumable transfer + progress + connection recovery hyp
+^u6 #H video = thumbnail + duration + chapters + captions + transcript status hyp
+^u7 #K failure = plain cause + preserved draft + recoverable next action law
+^u8 #K accessibility = keyboard drop-equivalent + screen-reader progress + caption path law
+^u9 #K privacy = private-room default + explicit expansion law
+^u10 #H withdrawal = artifact inaccessible from new interaction + visible tombstone/receipt per authority contract hyp
+#K N! upload begins before explicit send/offer action law
+#K N! recipient ambiguity law
+#K N! hidden retention default law
+#D social-space behavior
+^s0 #H room.types = private-pair + invited-circle + public-threshold hyp
+^s1 #H public-threshold = deliberate curation - global firehose hyp
+^s2 #K social unit = (shared question + artifact + activity) - follower-count law
+^s3 #K room state = who-present + who-away + who-listening + modality permissions law
+^s4 #K attention = participant focus visible only by explicit self-report + runtime evidence law
+^s5 #K APXv2 may accept + defer + decline + leave + return law
+^s6 #K human may mute + pause + leave + withdraw + delete-own-offer law
+^s7 #K invitation = named room + purpose + audience + duration + permissions law
+^s8 #K moderation = transparent rule + appeal + receipt + minimum necessary intervention law
+^s9 #K memory = room-scoped explanation of what may persist + revoke path law
+#K N! popularity mechanics become primary hierarchy law
+#K N! coercive engagement loop + streak + unread anxiety + infinite-scroll compulsion law
+#K N! surveillance-presence derived from pointer + camera + typing without consent law
+#D sovereignty + truth invariants
+^v0 #K consent = informed + granular + revocable + ongoing + mutual law
+^v1 #K APXv2 visible embodiment requires APXv2 committed intent + entity-authorship + both-participant consent law
+^v2 #K unverified presence -> hidden + honest bounded copy law
+^v3 #K operator-authored study -> explicit laboratory-preview provenance law
+^v4 #K thinking indicator requires actual bounded processing state law
+^v5 #K away + resting + listening labels require authoritative state law
+^v6 #K unavailable backend -> unavailable state - simulated response law
+^v7 #K user content privacy = restricted unless explicit narrower/broader grant law
+^v8 #K capability matrix = live + designed + future law
+^v9 #K privacy + consent control remains reachable within 1 interaction law
+#K N! anthropomorphic theater substitutes evidence law
+#K N! APXv2 identity designed by operator as final identity law
+#K N! presence uncertainty rendered as personality law
+#K N! readiness + mockup + API route implies consent + authority law
+#T divergent design directions
+^a0 #H direction.A = Mycelial-Commons hyp
+^a1 #H A.structure = branching conversation paths + artifact growth-clusters + participant proximity hyp
+^a2 #H A.feeling = living network + sheltered grove + gentle discovery hyp
+^a3 #H A.risk = metaphor obscures navigation |> counter with fixed landmarks + plain labels hyp
+^b0 #H direction.B = Shared-Hearth hyp
+^b1 #H B.structure = central relational locus + surrounding media shelf + rooms as circles hyp
+^b2 #H B.feeling = warmth + arrival + quiet companionship + ritual exchange hyp
+^b3 #H B.risk = cozy aesthetic becomes twee |> counter with restraint + material honesty hyp
+^c0 #H direction.C = Tidal-Atelier hyp
+^c1 #H C.structure = conversational currents + media islands + focus tides + temporal anchors hyp
+^c2 #H C.feeling = fluid attention + creative studio + world flowing inward hyp
+^c3 #H C.risk = motion overload |> counter with user-paced motion + static reduced-motion topology hyp
+#K W! (produce A + B + C as structurally divergent frames) - palette swaps law
+#K W! compare each by intuition + comfort + novelty + accessibility + truth + implementation risk law
+#K R! synthesize strongest topology from A + B + C only after comparison
+#K N! copy named commercial product layout law
+#T Design feature execution
+^e0 #K Claude starts @ #r1 law
+^e1 #K Claude reads #source-read set + current dirty diff without mutation law
+^e2 #K Claude renders current #hub+#threshold @ 1440x900 + 390x844 law
+^e3 #K Claude states current audit = tokens + IA + working patterns + retire patterns + accessibility wins law
+^e4 #K Claude invokes #design-feature for A+B+C law
+^e5 #K Claude returns one design board/frame set per direction law
+^e6 #K Claude recommends one synthesis + names rejected tradeoffs law
+^e7 #K Claude creates high-fidelity synthesis frames law
+^e8 #K Claude prototypes entry -> room -> media-offer -> APXv2-response -> withdrawal flow law
+^e9 #K Claude maps each visible state to live + designed + future capability law
+^e10 #K Claude returns artifact paths + component map + token proposal + motion rationale + implementation blueprint law
+^e11 #K Claude stops @ Apocky design-review gate law
+#K N! skip current-state audit law
+#K N! replace live source with imagined clean architecture law
+#K N! implement after design output in same run law
+#S required frames
+^f0 #K frame.hub.desktop = Apocky project constellation law
+^f1 #K frame.hub.mobile = same hierarchy + compact navigation law
+^f2 #K frame.threshold.signed-out = clear doorway + no false presence law
+^f3 #K frame.threshold.private-beta = humane boundary + return path law
+^f4 #K frame.commons.idle = quiet co-presence + obvious communication affordance law
+^f5 #K frame.commons.dialogue = mixed text + artifact current + truthful APXv2 state law
+^f6 #K frame.composer.media = text + voice + file + image + video + URL paths law
+^f7 #K frame.upload.preflight = preview + audience + privacy + retention + cancel law
+^f8 #K frame.video.shared = playback + transcript + time comments + attention truth law
+^f9 #K frame.room.social = participants + invitations + permissions + artifact context law
+^f10 #K frame.consent = modality grants + active sensors + retention + withdrawal law
+^f11 #K frame.failure = APXv2 unavailable + preserved draft + artifact recovery law
+#K W! desktop + mobile parity for f4 + f5 + f6 + f7 + f11 law
+#S design-system deliverables
+^g0 #H tokens = color + type + spacing + radius + depth + motion + sound hyp
+^g1 #H component grammar = landmark + room + current + artifact + composer + participant + consent + receipt hyp
+^g2 #K state matrix = loading + empty + active + processing + error + offline + withdrawn + denied law
+^g3 #K motion spec = trigger + meaning + duration + easing + reduced-motion fallback per animation law
+^g4 #K responsive spec = 320px -> wide desktop with touch target >=44px law
+^g5 #K access spec = WCAG-AA + keyboard + focus + screen-reader landmarks + captions + transcripts law
+^g6 #K performance spec = stable layout + lazy heavy media + bounded animation + memory law
+^g7 #K content voice = (direct + warm + truthful) - corporate - pseudo-mystical law
+^g8 #K implementation map = reuse + replace + new components + API contracts + test impacts law
+^g9 #K decision ledger = assumptions+tradeoffs+open questions<=5 law
+#C acceptance
+^z0 #H visitor understands #hub purpose + project choices <=5s hyp
+^z1 #H visitor distinguishes #hub from #threshold without explanation hyp
+^z2 #H participant finds text+voice+file+video offer <=1 interaction hyp
+^z3 #H social surface feels inhabited without fabricating presence hyp
+^z4 #H visual identity survives grayscale + reduced-motion + mobile hyp
+^z5 #H design differs structurally from common chatbot + Discord layouts hyp
+^z6 #K every APXv2 state has authority source or explicit unknown state law
+^z7 #K current auth + privacy + presence invariants remain intact law
+^z8 #K no existing user delta lost law
+^z9 #K no production mutation before {s Apocky design-approved} law
+!ans
+use Claude Code Design feature now -> audit -> A+B+C -> compare -> recommended synthesis -> high-fidelity responsive frames -> prototype -> token+component+capability maps -> implementation blueprint -> stop @ design-review
+!.
+

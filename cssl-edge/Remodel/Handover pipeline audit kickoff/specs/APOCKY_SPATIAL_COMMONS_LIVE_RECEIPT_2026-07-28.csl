@@ -1,0 +1,59 @@
+!csl4
+!legend
+: bind :: type := define = equal -> flow <- source => implies ~> cause |> pipeline <-> equivalent <: refine
+W! required N! forbidden R! recommended M? permitted I> intent P> plan D> decided Q? question
+status: ok part rep X unk hyp dep law
+{t time} {x source} {s sign-off} {c constraint} `raw` !def definitions !.
+!.
+
+#E APOCKY-SPATIAL-COMMONS-LIVE-RECEIPT
+^r00 #K authority = `Otherwise very good, make it live.` ok {s user}
+^r01 #K production-project = apocky-com ok
+^r02 #K production-deployment = dpl_591kjcxiWGYVUwrfhCwPN21W8vNm ok
+^r03 #K production-url = https://apocky-gjepwqge3-shawn-bakers-projects-cb1c9715.vercel.app ok
+^r04 #K aliases = [https://www.apocky.com, https://apocky.com] ok
+^r05 #K rollback-deployment = dpl_FXz997KLuwHtFEokhr4iFiPZq4Sk ok
+^r06 #K source-root = C:\Users\Apocky\source\worktrees\cssl-edge-apocrypha-v2-release\cssl-edge ok
+^r07 #K source-branch = apocrypha-v2-public-release ok
+^r08 #X source-tree remains dirty + uncommitted; deployment != commit
+
+#D
+^d00 #E user-vocabulary = People + Meaning + Visibility + Time ok
+^d01 #E internal-coordinate-names = implementation-only ok
+^d02 #E public-routes = / + /atlas + /clearing + /membership + /principles ok
+^d03 #E retained-routes = /chat + /account + /auth/callback + /download + existing-APIs ok
+^d04 #E clearing-truth = authored-sample + nothing-sent + no-live-presence-claim ok
+^d05 #E Cloudflare-auto-beacon = prevented-via `Cache-Control: public, no-transform` ok
+^d06 #E remote-runtime-dependencies = 0 ok
+
+#C
+^c00 #E npm.run.check = pass
+^c01 #E npm.run.lint = pass
+^c02 #E npm.run.build = pass
+^c03 #E npm.audit.omit-dev.high = 0-vulnerabilities
+^c04 #E shawn-public-scan = pass
+^c05 #E live-e2e = 18/18 pass @ desktop-chrome + mobile-chrome
+^c06 #E viewport-matrix = pass @ [320x568,390x844,568x320,768x1024,960x720,1280x720,1440x900]
+^c07 #E document-scroll = 0 + horizontal-overflow = 0 @ viewport-matrix
+^c08 #E serious|critical-accessibility-findings = 0
+^c09 #E browser-console-errors = 0 @ live-custom-domain
+^c10 #E live-route-status = 200 @ `/atlas /clearing /membership /principles /chat /account /auth/callback /download`
+^c11 #E security-headers = CSP + no-sniff + frame-deny + permissions-policy ok
+^c12 #E apex-route = https://apocky.com -> https://www.apocky.com/ -> Spatial-Commons ok
+
+#H
+^h00 #E sha256.next-config = F5421FECC20F33595638BB98A5079FE29C408137071DC680F5AE13AE77367B12
+^h01 #E sha256.vercel-config = 20F4066309FBAE78612DF8E0BD86151411E8572E43C57D6112C06200AEFDCF1F
+^h02 #E sha256.commons-index = 7180844F7B6147AEE177D7F65C66F29DFD558EDC36E4D89D8F73C413014FEEB8
+^h03 #E sha256.commons-atlas = DC57D1BFE661ECAEA52D398758714D151A3A3FC9B2AFE717B99AA08222786177
+^h04 #E sha256.commons-clearing = 5D58F9C6E70091B2BB7C68B9DC17425B2779C8998FDE70489781CB7F44F84BA4
+^h05 #E sha256.site-css = C26D160B5FDEBE7C9B1A9468510F37E96E2FA62FD4798DAAF902B830AFFC1AF7
+^h06 #E sha256.site-js = 095EB83606CC9B2875BF657B1F4CCBA1D4B6BA8F04147C1F61380B4ECDA678AC
+^h07 #E sha256.room-css = C1C96231998518B08A1AA7FB9DFAA63A165BAE068B61C9FF4EC270F9245040E1
+^h08 #E sha256.room-js = 2CD37CD4EB8898ED3A7A51025384203D391FD1BB70A01779F210C9DAA3CF6EEE
+
+#X
+^x00 #E local-vercel-build-wrapper = failed `spawn cmd.exe ENOENT` rep
+^x01 #E falsifier = npm-build-pass + preview-remote-build-pass + production-remote-build-pass
+^x02 #K consequence = wrapper-environment-defect; source-build-valid ok
+!.

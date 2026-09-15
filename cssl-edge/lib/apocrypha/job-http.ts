@@ -20,6 +20,20 @@ export function noStore(res: NextApiResponse): void {
 
 export function respondJobError(res: NextApiResponse, error: unknown) {
   const safe = publicJobError(error);
+  // The public body is deliberately generic; the function log must not be.
+  // Without this line a 503 is unattributable from the outside (2026-09-12).
+  if (safe.status >= 500) {
+    const raw = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.error(JSON.stringify({
+      at: new Date().toISOString(),
+      level: 'error',
+      event: 'apocrypha.job_http.failed',
+      public_code: safe.code,
+      status: safe.status,
+      detail: raw.replace(/(token|secret|key|authorization)[^,;\s]*/gi, '$1=<redacted>').slice(0, 300),
+    }));
+  }
   return res.status(safe.status).json({ ok: false, code: safe.code, error: safe.message });
 }
 

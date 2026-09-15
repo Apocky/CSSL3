@@ -73,3 +73,6 @@ compiler-rs/crates/*/Cargo.lock
 # them means every commit leaves the tree dirty again. Added 2026-09-10 after a
 # sweep found 1,896 cache deletions in a single repo.
 graphify-out/cache/
+
+# placeholder harness env — never track a real one
+tools/grok-mcp-harness/.env
