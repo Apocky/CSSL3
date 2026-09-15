@@ -124,7 +124,7 @@ const ConversationReader: NextPage<ConversationReaderProps> = ({ summary }) => {
   return (
     <>
       <Head>
-        <title>{summary.title} · Conversation Constellations</title>
+        <title>{`${summary.title} · Conversation Constellations`}</title>
         <meta name="description" content={description} />
         <meta name="robots" content={summary.indexable ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
         <meta name="theme-color" content="#000000" />

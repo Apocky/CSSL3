@@ -31,8 +31,9 @@ const Page: NextPage = () => {
 
       <h2 className="docs-h2">Step 1 · Download</h2>
       <p className="docs-p">
-        Visit <a href="/download" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>apocky.com/download</a> and
-        get the latest test build. If the download is a ZIP archive, extract it before opening
+        The test build is not publicly distributed at the moment, so there is nothing to fetch from this
+        site today. These steps are kept for anyone who already has a copy. If your download is a ZIP
+        archive, extract it before opening
         <code className="docs-ic"> LoA.exe</code>. The download page explains how to compare its SHA-256
         fingerprint, a number used to check that the file arrived unchanged.
       </p>

@@ -20,7 +20,7 @@ const DocsPage: NextPage<DocsPageProps> = ({ spec, prevSlug, nextSlug }) => {
   return (
     <>
       <Head>
-        <title>{displayTitle} · Apocky docs</title>
+        <title>{`${displayTitle} · Apocky docs`}</title>
         <meta
           name="description"
           content={isLegacyAkashicSpecification

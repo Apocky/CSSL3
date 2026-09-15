@@ -81,7 +81,7 @@ const InfinityEngine: NextPage = () => (
         <div className="ie-grid">
           <div className="ie-card">
             <h3>Labyrinth of Apocalypse</h3>
-            <p>An early Windows game and engine test. <a href="/download">View the current download.</a></p>
+            <p>An early Windows game and engine test. It is no longer distributed here.</p>
           </div>
           <div className="ie-card">
             <h3>CSSL</h3>

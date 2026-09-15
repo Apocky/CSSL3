@@ -63,12 +63,6 @@ const Now: NextPage = () => (
               <Link className={styles.cardLink} href="/clearing">Enter the room →</Link>
             </article>
             <article className={styles.card}>
-              <span className={styles.tag}>Playable alpha</span>
-              <h3>Labyrinth of Apocalypse</h3>
-              <p>Try the unfinished Windows game, with installation help and its current limitations.</p>
-              <Link className={styles.cardLink} href="/download">Get the game →</Link>
-            </article>
-            <article className={styles.card}>
               <span className={styles.tag}>Help</span>
               <h3>Service status</h3>
               <p>See whether the site is responding and find a way back if something fails.</p>

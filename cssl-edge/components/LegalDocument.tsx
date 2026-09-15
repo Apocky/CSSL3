@@ -17,7 +17,11 @@ export default function LegalDocument({
   return (
     <>
       <Head>
-        <title>{title} · Apocky</title>
+        {/* One interpolated string, not `{title} · Apocky`. That form passes <title> an ARRAY of
+            children, which next/head refuses to serialise -- the tag was dropped entirely and all
+            three legal pages shipped with no title at all, while their meta description rendered
+            fine and hid the fault. */}
+        <title>{`${title} · Apocky`}</title>
         <meta name="description" content={description} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <style>{`
