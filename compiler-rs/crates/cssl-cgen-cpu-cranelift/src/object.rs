@@ -3929,7 +3929,38 @@ fn obj_lower_memref_load(
         slot: 0,
         ty: format!("{}", r.ty),
     })?;
-    let addr = obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?;
+    // § Checked-array metadata forms one complete contract; partial/duplicate attributes refuse.
+    let checked_keys = ["array_extent", "index_units", "index_unsigned"];
+    let checked = op.attributes.iter().any(|(name, _)| checked_keys.contains(&name.as_str()));
+    if checked && (checked_keys.iter().any(|key| op.attributes.iter().filter(|(name, _)| name == key).count() != 1)
+        || !op.attributes.iter().any(|(name, value)| name == "index_unsigned" && matches!(value.as_str(), "true" | "false"))) {
+        return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "incomplete or invalid fixed-array metadata".to_owned() });
+    }
+    let addr = if let Some((_, extent_text)) = op.attributes.iter().find(|(name, _)| name == "array_extent") {
+        let extent = extent_text.parse::<u64>().ok().filter(|n| *n <= i64::MAX as u64 / u64::from(elem_ty.bytes()))
+            .ok_or_else(|| ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "invalid fixed-array extent".to_owned() })?;
+        if !op.attributes.iter().any(|(name, value)| name == "index_units" && value == "elements") {
+            return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index unit missing".to_owned() });
+        }
+        let index_id = offset_id.ok_or_else(|| ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index missing".to_owned() })?;
+        let index = *value_map.get(&index_id).ok_or_else(|| ObjectError::UnknownValueId { fn_name: fn_name.to_owned(), value_id: index_id.0 })?;
+        let base = *value_map.get(&ptr_id).ok_or_else(|| ObjectError::UnknownValueId { fn_name: fn_name.to_owned(), value_id: ptr_id.0 })?;
+        let index_ty = builder.func.dfg.value_type(index);
+        if !index_ty.is_int() || index_ty.bits() > ptr_ty.bits() || builder.func.dfg.value_type(base) != ptr_ty {
+            return Err(ObjectError::LoweringFailed { fn_name: fn_name.to_owned(), detail: "fixed-array index/base width invalid".to_owned() });
+        }
+        let unsigned = op.attributes.iter().any(|(name, value)| name == "index_unsigned" && value == "true");
+        let index = if index_ty.bits() < ptr_ty.bits() {
+            if unsigned { builder.ins().uextend(ptr_ty, index) } else { builder.ins().sextend(ptr_ty, index) }
+        } else { index };
+        // § Unsigned comparison rejects negative signed indices as well as the upper bound.
+        let in_bounds = builder.ins().icmp_imm(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, index, extent as i64);
+        builder.ins().trapz(in_bounds, cranelift_codegen::ir::TrapCode::HEAP_OUT_OF_BOUNDS);
+        let bytes = builder.ins().imul_imm(index, i64::from(elem_ty.bytes()));
+        builder.ins().iadd(base, bytes)
+    } else {
+        obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?
+    };
     let flags = obj_memref_flags(align);
     let v = builder.ins().load(elem_ty, flags, addr, 0);
     value_map.insert(r.id, v);
@@ -5549,6 +5580,29 @@ mod tests {
         module.push_func(f);
         let bytes = emit_object_module(&module).expect("emit ok");
         assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_checked_array_metadata_requires_complete_unambiguous_contract() {
+        let cases: &[&[(&str, &str)]] = &[
+            &[("index_units", "elements")],
+            &[("index_unsigned", "true")],
+            &[("array_extent", "4"), ("index_units", "elements")],
+            &[("array_extent", "4"), ("index_units", "elements"), ("index_unsigned", "maybe")],
+            &[("array_extent", "4"), ("index_units", "bytes"), ("index_unsigned", "false")],
+            &[("array_extent", "-1"), ("index_units", "elements"), ("index_unsigned", "false")],
+            &[("array_extent", "4"), ("array_extent", "8"), ("index_units", "elements"), ("index_unsigned", "false")],
+        ];
+        for attrs in cases {
+            let mut f = MirFunc::new("bad_array", vec![MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64)], vec![MirType::Int(IntWidth::I8)]);
+            let mut op = MirOp::std("memref.load").with_operand(ValueId(0)).with_operand(ValueId(1)).with_result(ValueId(2), MirType::Int(IntWidth::I8));
+            for (key, value) in *attrs { op.attributes.push(((*key).to_owned(), (*value).to_owned())); }
+            f.push_op(op);
+            f.push_op(MirOp::std("func.return").with_operand(ValueId(2)));
+            let mut module = MirModule::new();
+            module.push_func(f);
+            assert!(matches!(emit_object_module(&module), Err(ObjectError::LoweringFailed { .. })), "accepted malformed contract: {attrs:?}");
+        }
     }
 
     #[test]
