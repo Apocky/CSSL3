@@ -1,0 +1,8 @@
+module audit.abi9001_projected_u64_relation
+
+pub struct UnsignedWord { value: u64 }
+
+pub fn abi9001_projected_u64_gt_v1(value: u64, rhs: u64) -> i32 {
+    let word: UnsignedWord = UnsignedWord { value: value };
+    if word.value > rhs { 1i32 } else { 0i32 }
+}

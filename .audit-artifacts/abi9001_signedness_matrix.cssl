@@ -1,0 +1,19 @@
+module audit.abi9001_signedness_matrix
+
+pub struct Signed8 { value: i8 }
+pub struct Unsigned8 { value: u8 }
+pub struct Signed16 { value: i16 }
+pub struct Unsigned16 { value: u16 }
+pub struct Signed32 { value: i32 }
+pub struct Unsigned32 { value: u32 }
+pub struct Signed64 { value: i64 }
+pub struct Unsigned64 { value: u64 }
+
+pub fn u8_to_i8_v1(value: u8) -> Signed8 { Signed8 { value: value } }
+pub fn i8_to_u8_v1(value: i8) -> Unsigned8 { Unsigned8 { value: value } }
+pub fn u16_to_i16_v1(value: u16) -> Signed16 { Signed16 { value: value } }
+pub fn i16_to_u16_v1(value: i16) -> Unsigned16 { Unsigned16 { value: value } }
+pub fn u32_to_i32_v1(value: u32) -> Signed32 { Signed32 { value: value } }
+pub fn i32_to_u32_v1(value: i32) -> Unsigned32 { Unsigned32 { value: value } }
+pub fn u64_to_i64_v1(value: u64) -> Signed64 { Signed64 { value: value } }
+pub fn i64_to_u64_v1(value: i64) -> Unsigned64 { Unsigned64 { value: value } }

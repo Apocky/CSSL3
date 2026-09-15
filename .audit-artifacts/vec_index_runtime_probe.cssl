@@ -1,0 +1,15 @@
+module audit.vec_index_runtime_probe
+
+pub fn vec_round_trip_v1() -> i64 {
+    let values0: Vec<i64> = vec_new::<i64>() ;
+    let values1: Vec<i64> = vec_push::<i64>(values0, 11i64) ;
+    let values2: Vec<i64> = vec_push::<i64>(values1, 13i64) ;
+    vec_index::<i64>(values2, 1i64)
+}
+
+pub fn vec_read_at_v1(index: i64) -> i64 {
+    let values0: Vec<i64> = vec_new::<i64>() ;
+    let values1: Vec<i64> = vec_push::<i64>(values0, 11i64) ;
+    let values2: Vec<i64> = vec_push::<i64>(values1, 13i64) ;
+    vec_index::<i64>(values2, index)
+}

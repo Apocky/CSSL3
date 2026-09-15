@@ -1,0 +1,7 @@
+module audit.abi9001_signedness_mismatch
+
+pub struct SignedWord { value: i32 }
+
+pub fn abi9001_signedness_mismatch_v1(value: u32) -> SignedWord {
+    SignedWord { value: value }
+}

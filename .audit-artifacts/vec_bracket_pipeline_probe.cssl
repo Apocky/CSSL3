@@ -1,0 +1,8 @@
+module audit.vec_bracket_pipeline_probe
+
+pub fn vec_bracket_read_v1(index: i64) -> i64 {
+    let mut values: Vec<i64> = Vec::new() ;
+    values.push(11i64) ;
+    values.push(13i64) ;
+    values[index]
+}
