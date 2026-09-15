@@ -1,67 +1,97 @@
-// What the sign-in box accepts.
+// What a person can paste into the sign-in box — and whether the box will hold it.
 //
-// Reported 2026-09-14: "the sign in email gives a magic link not the code that the webpage asks
-// for". Whether a code appears at all is decided by the mail template, so the page cannot demand
-// one. And in the app the link is worse than useless: tapping it opens the system browser, the
-// session is established THERE, and the app stays signed out.
+// Apocky: "I can't paste the magic link into the code field because it doesn't fit."
 //
-// So the box takes either. These cases pin that, and the input constraints that would silently
-// defeat it.
+// The parser below already accepted pasted links, the label already offered "Code or sign-in link",
+// and the help text already said "paste it here". All three were correct. The input carried
+// maxLength={8}, so the browser truncated every pasted link to eight characters before any of that
+// code ran, and the reader got a rejection that blamed them for a limit they could not see.
+//
+// That is why the bound is asserted against the markup here and not just eyeballed: a parser and
+// the field that feeds it can disagree silently, and did.
 
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { credentialFromInput } from '../../lib/auth-credential';
 
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(`assert failed : ${message}`);
-}
+import { credentialFromInput, EMAIL_CREDENTIAL_MAX_LENGTH } from '@/lib/auth-credential';
 
-const CASES: ReadonlyArray<readonly [string, 'code' | 'link' | null, string | null]> = [
-  ['123456', 'code', '123456'],
-  ['  654321  ', 'code', '654321'],
-  ['not-a-url-but-some-token', 'code', 'not-a-url-but-some-token'],
-  ['https://www.apocky.com/auth/callback?token_hash=abc123&type=email', 'link', 'abc123'],
-  ['https://ref.supabase.co/auth/v1/verify?token=deadbeef&type=magiclink', 'link', 'deadbeef'],
-  ['https://www.apocky.com/auth/callback#token_hash=fragmented', 'link', 'fragmented'],
-  ['HTTPS://WWW.APOCKY.COM/auth/callback?token_hash=upper', 'link', 'upper'],
-  // A link whose fragment already carries a session belongs to the callback page. Returning null
-  // lets the caller say that, rather than reporting "invalid code" for something never a code.
-  ['https://www.apocky.com/auth/callback#access_token=xyz&refresh_token=abc', null, null],
-  ['https://www.apocky.com/auth/callback', null, null],
-  ['', null, null],
-  ['   ', null, null],
-];
+const login = readFileSync(resolve(process.cwd(), 'pages/login.tsx'), 'utf8');
 
-function main(): void {
-  for (const [input, kind, token] of CASES) {
-    const result = credentialFromInput(input);
-    const actual = result?.kind ?? null;
-    assert(actual === kind, `"${input.slice(0, 44)}" gave ${String(actual)}, expected ${String(kind)}`);
-    if (token !== null) {
-      assert(result?.token === token, `"${input.slice(0, 44)}" token was ${String(result?.token)}, expected ${token}`);
-    }
-  }
+// A Supabase magic link, in the shapes it actually arrives in.
+const QUERY_LINK = 'https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/verify?token_hash=pkce_8f2c1d4a9b7e6f3c0d5a2b8e4f1c7a9d&type=magiclink&redirect_to=https%3A%2F%2Fwww.apocky.com%2Fauth%2Fcallback%3Fnext%3D%252Fapocrypha';
+const HASH_LINK = 'https://www.apocky.com/auth/callback#token_hash=3c9e7a1f5d2b8c4e0a6f9d3b7e1c5a8f&type=email';
+const LEGACY_LINK = 'https://pzirbmyfmrbtkllrtcmx.supabase.co/auth/v1/verify?token=abc123def456&type=magiclink';
 
-  // A six-digit code and a link must not be confused for one another.
-  assert(credentialFromInput('123456')?.kind === 'code', 'a plain code was read as a link');
-  assert(credentialFromInput('https://x/y?token=123456')?.kind === 'link', 'a link was read as a code');
+// ── the field must physically hold what the parser accepts ────────────────────────────────────
+//
+// Scoped to the ELEMENT, not the file: the first draft of this check matched `maxLength={8}` inside
+// the comment that explains the bug, and failed on prose. A guard that reads commentary is not
+// reading the thing it guards.
+const opensAt = login.indexOf('id="login-code"');
+assert.ok(opensAt > 0, 'the pasteable sign-in field must still exist');
+const element = login.slice(opensAt, login.indexOf('/>', opensAt));
+const cap = /maxLength=\{([^}]+)\}/u.exec(element)?.[1]?.trim();
+assert.equal(
+  cap,
+  'EMAIL_CREDENTIAL_MAX_LENGTH',
+  'the field that accepts a pasted link must take its bound from the parser, not a literal',
+);
+assert.ok(
+  EMAIL_CREDENTIAL_MAX_LENGTH >= QUERY_LINK.length,
+  `the bound (${EMAIL_CREDENTIAL_MAX_LENGTH}) must hold a real magic link (${QUERY_LINK.length} chars)`,
+);
+assert.ok(
+  element.includes('placeholder="000000 or paste the link"'),
+  'the field still advertises that a link may be pasted, so the bound above must stay honest',
+);
+// A numeric literal here is the exact regression: it is how the cap and the parser drifted apart.
+assert.ok(
+  !/maxLength=\{\d+\}/u.test(element),
+  'a literal cap on this field is how the original truncation happened',
+);
 
-  // The input itself must not reject a pasted URL before the parser ever runs. A numeric pattern
-  // or a numeric keypad silently defeats the whole paste path, which is how this was first broken.
-  const login = readFileSync(resolve(process.cwd(), 'pages/login.tsx'), 'utf8');
-  const codeField = login.slice(login.indexOf('id="login-code"'), login.indexOf('login-code-help'));
-  assert(!/pattern="\[0-9\]/.test(codeField), 'a numeric pattern would reject a pasted sign-in link');
-  assert(!/inputMode="numeric"/.test(codeField), 'a numeric keypad makes the paste path impractical');
-  assert(/paste/i.test(login), 'the page never tells anyone they may paste the link');
+// ── codes stay codes ──────────────────────────────────────────────────────────────────────────
+assert.deepEqual(credentialFromInput('123456'), { kind: 'code', token: '123456' }, 'a plain code is a code');
+assert.deepEqual(credentialFromInput('  123456  '), { kind: 'code', token: '123456' }, 'surrounding whitespace is forgiven');
+assert.deepEqual(
+  credentialFromInput('ABC-123'),
+  { kind: 'code', token: 'ABC-123' },
+  'an unfamiliar code shape is passed through rather than guessed at',
+);
 
-  console.log(`auth-credential.test: ${CASES.length} inputs, code vs link separated, `
-    + 'session-carrying links deferred to the callback, and the field does not reject a pasted link');
-}
+// ── links yield their token ───────────────────────────────────────────────────────────────────
+assert.deepEqual(
+  credentialFromInput(QUERY_LINK),
+  { kind: 'link', token: 'pkce_8f2c1d4a9b7e6f3c0d5a2b8e4f1c7a9d' },
+  'a link carrying token_hash in the query resolves to that token',
+);
+assert.deepEqual(
+  credentialFromInput(HASH_LINK),
+  { kind: 'link', token: '3c9e7a1f5d2b8c4e0a6f9d3b7e1c5a8f' },
+  'a link carrying token_hash in the fragment resolves to that token',
+);
+assert.deepEqual(
+  credentialFromInput(LEGACY_LINK),
+  { kind: 'link', token: 'abc123def456' },
+  'the older token= shape still resolves',
+);
+assert.deepEqual(
+  credentialFromInput(`  ${QUERY_LINK}\n`),
+  { kind: 'link', token: 'pkce_8f2c1d4a9b7e6f3c0d5a2b8e4f1c7a9d' },
+  'a link copied with trailing whitespace still resolves — copying from an email adds it',
+);
 
-try {
-  main();
-  console.log('auth-credential OK');
-} catch (error) {
-  console.error(error);
-  process.exitCode = 1;
-}
+// ── a link with nothing to verify says so, rather than failing as a bad code ───────────────────
+assert.equal(credentialFromInput('https://www.apocky.com/apocrypha'), null, 'a link with no token is not a credential');
+assert.equal(credentialFromInput(''), null, 'empty input is not a credential');
+assert.equal(credentialFromInput('   '), null, 'whitespace is not a credential');
+assert.equal(credentialFromInput('https://'), null, 'an unparseable URL is not a credential');
+// A link whose fragment already carries a session belongs to the callback page, not to this field.
+assert.equal(
+  credentialFromInput('https://www.apocky.com/auth/callback#access_token=xyz&refresh_token=abc'),
+  null,
+  'an already-established session is not a token to verify here',
+);
+
+console.log('auth-credential.test : OK · pasted links fit the field and resolve to a token');

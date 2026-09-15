@@ -8,6 +8,16 @@
 // Accepting the pasted link as well as the code keeps the whole exchange inside the app: long-press
 // the link, copy, paste. It costs nothing when a code is present.
 
+/**
+ * Upper bound for what may be pasted into the sign-in box.
+ *
+ * It lives here, beside the parser that consumes it, because the input that reads a LINK once
+ * carried maxLength={8} — a bound sized for a six-digit code, silently truncating every link the
+ * same field invited you to paste. A limit that contradicts its own parser is a bug waiting to be
+ * re-introduced by anyone tidying the markup, so the two are kept together.
+ */
+export const EMAIL_CREDENTIAL_MAX_LENGTH = 2048;
+
 export interface EmailCredential {
   readonly kind: 'code' | 'link';
   readonly token: string;

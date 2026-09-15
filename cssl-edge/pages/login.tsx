@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AuthFrame } from '../components/hub/AuthFrame';
-import { credentialFromInput } from '@/lib/auth-credential';
+import { credentialFromInput, EMAIL_CREDENTIAL_MAX_LENGTH } from '@/lib/auth-credential';
 import { AUTH_PROVIDERS, getAuthClient, persistSessionToCookie } from '../lib/auth';
 import { AuthenticatorSetup } from '../components/auth/AuthenticatorSetup';
 import { continueAfterSignIn } from '../lib/auth-continue';
@@ -404,6 +404,13 @@ const Login: NextPage = () => {
             <form className="apx-auth-form" onSubmit={handleVerifyCode}>
               <p className="apx-field-help" id="login-code-destination">Code sent to <strong>{pendingEmail}</strong>.</p>
               <label className="apx-label" htmlFor="login-code">Code or sign-in link</label>
+              {/* The cap below was maxLength={8}. This field's own label offers "Code or sign-in
+                  link" and its placeholder says "paste the link" — and then the browser truncated
+                  every pasted link to eight characters, silently, so the paste produced eight
+                  characters of a URL and a rejection that blamed the reader. The parser, the label
+                  and the help text were all correct; one attribute defeated all three. A magic link
+                  runs to a few hundred characters, so the cap is a sanity bound now, not a
+                  code-shaped one. */}
               <input
                 id="login-code"
                 className="apx-input"
@@ -411,7 +418,7 @@ const Login: NextPage = () => {
                 autoComplete="one-time-code"
                 inputMode="text"
                 minLength={6}
-                maxLength={8}
+                maxLength={EMAIL_CREDENTIAL_MAX_LENGTH}
                 required
                 value={otp}
                 onChange={(event) => setOtp(event.target.value)}
