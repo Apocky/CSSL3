@@ -100,5 +100,25 @@ if (isMain) {
   testAuthCallbackParamParsing();
   testAuthReturnPathNormalization();
   // eslint-disable-next-line no-console
-  console.log('auth-redirect.test : OK');
+  // A fragment has to survive the round trip, or "sign in and I will take you back to the
+// authenticator" quietly lands on the top of the account page instead — the panel is further down,
+// and the reader concludes the QR does not exist. The normaliser keeps url.hash; this pins it.
+assertEqual(
+  'return path keeps its fragment',
+  normalizeAuthReturnPath('/account#authenticator'),
+  '/account#authenticator',
+);
+assertEqual(
+  'login href round-trips the fragment',
+  loginHrefForReturnPath('/account#authenticator'),
+  '/login?next=%2Faccount%23authenticator',
+);
+// A protocol-relative host with a fragment tacked on must fall back, not be read as a path.
+assertEqual(
+  'a fragment cannot smuggle an offsite return',
+  normalizeAuthReturnPath('//evil.example#/account'),
+  '/account',
+);
+
+console.log('auth-redirect.test : OK');
 }

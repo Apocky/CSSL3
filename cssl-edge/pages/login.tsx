@@ -317,13 +317,13 @@ const Login: NextPage = () => {
                 The 6-digit code from your authenticator app. It changes every 30 seconds.
               </p>
               {/* This screen asks for a code from an authenticator and never said where to get one.
-                  If you have not set one up yet, the QR is not findable by guessing: it lives on the
-                  account page, behind a sign-in you are currently trying to complete. So the way in
-                  is named here, next to the field that needs it. */}
+                  Deliberately NOT a link: the QR lives behind a sign-in, so a link here invites a
+                  click into an account page that cannot show it yet — a dead end dressed as a way
+                  forward. It is an instruction for after you are in, so it reads as one. */}
               <p className="apx-field-help">
-                Don&rsquo;t have one yet? Sign in by email below, then{' '}
-                <Link href="/account#authenticator">set up an authenticator</Link> — you scan a QR code
-                once and use the 6-digit code from then on.
+                Don&rsquo;t have one yet? Sign in by email below. Once you are in, your account page
+                offers <strong>Set up an authenticator</strong> — you scan a QR code once and use the
+                6-digit code from then on.
               </p>
               <button
                 className="apx-button apx-button--primary"

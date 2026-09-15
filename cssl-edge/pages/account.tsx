@@ -231,8 +231,27 @@ const Account: NextPage = () => {
           </header>
 
           {/* Only for a signed-in account: enrolment adds a credential, so being that account
-              already is the gate. */}
-          {user ? <AuthenticatorSetup /> : null}
+              already is the gate.
+
+              Signed out, this used to render NOTHING — so anyone who arrived at
+              /account#authenticator looking for the QR found a page that did not mention
+              authenticators at all, and no way to get to one. The gate is right; the silence was
+              not. Now it names what is here and carries you back to this exact spot afterwards. */}
+          {user ? <AuthenticatorSetup /> : (
+            <section className="apx-panel" id="authenticator" aria-labelledby="authenticator-heading">
+              <h2 id="authenticator-heading">Authenticator</h2>
+              <p className="apx-section-intro">
+                You can sign in with a 6-digit code from an authenticator app instead of waiting for
+                an email. Setting one up adds a credential to your account, so you have to be signed
+                in first — sign in by email once, and this is where the QR code appears.
+              </p>
+              <div className="apx-actions">
+                <Link className="apx-button apx-button--primary" href="/login?next=%2Faccount%23authenticator">
+                  Sign in to set up an authenticator
+                </Link>
+              </div>
+            </section>
+          )}
 
           {me?.stub && (
             <div className="apx-auth-warning" role="status">
