@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { getAuthClient, persistSessionToCookie } from '../../lib/auth';
+import { getAuthClient, persistSessionToCookie, reestablishSessionCookie } from '../../lib/auth';
 import { authFetch } from '../../lib/browser-auth';
 import { withDeadline } from '../../lib/apocrypha/deadline';
 
@@ -106,9 +106,20 @@ export function SiteSessionProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     let current = true;
-    void resolveSiteAccess().then((next) => {
-      if (current) setSession(next);
-    });
+    void (async () => {
+      const first = await resolveSiteAccess();
+      if (!current) return;
+      if (first.access === 'member' || first.access === 'owner' || first.access === 'unavailable') {
+        setSession(first);
+        return;
+      }
+      // The server says signed out, but that is only ever a statement about the COOKIE, which
+      // expires in an hour. The browser client may still hold a refreshable session, so ask it
+      // for a valid token and re-mint the cookie before showing anyone a sign-in screen.
+      const restored = await reestablishSessionCookie();
+      if (!current) return;
+      setSession(restored ? await resolveSiteAccess() : first);
+    })();
     return () => { current = false; };
   }, []);
 
@@ -129,6 +140,25 @@ export function SiteSessionProvider({ children }: { children: React.ReactNode })
     return () => {
       if (queuedRefresh !== null) clearTimeout(queuedRefresh);
       data.subscription.unsubscribe();
+    };
+  }, [refresh]);
+
+  // Reopening the app is the exact moment this breaks: the window was hidden while the cookie
+  // aged out, and a hidden tab does not reliably run the client's own refresh timer. On the way
+  // back to the foreground, re-mint the cookie before anything reads it.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      void (async () => {
+        if (await reestablishSessionCookie()) await refresh();
+      })();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
   }, [refresh]);
 

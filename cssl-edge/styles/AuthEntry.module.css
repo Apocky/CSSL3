@@ -22,6 +22,26 @@
   .formFirst :global(.apx-auth-story) > :global(.apx-brand) { display: none; }
   .formFirst :global(.apx-auth-story-main) { margin: 0; padding: 0; }
   .returnHome { margin-bottom: 12px; }
+
+  /* Stacked, the story sits UNDER the form, so its headline reads as a second, competing
+     "sign in" title on the same screen -- two headings, one task. The assurance points below it
+     are still worth showing, so only the duplicated header and its restatement are dropped.
+
+     The h2 is hidden visually rather than removed: it is the section's accessible name via
+     aria-labelledby, and display:none here would leave the region unnamed for a screen reader. */
+  .formFirst :global(.apx-auth-story) h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .formFirst :global(.apx-auth-story) :global(.apx-kicker) { display: none; }
+  .formFirst :global(.apx-auth-story-main) > p:not(:global(.apx-kicker)) { display: none; }
+  .formFirst :global(.apx-auth-story-main) :global(.apx-auth-points) { margin-top: 0; }
 }
 @media(max-width: 660px) {
   .formFirst :global(.apx-provider-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }

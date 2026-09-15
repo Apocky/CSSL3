@@ -119,6 +119,31 @@ export async function persistSessionToCookie(accessToken: string): Promise<boole
   }
 }
 
+/**
+ * Re-establish the HttpOnly cookie from a persisted browser session.
+ *
+ * The cookie mirror lives at most as long as the access token inside it -- an hour -- while the
+ * browser client keeps a refresh token and can mint new ones indefinitely. So after an hour away,
+ * reopening the app finds no cookie and the server calls you signed out, even though the client
+ * still holds a perfectly good session. That is the "I have to sign in every time" loop.
+ *
+ * `getSession()` is deliberate: it REFRESHES an expired access token before returning, whereas the
+ * token handed to an auth-state callback can already be stale -- and posting a stale token to the
+ * session endpoint is rejected, which is how the cookie failed to come back at all.
+ */
+export async function reestablishSessionCookie(): Promise<boolean> {
+  const client = getAuthClient();
+  if (!client) return false;
+  try {
+    const { data, error } = await client.auth.getSession();
+    const token = data?.session?.access_token;
+    if (error || !token) return false;
+    return await persistSessionToCookie(token);
+  } catch {
+    return false;
+  }
+}
+
 /** Auth-provider configuration · what's available · what's required to enable. */
 export const AUTH_PROVIDERS = [
   { id: 'google', label: 'Google', enabled: true, gradient: '#4285f4' },

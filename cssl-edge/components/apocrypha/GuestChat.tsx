@@ -13,12 +13,18 @@
 // client independently checks.
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from '@/styles/GuestChat.module.css';
 
 const STORE_KEY = 'apx.guest.thread.v1';
 const MAX_STORED = 40;
 const MAX_TEXT = 4_000;
+
+function newId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+}
 
 interface Turn {
   readonly id: string;
@@ -26,32 +32,16 @@ interface Turn {
   readonly text: string;
 }
 
-// Apocrypha runs on a machine that this site currently has no route to: the public turn path
-// targets a runtime origin that is not configured in production, and the outbound bridge that
-// would carry it is disabled. Until that transport exists, a signed-out turn cannot complete, and
-// the page says so instead of implying the next attempt might work.
-const UNREACHABLE = 'Apocrypha is not reachable from the web right now — the browser could reach this site, but this site has no route to the machine Apocrypha runs on. The desktop and mobile apps talk to it directly.';
+// Guest turns go onto the durable queue, which is what actually reaches the live worker. This
+// message is for the queue refusing or being unreachable -- not for a missing transport, which is
+// what it used to mean.
+const UNREACHABLE = 'Apocrypha could not take that message right now. Try again in a moment.';
 
 const OPENERS = [
   'What are you, and what are you for?',
   'Help me think through a decision I keep avoiding.',
   'Explain something you find genuinely difficult.',
 ];
-
-/**
- * The guarantees this surface makes to a signed-out visitor, checked against what the server
- * actually returned. A mismatch is a refusal, not a warning: the point of a receipt is that it can
- * fail.
- */
-function receiptFailure(result: Record<string, unknown>): string | null {
-  if (result.training_consent !== false) return 'training_consent';
-  if (result.effect_authority !== 'NONE') return 'effect_authority';
-  if (result.tool_authority !== 'READ_ONLY_CONTEXT') return 'tool_authority';
-  if (result.memory_scope !== 'public_safe_retrieval') return 'memory_scope';
-  const identity = result.identity as Record<string, unknown> | undefined;
-  if (!identity || identity.system_id !== 'apocrypha') return 'identity';
-  return null;
-}
 
 function loadThread(): Turn[] {
   try {
@@ -84,10 +74,6 @@ export function GuestChat(): JSX.Element {
   const [ready, setReady] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
-  const sessionId = useMemo(
-    () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`),
-    [],
-  );
 
   useEffect(() => { setTurns(loadThread()); setReady(true); }, []);
   useEffect(() => { if (ready) saveThread(turns); }, [turns, ready]);
@@ -108,70 +94,44 @@ export function GuestChat(): JSX.Element {
 
     let answer = '';
     try {
-      const response = await fetch('/api/apocrypha/chat', {
+      // Submit onto the durable queue, then follow the job. The queue is what actually reaches the
+      // live worker; the older streaming route pointed at a runtime this site has no path to.
+      const submit = await fetch('/api/apocrypha/guest/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          text: mine.text,
-          session_id: sessionId,
-          request_id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-r`,
+          message: mine.text,
+          request_id: newId(),
+          history: [...turns, mine].slice(-12).map((turn) => ({
+            role: turn.role === 'you' ? 'user' : 'assistant',
+            content: turn.text,
+          })),
         }),
       });
-
-      if (response.status === 429) {
-        const retry = Number(response.headers.get('retry-after') ?? 30);
-        setNotice(`You have reached the short turn budget for right now. Try again in about ${Math.max(1, retry)} seconds, or sign in for more room.`);
-        return;
-      }
-      if (!response.ok || !response.body) {
-        // Specific on purpose. "Try again in a moment" would be a lie while no transport exists
-        // between this site and the machine Apocrypha runs on -- retrying can never succeed, and
-        // telling someone to retry into a wall is worse than telling them the wall is there.
-        setNotice(UNREACHABLE);
+      const receipt = await submit.json().catch(() => null) as { job_id?: string; error?: string } | null;
+      if (!submit.ok || !receipt?.job_id) {
+        setNotice(receipt?.error ?? UNREACHABLE);
         return;
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let verified = false;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let frame: Record<string, unknown>;
-          try { frame = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
-          if (frame.type === 'delta' && typeof frame.text === 'string') {
-            answer += frame.text;
-            setStreaming(answer);
-          } else if (frame.type === 'completed') {
-            const result = (frame.result ?? {}) as Record<string, unknown>;
-            const failure = receiptFailure(result);
-            if (failure) {
-              setNotice(`That answer did not carry the guarantees this page makes (${failure}), so it was discarded.`);
-              answer = '';
-              return;
-            }
-            verified = true;
-            if (typeof result.text === 'string' && result.text) answer = result.text;
-          } else if (frame.type === 'error') {
-            setNotice(UNREACHABLE);
-            answer = '';
-            return;
-          }
+      // Poll until terminal. The deadline is generous because a local GPU answering a real question
+      // is slow, and giving up early would throw away an answer that was on its way.
+      const deadline = Date.now() + 180_000;
+      for (let attempt = 0; Date.now() < deadline; attempt += 1) {
+        await new Promise((resolve) => { setTimeout(resolve, attempt < 3 ? 1_200 : 2_500); });
+        const poll = await fetch(`/api/apocrypha/guest/jobs/${receipt.job_id}`, { headers: { accept: 'application/json' } });
+        const state = await poll.json().catch(() => null) as
+          { status?: string; terminal?: boolean; answer?: string | null } | null;
+        if (!poll.ok || !state) continue;
+        if (!state.terminal) continue;
+        if (typeof state.answer === 'string' && state.answer.trim() !== '') {
+          answer = state.answer;
+        } else {
+          setNotice('Apocrypha stopped before finishing that one. Nothing was saved.');
         }
+        return;
       }
-      if (!verified) {
-        // A stream that ended without a verified terminal frame is an unfinished turn, not an
-        // answer. Showing the partial text as if it were complete is how a truncation becomes a
-        // quote.
-        setNotice('That answer was cut off before it finished. Nothing was saved.');
-        answer = '';
-      }
+      setNotice('That answer is taking longer than expected. It may still arrive — try asking again in a moment.');
     } catch {
       setNotice('The connection dropped before Apocrypha finished. Try again.');
       answer = '';
@@ -182,7 +142,7 @@ export function GuestChat(): JSX.Element {
         setTurns((prior) => [...prior, { id: `${Date.now()}-apx`, role: 'apocrypha', text: answer }]);
       }
     }
-  }, [busy, sessionId]);
+  }, [busy, turns]);
 
   const empty = turns.length === 0 && !streaming;
 
