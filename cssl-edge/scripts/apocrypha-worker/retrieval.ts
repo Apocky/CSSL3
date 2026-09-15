@@ -1,4 +1,5 @@
 import { sha256, stableJson } from './crypto';
+import { synthesisSummary, synthesizeRecords, type SynthesizedRecord } from './synthesis';
 import type {
   ClaimedJob,
   MemoryAdapterManifest,
@@ -144,6 +145,10 @@ export function queryFromJob(job: ClaimedJob): string {
   if (typeof explicit === 'string' && explicit.trim()) return explicit.trim().slice(0, 4_000);
 
   const question = safeText(request.question).trim();
+  const legacyPrompt = [request.prompt, request.query, request.text, request.content, request.oracle_prompt]
+    .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+    ?.trim() ?? '';
+  const currentPrompt = (question || legacyPrompt).slice(0, 4_000);
   const reading = canonicalReadingQuery(request.canonical_reading);
   const source = safeText(request.source_text).trim().slice(0, 1_800);
   const structured = boundedJson(request.structured_context, 1_000);
@@ -157,11 +162,9 @@ export function queryFromJob(job: ClaimedJob): string {
         .join('\n')
         .slice(0, 1_000)
     : '';
-  const chaosQuery = [question, reading, history, source, structured].filter(Boolean).join('\n');
-  if (chaosQuery) return chaosQuery.slice(0, 4_000);
+  const taskQuery = [currentPrompt, reading, history, source, structured].filter(Boolean).join('\n');
+  if (taskQuery) return taskQuery.slice(0, 4_000);
 
-  const legacy = request.query ?? request.prompt ?? request.text ?? request.content ?? request.oracle_prompt;
-  if (typeof legacy === 'string' && legacy.trim()) return legacy.trim().slice(0, 4_000);
   const messages = request.messages;
   if (Array.isArray(messages)) {
     const joined = messages
@@ -302,6 +305,86 @@ async function invokeAdapter(
   return finalResult ?? { name: adapter.name, state: 'error', durationMs: Date.now() - started, records: [], detail: 'retrieval failed' };
 }
 
+function readinessState(value: unknown): RetrievalAdapterResult['state'] {
+  if (value === 'ready') return 'ok';
+  if (value === 'unconfigured') return 'unconfigured';
+  if (value === 'unavailable') return 'timeout';
+  return 'error';
+}
+
+async function probeResidentGateway(
+  config: WorkerConfig,
+  fetchImpl: Fetch,
+): Promise<RetrievalBundle | null> {
+  const url = config.memoryReadinessUrl;
+  const token = config.memoryReadinessToken;
+  if (!url || !token) return null;
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('resident gateway readiness timeout')), 15_000);
+  try {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    const text = await boundedResponseText(response, 128_000);
+    let body: Record<string, unknown> = {};
+    try { body = record(JSON.parse(text)); } catch { /* preserve bounded transport failure below */ }
+    const adapters = record(body.adapters);
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => {
+      const entry = record(adapters[adapter.name]);
+      const state = readinessState(entry.state);
+      return {
+        name: adapter.name,
+        state,
+        durationMs: Date.now() - started,
+        records: [],
+        ...(typeof entry.detail === 'string' ? { detail: entry.detail.slice(0, 300) } : {}),
+      };
+    });
+    const ready = response.ok && body.status === 'ready'
+      && results.length === config.manifest.memory.adapters.length
+      && results.every((result) => result.state === 'ok');
+    const probedAt = ready ? new Date().toISOString() : null;
+    const capabilityProbes: NonNullable<RetrievalBundle['capabilityProbes']> = {};
+    for (const scope of [
+      { capability: config.memoryProbeCapability },
+      ...(config.memoryAdditionalProbeScopes ?? []),
+    ]) {
+      capabilityProbes[scope.capability] = {
+        results: results.map((result) => ({ ...result })),
+        probedAt,
+      };
+    }
+    return {
+      query: MEMORY_READINESS_QUERY,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt,
+      capabilityProbes,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.slice(0, 300) : 'resident gateway readiness failed';
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => ({
+      name: adapter.name, state: 'timeout', durationMs: Date.now() - started, records: [], detail,
+    }));
+    return {
+      query: MEMORY_READINESS_QUERY,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt: null,
+      capabilityProbes: Object.fromEntries(config.manifest.capabilities.map((capability) => [capability, {
+        results: results.map((result) => ({ ...result })), probedAt: null,
+      }])),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function invokeAdaptersBounded(
   config: WorkerConfig,
   operation: (adapter: MemoryAdapterManifest) => Promise<RetrievalAdapterResult>,
@@ -344,6 +427,23 @@ function completedProbeAt(
     : null;
 }
 
+function aggregateProbeResults(
+  config: WorkerConfig,
+  scopedResults: RetrievalAdapterResult[][],
+): RetrievalAdapterResult[] {
+  return config.manifest.memory.adapters.map((adapter, index): RetrievalAdapterResult => {
+    const scoped = scopedResults.map((items) => items[index]).filter((item): item is RetrievalAdapterResult => Boolean(item));
+    const failure = scoped.find((item) => item.state !== 'ok');
+    return {
+      name: adapter.name,
+      state: failure?.state ?? 'ok',
+      durationMs: scoped.reduce((total, item) => total + item.durationMs, 0),
+      records: scoped.flatMap((item) => item.records).slice(0, 2),
+      ...(failure?.detail ? { detail: failure.detail } : {}),
+    };
+  });
+}
+
 export async function retrieveMemory(
   config: WorkerConfig,
   job: ClaimedJob,
@@ -363,7 +463,10 @@ export async function retrieveMemory(
       detail: result.reason instanceof Error ? result.reason.message : 'adapter failed',
     };
   });
-  const records = results.flatMap((result) => result.records).slice(0, 40);
+  // Synthesis, not concatenation: rank by relevance to this turn's query, fold
+  // cross-faculty duplicates, and interleave so manifest order stops deciding
+  // which faculty the model actually gets to read.
+  const records = synthesizeRecords(results, query, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),
     // A job exercises only its own tenant/principal scope. It cannot certify
@@ -377,6 +480,11 @@ export async function probeMemoryAdapters(
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle | null> {
+  // The resident gateway already owns bounded, per-faculty liveness probes.
+  // Calling its readiness route avoids turning a multi-gigabyte recall query
+  // into an operational health check while preserving full retrieval below.
+  const resident = await probeResidentGateway(config, fetchImpl);
+  if (resident) return resident;
   const scopes = [
     ...(config.memoryProbeTenantId ? [{
       tenantId: config.memoryProbeTenantId,
@@ -386,7 +494,10 @@ export async function probeMemoryAdapters(
     ...(config.memoryAdditionalProbeScopes ?? []),
   ];
   if (scopes.length === 0) return null;
-  const scopedResults: RetrievalAdapterResult[][] = [];
+  const scopedResults: Array<{
+    scope: { tenantId: string; principalId: string; capability: string };
+    results: RetrievalAdapterResult[];
+  }> = [];
   for (const [scopeIndex, scope] of scopes.entries()) {
     const job: ClaimedJob = {
       jobId: '00000000-0000-4000-8000-000000000000',
@@ -409,44 +520,112 @@ export async function probeMemoryAdapters(
     const settled = await invokeAdaptersBounded(
       config,
       (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl, 1),
-      Math.min(2, config.memoryReadConcurrency),
+      config.memoryReadConcurrency,
     );
-    scopedResults.push(settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
-      name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
-      state: 'error', durationMs: 0, records: [],
-      detail: `probe scope ${scopeIndex + 1}: ${result.reason instanceof Error ? result.reason.message : 'adapter probe failed'}`,
-    })));
+    scopedResults.push({
+      scope,
+      results: settled.map((result, index): RetrievalAdapterResult => result.status === 'fulfilled' ? result.value : ({
+        name: config.manifest.memory.adapters[index]?.name ?? `adapter-${index}`,
+        state: 'error', durationMs: 0, records: [],
+        detail: `probe scope ${scopeIndex + 1}: ${result.reason instanceof Error ? result.reason.message : 'adapter probe failed'}`,
+      })),
+    });
   }
-  const results = config.manifest.memory.adapters.map((adapter, index): RetrievalAdapterResult => {
-    const scoped = scopedResults.map((items) => items[index]).filter((item): item is RetrievalAdapterResult => Boolean(item));
-    const failure = scoped.find((item) => item.state !== 'ok');
-    return {
-      name: adapter.name,
-      state: failure?.state ?? 'ok',
-      durationMs: scoped.reduce((total, item) => total + item.durationMs, 0),
-      records: scoped.flatMap((item) => item.records).slice(0, 2),
-      ...(failure?.detail ? { detail: failure.detail } : {}),
+  const results = aggregateProbeResults(config, scopedResults.map((item) => item.results));
+  const capabilityProbes: NonNullable<RetrievalBundle['capabilityProbes']> = {};
+  for (const capability of new Set(scopes.map((scope) => scope.capability))) {
+    const capabilityResults = aggregateProbeResults(
+      config,
+      scopedResults.filter((item) => item.scope.capability === capability).map((item) => item.results),
+    );
+    capabilityProbes[capability] = {
+      results: capabilityResults,
+      probedAt: completedProbeAt(config, env, capabilityResults),
     };
-  });
+  }
   const query = MEMORY_READINESS_QUERY;
   const records = results.flatMap((result) => result.records).slice(0, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),
     probedAt: completedProbeAt(config, env, results),
+    capabilityProbes,
   };
 }
 
+const MINIMUM_RECORD_CHARS = 480;
+
+function scoreOf(record: RetrievalRecord): number | undefined {
+  const value = (record as Partial<SynthesizedRecord>).score;
+  return typeof value === 'number' ? value : undefined;
+}
+
+/**
+ * Render the synthesized records under a character budget.
+ *
+ * Records are laid out by rank with a guaranteed minimum slice each, and the
+ * space a short record does not use is handed back to the others. The previous
+ * first-come loop let record #1 consume the entire budget, which is how a
+ * single truncated drawer became the model's whole memory of a turn.
+ */
 export function renderMemoryContext(bundle: RetrievalBundle, maxChars = 28_000): string {
   if (bundle.records.length === 0) return 'No admitted memory records were available for this turn.';
-  let remaining = maxChars;
-  const blocks: string[] = [];
-  for (const item of bundle.records) {
-    const header = `[${item.source} · ${item.provenanceId}]`;
-    const budget = Math.max(0, remaining - header.length - 2);
-    if (budget <= 0) break;
-    const body = item.text.slice(0, budget);
-    blocks.push(`${header}\n${body}`);
-    remaining -= header.length + body.length + 2;
+  const summary = `Synthesis: ${synthesisSummary(bundle.records as SynthesizedRecord[])}.`;
+  let remaining = Math.max(0, maxChars - summary.length - 2);
+  if (remaining <= 0) return summary;
+
+  const headerFor = (record: RetrievalRecord): string => {
+    const score = scoreOf(record);
+    const merged = (record as Partial<SynthesizedRecord>).mergedFrom;
+    return `[${record.source} · ${record.provenanceId}${score === undefined ? '' : ` · relevance ${score.toFixed(2)}`}`
+      + `${merged?.length ? ` · corroborated by ${merged.length}` : ''}]`;
+  };
+
+  // Header newline, the blank line between blocks, and a possible ellipsis.
+  const blockOverhead = (record: RetrievalRecord): number => headerFor(record).length + 5;
+
+  // How many records can be shown without any of them becoming a stub.
+  const candidates: RetrievalRecord[] = [];
+  let reserved = 0;
+  for (const record of bundle.records) {
+    const cost = Math.min(record.text.length, MINIMUM_RECORD_CHARS) + blockOverhead(record);
+    if (reserved + cost > remaining) break;
+    reserved += cost;
+    candidates.push(record);
   }
-  return blocks.join('\n\n');
+  if (candidates.length === 0) candidates.push(bundle.records[0] as RetrievalRecord);
+
+  const overheads = candidates.map(blockOverhead);
+  let content = Math.max(0, remaining - overheads.reduce((sum, value) => sum + value, 0));
+  const weights = candidates.map((record) => 0.4 + 0.6 * (scoreOf(record) ?? 0.5));
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
+  const budgets = candidates.map((record, index) => Math.min(
+    record.text.length,
+    Math.max(Math.min(record.text.length, MINIMUM_RECORD_CHARS), Math.floor(content * (weights[index] as number) / totalWeight)),
+  ));
+  // Hand back whatever the short records did not need.
+  let slack = content - budgets.reduce((sum, value) => sum + value, 0);
+  while (slack > 0) {
+    const hungry = candidates
+      .map((record, index) => index)
+      .filter((index) => (budgets[index] as number) < (candidates[index] as RetrievalRecord).text.length);
+    if (hungry.length === 0) break;
+    let given = 0;
+    for (const index of hungry) {
+      const want = (candidates[index] as RetrievalRecord).text.length - (budgets[index] as number);
+      const grant = Math.min(want, Math.max(1, Math.floor(slack / hungry.length)), slack - given);
+      budgets[index] = (budgets[index] as number) + grant;
+      given += grant;
+      if (given >= slack) break;
+    }
+    if (given === 0) break;
+    slack -= given;
+  }
+
+  const blocks = candidates.map((record, index) => {
+    const body = record.text.slice(0, budgets[index] as number);
+    return `${headerFor(record)}\n${body}${body.length < record.text.length ? ' …' : ''}`;
+  });
+  // Allocation is integer-exact, but a future header change must not be able
+  // to overrun a caller's hard budget.
+  return [summary, ...blocks].join('\n\n').slice(0, maxChars);
 }
