@@ -2,7 +2,7 @@
   "schema": "apocky.apocrypha-public-plan.v1",
   "version": "1.0.0",
   "release_state": "RELEASED",
-  "generated_at": "2026-09-04T12:38:56-07:00",
+  "generated_at": "2026-09-05T18:52:00.650Z",
   "project": "Apocrypha",
   "track": "local-living",
   "summary": "Apocrypha 1.0 is the browser-delivered web/PWA release for responsive desktop, iOS, and Android surfaces. The exact candidate passed local automated desktop Chrome, Pixel-class Chrome, and iPhone 15 Pro WebKit checks covering owner access, manifest identity, service-worker scope, offline encrypted continuity, no private API caching, accessibility, safe areas, and overflow. No downloadable native binary is part of this release, and this record does not claim App Store or Play Store packaging, physical-device verification, phone-to-desktop live acceptance, or production deployment.",

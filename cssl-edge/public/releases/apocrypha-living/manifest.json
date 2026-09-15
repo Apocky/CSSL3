@@ -4,7 +4,7 @@
   "manifest_version": 1,
   "version": "1.0.0",
   "release_state": "RELEASED",
-  "generated_at": "2026-09-04T12:38:56-07:00",
+  "generated_at": "2026-09-05T18:52:00.650Z",
   "release_label": "Released",
   "project": "Apocrypha",
   "track": "local-living",
@@ -20,14 +20,14 @@
     "plan": {
       "label": "Living plan",
       "href": "/releases/apocrypha-living/plan.json",
-      "sha256": "302b231737295ae4d8aeb8c6657aff950a1368bff4591b50b8e56434212a92b5",
-      "bytes": 5891
+      "sha256": "059f5f089cefc778fda9217b2d46e7b5ba7a4a4628c47db043188b2cb747918f",
+      "bytes": 5890
     },
     "changelog": {
       "label": "Changelog",
       "href": "/releases/apocrypha-living/changelog.json",
-      "sha256": "ed92c64d876dfb70e321e4fbb20d033a8d6d12a1256c3414b32474c8a0124ae7",
-      "bytes": 6866
+      "sha256": "daabe49e9d08094768dd74c15deeab0b22b6298472a742b8df3b38b767a879fa",
+      "bytes": 7607
     },
     "manifest": {
       "label": "Build manifest",
@@ -37,5 +37,5 @@
   "download_status": "NO_PROMOTED_ARTIFACT",
   "download": null,
   "claim_boundary": "Released web/PWA metadata does not attest to production deployment, physical-device verification, or a downloadable native artifact.",
-  "content_digest": "b8ccf9f758c6492fde623037b654f02f79a0167e8b4832273dd06067de816de5"
+  "content_digest": "e084e18863a63eaad45b0a5292840ddab3dcecc003d5b84a46430e87396d0337"
 }
