@@ -52,13 +52,13 @@ async function main(): Promise<void> {
     const p1 = store.beginPass('test-model', null);
     assert(store.record(p1, grounded('ideal', 'Optimal is not minimal.', 1, '2026-05-01T00:00:00Z')) === 'new', 'A should be new');
     assert(store.record(p1, grounded('procedure', 'Always commit before session end.', 2, '2026-05-02T00:00:00Z')) === 'new', 'B should be new');
-    store.finishPass(p1, { chunksRead: 2, claimsOffered: 2, claimsGrounded: 2, claimsNew: 2, claimsCorroborated: 0, rejected: { ...REJECTED } });
+    store.finishPass(p1, { chunksRead: 2, claimsOffered: 2, claimsGrounded: 2, claimsNew: 2, claimsCorroborated: 0, rejected: { ...REJECTED }, watermark: null });
 
     // Pass 2 -- corroborates A from a DIFFERENT chunk, and adds C.
     const p2 = store.beginPass('test-model', null);
     assert(store.record(p2, grounded('ideal', 'Optimal is not minimal.', 3, '2026-06-01T00:00:00Z')) === 'corroborated', 'A should corroborate');
     assert(store.record(p2, grounded('mannerism', 'Uses emphatic register when a request is ignored.', 4, '2026-06-02T00:00:00Z')) === 'new', 'C should be new');
-    store.finishPass(p2, { chunksRead: 2, claimsOffered: 2, claimsGrounded: 2, claimsNew: 1, claimsCorroborated: 1, rejected: { ...REJECTED } });
+    store.finishPass(p2, { chunksRead: 2, claimsOffered: 2, claimsGrounded: 2, claimsNew: 1, claimsCorroborated: 1, rejected: { ...REJECTED }, watermark: null });
 
     assert(store.audit().length === 0, 'invariant broken after two clean passes');
     assert(need(store.top('ideal', 5)[0], 'claim A').corroborations === 2, 'A should have 2 corroborations');
@@ -89,6 +89,25 @@ async function main(): Promise<void> {
     store.revertPass(p2);
     assert(need(store.top('ideal', 5)[0], 'claim A').corroborations === 1, 'double revert drove A below its evidence');
     assert(store.audit().length === 0, 'invariant broken after double revert');
+
+    // 3b -- the resume watermark. This is where a scheduled loop silently loses work: a pass that
+    //       READS 7,512 chunks and distils 24 has made 24 chunks of progress, and recording the
+    //       read position would let the next run resume past everything it skipped. Those chunks
+    //       are then never looked at again, and nothing downstream can tell.
+    assert(store.lastWatermark() === null, 'a pass that finished with no watermark reported one');
+    const p4 = store.beginPass('test-model', '2026-09-01T00:00:00Z');
+    assert(store.lastWatermark() === null, 'an UNFINISHED pass advanced the watermark');
+    store.finishPass(p4, {
+      chunksRead: 5_000, claimsOffered: 1, claimsGrounded: 0, claimsNew: 0, claimsCorroborated: 0,
+      rejected: { ...REJECTED }, watermark: '2026-06-01T00:00:00Z',
+    });
+    assert(store.lastWatermark() === '2026-06-01T00:00:00Z',
+      'the watermark did not come from the DISTILLED position');
+    const p5 = store.beginPass('test-model', null);
+    assert(store.lastWatermark() === '2026-06-01T00:00:00Z',
+      'a newer unfinished pass displaced the last good watermark');
+    store.revertPass(p5);
+    store.revertPass(p4);
 
     // 4 -- the dedupe key folds punctuation and case but NOT distinct axes: the same sentence
     //      observed as an ideal and as a procedure are different claims.
