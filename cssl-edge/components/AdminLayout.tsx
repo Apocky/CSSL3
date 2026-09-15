@@ -128,8 +128,14 @@ export default function AdminLayout({
         `}</style>
       </Head>
 
-      {/* ─── DESKTOP / TABLET SIDE-NAV ─── */}
-      <aside
+      {/* ─── DESKTOP / TABLET SIDE-NAV ───
+          Was <aside> — role=complementary, unnamed — while the only <nav> on the page is
+          display:none above 768px. A screen reader on a desktop console therefore found no
+          navigation landmark at all. Distinct names on the two rails so they survive a future
+          breakpoint change. */}
+      <a className="apx-skip-link" href="#admin-main">Skip to console</a>
+      <nav
+        aria-label="Console sections"
         className={`admin-side${immersive ? ' admin-side--immersive' : ''}`}
         style={{
           display: 'none',
@@ -172,6 +178,7 @@ export default function AdminLayout({
             <Link
               key={n.href}
               href={n.href}
+              aria-current={active ? 'page' : undefined}
               title={n.tip}
               aria-label={`${n.label} · ${n.tip}`}
               style={{
@@ -207,10 +214,11 @@ export default function AdminLayout({
         <Link href="/" style={{ marginTop: '1rem', fontSize: '0.78rem', color: '#7a7a8c' }}>
           ← apocky.com
         </Link>
-      </aside>
+      </nav>
 
       {/* ─── MAIN CONTENT ─── */}
       <main
+        id="admin-main"
         className={`admin-main${immersive ? ' admin-main--immersive' : ''}`}
         style={{ padding: immersive ? 0 : '1.25rem 1rem 2rem', minHeight: '100dvh' }}
       >
@@ -262,6 +270,7 @@ export default function AdminLayout({
 
       {/* ─── MOBILE BOTTOM-NAV ─── */}
       <nav
+        aria-label="Console sections (compact)"
         className={`admin-bottom-nav${immersive ? ' admin-bottom-nav--immersive' : ''}`}
         style={{
           display: 'none',
@@ -283,6 +292,7 @@ export default function AdminLayout({
             <Link
               key={n.href}
               href={n.href}
+              aria-current={active ? 'page' : undefined}
               title={n.tip}
               style={{
                 flex: 1,

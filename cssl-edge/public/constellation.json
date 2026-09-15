@@ -448,8 +448,8 @@
     },
     {
       "id": "support",
-      "title": "Downloads & support",
-      "summary": "Find the game download and ways to support its development.",
+      "title": "Chaos Tarot membership",
+      "summary": "Subscription options and optional ways to support the work.",
       "href": "/buy",
       "external": false,
       "availability": "public",
@@ -460,7 +460,7 @@
       ],
       "coordinates": {
         "People": "Choose freely whether to contribute",
-        "Meaning": "Downloads and optional support terms",
+        "Meaning": "Subscription and optional support terms",
         "Visibility": "Public before any handoff",
         "Time": "Current published terms"
       }

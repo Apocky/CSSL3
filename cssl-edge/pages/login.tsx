@@ -262,11 +262,14 @@ const Login: NextPage = () => {
     }
   }
 
-  const destination = returnTo === '/account'
+  // The LABEL only. `returnTo` itself keeps its query and fragment — it is the actual href below
+  // and the location.replace target, and the fragment is deliberately preserved so that
+  // "sign in and I'll take you back" lands on the authenticator panel rather than the top of the
+  // account page. Without this split the headline read "Continue to account#authenticator".
+  const destinationPath = returnTo.split(/[?#]/)[0] ?? returnTo;
+  const destination = destinationPath === '/account'
     ? 'your account'
-    : returnTo === '/chat'
-      ? 'the private page'
-      : returnTo.replace(/^\//, '').replaceAll('-', ' ');
+    : destinationPath.replace(/^\//, '').replaceAll('-', ' ') || 'the site';
 
   return (
     <>
@@ -277,7 +280,7 @@ const Login: NextPage = () => {
         <meta name="robots" content="noindex,nofollow" />
       </Head>
       <a className="apx-skip-link" href="#main-content">Skip to sign in</a>
-      <AuthFrame mode="sign-in" formFirst>
+      <AuthFrame mode={setupStage ? "setup" : "sign-in"} formFirst>
         <div className="apx-auth-card">
           {setupStage ? <>
             {/* The last step of signing in, not a separate errand afterwards. You have just proved

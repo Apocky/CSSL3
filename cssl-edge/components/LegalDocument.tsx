@@ -62,6 +62,10 @@ export default function LegalDocument({
           .apx-legal footer p { color: var(--apx-muted, #9ca6cc); font-size: 0.8rem; }
         `}</style>
       </Head>
+      {/* WRAPPED, not retagged. Promoting <article> to <main> would also promote the <footer>
+          these pages carry to a second contentinfo landmark, and every `.apx-legal *` rule in the
+          style block above is scoped to this class. */}
+      <main>
       <article className="apx-legal">
         <h1>{title}</h1>
         <p className="apx-legal-updated">Last updated {updated}</p>
@@ -71,6 +75,7 @@ export default function LegalDocument({
         </div>
         {children}
       </article>
+      </main>
     </>
   );
 }

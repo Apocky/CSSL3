@@ -560,10 +560,14 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
   },
   {
     id: 'support',
-    title: "Downloads & support",
-    shortTitle: "Downloads & support",
+    // Was titled "Downloads & support" and promised "Find the game download" while pointing at
+    // /buy, a page with no download links at all — so the home card, the Atlas node and /buy's own
+    // aria-label all advertised a download that is not there. "Chaos Tarot membership" rather than
+    // "Optional support", which would collide with the membership node's own eyebrow.
+    title: "Chaos Tarot membership",
+    shortTitle: "Chaos Tarot",
     eyebrow: "Help the work grow",
-    summary: "Find the game download and ways to support its development.",
+    summary: "Subscription options and optional ways to support the work.",
     href: '/buy',
     action: "See your options",
     external: false,
@@ -572,7 +576,7 @@ export const PUBLIC_SURFACE_NODES: readonly PublicSurfaceNode[] = [
     axes: ['People', 'Visibility'],
     coordinates: {
       People: 'Choose freely whether to contribute',
-      Meaning: 'Downloads and optional support terms',
+      Meaning: 'Subscription and optional support terms',
       Visibility: 'Public before any handoff',
       Time: 'Current published terms',
     },

@@ -72,6 +72,9 @@ const Page: NextPage = () => {
         <li><a href="/docs/sovereignty" style={{ color: '#7dd3fc' }}>Permissions and data sharing</a></li>
         <li><a href="/docs/substrate" style={{ color: '#7dd3fc' }}>Technical foundations</a></li>
         <li><a href="/words" style={{ color: '#7dd3fc' }}>Definitions for technical words and symbols</a></li>
+        {/* apocrypha-node links TO this page already; without this the loop was one-way and the
+            node download had no inbound link from anywhere on the site. */}
+        <li><a href="/download/apocrypha-node" style={{ color: '#7dd3fc' }}>Run a contributor node</a></li>
       </ul>
 
       <PrevNextNav slug="mycelium" />

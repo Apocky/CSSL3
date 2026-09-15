@@ -166,7 +166,14 @@ const Buy: NextPage = () => (
 
       <p className="support-note">
         <strong>Refund and cancellation terms:</strong> {CHAOS_TAROT_REFUND_DAYS}-day no-questions-asked refund.
-        Cancel subscriptions at any time through <a href="/account">your account</a>; access continues through the paid period. Renewal notices honor
+        {/* Was "through your account". /account has no billing section and none exists in the
+            codebase — a grep for billing_portal / customer_portal returns nothing — so this sent a
+            paying subscriber to a page that cannot do the thing the sentence promises. Pointed at
+            the routes that actually work, matching /membership. A real in-site panel needs the
+            checkout to pass a client-reference-id first (it does not today, so no customer id is
+            ever recorded); that is a separate slice, not a copy fix. */}
+        Cancel at any time from the manage link on your Stripe receipt, or email{' '}
+        <a href="mailto:apocky13@gmail.com?subject=%5Bcancel%5D">apocky13@gmail.com</a>; access continues through the paid period. Renewal notices honor
         CA Bus. &amp; Prof. Code §17602(b). If Stripe is unreachable, email{' '}
         <a href="mailto:apocky13@gmail.com?subject=%5Brefund%5D">apocky13@gmail.com</a>.
       </p>

@@ -17,11 +17,21 @@ const ApocryphaDownload: NextPage<Props> = ({ release, desktop }) => {
   const windows = desktop.windows.state === 'ready' ? desktop.windows.artifact : null;
   const unsigned = desktop.windows.signing === 'unsigned';
   const desktopPending = desktopPendingChecks(desktop);
-  const checks = release.android.verification;
-  const pendingChecks = [
-    checks.account_sign_in_and_chat !== 'passed' ? 'account sign-in and chat' : null,
-    checks.physical_device !== 'passed' ? 'testing on a physical phone' : null,
-  ].filter(Boolean);
+  // Built from a LABEL RECORD over every check in the schema, not a hand-picked two. The old list
+  // consulted account_sign_in_and_chat and physical_device only, so emulator_launch — which the
+  // live manifest reports as pending, and which the verification table lower on this same page
+  // renders — never reached the banner. The page contradicted itself.
+  const checks = release.android.verification as Record<string, string>;
+  const CHECK_LABELS: Record<string, string> = {
+    account_sign_in_and_chat: 'account sign-in and chat',
+    physical_device: 'testing on a physical phone',
+    emulator_launch: 'launching in an emulator',
+    install: 'installing from the package',
+  };
+  const passed = (state: string | undefined): boolean => state === 'passed' || state === 'verified';
+  const pendingChecks = Object.keys(CHECK_LABELS)
+    .filter((name) => name in checks && !passed(checks[name]))
+    .map((name) => CHECK_LABELS[name]!);
   return (
     <>
       <Head>
@@ -128,7 +138,7 @@ const ApocryphaDownload: NextPage<Props> = ({ release, desktop }) => {
                 {apk ? <p className="fine">Version {release.version} · {megabytes(apk.bytes)} · APK</p>
                   : <p className="fine">The download will appear here when the package and its checksum are available.</p>}
               </div>
-              {apk && pendingChecks.length ? <p className="preview-note"><strong>Checks still pending:</strong> {pendingChecks.join(' and ')}. This is a preview release.</p> : null}
+              {apk && pendingChecks.length ? <p className="preview-note"><strong>Checks still pending:</strong> {pendingChecks.join(', ')}. This is a preview release.</p> : null}
               {apk ? <details className="install-help"><summary>How to install on Android</summary><ol><li>Download the APK file to your Android phone.</li><li>Open the file. If Android asks, allow this installation from your browser or file manager.</li><li>Open Apocrypha and sign in with your Apocky account.</li></ol><p>You can return to this page for the available version.</p></details> : null}
               {apk ? <details className="integrity"><summary>Check this download</summary><p>Compare the downloaded file with its SHA-256 checksum.</p><a href={`${apk.href}.sha256`}>Open checksum file</a><dl><dt>File SHA-256</dt><dd><code>{apk.sha256}</code></dd><dt>Signing certificate SHA-256</dt><dd><code>{apk.signing_certificate_sha256}</code></dd></dl></details> : null}
             </article>
@@ -160,6 +170,7 @@ const ApocryphaDownload: NextPage<Props> = ({ release, desktop }) => {
 
           <section className="next-steps" aria-label="Before you install">
             <div><h3>Prefer to use your browser?</h3><p><Link href="/apocrypha">Open Apocrypha online.</Link> Sign in with your Apocky account to use private chat and your conversation history.</p></div>
+            <div><h3>Lend the work some compute?</h3><p><Link href="/download/apocrypha-node">Run a contributor node.</Link> It answers queued turns on your own machine; nothing of yours is shared with it.</p></div>
             <div><h3>Check back here for releases.</h3><p>Each install link appears only when that platform’s release is available. Preview testing details stay visible above.</p></div>
           </section>
 {/* The terms of service promise that every download shows the licence it is governed by. This

@@ -66,7 +66,12 @@ const Page: NextPage = () => (
 
     <h2 className="docs-h2">The apps</h2>
     <p className="docs-p">
-      The same conversation is available on Windows, iPhone, and Android. See{' '}
+      {/* Was "available on Windows, iPhone, and Android", while /download/apocrypha says iPhone is
+          not available yet. Re-enumerating the platforms here just breaks again the day ios.state
+          flips, so this carries no availability claim at all and points at the page that owns it.
+          "Preview", not "available": Android still has pending checks. */}
+      The Windows and Android previews run the same conversation; current availability for each
+      platform, iPhone included, is listed on the downloads page. See{' '}
       <a href="/download/apocrypha" style={{ color: '#7dd3fc' }}>the app downloads</a>. The apps talk to
       the same machine as the website; they are not a separate assistant.
     </p>
