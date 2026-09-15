@@ -1,4 +1,4 @@
-/* § hub.panels : ∀ public.destination → full.visible.panel */
+/* hub index: every public destination gets one equal row */
 .home,.page{width:min(1180px,calc(100% - 64px));margin:0 auto;color:var(--apx-ink)}
 .home h1,.page h1,.home h2,.page h2{font-family:var(--apx-display);font-weight:600;letter-spacing:-.025em}
 .welcome{padding:46px 0 22px}
@@ -14,23 +14,23 @@
 .search input{border:0;background:transparent;color:var(--apx-ink);min-width:0;width:100%;height:48px;font-size:1rem;outline-offset:0}
 .search:focus-within{outline:2px solid #dbc2ea;outline-offset:2px}
 .search input:focus-visible{outline:none}
-.panelGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
-.destinationPanel{display:flex;flex-direction:column;min-width:0;min-height:236px;overflow:hidden;border:1px solid #81729778;border-radius:20px;background:linear-gradient(125deg,#29223a80,#12151e 84%);transition:border-color .18s,background .18s}
-.destinationPanel:hover,.destinationPanel:focus-within{border-color:#ccb4e0;background:linear-gradient(125deg,#362941aa,#191c28 84%)}
-.destinationPanel[data-destination="apocrypha"]{border-color:#73a8bb88;background:linear-gradient(120deg,#1c334b99,#141b2b 84%)}
-.destinationPanel[data-destination="chaos-tarot"]{border-color:#a079c999;background:linear-gradient(120deg,#44265388,#191525 84%)}
-.destinationPanel[data-destination="codex-apockalypsis"]{border-color:#b898ae99;background:linear-gradient(120deg,#432d3f99,#1c1824 84%)}
-.panelBody{display:flex;flex:1;flex-direction:column;align-items:flex-start;gap:0;padding:26px 28px 22px;text-decoration:none;color:inherit;min-width:0}
-.panelBody:focus-visible{outline:3px solid #b6e4e9;outline-offset:-5px;border-radius:18px}
-.panelKicker{margin:0 0 12px;font:650 .78rem/1.4 var(--apx-sans);letter-spacing:.055em;color:#b9dfe5}
-.panelBody h3{margin:0 0 13px;font:600 clamp(1.65rem,2.25vw,2.05rem)/1.12 var(--apx-display);letter-spacing:-.02em;overflow-wrap:anywhere}
-.panelDescription{margin:0 0 17px;font-size:1rem;line-height:1.6;color:#d9d4e1;max-width:60ch}
-.panelAction{display:inline-flex;align-items:center;min-height:44px;margin-top:auto;color:#d5bde9;font-size:.94rem;font-weight:650}
-.panelBody:hover .panelAction{text-decoration:underline;text-underline-offset:4px}
-.panelSecondary{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:48px;margin:0 28px 18px;padding:12px 0 0;border-top:1px solid #baa0c24d;color:#e0cbee;font-size:.94rem;font-weight:650;text-decoration:none}
-.panelSecondary:hover{text-decoration:underline}
-.panelGroup{margin-top:38px}
-.panelGroup>h2{margin:0 0 18px;font-size:1.65rem;line-height:1.2;color:var(--apx-ink)}
+/* One row per destination. The three columns are the three questions: what is it called, what
+   is it, what do you do there. Nothing is a card, so nothing looks more important than the
+   thing next to it. */
+.count{margin:0 0 20px;color:var(--apx-muted);font-size:.85rem}
+.group{margin:0 0 26px}
+.group>h3{margin:0 0 8px;font:650 .8rem/1.4 var(--apx-sans);letter-spacing:.09em;text-transform:uppercase;color:#b9dfe5}
+.rows{list-style:none;margin:0;padding:0;border-top:1px solid #81729740}
+.row{border-bottom:1px solid #81729740}
+.rowLink{display:grid;grid-template-columns:minmax(9rem,13rem) minmax(0,1fr) auto;align-items:baseline;gap:4px 20px;padding:12px 10px;min-height:44px;text-decoration:none;color:inherit;border-radius:8px}
+.rowLink:hover,.rowLink:focus-visible{background:#26203380}
+.rowLink:focus-visible{outline:2px solid #b6e4e9;outline-offset:-2px}
+.rowName{font:600 1.02rem/1.35 var(--apx-display);letter-spacing:-.01em;color:var(--apx-ink);overflow-wrap:anywhere}
+.rowSummary{font-size:.92rem;line-height:1.5;color:var(--apx-copy)}
+.rowAction{justify-self:end;white-space:nowrap;font-size:.85rem;font-weight:650;color:#d5bde9}
+.rowLink:hover .rowAction{text-decoration:underline;text-underline-offset:3px}
+/* The one destination with a worthwhile second entry point. */
+.rowExtra{display:inline-flex;align-items:center;min-height:44px;margin:0 10px 8px;font-size:.85rem;font-weight:650;color:#e0cbee}
 .support{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:40px 0 0;padding:24px 0 38px;border-top:1px solid var(--apx-line);font-size:.9rem;color:var(--apx-muted)}
 .support a,.quietNote a{color:#dfc6eb;display:inline-flex;align-items:center;min-height:44px}
 .empty{padding:30px;border:1px solid var(--apx-line);border-radius:16px}
@@ -53,13 +53,13 @@
  .welcome{padding:28px 0 18px}.welcome h1{font-size:2.35rem;line-height:1.04}.welcome h1 em{display:block}
  .welcome>p:not(.overline){margin:15px 0 0;font-size:1rem;line-height:1.55;max-width:35ch}
  .directory{margin-top:16px}.sectionHeading{display:block;margin-bottom:18px}.sectionHeading h2{font-size:1.35rem}.search{margin-top:15px;width:100%}
- .panelGrid{grid-template-columns:1fr;gap:14px}.destinationPanel{min-height:220px;border-radius:18px}
- .panelBody{padding:23px 23px 17px}.panelBody h3{font-size:1.8rem;margin-bottom:11px}.panelKicker{font-size:.75rem;margin-bottom:10px}
- .panelDescription{font-size:1rem;line-height:1.55;margin-bottom:12px}.panelAction{font-size:.93rem}
- .panelSecondary{margin:0 23px 17px;font-size:.93rem}.panelGroup{margin-top:31px}.panelGroup>h2{font-size:1.5rem;margin-bottom:15px}
+ /* Three columns at 375px would be three words per line. Same rows, stacked. */
+ .rowLink{grid-template-columns:1fr;gap:3px;padding:12px 8px}
+ .rowName{font-size:1.02rem}.rowSummary{font-size:.9rem}
+ .rowAction{justify-self:start;white-space:normal}
+ .group>h3{font-size:.78rem}
  .support{display:block;padding:20px 0;margin-top:28px}.support p{margin-bottom:0}
  .pageHeader{padding:28px 0 18px}.pageHeader h1{font-size:2.05rem}
  .toolGrid{grid-template-columns:1fr;gap:14px}.toolCard{padding:23px}.toolCard h2{font-size:1.7rem}
 }
-@media(max-width:360px){.panelBody{padding:21px 20px 16px}.panelBody h3{font-size:1.65rem}.panelSecondary{margin-inline:20px}}
-@media(prefers-reduced-motion:reduce){.destinationPanel{transition:none}}
+@media(prefers-reduced-motion:reduce){.rowLink{transition:none}}

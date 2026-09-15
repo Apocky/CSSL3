@@ -44,29 +44,29 @@ const apocryphaPage = read('pages/apocrypha.tsx');
 const chatAlias = read('pages/chat.tsx');
 
 const homePanels = renderSiteDirectory();
-const panels = [...homePanels.matchAll(/<article\b([^>]*\bdata-destination="([^"]+)"[^>]*)>([\s\S]*?)<\/article>/g)]
+const panels = [...homePanels.matchAll(/<li\b([^>]*\bdata-destination="([^"]+)"[^>]*)>([\s\S]*?)<\/li>/g)]
   .map((match) => ({ attributes: match[1]!, id: match[2]!, body: match[3]! }));
 const publicDestinations = PUBLIC_SURFACE_NODES.filter((node) => node.id !== 'home');
 const sortedIds = (nodes: ReadonlyArray<{ id: string }>) => nodes.map((node) => node.id).sort();
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;',
 })[character]!);
-assert.match(homePage, /<SiteDirectory\s*\/>/, 'home renders the shared destination panels');
+assert.match(homePage, /<SiteDirectory\s*\/>/, 'home renders the shared destination index');
 assert.deepEqual(sortedIds(DIRECTORY_NODES), sortedIds(publicDestinations), 'every non-home public destination enters the home directory');
 assert.deepEqual(sortedIds(findDirectoryItems('')), sortedIds(publicDestinations), 'default search includes every destination');
-assert.deepEqual(sortedIds(panels), sortedIds(publicDestinations), 'actual default rendering gives every destination exactly one full panel');
+assert.deepEqual(sortedIds(panels), sortedIds(publicDestinations), 'actual default rendering gives every destination exactly one row');
 assert.equal(new Set(panels.map((panel) => panel.id)).size, panels.length, 'panels must not duplicate destinations');
 assert.deepEqual(panels.slice(0, 4).map((panel) => panel.id), ['codex-apockalypsis', 'apocrypha', 'atlas', 'chaos-tarot'], 'the four requested destinations lead the page');
-assert.doesNotMatch(homePanels, /<details\b|\shidden(?:=|\s|>)|More of Apocky/i, 'default panels must not sit behind a disclosure or hidden state');
+assert.doesNotMatch(homePanels, /<details\b|\shidden(?:=|\s|>)|More of Apocky/i, 'every destination must be visible without opening a disclosure');
 for (const node of publicDestinations) {
   const panel = panels.find((item) => item.id === node.id)!;
-  assert.match(panel.attributes, /class="destinationPanel"/, `${node.id} uses the same full panel presentation`);
+  assert.match(panel.attributes, /class="row"/, `${node.id} uses the same row presentation as every other destination`);
   assert.doesNotMatch(panel.attributes, /aria-hidden="true"|style="[^"]*(?:display:\s*none|visibility:\s*hidden)/, `${node.id} remains exposed`);
-  assert.match(panel.body, /<h3>[^<]+<\/h3>/, `${node.id} has a visible destination heading`);
-  assert.ok(panel.body.includes(`<p class="panelDescription">${escapeHtml(node.summary)}</p>`), `${node.id} explains its use`);
+  assert.match(panel.body, /<span class="rowName">[^<]+<\/span>/, `${node.id} shows a visible name`);
+  assert.ok(panel.body.includes(`<span class="rowSummary">${escapeHtml(node.summary)}</span>`), `${node.id} explains its use`);
   assert.ok(panel.body.includes(`href="${escapeHtml(node.href)}"`), `${node.id} links directly to its registered destination`);
-  assert.match(panel.body, /<a class="panelBody"[^>]*>/, `${node.id} exposes the full panel as an action`);
-  assert.match(panel.body, /class="panelAction">[^<]+/, `${node.id} names the action`);
+  assert.match(panel.body, /<a class="rowLink"[^>]*>/, `${node.id} exposes the whole row as one link`);
+  assert.match(panel.body, /class="rowAction">[^<]+/, `${node.id} names the action`);
   assert.ok(DIRECTORY_GROUPS.includes(directoryGroup(node)), `${node.id} belongs to a rendered group`);
   assert.ok(findDirectoryItems(node.id).some((item) => item.id === node.id), `${node.id} remains searchable`);
   if (node.external) {
