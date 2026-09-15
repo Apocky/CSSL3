@@ -13,6 +13,8 @@ const Eula: NextPage = () => (
     <p>
       <strong>The test build is not currently distributed from apocky.com.</strong> This agreement is kept
       in force and unchanged for anyone who already has a copy. There is nothing to download here today.
+      The software apocky.com does distribute today is Apocrypha, under the{' '}
+      <a href="/legal/apocrypha-license">Apocrypha app license</a>.
     </p>
     <p>
       This is the End-User License Agreement (EULA) for the Labyrinth of Apocalypse alpha test build,
@@ -101,8 +103,8 @@ const Eula: NextPage = () => (
 
     <footer>
       <p>
-        Related pages: <a href="/legal/privacy">Privacy policy</a> and{' '}
-        <a href="/legal/terms">Terms of service</a>.
+        Related pages: <a href="/legal/privacy">Privacy policy</a>, <a href="/legal/terms">Terms of service</a>{' '}
+        and <a href="/legal/apocrypha-license">Apocrypha app license</a> — the current software.
       </p>
     </footer>
   </LegalDocument>

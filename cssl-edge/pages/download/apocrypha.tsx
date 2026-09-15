@@ -162,7 +162,9 @@ const ApocryphaDownload: NextPage<Props> = ({ release, desktop }) => {
             <div><h3>Prefer to use your browser?</h3><p><Link href="/apocrypha">Open Apocrypha online.</Link> Sign in with your Apocky account to use private chat and your conversation history.</p></div>
             <div><h3>Check back here for releases.</h3><p>Each install link appears only when that platform’s release is available. Preview testing details stay visible above.</p></div>
           </section>
-          <footer className="mobile-footer"><Link href="/apocrypha">Chat in your browser →</Link><Link href="/legal/privacy">Privacy</Link><a href="/releases/apocrypha-desktop/manifest.json">Desktop release details</a><a href="/releases/apocrypha-mobile/manifest.json">Phone release details</a></footer>
+{/* The terms of service promise that every download shows the licence it is governed by. This
+              is where that promise is kept. */}
+          <footer className="mobile-footer"><Link href="/apocrypha">Chat in your browser →</Link><Link href="/legal/apocrypha-license">License</Link><Link href="/legal/privacy">Privacy</Link><a href="/releases/apocrypha-desktop/manifest.json">Desktop release details</a><a href="/releases/apocrypha-mobile/manifest.json">Phone release details</a></footer>
         </div>
       </main>
       <style jsx>{`

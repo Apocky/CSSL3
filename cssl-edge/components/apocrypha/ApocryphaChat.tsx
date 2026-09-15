@@ -618,6 +618,13 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           {currentConv ? <p className={styles.settingMeta}>
             This conversation<br /><code>{currentConv}</code>
           </p> : null}
+          {/* Setting up an authenticator was only reachable by knowing to visit /account while
+              already signed in — which is exactly the thing you cannot do when your sign-in is the
+              problem. The room is where a signed-in reader actually is, so the way there is here. */}
+          <p className={styles.settingLink}>
+            <Link href="/account#authenticator">Set up an authenticator</Link> — scan a QR code once,
+            then sign in with a 6-digit code.
+          </p>
           <p className={styles.settingNote}>
             These are display choices only. The model, authority, and security policy remain server-controlled.
           </p>

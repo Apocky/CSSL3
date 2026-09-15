@@ -178,8 +178,8 @@ const Privacy: NextPage = () => (
 
     <footer>
       <p>
-        Related pages: <a href="/legal/terms">Terms of service</a> and{' '}
-        <a href="/legal/eula">Labyrinth of Apocalypse license</a>.
+        Related pages: <a href="/legal/terms">Terms of service</a>, <a href="/legal/apocrypha-license">Apocrypha app license</a>{' '}
+        and <a href="/legal/eula">Labyrinth of Apocalypse license</a> (archived).
       </p>
     </footer>
   </LegalDocument>

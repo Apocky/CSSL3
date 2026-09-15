@@ -15,6 +15,36 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SPECS_DIR = path.join(REPO_ROOT, 'specs', 'grand-vision');
 const OUT_FILE = path.resolve(__dirname, '..', 'lib', 'specs-snapshot.ts');
 
+// Tokens that are names or initialisms, not words to title-case. Anything not listed is treated as
+// an ordinary word.
+const SPEC_TOKENS = new Map(Object.entries({
+  CSSL: 'CSSL', CSL: 'CSL', KAN: 'KAN', FFI: 'FFI', API: 'API', UI: 'UI', HRR: 'HRR',
+  '3D': '3D', LOA: 'LoA', W7: 'W7', W8: 'W8', W9: 'W9', W10: 'W10',
+  SIGMA: 'Sigma', APOCKY: 'Apocky', APOCRYPHA: 'Apocrypha', MYCELIUM: 'Mycelium',
+}));
+
+// The public title of a spec.
+//
+// This used to be the spec's first non-empty line. That worked by accident for 00-12, whose first
+// line happens to read "NN : ... — SUBJECT", and failed completely for everything after: those
+// files open with a provenance header, so the docs section published pages titled
+// "T11-W6+ § specs/grand-vision/14_SIGMA_CHAIN.csl" — a file path, in the browser tab and in every
+// search result. The slug is the stable, human part, so the title is derived from it instead. The
+// original header is not lost: the page renders the spec body verbatim, header line included.
+function publicTitle(slug) {
+  const match = /^(\d+)_(.+)$/.exec(slug);
+  const number = match ? match[1] : null;
+  const rest = match ? match[2] : slug;
+  const words = rest.split('_').filter(Boolean).map((token) => {
+    const known = SPEC_TOKENS.get(token.toUpperCase());
+    if (known) return known;
+    return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+  });
+  // "APOCKY COM" reads as a domain, because it is one.
+  const name = words.join(' ').replace(/\bApocky Com\b/g, 'apocky.com');
+  return number ? `${number} · ${name}` : name;
+}
+
 function readSpecs() {
   if (!fs.existsSync(SPECS_DIR)) {
     // Vercel uploads cssl-edge/ as the project root, so the canonical source
@@ -44,9 +74,7 @@ function readSpecs() {
     const slug = filename.replace(/\.csl$/, '');
     const fullPath = path.join(SPECS_DIR, filename);
     const body = fs.readFileSync(fullPath, 'utf8');
-    const firstLine = body.split('\n').find((l) => l.trim().length > 0) ?? slug;
-    const title = firstLine.replace(/^[#§\s]+/, '').slice(0, 120).trim() || slug;
-    return { slug, filename, title, body };
+    return { slug, filename, title: publicTitle(slug), body };
   });
 }
 

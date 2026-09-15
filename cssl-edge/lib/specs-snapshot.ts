@@ -13,7 +13,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "00_THESIS",
     filename: "00_THESIS.csl",
-    title: "00 : LoA-v13 GRAND-VISION — THESIS",
+    title: "00 · Thesis",
     body: `# 00 : LoA-v13 GRAND-VISION — THESIS
 # ══════════════════════════════════════════════════════════════════
 # § I> root-of-grand-vision-tree ; siblings = 01..08 in this dir
@@ -145,7 +145,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "01_PARADIGMS",
     filename: "01_PARADIGMS.csl",
-    title: "01 : LoA-v13 GRAND-VISION — 7-PARADIGM-HIERARCHY",
+    title: "01 · Paradigms",
     body: `# 01 : LoA-v13 GRAND-VISION — 7-PARADIGM-HIERARCHY
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl ; expands § 7-PARADIGM-HIERARCHY
@@ -319,7 +319,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "02_DATA_AXES",
     filename: "02_DATA_AXES.csl",
-    title: "02 : LoA-v13 GRAND-VISION — DATA-AXES",
+    title: "02 · Data Axes",
     body: `# 02 : LoA-v13 GRAND-VISION — DATA-AXES
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl
@@ -476,7 +476,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "03_INTENT_FLOW",
     filename: "03_INTENT_FLOW.csl",
-    title: "03 : LoA-v13 GRAND-VISION — INTENT-FLOW",
+    title: "03 · Intent Flow",
     body: `# 03 : LoA-v13 GRAND-VISION — INTENT-FLOW
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl
@@ -651,7 +651,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "04_SPONTANEOUS_CONDENSATION",
     filename: "04_SPONTANEOUS_CONDENSATION.csl",
-    title: "04 : LoA-v13 GRAND-VISION — SPONTANEOUS-CONDENSATION",
+    title: "04 · Spontaneous Condensation",
     body: `# 04 : LoA-v13 GRAND-VISION — SPONTANEOUS-CONDENSATION
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl
@@ -842,7 +842,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "05_INTELLIGENCES",
     filename: "05_INTELLIGENCES.csl",
-    title: "05 : LoA-v13 GRAND-VISION — INTELLIGENCES",
+    title: "05 · Intelligences",
     body: `# 05 : LoA-v13 GRAND-VISION — INTELLIGENCES
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl
@@ -1038,7 +1038,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "06_FREE_3D_INGEST",
     filename: "06_FREE_3D_INGEST.csl",
-    title: "06 : LoA-v13 GRAND-VISION — FREE-3D-INGEST",
+    title: "06 · Free 3D Ingest",
     body: `# 06 : LoA-v13 GRAND-VISION — FREE-3D-INGEST
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl
@@ -1236,7 +1236,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "07_NETWORKING",
     filename: "07_NETWORKING.csl",
-    title: "07 : LoA-v13 GRAND-VISION — NETWORKING",
+    title: "07 · Networking",
     body: `# 07 : LoA-v13 GRAND-VISION — NETWORKING
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl
@@ -1404,7 +1404,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "08_ROADMAP",
     filename: "08_ROADMAP.csl",
-    title: "08 : LoA-v13 GRAND-VISION — ROADMAP",
+    title: "08 · Roadmap",
     body: `# 08 : LoA-v13 GRAND-VISION — ROADMAP
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl
@@ -1808,7 +1808,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "09_DATA_FLOW",
     filename: "09_DATA_FLOW.csl",
-    title: "09 : LoA-v13 GRAND-VISION — DATA-FLOW",
+    title: "09 · Data Flow",
     body: `# 09 : LoA-v13 GRAND-VISION — DATA-FLOW
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl ; sequel-of 03_INTENT_FLOW + 04_SPONTANEOUS + 06_FREE_3D
@@ -2037,7 +2037,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "10_INTELLIGENCE",
     filename: "10_INTELLIGENCE.csl",
-    title: "10 : LoA-v13 GRAND-VISION — INTELLIGENCE (operational)",
+    title: "10 · Intelligence",
     body: `# 10 : LoA-v13 GRAND-VISION — INTELLIGENCE (operational)
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 00_THESIS.csl ; OPERATIONAL-companion-of 05_INTELLIGENCES.csl
@@ -2343,7 +2343,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "11_KAN_RIDE",
     filename: "11_KAN_RIDE.csl",
-    title: "11 : LoA-v13 GRAND-VISION — KAN-RIDE (stage-0 ⊕ stage-1 swap-protocol)",
+    title: "11 · KAN Ride",
     body: `# 11 : LoA-v13 GRAND-VISION — KAN-RIDE (stage-0 ⊕ stage-1 swap-protocol)
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 10_INTELLIGENCE.csl ; aligns-with 01_PARADIGMS § P7
@@ -2532,7 +2532,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "12_W7_PLAN",
     filename: "12_W7_PLAN.csl",
-    title: "12 : LoA-v13 GRAND-VISION — W7 PLAN + RETRO",
+    title: "12 · W7 Plan",
     body: `# 12 : LoA-v13 GRAND-VISION — W7 PLAN + RETRO
 # ══════════════════════════════════════════════════════════════════
 # § I> sibling-of 10_INTELLIGENCE.csl + 11_KAN_RIDE.csl
@@ -2751,7 +2751,7 @@ export const SPECS: ReadonlyArray<SpecEntry> = [
   {
     slug: "13_INFINITE_LABYRINTH_LEGACY",
     filename: "13_INFINITE_LABYRINTH_LEGACY.csl",
-    title: "T11-W6+ § specs/grand-vision/13_INFINITE_LABYRINTH_LEGACY.csl",
+    title: "13 · Infinite Labyrinth Legacy",
     body: `§ T11-W6+ § specs/grand-vision/13_INFINITE_LABYRINTH_LEGACY.csl
 §§ legacy-design-anchor for Infinite-Labyrinth lineage @ ported into LoA-v13/CSSLv3
 §§ canonical-source : ~/source/repos/DEPRECATED-The Infinite Labyrinth/GDDs/*
@@ -2998,7 +2998,7 @@ t∞ : ¬ harm @ in-the-making · ¬ exploitation · ¬ pay-for-power · ✓ pla
   {
     slug: "14_SIGMA_CHAIN",
     filename: "14_SIGMA_CHAIN.csl",
-    title: "T11-W6+ § specs/grand-vision/14_SIGMA_CHAIN.csl",
+    title: "14 · Sigma Chain",
     body: `§ T11-W6+ § specs/grand-vision/14_SIGMA_CHAIN.csl
 §§ Σ-Chain : substrate-native distributed-ledger · "blockchain but better"
 §§ Apocky 2026-05-01 directive : ¬ replicate blockchain · BUILD-NEW @ atop substrate-primitives
@@ -3208,7 +3208,7 @@ t∞ : ¬ harm @ in-the-making · ¬ surveillance · ¬ exploitation · ¬ pay-f
   {
     slug: "15_UNIFIED_SUBSTRATE",
     filename: "15_UNIFIED_SUBSTRATE.csl",
-    title: "T11-W6+ § specs/grand-vision/15_UNIFIED_SUBSTRATE.csl",
+    title: "15 · Unified Substrate",
     body: `§ T11-W6+ § specs/grand-vision/15_UNIFIED_SUBSTRATE.csl
 §§ "All systems should be founded in the Substrate · One Unified System of Systems"
 §§ Apocky 2026-05-01 directive · architectural-unity mandate
@@ -3426,7 +3426,7 @@ t∞ : ¬ harm @ in-the-architecting · ✓ One-Unified-System-of-Systems · ✓
   {
     slug: "16_MYCELIAL_NETWORK",
     filename: "16_MYCELIAL_NETWORK.csl",
-    title: "T11-W6+ § specs/grand-vision/16_MYCELIAL_NETWORK.csl",
+    title: "16 · Mycelial Network",
     body: `§ T11-W6+ § specs/grand-vision/16_MYCELIAL_NETWORK.csl
 §§ Mycelial-Network : substrate-as-mycelium · player-nodes-as-fruiting-bodies
 §§ Apocky 2026-05-01 directive : "Each user contributes to the whole · home pocket-dimension per player · live hotfixes/improvements"
@@ -3675,7 +3675,7 @@ t∞ : ¬ harm @ in-the-mycelial-design · ¬ surveillance · ¬ exploitation ·
   {
     slug: "17_DISTRIBUTION_STRATEGY",
     filename: "17_DISTRIBUTION_STRATEGY.csl",
-    title: "T11-W6+ § specs/grand-vision/17_DISTRIBUTION_STRATEGY.csl",
+    title: "17 · Distribution Strategy",
     body: `§ T11-W6+ § specs/grand-vision/17_DISTRIBUTION_STRATEGY.csl
 §§ Distribution-Strategy : what's open · what's proprietary · what's server-only · what's encoded
 §§ Apocky 2026-05-01 directive : "what files do I actually share/sell/publicize vs what do we keep proprietary/secret/abstracted/encoded?"
@@ -3953,7 +3953,7 @@ t∞ : ¬ harm @ in-the-distribution · ¬ pay-for-power · ✓ player-sovereign
   {
     slug: "18_AKASHIC_RECORDS",
     filename: "18_AKASHIC_RECORDS.csl",
-    title: "T11-W6+ § specs/grand-vision/18_AKASHIC_RECORDS.csl",
+    title: "18 · Akashic Records",
     body: `§ T11-W6+ § specs/grand-vision/18_AKASHIC_RECORDS.csl
 §§ Akashic-Records : monetizable universal-memory layer atop Σ-Chain
 §§ Apocky 2026-05-01 directive : "essentially Akashic Records but monetizable · set up autonomously and legally"
@@ -4151,7 +4151,7 @@ t∞ : ¬ harm @ in-the-records · ¬ pay-for-power · ¬ exploitation · ✓ pl
   {
     slug: "19_W8_DISPATCH_PLAN",
     filename: "19_W8_DISPATCH_PLAN.csl",
-    title: "T11-W8 § specs/grand-vision/19_W8_DISPATCH_PLAN.csl",
+    title: "19 · W8 Dispatch Plan",
     body: `§ T11-W8 § specs/grand-vision/19_W8_DISPATCH_PLAN.csl
 §§ Wave-8 dispatch plan : answers-to-7-open-questions + Mycelial-implementation + Akashic-implementation + Σ-Chain-implementation + Distribution-setup
 §§ Apocky 2026-05-01 directive · all 7 questions answered · "ship at launch" stance for-automated-Coder + seasonal-hard-perma
@@ -4336,7 +4336,7 @@ t∞ : ¬ harm @ in-the-W8-dispatch · ¬ pay-for-power · ¬ exploitation · �
   {
     slug: "21_SELF_PUBLISH_APOCKY_COM",
     filename: "21_SELF_PUBLISH_APOCKY_COM.csl",
-    title: "T11-W6+ § specs/grand-vision/21_SELF_PUBLISH_APOCKY_COM.csl",
+    title: "21 · Self Publish apocky.com",
     body: `§ T11-W6+ § specs/grand-vision/21_SELF_PUBLISH_APOCKY_COM.csl
 §§ Self-publish via apocky.com · Vercel-hosted · NO Steam/itch/Epic
 §§ Apocky 2026-05-01 directive : "We self publish and host our own download webpage through Vercel at Apocky.com"
@@ -4608,7 +4608,7 @@ t∞ : ¬ harm @ in-the-distribution · ✓ player-sovereignty (¬ DRM · ¬ roo
   {
     slug: "22_APOCKY_COM_PORTFOLIO_HUB",
     filename: "22_APOCKY_COM_PORTFOLIO_HUB.csl",
-    title: "T11-W6+ § specs/grand-vision/22_APOCKY_COM_PORTFOLIO_HUB.csl",
+    title: "22 · apocky.com Portfolio Hub",
     body: `§ T11-W6+ § specs/grand-vision/22_APOCKY_COM_PORTFOLIO_HUB.csl
 §§ apocky.com as PORTFOLIO HUB for-all-Apocky-projects · multi-tenant · cross-project mycelium
 §§ Apocky 2026-05-01 directive : "apocky.com should be the centralized hub for all of my projects"
@@ -4899,7 +4899,7 @@ t∞ : ¬ harm @ in-the-portfolio-design · ✓ player-sovereignty (single-SSO w
   {
     slug: "23_MYCELIUM_DESKTOP",
     filename: "23_MYCELIUM_DESKTOP.csl",
-    title: "T11-W6+ § specs/grand-vision/23_MYCELIUM_DESKTOP.csl",
+    title: "23 · Mycelium Desktop",
     body: `§ T11-W6+ § specs/grand-vision/23_MYCELIUM_DESKTOP.csl
 §§ Mycelium · the autonomous-local-agent for-Apocky's-desktop · proprietary-novel-AI-self-sufficient
 §§ Apocky 2026-05-01 directive : "set up an autonomous local agent for me to switch over to · code in cssl + csl · knows the substrate · easy intuitive interface · exe · bleeding-edge novel proprietary"
@@ -5226,7 +5226,7 @@ t∞ : ¬ harm @ in-the-Mycelium-design · sovereignty-preserved · ¬ data-exfi
   {
     slug: "24_W9_RETRO",
     filename: "24_W9_RETRO.csl",
-    title: "T11-W9 RETRO · monetization-prep + content-tools wave",
+    title: "24 · W9 Retro",
     body: `§ T11-W9 RETRO · monetization-prep + content-tools wave
 ≈ 2026-05-01 · single-agent-autonomous-scheduled-run · ~1 wall-clock-hour
 
@@ -5378,7 +5378,7 @@ t∞ : ¬ harm @ in-the-Mycelium-design · sovereignty-preserved · ¬ data-exfi
   {
     slug: "25_W10_MYCELIUM_RETRO",
     filename: "25_W10_MYCELIUM_RETRO.csl",
-    title: "T11-W10 § specs/grand-vision/25_W10_MYCELIUM_RETRO.csl",
+    title: "25 · W10 Mycelium Retro",
     body: `§ T11-W10 § specs/grand-vision/25_W10_MYCELIUM_RETRO.csl
 §§ Mycelium-Desktop wave-10 retro · 4-NEW-crates · Tauri-feature-gated · 116+ tests · self-sufficient stage-0
 §§ ≈ 2026-05-01 · multi-agent-parallel-fanout · ≈ 4-5 hr wall-clock
@@ -5572,7 +5572,7 @@ t∞ : ¬ harm @ in-the-Mycelium-build · sovereignty-preserved · ¬ data-exfil
   {
     slug: "26_APOCRYPHA_CONTRIBUTOR_NODE_DOWNLOAD",
     filename: "26_APOCRYPHA_CONTRIBUTOR_NODE_DOWNLOAD.csl",
-    title: "APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v2 ‼",
+    title: "26 · Apocrypha Contributor Node Download",
     body: `§ APOCRYPHA.CONTRIBUTOR.NODE.DOWNLOAD.v2 ‼
 # status := CANDIDATE.NOT_DEPLOYABLE
 # authority := user-requested implementation lane ∩ CSSL-edge source+tests

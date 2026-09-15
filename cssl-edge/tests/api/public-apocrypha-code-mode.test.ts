@@ -1,54 +1,41 @@
+// The governed code-effect routes.
+//
+// This file used to assert mostly against components/apocrypha/PublicChat.tsx — a chat surface that
+// had already been retired from every route and has now been deleted. Those assertions described a
+// UI nobody could reach; the ones below describe the two BFF routes, which are live and are where
+// the authorization actually has to hold.
+//
+// The contract that matters: a code effect and a rollback are owner-only and explicitly confirmed,
+// and the browser is never the thing that decides either. The server re-verifies for itself, before
+// it submits anything.
+
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const component = readFileSync(
-  resolve(process.cwd(), 'components/apocrypha/PublicChat.tsx'),
-  'utf8',
-);
-const style = readFileSync(
-  resolve(process.cwd(), 'styles/PublicApocrypha.module.css'),
-  'utf8',
-);
-const codeRoute = readFileSync(
-  resolve(process.cwd(), 'pages/api/admin/apocv4/code.ts'),
-  'utf8',
-);
-const rollbackRoute = readFileSync(
-  resolve(process.cwd(), 'pages/api/admin/apocv4/code/rollback.ts'),
-  'utf8',
-);
-
-const ownerGate = "access === 'owner' && mode === 'code'";
-const effectBranch = component.indexOf('if (runCodeEffect)');
-const responseOnlyBranch = component.indexOf("authFetch('/api/apocrypha/chat'");
-
-assert(component.includes(ownerGate), 'code effects require the verified owner access state');
-assert(component.includes("authFetch('/api/admin/apocv4/code'"), 'owner Code mode invokes the governed code BFF');
-assert(component.includes('allowed_paths: allowedPaths'), 'exact allowed paths cross the governed boundary');
-assert(component.includes('confirm_apply: true'), 'the browser sends explicit one-run confirmation');
-assert(component.includes('!exactApproval'), 'the run is denied until the exact bound approval is current');
-assert(component.includes('codeApproval.binding === expectedApprovalBinding'), 'approval is not bound to the exact request representation');
-assert(component.includes('codeApproval.authGeneration === authGeneration'), 'approval is not bound to the current auth generation');
-assert(component.includes('codeApproval.subjectKey === subjectKey'), 'approval is not bound to the current owner subject');
-assert(component.includes('codeApproval.conversationId === conversationId'), 'approval is not bound to the current durable worldline');
-assert(component.includes('No automatic retry.'), 'the effect surface discloses its no-retry contract');
-assert(effectBranch >= 0 && responseOnlyBranch > effectBranch, 'non-effect turns retain the response-only chat path');
-
-assert(component.includes("authFetch('/api/admin/apocv4/code/rollback'"), 'promoted changes expose the governed rollback BFF');
-assert(component.includes('confirm_rollback: true'), 'rollback requires an explicit owner action');
-assert(component.includes("message.codeEffect.state === 'PROMOTED'"), 'rollback is offered only for a promoted receipt');
-assert(component.includes("runtime?.state !== 'ROLLED_BACK'"), 'rollback response is fail-closed on terminal state');
+const codeRoute = readFileSync(resolve(process.cwd(), 'pages/api/admin/apocv4/code.ts'), 'utf8');
+const rollbackRoute = readFileSync(resolve(process.cwd(), 'pages/api/admin/apocv4/code/rollback.ts'), 'utf8');
 
 assert(codeRoute.includes('getAdminAuthorization(req)'), 'code BFF independently re-verifies owner authorization');
 assert(codeRoute.includes('body.confirm_apply !== true'), 'code BFF rejects absent confirmation');
-assert(codeRoute.indexOf('getAdminAuthorization(req)') < codeRoute.indexOf('submitRuntimeCode({'), 'authorization precedes the code effect');
+assert(
+  codeRoute.indexOf('getAdminAuthorization(req)') < codeRoute.indexOf('submitRuntimeCode({'),
+  'authorization precedes the code effect',
+);
 assert(rollbackRoute.includes('getAdminAuthorization(req)'), 'rollback BFF independently re-verifies owner authorization');
 assert(rollbackRoute.includes('body.confirm_rollback !== true'), 'rollback BFF rejects absent confirmation');
-assert(rollbackRoute.indexOf('getAdminAuthorization(req)') < rollbackRoute.indexOf('submitRuntimeRollback('), 'authorization precedes rollback');
+assert(
+  rollbackRoute.indexOf('getAdminAuthorization(req)') < rollbackRoute.indexOf('submitRuntimeRollback('),
+  'authorization precedes rollback',
+);
 
-assert(style.includes('.codeScope'), 'owner code scope is visibly composed');
-assert(style.includes('.codeReceipt'), 'code effect receipts are visibly composed');
-assert(style.includes('.rollbackButton:focus-visible'), 'rollback preserves a visible keyboard focus state');
+// No browser surface reaches these routes today. That is a fact worth pinning: if one is added
+// later, it must be added deliberately, not inherited from a component nobody remembered was there.
+for (const retired of ['PublicChat.tsx', 'WorkspacePanel.tsx']) {
+  const path = resolve(process.cwd(), 'components/apocrypha', retired);
+  let exists = true;
+  try { readFileSync(path); } catch { exists = false; }
+  assert(!exists, `${retired} was retired; it must not come back unreferenced`);
+}
 
-console.log('public-apocrypha-code-mode.test : OK');
+console.log('public-apocrypha-code-mode.test : OK · 8 governed-effect authorization checks passed');

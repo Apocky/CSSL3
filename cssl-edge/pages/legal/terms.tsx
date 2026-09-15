@@ -81,7 +81,8 @@ const Terms: NextPage = () => (
 
     <h2>Software and intellectual property</h2>
     <p>
-      Each download, source repository, and project is governed by the license displayed with it. These terms
+      Each download, source repository, and project is governed by the license displayed with it — for the
+      Apocrypha desktop and Android apps that is the <a href="/legal/apocrypha-license">Apocrypha app license</a>. These terms
       do not replace an open-source license or the Labyrinth of Apocalypse End-User License Agreement. Project
       names, site design, writing, and other material remain protected to the extent allowed by law.
     </p>
@@ -134,8 +135,8 @@ const Terms: NextPage = () => (
 
     <footer>
       <p>
-        Related pages: <a href="/legal/privacy">Privacy policy</a> and{' '}
-        <a href="/legal/eula">Labyrinth of Apocalypse license</a>.
+        Related pages: <a href="/legal/privacy">Privacy policy</a>, <a href="/legal/apocrypha-license">Apocrypha app license</a>{' '}
+        and <a href="/legal/eula">Labyrinth of Apocalypse license</a> (archived).
       </p>
     </footer>
   </LegalDocument>

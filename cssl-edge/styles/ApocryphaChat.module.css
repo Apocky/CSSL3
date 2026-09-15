@@ -374,3 +374,9 @@
   align-items: center;
   cursor: pointer;
 }
+
+.settingLink { margin: 10px 0 0; font-size: 13px; color: #a9b5ffc0; }
+.settingLink a { color: #b1dfeb; }
+
+.settingLink { margin: 10px 0 0; font-size: 13px; color: #a9b5ffc0; }
+.settingLink a { color: #b1dfeb; }

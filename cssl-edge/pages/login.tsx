@@ -313,7 +313,18 @@ const Login: NextPage = () => {
                 onChange={(event) => setAuthCode(event.target.value.replace(/[^0-9 ]/gu, ''))}
                 placeholder="000000"
               />
-              <p className="apx-field-help">The 6-digit code from your authenticator app. It changes every 30 seconds.</p>
+              <p className="apx-field-help">
+                The 6-digit code from your authenticator app. It changes every 30 seconds.
+              </p>
+              {/* This screen asks for a code from an authenticator and never said where to get one.
+                  If you have not set one up yet, the QR is not findable by guessing: it lives on the
+                  account page, behind a sign-in you are currently trying to complete. So the way in
+                  is named here, next to the field that needs it. */}
+              <p className="apx-field-help">
+                Don&rsquo;t have one yet? Sign in by email below, then{' '}
+                <Link href="/account#authenticator">set up an authenticator</Link> — you scan a QR code
+                once and use the 6-digit code from then on.
+              </p>
               <button
                 className="apx-button apx-button--primary"
                 type="submit"

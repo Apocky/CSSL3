@@ -85,7 +85,7 @@ export function AuthenticatorSetup(): JSX.Element {
   }, [code]);
 
   if (stage === 'done') {
-    return <section className="apx-totp">
+    return <section className="apx-totp" id="authenticator">
       <h2>Authenticator</h2>
       <p className="apx-totp-ok">Set up. From now on you sign in with your email and the 6-digit code.</p>
       <button type="button" onClick={() => { setStage('idle'); setNotice(null); }}>Set up a different authenticator</button>
@@ -93,7 +93,7 @@ export function AuthenticatorSetup(): JSX.Element {
     </section>;
   }
 
-  return <section className="apx-totp">
+  return <section className="apx-totp" id="authenticator">
     <h2>Authenticator</h2>
     <p className="apx-totp-lede">
       Sign in with a 6-digit code from an authenticator app instead of waiting for an email.

@@ -567,14 +567,6 @@ async function main(): Promise<void> {
   // the gap. The branch exists in chat.ts and is reviewed, not exercised here.
 
   const primaryPage = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
-  const component = readFileSync(
-    resolve(process.cwd(), 'components/apocrypha/PublicChat.tsx'),
-    'utf8',
-  );
-  const css = readFileSync(
-    resolve(process.cwd(), 'styles/PublicApocrypha.module.css'),
-    'utf8',
-  );
   const runtimeProxy = readFileSync(
     resolve(process.cwd(), 'lib/apocv4/runtime-proxy.ts'),
     'utf8',
@@ -588,29 +580,31 @@ async function main(): Promise<void> {
     /owner \? ownerLane\(authFetch\) : account \? memberLane\(authFetch\) : guestLane\(\)/.test(primaryPage),
     'non-owner accounts still enter the account-scoped rail',
   );
+  // PublicChat was retired from every route long ago and has now been deleted along with its
+  // stylesheet: 6,000 lines of a chat surface nobody could reach, kept alive only by tests that
+  // read it. The assertions it carried about ITS OWN browser-side receipt checking went with it —
+  // they described a client that no longer runs. The server-side guarantees they mirrored are
+  // asserted above against the live route, which is where they are actually enforced.
+  //
+  // What is kept is the guard: neither the retired surface nor its files may come back.
   assert(!primaryPage.includes('PublicChat'), 'exact /apocrypha must not revive the retired member chat');
-  assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');
-  assert(component.includes('training_consent === false'), 'browser verifies no training consent');
-  assert(component.includes("body.memory_scope === 'public_safe_retrieval'"), 'browser verifies public-safe memory');
-  assert(component.includes("effect_authority === 'NONE'"), 'browser verifies no effect authority');
-  assert(component.includes("body.tool_authority === 'READ_ONLY_CONTEXT'"), 'browser verifies read-only context authority');
-  assert(component.includes('identityReceipt(body.identity)'), 'browser verifies governed identity receipts');
-  assert(component.includes('contextReceipt(body.context)'), 'browser verifies context and memory receipts');
-  assert(component.includes('response_digest'), 'browser retains response evidence');
-  assert(component.includes('serving_profile_digest'), 'browser retains serving-profile evidence');
-  assert(component.includes('Retry same turn'), 'bounded retry reuses one turn identity');
-  assert(component.includes('CHAT_BROWSER_DEADLINE_MS = 85_000'), 'browser allows a full governed model turn');
+  for (const retired of [
+    'components/apocrypha/PublicChat.tsx',
+    'components/apocrypha/WorkspacePanel.tsx',
+    'styles/PublicApocrypha.module.css',
+  ]) {
+    let present = true;
+    try { readFileSync(resolve(process.cwd(), retired)); } catch { present = false; }
+    assert(!present, `retired surface must stay retired: ${retired}`);
+  }
   assert(runtimeProxy.includes('CHAT_DEADLINE_MS = 80_000'), 'BFF allows a full governed model turn');
   equal(vercel.functions?.['pages/api/apocrypha/chat.ts']?.maxDuration, undefined, 'retired public chat no longer reserves a production function duration');
-  assert(component.includes('No message is sent until the session is verified.'), 'signed-out boundary is explicit');
-  assert(
-    component.includes('<Link href="/clearing" className={styles.railAction}>')
-      && component.includes('<small>Clearing</small>'),
-    'the preserved conversation component still routes Clearing as a distinct surface',
-  );
-  assert(css.includes('@media (max-width: 680px)'), 'narrow mobile layout exists');
-  assert(css.includes('prefers-reduced-motion'), 'reduced-motion path exists');
-  assert(css.includes('forced-colors'), 'forced-colors path exists');
+
+  // The one interface that IS reachable keeps the mobile and motion contracts the retired
+  // stylesheet used to be checked for.
+  const roomCss = readFileSync(resolve(process.cwd(), 'styles/ApocryphaChat.module.css'), 'utf8');
+  assert(roomCss.includes('@media (max-width: 767px)'), 'narrow mobile layout exists');
+  assert(roomCss.includes('prefers-reduced-motion'), 'reduced-motion path exists');
 
   console.log('public-apocrypha-chat.test : OK');
 }

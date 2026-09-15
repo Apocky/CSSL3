@@ -20,6 +20,11 @@ interface DocsLayoutProps {
 const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProps) => {
   const sections = getDocSections();
   const canonicalPath = activeSlug === '' ? '/docs' : `/docs/${activeSlug}`;
+  // An archived page said so only in the sidebar, as a small grey word beside its nav link — which
+  // the reader who arrived from a search result never looks at, and which the phone layout folds
+  // away entirely. So the page itself now says it. Driven by the same status field as the sidebar
+  // badge, so the two cannot disagree.
+  const archived = DOC_PAGES.find((page) => page.slug === activeSlug)?.status === 'archived';
   const navigation = <>
 
           <a href="/" className="docs-back">
@@ -176,13 +181,33 @@ const DocsLayout = ({ activeSlug, title, description, children }: DocsLayoutProp
           .docs-spec-title { margin-top: 0.15rem; color: var(--apx-copy, #d8dcf4); font-size: 0.9rem; line-height: 1.4; }
           .docs-mobile-navigation { display:none; }
           @media(max-width:900px) { .docs-sidebar { display:none; } .docs-mobile-navigation { display:block; border-bottom:1px solid var(--apx-line); padding-bottom:12px; } .docs-mobile-navigation summary { min-height:44px; display:flex; align-items:center; cursor:pointer; color:var(--apx-violet); } .docs-mobile-navigation summary::after{content:" +";margin-left:auto} .docs-mobile-navigation[open] summary::after{content:" −"} .docs-mobile-navigation nav{padding:12px} }
+          .docs-archived {
+            margin: 0 0 1.5rem;
+            padding: 0.85rem 1rem;
+            border: 1px solid rgba(251, 191, 36, 0.35);
+            border-left-width: 3px;
+            border-radius: 10px;
+            background: rgba(251, 191, 36, 0.07);
+            color: var(--apx-copy, #d8dcf4);
+            font-size: 0.88rem;
+            line-height: 1.55;
+          }
+          .docs-archived strong { color: #fbbf24; }
+          .docs-archived a { color: var(--apx-sky, #b1dfeb); text-decoration: underline; }
           .docs-footer { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17)); color: var(--apx-dim, #7580aa); font-size: 0.8rem; }
         `}</style>
       </Head>
       <main className="docs-shell">
         <details className="docs-mobile-navigation"><summary>Browse guides</summary><nav aria-label="Choose a guide">{navigation}</nav></details>
         <aside className="docs-sidebar" aria-label="Docs navigation">{navigation}</aside>
-        <article className="docs-main">{children}</article>
+        <article className="docs-main">
+          {archived ? <aside className="docs-archived" role="note">
+            <strong>Archived.</strong> This page documents the Labyrinth of Apocalypse test build,
+            which is no longer the current product. It is kept for the record and is not maintained.
+            {' '}<a href="/docs/apocrypha">Talking to Apocrypha</a> is the current guide.
+          </aside> : null}
+          {children}
+        </article>
       </main>
     </>
   );
