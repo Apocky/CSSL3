@@ -71,13 +71,18 @@ function extractContent(payload: unknown): string {
   const item = choice as Record<string, unknown>;
   const delta = item.delta && typeof item.delta === 'object' ? item.delta as Record<string, unknown> : {};
   const message = item.message && typeof item.message === 'object' ? item.message as Record<string, unknown> : {};
+  
+  if (typeof delta.content === 'string' && delta.content.length > 0) return delta.content;
+  if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) return delta.reasoning_content;
+  if (typeof message.content === 'string' && message.content.length > 0) return message.content;
+  if (typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0) return message.reasoning_content;
+  if (typeof item.text === 'string' && item.text.length > 0) return item.text;
+
   return typeof delta.content === 'string'
     ? delta.content
     : typeof message.content === 'string'
       ? message.content
-      : typeof item.text === 'string'
-        ? item.text
-        : '';
+      : '';
 }
 
 export function isQwenContextOverflow(status: number, detail: string): boolean {

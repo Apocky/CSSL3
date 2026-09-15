@@ -446,6 +446,42 @@ function aggregateProbeResults(
   });
 }
 
+export function isMemoryNeeded(job: ClaimedJob): boolean {
+  const request = job.request;
+  if (!request) return false;
+  if (request.memory_requested === true || request.needs_memory === true) return true;
+
+  const query = (typeof request.retrieval_query === 'string' ? request.retrieval_query : '').trim();
+  const text = [
+    query,
+    request.prompt,
+    request.question,
+    request.oracle_prompt,
+    request.content,
+    Array.isArray(request.messages) ? request.messages.map((m: any) => m?.content ?? '').join(' ') : '',
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  // Only invoke memory for explicit reasoning tasks and recall tasks
+  const memoryPatterns = [
+    /\brecall\b/i,
+    /\bremember\b/i,
+    /\bmemory\b/i,
+    /\bmempalace\b/i,
+    /\banamnesis\b/i,
+    /\bbrainmonsoon\b/i,
+    /\bgraphify\b/i,
+    /\bmetaharness\b/i,
+    /\bfrom\s+(?:the\s+)?vault\b/i,
+    /\bsearch\s+(?:memory|notes|records|history)\b/i,
+    /\bwhat\s+did\s+(?:we|i)\s+(?:say|discuss|do|write|decide)\b/i,
+    /\bprior\s+conversation\b/i,
+    /\bprevious\s+(?:conversation|reading|turn)\b/i,
+    /\bwho\s+am\s+i\b/i,
+  ];
+
+  return memoryPatterns.some((pattern) => pattern.test(text));
+}
+
 export async function retrieveMemory(
   config: WorkerConfig,
   job: ClaimedJob,
@@ -453,6 +489,22 @@ export async function retrieveMemory(
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle> {
   const query = queryFromJob(job);
+  // Cut out heavy memory tools initially; only invoke when demanded by reasoning/recall tasks
+  if (!isMemoryNeeded(job)) {
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => ({
+      name: adapter.name,
+      state: 'ok',
+      durationMs: 0,
+      records: [],
+    }));
+    return {
+      query,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt: null,
+    };
+  }
   const settled = await invokeAdaptersBounded(config,
     (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl));
   const results = settled.map((result, index): RetrievalAdapterResult => {
