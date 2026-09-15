@@ -2,12 +2,12 @@
   "schema_version": "apocky.native-mobile-release.v1",
   "access": "account",
   "channel": "preview",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "android": {
     "state": "ready",
     "artifact": {
-      "href": "/downloads/Apocrypha-Android-0.2.0.apk",
-      "sha256": "9d7c83b89abe112169b0ed3280a04652f58be2dd4ca0fe656761bdebbe77a77f",
+      "href": "/downloads/Apocrypha-Android-0.2.1.apk",
+      "sha256": "0106e7c8f2d24cc79c4403683e7f26ec86d14595b8ad38ab1eb63279d476be2f",
       "bytes": 21239,
       "signing_certificate_sha256": "d9c801b539b1892f48500dbf251093a647c02822eebd62b8a930ba69a51abc85"
     },
@@ -15,7 +15,8 @@
       "package_signature": "verified",
       "emulator_launch": "pending",
       "account_sign_in_and_chat": "pending",
-      "physical_device": "pending"
+      "physical_device": "pending",
+      "app_links_assetlinks": "verified"
     }
   },
   "ios": {
