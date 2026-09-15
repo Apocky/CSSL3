@@ -20,6 +20,7 @@ import {
   type ChatPrefs,
 } from '@/lib/apocrypha/chat-prefs';
 import type { ChatLane, ChatToolCall, ConversationSummary, LaneMessage } from '@/lib/apocrypha/chat-lanes';
+import ToolStrip from './ToolStrip';
 import styles from '@/styles/ApocryphaChat.module.css';
 
 // Polling cadence. None of the three job paths has a streaming transport, so the reader sees the
@@ -906,6 +907,23 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             }}>Stop waiting</button> : null}
           </div>
         </div> : null}
+
+        {/* Above the composer, not inside the empty state: these are capabilities, and a capability
+            that vanishes the moment you start talking was never really offered. Each writes a
+            prompt and hands you the cursor -- nothing is sent for you. */}
+        <ToolStrip
+          disabled={streaming}
+          canAgent={can.trace}
+          onInsert={(prompt) => {
+            setDraft((current) => (current.trim() ? `${current.trimEnd()} ${prompt}` : prompt).slice(0, MAX_TEXT));
+            const box = composerRef.current;
+            if (!box) return;
+            requestAnimationFrame(() => {
+              box.focus();
+              box.setSelectionRange(box.value.length, box.value.length);
+            });
+          }}
+        />
 
         <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void send(draft); }}>
           <label htmlFor="apocrypha-composer" className={styles.srOnly}>Message Apocrypha</label>

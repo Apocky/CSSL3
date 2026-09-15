@@ -482,3 +482,55 @@
   white-space: nowrap;
 }
 .returnLinks a:hover { background: #111524; color: #e8e9f3; }
+
+/* Capability strip above the composer. Scrolls sideways on a phone rather than wrapping into a
+   wall of buttons that pushes the text box off screen -- the composer must stay reachable. */
+.tools {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 0 0 8px;
+  margin: 0 0 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.tool, .toolAgent {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17));
+  border-radius: 999px;
+  background: rgba(10, 13, 28, 0.72);
+  color: var(--apx-copy, #d8dcf4);
+  font: 500 0.82rem/1 var(--apx-sans, system-ui, sans-serif);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+.tool:hover:not(:disabled), .toolAgent:hover {
+  border-color: var(--apx-neon, #78e7ff);
+  background: rgba(18, 26, 52, 0.95);
+  color: var(--apx-ink, #f5f3ff);
+}
+.tool:focus-visible, .toolAgent:focus-visible {
+  outline: 2px solid var(--apx-neon, #78e7ff);
+  outline-offset: 2px;
+}
+.tool:disabled { opacity: 0.4; cursor: default; }
+/* The agent writes to disk. It reads as a door to somewhere else, because it is one. */
+.toolAgent {
+  border-color: rgba(185, 152, 255, 0.5);
+  color: var(--apx-violet, #b998ff);
+  font-weight: 650;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool, .toolAgent { transition: none; }
+}
+/* A finger is not a mouse: on touch the pills take the same 44px floor every other control here
+   holds. Kept off the pointer-fine case so a desktop strip stays compact. */
+@media (pointer: coarse), (max-width: 700px) {
+  .tool, .toolAgent { min-height: 44px; padding: 10px 15px; }
+}

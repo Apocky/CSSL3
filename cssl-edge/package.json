@@ -2,7 +2,7 @@
   "name": "cssl-edge",
   "version": "0.1.0",
   "private": true,
-  "description": "LoA-v13 Edge — public MCP gateway for CSSL/LoA scenes (Vercel-deployable Next.js)",
+  "description": "LoA-v13 Edge \u2014 public MCP gateway for CSSL/LoA scenes (Vercel-deployable Next.js)",
   "scripts": {
     "prebuild": "node scripts/snapshot-specs.js && npm run snapshot:apocrypha-release && npm run snapshot:public-surface && npm run check:conversation-public-aggregate",
     "predev": "node scripts/snapshot-specs.js && npm run snapshot:apocrypha-release && npm run snapshot:public-surface && npm run check:conversation-public-aggregate",
@@ -73,7 +73,7 @@
     "test:admin-chat-page": "node --import tsx tests/pages/admin-chat.test.ts",
     "test:admin-chat-ui": "node --import tsx tests/pages/admin-chat-ui.test.ts",
     "test:chat-presence": "node --import tsx tests/pages/chat-presence.test.ts",
-    "test:chat-room": "node --import tsx tests/lib/chat-prefs.test.ts && node --import tsx tests/pages/admin-chat-ui.test.ts && node --import tsx tests/pages/account-chat.test.ts && node --import tsx tests/pages/apocrypha-owner-browser-session.test.ts && node --import tsx tests/pages/chat-presence.test.ts && node --import tsx tests/pages/admin-chat.test.ts",
+    "test:chat-room": "node --import tsx tests/lib/chat-prefs.test.ts && node --import tsx tests/pages/admin-chat-ui.test.ts && node --import tsx tests/pages/account-chat.test.ts && node --import tsx tests/pages/apocrypha-owner-browser-session.test.ts && node --import tsx tests/pages/chat-presence.test.ts && node --import tsx tests/pages/admin-chat.test.ts && node --import tsx tests/pages/chat-tools.test.ts",
     "test:apocrypha-deadline": "node --import tsx tests/lib/apocrypha-deadline.test.ts",
     "test:apocrypha-jobs": "node --import tsx tests/apocrypha-jobs.test.ts && node --import tsx tests/api/apocrypha-owner-history-migration.test.ts && node --import tsx tests/api/apocrypha-owner-history.test.ts && node --import tsx tests/pages/apocrypha-owner-history.test.ts",
     "test:apocrypha-ma": "node --import tsx tests/pages/apocrypha-ma.test.ts",
