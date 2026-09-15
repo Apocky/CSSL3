@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { withDeadline } from '@/lib/apocrypha/deadline';
-import { readMemberChatPending, type MemberChatPendingSubmission, type MemberChatStorage } from '@/lib/apocrypha/member-chat-client';
+import type { MemberChatStorage } from '@/lib/apocrypha/member-chat-client';
 
 class MemoryStorage implements MemberChatStorage {
   private readonly values = new Map<string, string>();
@@ -90,49 +90,61 @@ export async function main(root: string): Promise<void> {
     const rendered = typeof node.type === 'function' ? (node.type as (props: Record<string, unknown>) => Tree)(node.props) : null;
     return [node, ...children(rendered), ...children(node.props.children)];
   }
+  // One chat interface, so the surface is no longer "which component rendered" but "which LANE the
+  // page handed it". That is the security-relevant fact: entitlement now travels as a transport,
+  // and an unresolved session must never be handed the owner one.
   function surface(tree: Tree): string {
-    const nodes = children(tree);
-    if (nodes.some(node => node.type === 'OwnerConversation')) return 'owner';
-    if (nodes.some(node => node.type === 'AccountConversation')) return 'account';
-    if (nodes.some(node => node.type === 'main' && node.props.className === 'page' && children(node).some(child => child.props.role === 'alert'))) return 'session-error';
-    if (nodes.some(node => node.type === 'main' && node.props.role === 'status')) return 'checking';
-    throw new Error('Page has no expected conversation surface.');
+    const node = children(tree).find(item => item.type === 'Conversation');
+    if (node) return String((node.props.lane as { id?: string } | undefined)?.id ?? 'unknown');
+    if (children(tree).some(item => item.type === 'main' && item.props.className === 'page'
+      && children(item).some(child => child.props.role === 'alert'))) return 'session-error';
+    throw new Error('Page has no conversation surface at all.');
   }
-  function accountView(tree: Tree): Tree { const node = children(tree).find(node => node.type === 'AccountConversation'); assert.ok(node); return node; }
-  function handoff(tree: Tree): Tree { const node = children(tree).find(node => node.type === 'button' && node.props.children === 'Open your main conversation'); assert.ok(node); return node; }
-  function harness(
-    initialSession: Session,
-    load: (subject: string, storage: MemberChatStorage) => unknown | PromiseLike<unknown>,
-    ssr = false,
-    storage: MemberChatStorage = new MemoryStorage(),
-  ) {
-    let currentSession = initialSession;
-    const cells: unknown[] = []; let cursor = 0; let effectCursor = 0;
-    const effects: Array<{ dependencies: readonly unknown[]; cleanup?: () => void }> = [];
-    let scheduled: Array<() => void> = [];
+  function harness(initialSession: Session, ssr = false) {
     const pageExports: Record<string, any> = {};
-    runInNewContext(pageSource, { exports: pageExports, window: { localStorage: storage }, setTimeout: (callback: () => void, delay: number) => setTimeout(callback, Math.min(delay, 10)), clearTimeout, require(name: string) {
-      if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
-      if (name === 'react') return {
-        useState(initial: unknown) { const slot = cursor++; if (!(slot in cells)) cells[slot] = initial; return [cells[slot], (next: unknown) => { cells[slot] = typeof next === 'function' ? next(cells[slot]) : next; }]; },
-        useRef(initial: unknown) { const slot = cursor++; if (!(slot in cells)) cells[slot] = { current: initial }; return cells[slot]; },
-        useEffect(effect: () => void | (() => void), dependencies: readonly unknown[]) {
-          const slot = effectCursor++; const previous = effects[slot];
-          if (previous && dependencies.length === previous.dependencies.length && dependencies.every((value, index) => Object.is(value, previous.dependencies[index]))) return;
-          scheduled.push(() => { previous?.cleanup?.(); const cleanup = effect(); effects[slot] = { dependencies, ...(typeof cleanup === 'function' ? { cleanup } : {}) }; });
-        },
-      };
-      if (name === '@/components/hub/SiteSession') return { useSiteSession: () => currentSession };
-      if (name === '@/lib/apocrypha/member-chat-client') return { readMemberChatPending: load };
-      if (name === '@/lib/apocrypha/deadline') return { withDeadline: (operation: PromiseLike<unknown>, deadlineMs: number) => withDeadline(operation, Math.min(deadlineMs, 10)) };
-      if (name === '@/components/brain/BrainExperience') return { default: 'OwnerConversation' };
-      if (name === '@/components/apocrypha/ChatThread') return { ChatThread: 'OwnerConversation' };
-      if (name === '@/components/apocrypha/AccountChat') return { default: 'AccountConversation' };
-      if (name === 'next/link') return { default: 'Link' };
-      if (name === '@/styles/AccountChat.module.css') return { default: { page: 'page', header: 'header', brand: 'brand', roomTitle: 'roomTitle', welcome: 'welcome', eyebrow: 'eyebrow', welcomeActions: 'welcomeActions', primary: 'primary', secondary: 'secondary', phoneLink: 'phoneLink' } };
-      return {};
-    } });
-    function render(): Tree { cursor = 0; effectCursor = 0; scheduled = []; const tree = pageExports.default({ ownerConversation: ssr }) as Tree; for (const effect of scheduled) effect(); return tree; }
+    const cells: unknown[] = [];
+    const memos: Array<{ dependencies: readonly unknown[]; value: unknown } | undefined> = [];
+    const effects: Array<{ dependencies: readonly unknown[]; cleanup?: () => void } | undefined> = [];
+    let cursor = 0;
+    let memoCursor = 0;
+    let effectCursor = 0;
+    let scheduled: Array<() => void> = [];
+    let currentSession = initialSession;
+    const same = (left: readonly unknown[] | undefined, right: readonly unknown[]): boolean =>
+      Boolean(left && left.length === right.length && right.every((value, index) => Object.is(value, left[index])));
+    runInNewContext(pageSource, { exports: pageExports, window: { localStorage: new MemoryStorage() },
+      setTimeout: (callback: () => void, delay: number) => setTimeout(callback, Math.min(delay, 10)), clearTimeout,
+      require(name: string) {
+        if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
+        if (name === 'react') return {
+          useState(initial: unknown) { const slot = cursor++; if (!(slot in cells)) cells[slot] = initial; return [cells[slot], (next: unknown) => { cells[slot] = typeof next === 'function' ? (next as (p: unknown) => unknown)(cells[slot]) : next; }]; },
+          useRef(initial: unknown) { const slot = cursor++; if (!(slot in cells)) cells[slot] = { current: initial }; return cells[slot]; },
+          useMemo(factory: () => unknown, dependencies: readonly unknown[]) {
+            const slot = memoCursor++;
+            const previous = memos[slot];
+            if (!previous || !same(previous.dependencies, dependencies)) memos[slot] = { dependencies, value: factory() };
+            return memos[slot]!.value;
+          },
+          useEffect(effect: () => void | (() => void), dependencies: readonly unknown[]) {
+            const slot = effectCursor++; const previous = effects[slot];
+            if (previous && same(previous.dependencies, dependencies)) return;
+            scheduled.push(() => { previous?.cleanup?.(); const cleanup = effect(); effects[slot] = { dependencies, ...(typeof cleanup === 'function' ? { cleanup } : {}) }; });
+          },
+        };
+        if (name === '@/components/hub/SiteSession') return { useSiteSession: () => currentSession };
+        // Marker lanes: the point of the assertions below is WHICH one the page chose.
+        if (name === '@/lib/apocrypha/chat-lanes') return {
+          ownerLane: () => ({ id: 'owner' }),
+          memberLane: () => ({ id: 'member' }),
+          guestLane: () => ({ id: 'guest' }),
+        };
+        if (name === '@/lib/browser-auth') return { authFetch: async () => ({ ok: true }) };
+        if (name === '@/components/apocrypha/ApocryphaChat') return { __esModule: true, default: 'Conversation' };
+        if (name === 'next/link') return { __esModule: true, default: 'Link' };
+        if (name === '@/styles/AccountChat.module.css') return { __esModule: true, default: new Proxy({}, { get: (_t, key) => String(key) }) };
+        return {};
+      } });
+    function render(): Tree { cursor = 0; memoCursor = 0; effectCursor = 0; scheduled = []; const tree = pageExports.default({ ownerConversation: ssr }) as Tree; for (const effect of scheduled) effect(); return tree; }
     return {
       render,
       setSession(next: Session) { currentSession = next; },
@@ -140,78 +152,40 @@ export async function main(root: string): Promise<void> {
     };
   }
 
-  const clear = harness(ownerSession, async () => null);
-  equal(surface(clear.render()), 'checking', 'owner waits for the saved-journal decision');
-  equal(surface(await clear.flush()), 'owner', 'verified owner with clear journal reaches the owner conversation');
+  const ownerRoom = harness(ownerSession);
+  equal(surface(await ownerRoom.flush()), 'owner', 'a verified owner is handed the owner transport');
 
-  const pendingRecord = { session_id: 'f1000000-0000-4000-8000-000000000001', request_id: 'f1000000-0000-4000-8000-000000000099', text: 'A saved fixture message.' };
-  let saved: unknown = pendingRecord;
-  const pending = harness(ownerSession, async () => saved);
-  pending.render(); let tree = await pending.flush();
-  equal(surface(tree), 'account', 'existing saved account message retains the account controller');
-  equal(handoff(tree).props.disabled, true, 'pending reply disables owner handoff');
+  const memberRoom = harness({ access: 'member', ownerConversation: false, authenticated: true, subjectKey: 'f1000000-0000-4000-8000-000000000102' });
+  equal(surface(await memberRoom.flush()), 'member', 'a verified member is handed the account-scoped transport');
 
-  const ownerReloadStorage = new MemoryStorage();
-  const ownerReloadPending: MemberChatPendingSubmission = {
-    conversation_id: 'f1000000-0000-4000-8000-000000000001',
-    request_id: 'f1000000-0000-4000-8000-000000000099',
-    message: 'A saved fixture message.',
-    created_at: '2026-09-08T12:00:00.000Z',
-  };
-  ownerReloadStorage.setItem(
-    `apocky.member-chat.pending.v1.${encodeURIComponent(ownerSession.subjectKey!)}`,
-    JSON.stringify(ownerReloadPending),
-  );
-  const ownerReload = harness(ownerSession, readMemberChatPending, false, ownerReloadStorage);
-  ownerReload.render();
-  equal(surface(await ownerReload.flush()), 'account', 'reloaded durable member submission keeps the owner on the account recovery surface');
+  const guestRoom = harness({ access: 'signed-out', ownerConversation: false, authenticated: false, subjectKey: null });
+  equal(surface(await guestRoom.flush()), 'guest', 'a signed-out visitor still reaches the room, on the open transport');
 
-  saved = null; accountView(tree).props.onPendingChange(false); tree = pending.render();
-  equal(surface(tree), 'account', 'resolution alone never swaps the active controller');
-  equal(handoff(tree).props.disabled, false, 'resolution makes an explicit owner handoff available');
-  handoff(tree).props.onClick(); tree = await pending.flush();
-  equal(surface(tree), 'owner', 'explicit handoff checks journal again before opening owner conversation');
+  // The security assertion this file exists for. `ssr = true` is a request that WAS server-bound to
+  // the owner; if the live session has not confirmed it, the owner transport must not be handed out.
+  const unresolved = harness({ access: 'checking', ownerConversation: false, authenticated: false, subjectKey: null }, true);
+  const unresolvedSurface = surface(unresolved.render());
+  equal(unresolvedSurface === 'owner', false, 'stale request-time admission must not hand over the owner transport while the session is unresolved');
+  equal(unresolvedSurface, 'guest', 'an unresolved session falls back to the least-privileged transport');
 
-  const unavailable = harness(ownerSession, async () => { throw new Error('Fixture journal unavailable'); });
-  unavailable.render(); tree = await unavailable.flush();
-  equal(surface(tree), 'account', 'unavailable journal preserves account recovery surface');
-  equal(handoff(tree).props.disabled, true, 'unverified journal cannot authorize owner handoff');
-
-  const hangingJournal = harness(ownerSession, async () => new Promise<never>(() => undefined));
-  equal(surface(hangingJournal.render()), 'checking', 'owner journal starts in a bounded checking state');
+  const unavailable = harness({ access: 'checking', ownerConversation: false, authenticated: false, subjectKey: null }, true);
+  unavailable.render();
   await new Promise(resolve => setTimeout(resolve, 20));
-  tree = hangingJournal.render();
-  equal(surface(tree), 'account', 'hung owner journal terminates on the account recovery surface');
-  equal(handoff(tree).props.disabled, true, 'timed-out journal cannot authorize owner handoff');
-
-  saved = pendingRecord; const reappeared = harness(ownerSession, async () => saved);
-  reappeared.render(); tree = await reappeared.flush();
-  accountView(tree).props.onPendingChange(false); tree = reappeared.render();
-  handoff(tree).props.onClick(); tree = await reappeared.flush();
-  equal(surface(tree), 'account', 'fresh journal read refuses handoff while a pending message still exists');
-  equal(handoff(tree).props.disabled, true, 'refused fresh read restores pending handoff guard');
-
-  const operator = harness({ ...ownerSession, ownerConversation: false }, async () => null);
-  operator.render(); equal(surface(await operator.flush()), 'account', 'operator cannot select the owner surface');
-  const signedOut = harness({ access: 'signed-out', ownerConversation: false, authenticated: false, subjectKey: null }, async () => null, true);
-  equal(surface(signedOut.render()), 'account', 'stale SSR admission does not outlive sign out');
-  const checking = harness({ access: 'checking', ownerConversation: false, authenticated: false, subjectKey: null }, async () => null, true);
-  equal(surface(checking.render()), 'account', 'checking identity remains inside the public account controller instead of rendering private contents');
-  await new Promise(resolve => setTimeout(resolve, 20));
-  tree = checking.render();
-  equal(surface(tree), 'session-error', 'never-resolving Supabase auth/session state reaches a visible terminal error before the browser watchdog');
+  const tree = unavailable.render();
+  equal(surface(tree), 'session-error', 'never-resolving auth state reaches a visible terminal error before the browser watchdog');
   const recoveryLinks = children(tree).filter(node => node.type === 'Link').map(node => node.props.href);
   equal(recoveryLinks.includes('/login?next=%2Fapocrypha'), true, 'terminal account error exposes the sign-in recovery path');
 
-  let resolveOld: (value: unknown) => void = () => undefined;
-  const oldRead = new Promise<unknown>(resolve => { resolveOld = resolve; });
-  const switched = harness(ownerSession, async subject => subject === ownerSession.subjectKey ? oldRead : null);
-  switched.render(); await switched.flush();
-  switched.setSession({ ...ownerSession, subjectKey: 'f1000000-0000-4000-8000-000000000102' });
-  switched.render(); tree = await switched.flush();
-  equal(surface(tree), 'owner', 'new account uses its own completed journal check');
-  resolveOld(pendingRecord); tree = await switched.flush();
-  equal(surface(tree), 'owner', 'late former-account pending result cannot overwrite the new account decision');
+  // Switching identity must re-derive the transport, not keep the previous one alive.
+  const switched = harness(ownerSession);
+  await switched.flush();
+  switched.setSession({ access: 'member', ownerConversation: false, authenticated: true, subjectKey: 'f1000000-0000-4000-8000-000000000103' });
+  equal(surface(await switched.flush()), 'member', 'losing owner admission immediately drops the owner transport');
 
-  console.log('apocrypha-owner-browser-session: ' + checks + ' session and async controller assertions passed; browser acceptance separate');
+  console.log('apocrypha-owner-browser-session: ' + checks + ' session and transport-entitlement assertions passed; browser acceptance separate');
 }
+
+void main(process.cwd()).catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

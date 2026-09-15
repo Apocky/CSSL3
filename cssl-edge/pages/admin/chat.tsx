@@ -1,22 +1,25 @@
-// /admin/chat · primary Apocrypha chat surface.
+// /admin/chat · the owner's way into the room.
 //
-// Replaces the legacy Lazarus-Workbench at this route (deleted per D043 absorption).
-// Uses the same ChatThread component as /admin/apocrypha/chat for a single source-of-truth.
+// Same component as /apocrypha — there is one chat interface. What this route adds is the admin
+// shell around it and the owner lane, which carries the tool trace and the ability to stop a run.
 
 import type { NextPage } from 'next';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import AdminLayout from '../../components/AdminLayout';
-import { ChatThread } from '../../components/apocrypha/ChatThread';
+import ApocryphaChat from '../../components/apocrypha/ApocryphaChat';
+import { ownerLane } from '../../lib/apocrypha/chat-lanes';
+import { authFetch } from '../../lib/browser-auth';
 
 const ChatPage: NextPage = () => {
   const [adminAuthorized, setAdminAuthorized] = useState(false);
+  const lane = useMemo(() => ownerLane(authFetch), []);
 
   return (
     <AdminLayout title="Chat" onAdminCheck={(c) => setAdminAuthorized(c.authorized)}>
       {adminAuthorized ? (
         <div style={{ height: 'calc(100dvh - 120px)', minHeight: 480 }}>
-          <ChatThread />
+          <ApocryphaChat lane={lane} signedIn height="100%" />
         </div>
       ) : (
         <div style={{ padding: '2rem', color: '#a0a0b0' }}>

@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const source = readFileSync(resolve(process.cwd(), 'components/apocrypha/ChatThread.tsx'), 'utf8');
+// There is one chat interface. Each contract below is asserted where it now lives: behaviour in
+// the room component, layout in its stylesheet, transport in the lane module.
+const source = readFileSync(resolve(process.cwd(), 'components/apocrypha/ApocryphaChat.tsx'), 'utf8');
+const style = readFileSync(resolve(process.cwd(), 'styles/ApocryphaChat.module.css'), 'utf8');
+const lanes = readFileSync(resolve(process.cwd(), 'lib/apocrypha/chat-lanes.ts'), 'utf8');
 const cognition = readFileSync(resolve(process.cwd(), 'components/apocrypha/CognitionView.tsx'), 'utf8');
 const alias = readFileSync(resolve(process.cwd(), 'pages/chat.tsx'), 'utf8');
 const ownerPage = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
@@ -11,23 +15,25 @@ function assert(condition: boolean, message: string): void {
 }
 
 export function testSupportedConversationSurface(): void {
-  assert(source.includes("/api/admin/apocrypha/conversations?scope=active"), 'durable active history remains visible');
+  assert(lanes.includes("/api/admin/apocrypha/conversations?scope=active"), 'durable active history remains visible');
   assert(source.includes('onClick={() => void loadConv(c.id)}'), 'saved conversations remain selectable');
   for (const token of ['onContextMenu', 'aria-haspopup="menu"', 'mutateConversation', "method: 'PATCH'", "'archived'", "'trash'"]) {
-    assert(!source.includes(token), `unsupported conversation control must stay hidden: ${token}`);
+    assert(!source.includes(token) && !lanes.includes(token), `unsupported conversation control must stay hidden: ${token}`);
   }
 }
 
 export function testResponsiveSidebarContract(): void {
   for (const token of [
     'COMPACT_CHAT_QUERY',
-    'chat-sidebar-backdrop',
+    'styles.sidebarBackdrop',
     'aria-expanded={sidebarOpen}',
     'aria-modal={compactViewport || undefined}',
     'handleSidebarKeyDown',
-    'max-width: calc(100vw - 44px)',
   ]) {
     assert(source.includes(token), `responsive sidebar contract missing: ${token}`);
+  }
+  for (const token of ['.sidebarBackdrop', '@media (max-width: 767px)', 'max-width: calc(100vw - 44px)']) {
+    assert(style.includes(token), `responsive sidebar layout missing: ${token}`);
   }
 }
 
@@ -64,15 +70,21 @@ export function testSingleLiveChatPath(): void {
   ]) {
     assert(alias.includes(token), `chat alias redirect contract missing: ${token}`);
   }
-  assert(!alias.includes('ChatThread'), 'the alias must not create a second chat surface');
-  assert(ownerPage.includes("height: '100dvh'"), 'the canonical owner chat uses the dynamic viewport');
-  assert(ownerPage.includes('<ChatThread />'), 'the canonical owner chat uses the durable UI');
+  assert(!alias.includes('ApocryphaChat'), 'the alias must not create a second chat surface');
+  assert(style.includes('height: 100dvh'), 'the room uses the dynamic viewport');
+  // The point of the whole unification: the page renders ONE chat component, for everyone.
+  assert(ownerPage.includes('<ApocryphaChat'), 'the page uses the one chat component');
+  for (const retired of ['ChatThread', 'AccountChat', 'GuestChat']) {
+    assert(!ownerPage.includes(`<${retired}`), `a second chat surface came back: ${retired}`);
+  }
+  assert((ownerPage.match(/<ApocryphaChat/gu) ?? []).length === 1, 'the page renders the room exactly once');
 }
 
 export function testSettingsSurfaceIsGatedAndPresentationOnly(): void {
   assert(source.includes('aria-controls="apocrypha-settings"'), 'settings control must expose a target');
   assert(source.includes('id="apocrypha-settings"'), 'settings panel must have stable id');
-  assert(source.includes('show tool and run trace'), 'trace visibility toggle missing');
+  assert(source.includes('Show tool and run trace'), 'trace visibility toggle missing');
+  assert(source.includes('can.trace ?'), 'the trace toggle is offered only where the lane grants it');
   assert(source.includes('model, authority, and security policy remain server-controlled'), 'settings boundary must be explicit');
 }
 

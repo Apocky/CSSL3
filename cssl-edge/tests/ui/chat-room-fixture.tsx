@@ -1,7 +1,8 @@
 // § Actual chat components + actual CSS ; only boundary substitutions @ preview server
 import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
-import AccountChat from '../../components/apocrypha/AccountChat';
+import ApocryphaChat from '../../components/apocrypha/ApocryphaChat';
+import { memberLane } from '../../lib/apocrypha/chat-lanes';
 import BrainExperience from '../../components/brain/BrainExperience';
 import { FeedbackProvider } from '../../components/ui/Feedback';
 import '../../styles/apocky-system.css';
@@ -31,7 +32,7 @@ async function start(): Promise<void> {
   const element = document.getElementById('root'); if (!element) throw new Error('Fixture root missing.');
   createRoot(element).render(<FeedbackProvider>
     <FixtureControls />
-    {mode === 'owner' ? <BrainExperience serverAccess="owner" /> : <AccountChat />}
+    {mode === 'owner' ? <BrainExperience serverAccess="owner" /> : <ApocryphaChat lane={memberLane(fetch)} signedIn />}
   </FeedbackProvider>);
 }
 void start().catch(error => { const element = document.getElementById('root'); if (element) element.textContent = 'Fixture failed: ' + String(error); });

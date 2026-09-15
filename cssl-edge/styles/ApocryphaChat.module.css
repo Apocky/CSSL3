@@ -1,0 +1,376 @@
+/* The Apocrypha room — one stylesheet, because there is one room.
+   The palette and rhythm are the open room's: signing in changes what you GET, not what it feels
+   like. The sidebar and settings simply appear when the lane has them. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 480px;
+  background: #05060b;
+  color: #e8e9f3;
+  font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* The app shell draws under the status bar, so the header adds the inset back or the title sits
+     behind the clock. In a plain WebView env() resolves to 0, which is why the Android shell
+     applies the real inset natively as well. */
+  padding: calc(14px + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 32px) 14px;
+  border-bottom: 1px solid #a9b5ff26;
+  flex: 0 0 auto;
+}
+
+.brand { display: inline-flex; flex: 0 0 auto; }
+
+.title { flex: 1 1 auto; min-width: 0; }
+.title h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.title p { margin: 0; font-size: 12.5px; color: #a9b5ffb0; }
+
+.nav { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+.nav a {
+  color: #d2e6fa;
+  text-decoration: none;
+  font-size: 13.5px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.nav a:hover { border-color: #a9b5ff40; }
+.signIn { border-color: #a9b5ff50 !important; background: #111524; }
+
+/* 44px minimum: a control you cannot reliably hit with a thumb is not a control. */
+.iconButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid #a9b5ff50;
+  background: #111524;
+  color: #d2e6fa;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.iconButton:hover { border-color: #a9b5ff80; }
+
+.body { flex: 1 1 auto; display: flex; min-height: 0; position: relative; }
+
+/* ── conversations ─────────────────────────────────────────────────────────── */
+
+.sidebar {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  width: 280px;
+  min-width: 280px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 12px;
+  border-right: 1px solid #a9b5ff26;
+  background: #080a12;
+  overflow-y: auto;
+}
+
+.sidebarBackdrop { display: none; }
+
+.newChat {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #a9b5ff40;
+  background: #111524;
+  color: #e8e9f3;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.newChat:hover { border-color: #a9b5ff80; }
+
+.convList { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.conv, .convCurrent {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #c9cbe0;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conv:hover { background: #111524; }
+.convCurrent { background: #151b2e; border-color: #a9b5ff40; color: #e8e9f3; }
+
+.convEmpty { margin: 4px 2px; font-size: 12.5px; color: #a9b5ff90; }
+
+/* ── the conversation itself ───────────────────────────────────────────────── */
+
+.conversation {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4vw, 24px);
+}
+
+.messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.opening { margin: auto 0; padding: 8px 0 24px; }
+.eyebrow {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: #a9b5ffb0;
+  margin-bottom: 14px;
+}
+.opening h2 {
+  margin: 0 0 12px;
+  font-size: clamp(30px, 6vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+.opening h2 em {
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #b9a9ff;
+}
+.opening p { margin: 0 0 20px; color: #a9b5ffc0; }
+
+.openers { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.openers button {
+  width: 100%;
+  text-align: left;
+  padding: 13px 16px;
+  border-radius: 12px;
+  border: 1px solid #a9b5ff26;
+  background: #0d1019;
+  color: #e8e9f3;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.openers button:hover:not(:disabled) { border-color: #a9b5ff50; background: #111524; }
+.openers button:disabled { opacity: 0.5; cursor: default; }
+
+.you, .apocrypha { display: flex; flex-direction: column; gap: 6px; }
+.who {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #a9b5ff90;
+}
+.you .text {
+  align-self: flex-start;
+  background: #151b2e;
+  border: 1px solid #a9b5ff26;
+  border-radius: 14px;
+  padding: 11px 15px;
+  max-width: 90%;
+}
+.text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.apocrypha .text { color: #f0eef8; }
+
+.phase { margin: 0; color: #a9b5ffb0; font-size: 14px; }
+
+/* A visible cursor while tokens arrive: a page that shows nothing reads as frozen. */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #b1dfeb;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+
+/* ── trace ─────────────────────────────────────────────────────────────────── */
+
+.trace { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.trace li {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #a9b5ff33;
+  background: #0d1019;
+  font-size: 11.5px;
+  color: #a9b5ffc0;
+  overflow-wrap: anywhere;
+}
+.traceOk { border-color: #a9b5ff33; }
+.traceBad { border-color: #ffb4b455; color: #ffb4b4; }
+
+/* ── settings ──────────────────────────────────────────────────────────────── */
+
+.settings {
+  flex: 0 0 auto;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #a9b5ff33;
+  border-radius: 14px;
+  background: #0d1019;
+}
+.settings h2 { margin: 0 0 10px; font-size: 15px; }
+.settingRow { display: flex; align-items: center; gap: 10px; font-size: 14px; min-height: 44px; }
+.settingMeta { margin: 6px 0 0; font-size: 12px; color: #a9b5ff90; }
+.settingMeta code { overflow-wrap: anywhere; color: #b1dfeb; }
+.settingNote { margin: 10px 0 0; font-size: 12.5px; color: #a9b5ff90; }
+
+/* ── composer ──────────────────────────────────────────────────────────────── */
+
+.notice {
+  margin: 0 0 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid #a9b5ff40;
+  background: #111524;
+  color: #d2e6fa;
+  font-size: 13.5px;
+}
+
+.composer {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 10px;
+  border: 1px solid #a9b5ff40;
+  border-radius: 16px;
+  background: #0d1019;
+}
+.composer textarea {
+  flex: 1 1 auto;
+  resize: none;
+  min-height: 24px;
+  max-height: 30vh;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 6px 4px;
+  outline: none;
+}
+.composer textarea::placeholder { color: #a9b5ff80; }
+
+.send, .stop {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 9px 18px;
+  min-height: 44px;
+  font: 600 14px/1 inherit;
+  cursor: pointer;
+}
+.send { border: 0; background: #b1dfeb; color: #05060b; }
+.send:disabled { opacity: 0.45; cursor: default; }
+.stop { border: 1px solid #a9b5ff50; background: #111524; color: #d2e6fa; }
+
+.footnote {
+  flex: 0 0 auto;
+  margin: 10px 0 max(14px, env(safe-area-inset-bottom, 0px));
+  font-size: 12.5px;
+  color: #a9b5ffa0;
+  text-align: center;
+}
+.footnote a { color: #d2e6fa; }
+
+.srOnly {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.page button:focus-visible,
+.page textarea:focus-visible,
+.page input:focus-visible {
+  outline: 2px solid #c9b8ff;
+  outline-offset: 2px;
+}
+
+/* ── compact ───────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .sidebarBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(0, 0, 8, 0.64);
+    cursor: default;
+  }
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(86vw, 280px);
+    min-width: 0;
+    /* Always leave one thumb-width of the conversation showing, so the way out is visible. */
+    max-width: calc(100vw - 44px);
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.52);
+  }
+  .header { gap: 8px; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px; }
+  .nav a { padding: 7px 10px; font-size: 13px; }
+  .messages { gap: 18px; padding-top: 16px; }
+  .conversation {
+    padding:
+      0
+      max(12px, env(safe-area-inset-right))
+      0
+      max(12px, env(safe-area-inset-left));
+  }
+}
+
+.notice p { margin: 0; }
+.noticeActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.noticeActions:empty { display: none; }
+.noticeActions button, .noticeActions a {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #a9b5ff50;
+  background: #0d1019;
+  color: #d2e6fa;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}

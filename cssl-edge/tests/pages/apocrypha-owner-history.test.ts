@@ -5,12 +5,16 @@ import { runInNewContext } from 'node:vm';
 
 import ts from 'typescript';
 
+import { ownerLane } from '@/lib/apocrypha/chat-lanes';
+import type { LaneFetch } from '@/lib/apocrypha/chat-lanes';
+
 type Tree = { type: unknown; props: Record<string, any> };
 
 const CONVERSATION_ID = '11111111-1111-4111-8111-111111111111';
 const REQUEST_ID = '22222222-2222-4222-8222-222222222222';
 const JOB_ID = '33333333-3333-4333-8333-333333333333';
-const ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1';
+// The room scopes its journal by lane, so an owner and a guest on one browser cannot collide.
+const ACTIVE_JOB_KEY = 'apx.chat.active-job.owner.v1';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -73,6 +77,10 @@ function createHarness(
   authFetch: (url: string, init?: RequestInit) => Promise<Response>,
   storage: MemoryStorage,
 ) {
+  // The room takes its transport as a prop, so the harness drives the REAL owner lane over a fake
+  // authFetch. That keeps this test covering the wire shape as well as the UI, which is where the
+  // conversation-id and terminal-revision regressions below actually lived.
+  const lane = ownerLane(authFetch as unknown as LaneFetch);
   const state: unknown[] = [];
   const callbacks: Array<{ dependencies: readonly unknown[]; value: (...args: any[]) => any } | undefined> = [];
   const effects: Array<{ dependencies: readonly unknown[]; cleanup?: () => void } | undefined> = [];
@@ -110,7 +118,7 @@ function createHarness(
     addEventListener() {},
     removeEventListener() {},
   };
-  const module = { exports: {} as { ChatThread: () => Tree } };
+  const module = { exports: {} as { ApocryphaChat: (props: Record<string, unknown>) => Tree } };
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
@@ -126,6 +134,7 @@ function createHarness(
     document: documentValue,
     Node: class {},
     AbortController,
+    crypto: windowValue.crypto,
     Date,
     setTimeout,
     clearTimeout,
@@ -165,11 +174,18 @@ function createHarness(
         },
       };
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
+      if (name === 'next/link') return { __esModule: true, default: 'Link' };
       if (name.endsWith('/browser-auth')) return { authFetch };
+      if (name.endsWith('/app-shell')) return { inApocryphaApp: () => false };
       if (name.endsWith('/ApocryphaAvatar')) return { ApocryphaAvatar: 'ApocryphaAvatar' };
-      throw new Error(`Unexpected ChatThread dependency: ${name}`);
+      // CSS modules resolve to an identity map so class names survive into the tree and stay
+      // findable, which is how the New chat control below is located.
+      if (name.endsWith('.css')) {
+        return { __esModule: true, default: new Proxy({}, { get: (_target, key) => String(key) }) };
+      }
+      throw new Error(`Unexpected room dependency: ${name}`);
     },
-  }, { filename: 'ChatThread.tsx' });
+  }, { filename: 'ApocryphaChat.tsx' });
 
   return {
     render(): Tree {
@@ -177,7 +193,7 @@ function createHarness(
       callbackCursor = 0;
       effectCursor = 0;
       scheduled = [];
-      const tree = module.exports.ChatThread();
+      const tree = module.exports.ApocryphaChat({ lane, signedIn: true });
       for (const effect of scheduled) effect();
       return tree;
     },
@@ -198,11 +214,17 @@ function createHarness(
 }
 
 async function main(): Promise<void> {
-  const source = readFileSync(resolve(process.cwd(), 'components/apocrypha/ChatThread.tsx'), 'utf8');
+  const source = readFileSync(resolve(process.cwd(), 'components/apocrypha/ApocryphaChat.tsx'), 'utf8');
+  const laneSource = readFileSync(resolve(process.cwd(), 'lib/apocrypha/chat-lanes.ts'), 'utf8');
+  assert.match(
+    laneSource,
+    /snapshot\.job\.request\?\.conversation_id/,
+    'the owner lane resolves a durable conversation identity from the job snapshot',
+  );
   assert.match(
     source,
-    /activeJob\.conversationId[\s\S]*?snapshot\.job\.request\?\.conversation_id[\s\S]*?snapshot\.job\.id/,
-    'pre-patch in-flight jobs recover their durable conversation identity from the job UUID',
+    /activeJob\?\.conversationId \?\? currentConv/,
+    'pre-patch in-flight jobs recover their durable conversation identity from the resolved job',
   );
   const storage = new MemoryStorage();
   const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -275,7 +297,7 @@ async function main(): Promise<void> {
         : priorMessages;
       return jsonResponse({ upstream_status: 200, data: { conversation: priorSummary, messages } });
     }
-    throw new Error(`Unexpected ChatThread request: ${url}`);
+    throw new Error(`Unexpected room request: ${url}`);
   };
 
   const first = createHarness(source, authFetch, storage);
@@ -290,10 +312,24 @@ async function main(): Promise<void> {
   tree = first.render();
   const send = children(tree).find((node) => node.type === 'button' && node.props['aria-label'] === 'Send message');
   assert.ok(send, 'send control renders');
-  send.props.onClick();
+  // Driven through the form, which is the control's real path: the button is a submit button, so
+  // giving it its own click handler would send the turn twice in a browser.
+  const composer = children(tree).find((node) => node.type === 'form' && typeof node.props.onSubmit === 'function');
+  assert.ok(composer, 'composer form renders');
+  composer.props.onSubmit({ preventDefault() {} });
   await new Promise<void>((resolveFlush) => setImmediate(resolveFlush));
   tree = first.render();
-  assert.match(text(tree), new RegExp(`conv #${CONVERSATION_ID}`), 'accepted receipt immediately selects the durable conversation UUID');
+  // The raw conversation UUID moved out of the header and into the settings panel — it is a
+  // diagnostic, not a title — so the check opens the panel rather than dropping the contract.
+  const settingsToggle = children(tree).find((node) => (
+    node.type === 'button' && node.props['aria-controls'] === 'apocrypha-settings'
+  ));
+  assert.ok(settingsToggle, 'the settings control renders');
+  settingsToggle.props.onClick();
+  tree = first.render();
+  assert.match(text(tree), new RegExp(CONVERSATION_ID), 'accepted receipt immediately selects the durable conversation UUID');
+  settingsToggle.props.onClick();
+  tree = first.render();
   const activeRecord = JSON.parse(storage.getItem(ACTIVE_JOB_KEY) ?? '{}') as Record<string, unknown>;
   assert.equal(activeRecord.conversationId, CONVERSATION_ID, 'accepted receipt journals the durable conversation UUID with the active job');
 
@@ -301,7 +337,7 @@ async function main(): Promise<void> {
   assert.deepEqual(statusReads, ['queued'], 'the accepted job remains queued before the remount');
   assert.match(text(tree), /Earlier durable question\./, 'prior durable user turn remains visible before remount');
   assert.match(text(tree), /Earlier durable answer\./, 'prior durable answer remains visible before remount');
-  assert.match(text(tree), /Accepted\. Waiting for the local Apocrypha node/, 'queued status remains visible before remount');
+  assert.match(text(tree), /Accepted. Waiting for the Apocrypha node/, 'queued status remains visible before remount');
   assert.notEqual(storage.getItem(ACTIVE_JOB_KEY), null, 'queued job remains recoverable in the active-job journal');
   first.unmount();
 
@@ -402,7 +438,7 @@ async function main(): Promise<void> {
   tree = await beforeNewChat.flush();
   assert.match(text(tree), /Earlier durable question\./, 'the previous conversation is on screen before New chat');
 
-  const newChatButton = findByClassName(tree, 'chat-new-button');
+  const newChatButton = findByClassName(tree, 'newChat');
   assert.ok(newChatButton, 'the New chat button is rendered');
   const onClick = (newChatButton as { props?: { onClick?: () => void } }).props?.onClick;
   assert.equal(typeof onClick, 'function', 'the New chat button has a click handler');

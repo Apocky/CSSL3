@@ -582,11 +582,11 @@ async function main(): Promise<void> {
   const vercel = JSON.parse(
     readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
   ) as { functions?: Record<string, { maxDuration?: number }> };
-  assert(primaryPage.includes('AccountChat'), 'exact /apocrypha exposes the new authenticated account conversation surface');
+  assert(primaryPage.includes('memberLane'), 'exact /apocrypha exposes the authenticated account conversation rail');
   assert(primaryPage.includes('requireBrainOwner'), 'the shared route verifies the owner before selecting the privileged conversation');
   assert(
-    /showOwner \?[\s\S]*?<ChatThread \/>[\s\S]*?:[\s\S]*?<AccountChat/.test(primaryPage),
-    'non-owner accounts still enter AccountChat',
+    /owner \? ownerLane\(authFetch\) : account \? memberLane\(authFetch\) : guestLane\(\)/.test(primaryPage),
+    'non-owner accounts still enter the account-scoped rail',
   );
   assert(!primaryPage.includes('PublicChat'), 'exact /apocrypha must not revive the retired member chat');
   assert(component.includes("authFetch('/api/apocrypha/chat'"), 'browser calls the member BFF');

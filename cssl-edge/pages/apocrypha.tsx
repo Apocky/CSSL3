@@ -1,17 +1,25 @@
+// /apocrypha — the room.
+//
+// This page used to choose between three chat components and carried a good deal of machinery to
+// do it: a pending-turn probe, a deadline, a ref holding which surface had won, and a button to
+// climb back out of the one you had been dropped into. All of that existed to decide WHICH chat to
+// render. There is one now, so the decision — and its machinery — is gone.
+//
+// What remains is the only thing that genuinely varies: which lane the reader is entitled to.
+
 import Head from 'next/head';
 import Link from 'next/link';
 import type { GetServerSideProps, NextApiRequest } from 'next';
-import { useEffect, useRef, useState } from 'react';
-import { withDeadline } from '@/lib/apocrypha/deadline';
-import { readMemberChatPending } from '@/lib/apocrypha/member-chat-client';
+import { useEffect, useMemo, useState } from 'react';
+
+import ApocryphaChat from '@/components/apocrypha/ApocryphaChat';
 import { useSiteSession } from '@/components/hub/SiteSession';
-import AccountChat from '@/components/apocrypha/AccountChat';
-import { ChatThread } from '@/components/apocrypha/ChatThread';
+import { guestLane, memberLane, ownerLane } from '@/lib/apocrypha/chat-lanes';
+import { authFetch } from '@/lib/browser-auth';
 import { requireBrainOwner } from '@/lib/brain/owner';
 import { usesOwnerRuntime } from '@/lib/mobile/owner-runtime';
 import styles from '@/styles/AccountChat.module.css';
 
-export const ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS = 4_000;
 export const ACCOUNT_SESSION_VISIBLE_DEADLINE_MS = 4_000;
 
 interface ApocryphaPageProps { readonly ownerConversation: boolean }
@@ -28,13 +36,6 @@ export const getServerSideProps: GetServerSideProps<ApocryphaPageProps> = async 
   const owner = await requireBrainOwner(req as NextApiRequest);
   return { props: { ownerConversation: owner.ok && usesOwnerRuntime(owner.user) } };
 };
-
-function loadPendingAccountTurn(account: string): Promise<unknown> {
-  return withDeadline(
-    Promise.resolve().then(() => readMemberChatPending(account, window.localStorage)),
-    ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS,
-  );
-}
 
 function AccountResolutionUnavailable(): JSX.Element {
   return <main id="main-content" className={styles.page}>
@@ -59,43 +60,23 @@ function AccountResolutionUnavailable(): JSX.Element {
 export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps): JSX.Element {
   const session = useSiteSession();
   const [sessionTimedOut, setSessionTimedOut] = useState(false);
-  const displayOwner = session.ownerConversation === true
-    && (ownerConversation || session.access === 'owner');
-  const account = session.authenticated ? session.subjectKey : null;
-  const [pendingCheck, setPendingCheck] = useState<{ account: string; status: 'clear' | 'pending' | 'unavailable' } | null>(null);
-  const controller = useRef<{ account: string; choice: 'owner' | 'account' } | null>(null);
-  const [, redraw] = useState(0);
+
   useEffect(() => {
-    if (session.access !== 'checking') {
-      setSessionTimedOut(false);
-      return undefined;
-    }
+    if (session.access !== 'checking') { setSessionTimedOut(false); return undefined; }
     const deadline = setTimeout(() => { setSessionTimedOut(true); }, ACCOUNT_SESSION_VISIBLE_DEADLINE_MS);
     return () => { clearTimeout(deadline); };
   }, [session.access]);
-  if (!account) controller.current = null;
-  else if (controller.current?.account !== account) controller.current = { account, choice: displayOwner ? 'owner' : 'account' };
-  useEffect(() => {
-    let active = true;
-    if (!account) return;
-    void loadPendingAccountTurn(account).then(pending => {
-      if (active) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
-    }, () => { if (active) setPendingCheck({ account, status: 'unavailable' }); });
-    return () => { active = false; };
-  }, [account]);
-  const checked = account !== null && pendingCheck?.account === account;
-  if (checked && pendingCheck?.status !== 'clear' && controller.current) controller.current.choice = 'account';
-  const showOwner = displayOwner && checked && pendingCheck?.status === 'clear' && controller.current?.choice === 'owner';
-  const checkingSaved = displayOwner && (!account || !checked);
-  const returnToOwner = async () => {
-    if (!account || !displayOwner) return;
-    try {
-      const pending = await loadPendingAccountTurn(account);
-      if (controller.current?.account !== account) return;
-      setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
-      if (!pending) { controller.current.choice = 'owner'; redraw(value => value + 1); }
-    } catch { if (controller.current?.account === account) setPendingCheck({ account, status: 'unavailable' }); }
-  };
+
+  const owner = session.ownerConversation === true && (ownerConversation || session.access === 'owner');
+  const account = session.authenticated ? session.subjectKey : null;
+
+  // Rebuilt only when the entitlement actually changes. A fresh lane object on every render would
+  // restart the poll loop that follows it.
+  const lane = useMemo(
+    () => (owner ? ownerLane(authFetch) : account ? memberLane(authFetch) : guestLane()),
+    [account, owner],
+  );
+
   return <>
     <Head>
       <title>Apocrypha · Apocky</title>
@@ -105,12 +86,8 @@ export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps)
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>
-    {session.access === 'checking' && sessionTimedOut ? <AccountResolutionUnavailable />
-      : checkingSaved ? <main id="main-content" role="status"><p>Opening your saved conversation…</p></main>
-      : showOwner ? <main id="main-content" aria-label="Apocrypha owner conversation" style={{ height: '100dvh', minHeight: 480, overflow: 'hidden' }}><ChatThread /></main> : <AccountChat onPendingChange={pending => {
-        if (account && controller.current?.account === account) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
-      }} />}
-    {displayOwner && account && !checkingSaved && !showOwner ? <p><button type="button" disabled={pendingCheck?.status !== 'clear'}
-      onClick={() => { void returnToOwner(); }}>Open your main conversation</button></p> : null}
+    {session.access === 'checking' && sessionTimedOut
+      ? <AccountResolutionUnavailable />
+      : <ApocryphaChat lane={lane} signedIn={session.authenticated} />}
   </>;
 }

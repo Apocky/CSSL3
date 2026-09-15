@@ -6,7 +6,7 @@ const read = (path: string): string => readFileSync(resolve(process.cwd(), path)
 
 const page = read('pages/brain.tsx');
 const apocryphaPage = read('pages/apocrypha.tsx');
-const accountChat = read('components/apocrypha/AccountChat.tsx');
+const room = read('components/apocrypha/ApocryphaChat.tsx');
 const experience = read('components/brain/BrainExperience.tsx');
 const owner = read('lib/brain/owner.ts');
 const snapshot = read('pages/api/brain/snapshot.ts');
@@ -38,23 +38,37 @@ assert.match(page, /requireBrainOwner/, 'Brain page must use the owner allowlist
 assert.match(page, /private, no-store/, 'Brain document must be private and non-cacheable');
 assert.match(page, /noindex,nofollow,noarchive,nosnippet/, 'Brain page must be crawler-dark');
 assert.match(page, /viewport-fit=cover/, 'Brain page must expose iOS safe areas to its installed layout');
-assert.match(apocryphaPage, /<AccountChat onPendingChange=/, 'primary Apocrypha page must expose the account conversation surface');
+assert.match(apocryphaPage, /<ApocryphaChat lane=/, 'primary Apocrypha page must expose the conversation surface');
 assert.match(apocryphaPage, /getServerSideProps/, 'account shell must receive the request nonce instead of static scripts blocked by CSP');
 assert.match(apocryphaPage, /owner\.ok && usesOwnerRuntime\(owner\.user\)/, 'owner conversation requires server authorization and the exact configured owner binding');
-assert.match(apocryphaPage, /const displayOwner = session\.ownerConversation === true\s*&& \(ownerConversation \|\| session\.access === 'owner'\)/, 'owner UI requires a current positive session even when the request was server-bound');
+assert.match(apocryphaPage, /const owner = session\.ownerConversation === true && \(ownerConversation \|\| session\.access === 'owner'\)/, 'owner UI requires a current positive session even when the request was server-bound');
 assert.doesNotMatch(apocryphaPage, /ownerConversation && \(session\.access === 'checking' \|\| session\.access === 'unavailable'\)/, 'stale request-time admission must not expose owner UI while the current session is unresolved');
-assert.match(apocryphaPage, /showOwner \?[\s\S]*?<ChatThread \/>[\s\S]*?: <AccountChat onPendingChange=/, 'the primary route must preserve the durable owner chat while members keep account chat');
-assert.doesNotMatch(accountChat, /href="\/brain"/, 'account conversation must not advertise a competing chat');
+assert.match(apocryphaPage, /owner \? ownerLane\(authFetch\) : account \? memberLane\(authFetch\) : guestLane\(\)/, 'the primary route must keep the durable owner rail and the account rail, as lanes into one room');
+assert.doesNotMatch(room, /href="\/brain"/, 'the room must not advertise a competing chat');
 assert.match(apocryphaPage, /<title>Apocrypha · Apocky<\/title>/, 'primary route must carry Apocrypha branding');
-assert.match(apocryphaPage, /Sign in to your Apocky account/, 'primary route must describe account access honestly');
-assert.match(apocryphaPage, /noindex,nofollow,noarchive,nosnippet/, 'primary Apocrypha page must be crawler-dark');
+// The room is open now, so these two assert the CURRENT contract, not the sign-in wall they were
+// written against. The page must still describe access honestly — the honest description of an
+// open room is that no account is needed — and it must be findable, or "publicly functional" is
+// only true for people who already know the URL. The private/no-store response headers still stand
+// (asserted on the server block below); only the crawler directive changed.
+assert.match(apocryphaPage, /No account needed to ask a question; sign in to keep your conversations across devices/, 'primary route must describe open access honestly');
+assert.match(apocryphaPage, /name="robots" content="index,follow"/, 'the open room must be discoverable');
+assert.match(apocryphaPage, /private, no-store, no-cache, must-revalidate/, 'the per-account response must still never be cached');
 assert.match(apocryphaPage, /viewport-fit=cover/, 'primary Apocrypha page must expose iOS safe areas to its installed layout');
-assert.match(accountChat, /\/login\?next=%2Fapocrypha/, 'sign-in must return to the primary Apocrypha route');
-assert.match(accountChat, /\/register\?next=%2Fapocrypha/, 'new accounts must return to the primary Apocrypha route');
-assert.match(accountChat, /submitMemberChatJob/, 'account chat must submit through the authenticated durable member adapter');
-assert.match(accountChat, /fetchMemberChatHistory/, 'account chat must recover history from durable member storage');
-assert.match(accountChat, /pollMemberChatJob/, 'account chat must follow the accepted durable job');
-assert.doesNotMatch(accountChat, /\/api\/brain\/|\/api\/mobile\/|\/api\/admin\//, 'public account chat must not invoke owner or retired adapters');
+assert.match(room, /\/login\?next=%2Fapocrypha/, 'sign-in must return to the primary Apocrypha route');
+assert.match(room, /\/register\?next=%2Fapocrypha/, 'new accounts must return to the primary Apocrypha route');
+// The member transport moved into the lane module; the room itself no longer names any endpoint.
+const lanes = read('lib/apocrypha/chat-lanes.ts');
+assert.match(lanes, /submitMemberChatJob/, 'account chat must submit through the authenticated durable member adapter');
+assert.match(lanes, /fetchMemberChatHistoryPage/, 'account chat must recover history from durable member storage');
+assert.match(lanes, /fetchMemberChatJob/, 'account chat must follow the accepted durable job');
+assert.doesNotMatch(room, /\/api\//, 'the shared room must name no endpoint of its own — every call goes through its lane');
+// The owner adapters exist in this module, so the containment has to be checked on the member
+// lane's own text rather than the file as a whole: a member must never reach an owner route.
+const memberSection = lanes.slice(lanes.indexOf('export function memberLane'), lanes.indexOf('export function ownerLane'));
+assert.doesNotMatch(memberSection, /\/api\/brain\/|\/api\/mobile\/|\/api\/admin\//, 'the member lane must not invoke owner or retired adapters');
+const guestSection = lanes.slice(lanes.indexOf('export function guestLane'), lanes.indexOf('export function memberLane'));
+assert.doesNotMatch(guestSection, /\/api\/brain\/|\/api\/mobile\/|\/api\/admin\//, 'the guest lane must not invoke owner or retired adapters');
 assert.match(owner, /getAdminAuthorization/, 'Brain APIs must derive authority from the server session');
 assert.match(owner, /BRAIN_OWNER_REQUIRED/, 'non-owner identities must have a stable denial code');
 assert.match(snapshot, /deriveMemberProfileId\(owner\.user\.id\)/, 'snapshot profile must be derived server-side');

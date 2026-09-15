@@ -550,7 +550,8 @@ async function main(): Promise<void> {
   equal((oversizedPresence.out.body as Record<string, unknown>).display_authorized, false, 'oversized runtime evidence cannot reveal avatar');
 
   const closure = [
-    'components/apocrypha/ChatThread.tsx',
+    'components/apocrypha/ApocryphaChat.tsx',
+    'lib/apocrypha/chat-lanes.ts',
     'components/apocrypha/ApocryphaAvatar.tsx',
     'pages/chat.tsx',
     'lib/apocrypha/proxy.ts',
@@ -581,7 +582,9 @@ async function main(): Promise<void> {
   assert(!closureSource.includes('APOCRYPHA_V2_TURN_ENABLED'), 'V2 cannot be disabled into a fallback');
   assert(!closureSource.includes('text/event-stream'), 'one-final JSON is not presented as SSE');
 
-  const threadSource = readFileSync(resolve(process.cwd(), 'components/apocrypha/ChatThread.tsx'), 'utf8');
+  // One chat interface: recovery lives in the room, the durable rail lives in its owner lane.
+  const threadSource = readFileSync(resolve(process.cwd(), 'components/apocrypha/ApocryphaChat.tsx'), 'utf8');
+  const laneSource = readFileSync(resolve(process.cwd(), 'lib/apocrypha/chat-lanes.ts'), 'utf8');
   const avatarSource = readFileSync(resolve(process.cwd(), 'components/apocrypha/ApocryphaAvatar.tsx'), 'utf8');
   const diagnosticsSource = readFileSync(resolve(process.cwd(), 'pages/admin/diagnostics.tsx'), 'utf8');
   const controlsSource = readFileSync(resolve(process.cwd(), 'pages/admin/controls.tsx'), 'utf8');
@@ -589,15 +592,17 @@ async function main(): Promise<void> {
     resolve(process.cwd(), 'docs/APOCRYPHA_V2_FRONTEND_DEPLOYMENT_CHECKLIST.md'),
     'utf8',
   );
-  assert(threadSource.includes('ACTIVE_JOB_KEY'), 'accepted job identity is tab-persistent');
-  assert(threadSource.includes('window.localStorage.getItem(ACTIVE_JOB_KEY)'), 'accepted work is recovered after remount');
-  assert(threadSource.includes('window.localStorage.setItem(ACTIVE_JOB_KEY'), 'job identity persists after admission');
-  assert(threadSource.includes("authFetch('/api/admin/apocrypha/jobs'"), 'client submits through the durable job rail');
-  assert(threadSource.includes('idempotency_key: idempotencyKey'), 'each submitted turn carries an idempotency identity');
-  assert(threadSource.includes("snapshot.job.status === 'succeeded'"), 'client waits for a committed terminal revision');
+  assert(threadSource.includes('activeJobKey('), 'accepted job identity is tab-persistent');
+  assert(threadSource.includes('readStored<ActiveJob>(activeJobKey(laneId))'), 'accepted work is recovered after remount');
+  assert(threadSource.includes('writeStored(activeJobKey(laneId), record)'), 'job identity persists after admission');
+  assert(threadSource.includes('writeStored(activeJobKey(laneId), pending)'), 'a turn is recoverable from before the request leaves the browser');
+  assert(laneSource.includes("authFetch('/api/admin/apocrypha/jobs'"), 'client submits through the durable job rail');
+  assert(laneSource.includes('idempotency_key: newId()'), 'each submitted turn carries an idempotency identity');
+  assert(laneSource.includes('TERMINAL.has(snapshot.job.status)'), 'client waits for a committed terminal revision');
   assert(threadSource.includes('Connection interrupted. The job is safe; reconnecting'), 'transport loss preserves accepted work');
-  assert(threadSource.includes('cancelActiveJob'), 'accepted work has a bounded cancellation path');
+  assert(threadSource.includes('lane.cancel(activeJob.id)'), 'accepted work has a bounded cancellation path');
   assert(!threadSource.includes('/api/admin/apocrypha/chat_stream'), 'retired synthetic streaming is not a second send rail');
+  assert(!laneSource.includes('/api/admin/apocrypha/chat_stream'), 'the transport module has no retired stream rail either');
   assert(!threadSource.includes('handleSendLegacy'), 'client has one canonical send path');
   assert(avatarSource.includes('if (!displayAuthorized || !authorizationRef) return null'), 'avatar is deny-by-default');
   assert(diagnosticsSource.includes('after_event_seq=${cursor}'), 'telemetry client sends its cursor');
@@ -634,7 +639,12 @@ async function main(): Promise<void> {
   assert(chatApiSource.includes('runtime.request_id === scopedRequestId'), 'BFF verifies the runtime echoed the scoped request identity');
   assert(chatApiSource.includes("kind: 'runtime.chat.completed'"), 'BFF emits a completed runtime chat receipt');
   assert(!chatApiSource.includes('fetchApocryphaV2'), 'BFF no longer uses the Cloudflare-era V2 transport');
-  assert(threadSource.includes('JOB_POLL_MS = 1_500'), 'browser observes durable work without holding one bounded function open');
+  // The cadence became adaptive (fast while the answer grows, backing off when it does not), so
+  // the contract is asserted as the pair rather than the old single constant. What matters is
+  // unchanged: the browser POLLS, and never holds one bounded function open for a whole answer.
+  assert(threadSource.includes('JOB_POLL_FAST_MS = 250'), 'browser polls promptly while an answer is arriving');
+  assert(threadSource.includes('JOB_POLL_SLOW_MS = 1_500'), 'browser backs off rather than holding one bounded function open');
+  assert(!threadSource.includes('text/event-stream'), 'the browser does not hold a stream open against a bounded function');
 
   console.log('apocrypha-v2-release.test : OK');
 }

@@ -14,7 +14,7 @@ const typecheck = spawnSync(process.execPath, [tsc, '--noEmit', '--pretty', 'fal
 if (typecheck.status !== 0) process.exit(typecheck.status ?? 1);
 
 const releaseFiles = [
-  'components/apocrypha/ChatThread.tsx',
+  'components/apocrypha/ApocryphaChat.tsx',
   'components/AdminLayout.tsx',
   'lib/apocrypha/proxy.ts',
   'lib/apocrypha/retired-route.ts',

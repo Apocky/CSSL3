@@ -62,16 +62,20 @@ assert(rejectedTamper, 'signed body tampering must be rejected');
 if (priorSecret === undefined) delete process.env.CHAOS_TAROT_BRIDGE_TOKEN;
 else process.env.CHAOS_TAROT_BRIDGE_TOKEN = priorSecret;
 
-const thread = readFileSync(resolve(process.cwd(), 'components/apocrypha/ChatThread.tsx'), 'utf8');
+// One chat interface: the room owns recovery and rendering, the lane module owns the transport.
+const room = readFileSync(resolve(process.cwd(), 'components/apocrypha/ApocryphaChat.tsx'), 'utf8');
+const lanes = readFileSync(resolve(process.cwd(), 'lib/apocrypha/chat-lanes.ts'), 'utf8');
 for (const contract of [
-  "ACTIVE_JOB_KEY = 'apocky.apocrypha.active-job.v1'",
-  "authFetch('/api/admin/apocrypha/jobs'",
-  'window.localStorage.setItem(ACTIVE_JOB_KEY',
+  "function activeJobKey(lane: string): string { return `apx.chat.active-job.${lane}.v1`; }",
+  'writeStored(activeJobKey(laneId), pending)',
   'Connection interrupted. The job is safe; reconnecting',
-  'setStreamingText(visibleText)',
-  'cancelActiveJob',
+  'setStreamingText(snapshot.text)',
+  'lane.cancel(activeJob.id)',
 ]) {
-  assert(thread.includes(contract), `durable browser contract missing: ${contract}`);
+  assert(room.includes(contract), `durable browser contract missing: ${contract}`);
+}
+for (const contract of ["authFetch('/api/admin/apocrypha/jobs'", 'chunk.delta']) {
+  assert(lanes.includes(contract), `durable owner transport contract missing: ${contract}`);
 }
 
 console.log('apocrypha-jobs.test: OK');

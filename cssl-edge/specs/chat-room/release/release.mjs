@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = 'C:/Users/Apocky/AppData/Roaming/npm/node_modules/vercel/dist/vc.js';
 const GIT = 'C:/Program Files/Git/cmd/git.exe';
-const OWNED = ['components/apocrypha/AccountChat.tsx', 'styles/AccountChat.module.css',
+const OWNED = ['components/apocrypha/ApocryphaChat.tsx', 'styles/ApocryphaChat.module.css', 'lib/apocrypha/chat-lanes.ts',
   'components/brain/BrainExperience.tsx', 'components/brain/BrainExperience.module.css',
   'components/apocrypha/ChatTools.tsx', 'components/apocrypha/ChatTools.module.css', 'lib/apocrypha/chat-tools.ts'];
 const hash = (b, algorithm = 'sha256') => createHash(algorithm).update(b).digest('hex');
