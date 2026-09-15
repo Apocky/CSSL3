@@ -15,6 +15,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from '@/styles/GuestChat.module.css';
+import { inApocryphaApp } from '@/lib/app-shell';
 
 const STORE_KEY = 'apx.guest.thread.v1';
 const MAX_STORED = 40;
@@ -72,10 +73,13 @@ export function GuestChat(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // Resolved after mount: navigator does not exist during server rendering, and a wrong guess
+  // would flash an install prompt at someone already inside the app.
+  const [inApp, setInApp] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
 
-  useEffect(() => { setTurns(loadThread()); setReady(true); }, []);
+  useEffect(() => { setTurns(loadThread()); setReady(true); setInApp(inApocryphaApp()); }, []);
   useEffect(() => { if (ready) saveThread(turns); }, [turns, ready]);
   useEffect(() => {
     const log = logRef.current;
@@ -156,7 +160,7 @@ export function GuestChat(): JSX.Element {
         <p>{busy ? 'Thinking…' : 'Room to think'}</p>
       </div>
       <nav aria-label="Apocrypha navigation" className={styles.nav}>
-        <Link href="/download/apocrypha">Get the app</Link>
+        {inApp ? null : <Link href="/download/apocrypha">Get the app</Link>}
         <Link href="/login?next=%2Fapocrypha" className={styles.signIn}>Sign in</Link>
       </nav>
     </header>
@@ -225,9 +229,9 @@ export function GuestChat(): JSX.Element {
       </form>
 
       <p className={styles.footnote}>
-        This conversation stays in this browser.{' '}
-        <Link href="/login?next=%2Fapocrypha">Sign in</Link> to keep it across your devices, or{' '}
-        <Link href="/download/apocrypha">get the app</Link>.
+        {inApp ? 'This conversation stays on this device. ' : 'This conversation stays in this browser. '}
+        <Link href="/login?next=%2Fapocrypha">Sign in</Link> to keep it across your devices
+        {inApp ? '.' : <>, or <Link href="/download/apocrypha">get the app</Link>.</>}
       </p>
     </section>
   </main>;

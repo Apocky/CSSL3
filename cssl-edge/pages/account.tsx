@@ -1,6 +1,7 @@
 import type { User } from '@supabase/supabase-js';
 import type { NextPage } from 'next';
 import Head from 'next/head';
+import { AuthenticatorSetup } from '@/components/auth/AuthenticatorSetup';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { APOCKY_CHANNELS, getAuthClient, persistSessionToCookie } from '../lib/auth';
@@ -228,6 +229,10 @@ const Account: NextPage = () => {
               )}
             </div>
           </header>
+
+          {/* Only for a signed-in account: enrolment adds a credential, so being that account
+              already is the gate. */}
+          {user ? <AuthenticatorSetup /> : null}
 
           {me?.stub && (
             <div className="apx-auth-warning" role="status">
