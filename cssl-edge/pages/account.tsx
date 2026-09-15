@@ -189,6 +189,12 @@ const Account: NextPage = () => {
   if (loading) {
     return (
       <div className="apx-account-page">
+        {/* The head lived only in the resolved branch, so the server-rendered page -- which is
+            always this one -- shipped with no title and the tab showed a bare URL. */}
+        <Head>
+          <title>Account · Apocky</title>
+          <meta name="robots" content="noindex,nofollow" />
+        </Head>
         <main className="apx-account" aria-busy="true">
           <p className="apx-kicker" role="status" aria-live="polite">Loading account status…</p>
         </main>
