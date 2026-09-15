@@ -1,0 +1,145 @@
+%% APOCRYPHA AUTONOMOUS LEARNING -- BLUEPRINT  :: awaiting [[Apocky]] sign-off
+   authored 2026-09-14 ; ASCII profile ; %%WRIGHT loop : blueprint -> sign-off -> execute
+
+%% I> objective (Apocky, direct, 2026-09-14)
+   "get Apocrypha learning autonomously and especially learning my language stack,
+    methodology, operating procedures, ideals, mannerisms, anything useful"
+
+%% I> what is TRUE now  :: E:obs 2026-09-14
+
+   N! Apocrypha holds NO representation of Apocky.
+      grep(mannerism|voice profile|styleProfile|apocky_profile) -> 0 hits, A. lane
+      prompt.ts -> 0 references to Apocky
+      gateway anamnesis adapter reads `records` (733 rows, Claude-authored ledger)
+      /\ NEVER `source_chunks` (56,567 transcript chunks). the transcripts have
+      never been reachable from the live mind.
+
+   E:obs the substrate that DOES exist :
+      anamnesis.db 339.8 MB : records 733 + source_chunks 56,567 + FTS5
+      memory-gateway :19127  : federates mempalace | anamnesis | 3mneme |
+                               brainmonsoon | metaharness ; read-only ; auth-gated
+      worker prompt.ts       : evidence admitted as its OWN message (fixed today),
+                               budget memoryContextChars = 12,000
+      engine :19128          : Qwen3-Coder-Next-80B resident, 16384 ctx * 2 slots
+                               -> distillation costs ZERO cloud spend
+
+%% I> L0 CORPUS  :: DONE, committed 4618d74, 4/4 mutations caught
+
+   corpus.ts : stratify, N! filter. A. chunk -> 1 named stratum ; no-match ->
+   'unknown' -> excluded AND counted (G10).
+
+   census @ 2026-09-14 :
+      harness-context      18,540   158.90 MB   98.2%   <- would have been the profile
+      apocky                4,101     2.28 MB    1.4%   <- ADMITTED
+      apocky-terse             36
+      attachment-manifest      460     0.48 MB
+      unknown                   44                      <- 0.19% : gate is tight
+      -----------------------------------------------
+      TOTAL                 23,190   161.73 MB
+      admitted: 4,137 msgs / 232 sessions / 2026-07-22 .. 2026-09-13 / 947 ms scan
+
+%% I> AXES  :: measured over the admitted corpus, N! guessed
+
+      CORRECTION      1,090   26.3%   <- richest axis ; NOT on the stated list
+      IDEAL             748   18.1%
+      NOTATION(CSLv3)   599   14.5%
+      PROCEDURE         458   11.1%
+      PREFERENCE        307    7.4%
+      DIRECTIVE         262    6.3%
+      MANNERISM(emph)   262    6.3%
+
+   I> a CORRECTION is LABELLED signal : a place where behaviour was wrong /\
+      Apocky stated exactly how. 1,090 of them >> any corpus of neutral prose.
+   I> the single most-repeated correction in the corpus, verbatim, across sessions:
+      "LOAD YOUR MEMORY TOOLS / check prior memories and conversations with me
+       as well, you are not doing as I asked"
+      ~> this build exists to end exactly that failure. self-witnessing.
+
+%% I> L1 DISTIL  :: proposed
+
+   method : local Qwen (:19128, already resident) reads admitted chunks in batches
+            -> emits typed claims. zero cloud cost, zero new GPU contention
+            (one engine, one port, established today).
+   claim  := {axis, statement, evidence:[chunk_id + text_sha256], first_seen,
+              last_seen, corroborations, contradicted_by}
+   W! provenance REQUIRED. unprovenanced claim -> inadmissible. inherits the
+      existing ANAMNESIS contract, N! a new one.
+   W! reconcile >> re-derive : PERSONA.csl + CLAUDE.md + MEMORY.md already encode
+      much of PROCEDURE/METHODOLOGY. distiller CITES or CONTRADICTS them ;
+      N! parallel truth.
+   W! contradiction -> killed_by, append. G11. N! overwrite.
+
+%% I> L2 ADMIT  :: proposed
+
+   store   : apocrypha-profile.db, SEPARATE from anamnesis.db
+             <- different consent surface ; keeps the ledger clean ; independently
+                deletable. (see FORK F3)
+   adapter : new READ-ONLY gateway adapter 'profile' alongside the existing five
+   prompt  : profile facts join the evidence message (N! the system message)
+   W! budget : memoryContextChars = 12,000 total. profile block must be RANKED +
+      SMALL -- top-N relevant to the live turn. N! dump. a profile that evicts
+      the reading or the recall has made Apocrypha worse, not better.
+
+%% I> L3 LOOP  :: the autonomous part ; proposed
+
+   daily pass : index new transcripts -> stratify -> distil -> write CANDIDATES
+   W! candidates land in quarantine, N! the live store.
+      <- "write-back OFF by default ; a default is not consent"
+   promotion  : FORK F1
+   decay      : claim contradicted by newer evidence -> killed_by + reason
+   observable : census + candidate count + promotion log. a pass that produces no
+                artifact cannot be observed to have fired (G2).
+
+%% I> FORKS  :: [[Apocky]] decides. N! assumed.
+
+   F1 PROMOTION -- the consent fork
+      a) manual queue : nothing reaches the live mind without your review
+      b) auto-promote @ N>=3 independent corroborations /\ 0 contradictions
+      c) auto-promote all, fully reversible, audit log + one-command revert
+      recommend (b) : (a) makes "autonomous" false and puts you back in the loop
+      daily ; (c) has no floor. (b) has a measurable floor and still runs alone.
+
+   F2 PUBLIC EXPOSURE -- the blast-radius fork
+      does the profile shape the PUBLIC apocky.com Apocrypha, or local+work only?
+      pro : you said "same mind across all invocations/instantiations" @2026-09-14
+      con : a profile of YOU shaping a public persona surfaces your mannerisms,
+            corrections and register to strangers.
+      recommend : profile drives VOICE+METHOD everywhere ; CORRECTION and
+      PREFERENCE axes stay private (local+work). one mind, but it does not recite
+      your corrections to the public.
+
+   F3 STORE
+      a) separate apocrypha-profile.db   (recommend)
+      b) new tables inside anamnesis.db
+      recommend (a) : deletable in one move without touching the ledger.
+
+   F4 BACKFILL -- cost fork
+      E:obs 2,022 transcript files / 5,197 MB UNINDEXED, back to 2026-05-07.
+      indexed window is only 2026-07-22+ -> 4,137 is a FLOOR, ~31% of files.
+      cost : hours of indexing ; anamnesis.db 340 MB -> multi-GB ; C: ~30 GB free.
+      a) backfill all      <- widest corpus, largest disk + time
+      b) backfill 90 days  <- recommend : covers 2026-06-16+, bounded
+      c) no backfill       <- ship on the 7-week window, revisit
+
+%% I> what this is NOT  :: stated plainly, N! buried
+
+   N! weight learning. Qwen3-Coder-Next is a Q2 GGUF on a 16 GB A770 under WDDM.
+      there is no training path on this hardware and this blueprint does not
+      pretend otherwise.
+   I> "learning" here := a durable, provenance-tagged, retrievable representation
+      of Apocky that the prompt assembler admits, refreshed without a human in
+      the room. that IS autonomous, and it is the honest name for it.
+   W! if weight-level adaptation is the requirement, that is a DIFFERENT build
+      (LoRA on a smaller resident model) and needs its own blueprint + hardware
+      decision. say so and it gets one.
+
+%% I> execution order once signed off
+   S1 F4 backfill (if a|b) -> re-census -> report
+   S2 L1 distiller + its own mutation-tested gate ; candidates only
+   S3 L2 adapter + prompt admission, behind a flag, measured against the 12k budget
+   S4 L3 scheduled pass + promotion per F1
+   W! A. slice : verify on the RUNNING system -> integrate -> next. N! big bang.
+   W! N! restart worker | hive | apx-serve | cloudflared | scheduled tasks
+      without explicit go-ahead. (feedback_worker_restart_declined)
+
+[END]
