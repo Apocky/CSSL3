@@ -155,7 +155,24 @@ const NON_READING_KINDS = new Set<string>(['followup', 'summary', 'continuation'
 
 // The wire form carries schema/digest/ids/provenance for the control plane; the model
 // only needs card, position, orientation and meanings (717 -> ~290 tokens on a 3-card spread).
-export function readingForPrompt(value: unknown): string {
+/**
+ * Render a canonical reading for the model.
+ *
+ * Two tiers, and the distinction is the whole point. The IDENTITY line -- position, card name,
+ * reversal -- is the contract: the prompt requires every supplied card to be named, including each
+ * clarifier (whose position reads "Clarifier for X") and the shadow card. The DETAIL beneath it --
+ * position description, keywords, meaning, about -- is enrichment.
+ *
+ * Under budget pressure the detail is shed, never the identity. The previous version rendered
+ * everything and let the caller do `.slice(0, 16_000)`, which cuts wherever it lands: mid-meaning,
+ * mid-name, mid-card. A half-written card name in a prompt that demands every card be named by
+ * name is how you get a reading that renames the shadow card -- which is a failure this product
+ * has actually shipped (2026-09-12, three clarifiers ignored and the shadow renamed).
+ *
+ * If even the identity lines cannot fit, cards are dropped from the END and the omission is stated
+ * in the text rather than left for the model to not notice.
+ */
+export function readingForPrompt(value: unknown, maximumChars = 16_000): string {
   const reading = asRecord(value);
   if (Object.keys(reading).length === 0) return '';
   const system = asRecord(reading.system);
@@ -164,35 +181,60 @@ export function readingForPrompt(value: unknown): string {
     stringValue(system.name ?? system.id) ? `System: ${stringValue(system.name ?? system.id)}` : '',
     stringValue(spread.name ?? spread.id) ? `Spread: ${stringValue(spread.name ?? spread.id)}${stringValue(spread.description) ? ` — ${stringValue(spread.description)}` : ''}` : '',
   ].filter(Boolean);
-  const items = Array.isArray(reading.items)
-    ? reading.items.slice(0, 78).flatMap((item, index): string[] => {
-        const entry = asRecord(item);
-        const name = stringValue(entry.name);
-        if (!name) return [];
-        const position = asRecord(entry.position);
-        const meanings = asRecord(entry.meanings);
-        const reversed = entry.is_reversed === true;
-        const keywords = Array.isArray(reversed ? meanings.keywords_reversed : meanings.keywords)
-          ? (reversed ? meanings.keywords_reversed : meanings.keywords) as unknown[]
-          : [];
-        const meaning = stringValue(reversed ? meanings.reversed : meanings.upright) ?? stringValue(meanings.upright);
-        const line = [
-          `${index + 1}. ${stringValue(position.name) ?? `Position ${index + 1}`}: ${name}${reversed ? ' (reversed)' : ''}`,
-          stringValue(position.description) ? `   Position means: ${stringValue(position.description)}` : '',
-          keywords.length ? `   Keywords: ${keywords.slice(0, 12).map(String).join(', ')}` : '',
-          meaning ? `   Meaning: ${meaning.slice(0, 1_200)}` : '',
-          stringValue(meanings.description) ? `   About: ${stringValue(meanings.description)!.slice(0, 600)}` : '',
-        ].filter(Boolean);
-        return [line.join('\n')];
-      })
-    : [];
-  return [...header, ...items].join('\n');
+
+  const cards = (Array.isArray(reading.items) ? reading.items.slice(0, 78) : []).flatMap((item, index) => {
+    const entry = asRecord(item);
+    const name = stringValue(entry.name);
+    if (!name) return [];
+    const position = asRecord(entry.position);
+    const meanings = asRecord(entry.meanings);
+    const reversed = entry.is_reversed === true;
+    const keywords = Array.isArray(reversed ? meanings.keywords_reversed : meanings.keywords)
+      ? (reversed ? meanings.keywords_reversed : meanings.keywords) as unknown[]
+      : [];
+    const meaning = stringValue(reversed ? meanings.reversed : meanings.upright) ?? stringValue(meanings.upright);
+    return [{
+      identity: `${index + 1}. ${stringValue(position.name) ?? `Position ${index + 1}`}: ${name}${reversed ? ' (reversed)' : ''}`,
+      detail: [
+        stringValue(position.description) ? `   Position means: ${stringValue(position.description)}` : '',
+        keywords.length ? `   Keywords: ${keywords.slice(0, 12).map(String).join(', ')}` : '',
+        meaning ? `   Meaning: ${meaning.slice(0, 1_200)}` : '',
+        stringValue(meanings.description) ? `   About: ${stringValue(meanings.description)!.slice(0, 600)}` : '',
+      ].filter(Boolean),
+    }];
+  });
+
+  const assemble = (detailLines: number): string => [
+    ...header,
+    ...cards.map((card) => [card.identity, ...card.detail.slice(0, detailLines)].join('\n')),
+  ].join('\n');
+
+  // Shed detail a tier at a time before touching any card.
+  for (let depth = 4; depth >= 0; depth -= 1) {
+    const rendered = assemble(depth);
+    if (rendered.length <= maximumChars) return rendered;
+  }
+
+  // Identity lines alone still overflow: drop from the end and SAY so, so that neither the model
+  // nor the reader mistakes a truncated reading for a complete one.
+  const identities = cards.map((card) => card.identity);
+  let kept = identities.length;
+  // A zero-omission note would be a reading calling itself incomplete when it is not.
+  const note = (omitted: number): string => (omitted <= 0
+    ? ''
+    : `[${omitted} further card${omitted === 1 ? '' : 's'} omitted for length — this reading is incomplete]`);
+  while (kept > 0) {
+    const text = [...header, ...identities.slice(0, kept), note(identities.length - kept)].join('\n');
+    if (text.length <= maximumChars) return text;
+    kept -= 1;
+  }
+  return [...header, note(identities.length)].join('\n');
 }
 
 function structuredRequestMessage(request: Record<string, unknown>): string | undefined {
   const question = stringValue(request.question);
   const source = stringValue(request.source_text)?.slice(0, 16_000);
-  const canonicalReading = readingForPrompt(request.canonical_reading).slice(0, 16_000);
+  const canonicalReading = readingForPrompt(request.canonical_reading, 16_000);
   const structuredRaw = Object.fromEntries(
     Object.entries(asRecord(request.structured_context)).filter(([key, value]) => !PROMPT_CONTROL_KEYS.has(key) && value !== null && value !== undefined
       && !(Array.isArray(value) && value.length === 0)),
