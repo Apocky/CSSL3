@@ -17,18 +17,18 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
     <DocsLayout
       activeSlug=""
       title="Documentation · Apocky"
-      description="Plain-language help for Labyrinth of Apocalypse and CSSL, followed by optional technical references."
+      description="Plain-language help for Apocrypha and CSSL, followed by technical references and archived pages."
     >
       <h1 className="docs-h1">Guides & answers</h1>
       <p className="docs-blurb">
-        Get started with the game, understand a term, or explore how the tools work.
+        Ask Apocrypha something, understand a term, or read how the language works.
       </p>
 
       <p className="docs-p">
-        <a href="/docs/getting-started">Start playing</a>{' · '}
-        <a href="/docs/keyboard-shortcuts">Game controls</a>{' · '}
+        <a href="/docs/apocrypha">Talk to Apocrypha</a>{' · '}
+        <a href="/docs/cssl-language">Read about CSSL</a>{' · '}
         <a href="/words">Look up a word or symbol</a>{' · '}
-        <a href="/docs/troubleshooting">Fix a problem</a>
+        <a href="/download/apocrypha">Get the app</a>
       </p>
 
       <details className="docs-section">
@@ -37,7 +37,12 @@ const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
         Pages are labeled <span style={{ color: '#34d399' }}>Available now</span>,{' '}
         <span style={{ color: '#fbbf24' }}>In progress</span>,{' '}
         <span style={{ color: '#9aa0a6' }}>Coming soon</span>, or{' '}
-        <span style={{ color: '#f472b6' }}>Subject to change</span>.
+        <span style={{ color: '#f472b6' }}>Subject to change</span>, or{' '}
+        <span style={{ color: '#9aa0a6' }}>Archived</span>.
+        </p>
+        <p className="docs-p">
+          Archived pages are still accurate for anyone who already has the thing they describe. They
+          are kept rather than deleted, but they are no longer a way in.
         </p>
       </details>
 

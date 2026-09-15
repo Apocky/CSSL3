@@ -7,6 +7,13 @@ const Eula: NextPage = () => (
     description="End-User License Agreement for the Labyrinth of Apocalypse alpha test build."
     updated="July 27, 2026"
   >
+    {/* Availability note only. None of the terms below were altered, which is why the revision date
+        is unchanged: people already holding a build are still bound by exactly what they agreed to,
+        and a licence is not something to quietly rewrite once copies are out. */}
+    <p>
+      <strong>The test build is not currently distributed from apocky.com.</strong> This agreement is kept
+      in force and unchanged for anyone who already has a copy. There is nothing to download here today.
+    </p>
     <p>
       This is the End-User License Agreement (EULA) for the Labyrinth of Apocalypse alpha test build,
       including <code>LoA.exe</code> and proprietary files distributed with it. By extracting or running those

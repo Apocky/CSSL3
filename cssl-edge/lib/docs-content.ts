@@ -2,7 +2,7 @@
 // Static docs content metadata · drives sidebar TOC + prev/next navigation.
 // Hermetic: no external fetches, all content authored as TypeScript.
 
-export type DocStatus = 'available' | 'in-progress' | 'coming-soon' | 'subject-to-change';
+export type DocStatus = 'available' | 'in-progress' | 'coming-soon' | 'subject-to-change' | 'archived';
 
 export interface DocPage {
   /** URL slug under /docs/<slug>. Index page uses '' (empty). */
@@ -22,35 +22,14 @@ export interface DocPage {
  * prev/next traversal order. Edit here to add/reorder pages.
  */
 export const DOC_PAGES: ReadonlyArray<DocPage> = [
-  // § Overview
+  // § Apocrypha - the thing a visitor can actually use today, and until now the only live
+  // product with no documentation at all.
   {
-    slug: 'getting-started',
-    title: 'Getting Started',
-    blurb: 'Install Labyrinth of Apocalypse, launch it, and begin a game.',
+    slug: 'apocrypha',
+    title: 'Talking to Apocrypha',
+    blurb: 'Ask a question in the browser, what it remembers, and what signing in changes.',
     status: 'available',
-    section: 'Overview',
-  },
-  {
-    slug: 'keyboard-shortcuts',
-    title: 'Keyboard Shortcuts',
-    blurb: 'Keyboard controls for movement, display modes, screenshots, and pausing.',
-    status: 'available',
-    section: 'Overview',
-  },
-  // § In-game UI
-  {
-    slug: 'chat-panel',
-    title: 'Chat Panel',
-    blurb: 'How to use the game’s conversation panel, history, and example requests.',
-    status: 'available',
-    section: 'In-game UI',
-  },
-  {
-    slug: 'intents',
-    title: 'How the game reads requests',
-    blurb: 'The twelve kinds of request the current game can recognize, with examples.',
-    status: 'available',
-    section: 'In-game UI',
+    section: 'Apocrypha',
   },
   // § Language
   {
@@ -96,20 +75,49 @@ export const DOC_PAGES: ReadonlyArray<DocPage> = [
     status: 'in-progress',
     section: 'Substrate',
   },
-  // § Reference
-  {
-    slug: 'troubleshooting',
-    title: 'Troubleshooting',
-    blurb: 'Common problems, where to find logs, and how to report a bug.',
-    status: 'available',
-    section: 'Reference',
-  },
   {
     slug: 'changelog',
     title: 'Changelog',
     blurb: 'Released versions, work in progress, and future plans.',
     status: 'available',
     section: 'Reference',
+  },
+  // § Labyrinth of Apocalypse - archived. The test build is not distributed from this site,
+  // so these come last; they remain accurate for anyone who already has a copy.
+  {
+    slug: 'getting-started',
+    title: 'Running Labyrinth of Apocalypse',
+    blurb: 'Launch and first-run steps, for people who already have a copy of the test build.',
+    status: 'archived',
+    section: 'Labyrinth of Apocalypse',
+  },
+  {
+    slug: 'keyboard-shortcuts',
+    title: 'Keyboard Shortcuts',
+    blurb: 'Keyboard controls for movement, display modes, screenshots, and pausing.',
+    status: 'archived',
+    section: 'Labyrinth of Apocalypse',
+  },
+  {
+    slug: 'chat-panel',
+    title: 'Chat Panel',
+    blurb: 'The in-game conversation panel, its history, and example requests.',
+    status: 'archived',
+    section: 'Labyrinth of Apocalypse',
+  },
+  {
+    slug: 'intents',
+    title: 'How the game reads requests',
+    blurb: 'The twelve kinds of request the game recognizes, with examples.',
+    status: 'archived',
+    section: 'Labyrinth of Apocalypse',
+  },
+  {
+    slug: 'troubleshooting',
+    title: 'Troubleshooting the test build',
+    blurb: 'Common problems, where to find logs, and how to report a bug.',
+    status: 'archived',
+    section: 'Labyrinth of Apocalypse',
   },
 ];
 
@@ -152,5 +160,9 @@ export function statusBadge(s: DocStatus): { label: string; color: string } {
       return { label: 'Coming soon', color: '#9aa0a6' };
     case 'subject-to-change':
       return { label: 'Subject to change', color: '#f472b6' };
+    case 'archived':
+      // The page is accurate for anyone who already has the build; it is simply no longer the
+      // way in, because the build is not distributed from this site.
+      return { label: 'Archived', color: '#9aa0a6' };
   }
 }

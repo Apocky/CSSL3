@@ -5,7 +5,7 @@ const Privacy: NextPage = () => (
   <LegalDocument
     title="Privacy policy"
     description="What apocky.com collects, why it is used, and the choices available to visitors."
-    updated="July 27, 2026"
+    updated="September 14, 2026"
   >
     <p>
       This policy covers apocky.com and the website features it currently provides. A separately hosted project
@@ -59,6 +59,38 @@ const Privacy: NextPage = () => (
       submitting it.
     </p>
 
+    {/* Added because the policy described a site that no longer matches it: Apocrypha processes
+        what people type and was not mentioned anywhere, and it now accepts signed-out visitors.
+        Every statement here is of observed behaviour, and the 30-day deletion is enforced by a
+        scheduled job rather than promised. */}
+    <h2>Talking to Apocrypha</h2>
+    <p>
+      When you send a message to Apocrypha, the message is stored on the server as a work item so the
+      machine that answers can pick it up, and the reply is stored with it. This is how the answer
+      reaches you; it is not a separate copy kept for analysis.
+    </p>
+    <ul>
+      <li>
+        <strong>Signed out.</strong> No account is attached. You are identified only by a random value
+        placed in a cookie, and that value reaches the database only as a one-way hash. The stored
+        message and reply are deleted automatically after 30 days. The visible conversation in your
+        browser stays on your device and is not uploaded.
+      </li>
+      <li>
+        <strong>Signed in.</strong> Conversations are kept against your account so the same
+        conversation is available on your other devices, and are retained until you remove them or
+        close your account.
+      </li>
+      <li>
+        <strong>Training.</strong> What you type is not used to train a model. Each answer carries a
+        statement to that effect, and the page checks it before displaying anything.
+      </li>
+    </ul>
+    <p>
+      Answers are produced on hardware operated by Apocky rather than sent to a third-party AI
+      provider, so the content of a conversation is not shared with one.
+    </p>
+
     <h2>Camera, microphone, and local files</h2>
     <p>
       The public homepage does not request camera or microphone access. A separate private experience may offer
@@ -102,6 +134,10 @@ const Privacy: NextPage = () => (
       transaction records may need to remain longer. This policy does not promise an automatic deletion period
       that the current system has not verified. You may ask what is held about you or request correction or
       deletion. Some records may need to remain when required by law, fraud prevention, or an unresolved dispute.
+    </p>
+    <p>
+      One period is stated because it is enforced rather than intended: signed-out Apocrypha messages and
+      their replies are deleted 30 days after they are created, by a scheduled job that runs daily.
     </p>
 
     <h2>Your choices</h2>
