@@ -124,3 +124,53 @@
 @media (prefers-contrast: more) {
   .rowSummary { color: var(--apx-ink, #f5f3ff); }
 }
+
+/* -- Apocrypha front door ---------------------------------------------------------------------
+   One thing to do, and enough context to know what you are walking into. The old index rules
+   (.directory, .row*, .group) are left in place: /atlas still uses the row pattern and the pages
+   still answer on their URLs -- they are unlinked, not deleted. */
+.entry { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 0; }
+.enter {
+  display: inline-flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 14px 26px;
+  border-radius: 999px;
+  border: 1px solid var(--apx-neon, #78e7ff);
+  background: linear-gradient(120deg, rgba(28, 51, 75, 0.95), rgba(20, 27, 43, 0.95));
+  color: var(--apx-ink, #f5f3ff);
+  font: 650 1.02rem/1 var(--apx-sans, system-ui, sans-serif);
+  text-decoration: none;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+.enter:hover { background: linear-gradient(120deg, rgba(38, 68, 100, 0.98), rgba(26, 35, 56, 0.98)); transform: translateY(-1px); }
+.entrySecondary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 14px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17));
+  color: var(--apx-copy, #d8dcf4);
+  font: 500 0.98rem/1 var(--apx-sans, system-ui, sans-serif);
+  text-decoration: none;
+}
+.entrySecondary:hover { border-color: var(--apx-line-strong, #8f9ad0); color: var(--apx-ink, #f5f3ff); }
+.enter:focus-visible, .entrySecondary:focus-visible { outline: 2px solid var(--apx-neon, #78e7ff); outline-offset: 3px; }
+
+.truths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin: 54px 0 0; }
+.truth { min-width: 0; }
+.truth h2 {
+  margin: 0 0 8px;
+  font: 600 1.06rem/1.3 var(--apx-display, Georgia, serif);
+  letter-spacing: -0.015em;
+  color: var(--apx-ink, #f5f3ff);
+}
+.truth p { margin: 0; font-size: 0.92rem; line-height: 1.6; color: var(--apx-copy, #d8dcf4); }
+
+@media (max-width: 760px) {
+  .truths { grid-template-columns: 1fr; gap: 20px; margin-top: 38px; }
+  .entry { gap: 10px; }
+  .enter, .entrySecondary { width: 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .enter:hover { transform: none; } }

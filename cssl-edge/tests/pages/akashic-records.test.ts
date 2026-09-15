@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { renderSiteDirectory } from '../helpers/render-site-directory';
 
 import {
   findAkashicRecord,
@@ -116,9 +115,13 @@ async function run(): Promise<void> {
   assert.match(detailSource, /const cardHref = safeExternalHref\(block\.href\)/, 'link cards must pass through the safe external-link policy');
   assert.match(detailSource, /aria-label=\{`\$\{block\.role\} message`\}/, 'transcript turns must retain role semantics');
   assert.match(detailSource, /availability unverified|may be unavailable/, 'original links must disclose uncertainty');
-  assert.match(shellSource, /href: '\/akashic-records'/, 'global navigation must expose the archive');
-  assert.match(homeSource, /<SiteDirectory\s*\/>/, 'homepage renders the shared destination panels');
-  assert.match(renderSiteDirectory(), /href="\/akashic-records"/, 'rendered homepage must expose a direct archive link');
+  // The archive is no longer advertised in global navigation (owner instruction 2026-09-15:
+  // the site is Apocrypha). It must still EXIST and answer -- unlinked is not deleted.
+  assert.ok(fs.existsSync(path.join(process.cwd(), 'pages/akashic-records/index.tsx')), 'the archive page must still answer on its URL');
+  assert.doesNotMatch(shellSource, /href: '\/akashic-records'/, 'global navigation must no longer advertise the archive');
+  assert.doesNotMatch(homeSource, /<SiteDirectory/, 'the homepage is an Apocrypha front door, not a destination index');
+  // The home page no longer links the archive directly -- it is an Apocrypha front door now.
+  // Reachability is asserted above (the page file exists) and by the sitemap check.
   assert.match(docsDetailSource, /spec\.slug === '18_AKASHIC_RECORDS'/, 'legacy qualifier must target only the existing technical document');
   assert.match(
     docsDetailSource,

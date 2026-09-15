@@ -9,12 +9,11 @@ import ContextualSynapses from './site/ContextualSynapses';
 
 type NavItem = { href: string; label: string; shortLabel?: string; ext?: boolean; accent?: boolean };
 
+// The site is Apocrypha. The nav carries Apocrypha surfaces and nothing else -- the other pages
+// still answer on their URLs, they are simply no longer advertised. Owner instruction 2026-09-15.
 const NAV: ReadonlyArray<NavItem> = [
-  { href: '/tools', label: 'Tools' },
-  { href: '/words', label: 'Words' },
-  { href: '/conversations', label: 'Thoughts' },
-  { href: '/codex-apockalypsis', label: 'Codex' },
-  { href: '/apocrypha', label: 'Apocrypha' },
+  { href: '/apocrypha', label: 'Conversation' },
+  { href: '/download/apocrypha', label: 'Get the app' },
 ];
 
 // Owner-only. The Work lane drives a coding agent with filesystem and shell access on the machine
@@ -23,14 +22,12 @@ const OWNER_NAV: ReadonlyArray<NavItem> = [
   { href: '/work', label: 'Work' },
 ];
 
+// Was seven links to other destinations, twelve of the footer's sixteen duplicating the old home
+// directory. Now: the ways into Apocrypha itself.
 const EXPLORE: ReadonlyArray<NavItem> = [
-  { href: '/tools', label: 'Tools to try' },
-  { href: '/words', label: 'Words & meanings' },
-  { href: '/conversations', label: 'Thoughts & conversations' },
-  { href: '/akashic-records', label: 'Essays & writing' },
-  { href: '/codex-apockalypsis', label: 'Codex Apockalypsis' },
-  { href: '/atlas', label: 'Browse everything' },
-  { href: '/clearing', label: 'Community' },
+  { href: '/apocrypha', label: 'Start a conversation' },
+  { href: '/download/apocrypha', label: 'Get the app' },
+  { href: '/account', label: 'Your account' },
 ];
 
 const LEGAL: ReadonlyArray<NavItem> = [
@@ -90,7 +87,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             <span>APOCKY</span>
           </Link>
 
-          <div className="apx-nav-links" aria-label="Explore Apocky">
+          <div className="apx-nav-links" aria-label="Apocrypha">
             {navLinks()}
           </div>
 
@@ -106,12 +103,8 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
 
           <details ref={mobileMenu} className="apx-mobile-menu">
             <summary>Menu</summary>
-            <div className="apx-mobile-menu-panel" role="group" aria-label="Explore Apocky on mobile">
+            <div className="apx-mobile-menu-panel" role="group" aria-label="Apocrypha menu">
               {navLinks('apx-mobile-menu-link')}
-              <Link href="/akashic-records" className="apx-mobile-menu-link">Essays &amp; writing</Link>
-              <Link href="/clearing" className="apx-mobile-menu-link">Community</Link>
-              <Link href="/atlas" className="apx-mobile-menu-link">Browse everything</Link>
-              <Link href="/membership" className="apx-mobile-menu-link apx-nav-link--support">Membership &amp; support</Link>
               <Link
                 href={authenticated ? '/account' : '/login?next=%2Faccount'}
                 className="apx-mobile-menu-link"
@@ -137,7 +130,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
               <span>APOCKY</span>
             </Link>
             <p className="apx-footer-copy">
-              Tools to try. Words to understand. Thoughts and stories to get lost in.
+              A digital intelligence you can talk to. No account needed to start.
             </p>
           </div>
           <div>
@@ -149,7 +142,6 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
           <div className="apx-footer-support">
             <h2 className="apx-footer-title">Support</h2>
             <div className="apx-footer-links">
-              <Link href="/membership" className="apx-footer-link">Membership &amp; support</Link>
               {SUPPORT_LINKS.map((item) => (
                 <a key={item.name} href={item.href} target="_blank" rel="noopener noreferrer" className="apx-footer-link">
                   {item.label} <span aria-hidden="true">↗</span>
@@ -161,7 +153,6 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
             <h2 className="apx-footer-title">Legal</h2>
             <div className="apx-footer-links">
               {LEGAL.map((item) => <Link key={item.label} href={item.href} {...extProps(item)} className="apx-footer-link">{item.label}</Link>)}
-              <Link href="/docs" className="apx-footer-link">Guides</Link>
               <Link href="/status" className="apx-footer-link">Service status</Link>
             </div>
           </div>

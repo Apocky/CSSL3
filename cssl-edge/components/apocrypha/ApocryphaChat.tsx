@@ -959,12 +959,10 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
         {/* Following the Clearing, which is the other full-height surface on this site: a focused
             room still has to say where the rest of it is. In the header these four would crowd a
             phone; here they are always present and never in the way. */}
-        <nav className={styles.returnLinks} aria-label="Explore Apocky">
+        <nav className={styles.returnLinks} aria-label="Apocrypha">
           <Link href="/">Home</Link>
-          <Link href="/tools">Tools</Link>
-          <Link href="/words">Words</Link>
-          <Link href="/conversations">Thoughts</Link>
-          <Link href="/codex-apockalypsis">Codex</Link>
+          <Link href="/download/apocrypha">Get the app</Link>
+          <Link href="/account">Account</Link>
         </nav>
 
         <p id="apocrypha-composer-help" className={styles.footnote}>

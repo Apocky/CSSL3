@@ -31,7 +31,7 @@
     "test:auth-redirect": "node --import tsx tests/lib/auth-redirect.test.ts",
     "test:auth-totp": "node --import tsx tests/lib/auth-totp.test.ts && node --import tsx tests/api/auth-totp-enrolment.test.ts && node --import tsx tests/lib/auth-continue.test.ts && node --import tsx tests/lib/auth-credential.test.ts",
     "test:apocrypha-sms": "node --import tsx tests/lib/apocrypha-sms.test.ts && node --import tsx tests/api/apocrypha-sms-migration.test.ts && node --import tsx tests/api/apocrypha-sms-ingress.test.ts && node --import tsx tests/api/apocrypha-sms-worker.test.ts",
-    "test:public-discovery": "node --import tsx tests/pages/public-discovery.test.ts",
+    "test:public-discovery": "node --import tsx tests/pages/public-discovery.test.ts && node --import tsx tests/pages/apocrypha-focus.test.ts",
     "test:showcase": "node --import tsx tests/pages/showcase.test.ts",
     "test:neural-public-pages": "node --import tsx tests/pages/neural-public-pages.test.ts && node --import tsx tests/pages/memory-tools.test.ts && node --import tsx tests/lib/public-error-code.test.ts && node --import tsx tests/lib/public-surface-graph.test.ts",
     "test:symbolic-studio": "node --import tsx tests/lib/spellcraft-engine.test.ts && node --import tsx tests/lib/oracle.test.ts && node --import tsx tests/lib/spellbook-local.test.ts && node --import tsx tests/pages/symbolic-public-pages.test.ts",

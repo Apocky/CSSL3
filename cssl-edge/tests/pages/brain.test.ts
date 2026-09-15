@@ -19,7 +19,6 @@ const document = read('pages/_document.tsx');
 const consent = read('components/AkashicConsent.tsx');
 const home = read('pages/index.tsx');
 const shell = read('components/SiteShell.tsx');
-const siteDirectory = read('components/site/SiteDirectory.tsx');
 const publicSurfaceGraph = read('lib/public-surface-graph.ts');
 const miniBrain = read('lib/brain/mini-brain.ts');
 const mobileRelay = read('lib/brain/mobile-relay.ts');
@@ -99,11 +98,15 @@ assert.match(consent, /if \(blackout \|\| compactSurface\) return null/, 'teleme
 assert.match(app, /pathname === '\/apocrypha'/, 'primary private alias must render without the public site shell');
 assert.match(app, /privateBrainSurface[\s\S]*?href="\/manifest\.json"/, 'the public manifest must be route-aware across client navigation');
 assert.doesNotMatch(document, /rel="manifest"/, 'the fixed document head must not pin the public manifest onto the private PWA');
-assert.match(home, /<SiteDirectory \/>/, 'home must render the public destination directory');
-assert.match(siteDirectory, /FEATURED = \[[^\]]*'apocrypha'/, 'home directory must feature Apocrypha');
+assert.doesNotMatch(home, /<SiteDirectory/, 'the front door is Apocrypha, not a destination directory');
+// The home directory is gone; the home page IS Apocrypha now (owner instruction 2026-09-15).
+// The intent of this gate survives intact: arriving at the front door must put Apocrypha in reach.
+assert.match(home, /href="\/apocrypha"/, 'the front door must offer a direct way into Apocrypha');
 assert.match(publicSurfaceGraph, /"id": "apocrypha"[\s\S]*?"href": "\/apocrypha"/, 'Apocrypha directory entry must open the canonical route');
 assert.doesNotMatch(home, /OWNER-PRIVATE|public relay remains closed/, 'home must not retain the superseded owner-only promise');
-assert.match(shell, /href: '\/apocrypha', label: 'Apocrypha'/, 'public shell must reveal account chat');
+// The nav label is now 'Conversation' (the whole site is Apocrypha, so repeating the name in the
+// nav said nothing). The gate binds to the ROUTE, which is what it was protecting.
+assert.match(shell, /href: '\/apocrypha'/, 'public shell must reveal the conversation');
 assert.doesNotMatch(shell, /href="\/brain"/, 'public navigation must lead to the canonical conversation rather than a competing owner chat');
 assert.doesNotMatch(experience, /Mini Brain · deterministic|Local cortex capability|useful Mini Brain|Reflect \+ queue/, 'placeholder replies and model capability marketing must be absent');
 assert.match(experience, /message\.origin !== 'local-reflection'/, 'legacy reflections stay out of the active conversation');

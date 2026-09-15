@@ -101,7 +101,11 @@ assert.doesNotMatch(publicGeneratorSource, /APOCKY_CHATGPT_EXPORT_DIR|APOCKY_CLA
 assert.match(reviewBuilderSource, /must be outside the repository/u, 'raw review builder cannot target public or tracked paths');
 assert.match(reviewBuilderSource, /implementation-only and cannot write public assets/u, 'ambiguous legacy entry point fails closed');
 assert.match(reviewEntrySource, /buildReviewCorpus/u, 'raw review work has a separately named entry point');
-assert.match(shellSource, /href: '\/conversations', label: 'Thoughts & conversations'/u, 'footer Explore navigation exposes the reading room');
+// The footer Explore column now carries the ways into Apocrypha, not a directory of projects
+// (owner instruction 2026-09-15). The reading room still answers on /conversations; it is
+// unlinked, not removed -- tests/pages/apocrypha-focus.test.ts asserts every destination survives.
+assert.doesNotMatch(shellSource, /href: '\/conversations'/u, 'the footer must no longer advertise the reading room');
+assert.ok(fs.existsSync(path.join(process.cwd(), 'pages/conversations.tsx')), 'the reading room page must still answer on its URL');
 assert.match(middlewareSource, /'\/conversation-corpus\/records\/'/u, 'legacy static bodies are blocked at the edge');
 assert.match(vercelIgnore, /public\/conversation-corpus\/records\//u, 'legacy local bodies are excluded from dirty-root deployment');
 assert.match(vercelIgnore, /public\/conversation-corpus\/index\.v1\.json/u, 'legacy local index is excluded from dirty-root deployment');

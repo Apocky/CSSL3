@@ -16,16 +16,18 @@ export interface ReturnLinksProps {
   readonly className?: string;
 }
 
+// Apocrypha surfaces only. A bare page still needs a way out -- that was the whole point of this
+// component -- but the way out now leads further into Apocrypha rather than off to a directory of
+// other projects. Owner instruction 2026-09-15.
 const SITE = [
   { href: '/', label: 'Home' },
-  { href: '/tools', label: 'Tools' },
-  { href: '/words', label: 'Words' },
-  { href: '/conversations', label: 'Thoughts' },
-  { href: '/codex-apockalypsis', label: 'Codex' },
+  { href: '/apocrypha', label: 'Conversation' },
+  { href: '/download/apocrypha', label: 'Get the app' },
+  { href: '/account', label: 'Account' },
 ] as const;
 
 export function ReturnLinks({ children, className }: ReturnLinksProps): JSX.Element {
-  return <nav className={className ? `apx-return-links ${className}` : 'apx-return-links'} aria-label="Explore Apocky">
+  return <nav className={className ? `apx-return-links ${className}` : 'apx-return-links'} aria-label="Apocrypha">
     {children}
     {SITE.map((item) => <Link key={item.href} href={item.href}>{item.label}</Link>)}
     <style jsx>{`

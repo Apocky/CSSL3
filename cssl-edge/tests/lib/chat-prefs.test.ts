@@ -124,10 +124,16 @@ assert.ok(
   !/:\s*<Link href="\/" className=\{styles\.brand\}/u.test(room),
   'the way home must not be the ELSE branch of having conversations',
 );
-for (const href of ['/tools', '/words', '/conversations', '/codex-apockalypsis']) {
+// The DEFECT this protects against is a dead end: a full-height room with no way out. That is
+// unchanged. What changed is where "out" goes -- the site is Apocrypha now (owner instruction
+// 2026-09-15), so the way out leads further into Apocrypha instead of to four other projects.
+for (const href of ['/', '/download/apocrypha', '/account']) {
   assert.ok(room.includes(`<Link href="${href}">`), `the room links back to ${href}`);
 }
-assert.ok(room.includes('aria-label="Explore Apocky"'), 'the return links are a named landmark');
+for (const gone of ['/tools', '/words', '/conversations', '/codex-apockalypsis']) {
+  assert.ok(!room.includes(`<Link href="${gone}">`), `the room must no longer advertise ${gone}`);
+}
+assert.ok(room.includes('aria-label="Apocrypha"'), 'the return links are a named landmark');
 assert.ok(style.includes('.returnLinks'), 'the return links are styled rather than raw');
 
 // ── the browser lane must not import a server module ──────────────────────────────────────────

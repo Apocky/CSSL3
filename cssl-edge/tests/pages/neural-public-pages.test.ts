@@ -5,7 +5,6 @@ import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 
 import { PUBLIC_SURFACE_EDGES, PUBLIC_SURFACE_NODES } from '@/lib/public-surface-graph';
-import { renderSiteDirectory } from '../helpers/render-site-directory';
 
 function read(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -16,7 +15,6 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const home = read('pages/index.tsx');
-const homePanels = renderSiteDirectory();
 const start = read('pages/start.tsx');
 const membership = read('pages/membership.tsx');
 const quests = read('pages/quests.tsx');
@@ -65,17 +63,9 @@ for (const route of ['/tools', '/codex-apockalypsis', '/start', '/divination', '
 }
 assert(llms.includes('https://chaos-tarot.com/yes-no') && llms.includes('external sign-in required'), 'discovery text must disclose the actual Oracle destination and sign-in requirement');
 
-assert(homePanels.includes('href="https://chaos-tarot.com/free-reading?source=apocky-directory"'), 'home must hand off directly to the registered free Chaos reading');
-assert(homePanels.includes('href="https://chaos-tarot.com/yes-no"'), 'the Oracle panel must use its actual external destination');
-assert(!homePanels.includes('href="/oracle"'), 'home must not host or advertise the local Yes / No route');
 assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the complete project index beneath its primary paths');
-for (const node of PUBLIC_SURFACE_NODES.filter(node => node.id !== 'home')) {
-  assert(homePanels.includes(`data-destination="${node.id}"`), `home must expose a complete panel for ${node.id}`);
-}
-assert(homePanels.includes('href="/apocrypha"'), 'every visitor must have a direct Apocrypha entry');
 assert(!home.includes("access === 'owner'"), 'account chat entry must not be restricted to the owner');
 assert(!home.includes('public relay remains closed'), 'home must not retain the superseded owner-only copy');
-assert(home.includes('<SiteDirectory />'), 'home must render the complete public destination collection');
 assert(!home.includes('runtime ready') && !home.includes('release verified'), 'home must not make unsupported runtime or release claims');
 assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
 assert(home.includes('location.replace(returnTo)'), 'home simplification must preserve the normalized post-auth return path');
@@ -96,9 +86,17 @@ assert(status.includes('Configuration flags mean a connection is present; they d
 assert(command.includes('aria-label="Search Apocky"'), 'mobile command trigger must retain an accessible name');
 assert(shell.includes('<ContextualSynapses pathname={pathname} />'), 'global shell must expose contextual graph edges');
 const primaryNav = shell.match(/const NAV:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
-assert((primaryNav.match(/href:/g) ?? []).length === 5, 'global shell must expose no more than five primary destinations');
-for (const label of ['Tools', 'Words', 'Thoughts', 'Codex', 'Apocrypha']) {
-  assert(primaryNav.includes(label), `primary navigation missing ${label}`);
+// Was pinned at exactly 5 when the shell fronted five different projects. The site is Apocrypha
+// now, so the ceiling is what matters, not the count: a nav that grows back into a directory is
+// the regression worth catching.
+assert((primaryNav.match(/href:/g) ?? []).length <= 3, 'global shell must stay focused: at most three primary destinations');
+// The nav used to front five projects. It now fronts one, so the assertion inverts: the four other
+// labels must be GONE, and the ways into Apocrypha must be present.
+for (const gone of ['Tools', 'Words', 'Thoughts', 'Codex']) {
+  assert(!primaryNav.includes(gone), `primary navigation still advertises ${gone}`);
+}
+for (const kept of ['/apocrypha', '/download/apocrypha']) {
+  assert(primaryNav.includes(kept), `primary navigation missing the Apocrypha surface ${kept}`);
 }
 assert(!primaryNav.includes('/start'), 'home now owns orientation; Start must not remain a primary destination');
 assert(!shell.includes("href: '/oracle'"), 'global navigation and footer must not advertise the retired local Oracle');
