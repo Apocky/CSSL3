@@ -23,7 +23,10 @@ export function AuthFrame({ children, mode, formFirst = false }: AuthFrameProps)
       : {
           eyebrow: 'Welcome back',
           title: 'Sign in to the page you chose.',
-          copy: 'Use a one-time code, email link, or supported sign-in provider. Public project links do not require an account.',
+          // The form beside this one says "No password, no email round-trip." Saying "email link"
+          // here contradicted it on the same screen, and the email path is the FALLBACK now, not
+          // the headline. Describing the primary way in is what this panel is for.
+          copy: 'Sign in with a 6-digit code from your authenticator app, or with a supported provider. Reading Apocrypha and the public pages needs no account at all.',
         };
 
   const storySection = <section className="apx-auth-story" aria-labelledby="auth-story-title">
