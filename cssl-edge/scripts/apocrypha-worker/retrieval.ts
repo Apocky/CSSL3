@@ -141,14 +141,16 @@ function canonicalReadingQuery(value: unknown): string {
 
 export function queryFromJob(job: ClaimedJob): string {
   const request = job.request;
-  const explicit = request.retrieval_query;
-  if (typeof explicit === 'string' && explicit.trim()) return explicit.trim().slice(0, 4_000);
+  const explicit = typeof request.retrieval_query === 'string' ? request.retrieval_query.trim() : '';
 
   const question = safeText(request.question).trim();
   const legacyPrompt = [request.prompt, request.query, request.text, request.content, request.oracle_prompt]
     .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
     ?.trim() ?? '';
-  const currentPrompt = (question || legacyPrompt).slice(0, 4_000);
+  // retrieval_query names this turn's question, not the finished query. Widening
+  // it here keeps current-prompt precedence and the 4K bound in one place; a
+  // caller that pre-joined its own history would slip past both.
+  const currentPrompt = (explicit || question || legacyPrompt).slice(0, 4_000);
   const reading = canonicalReadingQuery(request.canonical_reading);
   const source = safeText(request.source_text).trim().slice(0, 1_800);
   const structured = boundedJson(request.structured_context, 1_000);
@@ -444,6 +446,42 @@ function aggregateProbeResults(
   });
 }
 
+export function isMemoryNeeded(job: ClaimedJob): boolean {
+  const request = job.request;
+  if (!request) return false;
+  if (request.memory_requested === true || request.needs_memory === true) return true;
+
+  const query = (typeof request.retrieval_query === 'string' ? request.retrieval_query : '').trim();
+  const text = [
+    query,
+    request.prompt,
+    request.question,
+    request.oracle_prompt,
+    request.content,
+    Array.isArray(request.messages) ? request.messages.map((m: any) => m?.content ?? '').join(' ') : '',
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  // Only invoke memory for explicit reasoning tasks and recall tasks
+  const memoryPatterns = [
+    /\brecall\b/i,
+    /\bremember\b/i,
+    /\bmemory\b/i,
+    /\bmempalace\b/i,
+    /\banamnesis\b/i,
+    /\bbrainmonsoon\b/i,
+    /\bgraphify\b/i,
+    /\bmetaharness\b/i,
+    /\bfrom\s+(?:the\s+)?vault\b/i,
+    /\bsearch\s+(?:memory|notes|records|history)\b/i,
+    /\bwhat\s+did\s+(?:we|i)\s+(?:say|discuss|do|write|decide)\b/i,
+    /\bprior\s+conversation\b/i,
+    /\bprevious\s+(?:conversation|reading|turn)\b/i,
+    /\bwho\s+am\s+i\b/i,
+  ];
+
+  return memoryPatterns.some((pattern) => pattern.test(text));
+}
+
 export async function retrieveMemory(
   config: WorkerConfig,
   job: ClaimedJob,
@@ -451,6 +489,22 @@ export async function retrieveMemory(
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle> {
   const query = queryFromJob(job);
+  // Cut out heavy memory tools initially; only invoke when demanded by reasoning/recall tasks
+  if (!isMemoryNeeded(job)) {
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => ({
+      name: adapter.name,
+      state: 'ok',
+      durationMs: 0,
+      records: [],
+    }));
+    return {
+      query,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt: null,
+    };
+  }
   const settled = await invokeAdaptersBounded(config,
     (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl));
   const results = settled.map((result, index): RetrievalAdapterResult => {
