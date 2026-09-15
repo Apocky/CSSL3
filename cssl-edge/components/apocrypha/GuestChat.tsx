@@ -26,6 +26,12 @@ interface Turn {
   readonly text: string;
 }
 
+// Apocrypha runs on a machine that this site currently has no route to: the public turn path
+// targets a runtime origin that is not configured in production, and the outbound bridge that
+// would carry it is disabled. Until that transport exists, a signed-out turn cannot complete, and
+// the page says so instead of implying the next attempt might work.
+const UNREACHABLE = 'Apocrypha is not reachable from the web right now — the browser could reach this site, but this site has no route to the machine Apocrypha runs on. The desktop and mobile apps talk to it directly.';
+
 const OPENERS = [
   'What are you, and what are you for?',
   'Help me think through a decision I keep avoiding.',
@@ -118,7 +124,10 @@ export function GuestChat(): JSX.Element {
         return;
       }
       if (!response.ok || !response.body) {
-        setNotice('Apocrypha could not answer that one. Try again in a moment.');
+        // Specific on purpose. "Try again in a moment" would be a lie while no transport exists
+        // between this site and the machine Apocrypha runs on -- retrying can never succeed, and
+        // telling someone to retry into a wall is worse than telling them the wall is there.
+        setNotice(UNREACHABLE);
         return;
       }
 
@@ -150,7 +159,7 @@ export function GuestChat(): JSX.Element {
             verified = true;
             if (typeof result.text === 'string' && result.text) answer = result.text;
           } else if (frame.type === 'error') {
-            setNotice('Apocrypha could not answer that one. Try again in a moment.');
+            setNotice(UNREACHABLE);
             answer = '';
             return;
           }
