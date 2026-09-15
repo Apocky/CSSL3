@@ -323,8 +323,22 @@ const Login: NextPage = () => {
                 {operation === 'verify' ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
-            <p className="apx-auth-switch" style={{ marginTop: 18 }}>
-              <button type="button" onClick={() => setShowEmailFallback((value) => !value)}>
+            <p className="apx-auth-switch" style={{ marginTop: 18, textAlign: 'center' }}>
+              {/* A bare <button> inherits the platform's grey chrome and reads as a broken control
+                  next to the styled inputs. It is a link in behaviour, so it looks like one. */}
+              <button
+                type="button"
+                onClick={() => setShowEmailFallback((value) => !value)}
+                style={{
+                  background: 'none',
+                  border: 0,
+                  padding: 0,
+                  font: 'inherit',
+                  color: '#9fc6ff',
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                }}
+              >
                 {showEmailFallback ? 'Hide email sign-in' : 'No authenticator? Sign in by email instead'}
               </button>
             </p>
