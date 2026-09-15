@@ -446,6 +446,26 @@ function aggregateProbeResults(
   });
 }
 
+/**
+ * Whether this turn loads memory. Default: yes.
+ *
+ * This used to be a keyword allowlist -- memory loaded only if the message contained "recall",
+ * "remember", "memory", "who am i" and so on. That made the common case the blind case: "what are
+ * we working on", "how do I deploy this", "what do I prefer here" all matched nothing and were
+ * answered with no memory loaded at all. The single most repeated correction across 7,512
+ * owner-authored messages is a description of exactly that behaviour.
+ *
+ * Memory is now default-on, per owner directive 2026-09-14. The latency that justified the gate is
+ * handled where it belongs -- WorkingMemory keeps the set warm between turns, so default-on does
+ * not mean a federated probe per turn. Callers that genuinely want a turn to run cold must say so.
+ */
+export function isMemoryNeeded(job: ClaimedJob): boolean {
+  const request = job.request;
+  if (!request) return true;
+  if (request.memory_requested === false || request.needs_memory === false) return false;
+  return true;
+}
+
 export async function retrieveMemory(
   config: WorkerConfig,
   job: ClaimedJob,
@@ -453,6 +473,25 @@ export async function retrieveMemory(
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle> {
   const query = queryFromJob(job);
+  // Only when the caller explicitly opted this turn out of memory.
+  if (!isMemoryNeeded(job)) {
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => ({
+      name: adapter.name,
+      // NOT 'ok'. An adapter that was never asked has not succeeded, and reporting it green is
+      // how a blind worker passed for a healthy one.
+      state: 'skipped',
+      durationMs: 0,
+      records: [],
+      detail: 'turn opted out of memory',
+    }));
+    return {
+      query,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt: null,
+    };
+  }
   const settled = await invokeAdaptersBounded(config,
     (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl));
   const results = settled.map((result, index): RetrievalAdapterResult => {

@@ -4,6 +4,7 @@ import { log } from './log';
 import { composeQwenRequest } from './prompt';
 import { QwenClient, QwenError } from './qwen';
 import { probeMemoryAdapters, retrieveMemory } from './retrieval';
+import { WorkingMemory } from './working-memory';
 import type {
   AttemptJournalState,
   ClaimedJob,
@@ -50,6 +51,22 @@ interface Dependencies {
   fetchImpl?: typeof fetch;
 }
 
+/**
+ * Working-set key for a job.
+ *
+ * Always prefixed with tenant and owner: a conversation id arrives inside a request payload, so
+ * it is caller-supplied, and a caller-supplied key must never be able to address another
+ * principal's memory. The prefix makes that structural rather than a matter of validation.
+ */
+function conversationKey(job: ClaimedJob): string {
+  const request = job.request ?? {};
+  const supplied = ['conversation_id', 'conversationId', 'thread_id', 'session_id']
+    .map((field) => (request as Record<string, unknown>)[field])
+    .find((value) => typeof value === 'string' && value.trim() !== '');
+  const scope = typeof supplied === 'string' ? supplied.trim().slice(0, 128) : 'default';
+  return JSON.stringify([job.tenantId, job.ownerPrincipalId, scope]);
+}
+
 export class ApocryphaWorker {
   readonly runtime: WorkerRuntimeState;
   readonly journal: AttemptJournal;
@@ -59,6 +76,7 @@ export class ApocryphaWorker {
   private readonly env: NodeJS.ProcessEnv;
   private readonly fetchImpl: typeof fetch;
   private readonly stopController = new AbortController();
+  private readonly workingMemory = new WorkingMemory();
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private contextClampLogged = false;
   private heartbeatRetryAt = 0;
@@ -268,9 +286,23 @@ export class ApocryphaWorker {
       const probe = await this.qwen.probe(abortController.signal);
       if (!probe.healthy) throw new QwenError(`Qwen is not ready: ${probe.detail}`, 'QWEN_NOT_READY', true);
       this.runtime.phase = 'retrieving';
-      memory = await this.serializeMemoryOperation(
-        () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
+      // Memory is loaded on every turn now, so it must not cost a federated probe on every turn.
+      // The working set is served warm and revalidated behind the turn; only a cold or expired
+      // conversation actually waits. See working-memory.ts.
+      const memoryKey = conversationKey(claim);
+      const held = await this.workingMemory.ensure(
+        memoryKey,
+        () => this.serializeMemoryOperation(
+          () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
+        ),
       );
+      memory = held.bundle;
+      log('info', 'worker.memory.working_set', {
+        origin: held.origin,
+        ageMs: held.ageMs,
+        turnRecords: held.episodicRecords,
+        ...this.workingMemory.stats(),
+      });
       const retrievalStates = Object.fromEntries(memory.results.map((result) => [result.name, result.state]));
       if (memory.results.every((result) => result.state === 'ok')) {
         this.runtime.adapterStates = retrievalStates;

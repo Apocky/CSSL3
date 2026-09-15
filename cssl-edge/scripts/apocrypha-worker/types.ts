@@ -139,7 +139,10 @@ export interface RetrievalRecord {
   metadata?: Record<string, unknown>;
 }
 
-export type AdapterState = 'ok' | 'unconfigured' | 'timeout' | 'error' | 'denied';
+// 'skipped' exists because "we did not look" and "we looked and found nothing" were previously
+// the same value ('ok' with zero records). A worker reporting every adapter green while carrying
+// no memory at all is not observably different from a healthy one. G10: typed absence.
+export type AdapterState = 'ok' | 'skipped' | 'unconfigured' | 'timeout' | 'error' | 'denied';
 
 export interface RetrievalAdapterResult {
   name: string;
