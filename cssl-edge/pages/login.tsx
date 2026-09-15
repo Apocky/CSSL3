@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { AuthFrame } from '../components/hub/AuthFrame';
 import { credentialFromInput } from '@/lib/auth-credential';
 import { AUTH_PROVIDERS, getAuthClient, persistSessionToCookie } from '../lib/auth';
+import { AuthenticatorSetup } from '../components/auth/AuthenticatorSetup';
+import { continueAfterSignIn } from '../lib/auth-continue';
 import { buildAuthCallbackUrl, normalizeAuthReturnPath } from '../lib/auth-return';
 
 type Notice = {
@@ -27,10 +29,14 @@ const Login: NextPage = () => {
   const [returnTo, setReturnTo] = useState('/account');
   const [authCode, setAuthCode] = useState('');
   const [showEmailFallback, setShowEmailFallback] = useState(false);
+  // Enrolment is the closing step of signing in, reached as ?setup=authenticator so that a
+  // refresh or a provider round-trip lands on it instead of silently skipping it.
+  const [setupStage, setSetupStage] = useState(false);
 
   useEffect(() => {
-    const next = new URLSearchParams(location.search).get('next');
-    setReturnTo(normalizeAuthReturnPath(next));
+    const params = new URLSearchParams(location.search);
+    setReturnTo(normalizeAuthReturnPath(params.get('next')));
+    setSetupStage(params.get('setup') === 'authenticator');
     if (location.hostname === 'localhost') {
       setLocalhostCallback(`http://localhost:${location.port || 3000}/auth/callback`);
     }
@@ -139,7 +145,7 @@ const Login: NextPage = () => {
         setNotice({ tone: 'error', text: 'Signed in, but the secure server session could not be established.' });
         return;
       }
-      location.replace(currentReturnPath());
+      await continueAfterSignIn(currentReturnPath(), { alreadyOffered: setupStage });
     } catch {
       setNotice({ tone: 'error', text: 'Sign-in could not be reached. Please try again.' });
     } finally {
@@ -204,7 +210,7 @@ const Login: NextPage = () => {
         });
         return;
       }
-      location.replace(currentReturnPath());
+      await continueAfterSignIn(currentReturnPath(), { alreadyOffered: setupStage });
     } catch {
       setNotice({ tone: 'error', text: 'Verification could not be completed. Please try again.' });
     } finally {
@@ -273,6 +279,26 @@ const Login: NextPage = () => {
       <a className="apx-skip-link" href="#main-content">Skip to sign in</a>
       <AuthFrame mode="sign-in" formFirst>
         <div className="apx-auth-card">
+          {setupStage ? <>
+            {/* The last step of signing in, not a separate errand afterwards. You have just proved
+                you are this account, which is the whole gate on adding a credential to it, and you
+                are already thinking about sign-in. Asking later means asking someone who has moved
+                on — which is exactly how this ended up undiscoverable. */}
+            <p className="apx-auth-context">One more step</p>
+            <h1>Make next time one step</h1>
+            <p className="apx-auth-subtitle">
+              You&rsquo;re signed in. Add an authenticator now and you&rsquo;ll sign in with a
+              6-digit code from your phone instead of waiting for an email.
+            </p>
+            <AuthenticatorSetup hideDoneState onComplete={() => { location.replace(returnTo); }} />
+            <p className="apx-auth-switch" style={{ marginTop: 18, textAlign: 'center' }}>
+              <Link href={returnTo}>Skip for now — continue to {destination}</Link>
+            </p>
+            <p className="apx-auth-fine" style={{ marginTop: 10, textAlign: 'center' }}>
+              You can set this up later from your account page. Skipping changes nothing about how
+              you sign in today.
+            </p>
+          </> : <>
           <p className="apx-auth-context">Continue to {destination}</p>
           <h1>Sign in to Apocky</h1>
           <p className="apx-auth-subtitle">Enter the code from your authenticator app. No password, no email round-trip.</p>
@@ -456,6 +482,7 @@ const Login: NextPage = () => {
           )}
 
           <p className="apx-auth-switch">New here? <Link href={`/register?next=${encodeURIComponent(returnTo)}`}>Create an account</Link></p>
+          </>}
         </div>
       </AuthFrame>
     </>

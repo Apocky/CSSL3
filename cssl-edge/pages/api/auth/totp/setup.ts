@@ -4,6 +4,7 @@
 // already that account is the whole gate. There is deliberately no "enrol without signing in" path
 // — that would let anyone claim an account that has no authenticator yet.
 //
+// GET             -> status: whether this account already has a confirmed authenticator
 // POST            -> start: mints a pending secret and returns the otpauth URI
 // POST {code}     -> confirm: a correct code promotes the pending secret to the real one
 //
@@ -26,12 +27,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('Vary', 'Cookie');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    res.setHeader('Allow', 'GET, POST');
     res.status(405).json({ ok: false, code: 'METHOD_NOT_ALLOWED' });
     return;
   }
-  if (!hasSameOrigin(req)) {
+  if (req.method === 'POST' && !hasSameOrigin(req)) {
     res.status(403).json({ ok: false, code: 'ORIGIN_REQUIRED' });
     return;
   }
@@ -47,6 +48,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     service = getApocryphaServiceClient();
   } catch {
     res.status(503).json({ ok: false, code: 'AUTH_UNCONFIGURED' });
+    return;
+  }
+
+  // ---- status ---------------------------------------------------------------------------------
+  //
+  // Read-only: does this account already have an authenticator? Asked by the sign-in flow, which
+  // offers enrolment to people who have none rather than leaving them to find it later.
+  //
+  // This leans on apocky_totp_begin, which already answers the question by its error code —
+  // P4041 for "no confirmed authenticator", P4291 for "enrolled but temporarily locked". It does
+  // hand back the secret to do so, which is more than a boolean needs; the secret is discarded
+  // here and never leaves the function. A dedicated boolean RPC would be tidier, and would cost a
+  // migration to a database this process has no credentials for. The exposure is unchanged either
+  // way: sign-in already reads the same secret through the same path on every attempt.
+  if (req.method === 'GET') {
+    try {
+      const { error } = await service.rpc('apocky_totp_begin', { p_user_id: session.user.id });
+      const code = (error as { code?: string } | null)?.code;
+      if (!error) { res.status(200).json({ ok: true, enrolled: true }); return; }
+      if (code === 'P4041') { res.status(200).json({ ok: true, enrolled: false }); return; }
+      if (code === 'P4291') { res.status(200).json({ ok: true, enrolled: true, locked: true }); return; }
+      // Unknown failure: say so rather than guessing "not enrolled" and inviting someone to
+      // replace a working authenticator they still have.
+      res.status(502).json({ ok: false, code: 'ENROLMENT_STATUS_UNAVAILABLE' });
+    } catch {
+      res.status(502).json({ ok: false, code: 'ENROLMENT_STATUS_UNAVAILABLE' });
+    }
     return;
   }
 

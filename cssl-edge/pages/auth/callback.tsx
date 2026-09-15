@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthFrame } from '../../components/hub/AuthFrame';
 import { getAuthClient, persistSessionToCookie } from '../../lib/auth';
+import { continueAfterSignIn } from '../../lib/auth-continue';
 import { normalizeAuthReturnPath } from '../../lib/auth-return';
 import { clearAuthCallbackFromLocation, consumeAuthCallbackFromLocation } from '../../lib/auth-callback';
 
@@ -30,7 +31,10 @@ const AuthCallback: NextPage = () => {
       title: 'Sign-in complete',
       message: 'Your session is ready. Returning you to the page you chose.',
     });
-    redirectTimerRef.current = window.setTimeout(() => location.replace(safeReturnTo), 700);
+    // A provider sign-in ends in the same place as every other one: offered an authenticator
+    // if this account has none. Without this, Google and Apple would quietly skip the step
+    // that the email and code paths take.
+    redirectTimerRef.current = window.setTimeout(() => { void continueAfterSignIn(safeReturnTo); }, 700);
   }, []);
 
   const processCallback = useCallback(async (retry: boolean): Promise<void> => {

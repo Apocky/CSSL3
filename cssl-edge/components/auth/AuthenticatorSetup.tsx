@@ -26,7 +26,14 @@ function grouped(secret: string): string {
   return secret.replace(/(.{4})/gu, '$1 ').trim();
 }
 
-export function AuthenticatorSetup(): JSX.Element {
+export interface AuthenticatorSetupProps {
+  /** Called once enrolment is confirmed. Used by the sign-in flow to carry on to the destination. */
+  readonly onComplete?: () => void;
+  /** Suppresses the standalone "done" panel when a caller shows its own continuation. */
+  readonly hideDoneState?: boolean;
+}
+
+export function AuthenticatorSetup({ onComplete, hideDoneState }: AuthenticatorSetupProps = {}): JSX.Element {
   const [stage, setStage] = useState<Stage>('idle');
   const [started, setStarted] = useState<Started | null>(null);
   const [code, setCode] = useState('');
@@ -78,11 +85,20 @@ export function AuthenticatorSetup(): JSX.Element {
       setStage('done');
       setStarted(null);
       setCode('');
+      onComplete?.();
     } catch {
       setNotice('Confirmation could not be reached. Try again.');
       setStage('showing');
     }
-  }, [code]);
+  }, [code, onComplete]);
+
+  if (stage === 'done' && hideDoneState) {
+    return <section className="apx-totp" id="authenticator">
+      <h2>Authenticator</h2>
+      <p className="apx-totp-ok">Set up. Taking you on…</p>
+      <style jsx>{STYLE}</style>
+    </section>;
+  }
 
   if (stage === 'done') {
     return <section className="apx-totp" id="authenticator">

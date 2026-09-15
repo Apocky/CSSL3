@@ -29,7 +29,7 @@
     "check:public-surface": "node --import tsx scripts/render-public-surface.ts --check",
     "test:health": "node --import tsx tests/api/health.test.ts",
     "test:auth-redirect": "node --import tsx tests/lib/auth-redirect.test.ts",
-    "test:auth-totp": "node --import tsx tests/lib/auth-totp.test.ts && node --import tsx tests/api/auth-totp-enrolment.test.ts",
+    "test:auth-totp": "node --import tsx tests/lib/auth-totp.test.ts && node --import tsx tests/api/auth-totp-enrolment.test.ts && node --import tsx tests/lib/auth-continue.test.ts",
     "test:apocrypha-sms": "node --import tsx tests/lib/apocrypha-sms.test.ts && node --import tsx tests/api/apocrypha-sms-migration.test.ts && node --import tsx tests/api/apocrypha-sms-ingress.test.ts && node --import tsx tests/api/apocrypha-sms-worker.test.ts",
     "test:public-discovery": "node --import tsx tests/pages/public-discovery.test.ts",
     "test:showcase": "node --import tsx tests/pages/showcase.test.ts",
