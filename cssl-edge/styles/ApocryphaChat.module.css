@@ -59,8 +59,18 @@
   white-space: nowrap;
 }
 .iconButton:hover { border-color: #a9b5ff80; }
+.iconButton, .iconButtonActive { display: inline-flex; align-items: center; gap: 7px; }
+/* An open panel needs a visibly pressed control, or the only way to tell is to look for the panel
+   it opened — which on a phone is covering the thing it describes. */
+.iconButtonActive {
+  min-height: 44px; min-width: 44px; padding: 7px 14px; border-radius: 999px;
+  border: 1px solid #b1dfeb; background: #1a2740; color: #e8f6fb;
+  font: inherit; font-size: 13.5px; cursor: pointer; white-space: nowrap;
+}
+.gear { width: 16px; height: 16px; flex: 0 0 auto; }
 
 .body { flex: 1 1 auto; display: flex; min-height: 0; position: relative; }
+@media (max-width: 767px) { .settings { top: 8px; right: 8px; left: 8px; width: auto; } }
 
 /* ── conversations ─────────────────────────────────────────────────────────── */
 
@@ -78,6 +88,7 @@
   border-right: 1px solid #a9b5ff26;
   background: #080a12;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sidebarBackdrop { display: none; }
@@ -94,7 +105,11 @@
 }
 .newChat:hover { border-color: #a9b5ff80; }
 
-.convList { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+/* `display: grid` alone let a long title set the track width, so the rail grew wider than its own
+   box and the whole sidebar scrolled sideways. minmax(0, 1fr) lets the cell be narrower than its
+   content, which is what makes the ellipsis below possible. */
+.convList { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.convList li { min-width: 0; }
 
 .conv, .convCurrent {
   display: block;
@@ -130,6 +145,11 @@
   margin: 0 auto;
   padding: 0 clamp(16px, 4vw, 24px);
 }
+
+/* Scales the conversation only. The header, rail and composer keep their own rhythm, so a larger
+   reading size does not push the controls around. */
+.conversationLarge .messages { font-size: 17px; }
+.conversationLarge .opening h2 { font-size: clamp(32px, 6.4vw, 50px); }
 
 .messages {
   flex: 1 1 auto;
@@ -210,6 +230,10 @@
   background: #b1dfeb;
   animation: blink 1s steps(2, start) infinite;
 }
+.caretStill {
+  display: inline-block; width: 7px; height: 1.05em; margin-left: 2px;
+  vertical-align: text-bottom; background: #b1dfeb;
+}
 @keyframes blink { to { visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
 
@@ -232,19 +256,74 @@
 
 /* ── settings ──────────────────────────────────────────────────────────────── */
 
+/* Anchored under the header rather than inserted into the message log, so opening it does not
+   move the conversation and closing it does not lose your place. */
 .settings {
-  flex: 0 0 auto;
-  margin-top: 14px;
-  padding: 14px 16px;
-  border: 1px solid #a9b5ff33;
-  border-radius: 14px;
+  position: absolute;
+  z-index: 40;
+  top: 10px;
+  right: clamp(12px, 3vw, 28px);
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 18px;
+  border: 1px solid #a9b5ff40;
+  border-radius: 16px;
   background: #0d1019;
+  box-shadow: 0 24px 60px rgba(0, 0, 6, .6);
 }
-.settings h2 { margin: 0 0 10px; font-size: 15px; }
-.settingRow { display: flex; align-items: center; gap: 10px; font-size: 14px; min-height: 44px; }
+.settingsBackdrop {
+  position: fixed; inset: 0; z-index: 39;
+  width: 100%; height: 100%; padding: 0; border: 0;
+  background: rgba(0, 0, 8, .5); cursor: default;
+}
+.settingsHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.settings h2 { margin: 0; font-size: 16px; }
+.settingsClose {
+  min-height: 44px; min-width: 44px; margin-right: -10px;
+  border: 0; border-radius: 999px; background: transparent; color: #a9b5ffc0;
+  font-size: 22px; line-height: 1; cursor: pointer;
+}
+.settingsClose:hover { background: #151b2e; color: #e8e9f3; }
+
+.settingsGroup { padding: 12px 0 4px; border-top: 1px solid #a9b5ff1f; }
+.settingsGroup:first-of-type { border-top: 0; }
+.settingsGroup h3 {
+  margin: 0 0 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #a9b5ff90;
+}
+
+.settingRow {
+  display: flex; align-items: flex-start; gap: 11px;
+  min-height: 44px; padding: 6px 0; font-size: 14px; cursor: pointer;
+}
+.settingRow input { margin-top: 3px; flex: 0 0 auto; width: 17px; height: 17px; accent-color: #b1dfeb; }
+.settingRow small { display: block; margin-top: 2px; color: #a9b5ff90; font-size: 12.5px; line-height: 1.45; }
+
+.settingChoice { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.settingChoiceLabel { font-size: 14px; }
+.settingChoiceOptions { display: inline-flex; gap: 4px; padding: 3px; border-radius: 999px; background: #111524; }
+.choice, .choiceOn {
+  min-height: 34px; padding: 5px 13px; border-radius: 999px;
+  border: 1px solid transparent; background: transparent; color: #a9b5ffc0;
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.choiceOn { background: #1a2740; border-color: #b1dfeb80; color: #e8f6fb; }
+
+.settingActions { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 6px; }
+.settingActions button {
+  min-height: 44px; padding: 9px 14px; border-radius: 999px;
+  border: 1px solid #a9b5ff40; background: #111524; color: #d2e6fa;
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.settingActions button:hover:not(:disabled) { border-color: #a9b5ff80; }
+.settingActions button:disabled { opacity: .45; cursor: default; }
+
+.settingDetails { margin-top: 4px; font-size: 12.5px; color: #a9b5ff90; }
+.settingDetails summary { min-height: 34px; display: flex; align-items: center; cursor: pointer; }
 .settingMeta { margin: 6px 0 0; font-size: 12px; color: #a9b5ff90; }
 .settingMeta code { overflow-wrap: anywhere; color: #b1dfeb; }
-.settingNote { margin: 10px 0 0; font-size: 12.5px; color: #a9b5ff90; }
+.settingNote { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #a9b5ff1f; font-size: 12.5px; color: #a9b5ff90; }
 
 /* ── composer ──────────────────────────────────────────────────────────────── */
 

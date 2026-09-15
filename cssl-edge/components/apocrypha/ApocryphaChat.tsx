@@ -15,6 +15,10 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { inApocryphaApp } from '@/lib/app-shell';
+import {
+  DEFAULT_CHAT_PREFS, isSendKey, readChatPrefs, transcriptOf, writeChatPrefs,
+  type ChatPrefs,
+} from '@/lib/apocrypha/chat-prefs';
 import type { ChatLane, ChatToolCall, ConversationSummary, LaneMessage } from '@/lib/apocrypha/chat-lanes';
 import styles from '@/styles/ApocryphaChat.module.css';
 
@@ -132,7 +136,8 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [compactViewport, setCompactViewport] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showTrace, setShowTrace] = useState(false);
+  const [prefs, setPrefs] = useState<ChatPrefs>(DEFAULT_CHAT_PREFS);
+  const [copied, setCopied] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [unresolved, setUnresolved] = useState<ActiveJob | null>(null);
   // Resolved after mount: navigator does not exist during server rendering, and a wrong guess would
@@ -143,6 +148,8 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  const settingsToggleRef = useRef<HTMLButtonElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
   const firstSidebarControlRef = useRef<HTMLButtonElement>(null);
   const following = useRef(true);
   const openedInitialRef = useRef(false);
@@ -150,10 +157,21 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   const can = lane.capabilities;
   const laneId = lane.id;
 
+  // Written through on every change rather than on close: a panel dismissed by Escape, a back
+  // gesture or a closed tab must not lose the choice that was just made.
+  const update = useCallback((patch: Partial<ChatPrefs>) => {
+    setPrefs((current) => {
+      const next = { ...current, ...patch };
+      writeChatPrefs(next);
+      return next;
+    });
+  }, []);
+
   // ── mount: local thread, recoverable job, viewport ───────────────────────────────────────────
 
   useEffect(() => {
     setInApp(inApocryphaApp());
+    setPrefs(readChatPrefs());
     if (readStored<unknown>(blankChatKey(laneId))) openedInitialRef.current = true;
 
     if (!can.durableHistory) {
@@ -514,6 +532,58 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
     };
   }, [closeCompactSidebar, compactViewport, sidebarOpen]);
 
+  // A panel that can only be closed by finding the button again is a trap, especially on a phone
+  // where it covers what it is describing.
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    requestAnimationFrame(() => settingsToggleRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!settingsOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeSettings();
+    };
+    const onPointerDown = (event: MouseEvent) => {
+      const panel = settingsPanelRef.current;
+      const toggle = settingsToggleRef.current;
+      const target = event.target as Node | null;
+      if (!panel || !target) return;
+      if (panel.contains(target) || toggle?.contains(target)) return;
+      setSettingsOpen(false);
+    };
+    const focus = requestAnimationFrame(() => {
+      settingsPanelRef.current?.querySelector<HTMLElement>('button, input, a[href]')?.focus();
+    });
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onPointerDown);
+    return () => {
+      cancelAnimationFrame(focus);
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onPointerDown);
+    };
+  }, [closeSettings, settingsOpen]);
+
+  const copyTranscript = useCallback(() => {
+    void navigator.clipboard?.writeText(transcriptOf(messages)).then(
+      () => { setCopied(true); window.setTimeout(() => setCopied(false), 2_000); },
+      () => setError('Copying is blocked in this browser. Select the conversation and copy it directly.'),
+    );
+  }, [messages]);
+
+  const forgetLocalThread = useCallback(() => {
+    dropStored(localThreadKey(laneId));
+    dropStored(activeJobKey(laneId));
+    setMessages([]);
+    setActiveJob(null);
+    setStreaming(false);
+    setStreamingText('');
+    setError(null);
+    setSettingsOpen(false);
+  }, [laneId]);
+
   const handleSidebarKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
     if (!compactViewport || event.key !== 'Tab') return;
     const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
@@ -559,12 +629,26 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
 
       <nav aria-label="Apocrypha navigation" className={styles.nav}>
         {signedIn ? <button
+          ref={settingsToggleRef}
           type="button"
-          className={styles.iconButton}
+          className={settingsOpen ? styles.iconButtonActive : styles.iconButton}
           onClick={() => setSettingsOpen((open) => !open)}
           aria-expanded={settingsOpen}
+          aria-haspopup="dialog"
           aria-controls="apocrypha-settings"
-        >Settings</button> : <>
+        >
+          <svg className={styles.gear} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
+              d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
+            />
+            <path
+              fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
+              d="m19.4 14.2-.7-.4a6.9 6.9 0 0 0 0-3.6l.7-.4a1.6 1.6 0 0 0 .6-2.2l-.8-1.4a1.6 1.6 0 0 0-2.2-.6l-.7.4a6.9 6.9 0 0 0-3.1-1.8V3.4a1.6 1.6 0 0 0-1.6-1.6h-1.6a1.6 1.6 0 0 0-1.6 1.6v.8a6.9 6.9 0 0 0-3.1 1.8l-.7-.4a1.6 1.6 0 0 0-2.2.6l-.8 1.4a1.6 1.6 0 0 0 .6 2.2l.7.4a6.9 6.9 0 0 0 0 3.6l-.7.4a1.6 1.6 0 0 0-.6 2.2l.8 1.4a1.6 1.6 0 0 0 2.2.6l.7-.4a6.9 6.9 0 0 0 3.1 1.8v.8a1.6 1.6 0 0 0 1.6 1.6h1.6a1.6 1.6 0 0 0 1.6-1.6v-.8a6.9 6.9 0 0 0 3.1-1.8l.7.4a1.6 1.6 0 0 0 2.2-.6l.8-1.4a1.6 1.6 0 0 0-.6-2.2Z"
+            />
+          </svg>
+          <span>Settings</span>
+        </button> : <>
           {inApp ? null : <Link href="/download/apocrypha">Get the app</Link>}
           <Link href="/login?next=%2Fapocrypha" className={styles.signIn}>Sign in</Link>
         </>}
@@ -608,16 +692,106 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           : null}
       </aside> : null}
 
-      <section className={styles.conversation} aria-label="Apocrypha conversation">
-        {settingsOpen ? <div id="apocrypha-settings" className={styles.settings}>
+      {/* A panel, not a block wedged into the top of the message log — which is what this was, so
+          it pushed the conversation down and scrolled away with it, could not be closed except by
+          hunting for the button again, and carried exactly one actual setting. */}
+      {settingsOpen ? <div
+        ref={settingsPanelRef}
+        id="apocrypha-settings"
+        className={styles.settings}
+        role="dialog"
+        aria-modal={compactViewport || undefined}
+        aria-label="Settings"
+      >
+        <div className={styles.settingsHead}>
           <h2>Settings</h2>
+          <button type="button" className={styles.settingsClose} onClick={closeSettings} aria-label="Close settings">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+
+        <section className={styles.settingsGroup} aria-labelledby="apx-set-reading">
+          <h3 id="apx-set-reading">Reading</h3>
+          <div className={styles.settingChoice} role="radiogroup" aria-label="Text size">
+            <span className={styles.settingChoiceLabel}>Text size</span>
+            <div className={styles.settingChoiceOptions}>
+              {(['normal', 'large'] as const).map((size) => <button
+                key={size}
+                type="button"
+                role="radio"
+                aria-checked={prefs.textSize === size}
+                className={prefs.textSize === size ? styles.choiceOn : styles.choice}
+                onClick={() => update({ textSize: size })}
+              >{size === 'normal' ? 'Normal' : 'Large'}</button>)}
+            </div>
+          </div>
+          <label className={styles.settingRow}>
+            <input
+              type="checkbox"
+              checked={prefs.calmMotion}
+              onChange={(event) => update({ calmMotion: event.target.checked })}
+            />
+            <span>
+              Calm motion
+              <small>Stops the cursor blinking while an answer arrives.</small>
+            </span>
+          </label>
           {can.trace ? <label className={styles.settingRow}>
-            <input type="checkbox" checked={showTrace} onChange={(e) => setShowTrace(e.target.checked)} />
-            Show tool and run trace
+            <input
+              type="checkbox"
+              checked={prefs.showTrace}
+              onChange={(event) => update({ showTrace: event.target.checked })}
+            />
+            <span>
+              Show tool and run trace
+              <small>Lists the tools each answer used, and how long they took.</small>
+            </span>
           </label> : null}
-          {currentConv ? <p className={styles.settingMeta}>
-            This conversation<br /><code>{currentConv}</code>
-          </p> : null}
+        </section>
+
+        <section className={styles.settingsGroup} aria-labelledby="apx-set-composing">
+          <h3 id="apx-set-composing">Composing</h3>
+          <label className={styles.settingRow}>
+            <input
+              type="checkbox"
+              checked={prefs.enterSends}
+              onChange={(event) => update({ enterSends: event.target.checked })}
+            />
+            <span>
+              Enter sends
+              <small>
+                {prefs.enterSends
+                  ? 'Shift+Enter starts a new line.'
+                  : 'Enter starts a new line. Ctrl+Enter sends.'}
+              </small>
+            </span>
+          </label>
+        </section>
+
+        <section className={styles.settingsGroup} aria-labelledby="apx-set-conversation">
+          <h3 id="apx-set-conversation">This conversation</h3>
+          <div className={styles.settingActions}>
+            <button type="button" onClick={copyTranscript} disabled={messages.length === 0}>
+              {copied ? 'Copied' : 'Copy transcript'}
+            </button>
+            {can.newConversation ? <button type="button" onClick={() => { newChat(); setSettingsOpen(false); }}>
+              Start a new one
+            </button> : null}
+            {/* Only where the thread lives in this browser and nowhere else. On a durable lane the
+                server holds it, so a button here would clear a screen and promise a deletion it
+                cannot perform. */}
+            {!can.durableHistory ? <button type="button" onClick={forgetLocalThread} disabled={messages.length === 0}>
+              Forget it on this device
+            </button> : null}
+          </div>
+          {currentConv ? <details className={styles.settingDetails}>
+            <summary>Details</summary>
+            <p className={styles.settingMeta}>Conversation reference<br /><code>{currentConv}</code></p>
+          </details> : null}
+        </section>
+
+        <section className={styles.settingsGroup} aria-labelledby="apx-set-account">
+          <h3 id="apx-set-account">Account</h3>
           {/* Setting up an authenticator was only reachable by knowing to visit /account while
               already signed in — which is exactly the thing you cannot do when your sign-in is the
               problem. The room is where a signed-in reader actually is, so the way there is here. */}
@@ -625,10 +799,24 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             <Link href="/account#authenticator">Set up an authenticator</Link> — scan a QR code once,
             then sign in with a 6-digit code.
           </p>
-          <p className={styles.settingNote}>
-            These are display choices only. The model, authority, and security policy remain server-controlled.
-          </p>
-        </div> : null}
+          <p className={styles.settingLink}><Link href="/account">Your account</Link></p>
+        </section>
+
+        <p className={styles.settingNote}>
+          These are display choices only. The model, authority, and security policy remain server-controlled.
+        </p>
+      </div> : null}
+      {settingsOpen && compactViewport ? <button
+        type="button"
+        className={styles.settingsBackdrop}
+        aria-label="Close settings"
+        onClick={closeSettings}
+      /> : null}
+
+      <section
+        className={prefs.textSize === 'large' ? `${styles.conversation} ${styles.conversationLarge}` : styles.conversation}
+        aria-label="Apocrypha conversation"
+      >
 
         <div
           ref={logRef}
@@ -658,7 +846,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           >
             <span className={styles.who}>{message.role === 'user' ? 'You' : 'Apocrypha'}</span>
             <div className={styles.text}>{message.text}</div>
-            {can.trace && showTrace && message.tools?.length
+            {can.trace && prefs.showTrace && message.tools?.length
               ? <ToolTrace tools={message.tools} />
               : null}
           </article>)}
@@ -666,9 +854,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           {streaming ? <article className={styles.apocrypha}>
             <span className={styles.who}>Apocrypha</span>
             {streamingText
-              ? <div className={styles.text}>{streamingText}<span className={styles.caret} aria-hidden="true" /></div>
+              ? <div className={styles.text}>{streamingText}<span className={prefs.calmMotion ? styles.caretStill : styles.caret} aria-hidden="true" /></div>
               : <p className={styles.phase} role="status">{streamingPhase || 'Working…'}</p>}
-            {can.trace && showTrace && streamingTools.length ? <ToolTrace tools={streamingTools} /> : null}
+            {can.trace && prefs.showTrace && streamingTools.length ? <ToolTrace tools={streamingTools} /> : null}
           </article> : null}
 
           <div ref={endRef} />
@@ -702,7 +890,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             value={draft}
             onChange={(event) => setDraft(event.target.value.slice(0, MAX_TEXT))}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
+              if (isSendKey(event, prefs)) {
                 event.preventDefault();
                 void send(draft);
               }
@@ -725,8 +913,8 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
 
         <p id="apocrypha-composer-help" className={styles.footnote}>
           {can.durableHistory
-            ? 'Enter sends, Shift+Enter starts a new line. This conversation is saved to your account.'
-            : <>Enter sends, Shift+Enter starts a new line. This conversation stays
+            ? `${prefs.enterSends ? 'Enter sends, Shift+Enter starts a new line.' : 'Ctrl+Enter sends, Enter starts a new line.'} This conversation is saved to your account.`
+            : <>{prefs.enterSends ? 'Enter sends, Shift+Enter starts a new line.' : 'Ctrl+Enter sends, Enter starts a new line.'} This conversation stays
                 {inApp ? ' on this device' : ' in this browser'} —{' '}
                 <Link href="/login?next=%2Fapocrypha">sign in</Link> or{' '}
                 <Link href="/register?next=%2Fapocrypha">create an account</Link> to keep it across your devices

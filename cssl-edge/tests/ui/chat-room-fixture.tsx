@@ -2,7 +2,36 @@
 import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import ApocryphaChat from '../../components/apocrypha/ApocryphaChat';
-import { memberLane } from '../../lib/apocrypha/chat-lanes';
+import type { ChatLane, LaneMessage } from '../../lib/apocrypha/chat-lanes';
+
+// A lane with OWNER capabilities and synthetic data, so the preview shows the whole signed-in
+// surface — conversation list, settings, tool trace — without any production credential.
+const previewMessages: LaneMessage[] = [
+  { id: 'a:user', role: 'user', text: 'Help me turn a crowded day into one useful next step.', at: new Date('2026-09-06T17:00:00Z') },
+  {
+    id: 'a:apocrypha', role: 'apocrypha', at: new Date('2026-09-06T17:00:20Z'),
+    text: 'Start with what matters today.\n\nName one thing you want to protect, choose an action small enough to finish, and leave room to change your mind.',
+    tools: [
+      { name: 'memory.recall', ok: true, elapsed_ms: 142 },
+      { name: 'engine.generate', ok: true, elapsed_ms: 8410 },
+      { name: 'ledger.write', ok: false, elapsed_ms: 12, error: 'write-back disabled by default' },
+    ],
+  },
+];
+const previewLane: ChatLane = {
+  id: 'owner',
+  capabilities: { conversations: true, newConversation: true, trace: true, cancel: true, durableHistory: true },
+  async send() { return { jobId: 'preview-job', conversationId: 'f1000000-0000-4000-8000-000000000001' }; },
+  async poll() { return { done: true, status: 'succeeded', text: 'A synthetic reply for layout only.' }; },
+  async listConversations() {
+    return [
+      { id: 'f1000000-0000-4000-8000-000000000001', title: 'A crowded day', lastActiveIso: '2026-09-06T17:00:20Z', messageCount: 2 },
+      { id: 'f1000000-0000-4000-8000-000000000002', title: 'Something much longer that has to ellipsize in the rail', lastActiveIso: '2026-09-05T11:02:00Z', messageCount: 8 },
+    ];
+  },
+  async loadConversation() { return previewMessages; },
+  async cancel() { /* nothing to cancel in a fixture */ },
+};
 import BrainExperience from '../../components/brain/BrainExperience';
 import { FeedbackProvider } from '../../components/ui/Feedback';
 import '../../styles/apocky-system.css';
@@ -32,7 +61,7 @@ async function start(): Promise<void> {
   const element = document.getElementById('root'); if (!element) throw new Error('Fixture root missing.');
   createRoot(element).render(<FeedbackProvider>
     <FixtureControls />
-    {mode === 'owner' ? <BrainExperience serverAccess="owner" /> : <ApocryphaChat lane={memberLane(fetch)} signedIn />}
+    {mode === 'owner' ? <BrainExperience serverAccess="owner" /> : <ApocryphaChat lane={previewLane} signedIn />}
   </FeedbackProvider>);
 }
 void start().catch(error => { const element = document.getElementById('root'); if (element) element.textContent = 'Fixture failed: ' + String(error); });
