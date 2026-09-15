@@ -1,0 +1,306 @@
+
+> cssl-edge@0.1.0 check
+> tsc --noEmit
+
+playwright.config.ts(1,39): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/admin-apex-visual.spec.ts(4,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/admin-apex-visual.spec.ts(5,53): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/admin-apex-visual.spec.ts(88,43): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/admin-apex-visual.spec.ts(94,51): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/admin-apex-visual.spec.ts(100,81): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/admin-apex-visual.spec.ts(117,92): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/admin-apex-visual.spec.ts(120,25): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/e2e/admin-apex-visual.spec.ts(121,23): error TS7006: Parameter 'message' implicitly has an 'any' type.
+tests/e2e/admin-apex-visual.spec.ts(148,42): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/admin-apex-visual.spec.ts(168,81): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(4,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/akashic-records.spec.ts(5,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/akashic-records.spec.ts(73,25): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(74,23): error TS7006: Parameter 'message' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(93,26): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(94,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(101,101): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(135,76): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(177,52): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(182,85): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(230,52): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(235,106): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/akashic-records.spec.ts(265,52): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/auth-flow.spec.ts(2,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/auth-flow.spec.ts(7,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(15,47): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(25,46): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(37,87): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(42,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(65,44): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(70,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(84,90): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(98,72): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(105,96): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(116,94): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(117,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(129,43): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(147,89): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/auth-flow.spec.ts(149,23): error TS7006: Parameter 'request' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/brain.spec.ts(2,53): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/brain.spec.ts(28,107): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(28,115): error TS7006: Parameter 'testInfo' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(30,46): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(38,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(39,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(40,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(49,45): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(65,51): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(75,48): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(167,33): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(174,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(175,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(176,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(181,45): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(188,51): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(193,54): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(229,108): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(234,54): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(264,113): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(267,54): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(308,125): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(308,131): error TS7031: Binding element 'context' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(319,54): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(345,51): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(369,123): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(369,129): error TS7031: Binding element 'context' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(383,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(384,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(385,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(394,45): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(405,51): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(414,53): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(428,54): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(491,84): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(493,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(494,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(495,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(506,45): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(520,58): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(532,51): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(551,94): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(551,100): error TS7031: Binding element 'context' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(551,111): error TS7006: Parameter 'testInfo' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(554,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(555,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(556,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(565,45): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(570,51): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(580,48): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/brain.spec.ts(683,33): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/chat-gate.spec.ts(1,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/chat-gate.spec.ts(3,89): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/chat-gate.spec.ts(15,85): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/chat-gate.spec.ts(18,70): error TS7006: Parameter 'element' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(4,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/commons.spec.ts(5,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/commons.spec.ts(19,44): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/commons.spec.ts(21,25): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(22,23): error TS7006: Parameter 'message' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(28,66): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/commons.spec.ts(30,46): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(34,99): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(38,23): error TS7006: Parameter 'request' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(113,83): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(113,91): error TS7006: Parameter 'testInfo' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(137,117): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(140,23): error TS7006: Parameter 'request' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(160,101): error TS7006: Parameter 'elements' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(161,34): error TS7006: Parameter 'element' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(237,91): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(252,83): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(258,80): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(284,79): error TS7006: Parameter 'links' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(285,16): error TS7006: Parameter 'link' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(288,35): error TS7006: Parameter 'height' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(291,108): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(294,23): error TS7006: Parameter 'request' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(317,89): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(319,44): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(336,85): error TS7031: Binding element 'request' implicitly has an 'any' type.
+tests/e2e/commons.spec.ts(351,75): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/compact-shell.spec.ts(2,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/compact-shell.spec.ts(6,49): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(6,57): error TS7006: Parameter 'info' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(8,40): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(9,44): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(11,26): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(22,44): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(32,89): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(33,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/compact-shell.spec.ts(34,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/member-account-chat.spec.ts(2,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/member-account-chat.spec.ts(13,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(16,43): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(47,91): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(47,99): error TS7006: Parameter 'testInfo' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(72,58): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(95,53): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(121,55): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(158,34): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(165,85): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(167,58): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(181,99): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(183,58): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(190,53): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(204,40): error TS7006: Parameter 'accountId' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(210,102): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(212,58): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(221,53): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(242,55): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/member-account-chat.spec.ts(266,40): error TS7006: Parameter 'accountId' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(1,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/memory-experience.spec.ts(2,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/memory-experience.spec.ts(4,46): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/memory-experience.spec.ts(9,90): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(10,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(33,43): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(36,87): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(37,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(38,43): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(39,47): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(40,54): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(60,55): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(64,47): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/memory-experience.spec.ts(93,66): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/mobile-diagnostics.spec.ts(1,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/mobile-diagnostics.spec.ts(3,112): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/mobile-diagnostics.spec.ts(3,118): error TS7031: Binding element 'context' implicitly has an 'any' type.
+tests/e2e/mobile-diagnostics.spec.ts(6,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/mobile-diagnostics.spec.ts(7,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/mobile-diagnostics.spec.ts(8,48): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/mobile-diagnostics.spec.ts(9,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/mobile-diagnostics.spec.ts(10,44): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/native-mobile.spec.ts(2,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/native-mobile.spec.ts(7,24): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(8,28): error TS7006: Parameter 'request' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(12,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(13,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(17,44): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(22,107): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(22,115): error TS7006: Parameter 'info' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(51,110): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(51,118): error TS7006: Parameter 'info' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(57,48): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(66,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/native-mobile.spec.ts(96,48): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/omnoid-singularity.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/omnoid-singularity.spec.ts(2,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/omnoid-singularity.spec.ts(7,6): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/omnoid-singularity.spec.ts(19,83): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/omnoid-singularity.spec.ts(45,67): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/omnoid-singularity.spec.ts(50,30): error TS7006: Parameter 'element' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/operator-inspection.spec.ts(2,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/operator-inspection.spec.ts(19,23): error TS7006: Parameter 'kind' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(25,101): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(27,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(28,54): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(36,116): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(36,124): error TS7006: Parameter 'info' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(39,42): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(40,60): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(47,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/operator-inspection.spec.ts(74,42): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(3,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/public-apocrypha.spec.ts(4,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/public-apocrypha.spec.ts(12,6): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(25,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(30,43): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(292,74): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(294,52): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(308,95): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(309,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(330,88): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(332,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(337,52): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(368,103): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(372,50): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(377,49): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(417,105): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(420,52): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(430,49): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(456,102): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(460,31): error TS7031: Binding element 'key' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(460,36): error TS7031: Binding element 'value' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(464,52): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(504,24): error TS7006: Parameter 'dialog' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(512,105): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(516,31): error TS7031: Binding element 'key' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(516,36): error TS7031: Binding element 'value' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(520,52): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(525,52): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(550,109): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(554,31): error TS7031: Binding element 'key' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(554,36): error TS7031: Binding element 'value' implicitly has an 'any' type.
+tests/e2e/public-apocrypha.spec.ts(558,52): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/public-flow.spec.ts(2,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/public-flow.spec.ts(4,56): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/public-flow.spec.ts(9,66): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/public-flow.spec.ts(11,46): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(15,66): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(35,90): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(49,91): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(56,98): error TS7031: Binding element 'request' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(83,79): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(94,82): error TS7031: Binding element 'request' implicitly has an 'any' type.
+tests/e2e/public-flow.spec.ts(119,67): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/route-hook-stability.spec.ts(1,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/route-hook-stability.spec.ts(3,82): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/route-hook-stability.spec.ts(11,25): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/e2e/route-hook-stability.spec.ts(12,23): error TS7006: Parameter 'message' implicitly has an 'any' type.
+tests/e2e/route-hook-stability.spec.ts(16,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/showcase.spec.ts(1,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/showcase.spec.ts(2,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/showcase.spec.ts(4,94): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/showcase.spec.ts(4,102): error TS7006: Parameter 'testInfo' implicitly has an 'any' type.
+tests/e2e/showcase.spec.ts(39,37): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(1,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/symbolic-workbench.spec.ts(2,24): error TS2307: Cannot find module '@axe-core/playwright' or its corresponding type declarations.
+tests/e2e/symbolic-workbench.spec.ts(6,77): error TS7031: Binding element 'request' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(12,91): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(35,75): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(50,85): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(63,76): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(85,89): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(97,102): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(110,96): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(118,100): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(128,98): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(143,96): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(149,54): error TS7006: Parameter 'violation' implicitly has an 'any' type.
+tests/e2e/symbolic-workbench.spec.ts(163,101): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/ui-density.spec.ts(1,41): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/ui-density.spec.ts(15,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/ui-density.spec.ts(16,43): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/ui-density.spec.ts(19,67): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/ui-density.spec.ts(44,97): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/useful-entry-flows.spec.ts(1,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/useful-entry-flows.spec.ts(3,87): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/useful-entry-flows.spec.ts(4,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/useful-entry-flows.spec.ts(28,94): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/useful-entry-flows.spec.ts(30,38): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/useful-entry-flows.spec.ts(31,49): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/e2e/useful-entry-flows.spec.ts(44,83): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/visual-matrix.spec.ts(4,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+tests/e2e/visual-matrix.spec.ts(22,93): error TS7031: Binding element 'page' implicitly has an 'any' type.
+tests/e2e/visual-matrix.spec.ts(25,25): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/e2e/visual-matrix.spec.ts(26,23): error TS7006: Parameter 'message' implicitly has an 'any' type.
+tests/e2e/visual-matrix.spec.ts(30,39): error TS7006: Parameter 'route' implicitly has an 'any' type.
+tests/lib/brain-release-manifest.test.ts(6,21): error TS2307: Cannot find module 'ajv/dist/2020' or its corresponding type declarations.
+tests/lib/brain-release-manifest.test.ts(7,24): error TS2307: Cannot find module 'ajv-formats' or its corresponding type declarations.
+tests/pages/neural-public-pages.test.ts(4,21): error TS2307: Cannot find module 'ajv/dist/2020' or its corresponding type declarations.
+tests/pages/neural-public-pages.test.ts(5,24): error TS2307: Cannot find module 'ajv-formats' or its corresponding type declarations.
+tests/pages/public-discovery.test.ts(5,21): error TS2307: Cannot find module 'ajv/dist/2020' or its corresponding type declarations.
+tests/pages/public-discovery.test.ts(6,24): error TS2307: Cannot find module 'ajv-formats' or its corresponding type declarations.
