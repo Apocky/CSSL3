@@ -18,7 +18,7 @@ import { getApocryphaServiceClient } from '@/lib/apocrypha/job-control';
 import { hasSameOrigin } from '@/lib/auth-session';
 import QRCode from 'qrcode';
 
-import { generateSecret, provisioningUri, verifyTotp } from '@/lib/auth-totp';
+import { clockDriftSteps, describeDrift, generateSecret, provisioningUri, verifyTotp } from '@/lib/auth-totp';
 
 export const config = { api: { bodyParser: { sizeLimit: '8kb' } } };
 
@@ -141,10 +141,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // of its own to replay. The confirm call records this step as the watermark.
     const verdict = verifyTotp(pending, code);
     if (!verdict.ok || verdict.step === null) {
+      // "That code did not match" was true and useless: a correct code fails here for two opposite
+      // reasons, and the message named neither. Widening the search does not accept anything — it
+      // only tells the two apart, and this path has already proved it is the account.
+      const drift = clockDriftSteps(pending, code);
+      console.log(JSON.stringify({
+        at: new Date().toISOString(),
+        level: 'info',
+        event: 'auth.totp.confirm_rejected',
+        reason: drift === null ? 'code_not_from_this_secret' : 'device_clock_drift',
+        drift_steps: drift,
+      }));
       res.status(401).json({
         ok: false,
-        code: 'CODE_REJECTED',
-        error: 'That code did not match. Check your authenticator shows this account, then try the current code.',
+        code: drift === null ? 'CODE_FOREIGN' : 'CODE_CLOCK_DRIFT',
+        drift_seconds: drift === null ? null : drift * 30,
+        error: drift === null
+          // No clock within ten minutes of here produces this code from the pending secret, so it
+          // came from a different secret: almost always a leftover Apocky entry from an earlier
+          // setup, since starting setup again silently replaces the pending code.
+          ? 'That code belongs to a different setup. If your authenticator lists more than one '
+            + 'Apocky entry, delete every one of them and scan the code on this page again — '
+            + 'starting setup replaces the previous code, so an older entry can no longer work.'
+          // The code is right. The clock it was generated against is not.
+          : `Your device's clock is ${describeDrift(drift)}. Codes last 30 seconds, so this will `
+            + 'keep failing — and would keep failing at sign-in too. Turn on automatic date and '
+            + 'time on the device running your authenticator, then try the new code.',
       });
       return;
     }

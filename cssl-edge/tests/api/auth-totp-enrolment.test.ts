@@ -24,7 +24,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import QRCode from 'qrcode';
 
-import { codeForStep, currentStep, TOTP_PERIOD_SECONDS, verifyTotp } from '@/lib/auth-totp';
+import { clockDriftSteps, codeForStep, currentStep, describeDrift, TOTP_PERIOD_SECONDS, verifyTotp } from '@/lib/auth-totp';
 import * as realTotp from '@/lib/auth-totp';
 
 const OWNER = '11111111-1111-4111-8111-111111111111';
@@ -321,7 +321,50 @@ async function main(): Promise<void> {
     'the refusal log must not carry the account it refused',
   );
 
-  console.log('auth-totp-enrolment.test : OK · 8 stages, unconfirmed enrolment diagnosed, replay and expiry refused');
+  // ── 9 · a correct code from a skewed clock is diagnosed, not dismissed ──────────────────────
+  //
+  // Apocky: "it's the correct code though". Both true and unhelpable under the old message, because
+  // a correct code fails here for two opposite reasons and it named neither.
+  hub.rows.delete(OWNER);
+  const forDrift = await post({});
+  const driftSecret = String(forDrift.body.secret);
+
+  // A device four steps (two minutes) behind.
+  const behindCode = codeForStep(driftSecret, currentStep() - 4);
+  const skewed = await post({ code: behindCode });
+  assert.equal(skewed.status, 401, 'a code from a skewed clock is still refused — it would fail at sign-in too');
+  assert.equal(skewed.body.code, 'CODE_CLOCK_DRIFT', 'the refusal is classified as a clock problem');
+  assert.equal(skewed.body.drift_seconds, -120, 'the drift is reported in seconds, signed');
+  assert.match(String(skewed.body.error), /2 minutes behind/, 'the message states the actual offset');
+  assert.match(String(skewed.body.error), /automatic date and time/, 'the message names the fix');
+  assert.equal(hub.rows.get(OWNER)?.secret, null, 'a skewed code never completes enrolment');
+
+  // A code from a DIFFERENT secret — the leftover-entry case — must not be read as drift.
+  const otherSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+  const foreign = await post({ code: codeForStep(otherSecret, currentStep()) });
+  assert.equal(foreign.status, 401, 'a code from another secret is refused');
+  assert.equal(foreign.body.code, 'CODE_FOREIGN', 'it is classified as the wrong entry, not a clock problem');
+  assert.equal(foreign.body.drift_seconds, null, 'there is no drift to report');
+  assert.match(String(foreign.body.error), /delete every one of them/, 'the message names the actual fix');
+
+  // The diagnostic must never widen what is ACCEPTED.
+  assert.equal(clockDriftSteps(driftSecret, codeForStep(driftSecret, currentStep() - 4)), -4, 'drift is found');
+  assert.equal(
+    verifyTotp(driftSecret, codeForStep(driftSecret, currentStep() - 4)).ok,
+    false,
+    'verification stays at its narrow window; only the diagnosis looks wider',
+  );
+  assert.equal(clockDriftSteps(driftSecret, codeForStep(driftSecret, currentStep() - 500)), null, 'the search is bounded');
+  assert.equal(describeDrift(-4), 'about 2 minutes behind the server', 'drift reads as plain language');
+  assert.equal(describeDrift(2), 'about 60 seconds ahead of the server', 'small drifts stay in seconds');
+
+  // And the correct, current code still confirms — the whole point.
+  const good = currentStep();
+  const accepted = await post({ code: codeForStep(driftSecret, good) });
+  assert.equal(accepted.status, 200, 'the current code from a correct clock still confirms');
+  assert.equal(hub.rows.get(OWNER)?.secret, driftSecret, 'and promotes the pending secret');
+
+  console.log('auth-totp-enrolment.test : OK · 9 stages, drift vs wrong-entry told apart, replay and expiry refused');
 }
 
 void main().catch((error: unknown) => {

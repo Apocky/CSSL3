@@ -137,3 +137,44 @@ export function provisioningUri(secret: string, account: string, issuer = 'Apock
   });
   return `otpauth://totp/${label}?${query.toString()}`;
 }
+
+/**
+ * How far out a device's clock is, in steps, or null if the code is not from this secret at all.
+ *
+ * A code that fails verification has two completely different causes and one message, which is why
+ * "it's the correct code though" is both true and unhelpable: the code IS correct, for a clock that
+ * disagrees with the server's, or it is correct for a DIFFERENT secret — a stale Apocky entry left
+ * behind by an earlier setup. Those want opposite fixes, so the caller needs to know which.
+ *
+ * Diagnostic only. Nothing here accepts a code: a device more than one step out will keep failing
+ * at sign-in, where the window is deliberately narrow, so "helpfully" enrolling it would trade one
+ * confusing failure for a permanent one.
+ *
+ * Only safe to call where the caller has ALREADY proved it is the account — enrolment confirm,
+ * never sign-in. On an unauthenticated path this would answer "does this code belong to that
+ * account", one guess at a time.
+ */
+export function clockDriftSteps(
+  secret: string,
+  submitted: string,
+  options: { readonly atMs?: number; readonly searchSteps?: number } = {},
+): number | null {
+  const digits = (submitted ?? '').replace(/\D/gu, '');
+  if (digits.length !== TOTP_DIGITS) return null;
+  const span = Math.max(1, Math.min(options.searchSteps ?? 20, 240));
+  const now = currentStep(options.atMs ?? Date.now());
+  for (let offset = -span; offset <= span; offset += 1) {
+    if (codeForStep(secret, now + offset) === digits) return offset;
+  }
+  return null;
+}
+
+/** Plain-language description of a drift, for someone who has to go and fix a clock. */
+export function describeDrift(steps: number): string {
+  const seconds = Math.abs(steps) * TOTP_PERIOD_SECONDS;
+  const direction = steps < 0 ? 'behind' : 'ahead of';
+  const amount = seconds < 120
+    ? `${seconds} seconds`
+    : `${Math.round(seconds / 60)} minutes`;
+  return `about ${amount} ${direction} the server`;
+}
