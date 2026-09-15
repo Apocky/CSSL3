@@ -1,4 +1,5 @@
 import { sha256, stableJson } from './crypto';
+import { synthesisSummary, synthesizeRecords, type SynthesizedRecord } from './synthesis';
 import type {
   ClaimedJob,
   MemoryAdapterManifest,
@@ -140,14 +141,16 @@ function canonicalReadingQuery(value: unknown): string {
 
 export function queryFromJob(job: ClaimedJob): string {
   const request = job.request;
-  const explicit = request.retrieval_query;
-  if (typeof explicit === 'string' && explicit.trim()) return explicit.trim().slice(0, 4_000);
+  const explicit = typeof request.retrieval_query === 'string' ? request.retrieval_query.trim() : '';
 
   const question = safeText(request.question).trim();
   const legacyPrompt = [request.prompt, request.query, request.text, request.content, request.oracle_prompt]
     .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
     ?.trim() ?? '';
-  const currentPrompt = (question || legacyPrompt).slice(0, 4_000);
+  // retrieval_query names this turn's question, not the finished query. Widening
+  // it here keeps current-prompt precedence and the 4K bound in one place; a
+  // caller that pre-joined its own history would slip past both.
+  const currentPrompt = (explicit || question || legacyPrompt).slice(0, 4_000);
   const reading = canonicalReadingQuery(request.canonical_reading);
   const source = safeText(request.source_text).trim().slice(0, 1_800);
   const structured = boundedJson(request.structured_context, 1_000);
@@ -443,6 +446,42 @@ function aggregateProbeResults(
   });
 }
 
+export function isMemoryNeeded(job: ClaimedJob): boolean {
+  const request = job.request;
+  if (!request) return false;
+  if (request.memory_requested === true || request.needs_memory === true) return true;
+
+  const query = (typeof request.retrieval_query === 'string' ? request.retrieval_query : '').trim();
+  const text = [
+    query,
+    request.prompt,
+    request.question,
+    request.oracle_prompt,
+    request.content,
+    Array.isArray(request.messages) ? request.messages.map((m: any) => m?.content ?? '').join(' ') : '',
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  // Only invoke memory for explicit reasoning tasks and recall tasks
+  const memoryPatterns = [
+    /\brecall\b/i,
+    /\bremember\b/i,
+    /\bmemory\b/i,
+    /\bmempalace\b/i,
+    /\banamnesis\b/i,
+    /\bbrainmonsoon\b/i,
+    /\bgraphify\b/i,
+    /\bmetaharness\b/i,
+    /\bfrom\s+(?:the\s+)?vault\b/i,
+    /\bsearch\s+(?:memory|notes|records|history)\b/i,
+    /\bwhat\s+did\s+(?:we|i)\s+(?:say|discuss|do|write|decide)\b/i,
+    /\bprior\s+conversation\b/i,
+    /\bprevious\s+(?:conversation|reading|turn)\b/i,
+    /\bwho\s+am\s+i\b/i,
+  ];
+
+  return memoryPatterns.some((pattern) => pattern.test(text));
+}
+
 export async function retrieveMemory(
   config: WorkerConfig,
   job: ClaimedJob,
@@ -450,6 +489,22 @@ export async function retrieveMemory(
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle> {
   const query = queryFromJob(job);
+  // Cut out heavy memory tools initially; only invoke when demanded by reasoning/recall tasks
+  if (!isMemoryNeeded(job)) {
+    const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => ({
+      name: adapter.name,
+      state: 'ok',
+      durationMs: 0,
+      records: [],
+    }));
+    return {
+      query,
+      results,
+      records: [],
+      digest: sha256(stableJson([])),
+      probedAt: null,
+    };
+  }
   const settled = await invokeAdaptersBounded(config,
     (adapter) => invokeAdapter(adapter, job, query, env, fetchImpl));
   const results = settled.map((result, index): RetrievalAdapterResult => {
@@ -462,7 +517,10 @@ export async function retrieveMemory(
       detail: result.reason instanceof Error ? result.reason.message : 'adapter failed',
     };
   });
-  const records = results.flatMap((result) => result.records).slice(0, 40);
+  // Synthesis, not concatenation: rank by relevance to this turn's query, fold
+  // cross-faculty duplicates, and interleave so manifest order stops deciding
+  // which faculty the model actually gets to read.
+  const records = synthesizeRecords(results, query, 40);
   return {
     query, results, records, digest: sha256(stableJson(records)),
     // A job exercises only its own tenant/principal scope. It cannot certify
@@ -548,17 +606,80 @@ export async function probeMemoryAdapters(
   };
 }
 
+const MINIMUM_RECORD_CHARS = 480;
+
+function scoreOf(record: RetrievalRecord): number | undefined {
+  const value = (record as Partial<SynthesizedRecord>).score;
+  return typeof value === 'number' ? value : undefined;
+}
+
+/**
+ * Render the synthesized records under a character budget.
+ *
+ * Records are laid out by rank with a guaranteed minimum slice each, and the
+ * space a short record does not use is handed back to the others. The previous
+ * first-come loop let record #1 consume the entire budget, which is how a
+ * single truncated drawer became the model's whole memory of a turn.
+ */
 export function renderMemoryContext(bundle: RetrievalBundle, maxChars = 28_000): string {
   if (bundle.records.length === 0) return 'No admitted memory records were available for this turn.';
-  let remaining = maxChars;
-  const blocks: string[] = [];
-  for (const item of bundle.records) {
-    const header = `[${item.source} · ${item.provenanceId}]`;
-    const budget = Math.max(0, remaining - header.length - 2);
-    if (budget <= 0) break;
-    const body = item.text.slice(0, budget);
-    blocks.push(`${header}\n${body}`);
-    remaining -= header.length + body.length + 2;
+  const summary = `Synthesis: ${synthesisSummary(bundle.records as SynthesizedRecord[])}.`;
+  let remaining = Math.max(0, maxChars - summary.length - 2);
+  if (remaining <= 0) return summary;
+
+  const headerFor = (record: RetrievalRecord): string => {
+    const score = scoreOf(record);
+    const merged = (record as Partial<SynthesizedRecord>).mergedFrom;
+    return `[${record.source} · ${record.provenanceId}${score === undefined ? '' : ` · relevance ${score.toFixed(2)}`}`
+      + `${merged?.length ? ` · corroborated by ${merged.length}` : ''}]`;
+  };
+
+  // Header newline, the blank line between blocks, and a possible ellipsis.
+  const blockOverhead = (record: RetrievalRecord): number => headerFor(record).length + 5;
+
+  // How many records can be shown without any of them becoming a stub.
+  const candidates: RetrievalRecord[] = [];
+  let reserved = 0;
+  for (const record of bundle.records) {
+    const cost = Math.min(record.text.length, MINIMUM_RECORD_CHARS) + blockOverhead(record);
+    if (reserved + cost > remaining) break;
+    reserved += cost;
+    candidates.push(record);
   }
-  return blocks.join('\n\n');
+  if (candidates.length === 0) candidates.push(bundle.records[0] as RetrievalRecord);
+
+  const overheads = candidates.map(blockOverhead);
+  let content = Math.max(0, remaining - overheads.reduce((sum, value) => sum + value, 0));
+  const weights = candidates.map((record) => 0.4 + 0.6 * (scoreOf(record) ?? 0.5));
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
+  const budgets = candidates.map((record, index) => Math.min(
+    record.text.length,
+    Math.max(Math.min(record.text.length, MINIMUM_RECORD_CHARS), Math.floor(content * (weights[index] as number) / totalWeight)),
+  ));
+  // Hand back whatever the short records did not need.
+  let slack = content - budgets.reduce((sum, value) => sum + value, 0);
+  while (slack > 0) {
+    const hungry = candidates
+      .map((record, index) => index)
+      .filter((index) => (budgets[index] as number) < (candidates[index] as RetrievalRecord).text.length);
+    if (hungry.length === 0) break;
+    let given = 0;
+    for (const index of hungry) {
+      const want = (candidates[index] as RetrievalRecord).text.length - (budgets[index] as number);
+      const grant = Math.min(want, Math.max(1, Math.floor(slack / hungry.length)), slack - given);
+      budgets[index] = (budgets[index] as number) + grant;
+      given += grant;
+      if (given >= slack) break;
+    }
+    if (given === 0) break;
+    slack -= given;
+  }
+
+  const blocks = candidates.map((record, index) => {
+    const body = record.text.slice(0, budgets[index] as number);
+    return `${headerFor(record)}\n${body}${body.length < record.text.length ? ' …' : ''}`;
+  });
+  // Allocation is integer-exact, but a future header change must not be able
+  // to overrun a caller's hard budget.
+  return [summary, ...blocks].join('\n\n').slice(0, maxChars);
 }

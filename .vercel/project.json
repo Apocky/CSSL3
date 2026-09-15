@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_7G4FJtQBrPeWJ2Vo00jTR3jbKiO7",
+  "orgId": "team_Y6LfW90oecok9MxGTNoyA3Y5",
+  "projectName": "apocky-com",
+  "settings": {
+    "createdAt": 1777664264415,
+    "framework": "nextjs",
+    "devCommand": null,
+    "installCommand": "npm install",
+    "buildCommand": "npm run build",
+    "outputDirectory": ".next",
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}

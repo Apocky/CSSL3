@@ -71,21 +71,23 @@ function extractContent(payload: unknown): string {
   const item = choice as Record<string, unknown>;
   const delta = item.delta && typeof item.delta === 'object' ? item.delta as Record<string, unknown> : {};
   const message = item.message && typeof item.message === 'object' ? item.message as Record<string, unknown> : {};
+  
+  if (typeof delta.content === 'string' && delta.content.length > 0) return delta.content;
+  if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) return delta.reasoning_content;
+  if (typeof message.content === 'string' && message.content.length > 0) return message.content;
+  if (typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0) return message.reasoning_content;
+  if (typeof item.text === 'string' && item.text.length > 0) return item.text;
+
   return typeof delta.content === 'string'
     ? delta.content
     : typeof message.content === 'string'
       ? message.content
-      : typeof item.text === 'string'
-        ? item.text
-        : '';
+      : '';
 }
 
 export function isQwenContextOverflow(status: number, detail: string): boolean {
   if (![400, 413, 422].includes(status)) return false;
-  // llama.cpp and OpenAI-compatible front ends use several phrasings. Keep
-  // this classifier broad enough to route every context rejection through the
-  // deterministic compaction retry, while leaving unrelated HTTP 400s alone.
-  return /(?:context\s*(?:size|window|length)|n[_ -]?ctx|prompt\s*(?:tokens?|length)|(?:tokens?|prompt).{0,80}(?:exceed|over|maximum|limit)|(?:exceed|over|maximum|limit).{0,80}(?:context|tokens?|prompt)|too\s+(?:many|long|large).{0,80}(?:context|tokens?|prompt))/iu.test(detail);
+  return /(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit).{0,80}(?:context|token|prompt)|(?:context|token|prompt).{0,80}(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit)/iu.test(detail);
 }
 
 export class QwenClient {
@@ -97,24 +99,66 @@ export class QwenClient {
     this.fetchImpl = fetchImpl;
   }
 
-  async probe(signal?: AbortSignal): Promise<{ healthy: boolean; model: string; detail: string }> {
+  /** Exact prompt token count from llama-server /tokenize; null when the endpoint is unavailable. */
+  async tokenCount(messages: QwenMessage[], signal?: AbortSignal): Promise<number | null> {
+    const base = this.config.qwenBaseUrl.replace(/\/v1$/, '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error('Qwen tokenize timeout')), 2_500);
+    const abort = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      const content = messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>\n`).join('');
+      const response = await this.fetchImpl(`${base}/tokenize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content, add_special: false, with_pieces: false }),
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+      const body = await response.json() as { tokens?: unknown[] };
+      return Array.isArray(body.tokens) ? body.tokens.length : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    }
+  }
+
+  async probe(signal?: AbortSignal): Promise<{ healthy: boolean; model: string; detail: string; contextTokens?: number }> {
     const base = this.config.qwenBaseUrl.replace(/\/v1$/, '');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('Qwen probe timeout')), 10_000);
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      const [healthResponse, modelsResponse] = await Promise.all([
+      const [healthResponse, modelsResponse, propsResponse] = await Promise.all([
         this.fetchImpl(`${base}/health`, { signal: controller.signal }),
         this.fetchImpl(`${this.config.qwenBaseUrl}/models`, { signal: controller.signal }),
+        this.fetchImpl(`${base}/props`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(1_500)]) }).catch(() => null),
       ]);
+      let contextTokens: number | undefined;
+      if (propsResponse?.ok) {
+        try {
+          const props = await propsResponse.json() as { default_generation_settings?: { n_ctx?: unknown } };
+          const nCtx = props.default_generation_settings?.n_ctx;
+          if (typeof nCtx === 'number' && Number.isFinite(nCtx) && nCtx > 0) contextTokens = Math.floor(nCtx);
+        } catch {
+          // props is advisory only
+        }
+      }
       if (!healthResponse.ok || !modelsResponse.ok) {
         return { healthy: false, model: this.config.modelAlias, detail: `health=${healthResponse.status} models=${modelsResponse.status}` };
       }
       const models = await modelsResponse.json() as { data?: Array<{ id?: string }> };
       const aliases = (models.data ?? []).map((model) => model.id).filter(Boolean);
       const healthy = aliases.includes(this.config.modelAlias);
-      return { healthy, model: this.config.modelAlias, detail: healthy ? 'ready' : `alias absent (${aliases.join(', ')})` };
+      return {
+        healthy,
+        model: this.config.modelAlias,
+        detail: healthy ? `ready${contextTokens ? ` n_ctx=${contextTokens}` : ''}` : `alias absent (${aliases.join(', ')})`,
+        ...(contextTokens ? { contextTokens } : {}),
+      };
     } catch (error) {
       return { healthy: false, model: this.config.modelAlias, detail: error instanceof Error ? error.message : 'probe failed' };
     } finally {
