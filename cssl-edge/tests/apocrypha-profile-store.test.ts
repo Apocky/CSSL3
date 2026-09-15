@@ -34,6 +34,14 @@ function grounded(axis: string, statement: string, chunkId: number, ts: string):
   };
 }
 
+// noUncheckedIndexedAccess is on: an indexed read is T | undefined. Asserting presence here
+// keeps the strictness that catches real off-by-one bugs in source, without every test
+// assertion drowning in optional chaining.
+function need<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error('missing : ' + what);
+  return value;
+}
+
 async function main(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'apx-profile-'));
   const path = join(dir, 'profile.db');
@@ -53,14 +61,14 @@ async function main(): Promise<void> {
     store.finishPass(p2, { chunksRead: 2, claimsOffered: 2, claimsGrounded: 2, claimsNew: 1, claimsCorroborated: 1, rejected: { ...REJECTED } });
 
     assert(store.audit().length === 0, 'invariant broken after two clean passes');
-    assert(store.top('ideal', 5)[0].corroborations === 2, 'A should have 2 corroborations');
-    assert(store.top('ideal', 5)[0].lastSeen === '2026-06-01T00:00:00Z', 'last_seen did not advance');
+    assert(need(store.top('ideal', 5)[0], 'claim A').corroborations === 2, 'A should have 2 corroborations');
+    assert(need(store.top('ideal', 5)[0], 'claim A').lastSeen === '2026-06-01T00:00:00Z', 'last_seen did not advance');
 
     // 1 -- re-recording the SAME chunk must not inflate. This is the failure that turns
     //      corroboration into a job-run counter.
     const p3 = store.beginPass('test-model', null);
     assert(store.record(p3, grounded('ideal', 'Optimal is not minimal.', 3, '2026-06-01T00:00:00Z')) === 'duplicate', 'same chunk must be a duplicate');
-    assert(store.top('ideal', 5)[0].corroborations === 2, 'corroborations inflated on a repeat pass');
+    assert(need(store.top('ideal', 5)[0], 'claim A').corroborations === 2, 'corroborations inflated on a repeat pass');
     assert(store.audit().length === 0, 'invariant broken by a duplicate');
     store.revertPass(p3);
 
@@ -73,13 +81,13 @@ async function main(): Promise<void> {
 
     assert((store.counts().mannerism ?? 0) === 0, 'C survived the revert of its own pass');
     assert((store.counts().procedure ?? 0) === 1, 'B was collateral damage');
-    const a = store.top('ideal', 5)[0];
+    const a = need(store.top('ideal', 5)[0], 'claim A');
     assert(a.corroborations === 1, `A kept withdrawn support: ${a.corroborations}`);
     assert(store.audit().length === 0, 'invariant broken after revert');
 
     // 3 -- reverting twice must not drive a claim below its real support.
     store.revertPass(p2);
-    assert(store.top('ideal', 5)[0].corroborations === 1, 'double revert drove A below its evidence');
+    assert(need(store.top('ideal', 5)[0], 'claim A').corroborations === 1, 'double revert drove A below its evidence');
     assert(store.audit().length === 0, 'invariant broken after double revert');
 
     // 4 -- the dedupe key folds punctuation and case but NOT distinct axes: the same sentence
