@@ -446,40 +446,24 @@ function aggregateProbeResults(
   });
 }
 
+/**
+ * Whether this turn loads memory. Default: yes.
+ *
+ * This used to be a keyword allowlist -- memory loaded only if the message contained "recall",
+ * "remember", "memory", "who am i" and so on. That made the common case the blind case: "what are
+ * we working on", "how do I deploy this", "what do I prefer here" all matched nothing and were
+ * answered with no memory loaded at all. The single most repeated correction across 7,512
+ * owner-authored messages is a description of exactly that behaviour.
+ *
+ * Memory is now default-on, per owner directive 2026-09-14. The latency that justified the gate is
+ * handled where it belongs -- WorkingMemory keeps the set warm between turns, so default-on does
+ * not mean a federated probe per turn. Callers that genuinely want a turn to run cold must say so.
+ */
 export function isMemoryNeeded(job: ClaimedJob): boolean {
   const request = job.request;
-  if (!request) return false;
-  if (request.memory_requested === true || request.needs_memory === true) return true;
-
-  const query = (typeof request.retrieval_query === 'string' ? request.retrieval_query : '').trim();
-  const text = [
-    query,
-    request.prompt,
-    request.question,
-    request.oracle_prompt,
-    request.content,
-    Array.isArray(request.messages) ? request.messages.map((m: any) => m?.content ?? '').join(' ') : '',
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  // Only invoke memory for explicit reasoning tasks and recall tasks
-  const memoryPatterns = [
-    /\brecall\b/i,
-    /\bremember\b/i,
-    /\bmemory\b/i,
-    /\bmempalace\b/i,
-    /\banamnesis\b/i,
-    /\bbrainmonsoon\b/i,
-    /\bgraphify\b/i,
-    /\bmetaharness\b/i,
-    /\bfrom\s+(?:the\s+)?vault\b/i,
-    /\bsearch\s+(?:memory|notes|records|history)\b/i,
-    /\bwhat\s+did\s+(?:we|i)\s+(?:say|discuss|do|write|decide)\b/i,
-    /\bprior\s+conversation\b/i,
-    /\bprevious\s+(?:conversation|reading|turn)\b/i,
-    /\bwho\s+am\s+i\b/i,
-  ];
-
-  return memoryPatterns.some((pattern) => pattern.test(text));
+  if (!request) return true;
+  if (request.memory_requested === false || request.needs_memory === false) return false;
+  return true;
 }
 
 export async function retrieveMemory(
@@ -489,13 +473,16 @@ export async function retrieveMemory(
   fetchImpl: Fetch = fetch,
 ): Promise<RetrievalBundle> {
   const query = queryFromJob(job);
-  // Cut out heavy memory tools initially; only invoke when demanded by reasoning/recall tasks
+  // Only when the caller explicitly opted this turn out of memory.
   if (!isMemoryNeeded(job)) {
     const results = config.manifest.memory.adapters.map((adapter): RetrievalAdapterResult => ({
       name: adapter.name,
-      state: 'ok',
+      // NOT 'ok'. An adapter that was never asked has not succeeded, and reporting it green is
+      // how a blind worker passed for a healthy one.
+      state: 'skipped',
       durationMs: 0,
       records: [],
+      detail: 'turn opted out of memory',
     }));
     return {
       query,

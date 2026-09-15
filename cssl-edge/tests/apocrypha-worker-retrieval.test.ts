@@ -270,24 +270,43 @@ async function operationalProbeAvoidsSelfContention(): Promise<void> {
   assert(peak === 3, 'live retrieval lost its configured concurrency');
 }
 
-async function plainReadingsSkipMemory(): Promise<void> {
+// REVERSED 2026-09-14 by owner directive: "the memory tools need to be loaded by default and kept
+// in working/episodic memory live".
+//
+// This function previously asserted the opposite -- that an ordinary question must NOT load memory
+// -- and that gated-off adapters must report state 'ok'. Together those encoded the failure they
+// were meant to prevent: the common case ran blind, and reported itself healthy while doing it.
+// Residency (working-memory.ts) is what makes default-on affordable; see
+// tests/apocrypha-working-memory.test.ts for the windows.
+async function ordinaryQuestionsLoadMemory(): Promise<void> {
   let calls = 0;
   const fetchImpl = (async () => { calls += 1; return response(200, { records: [{ id: 'memory:1', text: 'admitted memory' }] }); }) as typeof fetch;
   const plain: ClaimedJob = { ...job, request: { question: 'What should I focus on this week?', canonical_reading: { items: [{ name: 'The Star' }] } } };
-  assert(!isMemoryNeeded(plain), 'an ordinary reading question was treated as a recall task');
+  assert(isMemoryNeeded(plain), 'an ordinary question did not load memory');
   const bundle = await retrieveMemory(config, plain, env, fetchImpl);
-  assert(calls === 0, 'a plain reading reached a memory adapter');
-  assert(bundle.records.length === 0, 'a plain reading received memory records');
-  assert(bundle.results.every((result) => result.state === 'ok'), 'gated-off adapters were not reported as ok');
+  assert(calls > 0, 'an ordinary question never reached a memory adapter');
 
-  assert(isMemoryNeeded({ ...job, request: { question: 'Recall what we discussed about The Tower last time.' } }), 'an explicit recall request did not open the memory gate');
-  assert(isMemoryNeeded({ ...job, request: { prompt: 'What did we decide about the vault yesterday?' } }), 'a "what did we" question did not open the memory gate');
-  assert(isMemoryNeeded({ ...job, request: { prompt: 'Interpret this.', memory_requested: true } }), 'memory_requested did not open the memory gate');
+  // Opting out is explicit, and an adapter that was never asked must say so. 'ok' with zero
+  // records is how a blind worker passed for a healthy one.
+  const optedOut: ClaimedJob = { ...job, request: { question: 'Interpret this.', memory_requested: false } };
+  calls = 0;
+  assert(!isMemoryNeeded(optedOut), 'an explicit opt-out was ignored');
+  const skipped = await retrieveMemory(config, optedOut, env, fetchImpl);
+  assert(calls === 0, 'an opted-out turn still reached a memory adapter');
+  assert(skipped.records.length === 0, 'an opted-out turn received memory records');
+  assert(skipped.results.every((result) => result.state === 'skipped'),
+    'an adapter that was never asked reported a state other than skipped');
+  assert(skipped.results.every((result) => result.state !== 'ok'),
+    'a never-asked adapter reported ok -- this is the blindness the reversal removed');
+
+  assert(isMemoryNeeded({ ...job, request: { question: 'Recall what we discussed about The Tower last time.' } }), 'an explicit recall request did not load memory');
+  assert(isMemoryNeeded({ ...job, request: { prompt: 'What did we decide about the vault yesterday?' } }), 'a "what did we" question did not load memory');
+  assert(isMemoryNeeded({ ...job, request: { prompt: 'Interpret this.', memory_requested: true } }), 'memory_requested did not load memory');
 }
 
 async function main(): Promise<void> {
   currentPromptPrecedesLegacyHistory();
-  await plainReadingsSkipMemory();
+  await ordinaryQuestionsLoadMemory();
   await transientServerErrorRecovers();
   await timeoutRecovers();
   await finalFailureRemainsVisible();
