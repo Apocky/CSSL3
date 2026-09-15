@@ -25,6 +25,8 @@ const Login: NextPage = () => {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [localhostCallback, setLocalhostCallback] = useState<string | null>(null);
   const [returnTo, setReturnTo] = useState('/account');
+  const [authCode, setAuthCode] = useState('');
+  const [showEmailFallback, setShowEmailFallback] = useState(false);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search).get('next');
@@ -92,6 +94,57 @@ const Login: NextPage = () => {
       setNotice({ tone: 'error', text: 'The sign-in service could not be reached. Please try again.' });
     } finally {
       setOperation(null);
+    }
+  }
+
+  /**
+   * Authenticator sign-in: one screen, no email anywhere in the path.
+   *
+   * The server checks the code against the stored TOTP secret and, only then, returns a single-use
+   * token which is exchanged here for a real session. Nothing is mailed, so neither the mail
+   * template deciding whether a code appears, nor a link opening the system browser and stranding
+   * the session there, can break it.
+   */
+  async function handleAuthenticatorSubmit(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (operation) return;
+    const address = email.trim();
+    const digits = authCode.replace(/[^0-9]/gu, '');
+    if (!address || digits.length !== 6) return;
+    setOperation('verify');
+    setNotice(null);
+    try {
+      const response = await fetch('/api/auth/totp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: address, code: digits }),
+      });
+      const payload = await response.json().catch(() => null) as { token_hash?: string; error?: string } | null;
+      if (!response.ok || !payload?.token_hash) {
+        setNotice({ tone: 'error', text: payload?.error ?? 'That code was not accepted.' });
+        setAuthCode('');
+        return;
+      }
+      const client = getAuthClient();
+      if (!client) {
+        setNotice({ tone: 'warning', text: 'Sign-in is not connected in this environment.' });
+        return;
+      }
+      const { data, error } = await client.auth.verifyOtp({ token_hash: payload.token_hash, type: 'email' });
+      if (error || !data.session) {
+        setNotice({ tone: 'error', text: 'The code was accepted but a session could not be opened. Try once more.' });
+        return;
+      }
+      if (!await persistSessionToCookie(data.session.access_token)) {
+        setNotice({ tone: 'error', text: 'Signed in, but the secure server session could not be established.' });
+        return;
+      }
+      location.replace(currentReturnPath());
+    } catch {
+      setNotice({ tone: 'error', text: 'Sign-in could not be reached. Please try again.' });
+    } finally {
+      setOperation(null);
+      setAuthCode('');
     }
   }
 
@@ -222,7 +275,7 @@ const Login: NextPage = () => {
         <div className="apx-auth-card">
           <p className="apx-auth-context">Continue to {destination}</p>
           <h1>Sign in to Apocky</h1>
-          <p className="apx-auth-subtitle">Use the code in the email, or paste the email&rsquo;s link here. No password required.</p>
+          <p className="apx-auth-subtitle">Enter the code from your authenticator app. No password, no email round-trip.</p>
 
           {localhostCallback && (
             <details className="apx-auth-warning">
@@ -233,7 +286,49 @@ const Login: NextPage = () => {
           )}
 
           {!pendingEmail ? (
-            <form className="apx-auth-form" onSubmit={handleEmailSubmit}>
+            <>
+            <form className="apx-auth-form" onSubmit={handleAuthenticatorSubmit}>
+              <label className="apx-label" htmlFor="login-authenticator-email">Email address</label>
+              <input
+                id="login-authenticator-email"
+                className="apx-input"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+              />
+              <label className="apx-label" htmlFor="login-totp" style={{ marginTop: 14 }}>Authenticator code</label>
+              <input
+                id="login-totp"
+                className="apx-input"
+                type="text"
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                maxLength={7}
+                required
+                value={authCode}
+                onChange={(event) => setAuthCode(event.target.value.replace(/[^0-9 ]/gu, ''))}
+                placeholder="000000"
+              />
+              <p className="apx-field-help">The 6-digit code from your authenticator app. It changes every 30 seconds.</p>
+              <button
+                className="apx-button apx-button--primary"
+                type="submit"
+                style={{ width: '100%', marginTop: 16 }}
+                disabled={Boolean(operation) || !email.trim() || authCode.replace(/[^0-9]/gu, '').length !== 6}
+              >
+                {operation === 'verify' ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+            <p className="apx-auth-switch" style={{ marginTop: 18 }}>
+              <button type="button" onClick={() => setShowEmailFallback((value) => !value)}>
+                {showEmailFallback ? 'Hide email sign-in' : 'No authenticator? Sign in by email instead'}
+              </button>
+            </p>
+            {showEmailFallback ? <form className="apx-auth-form" onSubmit={handleEmailSubmit}>
               <label className="apx-label" htmlFor="login-email">Email address</label>
               <div className="apx-input-row">
                 <input
@@ -252,7 +347,8 @@ const Login: NextPage = () => {
                 </button>
               </div>
               <p className="apx-field-help">The email also includes a single-use link that returns you to {destination}.</p>
-            </form>
+            </form> : null}
+            </>
           ) : (
             <form className="apx-auth-form" onSubmit={handleVerifyCode}>
               <p className="apx-field-help" id="login-code-destination">Code sent to <strong>{pendingEmail}</strong>.</p>
