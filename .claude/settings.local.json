@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo test *)",
+      "Bash(awk '{sum += $4} END {print \"total passed:\", sum}')"
+    ]
+  }
+}
