@@ -26,6 +26,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use cssl_cgen_cpu_x64::abi::X64Abi;
 use cssl_cgen_cpu_x64::isel::func::{X64Func as IselFunc, X64Signature};
@@ -96,14 +97,17 @@ fn find_lld_driver() -> Option<(PathBuf, DriverKind)> {
     None
 }
 
+static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
 fn write_temp(bytes: &[u8], ext: &str) -> std::io::Result<PathBuf> {
     let mut path = std::env::temp_dir();
     let pid = std::process::id();
+    let ordinal = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    path.push(format!("cssl_x64_g9_{pid}_{stamp}.{ext}"));
+    path.push(format!("cssl_x64_g9_{pid}_{stamp}_{ordinal}.{ext}"));
     std::fs::write(&path, bytes)?;
     Ok(path)
 }
@@ -290,6 +294,22 @@ fn link_and_run(bytes: &[u8], target: ObjectTarget) -> Result<Option<i32>, Strin
 // ───────────────────────────────────────────────────────────────────────
 // § Tests
 // ───────────────────────────────────────────────────────────────────────
+
+#[test]
+fn g9_parallel_temp_files_never_alias() {
+    let workers: Vec<_> = (0..32)
+        .map(|_| std::thread::spawn(|| write_temp(b"g9", "obj").expect("temp write")))
+        .collect();
+    let paths: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("temp worker"))
+        .collect();
+    let unique: std::collections::HashSet<_> = paths.iter().collect();
+    assert_eq!(unique.len(), paths.len(), "parallel temp paths aliased");
+    for path in paths {
+        let _ = std::fs::remove_file(path);
+    }
+}
 
 #[test]
 fn g9_abs_minus_7_returns_7() {
