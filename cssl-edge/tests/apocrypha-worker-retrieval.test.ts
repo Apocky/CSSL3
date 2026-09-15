@@ -1,4 +1,4 @@
-import { MEMORY_READINESS_QUERY, probeMemoryAdapters, queryFromJob, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
+import { isMemoryNeeded, MEMORY_READINESS_QUERY, probeMemoryAdapters, queryFromJob, retrieveMemory } from '../scripts/apocrypha-worker/retrieval';
 import type { ClaimedJob, WorkerConfig } from '../scripts/apocrypha-worker/types';
 
 function assert(condition: unknown, message: string): asserts condition {

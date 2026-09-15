@@ -250,7 +250,7 @@ function requestMessages(request: Record<string, unknown>): QwenMessage[] {
   return [{ role: 'user', content: prompt }];
 }
 
-function baseSystem(job: ClaimedJob): string {
+export function baseSystem(job: ClaimedJob): string {
   if (job.capability === 'chaos_tarot_reading') {
     return [
       'You are Apocrypha, the interpretation intelligence behind Chaos Tarot.',
