@@ -26,6 +26,7 @@ interface RequestOptions {
   origin?: string;
   email?: string;
   accept?: string;
+  cookie?: string;
 }
 
 function assert(condition: boolean, message: string): asserts condition {
@@ -60,6 +61,7 @@ function reqRes(
     headers['x-apocky-test-admin-email'] = options.email ?? 'member@example.test';
   }
   if (options.accept) headers.accept = options.accept;
+  if (options.cookie) headers.cookie = options.cookie;
   const req = {
     method,
     body: options.body,
@@ -271,11 +273,6 @@ async function main(): Promise<void> {
   });
   await chatHandler(crossOrigin.req, crossOrigin.res);
   equal(crossOrigin.out.statusCode, 403, 'cross-origin turn fails closed');
-
-  const unauthenticated = reqRes('POST', { body: baseBody, member: false });
-  await chatHandler(unauthenticated.req, unauthenticated.res);
-  equal(unauthenticated.out.statusCode, 401, 'signed-out turn fails closed');
-  assertPrivate(unauthenticated.out);
 
   const wrongContentType = reqRes('POST', {
     body: baseBody,
@@ -531,6 +528,43 @@ async function main(): Promise<void> {
   assert(rateLimited !== null, 'per-member short turn budget is enforced');
   assert(Number(rateLimited.headers['retry-after']) >= 1, 'rate limit provides retry timing');
   equal(upstreamCalls, 8, 'only eight valid turns reach one warm-instance body window');
+
+  // REVERSED 2026-09-14 by owner directive: "make Apocrypha fully publicly functional".
+  //
+  // This previously asserted a signed-out turn returns 401. Sign-in now buys durable history and a
+  // larger budget; it is no longer the price of asking a question. What must NOT change is the
+  // reason the door was shut in the first place, so the assertions below are stricter than the one
+  // they replace: a guest is pinned to the public partition, can never be an owner, carries no
+  // durable identity, and gets a narrower budget than a member.
+  const guest = reqRes('POST', { body: baseBody, member: false });
+  await chatHandler(guest.req, guest.res);
+  equal(guest.out.statusCode, 200, 'a signed-out visitor can ask a question');
+  assertPrivate(guest.out);
+
+  const guestCookie = String(guest.out.headers['set-cookie'] ?? '');
+  assert(guestCookie.includes('apx_guest='), 'a guest turn issues a guest identity');
+  assert(guestCookie.includes('HttpOnly'), 'the guest cookie must not be script-readable');
+  assert(guestCookie.includes('SameSite=Lax'), 'the guest cookie must be same-site');
+  assert(!/email|@|principal:/i.test(guestCookie), 'the guest cookie must carry nothing about the person');
+
+  // The budget is the backpressure on a single local GPU. A guest gets less than a member, and
+  // the fourth turn is refused rather than queued.
+  let guestDenied: Output | null = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const turn = reqRes('POST', {
+      body: { ...baseBody, request_id: randomUUID(), text: `guest budget ${attempt}` },
+      member: false,
+      cookie: 'apx_guest=11111111-2222-3333-4444-555555555555',
+    });
+    await chatHandler(turn.req, turn.res);
+    if (turn.out.statusCode === 429) { guestDenied = turn.out; break; }
+  }
+  assert(guestDenied !== null, 'the guest turn budget is enforced');
+  assert(Number(guestDenied.headers['retry-after']) >= 1, 'a denied guest turn provides retry timing');
+
+  // NOT COVERED: sign-in being DOWN (503) rather than signed out. Reaching that branch needs a
+  // test hook inside production auth code, and adding one to satisfy a test is worse than naming
+  // the gap. The branch exists in chat.ts and is reviewed, not exercised here.
 
   const primaryPage = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
   const component = readFileSync(

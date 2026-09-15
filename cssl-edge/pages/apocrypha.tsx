@@ -21,7 +21,10 @@ export const getServerSideProps: GetServerSideProps<ApocryphaPageProps> = async 
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Vary', 'Cookie, Authorization');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  // Indexable now that the room is open. A page nobody can find is not publicly functional.
+  // The response stays private/no-store because the SIGNED-IN view is per-account; only the
+  // signed-out room is meant to be discoverable.
+  res.setHeader('X-Robots-Tag', 'index, follow');
   const owner = await requireBrainOwner(req as NextApiRequest);
   return { props: { ownerConversation: owner.ok && usesOwnerRuntime(owner.user) } };
 };
@@ -96,9 +99,9 @@ export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps)
   return <>
     <Head>
       <title>Apocrypha · Apocky</title>
-      <meta name="description" content="Chat with Apocrypha from your browser. Sign in to your Apocky account to keep your own conversations together." />
+      <meta name="description" content="Talk to Apocrypha in your browser. No account needed to ask a question; sign in to keep your conversations across devices." />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-      <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
+      <meta name="robots" content="index,follow" />
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>

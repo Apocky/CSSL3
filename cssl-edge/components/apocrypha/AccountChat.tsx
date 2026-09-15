@@ -27,6 +27,7 @@ import {
 } from '@/lib/apocrypha/member-chat-client';
 import { authFetch } from '@/lib/browser-auth';
 import styles from '@/styles/AccountChat.module.css';
+import { GuestChat } from '@/components/apocrypha/GuestChat';
 
 function errorText(error: unknown, fallback: string): string {
   if (error instanceof MemberChatClientError) return error.message;
@@ -474,6 +475,15 @@ export default function AccountChat(
       setNotice('Copy is unavailable. Select the message text and copy it directly.');
     }
   }
+
+  // A signed-out visitor gets the open room, not a sign-in wall. This used to render a headline
+  // and two buttons: you could read about a conversation but not have one. AccountChat takes back
+  // over the moment the session resolves to a real account, so signing in changes what you get
+  // (durable history, a larger budget) rather than whether you may speak at all.
+  //
+  // `access === 'checking'` deliberately still falls through to the welcome panel below: swapping
+  // a member into the guest room for a moment and back out would lose whatever they had typed.
+  if (access !== 'checking' && (!authenticated || !subject)) return <GuestChat />;
 
   return <main
     id="main-content"

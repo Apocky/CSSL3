@@ -13,6 +13,31 @@ export function isRuntimeSessionPrincipal(value: unknown): value is RuntimeSessi
   return typeof value === 'string' && RUNTIME_SESSION_PRINCIPAL_RE.test(value);
 }
 
+/**
+ * Principal for a signed-out visitor.
+ *
+ * Domain-separated from the member derivation by its own constant, so the two hash spaces are
+ * disjoint: a guest id can never be crafted to collide with a real member's principal, and
+ * therefore can never address a member's conversation scope. The branded prefix is kept identical
+ * so every downstream validator treats it as an ordinary principal -- a guest is a full principal
+ * with a narrower budget, not a special case threaded through the request path.
+ */
+export function anonymousGuestPrincipalRef(guestId: string): RuntimeSessionPrincipal {
+  if (
+    typeof guestId !== 'string'
+    || guestId !== guestId.trim()
+    || guestId.length < 8
+    || guestId.length > 128
+  ) {
+    throw new TypeError('guest_principal_invalid');
+  }
+  const digest = createHash('sha256')
+    .update('APOCRYPHA-V2-ANONYMOUS-GUEST-PRINCIPAL-v1\0', 'utf8')
+    .update(guestId, 'utf8')
+    .digest('hex');
+  return `principal:apocky-member:${digest}` as RuntimeSessionPrincipal;
+}
+
 export function publicMemberPrincipalRef(userId: string): RuntimeSessionPrincipal {
   if (
     typeof userId !== 'string'

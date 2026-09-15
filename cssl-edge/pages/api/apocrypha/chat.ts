@@ -23,6 +23,8 @@ import {
   submitRuntimeChat,
 } from '@/lib/apocv4/runtime-proxy';
 import { hasSameOrigin } from '@/lib/auth-session';
+import { anonymousGuestPrincipalRef } from '@/lib/apocv4/session-principal';
+import { randomUUID } from 'node:crypto';
 import { envelope } from '@/lib/response';
 import { buildCreationLedgerRecord } from '@/lib/telemetry/creation-ledger';
 import { createServerTrace, emitOperationalTelemetry, traceparentFor } from '@/lib/telemetry/server';
@@ -32,6 +34,11 @@ const OWNER_RUNTIME_PRIVACY_PARTITION = 'owner:apocky';
 const PUBLIC_RUNTIME_PRIVACY_PARTITION = 'public:apocrypha';
 const RATE_WINDOW_MS = 60_000;
 const RATE_WINDOW_TURNS = 8;
+// A signed-out visitor gets a narrower budget than a member. The engine behind this is a single
+// local GPU, so public reach and unbounded public throughput are not the same request.
+const GUEST_RATE_WINDOW_TURNS = 3;
+const GUEST_COOKIE = 'apx_guest';
+const GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 const MAX_RATE_BUCKETS = 10_000;
 const PUBLIC_CHAT_STREAM_SCHEMA = 'apocky.apocrypha-chat-stream.v1';
 
@@ -96,6 +103,7 @@ function readClientSessionId(body: TurnBody | null): unknown {
 
 function rateDecision(
   principalRef: string,
+  maxTurns: number = RATE_WINDOW_TURNS,
   now = Date.now(),
 ): { allowed: boolean; retryAfterSeconds: number } {
   const current = rateBuckets.get(principalRef);
@@ -112,7 +120,7 @@ function rateDecision(
     rateBuckets.set(principalRef, { count: 1, resetAt: now + RATE_WINDOW_MS });
     return { allowed: true, retryAfterSeconds: 0 };
   }
-  if (current.count >= RATE_WINDOW_TURNS) {
+  if (current.count >= maxTurns) {
     return {
       allowed: false,
       retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
@@ -120,6 +128,25 @@ function rateDecision(
   }
   current.count += 1;
   return { allowed: true, retryAfterSeconds: 0 };
+}
+
+/**
+ * Stable-enough identity for a signed-out visitor.
+ *
+ * The cookie is httpOnly and carries a random id, never anything derived from the person. Forging
+ * it buys nothing: the principal is a hash of it, guests hold no server-side history, and the
+ * privacy partition is fixed to public regardless of what the cookie says. Its only job is to keep
+ * one visitor's short turn budget and conversation scope separate from another's.
+ */
+function guestIdentity(req: NextApiRequest): { guestId: string; issued: boolean } {
+  const raw = req.headers.cookie ?? '';
+  for (const part of raw.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name !== GUEST_COOKIE) continue;
+    const value = decodeURIComponent(rest.join('='));
+    if (/^[0-9a-f-]{8,128}$/i.test(value)) return { guestId: value, issued: false };
+  }
+  return { guestId: randomUUID(), issued: true };
 }
 
 export default async function handler(
@@ -161,22 +188,28 @@ export default async function handler(
   }
 
   const session = await getRequestUser(req);
-  if (!session.user) {
-    const unavailable = session.failureKind === 'upstream-unavailable'
-      || session.failureKind === 'unconfigured';
-    res.status(unavailable ? 503 : 401).json({
-      error: unavailable
-        ? 'Sign-in verification is temporarily unavailable.'
-        : 'Sign in to speak with Apocrypha.',
+  // A signed-out visitor is admitted as a guest rather than refused. Sign-in buys durable history
+  // and a larger budget; it is not the price of asking a question. The guest lane is pinned to the
+  // public privacy partition below and can never reach owner-scoped memory.
+  const guest = session.user ? null : guestIdentity(req);
+  if (guest?.issued) {
+    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    res.setHeader('Set-Cookie',
+      `${GUEST_COOKIE}=${encodeURIComponent(guest.guestId)}; Path=/; Max-Age=${GUEST_COOKIE_MAX_AGE}`
+      + `; HttpOnly; SameSite=Lax${secure}`);
+  }
+  if (!session.user && (session.failureKind === 'upstream-unavailable' || session.failureKind === 'unconfigured')) {
+    // Sign-in being DOWN is different from being signed out: a member mid-session must not be
+    // silently demoted to a guest budget and told nothing.
+    res.status(503).json({
+      error: 'Sign-in verification is temporarily unavailable.',
       authenticated: false,
       ...envelope(),
     });
     await emitOperationalTelemetry({
       trace, kind: 'security.apocrypha.turn.session_denied', source: 'pages.api.apocrypha.chat', plane: 'security',
-      severity: unavailable ? 'error' : 'warn', outcome: unavailable ? 'degraded' : 'denied',
-      status: unavailable ? 503 : 401, durationMs: Math.round(performance.now() - started),
-      message: unavailable ? 'Member session verification unavailable.' : 'Member session required.',
-      authority: 'authenticated-member-required',
+      severity: 'error', outcome: 'degraded', status: 503, durationMs: Math.round(performance.now() - started),
+      message: 'Member session verification unavailable.', authority: 'authenticated-member-required',
       attributes: { failure_kind: session.failureKind ?? 'unauthenticated' },
     });
     return;
@@ -229,13 +262,18 @@ export default async function handler(
     return;
   }
 
-  const principalRef = publicMemberPrincipalRef(session.user.id);
-  const ownerProfile = getAdminAllowlist().includes(session.user.email.toLowerCase());
+  const principalRef = session.user
+    ? publicMemberPrincipalRef(session.user.id)
+    : anonymousGuestPrincipalRef((guest as { guestId: string }).guestId);
+  // Owner status is a property of an authenticated identity. A guest can never be one, whatever
+  // the request carries -- the check is not reachable without session.user.
+  const ownerProfile = session.user !== null
+    && getAdminAllowlist().includes(session.user.email.toLowerCase());
   const runtimePrivacyPartition = ownerProfile
     ? OWNER_RUNTIME_PRIVACY_PARTITION
     : PUBLIC_RUNTIME_PRIVACY_PARTITION;
   const credentialProfile = ownerProfile ? 'owner' : 'public';
-  const budget = rateDecision(principalRef);
+  const budget = rateDecision(principalRef, session.user ? RATE_WINDOW_TURNS : GUEST_RATE_WINDOW_TURNS);
   if (!budget.allowed) {
     res.setHeader('Retry-After', String(budget.retryAfterSeconds));
     res.status(429).json({

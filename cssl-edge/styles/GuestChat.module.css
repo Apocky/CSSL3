@@ -1,0 +1,202 @@
+/* The open room. Palette and rhythm follow AccountChat so signing in changes what you get,
+   not what it feels like. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 480px;
+  background: #05060b;
+  color: #e8e9f3;
+  font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px clamp(16px, 4vw, 32px);
+  border-bottom: 1px solid #a9b5ff26;
+  flex: 0 0 auto;
+}
+
+.brand { display: inline-flex; flex: 0 0 auto; }
+
+.title { flex: 1 1 auto; min-width: 0; }
+.title h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.title p { margin: 0; font-size: 12.5px; color: #a9b5ffb0; }
+
+.nav { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+.nav a {
+  color: #d2e6fa;
+  text-decoration: none;
+  font-size: 13.5px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.nav a:hover { border-color: #a9b5ff40; }
+.signIn { border-color: #a9b5ff50 !important; background: #111524; }
+
+.conversation {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4vw, 24px);
+}
+
+.messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Opening state: an invitation with a way in, not a wall. */
+.opening { margin: auto 0; padding: 8px 0 24px; }
+.eyebrow {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: #a9b5ffb0;
+  margin-bottom: 14px;
+}
+.opening h2 {
+  margin: 0 0 12px;
+  font-size: clamp(30px, 6vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+.opening h2 em {
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #b9a9ff;
+}
+.opening p { margin: 0 0 20px; color: #a9b5ffc0; }
+
+.openers { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.openers button {
+  width: 100%;
+  text-align: left;
+  padding: 13px 16px;
+  border-radius: 12px;
+  border: 1px solid #a9b5ff26;
+  background: #0d1019;
+  color: #e8e9f3;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.openers button:hover:not(:disabled) { border-color: #a9b5ff50; background: #111524; }
+.openers button:disabled { opacity: 0.5; cursor: default; }
+
+.you, .apocrypha { display: flex; flex-direction: column; gap: 6px; }
+.who {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #a9b5ff90;
+}
+.you .body {
+  align-self: flex-start;
+  background: #151b2e;
+  border: 1px solid #a9b5ff26;
+  border-radius: 14px;
+  padding: 11px 15px;
+  max-width: 90%;
+}
+.body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.apocrypha .body { color: #f0eef8; }
+
+/* A visible cursor while tokens arrive: a page that shows nothing reads as frozen. */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #b1dfeb;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+
+.notice {
+  margin: 0 0 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid #a9b5ff40;
+  background: #111524;
+  color: #d2e6fa;
+  font-size: 13.5px;
+}
+
+.composer {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 10px;
+  border: 1px solid #a9b5ff40;
+  border-radius: 16px;
+  background: #0d1019;
+}
+.composer textarea {
+  flex: 1 1 auto;
+  resize: none;
+  min-height: 24px;
+  max-height: 30vh;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 6px 4px;
+  outline: none;
+  field-sizing: content;
+}
+.composer textarea::placeholder { color: #a9b5ff80; }
+
+.send {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 9px 18px;
+  background: #b1dfeb;
+  color: #05060b;
+  font: 600 14px/1 inherit;
+  cursor: pointer;
+}
+.send:disabled { opacity: 0.45; cursor: default; }
+
+.footnote {
+  flex: 0 0 auto;
+  margin: 10px 0 14px;
+  font-size: 12.5px;
+  color: #a9b5ffa0;
+  text-align: center;
+}
+.footnote a { color: #d2e6fa; }
+
+.srOnly {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 600px) {
+  .nav a { padding: 7px 10px; font-size: 13px; }
+  .messages { gap: 18px; padding-top: 16px; }
+}
