@@ -50,7 +50,7 @@ export interface MiniBrainSyncResponse {
   readonly controls: {
     readonly owner_session: 'verified';
     readonly device_signature: 'verified';
-    readonly replay: 'bounded_sequence_and_idempotent_request';
+    readonly replay: 'relay_instance_sequence_window';
     readonly rate_limit: 'relay_instance_burst';
     readonly partition: 'server_derived_owner';
   };

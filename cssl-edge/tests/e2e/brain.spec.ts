@@ -220,7 +220,7 @@ async function fulfillSync(
     provenance: { transport: 'owner_bound_apocv4_runtime', privacy_partition_ref: '7'.repeat(64),
       principal_ref: '8'.repeat(64), binding_ref: '9'.repeat(64) },
     controls: { owner_session: 'verified', device_signature: 'verified',
-      replay: 'bounded_sequence_and_idempotent_request', rate_limit: 'relay_instance_burst',
+      replay: 'relay_instance_sequence_window', rate_limit: 'relay_instance_burst',
       partition: 'server_derived_owner' },
     served_by: 'fixture', ts: '2026-09-06T00:00:02.000Z',
   } satisfies MiniBrainSyncResponse });
@@ -456,7 +456,7 @@ test('offline user-only queue receives the actual reply after reconnecting while
         },
         controls: {
           owner_session: 'verified', device_signature: 'verified',
-          replay: 'bounded_sequence_and_idempotent_request', rate_limit: 'relay_instance_burst',
+          replay: 'relay_instance_sequence_window', rate_limit: 'relay_instance_burst',
           partition: 'server_derived_owner',
         },
         served_by: 'fixture', ts: '2026-09-04T20:01:01.000Z',

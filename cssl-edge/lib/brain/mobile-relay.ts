@@ -62,6 +62,16 @@ interface RateState {
   resetsAt: number;
 }
 
+// PER-INSTANCE, BEST-EFFORT. On Vercel this module is one lambda instance: the watermark is not
+// shared between instances and does not survive a cold start, so a replayed signed request routed
+// to a different instance is admitted as a new sequence. Every other control on this path — the
+// device signature, the owner binding, the token TTL, the rate limit — is unaffected.
+//
+// Making it durable means an admission ledger in the hub (a table keyed on
+// owner/device/thumbprint/sequence with the request digest, admitted through an RPC) and a
+// migration applied by hand against the live database. Until that exists, the receipt returned by
+// pages/api/brain/mobile/sync.ts says 'relay_instance_sequence_window' rather than naming a
+// guarantee this cannot keep.
 const replayState = new Map<string, ReplayState>();
 const rateState = new Map<string, RateState>();
 

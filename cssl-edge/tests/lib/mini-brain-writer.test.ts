@@ -106,7 +106,7 @@ async function main() {
     messages: [messageA, { ...messageA, role: 'assistant', content: 'Disposable acknowledged reply A', event_digest: '6'.repeat(64) }],
     tombstones: [], events_truncated: false,
     provenance: { transport: 'owner_bound_apocv4_runtime', privacy_partition_ref: null, principal_ref: null, binding_ref: null },
-    controls: { owner_session: 'verified', device_signature: 'verified', replay: 'bounded_sequence_and_idempotent_request',
+    controls: { owner_session: 'verified', device_signature: 'verified', replay: 'relay_instance_sequence_window',
       rate_limit: 'relay_instance_burst', partition: 'server_derived_owner' }, served_by: 'fixture', ts: new Date().toISOString(),
   };
   const acknowledged = await tabB.applySync(staleA, replyA);

@@ -18,8 +18,10 @@ import {
 // removed. A bare count is a weak assertion — it says nothing about WHICH node left — so the
 // withdrawal is pinned by identity below as well.
 assert.equal(PUBLIC_SURFACE_NODES.length, 34, 'the directory includes tools, Codex, thoughts, account chat, and app availability');
+// Compared as a string on purpose: 'labyrinth' is no longer in the PublicSurfaceId union, so a
+// typed comparison is a compile error rather than a check. The guard has to outlive the type.
 assert.equal(
-  PUBLIC_SURFACE_NODES.some((node) => node.id === 'labyrinth'),
+  PUBLIC_SURFACE_NODES.some((node) => String(node.id) === 'labyrinth'),
   false,
   'the withdrawn Labyrinth alpha must not be advertised in the directory',
 );

@@ -83,7 +83,13 @@ function syncResponse(input: {
     controls: {
       owner_session: 'verified',
       device_signature: 'verified',
-      replay: 'bounded_sequence_and_idempotent_request',
+      // NOT 'bounded_sequence_and_idempotent_request'. That named a durable guarantee this does
+      // not have: lib/brain/mobile-relay.ts holds the sequence watermark in a module-level Map,
+      // which on serverless is per-instance and gone on cold start, so a replayed signed request
+      // that lands on another lambda is admitted as a new sequence. The signature, the device
+      // binding and the token TTL are all real and unaffected — only the replay window is
+      // best-effort, and the receipt now says which.
+      replay: 'relay_instance_sequence_window',
       rate_limit: 'relay_instance_burst',
       partition: 'server_derived_owner',
     },
