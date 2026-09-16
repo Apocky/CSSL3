@@ -79,3 +79,15 @@ assert.ok(whoLine.includes('<time'), 'the timestamp belongs in the author line, 
 
 console.log('chat-tools.test : OK - tools and per-message handles both refuse to send on your behalf');
 
+// -- the strip must not be squeezable ----------------------------------------------------------
+// Observed on a real phone with a long answer on screen: .tools was the only row in the flex
+// column without a flex declaration, so it defaulted to `flex: 0 1 auto`, collapsed under a full
+// transcript, and clipped its own 44px buttons to slivers above the composer.
+const toolsRule = css.slice(css.indexOf('.tools {'), css.indexOf('.tools {') + 500);
+assert.ok(toolsRule.includes('flex: 0 0 auto'), 'the strip must not shrink when the transcript fills the column');
+
+// The model writes `* item` far more often than `- item`; matching only the hyphen sent asterisks
+// to the reader as literal punctuation.
+const md = read('lib/markdown.ts');
+assert.ok(md.includes('/^[-*+] (.+)$/'), 'all three CommonMark bullet markers must make list items');
+assert.ok(md.includes('testMarkdownStarBullets'), 'the star-bullet behaviour carries its own test');

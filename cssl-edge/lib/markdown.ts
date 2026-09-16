@@ -103,7 +103,11 @@ export function markdownToHtml(input: string): string {
     }
 
     // ── lists ────────────────────────────────────────────────────────────
-    const ulMatch = line.match(/^- (.+)$/);
+    // `-`, `*` and `+` are all bullet markers in CommonMark, and models overwhelmingly emit `*`.
+    // Matching only `-` meant a reply like "* The Diagnosis: ..." fell through to a paragraph and
+    // the asterisk reached the reader as literal punctuation -- seen in a real answer on a phone.
+    // The trailing space is what keeps this off emphasis: `*foo*` has no space, `* foo` does.
+    const ulMatch = line.match(/^[-*+] (.+)$/);
     if (ulMatch !== null) {
       if (st.inList !== 'ul') {
         flushList(st);
@@ -152,6 +156,17 @@ function assert(cond: boolean, msg: string): void {
 export function testMarkdownH1(): void {
   const html = markdownToHtml('# Hello\n');
   assert(html.includes('<h1 class="md-h1">Hello</h1>'), 'h1 must render');
+}
+
+export function testMarkdownStarBullets(): void {
+  const html = markdownToHtml(['* first', '* second'].join(String.fromCharCode(10)));
+  if (!html.includes('<li>first</li>') || !html.includes('<li>second</li>')) {
+    throw new Error(`star bullets must become list items: ${html}`);
+  }
+  // ...and emphasis must not be mistaken for one.
+  if (markdownToHtml('*emphasis* here').includes('<li>')) {
+    throw new Error('emphasis at line start must not become a list item');
+  }
 }
 
 export function testMarkdownList(): void {

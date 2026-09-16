@@ -498,6 +498,11 @@
 /* Capability strip above the composer. Scrolls sideways on a phone rather than wrapping into a
    wall of buttons that pushes the text box off screen -- the composer must stay reachable. */
 .tools {
+  /* Every other row in this flex column declares this; .tools was added without it and so defaulted
+     to `flex: 0 1 auto` -- shrinkable. With a full transcript the column squeezed, this box
+     collapsed below the height of the 44px buttons inside it, and they were clipped to slivers
+     above the composer. Observed on a real phone with a long answer on screen. */
+  flex: 0 0 auto;
   display: flex;
   gap: 8px;
   overflow-x: auto;
