@@ -10,6 +10,19 @@ const cognition = readFileSync(resolve(process.cwd(), 'components/apocrypha/Cogn
 const alias = readFileSync(resolve(process.cwd(), 'pages/chat.tsx'), 'utf8');
 const ownerPage = readFileSync(resolve(process.cwd(), 'pages/apocrypha.tsx'), 'utf8');
 
+
+// Token checks below run against a COMMENT-STRIPPED view of the source. This is not fastidiousness:
+// the previous version of testChatAccessibilityContract asserted source.includes('role="log"'), and
+// when role="log" was removed from the markup it kept passing -- on the explanatory comment that
+// said why it had been removed. A gate that reads prose about the code is not reading the code.
+function codeOnly(text: string): string {
+  return text
+    .replace(/{\/\*[\s\S]*?\*\/}/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^[ 	]*\/\/.*$/gm, ' ');
+}
+const roomCode = codeOnly(source);
+
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(`assert failed : ${message}`);
 }
@@ -39,14 +52,32 @@ export function testResponsiveSidebarContract(): void {
 
 export function testChatAccessibilityContract(): void {
   for (const token of [
-    'role="log"',
     'role="status"',
     'role="alert"',
     'aria-label="Message Apocrypha"',
     'aria-describedby="apocrypha-composer-help"',
+    // The transcript is a landmark you can reach and scroll, not a thing that talks.
+    'role="region"',
+    'aria-label="Messages"',
+    'tabIndex={0}',
   ]) {
-    assert(source.includes(token), `chat accessibility contract missing: ${token}`);
+    assert(roomCode.includes(token), `chat accessibility contract missing: ${token}`);
   }
+
+  // The transcript MUST NOT be a live region. It carried role="log" AND aria-live="polite" while
+  // the poll rewrote the entire accumulated answer every 250ms, so a screen reader read the reply
+  // from the top, was interrupted, and began again, for as long as the answer took. role="log"
+  // carries an IMPLICIT polite live region, so removing only the aria-live attribute would change
+  // nothing -- which is why both are banned here and why this comment exists. Do not "restore" it.
+  assert(!roomCode.includes('role="log"'), 'the transcript must not be a live region: role="log" carries an implicit polite region');
+
+  // Exactly one live region in the room, and it is the settled announcer: sr-only, role="status",
+  // written once per finished turn rather than on every poll tick.
+  const liveRegions = roomCode.match(/aria-live=/g) ?? [];
+  assert(liveRegions.length === 1, `the room must declare exactly one live region, found ${liveRegions.length}`);
+  const announcer = roomCode.split(String.fromCharCode(10)).find((line) => line.includes('aria-live=')) ?? '';
+  assert(announcer.includes('role="status"'), 'the one live region must be the settled announcer');
+  assert(announcer.includes('styles.srOnly'), 'the settled announcer must be screen-reader-only, not a visible banner');
 }
 
 export function testCognitionResponsiveAccessibilityContract(): void {

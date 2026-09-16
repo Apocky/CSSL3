@@ -21,6 +21,10 @@ import {
 } from '@/lib/apocrypha/chat-prefs';
 import type { ChatLane, ChatToolCall, ConversationSummary, LaneMessage } from '@/lib/apocrypha/chat-lanes';
 import ToolStrip from './ToolStrip';
+// Already in this directory, already sanitized, already bounded at 65,536 chars with a plain-text
+// fallback -- and until now consumed only by /brain, on the SAME assistant content. The room was
+// the one surface rendering the model's markdown as literal asterisks and backticks.
+import ConversationMessageContent from './ConversationMessageContent';
 import styles from '@/styles/ApocryphaChat.module.css';
 
 // Polling cadence. None of the three job paths has a streaming transport, so the reader sees the
@@ -136,6 +140,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   const [activeJob, setActiveJob] = useState<ActiveJob | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  // What a screen reader hears, and the ONLY live region this room declares. Written once per
+  // settled turn, never during streaming.
+  const [announcement, setAnnouncement] = useState('');
   const [streamingPhase, setStreamingPhase] = useState('');
   const [streamingTools, setStreamingTools] = useState<ChatToolCall[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -345,6 +352,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
     // Seeded fast: the first tick after submitting is the one most worth spending a request on.
     let delay = JOB_POLL_FAST_MS;
     let lastSeen = '';
+    // lastSeen is a "status:length" movement marker, not the answer. The deadline branch needs the
+    // actual text to hand back to the reader, so keep it alongside rather than re-deriving it.
+    let lastText = '';
     const deadline = Date.now() + JOB_FOLLOW_MS;
 
     void (async () => {
@@ -363,6 +373,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           const mark = `${snapshot.status}:${snapshot.text.length}`;
           progressed = mark !== lastSeen;
           lastSeen = mark;
+          lastText = snapshot.text;
           setStreamingPhase(phaseFor(snapshot.status));
 
           if (snapshot.done) {
@@ -371,8 +382,14 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
               setError(snapshot.status === 'cancelled'
                 ? 'This answer was stopped. You can send another message.'
                 : 'Apocrypha could not finish that reply. Nothing was lost — sending it again is safe.');
-              setStreamingText(snapshot.text);
+              setAnnouncement(snapshot.status === 'cancelled'
+                ? 'The answer was stopped.'
+                : `Apocrypha could not finish that reply. ${snapshot.text.slice(0, 60)}`);
+              keepPartial(snapshot.text, jobId);
             } else {
+              // Announce the settled answer once. Opening words rather than a fixed phrase: an
+              // identical string is silently dropped by a live region on the second turn.
+              setAnnouncement(`Apocrypha answered: ${snapshot.text.slice(0, 90)}`);
               setMessages((prior) => {
                 const answer: LaneMessage = {
                   id: `${jobId}:apocrypha`,
@@ -410,6 +427,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
         }
         if (Date.now() > deadline) {
           if (!disposed) {
+            // lastSeen is the most recent text the server gave us; it is what is on screen.
+            setAnnouncement('Apocrypha did not finish that one in time.');
+            keepPartial(lastText, jobId);
             setStreaming(false);
             // Clearing the record matters as much as clearing the spinner: left in storage, the
             // next mount recovers it and the room opens straight back into a dead turn.
@@ -500,6 +520,28 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
 
   // Re-send a turn whose fate was never resolved. Safe because every lane keys submission by a
   // fresh request id and the queues are idempotent on it.
+  // Whatever is already on screen belongs to the reader. Three paths used to end a turn without
+  // success -- terminal failure, the follow deadline, and Stop waiting -- and all three dropped the
+  // partial answer, because streamingText is only ever rendered inside the {streaming ? ...} guard
+  // and every one of them sets streaming to false. Stop is pressed PRECISELY to keep what is on
+  // screen, so discarding it there was the exact opposite of the request. Same message shape and
+  // same id the success branch uses, so loadConversation's merge reconciles it rather than
+  // duplicating it.
+  const keepPartial = useCallback((text: string, jobId: string | null) => {
+    const kept = text.trim();
+    if (!kept) return;
+    const id = jobId ? `${jobId}:apocrypha` : null;
+    setMessages((prior) => {
+      const already = id ? prior.findIndex((message) => message.id === id) : -1;
+      const record: LaneMessage = { id: id ?? undefined, role: 'apocrypha', text, at: new Date() };
+      if (already < 0) return [...prior, record];
+      const next = [...prior];
+      next[already] = record;
+      return next;
+    });
+    setStreamingText('');
+  }, []);
+
   const retryUnresolved = useCallback(() => {
     if (!unresolved) return;
     const text = unresolved.prompt;
@@ -846,12 +888,19 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
         aria-label="Apocrypha conversation"
       >
 
+        {/* NOT a live region, deliberately. This carried role="log" AND aria-live="polite" while the
+            poll rewrote the ENTIRE accumulated answer every 250ms -- so a screen reader read the
+            reply from the top, was interrupted, and started again, for as long as the answer took.
+            role="log" carries an implicit polite live region of its own, so dropping the attribute
+            alone would have changed nothing; both had to go. The settled answer is announced once,
+            by the sr-only status below. tabIndex makes the transcript scrollable from the keyboard,
+            which it was not. */}
         <div
           ref={logRef}
           className={styles.messages}
-          role="log"
+          role="region"
           aria-label="Messages"
-          aria-live="polite"
+          tabIndex={0}
           onScroll={(event) => {
             const log = event.currentTarget;
             following.current = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
@@ -873,7 +922,12 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             className={message.role === 'user' ? styles.you : styles.apocrypha}
           >
             <span className={styles.who}>{message.role === 'user' ? 'You' : 'Apocrypha'}</span>
-            <div className={styles.text}>{message.text}</div>
+            {/* The wrapper stays, so .you .text and .apocrypha .text keep working untouched; only
+                the children change. User turns go through the same call -- assistant={false} is
+                the escaped plain-text path, which is exactly what this rendered before. */}
+            <div className={styles.text}>
+              <ConversationMessageContent content={message.text} assistant={message.role !== 'user'} />
+            </div>
             {can.trace && prefs.showTrace && message.tools?.length
               ? <ToolTrace tools={message.tools} />
               : null}
@@ -882,13 +936,26 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           {streaming ? <article className={styles.apocrypha}>
             <span className={styles.who}>Apocrypha</span>
             {streamingText
-              ? <div className={styles.text}>{streamingText}<span className={prefs.calmMotion ? styles.caretStill : styles.caret} aria-hidden="true" /></div>
+              ? <div className={styles.text}>
+                  {/* Formatted while it streams, not only once settled: a fenced block that arrives
+                      as a wall and then snaps into shape reads as a bug. markdown.ts flushes an
+                      unclosed fence, so a mid-stream partial is never dropped. */}
+                  <ConversationMessageContent content={streamingText} assistant />
+                  <span className={prefs.calmMotion ? styles.caretStill : styles.caret} aria-hidden="true" />
+                </div>
               : <p className={styles.phase} role="status">{streamingPhase || 'Working…'}</p>}
             {can.trace && prefs.showTrace && streamingTools.length ? <ToolTrace tools={streamingTools} /> : null}
           </article> : null}
 
           <div ref={endRef} />
         </div>
+
+        {/* The only thing in this room that speaks. Always mounted -- the phase <p role="status">
+            inside the scroller unmounts the instant text arrives, so it can never carry a
+            completion. The sentence carries the opening of the answer on purpose: a live region
+            will not re-announce identical text, so a fixed string like "Apocrypha answered" goes
+            silent on the second turn. */}
+        <div role="status" aria-live="polite" className={styles.srOnly}>{announcement}</div>
 
         {notice ? <div className={styles.notice} role="alert">
           <p>{notice}</p>
@@ -897,14 +964,6 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             {/* An expired session cannot be recovered from inside the room, so the notice carries
                 the only thing that resolves it rather than leaving the reader to find it. */}
             {notice.startsWith('Your sign-in') ? <Link href="/login?next=%2Fapocrypha">Sign in again</Link> : null}
-            {streaming && !can.cancel ? <button type="button" onClick={() => {
-              // Stops the browser waiting. It does NOT cancel the job — saying so would be a lie
-              // on a lane that has no cancel, and the answer is still being written.
-              setStreaming(false);
-              setStreamingPhase('');
-              setActiveJob(null);
-              setError('Stopped waiting. Your message is saved and Apocrypha is still working — reopen this conversation for the reply.');
-            }}>Stop waiting</button> : null}
           </div>
         </div> : null}
 
@@ -949,6 +1008,32 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             className={styles.stop}
             onClick={() => void cancelActive()}
           >Stop</button> : null}
+          {/* The way out lives HERE, next to Send, because it is decided by `streaming` -- not
+              inside the error notice, where it used to live. Every successful poll clears `error`,
+              so on a merely SLOW job the notice never rendered and this button did not exist: the
+              composer was disabled, a guest has no rail and no new-chat, and reloading resumed the
+              poll. The only remaining exit deleted the thread. */}
+          {streaming && !can.cancel ? <button
+            type="button"
+            className={styles.stop}
+            onClick={() => {
+              // Stops the browser waiting. It does NOT cancel the job — saying so would be a lie
+              // on a lane that has no cancel, and the answer is still being written.
+              setAnnouncement('Stopped waiting.');
+              keepPartial(streamingText, activeJob?.id ?? null);
+              setStreaming(false);
+              setStreamingPhase('');
+              setActiveJob(null);
+              // Without this the record survives and the next mount recovers it straight back into
+              // the dead turn, so the escape lasted exactly until a reload.
+              dropStored(activeJobKey(laneId));
+              setError(can.durableHistory
+                ? 'Stopped waiting. Your message is saved and Apocrypha is still working — reopen this conversation for the reply.'
+                // A guest thread is saved nowhere the reader can return to, so the durable promise
+                // is one this lane cannot keep. Same distinction the deadline branch already makes.
+                : 'Stopped waiting. Nothing was saved — you can ask again whenever you like.');
+            }}
+          >Stop waiting</button> : null}
           {/* A stable accessible name: the visible label changes to "Sending…" mid-flight, and a
               control that renames itself under a screen reader is hard to follow. */}
           <button type="submit" aria-label="Send message" className={styles.send} disabled={streaming || !draft.trim()}>

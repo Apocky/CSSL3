@@ -141,7 +141,13 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  /* `width` alone did NOT hold this to 760px: .body is a flex ROW, so flex-grow:1 above expands
+     this item along the main axis and the declared width is only a basis. Measured at 1440px
+     viewport the column was rendering 1440px wide -- about 195 characters per line, roughly triple
+     the comfortable reading measure, in a product that is nothing but text. max-width binds
+     regardless of flex-grow, so the reading column the rule always intended now actually happens. */
   width: min(760px, 100%);
+  max-width: 760px;
   margin: 0 auto;
   padding: 0 clamp(16px, 4vw, 24px);
 }

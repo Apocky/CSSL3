@@ -243,7 +243,12 @@ export function memberLane(authFetch: LaneFetch): ChatLane {
       // opening a conversation owes you — anything more is a scroll away, not a load away.
       const page = await fetchMemberChatHistoryPage(id, authFetch);
       return projectMemberChatMessages(page.history, null).map((message) => ({
-        id: message.key,
+        // One turn, one id. The server keys its answer `<job>:assistant`; the room writes and
+        // protects `<job>:apocrypha` when it hands a settled turn to loadConversation. Without this
+        // rename the merge in ApocryphaChat treats the local copy as a turn the server has not
+        // recorded yet and appends it -- so every member answer rendered TWICE. The lane is already
+        // the translation layer: it converts the role on the very next line.
+        id: message.key.replace(/:assistant$/, ':apocrypha'),
         role: message.role === 'user' ? 'user' as const : 'apocrypha' as const,
         text: message.content,
         at: new Date(message.recorded_at),
