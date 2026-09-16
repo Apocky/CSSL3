@@ -14,6 +14,15 @@ import {
 } from '@/lib/apocrypha/chat-prefs';
 
 const room = readFileSync(resolve(process.cwd(), 'components/apocrypha/ApocryphaChat.tsx'), 'utf8');
+
+// Source-text gates get fooled by comments in BOTH directions: a positive assertion can pass on
+// prose that merely quotes the code (that is how role="log" survived its own removal in
+// admin-chat-ui.test.ts), and a negative assertion can FAIL on a comment explaining why the banned
+// phrasing was retired. Both are the same mistake -- reading prose about the code as the code.
+const roomCode = room
+  .replace(/{\/\*[\s\S]*?\*\/}/g, ' ')
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/^[ 	]*\/\/.*$/gm, ' ');
 const style = readFileSync(resolve(process.cwd(), 'styles/ApocryphaChat.module.css'), 'utf8');
 
 class Memory {
@@ -95,10 +104,42 @@ const conversationAt = room.indexOf('aria-label="Apocrypha conversation"');
 const settingsAt = room.indexOf('id="apocrypha-settings"');
 assert.ok(settingsAt > 0 && conversationAt > settingsAt, 'the panel is not nested inside the scrolling conversation');
 
-// ── a destructive control appears only where it can tell the truth ────────────────────────────
+// ── a destructive control appears only where it can tell the truth, and asks twice ────────────
+//
+// Bound to the CONDITION rather than to one spelling of the button, because the markup changed the
+// moment the control grew a confirm step and the invariant did not.
+// Anchored on the button's own label, not on the capability check: `!can.durableHistory ? <button`
+// also matches the settings-toggle block higher in the file, which silently sliced the wrong region.
+const forgetAt = room.indexOf('Forget it on this device');
+const forgetBlock = room.slice(Math.max(0, forgetAt - 500), forgetAt + 200);
+assert.ok(forgetAt > 0, 'the forget control must exist');
+assert.ok(forgetBlock.includes('!can.durableHistory'), 'the forget control is gated on the lane, not on identity');
+assert.ok(forgetBlock.includes('forgetLocalThread'), 'forgetting a thread is offered only where the thread really is local');
+// On the guest lane this is the ONLY copy. One press used to destroy it, from a button dressed
+// exactly like "Copy transcript" beside it.
+// Assert the BEHAVIOUR, not the vocabulary. An earlier version of this line only checked that the
+// word "armedForget" appeared near the button -- which it still did after the confirm was deleted,
+// because the label ternary mentions it. Ban the direct binding instead: that is the defect.
 assert.ok(
-  room.includes('!can.durableHistory ? <button type="button" onClick={forgetLocalThread}'),
-  'forgetting a thread is offered only where the thread really is local',
+  !roomCode.includes('onClick={forgetLocalThread}'),
+  'destroying the only copy of a thread must take two presses, not one direct binding',
+);
+assert.ok(forgetBlock.includes('armedForget'), 'the forget control must carry its confirm state');
+assert.ok(room.includes("'Really forget? This cannot be undone'"), 'the second press must say what it does');
+assert.ok(room.includes('setArmedForget(false)'), 'the confirm must disarm itself rather than sitting armed');
+
+// ── the guest footnote must not promise confidentiality it does not have ──────────────────────
+//
+// The guest lane POSTs each message plus the last 12 turns to /api/apocrypha/guest/chat, because
+// something has to answer it. "This conversation stays in this browser" read as a privacy promise.
+// What stays local is the RECORD; the words travel. The copy has to say both halves.
+assert.ok(
+  room.includes('Your messages are sent to Apocrypha to be answered'),
+  'the guest footnote must say that messages are sent, not only that the thread is kept locally',
+);
+assert.ok(
+  !roomCode.includes('This conversation stays'),
+  'the superseded confidentiality-sounding phrasing must not return',
 );
 
 // ── the room is not a dead end ────────────────────────────────────────────────────────────────

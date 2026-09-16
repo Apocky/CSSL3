@@ -20,54 +20,48 @@ export interface ChatTool {
   readonly id: string;
   readonly label: string;
   readonly hint: string;
-  /** Text written into the composer. `cursor` marks where the visitor's own words go. */
+  /** Text written into the composer. The caret lands at the end, where your part goes. */
   readonly prompt: string;
-  readonly cursor?: string;
 }
 
-// Ordered by how often someone actually wants them, not by how impressive they sound.
+// The site is Apocrypha and the strongest thing behind it is the coder, so these are the coding
+// moves. "Make a sigil" and "Draw a reading" used to be here; they advertised Spellcraft and Chaos
+// Tarot, which stopped being part of this site the day every link to them was removed.
+//
+// HONEST NAMING. These are STARTERS, not tools. The chat engine runs a read-only registry
+// (apocrypha-readonly-v1) and its own prompt forbids claiming a tool ran -- so a button here cannot
+// read your files or run anything, and it must not dress up as though it can. The lane that has
+// real tools is the Work console, and the owner gets a door to it at the end of this row.
 export const CHAT_TOOLS: readonly ChatTool[] = [
   {
-    id: 'code',
+    id: 'write',
     label: 'Write code',
     hint: 'Ask for a small, complete, runnable program',
-    prompt: 'Write me a small, complete, runnable program that ',
-    cursor: 'end',
+    prompt: 'Write a small, complete, runnable program that ',
   },
   {
     id: 'explain',
-    label: 'Explain code',
-    hint: 'Paste code and get what it does and what could break',
-    prompt: 'Explain what this code does, and name what could go wrong with it. Here it is: ',
-    cursor: 'end',
+    label: 'Explain this',
+    hint: 'Paste code and get what it does and where it breaks',
+    prompt: 'Explain what this code does, and name what could go wrong with it: ',
   },
   {
-    id: 'sigil',
-    label: 'Make a sigil',
-    hint: 'Turn an intention into a symbol',
-    prompt: 'Make me a sigil for this intention, and explain the reduction you used: ',
-    cursor: 'end',
+    id: 'debug',
+    label: 'Debug it',
+    hint: 'Paste an error and the code that produced it',
+    prompt: 'Here is an error and the code that produced it. Work out the cause, not just the fix: ',
   },
   {
-    id: 'reading',
-    label: 'Draw a reading',
-    hint: 'A three-card reading on a question you bring',
-    prompt: 'Draw me a three-card reading. My question is: ',
-    cursor: 'end',
+    id: 'review',
+    label: 'Review my code',
+    hint: 'Ask for the strongest objection to your approach',
+    prompt: 'Review this code. Give me the strongest objection to it, not a list of nitpicks: ',
   },
   {
-    id: 'define',
-    label: 'Define a word',
-    hint: 'A precise definition with its history',
-    prompt: 'Define this precisely, and give me its history and how its meaning shifted: ',
-    cursor: 'end',
-  },
-  {
-    id: 'think',
-    label: 'Think it through',
-    hint: 'Work a decision out loud, with the counter-case',
-    prompt: 'Help me think through this decision. Give me the strongest case against whatever you land on. Here it is: ',
-    cursor: 'end',
+    id: 'plan',
+    label: 'Plan an approach',
+    hint: 'Think a problem through before writing anything',
+    prompt: 'Help me plan an approach before I write any code. The problem is: ',
   },
 ];
 
@@ -82,13 +76,17 @@ export function ToolStrip({
   readonly disabled: boolean;
 }): JSX.Element {
   return (
-    <div className={styles.tools} role="group" aria-label="What Apocrypha can do">
+    // "What Apocrypha can do" was an overclaim: these start a sentence, they do not perform an act.
+    <div className={styles.tools} role="group" aria-label="Ways to start">
       {CHAT_TOOLS.map((tool) => (
         <button
           key={tool.id}
           type="button"
           className={styles.tool}
           title={tool.hint}
+          // The hint reached only `title`, which does not exist on touch and is not announced on
+          // focus. Prefixed with the visible label so WCAG 2.5.3 (label in name) still holds.
+          aria-label={`${tool.label}: ${tool.hint}`}
           disabled={disabled}
           onClick={() => onInsert(tool.prompt)}
         >

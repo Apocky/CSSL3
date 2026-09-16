@@ -357,10 +357,14 @@ export function ownerLane(authFetch: LaneFetch): ChatLane {
     },
 
     async cancel(jobId) {
-      await authFetch(`/api/admin/apocrypha/jobs/${encodeURIComponent(jobId)}`, {
+      const response = await authFetch(`/api/admin/apocrypha/jobs/${encodeURIComponent(jobId)}`, {
         method: 'DELETE',
         credentials: 'include',
       });
+      // Awaiting the request is not the same as it working. Without this, a 403 or a 500 resolved
+      // as success, the room took the non-throwing path, and Stop reported a cancellation that
+      // never happened -- the answer kept being written.
+      if (!response.ok) throw new Error('Cancellation was not accepted.');
     },
   };
 }

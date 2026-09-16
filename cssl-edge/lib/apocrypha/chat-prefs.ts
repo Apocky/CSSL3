@@ -41,11 +41,27 @@ function coerce(raw: unknown): ChatPrefs {
   };
 }
 
+// The default for enter-sends is not universal: on a hardware keyboard Enter-to-send is the
+// expected chat idiom, but on a soft keyboard the Return key is how you start a paragraph, and
+// defaulting to send there posts half a thought. Pointer type is the honest signal -- a phone
+// reports coarse, a laptop fine -- and it is only ever a DEFAULT: a stored choice always wins, and
+// the setting stays in the panel either way.
+function defaultPrefs(): ChatPrefs {
+  try {
+    const coarse = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(pointer: coarse)').matches;
+    return coarse ? { ...DEFAULT_CHAT_PREFS, enterSends: false } : DEFAULT_CHAT_PREFS;
+  } catch {
+    return DEFAULT_CHAT_PREFS;
+  }
+}
+
 export function readChatPrefs(storage?: Pick<Storage, 'getItem'>): ChatPrefs {
   try {
     const store = storage ?? window.localStorage;
     const raw = store.getItem(KEY);
-    return raw ? coerce(JSON.parse(raw)) : DEFAULT_CHAT_PREFS;
+    return raw ? coerce(JSON.parse(raw)) : defaultPrefs();
   } catch {
     // Private windows, blocked storage, corrupt JSON. A preference that cannot be read is a
     // default, never an error the reader has to deal with.

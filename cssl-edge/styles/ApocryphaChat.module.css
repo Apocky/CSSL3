@@ -131,7 +131,7 @@
 .conv:hover { background: #111524; }
 .convCurrent { background: #151b2e; border-color: #a9b5ff40; color: #e8e9f3; }
 
-.convEmpty { margin: 4px 2px; font-size: 12.5px; color: #a9b5ff90; }
+.convEmpty { margin: 4px 2px; font-size: 12.5px; color: #a9b5ffc0; }
 
 /* ── the conversation itself ───────────────────────────────────────────────── */
 
@@ -211,7 +211,7 @@
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #a9b5ff90;
+  color: #a9b5ffc0;
 }
 .you .text {
   align-self: flex-start;
@@ -296,7 +296,7 @@
 .settingsGroup { padding: 12px 0 4px; border-top: 1px solid #a9b5ff1f; }
 .settingsGroup:first-of-type { border-top: 0; }
 .settingsGroup h3 {
-  margin: 0 0 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #a9b5ff90;
+  margin: 0 0 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #a9b5ffc0;
 }
 
 .settingRow {
@@ -304,7 +304,7 @@
   min-height: 44px; padding: 6px 0; font-size: 14px; cursor: pointer;
 }
 .settingRow input { margin-top: 3px; flex: 0 0 auto; width: 17px; height: 17px; accent-color: #b1dfeb; }
-.settingRow small { display: block; margin-top: 2px; color: #a9b5ff90; font-size: 12.5px; line-height: 1.45; }
+.settingRow small { display: block; margin-top: 2px; color: #a9b5ffc0; font-size: 12.5px; line-height: 1.45; }
 
 .settingChoice { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .settingChoiceLabel { font-size: 14px; }
@@ -325,11 +325,11 @@
 .settingActions button:hover:not(:disabled) { border-color: #a9b5ff80; }
 .settingActions button:disabled { opacity: .45; cursor: default; }
 
-.settingDetails { margin-top: 4px; font-size: 12.5px; color: #a9b5ff90; }
+.settingDetails { margin-top: 4px; font-size: 12.5px; color: #a9b5ffc0; }
 .settingDetails summary { min-height: 34px; display: flex; align-items: center; cursor: pointer; }
-.settingMeta { margin: 6px 0 0; font-size: 12px; color: #a9b5ff90; }
+.settingMeta { margin: 6px 0 0; font-size: 12px; color: #a9b5ffc0; }
 .settingMeta code { overflow-wrap: anywhere; color: #b1dfeb; }
-.settingNote { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #a9b5ff1f; font-size: 12.5px; color: #a9b5ff90; }
+.settingNote { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #a9b5ff1f; font-size: 12.5px; color: #a9b5ffc0; }
 
 /* ── composer ──────────────────────────────────────────────────────────────── */
 
@@ -362,10 +362,16 @@
   background: transparent;
   color: inherit;
   font: inherit;
+  /* AFTER `font: inherit`, not before: the shorthand resets font-size, so the same declaration one
+     line up was a no-op and measured 15px in the browser.
+     iOS Safari zooms the whole page when a focused field is under 16px, so at 15px every tap of the
+     primary control threw the room out of alignment. */
+  font-size: 16px;
   padding: 6px 4px;
   outline: none;
 }
-.composer textarea::placeholder { color: #a9b5ff80; }
+/* 3.26:1 before -- the lowest-contrast text in the room, on the control everything starts at. */
+.composer textarea::placeholder { color: #a9b5ffc0; }
 
 .send, .stop {
   flex: 0 0 auto;
@@ -504,21 +510,24 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
-  padding: 7px 13px;
-  border: 1px solid var(--apx-line, rgba(169, 181, 255, 0.17));
-  border-radius: 999px;
-  background: rgba(10, 13, 28, 0.72);
-  color: var(--apx-copy, #d8dcf4);
-  font: 500 0.82rem/1 var(--apx-sans, system-ui, sans-serif);
+  min-height: 30px;
+  padding: 6px 10px;
+  /* No pill, no fill. Six bordered capsules read as six controls of equal weight to the composer
+     they sit on top of; these only write a first sentence into it. Quiet text, a hairline that
+     appears on approach. */
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #a9b5ffc0;
+  font: 500 0.78rem/1 var(--apx-sans, system-ui, sans-serif);
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
 }
 .tool:hover:not(:disabled), .toolAgent:hover {
-  border-color: var(--apx-neon, #78e7ff);
-  background: rgba(18, 26, 52, 0.95);
+  border-color: #a9b5ff40;
+  background: rgba(18, 26, 52, 0.6);
   color: var(--apx-ink, #f5f3ff);
 }
 .tool:focus-visible, .toolAgent:focus-visible {
@@ -527,8 +536,11 @@
 }
 .tool:disabled { opacity: 0.4; cursor: default; }
 /* The agent writes to disk. It reads as a door to somewhere else, because it is one. */
+/* The one entry that leaves this room for a lane with real tools. It keeps an edge precisely
+   because it is not the same kind of thing as the five beside it. */
 .toolAgent {
-  border-color: rgba(185, 152, 255, 0.5);
+  margin-left: auto;
+  border-color: rgba(185, 152, 255, 0.4);
   color: var(--apx-violet, #b998ff);
   font-weight: 650;
 }
@@ -538,7 +550,9 @@
 /* A finger is not a mouse: on touch the pills take the same 44px floor every other control here
    holds. Kept off the pointer-fine case so a desktop strip stays compact. */
 @media (pointer: coarse), (max-width: 700px) {
-  .tool, .toolAgent { min-height: 44px; padding: 10px 15px; }
+  /* 34px and 4px apart -- under the 44px floor this file sets for every other control. */
+  .returnLinks a { min-height: 44px; }
+  .tool, .toolAgent { min-height: 44px; padding: 10px 12px; }
 }
 
 /* Per-message row and the scroll-to-latest control.
@@ -559,16 +573,18 @@
 .you:focus-within .rowActions,
 .apocrypha:focus-within .rowActions { opacity: 1; }
 .rowActions button {
-  min-height: 28px;
-  padding: 4px 9px;
-  border: 1px solid #a9b5ff2e;
-  border-radius: 7px;
+  min-height: 26px;
+  padding: 3px 7px;
+  /* Bordered boxes under every single turn built a ladder of frames down the transcript. These are
+     handles on the text, not controls beside it: plain words that firm up when reached for. */
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
-  color: #a9b5ffc0;
+  color: #a9b5ff99;
   font: 500 11px/1 inherit;
   cursor: pointer;
 }
-.rowActions button:hover:not(:disabled) { border-color: #a9b5ff66; color: #d2e6fa; }
+.rowActions button:hover:not(:disabled) { border-color: #a9b5ff33; color: #d2e6fa; }
 .rowActions button:disabled { opacity: 0.4; cursor: default; }
 .rowActions button:focus-visible { outline: 2px solid #78e7ff; outline-offset: 2px; }
 
@@ -594,7 +610,7 @@
 /* Hover does not exist on touch, so the handles are simply always visible there. */
 @media (pointer: coarse) {
   .rowActions { opacity: 1; }
-  .rowActions button { min-height: 44px; padding: 10px 14px; font-size: 12px; }
+  .rowActions button { min-height: 44px; padding: 10px 10px; font-size: 11.5px; color: #a9b5ff80; }
   .toLatest { min-height: 44px; bottom: 160px; }
 }
 @media (prefers-reduced-motion: reduce) { .rowActions { transition: none; } }

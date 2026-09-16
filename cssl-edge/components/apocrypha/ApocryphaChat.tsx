@@ -259,7 +259,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
       return listed;
     } catch {
       // A failed listing must not take the conversation down with it: the reader can still read and
-      // send in the one they have open.
+      // send in the one they have open. But it must not read as "you have none", either -- the rail
+      // renders its empty sentence from the same [] that a thrown listing produces.
+      setError('Your conversations could not be listed. Reload to try again.');
       return [] as ConversationSummary[];
     }
   }, [lane]);
@@ -336,6 +338,10 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
     setStreaming(false);
     setActiveJob(null);
     setError(null);
+    // `unresolved` is set by mount recovery and by an indefinite send failure, and was cleared only
+    // by sending or retrying -- so "Send the same message again" followed the reader into a brand
+    // new chat, offering to re-send a message that belonged to a thread they had just left.
+    setUnresolved(null);
     openedInitialRef.current = true;
     hydratedJobRef.current = null;
     // The persisted record has to go too. Clearing only React state left the job in storage, so the
@@ -370,7 +376,10 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           const snapshot = await lane.poll(jobId, controller.signal);
           if (disposed) return;
           setError(null);
-          if (snapshot.conversationId) setCurrentConv(snapshot.conversationId);
+          // Only as the legacy fallback this is documented to be. Adopting it on EVERY tick meant
+          // opening conversation B while an answer ran in A snapped you back to A within 250ms,
+          // because the rail is not disabled while streaming.
+          if (snapshot.conversationId && !activeJob.conversationId) setCurrentConv(snapshot.conversationId);
           setStreamingText(snapshot.text);
           if (snapshot.tools) setStreamingTools(snapshot.tools);
           // "Did anything move" is the whole input to the cadence below. Status counts as movement
@@ -571,7 +580,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   // ── scrolling, sizing, sidebar focus ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (following.current) endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (following.current) endRef.current?.scrollIntoView({ behavior: prefs.calmMotion ? 'auto' : 'smooth', block: 'end' });
   }, [messages, streamingText, streamingTools]);
 
   useEffect(() => {
@@ -662,6 +671,16 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
     }
   }, [messages]);
 
+  // Two presses, because this is the only copy. On the guest lane the thread exists in exactly one
+  // place, and this button sat beside "Copy transcript" wearing the same clothes -- one press and
+  // the conversation was gone with nothing to undo it.
+  const [armedForget, setArmedForget] = useState(false);
+  useEffect(() => {
+    if (!armedForget) return undefined;
+    const timer = window.setTimeout(() => setArmedForget(false), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [armedForget]);
+
   const forgetLocalThread = useCallback(() => {
     dropStored(localThreadKey(laneId));
     dropStored(activeJobKey(laneId));
@@ -671,6 +690,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
     setStreamingText('');
     setError(null);
     setSettingsOpen(false);
+    setArmedForget(false);
   }, [laneId]);
 
   const handleSidebarKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
@@ -876,8 +896,12 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             {/* Only where the thread lives in this browser and nowhere else. On a durable lane the
                 server holds it, so a button here would clear a screen and promise a deletion it
                 cannot perform. */}
-            {!can.durableHistory ? <button type="button" onClick={forgetLocalThread} disabled={messages.length === 0}>
-              Forget it on this device
+            {!can.durableHistory ? <button
+              type="button"
+              onClick={() => { if (armedForget) forgetLocalThread(); else setArmedForget(true); }}
+              disabled={messages.length === 0}
+            >
+              {armedForget ? 'Really forget? This cannot be undone' : 'Forget it on this device'}
             </button> : null}
           </div>
           {currentConv ? <details className={styles.settingDetails}>
@@ -1053,7 +1077,14 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             aria-label="Message Apocrypha"
             aria-describedby="apocrypha-composer-help"
             value={draft}
-            onChange={(event) => setDraft(event.target.value.slice(0, MAX_TEXT))}
+            onChange={(event) => {
+              // The slice was silent: paste 9,000 characters and 1,000 of them vanished with no
+              // counter, no cap shown and no message.
+              if (event.target.value.length > MAX_TEXT) {
+                setError(`A single message can carry ${MAX_TEXT.toLocaleString()} characters. The rest was not added.`);
+              }
+              setDraft(event.target.value.slice(0, MAX_TEXT));
+            }}
             onKeyDown={(event) => {
               if (isSendKey(event, prefs)) {
                 event.preventDefault();
@@ -1114,8 +1145,12 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
         <p id="apocrypha-composer-help" className={styles.footnote}>
           {can.durableHistory
             ? `${prefs.enterSends ? 'Enter sends, Shift+Enter starts a new line.' : 'Ctrl+Enter sends, Enter starts a new line.'} This conversation is saved to your account.`
-            : <>{prefs.enterSends ? 'Enter sends, Shift+Enter starts a new line.' : 'Ctrl+Enter sends, Enter starts a new line.'} This conversation stays
-                {inApp ? ' on this device' : ' in this browser'} —{' '}
+            // "This conversation stays in this browser" reads as a confidentiality promise, and it
+            // is not one: the guest lane POSTs each message plus the last 12 turns to
+            // the guest chat endpoint, because something has to answer it. What stays local is
+            // the RECORD you can come back to. Say that, and say the other half out loud.
+            : <>{prefs.enterSends ? 'Enter sends, Shift+Enter starts a new line.' : 'Ctrl+Enter sends, Enter starts a new line.'} Your messages are sent to Apocrypha to be answered; the thread is kept
+                {inApp ? ' on this device' : ' in this browser'} and nowhere else —{' '}
                 <Link href="/login?next=%2Fapocrypha">sign in</Link> or{' '}
                 <Link href="/register?next=%2Fapocrypha">create an account</Link> to keep it across your devices
                 {inApp ? '.' : <>, or <Link href="/download/apocrypha">get the app</Link>.</>}</>}
