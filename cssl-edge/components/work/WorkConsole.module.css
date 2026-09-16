@@ -293,9 +293,6 @@
 
   .side { padding: 8px 10px; gap: 14px; }
   .side > div { min-width: 0; }
-  /* The workspace column was a heading over a single "—". It costs a third of the rail to say
-     nothing, so it only appears once there is something to say. */
-  .side > div:empty { display: none; }
 
   .transcript { padding: 12px 12px 4px; }
   /* Centring in a full-height grid row put the offline notice in the middle of a screen of black.

@@ -190,7 +190,9 @@ export default function WorkConsole(): JSX.Element {
             ))}
           </ul>
         </div>
-        <div>
+        {/* No roots means no workspace to name. A heading over an em dash spends a third of the
+            rail saying nothing, which on a phone is a third of the screen. */}
+        {roots.length > 0 ? <div>
           <h2 className={styles.sideHead}>Workspace</h2>
           <ul className={styles.rootList}>
             {roots.map((root) => (
@@ -199,9 +201,8 @@ export default function WorkConsole(): JSX.Element {
                 {root.writable ? null : <span className={styles.rootRo}>READ-ONLY</span>}
               </li>
             ))}
-            {roots.length === 0 ? <li className={styles.root}>—</li> : null}
           </ul>
-        </div>
+        </div> : null}
       </aside>
 
       <main className={styles.main}>
