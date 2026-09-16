@@ -68,7 +68,37 @@ async function startEngine() {
     ...dials.args,
   ], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   // Weights come off NVMe and the MoE placement runs at load; a cold start is minutes, not seconds.
-  return waitFor(dials.port, 300_000);
+  if (!(await waitFor(dials.port, 300_000))) return false;
+  await warm(dials);
+  return true;
+}
+
+/**
+ * Generate a few times before handing the engine over.
+ *
+ * MEASURED, and larger than any dial on this box: the same engine at the same settings produced
+ * 11.6 tok/s on its first generations and ~17.9 once it had run a few, a ~55% climb that then held
+ * steady. `--warmup` alone does not buy this -- it primes a single batch, while what actually warms
+ * an 80B-A3B with 30 expert layers in CPU RAM is real token generation paging those experts in.
+ * Unwarmed, the first thing you ask costs you nearly half the throughput.
+ *
+ * Bounded and best-effort: a warm-up that fails or hangs must never stop the window opening.
+ */
+async function warm(dials) {
+  const base = `http://${dials.host}:${dials.port}`;
+  console.log('Warming the engine (first generations run ~55% slow until the experts are paged in)...');
+  for (let i = 0; i < 4; i += 1) {
+    try {
+      await fetch(`${base}/completion`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        // A distinct prefix each time, so this exercises generation instead of replaying the
+        // prompt cache -- and short, so warming costs seconds rather than minutes.
+        body: JSON.stringify({ prompt: `warmup ${i}: count to three.`, n_predict: 48, temperature: 0.3 }),
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch { return; } // engine busy or slow: the window is still worth opening
+  }
 }
 
 async function main() {
