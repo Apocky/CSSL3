@@ -2,8 +2,8 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-export const APOCRYPHA_MODEL_ALIAS = process.env.APOCRYPHA_MODEL_ALIAS ?? 'qwen35-35b-a3b-q4';
-export const APOCRYPHA_PROFILE_HASH = process.env.APOCRYPHA_PROFILE_HASH ?? '5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9';
+export const APOCRYPHA_MODEL_ALIAS = process.env.APOCRYPHA_MODEL_ALIAS ?? 'qwen3-coder-next-80b-a3b-q2kxl';
+export const APOCRYPHA_PROFILE_HASH = process.env.APOCRYPHA_PROFILE_HASH ?? '519f5b2c5696041130c8cd889cadc390147d99b5ce5dadc9cfda3415dce3a38f';
 export const APOCRYPHA_TOOL_REGISTRY_VERSION = process.env.APOCRYPHA_TOOL_REGISTRY_VERSION ?? 'apocrypha-readonly-v1';
 export const APOCRYPHA_MEMORY_MANIFEST_HASH = process.env.APOCRYPHA_MEMORY_MANIFEST_HASH ?? '307a86ce2ec83a37ad30f86327195e47259167728cf32e4276af377f08988273';
 
