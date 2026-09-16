@@ -122,6 +122,8 @@ export interface WorkConfig {
   readonly toolTimeoutMs: number;
   readonly turnTimeoutMs: number;
   readonly shellAllowed: boolean;
+  /** JSON file of MCP servers (standard { mcpServers: {...} } shape). Absent file = no MCP. */
+  readonly mcpConfigPath: string;
   readonly shellDenyPatterns: readonly RegExp[];
   readonly autoApprove: readonly RiskTier[];
   readonly arbiter: ArbiterSettings;

@@ -8,6 +8,9 @@ import { log } from './log';
 import { SessionStore } from './sessions';
 import { TurnRunner } from './runner';
 import { Workspace } from './workspace';
+import { McpHub } from './tools/mcp';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 // The Work tab is served by the local Next.js instance; nothing else may drive this service.
@@ -51,6 +54,13 @@ async function main(): Promise<void> {
   const engine = new EngineClient(config.engine);
   const agent = new WorkAgent(config, workspace, engine);
   const runner = new TurnRunner(config, agent, store);
+
+  // MCP starts concurrently with the rest of boot and is never awaited by a request path: the
+  // built-in file and shell tools are live from the first instant, and a server that never answers
+  // its handshake costs discovery, not availability.
+  const mcp = new McpHub();
+  const mcpTools = await mcp.start(config.mcpConfigPath);
+  if (mcpTools.length > 0) agent.attachMcp(mcp, mcpTools);
   const arbiter = new EngineArbiter({
     mode: config.arbiter.mode,
     enginePort: config.arbiter.enginePort,
@@ -115,6 +125,19 @@ async function main(): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const [head, second, third] = segments;
 
+    // The desktop window. Read from disk per request so editing the page is a refresh, not a
+    // service restart, and served as HTML rather than through send(), which is JSON-only.
+    if (request.method === 'GET' && (path === '/' || path === '/app')) {
+      const html = readFileSync(join(__dirname, 'ui.html'), 'utf8');
+      response.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      });
+      response.end(html);
+      return;
+    }
+
     if (request.method === 'GET' && path === '/health') {
       const probe = await engine.probe();
       send(response, probe.healthy ? 200 : 503, {
@@ -128,6 +151,7 @@ async function main(): Promise<void> {
           auto_approve: config.autoApprove,
           max_iterations: config.maxToolIterations,
         },
+        mcp: { servers: new Set(mcpTools.map((t) => t.name.split('__')[1])).size, tools: mcpTools.length },
         active_turns: runner.activeCount(),
         arbiter: await arbiter.status(),
       });

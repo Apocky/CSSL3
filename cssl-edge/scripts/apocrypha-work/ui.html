@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apx work</title>
+<style>
+  :root {
+    --bg: #0d1017; --panel: #141821; --edge: #242a36; --ink: #e6e9ef; --dim: #8b93a3;
+    --accent: #6aa9ff; --ok: #56d364; --bad: #f85149; --warn: #d29922;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); display: grid; grid-template-columns: 240px 1fr;
+    font: 14px/1.55 ui-sans-serif, system-ui, "Segoe UI", sans-serif; overflow: hidden;
+  }
+
+  /* ---- rail ---- */
+  #rail { background: var(--panel); border-right: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; }
+  #rail header { padding: 12px 14px; border-bottom: 1px solid var(--edge); }
+  #rail h1 { font-size: 14px; margin: 0; letter-spacing: .04em; }
+  #rail h1 span { color: var(--dim); font-weight: 400; }
+  #newBtn { margin: 10px 14px 4px; padding: 7px; background: #1d2432; color: var(--ink);
+    border: 1px solid var(--edge); border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
+  #newBtn:hover { border-color: var(--accent); }
+  #sessions { flex: 1 1 auto; overflow-y: auto; padding: 6px 8px; min-height: 0; }
+  .sess { padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+  .sess:hover { background: #1b212c; }
+  .sess[aria-current="true"] { background: #1d2635; color: var(--ink); }
+  #roots { border-top: 1px solid var(--edge); padding: 10px 14px; font-size: 11.5px; color: var(--dim); }
+  #roots b { color: var(--ink); font-weight: 500; }
+  #roots div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- main ---- */
+  #main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #status { display: flex; gap: 14px; align-items: center; padding: 8px 18px;
+    border-bottom: 1px solid var(--edge); font-size: 12px; color: var(--dim); flex: 0 0 auto; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); display: inline-block; margin-right: 6px; }
+  .dot.up { background: var(--ok); } .dot.down { background: var(--bad); }
+  #status .spacer { margin-left: auto; }
+
+  #log { flex: 1 1 auto; overflow-y: auto; padding: 22px 18px 8px; min-height: 0; }
+  #inner { max-width: 860px; margin: 0 auto; }
+  .msg { margin-bottom: 22px; }
+  .who { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+  .msg.user .body { background: #171d29; border-left: 2px solid var(--accent); padding: 9px 13px; border-radius: 0 6px 6px 0; }
+  .body { overflow-wrap: anywhere; }
+  .body p { margin: 0 0 .7em; } .body p:last-child { margin-bottom: 0; }
+  .body h1, .body h2, .body h3 { font-size: 15px; margin: 1.1em 0 .5em; }
+  .body ul { margin: 0 0 .7em; padding-left: 1.3em; }
+  .body code { font-family: var(--mono); font-size: 12.5px; background: #1c2230; padding: 1px 5px; border-radius: 4px; }
+  .body pre { background: #0a0d13; border: 1px solid var(--edge); border-radius: 7px;
+    padding: 11px 13px; overflow-x: auto; margin: 0 0 .8em; }
+  .body pre code { background: none; padding: 0; font-size: 12.5px; line-height: 1.5; }
+
+  /* ---- tools ---- */
+  .tool { border: 1px solid var(--edge); border-radius: 7px; margin-bottom: 7px; background: #11151d; }
+  .tool > summary { padding: 7px 11px; cursor: pointer; font-family: var(--mono); font-size: 12px;
+    display: flex; gap: 9px; align-items: center; list-style: none; }
+  .tool > summary::-webkit-details-marker { display: none; }
+  .tool .nm { color: var(--accent); }
+  .tool .sm { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+  .tool .meta { color: var(--dim); flex: 0 0 auto; font-size: 11px; }
+  .tool .add { color: var(--ok); } .tool .del { color: var(--bad); }
+  .tool pre { margin: 0; border-top: 1px solid var(--edge); padding: 10px 12px; overflow-x: auto;
+    font-family: var(--mono); font-size: 12px; max-height: 420px; overflow-y: auto; }
+  .tool pre .p { color: var(--ok); } .tool pre .m { color: var(--bad); } .tool pre .h { color: var(--dim); }
+  .phase { font-size: 12px; color: var(--dim); font-style: italic; margin-bottom: 8px; }
+  .err { color: var(--bad); font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; }
+  .usage { font-size: 11.5px; color: var(--dim); margin-top: 8px; font-family: var(--mono); }
+
+  /* ---- composer ---- */
+  #composer { flex: 0 0 auto; border-top: 1px solid var(--edge); padding: 12px 18px 16px; background: var(--panel); }
+  #cwrap { max-width: 860px; margin: 0 auto; display: flex; gap: 9px; align-items: flex-end; }
+  #box { flex: 1 1 auto; resize: none; background: #0a0d13; color: var(--ink); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 13.5px; min-height: 42px; max-height: 220px; }
+  #box:focus { outline: none; border-color: var(--accent); }
+  #send, #stop { flex: 0 0 auto; padding: 10px 17px; border-radius: 8px; border: 1px solid var(--edge);
+    font: inherit; font-size: 13px; cursor: pointer; background: #1d2432; color: var(--ink); }
+  #send { background: var(--accent); color: #07101f; border-color: var(--accent); font-weight: 600; }
+  #send:disabled { opacity: .4; cursor: default; }
+  #stop { color: var(--warn); } #stop[hidden] { display: none; }
+  #hint { max-width: 860px; margin: 7px auto 0; font-size: 11px; color: var(--dim); }
+</style>
+</head>
+<body>
+<nav id="rail">
+  <header><h1>apx work <span id="alias"></span></h1></header>
+  <button id="newBtn" type="button">+ New session</button>
+  <div id="sessions"></div>
+  <div id="roots"></div>
+</nav>
+
+<main id="main">
+  <div id="status">
+    <span><i class="dot" id="engDot"></i><span id="engTxt">connecting</span></span>
+    <span id="mcpTxt"></span>
+    <span class="spacer" id="policy"></span>
+  </div>
+  <div id="log"><div id="inner"></div></div>
+  <form id="composer">
+    <div id="cwrap">
+      <textarea id="box" rows="1" placeholder="Describe the change. It reads and writes your disk directly." autofocus></textarea>
+      <button id="stop" type="button" hidden>Stop</button>
+      <button id="send" type="submit">Send</button>
+    </div>
+    <div id="hint">Enter sends &middot; Shift+Enter newline</div>
+  </form>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // The page is opened with ?token=... because a browser navigation cannot set an Authorization
+  // header. Keep it in memory and strip it from the address bar immediately, so the secret is not
+  // sitting in the title bar, history, or any screenshot of this window.
+  var params = new URLSearchParams(location.search);
+  var TOKEN = params.get('token') || '';
+  if (TOKEN) history.replaceState(null, '', location.pathname);
+
+  var $ = function (id) { return document.getElementById(id); };
+  var inner = $('inner'), logEl = $('log'), box = $('box');
+  var sessionId = null, lastSeq = 0, stream = null, running = false;
+  // Resolves once a session exists. Every send waits on it; nothing else has to care.
+  var ready = null;
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'content-type': 'application/json', authorization: 'Bearer ' + TOKEN }, opts.headers || {});
+    return fetch(path, opts);
+  }
+
+  /* ---------- rendering ---------- */
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // Everything the model emits is escaped BEFORE any markup is added. A coder model quoting HTML at
+  // us is routine, and this window has the operator's token in it.
+  function md(src) {
+    var out = [], lines = esc(src).split('\n'), i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      var fence = line.match(/^\s*```(\w*)/);
+      if (fence) {
+        var code = [];
+        i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
+        i++;
+        out.push('<pre><code>' + code.join('\n') + '</code></pre>');
+        continue;
+      }
+      var head = line.match(/^(#{1,6})\s+(.*)$/);
+      if (head) { out.push('<h3>' + inl(head[2]) + '</h3>'); i++; continue; }
+      // Asterisk and plus bullets count too: the model writes all three and a phone screenshot of
+      // literal `*` characters is what proved it.
+      if (/^\s*[-*+]\s+/.test(line)) {
+        var items = [];
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+          items.push('<li>' + inl(lines[i].replace(/^\s*[-*+]\s+/, '')) + '</li>'); i++;
+        }
+        out.push('<ul>' + items.join('') + '</ul>');
+        continue;
+      }
+      if (!line.trim()) { i++; continue; }
+      var para = [];
+      while (i < lines.length && lines[i].trim() && !/^\s*```/.test(lines[i]) && !/^\s*[-*+]\s+/.test(lines[i]) && !/^#{1,6}\s/.test(lines[i])) {
+        para.push(lines[i]); i++;
+      }
+      out.push('<p>' + inl(para.join(' ')) + '</p>');
+    }
+    return out.join('');
+  }
+
+  function inl(s) {
+    return s.replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  }
+
+  function atBottom() { return logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 80; }
+  function scroll(force) { if (force || atBottom()) logEl.scrollTop = logEl.scrollHeight; }
+
+  function addMsg(who, label) {
+    var wrap = document.createElement('div');
+    wrap.className = 'msg ' + who;
+    wrap.innerHTML = '<div class="who">' + esc(label) + '</div>';
+    var body = document.createElement('div');
+    body.className = 'body';
+    wrap.appendChild(body);
+    inner.appendChild(wrap);
+    scroll(true);
+    return body;
+  }
+
+  /* ---------- turn state ---------- */
+
+  var cur = null; // { body, raw, tools, phaseEl }
+
+  function ensureTurn() {
+    if (!cur) cur = { body: addMsg('apx', 'apocrypha'), raw: '', tools: {}, phaseEl: null };
+    return cur;
+  }
+
+  function onEvent(ev) {
+    var kind = ev.kind, d = ev.data || ev;
+
+    // The runner emits its terminal phase from a finally, AFTER the agent has already emitted one.
+    // Creating a turn block for that second copy left an empty "APOCRYPHA" heading under every
+    // finished answer, so terminal events are handled before any block is created.
+    if (kind === 'phase' && (d.phase === 'done' || d.phase === 'failed' || d.phase === 'cancelled')) {
+      finish();
+      return;
+    }
+    if (kind === 'session') return;
+
+    var t = ensureTurn();
+
+    if (kind === 'phase') {
+      var p = d.phase;
+      if (p && p !== 'writing' && p !== 'done') {
+        if (!t.phaseEl) { t.phaseEl = document.createElement('div'); t.phaseEl.className = 'phase'; t.body.appendChild(t.phaseEl); }
+        t.phaseEl.textContent = p + '…';
+      } else if (t.phaseEl) { t.phaseEl.remove(); t.phaseEl = null; }
+      if (p === 'done' || p === 'failed' || p === 'cancelled') finish();
+      scroll();
+      return;
+    }
+
+    if (kind === 'token') {
+      if (t.phaseEl) { t.phaseEl.remove(); t.phaseEl = null; }
+      t.raw += (d.delta || '');
+      if (!t.text) { t.text = document.createElement('div'); t.body.appendChild(t.text); }
+      t.text.innerHTML = md(t.raw);
+      scroll();
+      return;
+    }
+
+    if (kind === 'tool_request') {
+      var el = document.createElement('details');
+      el.className = 'tool';
+      el.innerHTML = '<summary><span class="nm">' + esc(d.name) + '</span>'
+                   + '<span class="sm">' + esc(d.summary || '') + '</span>'
+                   + '<span class="meta">running</span></summary>';
+      t.body.appendChild(el);
+      t.tools[d.id] = el;
+      scroll();
+      return;
+    }
+
+    if (kind === 'tool_result') {
+      var node = t.tools[d.id];
+      if (!node) return;
+      var meta = node.querySelector('.meta');
+      var bits = [];
+      if (d.diff) bits.push('<span class="add">+' + d.diff.added + '</span> <span class="del">-' + d.diff.removed + '</span>');
+      if (typeof d.elapsedMs === 'number') bits.push(d.elapsedMs < 1000 ? d.elapsedMs + 'ms' : (d.elapsedMs / 1000).toFixed(1) + 's');
+      bits.push(d.denied ? '<span class="del">denied</span>' : (d.ok === false ? '<span class="del">failed</span>' : '<span class="add">ok</span>'));
+      meta.innerHTML = bits.join(' &middot; ');
+      var detail = d.diff ? d.diff.patch : (d.error || d.content || '');
+      if (detail) {
+        var pre = document.createElement('pre');
+        if (d.diff) {
+          pre.innerHTML = esc(detail).split('\n').map(function (l) {
+            var c = l[0] === '+' ? 'p' : l[0] === '-' ? 'm' : l[0] === '@' ? 'h' : '';
+            return c ? '<span class="' + c + '">' + l + '</span>' : l;
+          }).join('\n');
+        } else {
+          pre.textContent = String(detail).slice(0, 20000);
+        }
+        node.appendChild(pre);
+      }
+      scroll();
+      return;
+    }
+
+    if (kind === 'usage') {
+      // Usage is emitted once per ENGINE CALL, not once per turn: a turn that uses three tools
+      // sends four of these. Treating it as the end of the answer split one reply into several
+      // blocks; the turn ends on a terminal phase, which the runner always emits in a finally.
+      if (!t.usageEl) { t.usageEl = document.createElement('div'); t.usageEl.className = 'usage'; }
+      // appendChild MOVES an existing node, which keeps the running total at the bottom as tools
+      // and further text arrive underneath it.
+      t.body.appendChild(t.usageEl);
+      var parts = [];
+      if (d.totalTokens) parts.push(d.totalTokens + ' tok');
+      if (d.elapsedS) parts.push(d.elapsedS.toFixed(1) + 's');
+      t.usageEl.textContent = parts.join('  ·  ');
+      scroll();
+      return;
+    }
+
+    if (kind === 'error') {
+      var e = document.createElement('div');
+      e.className = 'err';
+      e.textContent = d.message || 'the turn failed';
+      t.body.appendChild(e);
+      finish();
+      scroll();
+    }
+  }
+
+  function finish() {
+    if (cur && cur.phaseEl) { cur.phaseEl.remove(); cur.phaseEl = null; }
+    cur = null;
+    running = false;
+    $('send').disabled = false;
+    $('stop').hidden = true;
+  }
+
+  /* ---------- transport ---------- */
+
+  function attach() {
+    if (stream) stream.close();
+    // EventSource cannot set headers, so the token rides as a query parameter -- the same path the
+    // service already supports for the CLI.
+    stream = new EventSource('/sessions/' + encodeURIComponent(sessionId) + '/stream?token=' + encodeURIComponent(TOKEN));
+    stream.onmessage = function (m) {
+      var ev;
+      try { ev = JSON.parse(m.data); } catch (_) { return; }
+      // Attaching replays the recent buffer. Anything at or below lastSeq is already on screen.
+      if (typeof ev.seq === 'number') {
+        if (ev.seq <= lastSeq) return;
+        lastSeq = ev.seq;
+      }
+      onEvent(ev);
+    };
+    stream.onerror = function () { /* EventSource retries on its own */ };
+  }
+
+  async function newSession() {
+    var r = await api('/sessions', { method: 'POST', body: JSON.stringify({ title: 'work' }) });
+    var j = await r.json();
+    sessionId = (j.session && j.session.id) || j.id;
+    lastSeq = 0;
+    inner.innerHTML = '';
+    cur = null;
+    attach();
+    await listSessions();
+  }
+
+  async function openSession(id) {
+    sessionId = id; lastSeq = 0; inner.innerHTML = ''; cur = null;
+    var r = await api('/sessions/' + encodeURIComponent(id));
+    var j = await r.json().catch(function () { return {}; });
+    var turns = (j.session && j.session.turns) || j.turns || [];
+    turns.forEach(function (t) {
+      if (t.prompt) addMsg('user', 'you').textContent = t.prompt;
+      if (t.output) addMsg('apx', 'apocrypha').innerHTML = md(t.output);
+    });
+    attach();
+    await listSessions();
+    scroll(true);
+  }
+
+  async function listSessions() {
+    var r = await api('/sessions');
+    var j = await r.json().catch(function () { return { sessions: [] }; });
+    var host = $('sessions');
+    host.innerHTML = '';
+    (j.sessions || []).forEach(function (s) {
+      var el = document.createElement('div');
+      el.className = 'sess';
+      el.textContent = s.title || s.id.slice(0, 8);
+      el.setAttribute('aria-current', String(s.id === sessionId));
+      el.onclick = function () { ready = openSession(s.id); };
+      host.appendChild(el);
+    });
+  }
+
+  async function send(prompt) {
+    if (!prompt || running) return;
+    // Opening the window starts a session over HTTP, and typing is faster than that round-trip.
+    // Without this the first prompt of a cold open posted to /sessions/null/turns and the session
+    // that was still in flight then cleared the log out from under it -- an empty window and no
+    // error, every time the very first thing you did was type.
+    running = true;
+    $('send').disabled = true;
+    try { await ready; } catch (_) { /* surfaced by the POST below */ }
+    addMsg('user', 'you').textContent = prompt;
+    $('stop').hidden = false;
+    var r = await api('/sessions/' + encodeURIComponent(sessionId) + '/turns', {
+      method: 'POST', body: JSON.stringify({ prompt: prompt })
+    });
+    if (!r.ok) {
+      var d = await r.json().catch(function () { return {}; });
+      var e = document.createElement('div');
+      e.className = 'err';
+      e.textContent = d.detail || d.error || ('HTTP ' + r.status);
+      inner.appendChild(e);
+      finish();
+    }
+    scroll(true);
+  }
+
+  async function health() {
+    try {
+      var r = await api('/health');
+      var j = await r.json();
+      var up = j.status === 'ok';
+      $('engDot').className = 'dot ' + (up ? 'up' : 'down');
+      $('engTxt').textContent = up ? 'engine ready' : 'engine ' + (j.status || 'down');
+      $('alias').textContent = (j.engine && j.engine.alias) || '';
+      if (j.mcp) {
+        $('mcpTxt').textContent = j.mcp.tools
+          ? 'MCP ' + j.mcp.servers + ' server' + (j.mcp.servers === 1 ? '' : 's') + ' · ' + j.mcp.tools + ' tools'
+          : 'MCP off';
+      }
+      var p = j.policy || {};
+      $('policy').textContent = (p.shell ? 'shell on' : 'shell off')
+        + ' · auto-approve ' + ((p.auto_approve || []).join('/') || 'none');
+      $('roots').innerHTML = '<b>Roots</b>' + (j.workspace || []).map(function (w) {
+        return '<div>' + esc(w.label) + (w.writable === false ? ' (ro)' : '') + '</div>';
+      }).join('');
+    } catch (_) {
+      $('engDot').className = 'dot down';
+      $('engTxt').textContent = 'service unreachable';
+    }
+  }
+
+  /* ---------- wiring ---------- */
+
+  box.addEventListener('input', function () {
+    box.style.height = 'auto';
+    box.style.height = Math.min(box.scrollHeight, 220) + 'px';
+  });
+  box.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); }
+  });
+  $('composer').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = box.value.trim();
+    if (!v) return;
+    box.value = ''; box.style.height = 'auto';
+    send(v);
+  });
+  $('stop').onclick = function () {
+    api('/sessions/' + encodeURIComponent(sessionId) + '/cancel', { method: 'POST' });
+  };
+  $('newBtn').onclick = function () { ready = newSession(); };
+
+  health();
+  setInterval(health, 15000);
+  ready = newSession();
+})();
+</script>
+</body>
+</html>

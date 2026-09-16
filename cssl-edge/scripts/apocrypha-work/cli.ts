@@ -80,6 +80,10 @@ function render(event: WorkEvent, state: { answering: boolean }): boolean {
     }
     case 'phase': {
       const phase = String(event.phase ?? '');
+      // The runner emits a terminal phase in a finally, so this is the one reliable end-of-turn
+      // signal. `usage` is NOT: it fires once per engine call, so a turn that uses three tools
+      // sends four of them and ending on the first cut the answer off before any tool ran.
+      if (phase === 'done' || phase === 'failed' || phase === 'cancelled') return true;
       if (phase && phase !== 'answering') process.stdout.write(`${DIM}  ${phase}...${OFF}\n`);
       return false;
     }
@@ -143,13 +147,18 @@ async function streamUntilSettled(sessionId: string, lastSeq: { value: number })
       const line = frame.split('\n').find((l) => l.startsWith('data: '));
       if (!line) continue;
       let event: WorkEvent;
-      try { event = JSON.parse(line.slice(6)) as WorkEvent; } catch { continue; }
+      try {
+        // The wire shape is { seq, at, kind, data: {...} }. Flatten data up so render() reads one
+        // object -- reading the fields flat off the envelope silently yielded undefined for every
+        // one of them, which printed an empty answer for a turn that had actually succeeded.
+        const parsed = JSON.parse(line.slice(6)) as { seq?: number; kind?: string; data?: Record<string, unknown> };
+        event = { ...(parsed.data ?? {}), seq: parsed.seq ?? 0, kind: String(parsed.kind ?? '') } as WorkEvent;
+      } catch { continue; }
       // Attaching replays the recent buffer; anything already applied is skipped rather than
       // reprinted. Same contract reduceLive enforces on the web side.
       if (typeof event.seq === 'number' && event.seq <= lastSeq.value) continue;
       if (typeof event.seq === 'number') lastSeq.value = event.seq;
       if (render(event, state)) { terminal = true; break; }
-      if (event.kind === 'usage') { terminal = true; break; }
     }
   }
   reader.cancel().catch(() => {});

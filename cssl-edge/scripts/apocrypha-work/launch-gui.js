@@ -1,0 +1,89 @@
+// Open the apx work window.
+//
+// This is the whole desktop app: the service already speaks HTTP and already serves the page, so a
+// window is a browser told to drop its browser-ness. `--app=` gives a frameless window with its own
+// taskbar entry and no tabs, address bar or bookmarks -- which is what Electron would have shipped,
+// minus 150 MB of runtime and a build step.
+//
+// It starts the service first if nothing is listening, so the window is the only thing you launch.
+
+const { spawn, spawnSync } = require('node:child_process');
+const { existsSync, readFileSync } = require('node:fs');
+const { join, resolve } = require('node:path');
+const net = require('node:net');
+
+const PORT = Number(process.env.APOCRYPHA_WORK_PORT ?? 19130);
+const STATE = process.env.APOCRYPHA_WORK_STATE_DIR ?? 'C:\\Apocrypha\\work';
+const ENV_FILE = process.env.APOCRYPHA_WORK_ENV ?? join(STATE, 'work.env');
+const EDGE_ROOT = resolve(__dirname, '..', '..');
+
+// Chromium first, whichever exists; Edge ships with Windows so there is always one.
+const BROWSERS = [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+];
+
+function listening(port) {
+  return new Promise((done) => {
+    const socket = net.connect({ port, host: '127.0.0.1' });
+    socket.setTimeout(700);
+    socket.on('connect', () => { socket.destroy(); done(true); });
+    socket.on('error', () => done(false));
+    socket.on('timeout', () => { socket.destroy(); done(false); });
+  });
+}
+
+async function waitFor(port, ms) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await listening(port)) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
+async function main() {
+  if (!(await listening(PORT))) {
+    if (!existsSync(ENV_FILE)) {
+      console.error(`No work env at ${ENV_FILE}. Cannot start the service.`);
+      process.exit(1);
+    }
+    console.log('Starting the work service...');
+    // detached + ignored stdio: the window outlives this launcher, which exits immediately.
+    spawn(process.execPath, ['--env-file=' + ENV_FILE, '--import', 'tsx', 'scripts/apocrypha-work/server.ts'], {
+      cwd: EDGE_ROOT, detached: true, stdio: 'ignore', windowsHide: true,
+    }).unref();
+    // MCP handshakes run during boot, so first start is slower than a bare listen.
+    if (!(await waitFor(PORT, 90_000))) {
+      console.error(`The service did not come up on ${PORT}. Check ${join(STATE, 'service.log')}.`);
+      process.exit(1);
+    }
+  }
+
+  const tokenPath = join(STATE, 'work.token');
+  if (!existsSync(tokenPath)) { console.error(`No token at ${tokenPath}.`); process.exit(1); }
+  const token = readFileSync(tokenPath, 'utf8').trim();
+
+  // The token rides in the URL because a window cannot be handed a header. The page strips it from
+  // its own address bar on load, so it does not sit in history or in a screenshot of the window.
+  const url = `http://127.0.0.1:${PORT}/app?token=${encodeURIComponent(token)}`;
+  const browser = BROWSERS.find((path) => existsSync(path));
+
+  if (!browser) {
+    // No Chromium: hand it to whatever handles http. A tab is worse than a window, but it works.
+    spawnSync('cmd', ['/c', 'start', '', url], { windowsHide: true });
+    return;
+  }
+  spawn(browser, [
+    `--app=${url}`,
+    // Its own profile, so the window does not inherit or disturb the real browser's session.
+    `--user-data-dir=${join(STATE, 'gui-profile')}`,
+    '--window-size=1280,860',
+    '--no-first-run',
+    '--no-default-browser-check',
+  ], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
+void main();

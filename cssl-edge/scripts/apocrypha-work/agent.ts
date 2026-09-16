@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { EngineError, type EngineLike, type EngineMessage } from './engine';
 import { FILE_TOOLS, runFileTool, type ToolContext, type ToolResult } from './tools/files';
 import { SHELL_TOOLS, ShellDenied, runShellTool, screenCommand } from './tools/shell';
+import { McpHub } from './tools/mcp';
 import { log } from './log';
 import type {
   ConsentDecision,
@@ -74,10 +75,14 @@ function summariseForConsent(call: ToolCallRequest): { summary: string; detail: 
 }
 
 export class WorkAgent {
-  readonly tools: readonly ToolDefinition[];
+  // Not readonly: MCP tools are discovered by talking to child processes, which cannot happen in a
+  // constructor. The built-in tools are available from the first instant either way, so a slow or
+  // broken MCP server delays nothing.
+  tools: readonly ToolDefinition[];
   private readonly config: WorkConfig;
   private readonly workspace: Workspace;
   private readonly engine: EngineLike;
+  private mcp: McpHub | null = null;
 
   constructor(config: WorkConfig, workspace: Workspace, engine: EngineLike) {
     this.config = config;
@@ -86,11 +91,26 @@ export class WorkAgent {
     this.tools = [...FILE_TOOLS, ...(config.shellAllowed ? SHELL_TOOLS : [])];
   }
 
+  /** Called once at startup after the hub has finished its handshakes. */
+  attachMcp(hub: McpHub, discovered: readonly ToolDefinition[]): void {
+    this.mcp = hub;
+    // Built-ins first, so a server that names a tool `read_file` cannot shadow ours.
+    this.tools = [...this.tools, ...discovered.filter((tool) => !this.tools.some((own) => own.name === tool.name))];
+  }
+
   private riskOf(name: string): ToolDefinition['risk'] {
     return this.tools.find((tool) => tool.name === name)?.risk ?? 'execute';
   }
 
   private async execute(call: ToolCallRequest, ctx: ToolContext): Promise<ToolResult> {
+    // Routed by ownership, not by name shape, so a built-in can never be captured by the prefix.
+    if (this.mcp?.owns(call.name)) {
+      const result = await this.mcp.call(call.name, call.args, this.config.toolTimeoutMs);
+      // Failure is a throw here, same as every built-in tool: settle() is what turns it into an
+      // outcome with ok:false, and routing MCP errors around that path would lose the tool_result.
+      if (!result.ok) throw new Error(result.content.slice(0, 400));
+      return { summary: call.name, content: result.content.slice(0, 20_000) };
+    }
     if (call.name === 'run_command') {
       return await runShellTool(call.name, call.args, ctx, {
         allowed: this.config.shellAllowed,

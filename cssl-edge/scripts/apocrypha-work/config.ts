@@ -136,6 +136,7 @@ export function loadWorkConfig(env: Env = process.env): WorkConfig {
     toolTimeoutMs: integer(env, 'APOCRYPHA_WORK_TOOL_TIMEOUT_MS', 120_000, 1_000, 900_000),
     turnTimeoutMs: integer(env, 'APOCRYPHA_WORK_TURN_TIMEOUT_MS', 1_800_000, 10_000, 7_200_000),
     shellAllowed: env.APOCRYPHA_WORK_SHELL?.trim().toLowerCase() !== 'off',
+    mcpConfigPath: resolve(env.APOCRYPHA_WORK_MCP_CONFIG?.trim() || join(stateDir, 'mcp.json')),
     shellDenyPatterns: SHELL_DENY,
     autoApprove,
     arbiter: {
