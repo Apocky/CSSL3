@@ -86,6 +86,9 @@ const previewLane: ChatLane = {
   async cancel() { /* nothing to cancel in a fixture */ },
 };
 import BrainExperience from '../../components/brain/BrainExperience';
+// NOTE: WorkConsole cannot be mounted here. Importing it pulls a CommonJS dependency into the
+// browser bundle and the whole fixture dies with "module is not defined" -- for EVERY mode, not
+// just its own. Verify the Work console against a running instance instead.
 import { FeedbackProvider } from '../../components/ui/Feedback';
 import '../../styles/apocky-system.css';
 import '../../styles/apocky-redesign.css';
