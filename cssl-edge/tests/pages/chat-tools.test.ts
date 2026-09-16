@@ -55,3 +55,27 @@ assert.ok(css.includes('overflow-x: auto'), 'the strip scrolls sideways rather t
 assert.ok(css.includes('min-height: 44px'), 'touch targets reach 44px on coarse pointers');
 
 console.log(`chat-tools.test : OK - ${ids.length} tools, none can send, agent owner-gated, strip above composer`);
+
+// -- per-message row: the same negative invariant, one level down ------------------------------
+// The tool strip may not send on your behalf; neither may the per-message handles. "Ask again"
+// appends a NEW turn -- it cannot replace the old answer, because nothing in ChatLane can -- so it
+// refills the composer and stops. The label says "Ask again" and not "Regenerate" for exactly that
+// reason, and this gate is what keeps the two honest with each other.
+const askAgain = chat.slice(chat.indexOf('const askAgain'), chat.indexOf('const askAgain') + 700);
+assert.ok(askAgain.length > 100, 'askAgain must exist');
+assert.ok(!askAgain.includes('send('), 'Ask again must never send -- it refills the composer and stops');
+assert.ok(askAgain.includes('setDraft('), 'Ask again must put the question back in the composer');
+assert.ok(chat.includes("disabled={Boolean(draft.trim()) || streaming}"), 'Ask again must not clobber a draft in progress');
+assert.ok(!chat.includes('>Regenerate<'), 'the label must not promise a replacement this lane cannot perform');
+
+// Copy hands over the RAW source, never the rendered HTML: a code block must paste back with its
+// fences intact, and the transcript copy must stay raw markdown.
+assert.ok(chat.includes('copyText(message.text,'), 'per-message copy must copy the raw message source');
+assert.ok(chat.includes('copyText(transcriptOf(messages)'), 'transcript copy must stay raw');
+
+// Timestamps cost no vertical space: the <time> lives inside the existing author line.
+const whoLine = chat.slice(chat.indexOf('className={styles.who}'), chat.indexOf('className={styles.who}') + 400);
+assert.ok(whoLine.includes('<time'), 'the timestamp belongs in the author line, not on a row of its own');
+
+console.log('chat-tools.test : OK - tools and per-message handles both refuse to send on your behalf');
+

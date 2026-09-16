@@ -150,7 +150,10 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   const [compactViewport, setCompactViewport] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [prefs, setPrefs] = useState<ChatPrefs>(DEFAULT_CHAT_PREFS);
-  const [copied, setCopied] = useState(false);
+  // Which thing was last copied -- a message id, or 'transcript'. One copy path, one 2s flag, two
+  // call sites. A second feedback mechanism (a toast) for the same event would be a second version
+  // of a thing that already works.
+  const [copied, setCopied] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [unresolved, setUnresolved] = useState<ActiveJob | null>(null);
   // Resolved after mount: navigator does not exist during server rendering, and a wrong guess would
@@ -158,6 +161,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
   const [inApp, setInApp] = useState(false);
 
   const logRef = useRef<HTMLDivElement>(null);
+  // `following` is a ref, so it can gate the auto-scroll effect but cannot render anything. This is
+  // the same value as state, which is what lets the button exist at all.
+  const [showLatest, setShowLatest] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
@@ -629,11 +635,31 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
     };
   }, [closeSettings, settingsOpen]);
 
-  const copyTranscript = useCallback(() => {
-    void navigator.clipboard?.writeText(transcriptOf(messages)).then(
-      () => { setCopied(true); window.setTimeout(() => setCopied(false), 2_000); },
+  // `what` is the id of the thing copied, so the button that was pressed is the one that says so.
+  const copyText = useCallback((text: string, what: string) => {
+    void navigator.clipboard?.writeText(text).then(
+      () => { setCopied(what); window.setTimeout(() => setCopied((now) => (now === what ? null : now)), 2_000); },
       () => setError('Copying is blocked in this browser. Select the conversation and copy it directly.'),
     );
+  }, []);
+
+  const copyTranscript = useCallback(() => {
+    copyText(transcriptOf(messages), 'transcript');
+  }, [copyText, messages]);
+
+  // Refill the composer with the question that produced this answer, and stop. It appends a new
+  // turn; it does not replace the old one, so it is "Ask again", not "Regenerate" -- the label must
+  // not promise something the lane cannot do. Guarded so it never clobbers a draft in progress.
+  const askAgain = useCallback((index: number) => {
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const candidate = messages[i];
+      if (candidate && candidate.role === 'user') {
+        setDraft(candidate.text.slice(0, MAX_TEXT));
+        const box = composerRef.current;
+        if (box) requestAnimationFrame(() => { box.focus(); box.setSelectionRange(box.value.length, box.value.length); });
+        return;
+      }
+    }
   }, [messages]);
 
   const forgetLocalThread = useCallback(() => {
@@ -842,7 +868,7 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           <h3 id="apx-set-conversation">This conversation</h3>
           <div className={styles.settingActions}>
             <button type="button" onClick={copyTranscript} disabled={messages.length === 0}>
-              {copied ? 'Copied' : 'Copy transcript'}
+              {copied === 'transcript' ? 'Copied' : 'Copy transcript'}
             </button>
             {can.newConversation ? <button type="button" onClick={() => { newChat(); setSettingsOpen(false); }}>
               Start a new one
@@ -903,7 +929,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           tabIndex={0}
           onScroll={(event) => {
             const log = event.currentTarget;
-            following.current = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+            const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+            following.current = atBottom;
+            setShowLatest(!atBottom);
           }}
         >
           {empty ? <div className={styles.opening}>
@@ -921,12 +949,30 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             key={message.id ?? `${index}-${message.at.getTime()}`}
             className={message.role === 'user' ? styles.you : styles.apocrypha}
           >
-            <span className={styles.who}>{message.role === 'user' ? 'You' : 'Apocrypha'}</span>
+            <span className={styles.who}>
+              {message.role === 'user' ? 'You' : 'Apocrypha'}
+              {/* Inside the author line, so it costs no vertical space in a column of turns. */}
+              <time className={styles.when} dateTime={message.at.toISOString()}>
+                {message.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </time>
+            </span>
             {/* The wrapper stays, so .you .text and .apocrypha .text keep working untouched; only
                 the children change. User turns go through the same call -- assistant={false} is
                 the escaped plain-text path, which is exactly what this rendered before. */}
             <div className={styles.text}>
               <ConversationMessageContent content={message.text} assistant={message.role !== 'user'} />
+            </div>
+            {/* Outside the .text div on purpose: inside, it would inherit the user bubble's
+                background and padding. Copy hands over the RAW source, so a code block arrives with
+                its fences intact and is pasteable, not the rendered HTML. */}
+            <div className={styles.rowActions}>
+              <button
+                type="button"
+                onClick={() => copyText(message.text, message.id ?? `i${index}`)}
+              >{copied === (message.id ?? `i${index}`) ? 'Copied' : 'Copy'}</button>
+              {message.role !== 'user'
+                ? <button type="button" onClick={() => askAgain(index)} disabled={Boolean(draft.trim()) || streaming}>Ask again</button>
+                : null}
             </div>
             {can.trace && prefs.showTrace && message.tools?.length
               ? <ToolTrace tools={message.tools} />
@@ -955,6 +1001,21 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             completion. The sentence carries the opening of the answer on purpose: a live region
             will not re-announce identical text, so a fixed string like "Apocrypha answered" goes
             silent on the second turn. */}
+        {/* Reads logRef, which has been attached since this component was written and never used.
+            Focus returns to the transcript, which works because it is now tabbable. */}
+        {showLatest ? <button
+          type="button"
+          className={styles.toLatest}
+          onClick={() => {
+            const log = logRef.current;
+            if (!log) return;
+            log.scrollTo({ top: log.scrollHeight, behavior: prefs.calmMotion ? 'auto' : 'smooth' });
+            following.current = true;
+            setShowLatest(false);
+            log.focus();
+          }}
+        >Latest <span aria-hidden="true">&darr;</span></button> : null}
+
         <div role="status" aria-live="polite" className={styles.srOnly}>{announcement}</div>
 
         {notice ? <div className={styles.notice} role="alert">

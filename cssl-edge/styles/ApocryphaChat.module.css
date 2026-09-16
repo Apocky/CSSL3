@@ -540,3 +540,61 @@
 @media (pointer: coarse), (max-width: 700px) {
   .tool, .toolAgent { min-height: 44px; padding: 10px 15px; }
 }
+
+/* Per-message row and the scroll-to-latest control.
+   Literal hex to match the blocks above: this stylesheet is a deliberate island painting #05060b,
+   while --apx-bg resolves to #101116 at runtime, so var() here would draw a visible seam. */
+.when { margin-left: 8px; font-size: 10px; letter-spacing: 0.04em; color: #a9b5ff70; }
+
+.rowActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+  /* Quiet until wanted: the transcript is the content, these are handles on it. */
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.you:hover .rowActions,
+.apocrypha:hover .rowActions,
+.you:focus-within .rowActions,
+.apocrypha:focus-within .rowActions { opacity: 1; }
+.rowActions button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid #a9b5ff2e;
+  border-radius: 7px;
+  background: transparent;
+  color: #a9b5ffc0;
+  font: 500 11px/1 inherit;
+  cursor: pointer;
+}
+.rowActions button:hover:not(:disabled) { border-color: #a9b5ff66; color: #d2e6fa; }
+.rowActions button:disabled { opacity: 0.4; cursor: default; }
+.rowActions button:focus-visible { outline: 2px solid #78e7ff; outline-offset: 2px; }
+
+.toLatest {
+  position: absolute;
+  left: 50%;
+  bottom: 148px;
+  transform: translateX(-50%);
+  z-index: 4;
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 1px solid #a9b5ff40;
+  border-radius: 999px;
+  background: #111524;
+  color: #d2e6fa;
+  font: 600 12px/1 inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.toLatest:hover { border-color: #78e7ff; }
+.toLatest:focus-visible { outline: 2px solid #78e7ff; outline-offset: 2px; }
+
+/* Hover does not exist on touch, so the handles are simply always visible there. */
+@media (pointer: coarse) {
+  .rowActions { opacity: 1; }
+  .rowActions button { min-height: 44px; padding: 10px 14px; font-size: 12px; }
+  .toLatest { min-height: 44px; bottom: 160px; }
+}
+@media (prefers-reduced-motion: reduce) { .rowActions { transition: none; } }
