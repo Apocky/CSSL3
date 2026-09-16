@@ -1,0 +1,33 @@
+{
+  "_": "The launch configuration for the one engine that answers everything. Committed, because the original sin here was that NO committed launch config existed anywhere: the engine serving apocky.com was traced to an EXIT trap inside a throwaway benchmark script, which a reboot would have lost silently. Every value is measured on this machine or cited; see apocrypha-core/tools/ENGINE_DIALS.csl for the evidence behind each one.",
+  "binary": "D:\\llama-local\\b9743\\llama-server.exe",
+  "model": "C:\\Apocrypha\\models\\work-lane\\Qwen3-Coder-Next-UD-Q2_K_XL.gguf",
+  "alias": "qwen3-coder-next-80b-a3b-q2kxl",
+  "host": "127.0.0.1",
+  "port": 19128,
+  "args": [
+    "-ngl", "99",
+    "-ncmoe", "30",
+    "-c", "32768",
+    "-np", "2",
+    "-fa", "on",
+    "-t", "8",
+    "-tb", "8",
+    "-b", "8192",
+    "-ub", "2048",
+    "-ctk", "q8_0",
+    "-ctv", "q8_0",
+    "--jinja",
+    "--cache-reuse", "256",
+    "-cram", "1024"
+  ],
+  "notes": {
+    "-ncmoe 30": "MoE experts placed on CPU. Measured +46% mean generation on the coder at -c 8192 (8.57 -> 12.50 tok/s, 3 samples each, every placed sample beat every unplaced one). The sweep 12/18/24/30/36 gave 7.35/8.13/8.36/17.44/15.97, so the knee sits between 24 and 30. N! transfer this number to another model or context.",
+    "-ngl 99": "Only safe BECAUSE -ncmoe is set. Alone it defeats b9743's own memory fitter: 'n_gpu_layers already set by user to 99, abort'. The -ncmoe run emits no such abort. Never remove one without the other.",
+    "-c 32768 -np 2": "Two slots of 16384 each, confirmed live via /slots. Two slots is what stops a long agent turn parking an interactive message behind it -- the whole point of one model serving everything.",
+    "-fa on + q8_0 KV": "Must move together. -fa off with quantized KV aborts outright: 'V cache quantization requires flash_attn'. The widely-cited turn-off-flash-attention-on-Arc advice is SYCL-scoped; this is Vulkan and it works.",
+    "-cram 1024": "The 8192 MiB default prompt cache is what turns a working engine into an OOM two minutes later on a 16 GiB card.",
+    "--mlock": "DELIBERATELY ABSENT. 20+ GiB of CPU-side experts against 31.8 GiB of RAM is the flag that hangs the desktop.",
+    "-sm/-ts/--numa": "Not applicable. --list-devices returns exactly Vulkan0."
+  }
+}

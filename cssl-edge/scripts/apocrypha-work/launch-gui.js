@@ -44,7 +44,37 @@ async function waitFor(port, ms) {
   return false;
 }
 
+/**
+ * Start the model engine from the committed dial file, if nothing is already serving it.
+ *
+ * This exists because the engine that answers everything was, at one point, started by an EXIT trap
+ * inside a throwaway benchmark script -- a reboot would have lost the whole measured configuration
+ * with no record of what it had been. Never kills a running engine: if the port answers, whatever
+ * is there is already doing the job.
+ */
+async function startEngine() {
+  const dialsPath = join(__dirname, 'engine-dials.json');
+  if (!existsSync(dialsPath)) return true;
+  const dials = JSON.parse(readFileSync(dialsPath, 'utf8'));
+  if (await listening(dials.port)) return true;
+
+  for (const [label, path] of [['engine binary', dials.binary], ['model', dials.model]]) {
+    if (!existsSync(path)) { console.error(`Cannot start the engine: ${label} missing at ${path}`); return false; }
+  }
+  console.log('Starting the model engine (this loads ~25 GiB, give it a minute)...');
+  spawn(dials.binary, [
+    '--model', dials.model, '--alias', dials.alias,
+    '--port', String(dials.port), '--host', dials.host,
+    ...dials.args,
+  ], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  // Weights come off NVMe and the MoE placement runs at load; a cold start is minutes, not seconds.
+  return waitFor(dials.port, 300_000);
+}
+
 async function main() {
+  if (!(await startEngine())) {
+    console.error('The engine did not come up. The window will open but answer nothing.');
+  }
   if (!(await listening(PORT))) {
     if (!existsSync(ENV_FILE)) {
       console.error(`No work env at ${ENV_FILE}. Cannot start the service.`);
