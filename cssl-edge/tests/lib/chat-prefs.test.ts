@@ -35,7 +35,7 @@ class Memory {
 const store = new Memory();
 assert.deepEqual(readChatPrefs(store), DEFAULT_CHAT_PREFS, 'an empty store reads as defaults');
 
-const chosen: ChatPrefs = { enterSends: false, textSize: 'large', showTrace: true, calmMotion: true };
+const chosen: ChatPrefs = { enterSends: false, textSize: 'large', showTrace: true, calmMotion: true, preset: 'precise' };
 writeChatPrefs(chosen, store);
 assert.deepEqual(readChatPrefs(store), chosen, 'a choice round-trips exactly');
 

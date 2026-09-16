@@ -64,3 +64,24 @@ assert.ok(
   'the module must cite where its numbers came from',
 );
 console.log(`sampling.test : OK - 3 presets in their stated bands, wire input clamped, corpus ${present ? 'present' : 'MISSING (cited, not readable)'}`);
+
+// -- the cutover hazards, pinned ------------------------------------------------------------------
+// Found by pre-testing rather than by breaking chat: the coder GGUF declares no `enable_thinking`
+// (grep: 1 hit in the Qwen3.5 chat model, 0 in Qwen3-Coder-Next). The work launcher passes --jinja.
+// Handing a Jinja template a variable it never declares can refuse the request, so one engine
+// serving both lanes would have 400'd every chat turn.
+const worker = fs.readFileSync(path.join(process.cwd(), 'scripts/apocrypha-worker/qwen.ts'), 'utf8');
+assert.ok(
+  !/^\s*chat_template_kwargs:/m.test(worker),
+  'enable_thinking must never be sent unconditionally -- it is model-specific',
+);
+assert.ok(worker.includes('THINKING_KWARG_SUPPORTED'), 'the thinking kwarg must be gated behind an explicit opt-in');
+assert.ok(
+  worker.includes("=== 'on'"),
+  'the gate must default OFF: a template that wants the kwarg and misses it still renders; one that gets an undeclared kwarg can refuse',
+);
+
+// The worker must take its sampling from the shared table, not from literals.
+assert.ok(worker.includes('BALANCED.temperature'), 'worker sampling defaults come from the preset table');
+assert.ok(!/temperature:\s*0\.65/.test(worker), 'the old hardcoded 0.65 must not return');
+console.log('sampling.test : OK - cutover hazards pinned (thinking kwarg gated, no literal sampling)');

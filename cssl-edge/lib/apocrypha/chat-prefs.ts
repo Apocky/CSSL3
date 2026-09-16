@@ -1,3 +1,5 @@
+import { DEFAULT_PRESET, presetById, type PresetId } from './sampling';
+
 // Per-device reading and composing preferences for the Apocrypha room.
 //
 // These are display choices and nothing more. Nothing here changes what the model is, what it may
@@ -21,6 +23,12 @@ export interface ChatPrefs {
   readonly showTrace: boolean;
   /** Honour reduced motion even where the OS does not report it. */
   readonly calmMotion: boolean;
+  /**
+   * Temperament. ONE engine answers everything now, so this is what makes a code question behave
+   * differently from a conversation -- not a different model. Persisted like the rest: a choice you
+   * made once should not reset every turn.
+   */
+  readonly preset: PresetId;
 }
 
 export const DEFAULT_CHAT_PREFS: ChatPrefs = {
@@ -28,6 +36,7 @@ export const DEFAULT_CHAT_PREFS: ChatPrefs = {
   textSize: 'normal',
   showTrace: false,
   calmMotion: false,
+  preset: DEFAULT_PRESET,
 };
 
 function coerce(raw: unknown): ChatPrefs {
@@ -38,6 +47,8 @@ function coerce(raw: unknown): ChatPrefs {
     textSize: value.textSize === 'large' ? 'large' : 'normal',
     showTrace: typeof value.showTrace === 'boolean' ? value.showTrace : DEFAULT_CHAT_PREFS.showTrace,
     calmMotion: typeof value.calmMotion === 'boolean' ? value.calmMotion : DEFAULT_CHAT_PREFS.calmMotion,
+    // An unknown or absent preset is the default, never an error -- stored prefs predate this field.
+    preset: presetById(typeof value.preset === 'string' ? value.preset : null).id,
   };
 }
 

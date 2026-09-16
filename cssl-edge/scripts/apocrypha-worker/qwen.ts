@@ -1,5 +1,12 @@
 import { log } from './log';
 import type { QwenResult, QwenUsage, WorkerConfig } from './types';
+import { presetById } from '../../lib/apocrypha/sampling';
+
+const BALANCED = presetById('balanced').profile;
+
+// Default OFF: the safe direction. A template that wants the kwarg and does not get it renders its
+// normal path; a template that gets one it does not declare can refuse the request outright.
+const THINKING_KWARG_SUPPORTED = process.env.APOCRYPHA_QWEN_THINKING_KWARG?.trim().toLowerCase() === 'on';
 
 type Fetch = typeof fetch;
 
@@ -226,13 +233,24 @@ export class QwenClient {
         stream: true,
         stream_options: { include_usage: true },
         max_tokens: outputTokenLimit,
-        temperature: options.temperature ?? 0.65,
-        top_p: options.topP ?? 0.9,
-        top_k: options.topK ?? 40,
-        min_p: options.minP ?? 0.05,
-        repeat_penalty: options.repeatPenalty ?? 1.08,
+        // Defaults come from the shared preset table, not from literals sitting here. These five
+        // numbers used to be the only thing separating "the chat model" from "the coder", and they
+        // were unreachable: no env, no override, no clamp. lib/apocrypha/sampling.ts carries the
+        // bands and their provenance (T94_LLM_GENERATION). `balanced` is what conversation wants;
+        // a turn that asks for `precise` gets the code band instead.
+        temperature: options.temperature ?? BALANCED.temperature,
+        top_p: options.topP ?? BALANCED.topP,
+        top_k: options.topK ?? BALANCED.topK,
+        min_p: options.minP ?? BALANCED.minP,
+        repeat_penalty: options.repeatPenalty ?? BALANCED.repeatPenalty,
         ...(options.seed === undefined ? {} : { seed: options.seed }),
-        chat_template_kwargs: { enable_thinking: false },
+        // Sent ONLY when the loaded model's template actually declares this variable. Qwen3.5's
+        // GGUF does; Qwen3-Coder-Next's does NOT -- grep of the two .gguf files: 1 hit vs 0. With
+        // --jinja (which the work-lane launcher passes) handing a template a variable it never
+        // declares risks a 400 on every turn, and this line would have been the thing that broke
+        // chat the moment one engine started serving both. Off by default for that reason; set
+        // APOCRYPHA_QWEN_THINKING_KWARG=on only for a model whose template takes it.
+        ...(THINKING_KWARG_SUPPORTED ? { chat_template_kwargs: { enable_thinking: false } } : {}),
       };
       const response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
         method: 'POST',

@@ -17,6 +17,7 @@ import {
   projectMemberChatMessages,
   submitMemberChatJob,
 } from '@/lib/apocrypha/member-chat-client';
+import type { PresetId } from './sampling';
 
 export type LaneId = 'guest' | 'member' | 'owner';
 
@@ -61,6 +62,13 @@ export interface SendInput {
   readonly conversationId: string | null;
   /** Only the guest lane needs this: nothing of theirs is stored server-side to re-read. */
   readonly history: readonly LaneMessage[];
+  /**
+   * Which temperament this turn runs at. One engine serves everything now, so this is the thing
+   * that makes a code question and a conversation behave differently -- not a different model.
+   * Rides in the request body, which is an open record, so no wire-format change was needed.
+   * Absent means the server default, which keeps older clients working.
+   */
+  readonly preset?: PresetId;
 }
 
 export interface SendResult {
@@ -144,6 +152,7 @@ export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
             role: turn.role === 'user' ? 'user' : 'assistant',
             content: turn.text,
           })),
+          ...(input.preset ? { preset: input.preset } : {}),
         }),
       });
       const payload = await response.json().catch(() => null) as
@@ -278,6 +287,8 @@ export function ownerLane(authFetch: LaneFetch): ChatLane {
           prompt: input.text,
           conversation_id: conversationId,
           output_budget: 2048,
+          // The server clamps whatever arrives; see lib/apocrypha/sampling.ts.
+          ...(input.preset ? { preset: input.preset } : {}),
           // Long prompts get the deeper budget. Kept from the original: a two-line question and a
           // pasted page of context are not the same request.
           response_mode: input.text.length > 1200 ? 'deep' : 'standard',
