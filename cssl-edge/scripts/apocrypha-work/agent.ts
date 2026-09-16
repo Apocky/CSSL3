@@ -3,6 +3,7 @@ import { EngineError, type EngineLike, type EngineMessage } from './engine';
 import { FILE_TOOLS, runFileTool, type ToolContext, type ToolResult } from './tools/files';
 import { SHELL_TOOLS, ShellDenied, runShellTool, screenCommand } from './tools/shell';
 import { McpHub } from './tools/mcp';
+import type { SamplingProfile } from '../../lib/apocrypha/sampling';
 import { log } from './log';
 import type {
   ConsentDecision,
@@ -135,6 +136,8 @@ export class WorkAgent {
     emit: (event: Omit<WorkEvent, 'seq' | 'at'>) => void,
     requestConsent: (request: ConsentRequest) => Promise<ConsentDecision>,
     signal: AbortSignal,
+    /** Dials chosen for THIS turn, e.g. the window's preset picker. */
+    sampling?: SamplingProfile,
   ): Promise<void> {
     const started = Date.now();
     const messages: EngineMessage[] = [
@@ -164,7 +167,7 @@ export class WorkAgent {
       const reply = await this.engine.complete(messages, offered, (delta) => {
         turn.output += delta;
         emit({ kind: 'token', data: { delta } });
-      }, signal);
+      }, signal, sampling);
 
       if (reply.usage.totalTokens !== undefined) {
         turn.usage = { ...reply.usage, elapsedS: (Date.now() - started) / 1_000 };

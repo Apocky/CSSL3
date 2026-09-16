@@ -86,6 +86,8 @@ export interface WorkSession {
   standingGrants: string[];
 }
 
+import type { SamplingProfile } from '../../lib/apocrypha/sampling';
+
 export interface EngineProfile {
   readonly alias: string;
   readonly baseUrl: string;
@@ -94,6 +96,12 @@ export interface EngineProfile {
   readonly temperature: number;
   readonly topP: number;
   readonly topK: number;
+  /**
+   * The full per-request dial set. temperature/topP/topK above are kept because the env vars that
+   * set them are documented and in use; this carries everything they cannot express -- min_p, the
+   * penalties, DRY, the tail samplers and the seed.
+   */
+  readonly sampling: SamplingProfile;
 }
 
 export interface ArbiterSettings {

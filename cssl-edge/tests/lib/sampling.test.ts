@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   SAMPLING_PRESETS, DEFAULT_PRESET, presetById, clampSampling, resolveSampling, PRESET_FOR_TOOL,
+  toEngineParams,
 } from '../../lib/apocrypha/sampling';
 
 const precise = presetById('precise').profile;
@@ -63,7 +64,7 @@ assert.ok(
   fs.readFileSync(path.join(process.cwd(), 'lib/apocrypha/sampling.ts'), 'utf8').includes('T94_LLM_GENERATION'),
   'the module must cite where its numbers came from',
 );
-console.log(`sampling.test : OK - 3 presets in their stated bands, wire input clamped, corpus ${present ? 'present' : 'MISSING (cited, not readable)'}`);
+console.log(`sampling.test : OK - presets in their stated bands, wire input clamped, corpus ${present ? 'present' : 'MISSING (cited, not readable)'}`);
 
 // -- the cutover hazards, pinned ------------------------------------------------------------------
 // Found by pre-testing rather than by breaking chat: the coder GGUF declares no `enable_thinking`
@@ -85,3 +86,76 @@ assert.ok(
 assert.ok(worker.includes('BALANCED.temperature'), 'worker sampling defaults come from the preset table');
 assert.ok(!/temperature:\s*0\.65/.test(worker), 'the old hardcoded 0.65 must not return');
 console.log('sampling.test : OK - cutover hazards pinned (thinking kwarg gated, no literal sampling)');
+
+
+// -- the full dial surface ------------------------------------------------------------------------
+// Measured against llama.cpp b9743 on 2026-09-16: every field below was POSTed to the running
+// engine and accepted, and the load-bearing ones were separately shown to CHANGE THE OUTPUT.
+// These gates exist because the previous module drove 5 of ~14 dials and left the rest to whatever
+// the GGUF metadata happened to carry.
+
+// PRODUCTION LOCK. `balanced` is what the public chat room runs on. Changing any of these five
+// changes what apocky.com says to people, so they are pinned by value, not by band.
+const PUBLIC_CHAT = { temperature: 0.8, topP: 0.9, topK: 40, minP: 0.05, repeatPenalty: 1.08 };
+for (const [key, value] of Object.entries(PUBLIC_CHAT)) {
+  assert.equal(
+    (balanced as unknown as Record<string, unknown>)[key], value,
+    `balanced.${key} is the live public-chat value; changing it changes production output`,
+  );
+}
+// ...and it must stay MINIMAL: an optional dial leaking into balanced would silently alter chat.
+for (const extra of ['dryMultiplier', 'xtcProbability', 'topNSigma', 'greedy', 'typicalP']) {
+  assert.equal(
+    (balanced as unknown as Record<string, unknown>)[extra], undefined,
+    `balanced must not carry ${extra}: public chat keeps the engine's own default`,
+  );
+}
+
+// Exact means reproducible, and reproducible means greedy -- not "temperature nearly zero".
+const exact = presetById('exact').profile;
+assert.equal(exact.greedy, true, 'the exact preset must take the greedy path');
+const exactWire = toEngineParams(exact);
+assert.equal(exactWire.top_k, 1, 'greedy must collapse the candidate set to the argmax');
+assert.equal(exactWire.temperature, 0, 'greedy must not leave a temperature for the sampler to act on');
+
+// Code work uses DRY, which penalises repeated SEQUENCES, instead of repeat_penalty, which cannot
+// tell a stuck loop from an indent.
+const preciseProfile = presetById('precise').profile;
+assert.equal(preciseProfile.repeatPenalty, 1, 'precise must not punish ordinary code repetition');
+assert.ok((preciseProfile.dryMultiplier ?? 0) > 0, 'precise must carry DRY as its anti-repetition dial');
+assert.ok(
+  (preciseProfile.drySequenceBreakers ?? []).includes('\n'),
+  'DRY needs a newline breaker or it fights the shape of the language',
+);
+
+// -- the wire format ------------------------------------------------------------------------------
+// snake_case, and ABSENT dials omitted entirely. Sending null where the engine wants a number is
+// how a working turn starts 400ing.
+const wire = toEngineParams(preciseProfile);
+assert.equal(wire.dry_multiplier, preciseProfile.dryMultiplier, 'camelCase must be rendered as the engine spells it');
+assert.ok('repeat_last_n' in wire, 'a dial the profile sets must reach the engine');
+for (const key of Object.keys(wire)) {
+  assert.notEqual(wire[key], undefined, `${key} must never be sent as undefined`);
+  assert.notEqual(wire[key], null, `${key} must never be sent as null`);
+}
+const bare = toEngineParams(balanced);
+for (const absent of ['dry_multiplier', 'xtc_probability', 'top_n_sigma', 'typical_p', 'seed']) {
+  assert.ok(!(absent in bare), `balanced sets no ${absent}, so it must not appear on the wire at all`);
+}
+
+// -- clamps cover the new dials too ---------------------------------------------------------------
+const hostileDials = clampSampling(
+  { dryMultiplier: 99, dryBase: -5, xtcProbability: 7, topNSigma: -3, repeatLastN: 9_999_999,
+    drySequenceBreakers: new Array(50).fill('x') },
+  preciseProfile,
+);
+assert.ok((hostileDials.dryMultiplier ?? 0) <= 5, 'dryMultiplier must be bounded');
+assert.ok((hostileDials.dryBase ?? 0) >= 1, 'dryBase must be bounded below');
+assert.ok((hostileDials.xtcProbability ?? 0) <= 1, 'xtcProbability is a probability');
+assert.ok((hostileDials.topNSigma ?? 0) >= 0, 'topNSigma must not go negative');
+assert.ok((hostileDials.repeatLastN ?? 0) <= 4096, 'repeatLastN must be bounded');
+assert.ok((hostileDials.drySequenceBreakers ?? []).length <= 16, 'the breaker list must be capped');
+assert.equal(clampSampling({ temperature: 'hot' }, preciseProfile).temperature, preciseProfile.temperature,
+  'a non-number falls back to the preset rather than breaking the turn');
+
+console.log('sampling.test : OK - full dial surface, public-chat values locked, wire format omits absent dials');

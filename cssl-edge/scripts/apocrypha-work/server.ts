@@ -9,6 +9,7 @@ import { SessionStore } from './sessions';
 import { TurnRunner } from './runner';
 import { Workspace } from './workspace';
 import { McpHub } from './tools/mcp';
+import { resolveSampling, SAMPLING_PRESETS } from '../../lib/apocrypha/sampling';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -115,19 +116,15 @@ async function main(): Promise<void> {
     }
 
     const url = new URL(request.url ?? '/', `http://${config.host}:${config.port}`);
-    const header = request.headers.authorization ?? '';
-    // The stream endpoint is opened by EventSource, which cannot set headers, so it carries the
-    // token as a query parameter instead. Same secret, same comparison.
-    const supplied = header.startsWith('Bearer ') ? header.slice(7) : (url.searchParams.get('token') ?? '');
-    if (!tokenMatches(supplied, config.token)) { send(response, 401, { error: 'unauthorized' }); return; }
 
-    const path = url.pathname.replace(/\/+$/, '') || '/';
-    const segments = path.split('/').filter(Boolean);
-    const [head, second, third] = segments;
-
-    // The desktop window. Read from disk per request so editing the page is a refresh, not a
-    // service restart, and served as HTML rather than through send(), which is JSON-only.
-    if (request.method === 'GET' && (path === '/' || path === '/app')) {
+    // The desktop window, served BEFORE the token check. The page is static markup with no data in
+    // it; the credential belongs on the API, not on the document. Gating the HTML meant a plain
+    // reload returned 401 JSON, so the page's own JS never ran and could not restore the token it
+    // had deliberately stripped from the address bar -- a dead window on F5.
+    // Safe because the listener is bound to 127.0.0.1 and every endpoint behind it still requires
+    // the bearer token.
+    if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/app')) {
+      // Read per request, so editing the page is a refresh rather than a service restart.
       const html = readFileSync(join(__dirname, 'ui.html'), 'utf8');
       response.writeHead(200, {
         'content-type': 'text/html; charset=utf-8',
@@ -137,6 +134,16 @@ async function main(): Promise<void> {
       response.end(html);
       return;
     }
+
+    const header = request.headers.authorization ?? '';
+    // The stream endpoint is opened by EventSource, which cannot set headers, so it carries the
+    // token as a query parameter instead. Same secret, same comparison.
+    const supplied = header.startsWith('Bearer ') ? header.slice(7) : (url.searchParams.get('token') ?? '');
+    if (!tokenMatches(supplied, config.token)) { send(response, 401, { error: 'unauthorized' }); return; }
+
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    const segments = path.split('/').filter(Boolean);
+    const [head, second, third] = segments;
 
     if (request.method === 'GET' && path === '/health') {
       const probe = await engine.probe();
@@ -152,6 +159,8 @@ async function main(): Promise<void> {
           max_iterations: config.maxToolIterations,
         },
         mcp: { servers: new Set(mcpTools.map((t) => t.name.split('__')[1])).size, tools: mcpTools.length },
+        presets: SAMPLING_PRESETS.map((p) => ({ id: p.id, label: p.label, effect: p.effect, profile: p.profile })),
+        sampling: config.engine.sampling,
         active_turns: runner.activeCount(),
         arbiter: await arbiter.status(),
       });
@@ -223,7 +232,15 @@ async function main(): Promise<void> {
           }
         }
         arbiter.touch();
-        const turn = await runner.start(record.session, prompt);
+        // Dials for this turn only. Whatever arrives is CLAMPED against the chosen preset, so the
+        // window can offer real knobs without a bad value being able to break a turn -- the same
+        // never-trust-the-client-never-punish-it rule the chat lane uses.
+        const preset = typeof body.preset === 'string' ? body.preset : null;
+        // Falls back to the coder's own band, not to the chat default, when only overrides are sent.
+        const sampling = (preset || body.sampling)
+          ? resolveSampling(preset ?? 'precise', body.sampling)
+          : undefined;
+        const turn = await runner.start(record.session, prompt, sampling);
         send(response, 202, { turn_id: turn.id });
         return;
       }

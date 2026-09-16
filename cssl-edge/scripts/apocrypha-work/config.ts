@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { RiskTier, WorkConfig } from './types';
+import { resolveSampling, presetById } from '../../lib/apocrypha/sampling';
 
 type Env = Record<string, string | undefined>;
 
@@ -131,6 +132,19 @@ export function loadWorkConfig(env: Env = process.env): WorkConfig {
       temperature: decimal(env, 'APOCRYPHA_WORK_TEMPERATURE', 0.2, 0, 2),
       topP: decimal(env, 'APOCRYPHA_WORK_TOP_P', 0.95, 0, 1),
       topK: integer(env, 'APOCRYPHA_WORK_TOP_K', 40, 0, 200),
+      // The coder defaults to the code band. `exact` makes a run reproducible, which is what you
+      // want when re-running an edit; `balanced`/`open` exist for when this same engine is asked a
+      // question rather than given a task. One model, chosen temperament.
+      // Env overrides are folded IN here rather than applied on top at request time. An override
+      // applied later would have to distinguish "operator set 0.2" from "0.2 is the default", and
+      // it cannot -- which would have let a defaulted temperature silently cancel the greedy path
+      // that makes `exact` reproducible. One resolved profile, no precedence puzzle downstream.
+      sampling: resolveSampling(env.APOCRYPHA_WORK_PRESET?.trim() || 'precise', {
+        ...(env.APOCRYPHA_WORK_TEMPERATURE?.trim() ? { temperature: Number(env.APOCRYPHA_WORK_TEMPERATURE) } : {}),
+        ...(env.APOCRYPHA_WORK_TOP_P?.trim() ? { topP: Number(env.APOCRYPHA_WORK_TOP_P) } : {}),
+        ...(env.APOCRYPHA_WORK_TOP_K?.trim() ? { topK: Number(env.APOCRYPHA_WORK_TOP_K) } : {}),
+        ...(env.APOCRYPHA_WORK_SEED?.trim() ? { seed: Number(env.APOCRYPHA_WORK_SEED) } : {}),
+      }),
     },
     maxToolIterations: integer(env, 'APOCRYPHA_WORK_MAX_ITERATIONS', 40, 1, 200),
     toolTimeoutMs: integer(env, 'APOCRYPHA_WORK_TOOL_TIMEOUT_MS', 120_000, 1_000, 900_000),

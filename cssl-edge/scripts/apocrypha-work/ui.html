@@ -84,6 +84,25 @@
   #send:disabled { opacity: .4; cursor: default; }
   #stop { color: var(--warn); } #stop[hidden] { display: none; }
   #hint { max-width: 860px; margin: 7px auto 0; font-size: 11px; color: var(--dim); }
+
+  /* ---- dials ---- */
+  #dials { max-width: 860px; margin: 0 auto 9px; }
+  #dials > summary { cursor: pointer; font-size: 11.5px; color: var(--dim); list-style: none; padding: 2px 0; }
+  #dials > summary::-webkit-details-marker { display: none; }
+  #dials > summary:hover { color: var(--ink); }
+  #presets { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
+  .preset { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--edge); background: #161b25;
+    color: var(--dim); font: inherit; font-size: 12px; cursor: pointer; }
+  .preset[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); background: #1b2740; }
+  #effect { font-size: 11.5px; color: var(--dim); margin: 2px 0 8px; min-height: 1.4em; }
+  .knobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 7px 16px; }
+  .knob { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--dim); }
+  .knob label { flex: 0 0 82px; font-family: var(--mono); }
+  .knob input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent); }
+  .knob output { flex: 0 0 38px; text-align: right; font-family: var(--mono); color: var(--ink); }
+  #resetDials { margin-top: 9px; background: none; border: none; color: var(--dim);
+    font: inherit; font-size: 11.5px; cursor: pointer; text-decoration: underline; padding: 0; }
+  #resetDials:hover { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -102,6 +121,13 @@
   </div>
   <div id="log"><div id="inner"></div></div>
   <form id="composer">
+    <details id="dials">
+      <summary id="dialsSummary">Dials</summary>
+      <div id="presets"></div>
+      <div id="effect"></div>
+      <div class="knobs" id="knobs"></div>
+      <button type="button" id="resetDials">Reset to preset</button>
+    </details>
     <div id="cwrap">
       <textarea id="box" rows="1" placeholder="Describe the change. It reads and writes your disk directly." autofocus></textarea>
       <button id="stop" type="button" hidden>Stop</button>
@@ -121,6 +147,14 @@
   var params = new URLSearchParams(location.search);
   var TOKEN = params.get('token') || '';
   if (TOKEN) history.replaceState(null, '', location.pathname);
+  // Stripping the token from the address bar means a plain reload (F5, or anything that calls
+  // location.reload) comes back with no credential and a dead page -- found by doing exactly that.
+  // sessionStorage is the right scope: it survives the reload, it is per-tab, and it dies with the
+  // window, so the token still never reaches history or a screenshot.
+  try {
+    if (TOKEN) sessionStorage.setItem('apx.token', TOKEN);
+    else TOKEN = sessionStorage.getItem('apx.token') || '';
+  } catch (_) { /* blocked storage: the URL token still works for this load */ }
 
   var $ = function (id) { return document.getElementById(id); };
   var inner = $('inner'), logEl = $('log'), box = $('box');
@@ -314,6 +348,95 @@
     $('stop').hidden = true;
   }
 
+
+  /* ---------- dials ---------- */
+
+  // The window's copy of the control surface. `presets` arrives from /health so the page never
+  // hardcodes numbers that live in lib/apocrypha/sampling.ts -- one source of truth, and the UI
+  // cannot drift from what the engine is actually sent.
+  var PRESETS = [];
+  var chosen = 'precise';
+  var overrides = {};
+
+  // Only the dials worth a slider. The rest of the surface (DRY breakers, XTC, typical_p) stays in
+  // the preset where it belongs: a knob you cannot interpret is clutter, not control.
+  var KNOBS = [
+    { key: 'temperature', min: 0, max: 2,    step: 0.05, hint: 'higher = likelier to pick an unlikely word' },
+    { key: 'topP',        min: 0, max: 1,    step: 0.01, hint: 'keep the smallest set of words worth this much probability' },
+    { key: 'topK',        min: 0, max: 200,  step: 1,    hint: 'never consider more than this many words' },
+    { key: 'minP',        min: 0, max: 0.5,  step: 0.01, hint: 'drop words this much less likely than the best one' },
+    { key: 'dryMultiplier', min: 0, max: 3,  step: 0.1,  hint: 'how hard to push back on a repeated phrase' },
+    { key: 'repeatPenalty', min: 0.5, max: 2, step: 0.01, hint: 'blunt: penalises every repeated token, including code syntax' }
+  ];
+
+  try {
+    var saved = JSON.parse(localStorage.getItem('apx.dials') || '{}');
+    if (saved && typeof saved === 'object') {
+      if (typeof saved.preset === 'string') chosen = saved.preset;
+      if (saved.overrides && typeof saved.overrides === 'object') overrides = saved.overrides;
+    }
+  } catch (_) { /* a viewer convenience; never required for the page to work */ }
+
+  function saveDials() {
+    try { localStorage.setItem('apx.dials', JSON.stringify({ preset: chosen, overrides: overrides })); }
+    catch (_) { /* private window or blocked storage; the dials still apply to this session */ }
+  }
+
+  function activeProfile() {
+    var preset = PRESETS.filter(function (p) { return p.id === chosen; })[0];
+    var base = preset ? preset.profile : {};
+    var merged = {};
+    for (var k in base) if (Object.prototype.hasOwnProperty.call(base, k)) merged[k] = base[k];
+    for (var o in overrides) if (Object.prototype.hasOwnProperty.call(overrides, o)) merged[o] = overrides[o];
+    return merged;
+  }
+
+  function renderDials() {
+    var host = $('presets');
+    host.innerHTML = '';
+    PRESETS.forEach(function (p) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'preset';
+      b.textContent = p.label;
+      b.setAttribute('aria-pressed', String(p.id === chosen));
+      b.onclick = function () { chosen = p.id; overrides = {}; saveDials(); renderDials(); };
+      host.appendChild(b);
+    });
+    var active = PRESETS.filter(function (p) { return p.id === chosen; })[0];
+    $('effect').textContent = active ? active.effect : '';
+
+    var profile = activeProfile();
+    var knobs = $('knobs');
+    knobs.innerHTML = '';
+    KNOBS.forEach(function (k) {
+      var value = typeof profile[k.key] === 'number' ? profile[k.key] : 0;
+      var row = document.createElement('div');
+      row.className = 'knob';
+      row.title = k.hint;
+      var id = 'knob_' + k.key;
+      row.innerHTML = '<label for="' + id + '">' + k.key + '</label>';
+      var input = document.createElement('input');
+      input.type = 'range'; input.id = id;
+      input.min = k.min; input.max = k.max; input.step = k.step; input.value = value;
+      var out = document.createElement('output');
+      out.textContent = value;
+      input.oninput = function () {
+        var v = Number(input.value);
+        out.textContent = v;
+        overrides[k.key] = v;
+        saveDials();
+      };
+      row.appendChild(input); row.appendChild(out);
+      knobs.appendChild(row);
+    });
+
+    var dirty = Object.keys(overrides).length > 0;
+    $('dialsSummary').textContent = 'Dials · ' + (active ? active.label : chosen) + (dirty ? ' (adjusted)' : '');
+  }
+
+  $('resetDials').onclick = function () { overrides = {}; saveDials(); renderDials(); };
+
   /* ---------- transport ---------- */
 
   function attach() {
@@ -386,7 +509,9 @@
     addMsg('user', 'you').textContent = prompt;
     $('stop').hidden = false;
     var r = await api('/sessions/' + encodeURIComponent(sessionId) + '/turns', {
-      method: 'POST', body: JSON.stringify({ prompt: prompt })
+      method: 'POST',
+      // The server clamps both of these against the preset, so a slider can never break a turn.
+      body: JSON.stringify({ prompt: prompt, preset: chosen, sampling: activeProfile() })
     });
     if (!r.ok) {
       var d = await r.json().catch(function () { return {}; });
@@ -411,6 +536,24 @@
         $('mcpTxt').textContent = j.mcp.tools
           ? 'MCP ' + j.mcp.servers + ' server' + (j.mcp.servers === 1 ? '' : 's') + ' · ' + j.mcp.tools + ' tools'
           : 'MCP off';
+      }
+      if (Array.isArray(j.presets) && j.presets.length && !PRESETS.length) {
+        PRESETS = j.presets;
+        if (!PRESETS.some(function (x) { return x.id === chosen; })) chosen = 'precise';
+        // The service resolves its own profile from the preset PLUS any explicit env overrides in
+        // work.env, so the two can differ. Seed the knobs from what the service actually resolved,
+        // or the window would display the preset, send the preset, and quietly discard the
+        // operator's own APOCRYPHA_WORK_TOP_P. What you see here is what gets sent.
+        if (j.sampling && !Object.keys(overrides).length) {
+          var preset = PRESETS.filter(function (x) { return x.id === chosen; })[0];
+          var base = preset ? preset.profile : {};
+          KNOBS.forEach(function (k) {
+            if (typeof j.sampling[k.key] === 'number' && j.sampling[k.key] !== base[k.key]) {
+              overrides[k.key] = j.sampling[k.key];
+            }
+          });
+        }
+        renderDials();
       }
       var p = j.policy || {};
       $('policy').textContent = (p.shell ? 'shell on' : 'shell off')

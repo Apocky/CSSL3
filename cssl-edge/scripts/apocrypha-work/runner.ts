@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { SamplingProfile } from '../../lib/apocrypha/sampling';
 import type { ServerResponse } from 'node:http';
 import type { WorkAgent } from './agent';
 import { log } from './log';
@@ -88,7 +89,7 @@ export class TurnRunner {
     });
   }
 
-  async start(session: WorkSession, prompt: string): Promise<WorkTurn> {
+  async start(session: WorkSession, prompt: string, sampling?: SamplingProfile): Promise<WorkTurn> {
     const channel = this.channel(session.id);
     if (channel.active) throw new Error('a turn is already running in this session');
 
@@ -115,6 +116,7 @@ export class TurnRunner {
       (event) => this.emit(session.id, event),
       (request) => this.awaitConsent(session.id, request),
       controller.signal,
+      sampling,
     ).catch((error) => {
       turn.phase = 'failed';
       turn.error = error instanceof Error ? error.message : String(error);

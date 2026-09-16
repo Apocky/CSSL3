@@ -1,4 +1,5 @@
 import type { EngineProfile, ToolCallRequest, ToolDefinition } from './types';
+import { toEngineParams, type SamplingProfile } from '../../lib/apocrypha/sampling';
 
 export class EngineError extends Error {
   readonly code: string;
@@ -55,6 +56,7 @@ export interface EngineLike {
     tools: readonly ToolDefinition[],
     onToken: (delta: string) => void,
     signal: AbortSignal,
+    sampling?: SamplingProfile,
   ): Promise<EngineReply>;
 }
 
@@ -94,6 +96,8 @@ export class EngineClient implements EngineLike {
     tools: readonly ToolDefinition[],
     onToken: (delta: string) => void,
     signal: AbortSignal,
+    /** Per-turn dials. Absent means the configured profile, which is the common case. */
+    sampling?: SamplingProfile,
   ): Promise<EngineReply> {
     const body = {
       model: this.profile.alias,
@@ -110,9 +114,10 @@ export class EngineClient implements EngineLike {
       stream: true,
       stream_options: { include_usage: true },
       max_tokens: this.profile.maxOutputTokens,
-      temperature: this.profile.temperature,
-      top_p: this.profile.topP,
-      top_k: this.profile.topK,
+      // The whole dial surface, spelled the way llama.cpp spells it. Env overrides are already
+      // folded into this profile by config.ts, so there is nothing to re-apply on top: sending
+      // temperature again here is what would cancel `exact`'s greedy path.
+      ...toEngineParams(sampling ?? this.profile.sampling),
     };
 
     const response = await this.fetchImpl(`${this.profile.baseUrl}/v1/chat/completions`, {
