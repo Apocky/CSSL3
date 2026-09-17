@@ -83,6 +83,68 @@ export class Workspace {
    * The returned path is safe to hand to `fs`. Throws rather than clamping, because silently
    * rewriting a path the caller asked for is how a confinement bug becomes invisible.
    */
+  /**
+   * Deterministic repairs for a path that does not resolve.
+   *
+   * A model occasionally emits a separator as a space, or mixes slash styles. Observed once in a
+   * real turn: one wrong character became 38 flailing list_dir and search calls hunting for a file
+   * that was there all along. (It is NOT a general Q2 weakness -- 24 controlled samples across four
+   * conditions reproduced the path exactly every time -- but rare is not never, and the recovery is
+   * cheap.)
+   *
+   * Deliberately NOT fuzzy. Each candidate is a fixed rewrite, and each one is re-checked through
+   * resolveExisting itself, so confinement, read-only roots and the secret-file rule all still
+   * apply. A repair that skipped those would turn a typo into a way out of the workspace.
+   */
+  private static repairCandidates(input: string): string[] {
+    const sep = String.fromCharCode(92);
+    // No regex here on purpose. Expressing "a backslash" as a RegExp through two layers of string
+    // escaping is exactly how you end up with a pattern that silently matches nothing -- the first
+    // version of this compiled cleanly and was wrong. split/join says what it means.
+    const trimSegments = (value: string, on: string): string =>
+      value.split(on).map((part) => part.trim()).join(on);
+
+    const out = new Set<string>();
+    out.add(trimSegments(input, sep));                       // a separator that arrived with a stray space
+    out.add(input.split('/').join(sep));                     // forward -> backslash
+    out.add(input.split(sep).join('/'));                     // backslash -> forward
+    out.add(trimSegments(input.split('/').join(sep), sep));   // both: unify, then de-space
+    out.add(trimSegments(input, '/'));
+    out.delete(input);
+    return [...out].filter((candidate) => candidate.length > 0);
+  }
+
+  /**
+   * Resolve, and if that fails try a small set of fixed rewrites before giving up.
+   *
+   * `repaired` names the path that actually worked, so the caller can say so. A silent correction
+   * would hide a real operator typo behind a guess.
+   */
+  async resolveForgiving(input: string, intent: 'read' | 'write'): Promise<{ path: string; root: WorkspaceRoot; repaired?: string }> {
+    try {
+      const direct = await this.resolveExisting(input, intent);
+      // resolveExisting deliberately ACCEPTS a path that does not exist yet, so that write_file can
+      // create one. For a READ that is the wrong answer: a mistyped path whose parent happens to
+      // exist sails through here and fails later with a bare ENOENT, which is exactly the dead end
+      // that sent a real turn into 38 list_dir calls. Reading requires the file to be there.
+      if (intent === 'read' && !(await stat(direct.path).then(() => true).catch(() => false))) {
+        throw new WorkspaceError(`path does not exist: ${input}`, 'WORKSPACE_NOT_FOUND');
+      }
+      return direct;
+    } catch (error) {
+      for (const candidate of Workspace.repairCandidates(input)) {
+        // Through the SAME function: every rule that guards resolveExisting guards this too.
+        const hit = await this.resolveExisting(candidate, intent).catch(() => null);
+        if (!hit) continue;
+        // A candidate only counts if it actually exists; otherwise "repair" would just relocate the
+        // same ENOENT to a path the operator never typed.
+        if (intent === 'read' && !(await stat(hit.path).then(() => true).catch(() => false))) continue;
+        return { ...hit, repaired: candidate };
+      }
+      throw error; // nothing worked: report the ORIGINAL failure, not the last candidate's
+    }
+  }
+
   async resolveExisting(input: string, intent: 'read' | 'write'): Promise<{ path: string; root: WorkspaceRoot }> {
     const primary = this.roots[0];
     if (!primary) throw new WorkspaceError('no workspace root is configured', 'WORKSPACE_EMPTY');
@@ -104,7 +166,9 @@ export class Workspace {
     if (intent === 'write' && !root.writable) {
       throw new WorkspaceError(`workspace root "${root.label}" is read-only`, 'WORKSPACE_READ_ONLY');
     }
-    if (isSecretFile(canonical)) {
+    // Compare the TRIMMED basename: " .env" is not ".env" to a string equality test, yet it is
+    // plainly the same file being asked for. Found by a repair test, and it predates repair.
+    if (isSecretFile(canonical) || isSecretFile(canonical.split(sep).map((part) => part.trim()).join(sep))) {
       throw new WorkspaceError(
         `${input} holds credentials and is not readable by this agent. Ask the operator for the variable NAME you need; never the value.`,
         'WORKSPACE_SECRET_FILE',

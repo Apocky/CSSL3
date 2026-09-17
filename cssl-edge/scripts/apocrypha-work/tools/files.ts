@@ -96,6 +96,17 @@ export const FILE_TOOLS: ToolDefinition[] = [
   },
 ];
 
+/**
+ * Tell the model when a path only worked after repair.
+ *
+ * Prepended to the result rather than logged quietly: the point is that the NEXT call uses the
+ * corrected path. Silently fixing it would leave the model repeating the broken one.
+ */
+function repairNote(repaired: string | undefined): string {
+  return repaired === undefined ? '' : `[path corrected to: ${repaired} — use this exact form from now on]
+`;
+}
+
 async function walk(root: string, depth: number, out: string[], base: string): Promise<void> {
   if (depth < 0 || out.length >= MAX_ENTRIES) return;
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
@@ -119,7 +130,7 @@ export async function runFileTool(name: string, args: Record<string, unknown>, c
   const workspace = ctx.workspace;
 
   if (name === 'list_dir') {
-    const { path } = await workspace.resolveExisting(String(args.path ?? '.'), 'read');
+    const { path, repaired } = await workspace.resolveForgiving(String(args.path ?? '.'), 'read');
     const depth = Math.min(4, Math.max(1, Number(args.depth ?? 1)));
     const out: string[] = [];
     await walk(path, depth - 1, out, path);
@@ -131,7 +142,7 @@ export async function runFileTool(name: string, args: Record<string, unknown>, c
   }
 
   if (name === 'read_file') {
-    const { path } = await workspace.resolveExisting(String(args.path ?? ''), 'read');
+    const { path, repaired } = await workspace.resolveForgiving(String(args.path ?? ''), 'read');
     const info = await stat(path);
     if (!info.isFile()) throw new Error('not a file');
     if (info.size > MAX_READ_BYTES) throw new Error(`file is ${info.size} bytes; read a line range instead (limit ${MAX_READ_BYTES})`);
@@ -185,7 +196,7 @@ export async function runFileTool(name: string, args: Record<string, unknown>, c
   }
 
   if (name === 'search') {
-    const { path } = await workspace.resolveExisting(String(args.path ?? '.'), 'read');
+    const { path, repaired } = await workspace.resolveForgiving(String(args.path ?? '.'), 'read');
     let regex: RegExp;
     try {
       regex = new RegExp(String(args.pattern ?? ''), 'g');

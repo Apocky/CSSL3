@@ -4,6 +4,7 @@ import { FILE_TOOLS, runFileTool, type ToolContext, type ToolResult } from './to
 import { SHELL_TOOLS, ShellDenied, runShellTool, screenCommand } from './tools/shell';
 import { McpHub } from './tools/mcp';
 import type { SamplingProfile } from '../../lib/apocrypha/sampling';
+import { fitMessages, type FitMessage } from './fit';
 import { log } from './log';
 import type {
   ConsentDecision,
@@ -164,7 +165,35 @@ export class WorkAgent {
       emit({ kind: 'phase', data: { phase: 'thinking', iteration } });
 
       const offered = this.tools.filter((tool) => !withdrawn.has(tool.name));
-      const reply = await this.engine.complete(messages, offered, (delta) => {
+
+      // Fit BEFORE sending. The engine clips an oversized prompt instead of refusing it, and the
+      // first thing off the front is the system prompt, so an unguarded long task degrades into a
+      // coder that has forgotten its own instructions with nothing on screen to say so.
+      // The tool schemas are part of the prompt and they are LARGE: built-ins plus every MCP tool,
+      // serialised into `tools` on each request. Measured here rather than assumed, because the
+      // count changes with the MCP config and with mid-turn withdrawal.
+      const toolTokens = Math.ceil(
+        offered.reduce((sum, tool) => sum + JSON.stringify(tool).length, 0) / 3,
+      );
+      const fitted = fitMessages(messages, {
+        contextTokens: this.config.engine.contextWindow,
+        reserveTokens: this.config.engine.maxOutputTokens,
+        overheadTokens: toolTokens,
+      });
+      if (fitted.droppedGroups > 0 || fitted.shortened > 0) {
+        // Announced, not silent: replacing an invisible failure with a quieter one is not a fix.
+        log('info', 'work.context.trimmed', {
+          turn: turn.id, dropped: fitted.droppedGroups, shortened: fitted.shortened,
+          before: fitted.estimatedTokensBefore, after: fitted.estimatedTokensAfter,
+        });
+        emit({ kind: 'phase', data: {
+          phase: 'thinking',
+          context_trimmed: { dropped: fitted.droppedGroups, shortened: fitted.shortened,
+            before: fitted.estimatedTokensBefore, after: fitted.estimatedTokensAfter },
+        } });
+      }
+
+      const reply = await this.engine.complete(fitted.messages as EngineMessage[], offered, (delta) => {
         turn.output += delta;
         emit({ kind: 'token', data: { delta } });
       }, signal, sampling);
