@@ -210,7 +210,20 @@ export interface WorkerRuntimeState {
   failedJobs: number;
   recoveredAttempts: number;
   adapterStates: Record<string, AdapterState>;
+  /**
+   * When the probe last MINTED EVIDENCE. Null unless every adapter came back ok
+   * -- a probe that reached a degraded faculty is not evidence that memory
+   * works, and `apocrypha-worker.test.ts` locks that ("failed adapter result
+   * minted fresh operational evidence"). Do NOT relax it to mean "ran".
+   */
   adapterProbeAt: string | null;
+  /**
+   * When the probe last RAN, clean or not. A different question from the one
+   * above and the only one that can answer "has the probe loop stopped?" --
+   * while an adapter is down, adapterProbeAt is pinned at null whether the loop
+   * is healthy or dead, so on its own it is blind exactly when it matters.
+   */
+  adapterProbeRanAt: string | null;
   capabilityAdapterStates: Record<string, Record<string, AdapterState>>;
   capabilityAdapterProbeAt: Record<string, string | null>;
 }

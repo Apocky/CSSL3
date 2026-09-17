@@ -239,6 +239,7 @@ export class ControlPlaneClient {
           qwen_probe_at: operational.qwenProbeAt,
           adapter_states: runtime.adapterStates,
           adapter_probe_at: runtime.adapterProbeAt,
+          adapter_probe_ran_at: runtime.adapterProbeRanAt,
           capability_memory: Object.fromEntries(this.config.manifest.capabilities.map((capability) => [capability, {
             adapter_states: runtime.capabilityAdapterStates[capability],
             adapter_probe_at: runtime.capabilityAdapterProbeAt[capability] ?? null,
