@@ -13,7 +13,12 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $Repo = 'C:\Users\Apocky\source\repos'
-$Edge = Join-Path $Repo 'CSSLv3-wt-apocrypha-desktop\cssl-edge'
+# WAS 'CSSLv3-wt-apocrypha-desktop\cssl-edge', a worktree deleted in the
+# consolidation onto worklane-prod. This script then lived in worklane-prod and
+# pointed at the tree it had been moved out of: step 1 ran, indexed 413 files,
+# and step 2 died on Push-Location with the task still reporting a generic 1.
+# The fifth stale `Documents`/old-worktree path found on 2026-09-17.
+$Edge = Join-Path $Repo 'CSSLv3-wt-worklane-prod\cssl-edge'
 $LogDir = 'C:\Apocrypha\profile'
 $Log = Join-Path $LogDir ('learn-{0}.log' -f (Get-Date -Format 'yyyyMMdd'))
 
