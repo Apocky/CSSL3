@@ -106,6 +106,24 @@ async function main(): Promise<void> {
     assert(wsBody.roots[0]?.label === 'sandbox', 'workspace did not report the configured root');
     assert(wsBody.tools.some((tool) => tool.name === 'read_file'), 'workspace did not advertise the file tools');
 
+    const duplicate = spawn(process.execPath, ['--import', 'tsx', 'scripts/apocrypha-work/server.ts'], {
+      env: {
+        ...process.env,
+        APOCRYPHA_WORK_ROOTS: `sandbox=${root}`,
+        APOCRYPHA_WORK_STATE_DIR: root,
+        APOCRYPHA_WORK_PORT: String(PORT + 1),
+        APOCRYPHA_WORK_ENGINE_URL: 'http://127.0.0.1:19199',
+        APOCRYPHA_WORK_ARBITER: 'off',
+      },
+      stdio: 'ignore', windowsHide: true,
+    });
+    const duplicateExit = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => { duplicate.kill(); resolve(null); }, 5_000);
+      duplicate.once('exit', (code) => { clearTimeout(timer); resolve(code); });
+      duplicate.once('error', () => { clearTimeout(timer); resolve(-1); });
+    });
+    assert(duplicateExit === 1, `a second host using the same task store was not refused: ${duplicateExit}`);
+
     // The token must never be echoed by any route.
     const leak = JSON.stringify(healthBody) + JSON.stringify(wsBody);
     assert(!leak.includes(token), 'a route echoed the service token in its response');

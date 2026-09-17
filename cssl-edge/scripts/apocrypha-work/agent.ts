@@ -3,7 +3,8 @@ import { EngineError, type EngineLike, type EngineMessage } from './engine';
 import { FILE_TOOLS, runFileTool, type ToolContext, type ToolResult } from './tools/files';
 import { SHELL_TOOLS, ShellDenied, runShellTool, screenCommand } from './tools/shell';
 import { McpHub } from './tools/mcp';
-import type { SamplingProfile } from '../../lib/apocrypha/sampling';
+import { DIAL_TOOLS, ownsDialTool, runDialTool, type DialState } from './tools/dials';
+import { DEFAULT_PRESET, resolveSampling, type SamplingProfile } from '../../lib/apocrypha/sampling';
 import { fitMessages, type FitMessage } from './fit';
 import { log } from './log';
 import type {
@@ -73,6 +74,15 @@ function summariseForConsent(call: ToolCallRequest): { summary: string; detail: 
       detail: `- ${String(call.args.old_text ?? '').slice(0, 1_500)}\n+ ${String(call.args.new_text ?? '').slice(0, 1_500)}`,
     };
   }
+  if (call.name === 'set_dials' || call.name === 'get_dials') {
+    // The generic branch below renders as the tool name twice in the window, because the header
+    // shows this summary beside the name. Say what is being ASKED for instead.
+    const asked = Object.entries(call.args)
+      .filter(([key]) => key !== 'reason')
+      .map(([key, value]) => `${key}=${String(value)}`)
+      .join(' ');
+    return { summary: asked || 'report the dials in force', detail: JSON.stringify(call.args, null, 2) };
+  }
   return { summary: `${call.name}`, detail: JSON.stringify(call.args).slice(0, 2_000) };
 }
 
@@ -90,7 +100,7 @@ export class WorkAgent {
     this.config = config;
     this.workspace = workspace;
     this.engine = engine;
-    this.tools = [...FILE_TOOLS, ...(config.shellAllowed ? SHELL_TOOLS : [])];
+    this.tools = [...FILE_TOOLS, ...DIAL_TOOLS, ...(config.shellAllowed ? SHELL_TOOLS : [])];
   }
 
   /** Called once at startup after the hub has finished its handshakes. */
@@ -104,7 +114,10 @@ export class WorkAgent {
     return this.tools.find((tool) => tool.name === name)?.risk ?? 'execute';
   }
 
-  private async execute(call: ToolCallRequest, ctx: ToolContext): Promise<ToolResult> {
+  private async execute(call: ToolCallRequest, ctx: ToolContext, dials: DialState): Promise<ToolResult> {
+    // Before the MCP check for the same reason the built-ins are listed first: a server that
+    // names a tool set_dials must not get to drive this engine's sampling.
+    if (ownsDialTool(call.name)) return runDialTool(call.name, call.args, dials);
     // Routed by ownership, not by name shape, so a built-in can never be captured by the prefix.
     if (this.mcp?.owns(call.name)) {
       const result = await this.mcp.call(call.name, call.args, this.config.toolTimeoutMs);
@@ -141,6 +154,13 @@ export class WorkAgent {
     sampling?: SamplingProfile,
   ): Promise<void> {
     const started = Date.now();
+    // MUTABLE for the life of the turn. set_dials is meant to be an instrument, not a setting:
+    // the completion right after the call already samples differently.
+    const dials: DialState = {
+      preset: DEFAULT_PRESET,
+      overrides: {},
+      profile: sampling ?? resolveSampling(DEFAULT_PRESET),
+    };
     const messages: EngineMessage[] = [
       { role: 'system', content: buildSystemPrompt(this.workspace, this.config) },
       ...history,
@@ -196,7 +216,7 @@ export class WorkAgent {
       const reply = await this.engine.complete(fitted.messages as EngineMessage[], offered, (delta) => {
         turn.output += delta;
         emit({ kind: 'token', data: { delta } });
-      }, signal, sampling);
+      }, signal, dials.profile);
 
       if (reply.usage.totalTokens !== undefined) {
         turn.usage = { ...reply.usage, elapsedS: (Date.now() - started) / 1_000 };
@@ -248,7 +268,7 @@ export class WorkAgent {
             summary: `${call.name} is withdrawn for this task`, content: '',
             error: `${call.name} was withdrawn after repeated refusal and cannot be called again in this task.`,
           } satisfies ToolCallOutcome
-          : await this.settle(session, turn, call, ctx, emit, requestConsent);
+          : await this.settle(session, turn, call, ctx, emit, requestConsent, dials);
         if (withdrawn.has(call.name)) emit({ kind: 'tool_result', data: { ...outcome } });
         turn.toolCalls.push(outcome);
 
@@ -299,6 +319,7 @@ export class WorkAgent {
     ctx: ToolContext,
     emit: (event: Omit<WorkEvent, 'seq' | 'at'>) => void,
     requestConsent: (request: ConsentRequest) => Promise<ConsentDecision>,
+    dials: DialState,
   ): Promise<ToolCallOutcome> {
     const risk = this.riskOf(call.name);
     const { summary, detail } = summariseForConsent(call);
@@ -354,12 +375,18 @@ export class WorkAgent {
     emit({ kind: 'phase', data: { phase: 'tool', tool: call.name } });
     const started = Date.now();
     try {
-      const result = await this.execute(call, ctx);
+      const result = await this.execute(call, ctx, dials);
       const outcome: ToolCallOutcome = {
         id: call.id, name: call.name, ok: true, elapsedMs: Date.now() - started,
         summary: result.summary, content: result.content, diff: result.diff,
       };
       emit({ kind: 'tool_result', data: { ...outcome } });
+      // The window owns the sliders, so a dial the model turned is invisible until the window is
+      // told. Emitted here rather than inside the tool so it fires only on a call that survived
+      // consent and did not throw.
+      if (call.name === 'set_dials') {
+        emit({ kind: 'dials', data: { preset: dials.preset, overrides: { ...dials.overrides }, sampling: { ...dials.profile } } });
+      }
       return outcome;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

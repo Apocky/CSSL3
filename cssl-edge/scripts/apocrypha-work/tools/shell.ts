@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import type { ToolDefinition } from '../types';
 import type { ToolContext, ToolResult } from './files';
 
@@ -23,7 +25,7 @@ export const SHELL_TOOLS: ToolDefinition[] = [
       properties: {
         command: { type: 'string', description: 'The command line to run.' },
         cwd: { type: 'string', description: 'Working directory inside the workspace. Defaults to the primary root.' },
-        shell: { type: 'string', enum: ['pwsh', 'bash'], description: 'Interpreter. Default pwsh on Windows.' },
+        shell: { type: 'string', enum: ['pwsh', 'powershell', 'bash'], description: 'Explicit interpreter. Omit to use the verified local PowerShell installation.' },
       },
       required: ['command'],
     },
@@ -34,6 +36,45 @@ export interface ShellPolicy {
   readonly allowed: boolean;
   readonly denyPatterns: readonly RegExp[];
   readonly timeoutMs: number;
+}
+
+const POWERSHELL_ARGS = ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command'];
+const shellChecks = new Map<string, Promise<string>>();
+
+function verifiedPowerShell(requested: string): Promise<string> {
+  const existing = shellChecks.get(requested);
+  if (existing) return existing;
+  const modern = process.platform === 'win32'
+    ? join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe')
+    : 'pwsh';
+  const legacy = process.platform === 'win32'
+    ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    : '';
+  const candidates = requested === 'powershell' ? [legacy]
+    : requested === 'pwsh' ? [modern] : [modern, legacy];
+  const check = (async () => {
+    const failures: string[] = [];
+    for (const executable of candidates.filter(Boolean)) {
+      const marker = `apocrypha-shell-${randomUUID()}`;
+      const ready = await new Promise<boolean>((resolve) => {
+        const child = spawn(executable, [...POWERSHELL_ARGS, `Write-Output '${marker}'; exit 17`], {
+          windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let output = '';
+        child.stdout.on('data', (chunk: Buffer) => { output = (output + chunk.toString('utf8')).slice(0, 1_024); });
+        child.stderr.resume();
+        const timer = setTimeout(() => { child.kill(); resolve(false); }, 5_000);
+        child.once('error', () => { clearTimeout(timer); resolve(false); });
+        child.once('close', (code) => { clearTimeout(timer); resolve(code === 17 && output.trim() === marker); });
+      });
+      if (ready) return executable;
+      failures.push(executable);
+    }
+    throw new Error(`No verified ${requested || 'PowerShell'} interpreter. Startup output/exit check failed: ${failures.join(', ')}.`);
+  })();
+  shellChecks.set(requested, check);
+  void check.catch(() => shellChecks.delete(requested));
+  return check;
 }
 
 /**
@@ -63,15 +104,18 @@ export async function runShellTool(
   policy: ShellPolicy,
 ): Promise<ToolResult> {
   if (name !== 'run_command') throw new Error(`unknown shell tool: ${name}`);
+  ctx.signal.throwIfAborted();
   const command = String(args.command ?? '').trim();
   if (!command) throw new Error('command must not be empty');
   screenCommand(command, policy);
 
   const { path: cwd } = await ctx.workspace.resolveExisting(String(args.cwd ?? '.'), 'read');
-  const useBash = String(args.shell ?? '') === 'bash';
-  const [file, argv] = useBash
+  const requested = String(args.shell ?? '');
+  if (!['', 'pwsh', 'powershell', 'bash'].includes(requested)) throw new Error(`unsupported shell: ${requested}`);
+  const [file, argv] = requested === 'bash'
     ? ['bash', ['-lc', command]]
-    : ['pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command]];
+    : [await verifiedPowerShell(requested), [...POWERSHELL_ARGS, command]];
+  ctx.signal.throwIfAborted();
 
   return await new Promise<ToolResult>((resolve, reject) => {
     const child = spawn(file, argv as string[], {
@@ -115,9 +159,13 @@ export async function runShellTool(
       ctx.signal.removeEventListener('abort', onAbort);
       const output = chunks.join('').trim();
       const status = signal ? `killed by ${signal}` : `exit ${code}`;
+      if (ctx.signal.aborted || signal || code !== 0) {
+        reject(new Error(`${ctx.signal.aborted ? 'command cancelled' : 'command failed'} (${status})\n${output || '(no output)'}`));
+        return;
+      }
       resolve({
         summary: `${command.slice(0, 80)}${command.length > 80 ? '…' : ''} — ${status}`,
-        content: `$ ${command}\n(${ctx.workspace.describe(cwd)}, ${status})\n\n${output || '(no output)'}`,
+        content: `$ ${command}\n(${ctx.workspace.describe(cwd)}, ${status}, shell: ${file})\n\n${output || '(no output)'}`,
       });
     });
   });

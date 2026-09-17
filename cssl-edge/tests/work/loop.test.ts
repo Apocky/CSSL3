@@ -214,6 +214,23 @@ async function main(): Promise<void> {
     assert(engine.seen.some((entry) => entry.startsWith('tool:ERROR')), 'the tool error never reached the model');
   }
 
+  {
+    const engine = new ScriptedEngine([
+      reply({ toolCalls: [{ id: 'failed-check', name: 'run_command', args: { command: "Write-Output 'expected-check-failure'; exit 7" } }] }),
+      reply({ toolCalls: [{ id: 'passed-check', name: 'run_command', args: { command: "Write-Output 'expected-check-pass'; exit 0" } }] }),
+      reply({ content: 'The first check failed; the second passed.' }),
+    ]);
+    const out = await drive(h, engine, 'run the checks and inspect their exit codes', () => 'allow');
+    const failed = out.turn.toolCalls.find((call) => call.id === 'failed-check');
+    const passed = out.turn.toolCalls.find((call) => call.id === 'passed-check');
+    assert(failed?.ok === false, 'a command exiting 7 was reported as a successful tool');
+    assert(/exit 7/.test(failed.error ?? ''), 'the failed command lost its exit code');
+    assert(/expected-check-failure/.test(failed.error ?? ''), 'the failed command lost its diagnostic output');
+    assert(engine.seen.some((entry) => entry.startsWith('tool:ERROR') && entry.includes('exit 7')),
+      'the failed check was not returned to the model as an error');
+    assert(passed?.ok === true && passed.content.includes('expected-check-pass'), 'a successful command was not preserved');
+  }
+
   // 8 — a catastrophic command is refused WITHOUT being offered for approval.
   {
     const engine = new ScriptedEngine([

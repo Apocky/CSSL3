@@ -1,5 +1,5 @@
-import { realpath, stat } from 'node:fs/promises';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { lstat, realpath, stat } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 export class WorkspaceError extends Error {
   readonly code: string;
@@ -71,10 +71,12 @@ export class Workspace {
 
   private match(candidate: string): WorkspaceRoot | null {
     const folded = fold(candidate);
+    let matched: WorkspaceRoot | null = null;
     for (const root of this.roots) {
-      if (contains(fold(root.path), folded)) return root;
+      if (contains(fold(root.path), folded)
+        && (!matched || root.path.length > matched.path.length || (root.path.length === matched.path.length && !root.writable))) matched = root;
     }
-    return null;
+    return matched;
   }
 
   /**
@@ -120,25 +122,26 @@ export class Workspace {
    * `repaired` names the path that actually worked, so the caller can say so. A silent correction
    * would hide a real operator typo behind a guess.
    */
-  async resolveForgiving(input: string, intent: 'read' | 'write'): Promise<{ path: string; root: WorkspaceRoot; repaired?: string }> {
+  async resolveForgiving(input: string, intent: 'read' | 'write', mustExist = intent === 'read'): Promise<{ path: string; root: WorkspaceRoot; repaired?: string }> {
     try {
       const direct = await this.resolveExisting(input, intent);
       // resolveExisting deliberately ACCEPTS a path that does not exist yet, so that write_file can
       // create one. For a READ that is the wrong answer: a mistyped path whose parent happens to
       // exist sails through here and fails later with a bare ENOENT, which is exactly the dead end
       // that sent a real turn into 38 list_dir calls. Reading requires the file to be there.
-      if (intent === 'read' && !(await stat(direct.path).then(() => true).catch(() => false))) {
+      if (mustExist && !(await stat(direct.path).then(() => true).catch(() => false))) {
         throw new WorkspaceError(`path does not exist: ${input}`, 'WORKSPACE_NOT_FOUND');
       }
       return direct;
     } catch (error) {
+      if (!(error instanceof WorkspaceError) || !['WORKSPACE_NO_PARENT', 'WORKSPACE_NOT_FOUND'].includes(error.code)) throw error;
       for (const candidate of Workspace.repairCandidates(input)) {
         // Through the SAME function: every rule that guards resolveExisting guards this too.
         const hit = await this.resolveExisting(candidate, intent).catch(() => null);
         if (!hit) continue;
         // A candidate only counts if it actually exists; otherwise "repair" would just relocate the
         // same ENOENT to a path the operator never typed.
-        if (intent === 'read' && !(await stat(hit.path).then(() => true).catch(() => false))) continue;
+        if (mustExist && !(await stat(hit.path).then(() => true).catch(() => false))) continue;
         return { ...hit, repaired: candidate };
       }
       throw error; // nothing worked: report the ORIGINAL failure, not the last candidate's
@@ -148,18 +151,50 @@ export class Workspace {
   async resolveExisting(input: string, intent: 'read' | 'write'): Promise<{ path: string; root: WorkspaceRoot }> {
     const primary = this.roots[0];
     if (!primary) throw new WorkspaceError('no workspace root is configured', 'WORKSPACE_EMPTY');
+    if (typeof input !== 'string' || input.trim() === '' || input.length > 4096 || input.includes('\0')) {
+      throw new WorkspaceError('path must be a non-empty string of at most 4096 characters without NUL', 'WORKSPACE_INVALID_PATH');
+    }
+    const parts = input.split(/[\\/]/);
+    if (parts.includes('..')) throw new WorkspaceError('parent traversal is not allowed in workspace paths', 'WORKSPACE_ESCAPE');
+    if (parts.some((part) => isSecretFile(part.trim()))) {
+      throw new WorkspaceError(`${input} holds credentials and is not accessible by this agent`, 'WORKSPACE_SECRET_FILE');
+    }
+    if (process.platform === 'win32' && (
+      /^[\\/]{2}[?.][\\/]/.test(input)
+      || /[:<>"|?*]/.test(input.replace(/^[a-z]:[\\/]/i, ''))
+      || parts.some((part) => (part !== '.' && part.endsWith('.')) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part.trim()))
+    )) throw new WorkspaceError('device paths, alternate data streams, and ambiguous Windows names are not allowed', 'WORKSPACE_INVALID_PATH');
     const absolute = isAbsolute(input) ? resolve(input) : resolve(primary.path, input);
+    const requestedRoot = this.match(absolute);
+    if (!requestedRoot) throw new WorkspaceError(`path is outside every workspace root: ${input}`, 'WORKSPACE_ESCAPE');
+    if (intent === 'write') {
+      if (!requestedRoot.writable) throw new WorkspaceError(`workspace root "${requestedRoot.label}" is read-only`, 'WORKSPACE_READ_ONLY');
+      const components = relative(requestedRoot.path, absolute).split(sep).filter(Boolean);
+      let current = requestedRoot.path;
+      for (let index = -1; index < components.length; index += 1) {
+        if (index >= 0) current = resolve(current, components[index]!);
+        const info = await lstat(current).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT' && index === components.length - 1 && index >= 0) return null;
+          throw new WorkspaceError(`path does not exist or its parent is unreachable: ${input}`, 'WORKSPACE_NO_PARENT');
+        });
+        if (info?.isSymbolicLink()) throw new WorkspaceError('writes through a symlink or junction are not allowed', 'WORKSPACE_LINK');
+        if (index < components.length - 1 && !info?.isDirectory()) {
+          throw new WorkspaceError(`parent is not a directory: ${input}`, 'WORKSPACE_NO_PARENT');
+        }
+      }
+    }
     // realpath follows symlinks; if the target escapes, the canonical form reveals it. A path
     // that does not exist yet (a file about to be created) has its parent canonicalised instead.
     let canonical: string;
     try {
       canonical = await realpath(absolute);
-    } catch {
-      const parent = resolve(absolute, '..');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new WorkspaceError(`path is not accessible: ${input}`, 'WORKSPACE_NOT_FOUND');
+      const parent = dirname(absolute);
       const parentReal = await realpath(parent).catch(() => {
         throw new WorkspaceError(`path does not exist and its parent is unreachable: ${input}`, 'WORKSPACE_NO_PARENT');
       });
-      canonical = resolve(parentReal, absolute.slice(parent.length + 1));
+      canonical = resolve(parentReal, basename(absolute));
     }
     const root = this.match(canonical);
     if (!root) throw new WorkspaceError(`path is outside every workspace root: ${input}`, 'WORKSPACE_ESCAPE');
@@ -168,7 +203,7 @@ export class Workspace {
     }
     // Compare the TRIMMED basename: " .env" is not ".env" to a string equality test, yet it is
     // plainly the same file being asked for. Found by a repair test, and it predates repair.
-    if (isSecretFile(canonical) || isSecretFile(canonical.split(sep).map((part) => part.trim()).join(sep))) {
+    if (canonical.split(sep).some((part) => isSecretFile(part.trim()))) {
       throw new WorkspaceError(
         `${input} holds credentials and is not readable by this agent. Ask the operator for the variable NAME you need; never the value.`,
         'WORKSPACE_SECRET_FILE',

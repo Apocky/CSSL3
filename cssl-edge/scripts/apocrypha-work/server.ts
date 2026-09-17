@@ -12,6 +12,7 @@ import { McpHub } from './tools/mcp';
 import { resolveSampling, SAMPLING_PRESETS } from '../../lib/apocrypha/sampling';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 // The Work tab is served by the local Next.js instance; nothing else may drive this service.
@@ -50,6 +51,19 @@ function send(response: ServerResponse, status: number, body: unknown): void {
 
 async function main(): Promise<void> {
   const config = loadWorkConfig();
+  const lease = new DatabaseSync(join(config.stateDir, 'host-lease.sqlite'));
+  try { lease.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE;'); }
+  catch {
+    lease.close();
+    throw new Error('The Work state directory is already owned by another host, or its lease is unavailable.');
+  }
+  let leaseReleased = false;
+  const releaseLease = (): void => {
+    if (leaseReleased) return;
+    leaseReleased = true;
+    lease.close();
+  };
+  process.once('exit', releaseLease);
   const workspace = await Workspace.open(config.roots);
   const store = await SessionStore.open(config.stateDir);
   const engine = new EngineClient(config.engine);
@@ -213,7 +227,10 @@ async function main(): Promise<void> {
       if (request.method === 'GET' && segments.length === 2) { send(response, 200, record); return; }
 
       if (request.method === 'GET' && third === 'stream') {
-        runner.attachStream(id, response);
+        const cursor = url.searchParams.get('after') ?? request.headers['last-event-id'] ?? '0';
+        const after = typeof cursor === 'string' && /^\d+$/.test(cursor) ? Number(cursor) : NaN;
+        if (!Number.isSafeInteger(after) || after < 0) { send(response, 400, { error: 'invalid_event_cursor' }); return; }
+        await runner.attachStream(id, response, after);
         return;
       }
 
@@ -283,12 +300,21 @@ async function main(): Promise<void> {
     });
   });
 
+  let shuttingDown = false;
   const shutdown = (): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     log('info', 'work.server.stopping', {});
-    runner.stopAll();
     arbiter.stop();
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 3_000).unref();
+    server.close();
+    void runner.stopAll().then(() => {
+      store.close();
+      releaseLease();
+      process.exitCode = 0;
+    }).catch((error) => {
+      log('error', 'work.server.shutdown_failed', { error: error instanceof Error ? error.message : String(error) });
+      process.exitCode = 1;
+    });
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

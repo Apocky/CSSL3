@@ -41,6 +41,7 @@ export type TurnPhase =
 export interface WorkEvent {
   readonly seq: number;
   readonly at: string;
+  /** Adding a kind here also needs EVENT_KINDS in sessions.ts, or the store rejects the event. */
   readonly kind:
     | 'phase'
     | 'token'
@@ -50,6 +51,7 @@ export interface WorkEvent {
     | 'consent_resolved'
     | 'usage'
     | 'error'
+    | 'dials'
     | 'session';
   readonly data: Record<string, unknown>;
 }

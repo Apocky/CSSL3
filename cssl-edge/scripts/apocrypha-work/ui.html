@@ -27,9 +27,15 @@
   #newBtn:hover { border-color: var(--accent); }
   #sessions { flex: 1 1 auto; overflow-y: auto; padding: 6px 8px; min-height: 0; }
   .sess { padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 13px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+    overflow: hidden; color: var(--dim); }
   .sess:hover { background: #1b212c; }
   .sess[aria-current="true"] { background: #1d2635; color: var(--ink); }
+  .sess .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess .meta { font-size: 11px; color: var(--dim); opacity: .8; margin-top: 2px; }
+  /* Dimmed rather than hidden: they are real rows the store still holds, and hiding them would
+     make the sidebar disagree with the database about how many sessions exist. */
+  .sess.empty .nm { font-style: italic; opacity: .55; }
+  .sessnone { padding: 10px 8px; font-size: 12px; color: var(--dim); }
   #roots { border-top: 1px solid var(--edge); padding: 10px 14px; font-size: 11.5px; color: var(--dim); }
   #roots b { color: var(--ink); font-weight: 500; }
   #roots div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -159,6 +165,9 @@
   var $ = function (id) { return document.getElementById(id); };
   var inner = $('inner'), logEl = $('log'), box = $('box');
   var sessionId = null, lastSeq = 0, stream = null, running = false;
+  // Whether this session already carries a name of its own. Set when a used session is opened
+  // and after the first prompt of a fresh one, so the rename fires exactly once per session.
+  var titled = false;
   // Resolves once a session exists. Every send waits on it; nothing else has to care.
   var ready = null;
 
@@ -253,6 +262,16 @@
       return;
     }
     if (kind === 'session') return;
+
+    // The model can turn its own dials now. The sliders are the operator's view of those dials, so
+    // they have to follow -- otherwise the window says Precise while the engine is sampling Open.
+    if (kind === 'dials') {
+      if (d.preset) chosen = d.preset;
+      overrides = (d.overrides && typeof d.overrides === 'object') ? d.overrides : {};
+      saveDials();
+      renderDials();
+      return;
+    }
 
     var t = ensureTurn();
 
@@ -443,7 +462,14 @@
     if (stream) stream.close();
     // EventSource cannot set headers, so the token rides as a query parameter -- the same path the
     // service already supports for the CLI.
-    stream = new EventSource('/sessions/' + encodeURIComponent(sessionId) + '/stream?token=' + encodeURIComponent(TOKEN));
+    //
+    // `after` is what stops an opened session being drawn twice. The stream replays its recent
+    // buffer on connect, so attaching at 0 after having just rendered the stored turns produced two
+    // copies of the last answer, one without its tool calls and one with. lastSeq is where the
+    // store's event log has actually got to, so the replay starts from there.
+    stream = new EventSource('/sessions/' + encodeURIComponent(sessionId) + '/stream'
+      + '?after=' + encodeURIComponent(String(lastSeq || 0))
+      + '&token=' + encodeURIComponent(TOKEN));
     stream.onmessage = function (m) {
       var ev;
       try { ev = JSON.parse(m.data); } catch (_) { return; }
@@ -462,10 +488,23 @@
     var j = await r.json();
     sessionId = (j.session && j.session.id) || j.id;
     lastSeq = 0;
+    titled = false;
     inner.innerHTML = '';
     cur = null;
     attach();
     await listSessions();
+  }
+
+  // Opening the window MINTED a session every time, used or not: four inside three minutes on
+  // 2026-09-17, all titled "work", all empty, and clicking one correctly rendered nothing -- which
+  // is indistinguishable from a broken click. Reopening should carry on where you were instead.
+  // "+ New session" is the button for starting over, and it is one click away.
+  async function resume() {
+    var r = await api('/sessions');
+    var j = await r.json().catch(function () { return { sessions: [] }; });
+    var recent = (j.sessions || []).filter(function (s) { return Number(s.turnCount || 0) > 0; })[0];
+    if (!recent) { await newSession(); return; }
+    await openSession(recent.id);
   }
 
   async function openSession(id) {
@@ -473,24 +512,72 @@
     var r = await api('/sessions/' + encodeURIComponent(id));
     var j = await r.json().catch(function () { return {}; });
     var turns = (j.session && j.session.turns) || j.turns || [];
+    lastSeq = Number(j.lastSeq || 0);
+    titled = turns.length > 0;
     turns.forEach(function (t) {
       if (t.prompt) addMsg('user', 'you').textContent = t.prompt;
       if (t.output) addMsg('apx', 'apocrypha').innerHTML = md(t.output);
+      // A failed turn reloaded as a question followed by silence. The error is ON the turn and
+      // nothing here ever read it, so `terminated` was visible while it streamed and gone forever
+      // afterwards -- which looks exactly like the blank pane an empty session gives you.
+      if (!t.output && t.error) {
+        var e = document.createElement('div');
+        e.className = 'err';
+        e.textContent = t.error;
+        addMsg('apx', 'apocrypha').appendChild(e);
+      }
     });
+    if (turns.length === 0) {
+      var note = document.createElement('div');
+      note.className = 'phase';
+      note.textContent = 'Nothing was ever asked in this chat. Type below to start it.';
+      inner.appendChild(note);
+    }
     attach();
     await listSessions();
     scroll(true);
+  }
+
+  function ago(iso) {
+    var t = Date.parse(iso);
+    if (!isFinite(t)) return '';
+    var s = Math.max(0, (Date.now() - t) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.round(s / 60) + 'm ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago';
+    return Math.round(s / 86400) + 'd ago';
+  }
+
+  // Every row used to read "work", because that is the title newSession posts and nothing ever
+  // replaced it. The first prompt is the only name a chat ever earns, so prefer it; fall back to a
+  // title only when someone set a real one.
+  function sessionName(s) {
+    var preview = String(s.preview || '').replace(/\s+/g, ' ').trim();
+    if (preview) return preview;
+    var title = String(s.title || '').trim();
+    if (title && title !== 'work' && title !== 'apx work') return title;
+    return 'Empty chat';
   }
 
   async function listSessions() {
     var r = await api('/sessions');
     var j = await r.json().catch(function () { return { sessions: [] }; });
     var host = $('sessions');
+    var all = j.sessions || [];
     host.innerHTML = '';
-    (j.sessions || []).forEach(function (s) {
+    if (!all.length) {
+      host.innerHTML = '<div class="sessnone">No chats yet.</div>';
+      return;
+    }
+    all.forEach(function (s) {
+      var n = Number(s.turnCount || 0);
+      var name = sessionName(s);
       var el = document.createElement('div');
-      el.className = 'sess';
-      el.textContent = s.title || s.id.slice(0, 8);
+      el.className = 'sess' + (n === 0 ? ' empty' : '');
+      el.title = name;
+      el.innerHTML = '<div class="nm">' + esc(name) + '</div>'
+        + '<div class="meta">' + (n ? n + (n === 1 ? ' turn' : ' turns') : 'nothing asked')
+        + ' \u00b7 ' + esc(ago(s.lastActiveAt)) + '</div>';
       el.setAttribute('aria-current', String(s.id === sessionId));
       el.onclick = function () { ready = openSession(s.id); };
       host.appendChild(el);
@@ -507,6 +594,13 @@
     $('send').disabled = true;
     try { await ready; } catch (_) { /* surfaced by the POST below */ }
     addMsg('user', 'you').textContent = prompt;
+    if (!titled) {
+      titled = true;
+      // Fire-and-forget: a chat that cannot be renamed is still a chat that works.
+      api('/sessions/' + encodeURIComponent(sessionId) + '/title', {
+        method: 'POST', body: JSON.stringify({ title: prompt.replace(/\s+/g, ' ').trim().slice(0, 80) })
+      }).then(function () { return listSessions(); }).catch(function () {});
+    }
     $('stop').hidden = false;
     var r = await api('/sessions/' + encodeURIComponent(sessionId) + '/turns', {
       method: 'POST',
@@ -590,7 +684,7 @@
 
   health();
   setInterval(health, 15000);
-  ready = newSession();
+  ready = resume();
 })();
 </script>
 </body>
