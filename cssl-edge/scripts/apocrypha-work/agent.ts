@@ -265,12 +265,23 @@ export class WorkAgent {
           }
         }
 
+        // Sized to the WINDOW, not to a round number. 24,000 characters is ~8,000 tokens, which is
+        // most of the history budget on a 16,384 slot: one read_file could swallow the turn before
+        // fit.ts ever saw it. 15% leaves room for several results plus the reasoning between them,
+        // and derives from config so it tracks -c instead of going stale.
+        const maxResultChars = Math.floor(this.config.engine.contextWindow * 0.15 * 3);
+        const raw = outcome.content;
+        const capped = raw.length > maxResultChars
+          // Say what was cut AND how to get it: a truncated result the model cannot act on just
+          // buys another wasted tool call.
+          ? `${raw.slice(0, maxResultChars)}
+
+[...${raw.length - maxResultChars} more characters. This result was capped to fit the context window; call the tool again with a narrower line range or path to see the rest.]`
+          : raw;
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
-          content: outcome.ok
-            ? outcome.content.slice(0, 24_000)
-            : `ERROR: ${outcome.error ?? 'tool failed'}${note}`,
+          content: outcome.ok ? capped : `ERROR: ${outcome.error ?? 'tool failed'}${note}`,
         });
       }
     }

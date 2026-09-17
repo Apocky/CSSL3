@@ -73,6 +73,44 @@ export interface SamplingProfile {
   // --- determinism -----------------------------------------------------------------------------
   /** Force the greedy path. The only setting that makes a run genuinely repeatable. */
   readonly greedy?: boolean;
+
+  // --- chain and shape --------------------------------------------------------------------------
+  /**
+   * The sampler chain, in order. Order is load-bearing, not cosmetic: T98 shows top_k and top_p mask
+   * to -inf BEFORE the final softmax, so a masked token has probability exactly zero and temperature
+   * never gets to act on it. Put temperature first and the narrowing you asked for is undone.
+   * Left ABSENT by default -- the engine's own chain is sane and overriding it blind is how you
+   * silently disable min_p.
+   */
+  readonly samplers?: readonly string[];
+  /**
+   * Mirostat targets a perplexity instead of filtering a distribution. It REPLACES top_p/top_k
+   * rather than composing with them, so it is off unless explicitly asked for. 0 = off, 1 = v1, 2 = v2.
+   * E:obs it does change sampling: 4 mirostat samples shared ZERO outputs with 4 baseline samples
+   * on the same high-variance prompt.
+   */
+  readonly mirostat?: number;
+  readonly mirostatTau?: number;
+  readonly mirostatEta?: number;
+  /** Stop sequences. Absent by default: a stray stop string silently truncates working code. */
+  readonly stop?: readonly string[];
+  /**
+   * GBNF grammar. PROVEN to bite here, twice: a one-word root forced exactly that word, and a JSON
+   * grammar produced parseable JSON 3/3 where response_format managed 0/3. This is the only
+   * instrument here that GUARANTEES output shape.
+   * N! never put this in a preset. It constrains every token, which fights tool-call emission; it is
+   * a per-request instrument for "give me exactly this shape", not a temperament.
+   */
+  readonly grammar?: string;
+  /**
+   * `json_object` / `json_schema`.
+   * !! MEASURED ADVISORY ONLY on this build: with response_format json_object the model returned
+   * ```json-fenced output that does not parse, 0/3. The same request under `grammar` produced valid
+   * JSON 3/3. If you need a GUARANTEE of shape, reach for grammar; response_format is a hint.
+   */
+  readonly responseFormat?: Record<string, unknown>;
+  /** Token-level thumb on the scale, as [tokenId, bias] pairs. Niche, and never in a preset. */
+  readonly logitBias?: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface PresetDefinition {
@@ -167,6 +205,9 @@ const BOUNDS = {
   topNSigma: { min: 0, max: 10 },
   xtcProbability: { min: 0, max: 1 },
   xtcThreshold: { min: 0, max: 1 },
+  mirostat: { min: 0, max: 2 },
+  mirostatTau: { min: 0, max: 10 },
+  mirostatEta: { min: 0, max: 1 },
 } as const;
 
 type BoundedKey = keyof typeof BOUNDS;
@@ -193,9 +234,10 @@ export function clampSampling(input: unknown, base: SamplingProfile): SamplingPr
 
   const optional: Record<string, unknown> = {};
   for (const key of ['repeatLastN', 'presencePenalty', 'frequencyPenalty', 'dryMultiplier', 'dryBase',
-    'dryAllowedLength', 'typicalP', 'topNSigma', 'xtcProbability', 'xtcThreshold'] as BoundedKey[]) {
+    'dryAllowedLength', 'typicalP', 'topNSigma', 'xtcProbability', 'xtcThreshold',
+    'mirostat', 'mirostatTau', 'mirostatEta'] as BoundedKey[]) {
     const value = clampOptional(raw, base, key);
-    if (value !== undefined) optional[key] = key === 'repeatLastN' || key === 'dryAllowedLength' ? Math.round(value) : value;
+    if (value !== undefined) optional[key] = ['repeatLastN', 'dryAllowedLength', 'mirostat'].includes(key) ? Math.round(value) : value;
   }
 
   return {
@@ -248,6 +290,14 @@ export function toEngineParams(profile: SamplingProfile): Record<string, unknown
     ['topNSigma', 'top_n_sigma'],
     ['xtcProbability', 'xtc_probability'],
     ['xtcThreshold', 'xtc_threshold'],
+    ['samplers', 'samplers'],
+    ['mirostat', 'mirostat'],
+    ['mirostatTau', 'mirostat_tau'],
+    ['mirostatEta', 'mirostat_eta'],
+    ['stop', 'stop'],
+    ['grammar', 'grammar'],
+    ['logitBias', 'logit_bias'],
+    ['responseFormat', 'response_format'],
   ];
   for (const [key, wire] of map) {
     const value = profile[key];
@@ -258,6 +308,13 @@ export function toEngineParams(profile: SamplingProfile): Record<string, unknown
   if (profile.greedy) {
     out.top_k = 1;
     out.temperature = 0;
+  }
+  // Mirostat REPLACES the nucleus filters rather than composing with them. Sending all three lets
+  // the engine apply a chain the caller never intended, so the ones it supersedes are dropped here
+  // instead of being silently ignored somewhere downstream.
+  if (typeof profile.mirostat === 'number' && profile.mirostat > 0) {
+    delete out.top_p;
+    delete out.top_k;
   }
   return out;
 }

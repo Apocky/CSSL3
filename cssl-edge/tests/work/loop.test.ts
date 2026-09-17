@@ -31,6 +31,8 @@ function reply(partial: Partial<EngineReply>): EngineReply {
 
 class ScriptedEngine implements EngineLike {
   readonly seen: string[] = [];
+  /** Full text of the last message on each call. `seen` truncates, which is useless for a size gate. */
+  readonly seenFull: string[] = [];
   private readonly script: EngineReply[];
   private readonly repeatLast: boolean;
 
@@ -47,6 +49,7 @@ class ScriptedEngine implements EngineLike {
   ): Promise<EngineReply> {
     const last = messages[messages.length - 1];
     if (last) this.seen.push(`${last.role}:${last.content.slice(0, 600)}`);
+    if (last) this.seenFull.push(last.content);
     const next = this.script.shift() ?? (this.repeatLast ? this.script[0] : undefined);
     const result = next ?? reply({ content: 'nothing left in the script' });
     if (result.content) onToken(result.content);
@@ -303,8 +306,37 @@ async function main(): Promise<void> {
     assert(engine.seen.some((entry) => entry.includes('WITHDRAWN')), 'the model was never told the tool was withdrawn');
   }
 
+  // -- 15. an oversized tool result is capped to the WINDOW before it reaches the engine ----------
+  // A read_file on a large file used to enter history at 24,000 characters (~8,000 tokens), which
+  // is most of the history budget on a 16,384 slot: one read could swallow the turn before fit.ts
+  // ever saw it. The cap derives from contextWindow, so it tracks -c instead of going stale.
+  {
+    const h = await harness(join(base, 'cap'), { APOCRYPHA_WORK_CONTEXT: '16384' });
+    const big = join(h.root, 'big.txt');
+    await writeFile(big, 'L'.repeat(60_000));
+    const engine = new ScriptedEngine([
+      reply({ toolCalls: [{ id: 'c1', name: 'read_file', args: { path: big } }] }),
+      reply({ content: 'done' }),
+    ]);
+    await drive(h, engine, 'read the big file', () => 'allow');
+
+    // read_file prefixes line numbers, so match on the payload rather than the first character.
+    const toolMessage = engine.seenFull.find((text) => text.includes('LLLLLLLLLL'));
+    assert(toolMessage !== undefined, 'the engine never received the tool result');
+    const seen = toolMessage as string;
+    const cap = Math.floor(16384 * 0.15 * 3);
+    assert(
+      seen.length < cap + 400,
+      `the tool result reached the engine at ${seen.length} chars; the cap is ${cap}`,
+    );
+    // Capped is only useful if the model can act on it: it must be told what was cut and how to
+    // get the rest, or it just burns another call guessing.
+    assert(/capped to fit the context window/.test(seen), 'the cap was silent; the model cannot recover from that');
+    assert(/narrower line range/.test(seen), 'the model was not told how to retrieve the rest');
+  }
+
   await rm(base, { recursive: true, force: true });
-  console.log('loop: 14 scenarios across engine-behaviour x consent x tool-outcome x lifecycle');
+  console.log('loop: 15 scenarios across engine-behaviour x consent x tool-outcome x lifecycle');
 }
 
 main().then(() => console.log('work/loop OK')).catch((error) => {

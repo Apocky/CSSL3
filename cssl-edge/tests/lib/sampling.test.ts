@@ -158,4 +158,43 @@ assert.ok((hostileDials.drySequenceBreakers ?? []).length <= 16, 'the breaker li
 assert.equal(clampSampling({ temperature: 'hot' }, preciseProfile).temperature, preciseProfile.temperature,
   'a non-number falls back to the preset rather than breaking the turn');
 
+// -- the instruments, not the temperaments -------------------------------------------------------
+// samplers-order, mirostat, stop, grammar, logit_bias and response_format complete the surface, but
+// NONE of them belong in a preset. A grammar constrains every token and fights tool-call emission;
+// a stray stop string silently truncates working code; mirostat REPLACES the nucleus filters. They
+// are per-request instruments, and a preset that carried one would apply it to every turn forever.
+for (const preset of SAMPLING_PRESETS) {
+  for (const instrument of ['grammar', 'logitBias', 'stop', 'mirostat', 'samplers', 'responseFormat']) {
+    assert.equal(
+      (preset.profile as unknown as Record<string, unknown>)[instrument], undefined,
+      `preset ${preset.id} must not carry ${instrument}: it is a per-request instrument, not a temperament`,
+    );
+  }
+}
+
+// Mirostat supersedes top_p/top_k rather than composing with them, so sending all three would apply
+// a chain the caller never asked for.
+const miro = toEngineParams({ ...presetById('balanced').profile, mirostat: 2, mirostatTau: 5 });
+assert.equal(miro.mirostat, 2, 'mirostat must reach the engine when asked for');
+assert.ok(!('top_p' in miro), 'mirostat must drop top_p, which it replaces');
+assert.ok(!('top_k' in miro), 'mirostat must drop top_k, which it replaces');
+// ...and with mirostat absent, those filters must still be there.
+assert.ok('top_p' in toEngineParams(presetById('balanced').profile), 'top_p must survive when mirostat is not used');
+
+// The chain and the constrained-decoding instruments render under the names llama.cpp uses.
+const instrumented = toEngineParams({
+  ...presetById('precise').profile,
+  samplers: ['penalties', 'dry', 'top_k', 'min_p', 'temperature'],
+  stop: ['<<END>>'], grammar: 'root ::= "ok"',
+});
+assert.deepEqual(instrumented.samplers, ['penalties', 'dry', 'top_k', 'min_p', 'temperature'], 'the sampler chain must reach the engine in order');
+assert.deepEqual(instrumented.stop, ['<<END>>'], 'stop sequences must reach the engine');
+assert.equal(instrumented.grammar, 'root ::= "ok"', 'a grammar must reach the engine verbatim');
+
+// Clamps cover the new numerics too.
+const wildMiro = clampSampling({ mirostat: 99, mirostatTau: -4 }, presetById('precise').profile);
+assert.ok((wildMiro.mirostat ?? 0) <= 2, 'mirostat is 0, 1 or 2');
+assert.ok((wildMiro.mirostatTau ?? 0) >= 0, 'mirostatTau must not go negative');
+
+console.log('sampling.test : OK - instruments stay out of presets, mirostat supersedes the nucleus filters');
 console.log('sampling.test : OK - full dial surface, public-chat values locked, wire format omits absent dials');
