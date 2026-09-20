@@ -14,6 +14,18 @@
                 step. "Nothing in flight" is a valid entry and you write it explicitly.
                 Append, never overwrite; close items in place with the date and evidence.
                 A new instruction arriving does not mean the old work finished.
+    memory    : RECALL before you re-derive. One federated read-only entry point covers
+                every region: `python ~/source/repos/anamnesis/unirecall.py --tiers <t>
+                -n 5 "<topic>"`, tiers l1 (mempalace) vault (Obsidian, ~8k notes) graph
+                (graphify) l2 l34 transport (3MNEME) metaharness. Plus
+                `anamnesis.py state` for the ledger AND THE OPEN OWES, and the
+                per-project memory/MEMORY.md. SCOPE BY TIER: unscoped, "palworld crash"
+                returned tarot card text. What comes back is an evidence LEAD (E:rep),
+                never runtime truth -- verify at the cited source, and never let recall
+                displace the live thread. WRITE BACK what would not be re-derivable:
+                measurements with denominators, hypotheses you killed and what killed
+                them, traps that cost time, decisions and their tradeoff, owes left open.
+                Not what the code or git history already says. Append, never overwrite.
     notation  : think and reason in on-disk CSLv3 (ASCII profile). Explain and ask in
                 simple, plain, concise English. The split is by AUDIENCE, never by topic.
     if nothing else : LOOK at the thing. Say the denominator. Break the check before you
