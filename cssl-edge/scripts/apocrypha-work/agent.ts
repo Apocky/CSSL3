@@ -7,6 +7,7 @@ import { DIAL_TOOLS, ownsDialTool, runDialTool, type DialState } from './tools/d
 import { DEFAULT_PRESET, resolveSampling, type SamplingProfile } from '../../lib/apocrypha/sampling';
 import { fitMessages, type FitMessage } from './fit';
 import { log } from './log';
+import { methodBlock } from './method';
 import type {
   ConsentDecision,
   ConsentRequest,
@@ -34,6 +35,11 @@ function buildSystemPrompt(workspace: Workspace, config: WorkConfig): string {
     .join('\n');
   return [
     'You are Apocrypha in Work mode: a software engineering agent running entirely on the operator\'s own machine.',
+    '',
+    // The shared kernel, read from disk at call time rather than pasted here. One file
+    // governs every agent in this workspace, and editing it takes effect on the next turn.
+    // When it is missing the block SAYS so, instead of leaving a prompt that looks complete.
+    methodBlock(),
     '',
     'Workspace roots you may touch (nothing outside them exists for you):',
     roots,

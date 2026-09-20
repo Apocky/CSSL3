@@ -1,3 +1,18 @@
+<!-- METHOD-KERNEL-LOADLINE -->
+## I> METHOD  !!  <- read this FIRST, before any substantive work
+
+    canonical : C:\Users\Apocky\source\repos\METHOD.md
+    shape     : ten primitives + five loops. COMPOSE them. Your situation is not in a list,
+                and it is not supposed to be -- that is where the coverage comes from.
+    field     : name the discipline the task belongs to and work to THAT field's bar,
+                switching as the task moves. Meta-human means holding more of the field at
+                once, not inventing a private standard.
+    if nothing else : LOOK at the thing. Say the denominator. Break the check before you
+                trust it. Record what you did NOT measure.
+
+    PRIME_DIRECTIVE.md outranks it. VERIFICATION_KERNEL.md supplies the gates it composes with.
+<!-- /METHOD-KERNEL-LOADLINE -->
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
