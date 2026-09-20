@@ -22,8 +22,14 @@ import { readFileSync, statSync } from 'node:fs';
 export const DEFAULT_METHOD_PATH = 'C:\\Users\\Apocky\\source\\repos\\METHOD.md';
 
 /** A kernel far larger than this is not a kernel any more; it is documentation, and it will not be
- *  held in working memory on turn 200. Truncating loudly beats silently spending the context. */
-export const MAX_METHOD_BYTES = 24_000;
+ *  held in working memory on turn 200. Truncating loudly beats silently spending the context.
+ *
+ *  Raised 24k -> 32k on 2026-09-20 when the kernel reached 22.7 KB and was one section away from
+ *  being silently clipped mid-sentence. Raising the cap is the lesser evil ONLY because truncation
+ *  here is invisible to the model; it is not permission for the kernel to keep growing. The panel
+ *  that judged four candidate kernels marked every one of them down on survivability, and length
+ *  was the reason. If this constant has to move again, cut the document instead. */
+export const MAX_METHOD_BYTES = 32_000;
 
 export interface Method {
   /** The kernel text, or '' when it could not be read. */
