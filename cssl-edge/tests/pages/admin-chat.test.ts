@@ -26,8 +26,14 @@ assert(adminPage.includes('adminAuthorized'), 'admin chat remains owner-gated');
 assert(ownerPage.includes('<ApocryphaChat'), 'the Apocrypha page uses the same one chat component');
 assert(!ownerPage.includes('<ChatThread') && !ownerPage.includes('<AccountChat') && !ownerPage.includes('<GuestChat'),
   'signing in must not swap the reader into a different chat surface');
-assert(ownerPage.includes('ownerLane(authFetch)') && ownerPage.includes('memberLane(authFetch)') && ownerPage.includes('guestLane()'),
-  'every entitlement is still reachable, as a lane rather than a component');
+// 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
+// The public room no longer resolves an account or picks a lane from it. It is the guest
+// lane, always, with no session hook, no deadline and no getServerSideProps. These
+// assertions were rewritten to the new contract rather than deleted: the old ones now
+// describe behaviour that was removed on purpose, and a test that still asserts a retired
+// contract is the loudest kind of stale.
+assert(ownerPage.includes('guestLane()') && !ownerPage.includes('ownerLane(authFetch)'),
+  'the public room is the guest lane only; the owner transport lives on the admin route');
 assert(roomStyle.includes('height: 100dvh'), 'the room tracks the dynamic viewport');
 
 for (const token of [

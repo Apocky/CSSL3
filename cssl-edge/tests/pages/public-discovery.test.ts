@@ -69,9 +69,13 @@ assert.equal(pwa['start_url'], '/', 'public PWA must not enter the owner-only ad
 assert.equal('apocrypha' in manifest, false, 'retired service must not have a discovery object');
 assert.equal(exists('public/apocrypha-manifest.json'), false, 'retired manifest alias must not ship');
 
-assert.match(apocryphaPage, /ownerLane/, 'exact /apocrypha retains the owner conversation');
-assert.match(apocryphaPage, /requireBrainOwner/, 'owner conversation selection retains authorization');
-assert.match(apocryphaPage, /memberLane/, 'other accounts retain their existing account conversation');
+// 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
+// The public room is the guest lane for every reader. The owner rail was not deleted --
+// it lives on /admin/apocrypha and tests/pages/admin-chat.test.ts still holds it there.
+assert.match(apocryphaPage, /guestLane\(\)/, 'exact /apocrypha is open to everyone, no account');
+assert.doesNotMatch(apocryphaPage, /ownerLane|memberLane/, 'no entitlement branch on the public room');
+assert.doesNotMatch(apocryphaPage, /requireBrainOwner/, 'the public room does no owner authorization; that rail is /admin/apocrypha');
+assert.doesNotMatch(apocryphaPage, /memberLane/, 'accounts get the same open room as everyone else');
 assert.doesNotMatch(apocryphaPage, /PublicChat|ClearingRoom/, 'exact /apocrypha must not revive the retired public chat');
 for (const retiredPage of ['pages/apoc.tsx', 'pages/apx.tsx']) {
   assert.equal(exists(retiredPage), false, `${retiredPage} must not be built as a page`);

@@ -765,8 +765,10 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           </svg>
           <span>Settings</span>
         </button> : <>
+          {/* The Sign in link that sat here is gone. The room needs no account, so offering one
+              in the header made the reader wonder whether they were missing something. Sign-in
+              still exists elsewhere on the site; it is not part of talking. */}
           {inApp ? null : <Link href="/download/apocrypha">Get the app</Link>}
-          <Link href="/login?next=%2Fapocrypha" className={styles.signIn}>Sign in</Link>
         </>}
       </nav>
     </header>
@@ -1046,9 +1048,9 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
           <p>{notice}</p>
           <div className={styles.noticeActions}>
             {unresolved ? <button type="button" onClick={retryUnresolved}>Send the same message again</button> : null}
-            {/* An expired session cannot be recovered from inside the room, so the notice carries
-                the only thing that resolves it rather than leaving the reader to find it. */}
-            {notice.startsWith('Your sign-in') ? <Link href="/login?next=%2Fapocrypha">Sign in again</Link> : null}
+            {/* The session-recovery link is gone with the rest of the gate. The room runs on the
+                guest lane and holds no session, so the expired-credential notice cannot arise
+                here, and a link offering to fix a state that cannot occur is worse than none. */}
           </div>
         </div> : null}
 
@@ -1150,10 +1152,8 @@ export function ApocryphaChat({ lane, signedIn, laneNotice, height, onPendingCha
             // the guest chat endpoint, because something has to answer it. What stays local is
             // the RECORD you can come back to. Say that, and say the other half out loud.
             : <>{prefs.enterSends ? 'Enter sends, Shift+Enter starts a new line.' : 'Ctrl+Enter sends, Enter starts a new line.'} Your messages are sent to Apocrypha to be answered; the thread is kept
-                {inApp ? ' on this device' : ' in this browser'} and nowhere else —{' '}
-                <Link href="/login?next=%2Fapocrypha">sign in</Link> or{' '}
-                <Link href="/register?next=%2Fapocrypha">create an account</Link> to keep it across your devices
-                {inApp ? '.' : <>, or <Link href="/download/apocrypha">get the app</Link>.</>}</>}
+                {inApp ? ' on this device' : ' in this browser'} and nowhere else
+                {inApp ? '.' : <>. <Link href="/download/apocrypha">Get the app</Link> to keep it across your devices.</>}</>}
         </p>
       </section>
     </div>

@@ -20,8 +20,12 @@ for (const token of ['GetServerSideProps', '`/apocrypha${suffix}`', 'permanent: 
 }
 assert(!alias.includes('ApocryphaChat'), 'chat alias must not expose a second chat surface');
 assert(canonicalPage.includes('<ApocryphaChat'), 'canonical page must render the one chat component');
-assert(canonicalPage.includes('ownerLane(authFetch)'), 'the owner still reaches the durable admin rail');
-assert(canonicalPage.includes('memberLane(authFetch)'), 'members still reach their account-scoped rail');
+// 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
+// The public room is the guest lane for every reader. The owner rail was not deleted --
+// it lives on /admin/apocrypha and tests/pages/admin-chat.test.ts still holds it there.
+assert(canonicalPage.includes('guestLane()') && !canonicalPage.includes('ownerLane'),
+  'the canonical room is the guest lane; the owner rail is on /admin/apocrypha');
+assert(!canonicalPage.includes('memberLane'), 'no account-scoped branch; one room for everyone');
 assert(canonicalPage.includes('guestLane()'), 'the signed-out room stays open');
 for (const token of ['<ApocryphaChat', 'adminAuthorized', '<AdminLayout']) {
   assert(ownerAdminPage.includes(token), `owner admin chat contract missing: ${token}`);

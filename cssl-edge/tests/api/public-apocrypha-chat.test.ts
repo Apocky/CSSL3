@@ -574,12 +574,20 @@ async function main(): Promise<void> {
   const vercel = JSON.parse(
     readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
   ) as { functions?: Record<string, { maxDuration?: number }> };
-  assert(primaryPage.includes('memberLane'), 'exact /apocrypha exposes the authenticated account conversation rail');
-  assert(primaryPage.includes('requireBrainOwner'), 'the shared route verifies the owner before selecting the privileged conversation');
-  assert(
-    /owner \? ownerLane\(authFetch\) : account \? memberLane\(authFetch\) : guestLane\(\)/.test(primaryPage),
-    'non-owner accounts still enter the account-scoped rail',
-  );
+// 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
+// The public room no longer resolves an account or picks a lane from it. It is the guest
+// lane, always, with no session hook, no deadline and no getServerSideProps. These
+// assertions were rewritten to the new contract rather than deleted: the old ones now
+// describe behaviour that was removed on purpose, and a test that still asserts a retired
+// contract is the loudest kind of stale.
+  assert(primaryPage.includes('guestLane()'), 'the public room runs on the guest lane');
+  assert(!primaryPage.includes('requireBrainOwner'),
+    'the public room must not resolve the owner; that check is what made it uncacheable');
+  assert(!primaryPage.includes('memberLane') && !primaryPage.includes('ownerLane'),
+    'no entitlement branch on the public room -- one lane, no account');
+  assert(!primaryPage.includes('useSiteSession'),
+    'no session resolution on the public room; there is nothing left to stall on');
+  assert(!/\/login\?next/.test(primaryPage), 'the public room offers no sign-in');
   // PublicChat was retired from every route long ago and has now been deleted along with its
   // stylesheet: 6,000 lines of a chat surface nobody could reach, kept alive only by tests that
   // read it. The assertions it carried about ITS OWN browser-side receipt checking went with it —

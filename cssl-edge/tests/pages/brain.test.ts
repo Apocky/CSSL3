@@ -38,11 +38,22 @@ assert.match(page, /private, no-store/, 'Brain document must be private and non-
 assert.match(page, /noindex,nofollow,noarchive,nosnippet/, 'Brain page must be crawler-dark');
 assert.match(page, /viewport-fit=cover/, 'Brain page must expose iOS safe areas to its installed layout');
 assert.match(apocryphaPage, /<ApocryphaChat lane=/, 'primary Apocrypha page must expose the conversation surface');
-assert.match(apocryphaPage, /getServerSideProps/, 'account shell must receive the request nonce instead of static scripts blocked by CSP');
-assert.match(apocryphaPage, /owner\.ok && usesOwnerRuntime\(owner\.user\)/, 'owner conversation requires server authorization and the exact configured owner binding');
-assert.match(apocryphaPage, /const owner = session\.ownerConversation === true && \(ownerConversation \|\| session\.access === 'owner'\)/, 'owner UI requires a current positive session even when the request was server-bound');
+// 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
+// The public room is the guest lane for every reader. The owner rail was not deleted --
+// it lives on /admin/apocrypha and tests/pages/admin-chat.test.ts still holds it there.
+// The getServerSideProps assertion here rested on a CSP that no longer exists. Its reason was
+// "static scripts blocked by CSP" -- true only while script-src carried 'strict-dynamic', which
+// disables 'self' and leaves the nonce as the only way in. The current middleware drops
+// strict-dynamic and keeps 'self' plus a hash for the one inline bootstrap, so a static page
+// loads its bundles fine. Making the room static is therefore safe AND is what removes the
+// per-request owner check that made it uncacheable.
+// Anchored to the EXPORT, not the bare word: the page's own header comment explains why it no
+// longer has a getServerSideProps, and a text match on the word hits the explanation.
+assert.doesNotMatch(apocryphaPage, /export const getServerSideProps/, 'the room is static; no per-request entry check');
+assert.doesNotMatch(apocryphaPage, /usesOwnerRuntime|requireBrainOwner/, 'no owner binding on the public room');
+assert.doesNotMatch(apocryphaPage, /session\.ownerConversation/, 'the room reads no session at all, so there is no owner UI to admit');
 assert.doesNotMatch(apocryphaPage, /ownerConversation && \(session\.access === 'checking' \|\| session\.access === 'unavailable'\)/, 'stale request-time admission must not expose owner UI while the current session is unresolved');
-assert.match(apocryphaPage, /owner \? ownerLane\(authFetch\) : account \? memberLane\(authFetch\) : guestLane\(\)/, 'the primary route must keep the durable owner rail and the account rail, as lanes into one room');
+assert.match(apocryphaPage, /guestLane\(\)/, 'one lane into one room, for everyone');
 assert.doesNotMatch(room, /href="\/brain"/, 'the room must not advertise a competing chat');
 assert.match(apocryphaPage, /<title>Apocrypha · Apocky<\/title>/, 'primary route must carry Apocrypha branding');
 // The room is open now, so these two assert the CURRENT contract, not the sign-in wall they were
@@ -50,12 +61,17 @@ assert.match(apocryphaPage, /<title>Apocrypha · Apocky<\/title>/, 'primary rout
 // open room is that no account is needed — and it must be findable, or "publicly functional" is
 // only true for people who already know the URL. The private/no-store response headers still stand
 // (asserted on the server block below); only the crawler directive changed.
-assert.match(apocryphaPage, /No account needed to ask a question; sign in to keep your conversations across devices/, 'primary route must describe open access honestly');
+assert.match(apocryphaPage, /No account, no sign-in/, 'primary route must describe open access honestly');
 assert.match(apocryphaPage, /name="robots" content="index,follow"/, 'the open room must be discoverable');
-assert.match(apocryphaPage, /private, no-store, no-cache, must-revalidate/, 'the per-account response must still never be cached');
+// The no-store headers went with getServerSideProps. There is no per-account response left to
+// protect: the room is the same static page for every reader, which is the point.
+assert.doesNotMatch(apocryphaPage, /no-store/, 'nothing per-account remains, so nothing needs the private cache headers');
 assert.match(apocryphaPage, /viewport-fit=cover/, 'primary Apocrypha page must expose iOS safe areas to its installed layout');
-assert.match(room, /\/login\?next=%2Fapocrypha/, 'sign-in must return to the primary Apocrypha route');
-assert.match(room, /\/register\?next=%2Fapocrypha/, 'new accounts must return to the primary Apocrypha route');
+// `room` is the chat component. Its Sign in link and its "sign in or create an account" footer
+// were removed with the rest of the gate: the room needs no account, so offering one inside it
+// made readers wonder what they were missing. Sign-in still exists elsewhere on the site.
+assert.doesNotMatch(room, /\/login\?next=%2Fapocrypha/, 'the room itself offers no sign-in');
+assert.doesNotMatch(room, /\/register\?next=%2Fapocrypha/, 'the room itself offers no registration');
 // The member transport moved into the lane module; the room itself no longer names any endpoint.
 const lanes = read('lib/apocrypha/chat-lanes.ts');
 assert.match(lanes, /submitMemberChatJob/, 'account chat must submit through the authenticated durable member adapter');

@@ -29,7 +29,10 @@ assert.match(
 assert.match(room, /Send the same message again/, 'an ambiguous send must expose an idempotent recovery action');
 assert.match(room, /Stopped waiting\. Your message is saved/, 'stopping the browser wait must not imply job cancellation');
 assert.match(client, /Your sign-in expired\. Sign in again to continue\./, 'expired sessions must receive a plain recovery message');
-assert.match(room, /notice\.startsWith\('Your sign-in'\)[\s\S]*?Sign in again/, 'expired sessions must expose a direct recovery action');
+// The "Sign in again" action went with the gate. The room runs on the guest lane and holds no
+// session, so an expired-sign-in notice cannot arise in it. The MESSAGE still exists in the
+// client (line above) because the authenticated admin rail can still produce it.
+assert.doesNotMatch(room, /Sign in again/, 'the open room has no session to expire, so it offers no recovery link');
 assert.doesNotMatch(room + lanes, /\/api\/mobile\//, 'member chat must not use the legacy mobile adapter');
 assert.doesNotMatch(room, /Connection details|Support code|Request reference/, 'the primary chat must not expose operator diagnostics');
 assert.match(
@@ -54,12 +57,16 @@ assert.equal(controlPattern(client), controlPattern(server), 'browser and server
 // One interface, reached by three lanes. The old assertion here required the page to SWAP
 // components on sign-in, which is exactly the defect this replaced: the signed-out room had been
 // redesigned and the signed-in one had not, so signing in visibly downgraded the product.
-assert.match(publicPage, /<ApocryphaChat lane=\{lane\}/, 'every reader gets the same chat component');
-assert.match(
-  publicPage,
-  /owner \? ownerLane\(authFetch\) : account \? memberLane\(authFetch\) : guestLane\(\)/,
-  'entitlement selects a transport, not a different chat surface',
-);
+assert.match(publicPage, /<ApocryphaChat lane=\{lane\}/, 'every reader gets the same chat component, on one stable lane');
+// 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
+// The public room no longer resolves an account or picks a lane from it. It is the guest
+// lane, always, with no session hook, no deadline and no getServerSideProps. These
+// assertions were rewritten to the new contract rather than deleted: the old ones now
+// describe behaviour that was removed on purpose, and a test that still asserts a retired
+// contract is the loudest kind of stale.
+assert.match(publicPage, /guestLane\(\)/, 'the public room runs on the guest lane, always');
+assert.doesNotMatch(publicPage, /ownerLane|memberLane|useSiteSession/,
+  'no entitlement branch and no session hook on the public room');
 assert.doesNotMatch(publicPage, /<ChatThread|<AccountChat|<GuestChat/, 'no second chat surface may return');
 assert.match(adminPage, /<ApocryphaChat/, 'the dedicated admin route uses the same chat component');
 assert.match(adminPage, /ownerLane\(authFetch\)/, 'the admin route keeps the owner transport');

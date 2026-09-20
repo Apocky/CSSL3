@@ -153,10 +153,15 @@ export async function main(root: string): Promise<void> {
   }
 
   const ownerRoom = harness(ownerSession);
-  equal(surface(await ownerRoom.flush()), 'owner', 'a verified owner is handed the owner transport');
+  // 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
+  // The public room is the guest lane for every reader. The owner rail was not deleted --
+  // it lives on /admin/apocrypha and tests/pages/admin-chat.test.ts still holds it there.
+  equal(surface(await ownerRoom.flush()), 'guest',
+    'even a verified owner gets the guest lane here; the owner transport moved to /admin/apocrypha');
 
   const memberRoom = harness({ access: 'member', ownerConversation: false, authenticated: true, subjectKey: 'f1000000-0000-4000-8000-000000000102' });
-  equal(surface(await memberRoom.flush()), 'member', 'a verified member is handed the account-scoped transport');
+  equal(surface(await memberRoom.flush()), 'guest',
+    'a member gets the guest lane too; the room no longer branches on entitlement');
 
   const guestRoom = harness({ access: 'signed-out', ownerConversation: false, authenticated: false, subjectKey: null });
   equal(surface(await guestRoom.flush()), 'guest', 'a signed-out visitor still reaches the room, on the open transport');
@@ -172,15 +177,19 @@ export async function main(root: string): Promise<void> {
   unavailable.render();
   await new Promise(resolve => setTimeout(resolve, 20));
   const tree = unavailable.render();
-  equal(surface(tree), 'session-error', 'never-resolving auth state reaches a visible terminal error before the browser watchdog');
+  // The terminal error state is gone on purpose. Auth never resolving used to replace the whole
+  // room with a sign-in wall; now it changes nothing, because the room never waited on auth.
+  equal(surface(tree), 'guest', 'auth never resolving is not an error here; the room was never gated on it');
   const recoveryLinks = children(tree).filter(node => node.type === 'Link').map(node => node.props.href);
-  equal(recoveryLinks.includes('/login?next=%2Fapocrypha'), true, 'terminal account error exposes the sign-in recovery path');
+  // There is no recovery path because there is nothing to recover from. The old wall offered
+  // sign-in as the way OUT of a stalled account check; the room now simply never stalls.
+  equal(recoveryLinks.includes('/login?next=%2Fapocrypha'), false, 'no sign-in wall to escape from');
 
   // Switching identity must re-derive the transport, not keep the previous one alive.
   const switched = harness(ownerSession);
   await switched.flush();
   switched.setSession({ access: 'member', ownerConversation: false, authenticated: true, subjectKey: 'f1000000-0000-4000-8000-000000000103' });
-  equal(surface(await switched.flush()), 'member', 'losing owner admission immediately drops the owner transport');
+  equal(surface(await switched.flush()), 'guest', 'entitlement changes cannot move the room; there is one lane');
 
   console.log('apocrypha-owner-browser-session: ' + checks + ' session and transport-entitlement assertions passed; browser acceptance separate');
 }
