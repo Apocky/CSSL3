@@ -37,24 +37,18 @@ export const getServerSideProps: GetServerSideProps<ApocryphaPageProps> = async 
   return { props: { ownerConversation: owner.ok && usesOwnerRuntime(owner.user) } };
 };
 
-function AccountResolutionUnavailable(): JSX.Element {
-  return <main id="main-content" className={styles.page}>
-    <header className={styles.header}>
-      <Link href="/" className={styles.brand} aria-label="Apocky home"><span className="apx-brand-mark" aria-hidden="true" /></Link>
-      <div className={styles.roomTitle}><h1>Apocrypha</h1><p>Room to think</p></div>
-      <nav aria-label="Apocrypha navigation"><Link href="/download/apocrypha">Get the app</Link><Link href="/login?next=%2Fapocrypha">Sign in</Link></nav>
-    </header>
-    <section className={styles.welcome} role="alert" aria-labelledby="account-check-title">
-      <span className={styles.eyebrow}>APOCRYPHA</span>
-      <h2 id="account-check-title">Account check took too long.</h2>
-      <p>Your conversation is still safe. Sign in again to reconnect, or create an account to begin.</p>
-      <div className={styles.welcomeActions}>
-        <Link href="/login?next=%2Fapocrypha" className={styles.primary}>Sign in to chat</Link>
-        <Link href="/register?next=%2Fapocrypha" className={styles.secondary}>Create an account</Link>
-      </div>
-      <Link className={styles.phoneLink} href="/download/apocrypha">Apocrypha for Windows, iPhone and Android →</Link>
-    </section>
-  </main>;
+// The account check stalling is not a reason to demand an account. This used to render a wall --
+// "Sign in to chat" and "Create an account" -- which was the opposite of what the room is for: the
+// guest lane needs no account and the page's own description says so. A reader who arrives while
+// session resolution is slow got told to go and authenticate to reach something that was already
+// free. Now the slow path drops into the guest room and the sign-in offer sits beside it as an
+// offer, which is what it always should have been.
+function AccountCheckSlowNotice(): JSX.Element {
+  return <p className={styles.phoneLink} role="status">
+    Still checking your account. You can start talking now without one --{' '}
+    <Link href="/login?next=%2Fapocrypha">sign in</Link> whenever you want your conversations kept
+    across devices.
+  </p>;
 }
 
 export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps): JSX.Element {
@@ -86,8 +80,7 @@ export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps)
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>
-    {session.access === 'checking' && sessionTimedOut
-      ? <AccountResolutionUnavailable />
-      : <ApocryphaChat lane={lane} signedIn={session.authenticated} />}
+    {session.access === 'checking' && sessionTimedOut ? <AccountCheckSlowNotice /> : null}
+    <ApocryphaChat lane={lane} signedIn={session.authenticated} />
   </>;
 }
