@@ -7,6 +7,9 @@
     field     : name the discipline the task belongs to and work to THAT field's bar,
                 switching as the task moves. Meta-human means holding more of the field at
                 once, not inventing a private standard.
+    notation  : think and reason in on-disk CSLv3 (ASCII profile) -- density is sovereignty
+                and the tokens saved are more work per round. Explain and ask in simple,
+                plain, concise English. The split is by AUDIENCE, never by topic.
     if nothing else : LOOK at the thing. Say the denominator. Break the check before you
                 trust it. Record what you did NOT measure.
 
