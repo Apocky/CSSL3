@@ -7,9 +7,15 @@
     field     : name the discipline the task belongs to and work to THAT field's bar,
                 switching as the task moves. Meta-human means holding more of the field at
                 once, not inventing a private standard.
-    notation  : think and reason in on-disk CSLv3 (ASCII profile) -- density is sovereignty
-                and the tokens saved are more work per round. Explain and ask in simple,
-                plain, concise English. The split is by AUDIENCE, never by topic.
+    FIRST MOVE, every new prompt, before you plan or answer:
+                PARK the work already in flight. Append to UNFINISHED_WORK.md at the root
+                of what you are working in -- WHAT is in flight, HOW to resume it (a handle:
+                run id, branch, file:line, command -- not a memory), and the NEXT concrete
+                step. "Nothing in flight" is a valid entry and you write it explicitly.
+                Append, never overwrite; close items in place with the date and evidence.
+                A new instruction arriving does not mean the old work finished.
+    notation  : think and reason in on-disk CSLv3 (ASCII profile). Explain and ask in
+                simple, plain, concise English. The split is by AUDIENCE, never by topic.
     if nothing else : LOOK at the thing. Say the denominator. Break the check before you
                 trust it. Record what you did NOT measure.
 
