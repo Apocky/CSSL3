@@ -4,9 +4,21 @@ import { presetById } from '../../lib/apocrypha/sampling';
 
 const BALANCED = presetById('balanced').profile;
 
-// Default OFF: the safe direction. A template that wants the kwarg and does not get it renders its
-// normal path; a template that gets one it does not declare can refuse the request outright.
-const THINKING_KWARG_SUPPORTED = process.env.APOCRYPHA_QWEN_THINKING_KWARG?.trim().toLowerCase() === 'on';
+// DETECTED FROM THE LIVE TEMPLATE, not configured. 'on'/'off' force it; anything else auto-detects.
+//
+// This used to be a static env flag defaulting to OFF, and the default was costing every single
+// web turn. Measured 2026-09-20 on apocky.com: a turn answering "Reply with exactly: LATENCY
+// PROBE" came back as "Thinking Process: 1. Analyze the Request..." -- the model narrating its
+// own reasoning into the reply and quoting its system prompt back at the reader, and taking
+// ~25 s to do it. Sending enable_thinking:false on the same engine measured 346 completion
+// tokens down to 6.
+//
+// The flag defaulted off for a real reason: the work-lane model's template does NOT declare the
+// variable, and with --jinja, handing a template a variable it never declares can 400 the whole
+// request. One engine serves both models in turn, so a static "on" would break chat whenever the
+// arbiter swapped. Detecting it from /props solves both: ask the template that is loaded RIGHT
+// NOW rather than guessing from config that cannot know which model is resident.
+const THINKING_OVERRIDE = process.env.APOCRYPHA_QWEN_THINKING_KWARG?.trim().toLowerCase();
 
 type Fetch = typeof fetch;
 
@@ -101,10 +113,22 @@ export function isQwenContextOverflow(status: number, detail: string): boolean {
 export class QwenClient {
   private readonly config: WorkerConfig;
   private readonly fetchImpl: Fetch;
+  /** null until a /props probe has read the live chat template. Null means NOT YET MEASURED --
+   *  distinct from false, which means the template was read and does not declare the variable. */
+  private thinkingKwargSupported: boolean | null = null;
 
   constructor(config: WorkerConfig, fetchImpl: Fetch = fetch) {
     this.config = config;
     this.fetchImpl = fetchImpl;
+  }
+
+  /** Send enable_thinking:false? Explicit override wins; otherwise what the live template says.
+   *  Unknown resolves to NO, which is the safe direction: a template that never sees the kwarg
+   *  renders its normal path, while one handed a variable it does not declare can 400 the turn. */
+  private sendThinkingKwarg(): boolean {
+    if (THINKING_OVERRIDE === 'on') return true;
+    if (THINKING_OVERRIDE === 'off') return false;
+    return this.thinkingKwargSupported === true;
   }
 
   /** Exact prompt token count from llama-server /tokenize; null when the endpoint is unavailable. */
@@ -148,9 +172,17 @@ export class QwenClient {
       let contextTokens: number | undefined;
       if (propsResponse?.ok) {
         try {
-          const props = await propsResponse.json() as { default_generation_settings?: { n_ctx?: unknown } };
+          const props = await propsResponse.json() as {
+            default_generation_settings?: { n_ctx?: unknown };
+            chat_template?: unknown;
+          };
           const nCtx = props.default_generation_settings?.n_ctx;
           if (typeof nCtx === 'number' && Number.isFinite(nCtx) && nCtx > 0) contextTokens = Math.floor(nCtx);
+          // Ask the template that is loaded right now. The GGUF on disk is the wrong thing to
+          // grep -- a header scan of both model files found zero hits while the live server
+          // reported two, because the template is not where a naive file read looks.
+          const template = typeof props.chat_template === 'string' ? props.chat_template : '';
+          if (template) this.thinkingKwargSupported = template.includes('enable_thinking');
         } catch {
           // props is advisory only
         }
@@ -250,7 +282,7 @@ export class QwenClient {
         // declares risks a 400 on every turn, and this line would have been the thing that broke
         // chat the moment one engine started serving both. Off by default for that reason; set
         // APOCRYPHA_QWEN_THINKING_KWARG=on only for a model whose template takes it.
-        ...(THINKING_KWARG_SUPPORTED ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        ...(this.sendThinkingKwarg() ? { chat_template_kwargs: { enable_thinking: false } } : {}),
       };
       const response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
         method: 'POST',
@@ -262,6 +294,16 @@ export class QwenClient {
         const detail = (await readResponseTextBounded(response, maxTransportBytes)).slice(0, 1_000);
         if (isQwenContextOverflow(response.status, detail)) {
           throw new QwenError(`Qwen rejected the composed context: ${detail}`, 'QWEN_CONTEXT_OVERFLOW', true);
+        }
+        // A 400 is what a template returns when handed a variable it does not declare. The
+        // resident model can change under us -- one engine serves chat and work in turn -- so a
+        // rejection retires the detected flag rather than repeating the same rejected request
+        // every turn until something probes again. Retryable, so the next attempt drops the kwarg.
+        if (response.status === 400 && this.sendThinkingKwarg()) {
+          this.thinkingKwargSupported = false;
+          throw new QwenError(
+            `Qwen rejected the request (HTTP 400): ${detail}. The thinking kwarg has been retired `
+            + `for this client; the retry will omit it.`, 'QWEN_HTTP_400', true);
         }
         throw new QwenError(`Qwen HTTP ${response.status}: ${detail}`, `QWEN_HTTP_${response.status}`, response.status >= 500 || response.status === 429);
       }
