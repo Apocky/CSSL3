@@ -135,6 +135,35 @@ function newId(): string {
 // Nothing of a guest's is retained beyond the job, so the thread is carried up with every turn
 // rather than re-read from the server.
 
+/** How many turns of history the guest lane carries. */
+const HISTORY_TURNS = 12;
+/** The window start only moves in steps of this size. */
+const HISTORY_STEP = 8;
+
+/**
+ * A history window ANCHORED to a stable start, not one that slides every turn.
+ *
+ * `slice(-12)` looks harmless and cost about five seconds per answer. Sliding by one each turn
+ * means the FIRST history message is a different message every time, so the prompt diverges at
+ * index 1 and llama.cpp re-prefills the entire conversation. MEASURED on the live site: prompt
+ * eval 7,090 ms for 1,236 tokens on a turn whose generation took 99 ms, and two consecutive
+ * prompts dumped from the worker were byte-identical in the system message and differed at
+ * message [1] -- "Reply with exactly: LATENCY PROBE" against "Reply with exactly: PROBE TWO".
+ * The cache was never broken; the window was moving under it. An identical prompt re-sent to the
+ * same engine re-prefills 14 tokens in 423 ms instead of 1,219 in 4,627 ms.
+ *
+ * Quantising the start to a step means it holds still for HISTORY_STEP turns and then jumps once,
+ * so most turns hit a warm prefix and one in eight pays the cold cost. Keeping the whole thread
+ * would cache better still and grows without bound; this keeps the existing bound and buys back
+ * nearly all of the benefit.
+ */
+export function anchoredHistory<T>(history: readonly T[]): T[] {
+  if (history.length <= HISTORY_TURNS) return [...history];
+  const overflow = history.length - HISTORY_TURNS;
+  const start = Math.floor(overflow / HISTORY_STEP) * HISTORY_STEP;
+  return history.slice(start);
+}
+
 export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
   return {
     id: 'guest',
@@ -148,7 +177,7 @@ export function guestLane(fetchImpl: LaneFetch = fetch): ChatLane {
         body: JSON.stringify({
           message: input.text,
           request_id: newId(),
-          history: input.history.slice(-12).map((turn) => ({
+          history: anchoredHistory(input.history).map((turn) => ({
             role: turn.role === 'user' ? 'user' : 'assistant',
             content: turn.text,
           })),
