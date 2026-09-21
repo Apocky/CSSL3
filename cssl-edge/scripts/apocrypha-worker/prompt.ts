@@ -624,11 +624,34 @@ function stripCarriedMemory(conversation: QwenMessage[]): QwenMessage[] {
   });
 }
 
-function attachMemoryToFinalTurn(conversation: QwenMessage[], memoryBlock: string): QwenMessage[] {
+function attachMemoryToFinalTurn(
+  conversation: QwenMessage[],
+  memoryBlock: string,
+  lastMessageMustBeCallers: boolean,
+): QwenMessage[] {
   const cleaned = stripCarriedMemory(conversation);
   if (memoryBlock.trim().length === 0) return cleaned;
   const index = cleaned.map((message) => message.role).lastIndexOf('user');
   if (index < 0) return [...cleaned, { role: 'user' as const, content: memoryBlock }];
+
+  // APPEND, when the caller does not require the last word.
+  //
+  // Inserting the block BEFORE the final turn keeps the prefix stable within one turn and
+  // destroys it across turns, which is the expensive direction. Turn N renders
+  //     system, u1, a1, ..., a(n-1), MEM(n), u(n)
+  // and turn N+1 renders
+  //     system, u1, a1, ..., a(n-1), u(n), a(n), MEM(n+1), u(n+1)
+  // so the two diverge at the slot MEM(n) used to occupy, and llama.cpp re-prefills everything
+  // from there. MEASURED on the live site 2026-09-20: prompt eval 5,227 ms for 1,182 tokens on a
+  // turn whose generation took 104 ms. Prefill was 72% of a 7.2 s answer, every single turn.
+  // The cache itself was never broken -- an identical prompt re-sent to the same engine
+  // re-prefilled 14 tokens in 423 ms instead of 1,219 in 4,627 ms.
+  //
+  // Appended after the final turn, the ENTIRE prior conversation is an unchanging prefix and only
+  // this turn's words plus this turn's evidence are new.
+  if (!lastMessageMustBeCallers) {
+    return [...cleaned, { role: 'user' as const, content: memoryBlock }];
+  }
   // Inserted as its OWN message immediately before the final turn, never prepended into it.
   //
   // Callers on the legacy path require the last message to be their prompt byte-for-byte -- the
@@ -702,7 +725,10 @@ export function composeQwenRequest(
   ].join('\n');
   const messages = [
     { role: 'system' as const, content: system },
-    ...attachMemoryToFinalTurn(conversation, memoryBlock),
+    // The chaos-tarot payload contract asserts the last message equals the caller's prompt
+    // byte-for-byte, so that path keeps the evidence ahead of the final turn and pays the
+    // re-prefill. Every other capability gets the cacheable ordering.
+    ...attachMemoryToFinalTurn(conversation, memoryBlock, job.capability === 'chaos_tarot_reading'),
   ];
   const maximumBytes = qwenPromptByteBudget(config, outputTokens, options.overflowRetry === true);
   const boundedMessages = options.overflowRetry === true || qwenPromptBytes(messages) > maximumBytes
