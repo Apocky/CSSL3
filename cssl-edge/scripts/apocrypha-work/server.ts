@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { WorkAgent } from './agent';
 import { EngineArbiter } from './arbiter';
+import { buildAccessGate } from './access';
 import { loadWorkConfig } from './config';
 import { EngineClient } from './engine';
 import { log } from './log';
@@ -51,6 +52,22 @@ function send(response: ServerResponse, status: number, body: unknown): void {
 
 async function main(): Promise<void> {
   const config = loadWorkConfig();
+
+  // The edge gate, checked at the origin. Required whenever this listener could be reached from
+  // anywhere but loopback -- which is exactly what the cloudflared tunnel makes true.
+  //
+  // FAILS CLOSED, deliberately: if Access is required but the team, audience tag or allow list is
+  // missing, the process REFUSES TO START. The alternative is a work agent with filesystem write
+  // access sitting behind a gate that silently did not engage, which is the one outcome worth
+  // crashing to avoid.
+  const accessGate = buildAccessGate(process.env, config.host);
+  if (accessGate.required && !accessGate.verifier) {
+    throw new Error(
+      'Cloudflare Access is required for this configuration but is not set up: '
+      + (accessGate.disabledReason ?? 'unknown')
+      + '. Refusing to start -- see scripts/apocrypha-work/TUNNEL.md',
+    );
+  }
   const lease = new DatabaseSync(join(config.stateDir, 'host-lease.sqlite'));
   try { lease.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE;'); }
   catch {
@@ -137,6 +154,21 @@ async function main(): Promise<void> {
     // had deliberately stripped from the address bar -- a dead window on F5.
     // Safe because the listener is bound to 127.0.0.1 and every endpoint behind it still requires
     // the bearer token.
+    // Once Access is enforced this listener is reachable through the tunnel, so even the static
+    // window is gated. Loopback-only keeps the old behaviour: the page loads, the API does not.
+    if (accessGate.required) {
+      const verdict = await accessGate.verifier!.verify(
+        request.headers['cf-access-jwt-assertion'] as string | undefined,
+      );
+      if (!verdict.ok) {
+        console.log(JSON.stringify({
+          event: 'work.access.refused', reason: verdict.reason, path: url.pathname,
+        }));
+        send(response, 403, { error: 'access_denied', reason: verdict.reason });
+        return;
+      }
+    }
+
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/app')) {
       // Read per request, so editing the page is a refresh rather than a service restart.
       const html = readFileSync(join(__dirname, 'ui.html'), 'utf8');
@@ -291,6 +323,7 @@ async function main(): Promise<void> {
     log('info', 'work.server.listening', {
       host: config.host,
       port: config.port,
+      access: accessGate.required ? 'cloudflare-access-enforced' : 'loopback-only',
       engine: config.engine.baseUrl,
       alias: config.engine.alias,
       roots: config.roots.map((root) => `${root.label}${root.writable ? '' : ':ro'}`),
