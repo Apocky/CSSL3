@@ -16,12 +16,10 @@ function age(iso: string, nowMs: number): string {
 
 const BUSY = new Set(['attending', 'thinking', 'recalling', 'speaking', 'remembering']);
 
-export default function PresenceStrip({ presence, disconnected, nowMs, muted, onToggleMute }: {
+export default function PresenceStrip({ presence, disconnected, nowMs }: {
   readonly presence: PresenceView | null;
   readonly disconnected: boolean;
   readonly nowMs: number;
-  readonly muted: boolean;
-  readonly onToggleMute: () => void;
 }): JSX.Element {
   const state = presence?.state ?? 'unknown';
   const degraded = state.startsWith('degraded');
@@ -36,14 +34,5 @@ export default function PresenceStrip({ presence, disconnected, nowMs, muted, on
       <span>Apocrypha: {text}</span>
       {presence && !disconnected ? <span className={styles.age}>{age(presence.at, nowMs)}</span> : null}
     </span>
-    <button
-      type="button"
-      className={muted ? `${styles.toggle} ${styles.toggleOn}` : styles.toggle}
-      onClick={onToggleMute}
-      aria-pressed={muted}
-      title="Hide what Apocrypha says unprompted"
-    >
-      {muted ? 'Muted' : 'Mute'}
-    </button>
   </div>;
 }

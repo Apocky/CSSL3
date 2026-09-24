@@ -223,7 +223,7 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
           <meta name="apple-mobile-web-app-title" content="Apocky" />
         </Head>
       ) : null}
-      <AkashicConsent />
+      {router.pathname === '/room' ? null : <AkashicConsent />}
       {bare ? (
         <Component {...pageProps} />
       ) : (

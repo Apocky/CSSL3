@@ -3,7 +3,9 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import type { RoomName } from './types';
 import styles from './Room.module.css';
 
-export default function Composer({ room, owner, onRoom, onSend, error }: {
+export default function Composer({ room, owner, onRoom, onSend, error, muted, onToggleMute }: {
+  readonly muted: boolean;
+  readonly onToggleMute: () => void;
   readonly room: RoomName;
   readonly owner: boolean;
   readonly onRoom: (room: RoomName) => void;
@@ -32,16 +34,22 @@ export default function Composer({ room, owner, onRoom, onSend, error }: {
   };
 
   return <div className={styles.composer}>
-    {owner ? <div className={styles.rooms} role="tablist" aria-label="Room">
-      {(['lobby', 'owner'] as const).map((r) => <button
+    <div className={styles.rooms} role="toolbar" aria-label="Room controls">
+      {owner ? (['lobby', 'owner'] as const).map((r) => <button
         key={r}
         type="button"
-        role="tab"
-        aria-selected={room === r}
+        aria-pressed={room === r}
         className={room === r ? `${styles.roomBtn} ${styles.roomOn}` : styles.roomBtn}
         onClick={() => onRoom(r)}
-      >{r}</button>)}
-    </div> : null}
+      >{r}</button>) : null}
+      <button
+        type="button"
+        className={muted ? `${styles.roomBtn} ${styles.roomOn}` : styles.roomBtn}
+        onClick={onToggleMute}
+        aria-pressed={muted}
+        title="Hide what Apocrypha says unprompted"
+      >{muted ? 'Muted' : 'Mute'}</button>
+    </div>
     <form className={styles.form} onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <label htmlFor="room-say" className={styles.srOnly}>Say something</label>
       <textarea

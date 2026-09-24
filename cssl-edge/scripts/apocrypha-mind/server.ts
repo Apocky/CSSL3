@@ -1,3 +1,11 @@
+// llama.cpp's Qwen template raises "System message must be at the beginning" when any system
+// message is not first. The room loop and other callers send their own system message, and the
+// persona adds one more, so fold every system message into a single leading one.
+function oneSystemFirst(messages: MindMessage[]): MindMessage[] {
+  const systems = messages.filter((m) => m.role === 'system').map((m) => String(m.content ?? '')).filter((s) => s.trim() !== '');
+  const rest = messages.filter((m) => m.role !== 'system');
+  return systems.length === 0 ? rest : [{ role: 'system', content: systems.join('\n\n') } as MindMessage, ...rest];
+}
 // The mind service: an OpenAI-dialect endpoint that speaks as Apocrypha, with memory.
 //
 // Sits between a surface (the live room today, anything else tomorrow) and the engine. Callers
@@ -99,11 +107,12 @@ async function handleCompletions(request: IncomingMessage, response: ServerRespo
 
   const upstream = {
     model: payload.model ?? 'resident',
-    messages: built.messages,
+    messages: oneSystemFirst(built.messages),
     stream: wantsStream,
     temperature: payload.temperature ?? 0.7,
     max_tokens: payload.max_tokens ?? 1_024,
-    chat_template_kwargs: { enable_thinking: STREAM_REASONING },
+    // chat_template_kwargs removed 2026-09-24: llama.cpp b9743 answers 400 "Unable to generate parser for
+    // this template" whenever it is present; the engine thinks by default and the rewrite below routes it.
   };
 
   let engineResponse: Response;

@@ -171,10 +171,10 @@ export default function RoomPage(): JSX.Element {
       <meta name="theme-color" content="#05060b" />
     </Head>
     <main id="main-content" className={styles.page}>
-      <PresenceStrip presence={presence} disconnected={disconnected} nowMs={nowMs} muted={muted} onToggleMute={toggleMute} />
+      <PresenceStrip presence={presence} disconnected={disconnected} nowMs={nowMs} />
       <p className={styles.tagline}>A continuously-thinking digital intelligence. It may speak first.</p>
       <River events={river} nowMs={nowMs} />
-      <Composer room={room} owner={owner} onRoom={setRoom} onSend={send} error={error} />
+      <Composer room={room} owner={owner} onRoom={setRoom} onSend={send} error={error} muted={muted} onToggleMute={toggleMute} />
     </main>
   </>;
 }
