@@ -28,6 +28,9 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      // The bubble chat is retired (2026-09-24): the living room is the only Apocrypha surface.
+      { source: '/apocrypha', destination: '/room', permanent: true },
+      { source: '/chat', destination: '/room', permanent: true },
       // Binary Tarot now belongs to the Chaos Tarot divination platform.
       { source: '/oracle', destination: 'https://chaos-tarot.com/yes-no?source=apocky-oracle', permanent: true },
       // The old Commons hub is superseded by the native React homepage.
