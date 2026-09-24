@@ -18,7 +18,8 @@ export const ROOMS = ['lobby', 'owner'] as const;
 export type Room = typeof ROOMS[number];
 // 'thought' is Apocrypha's reasoning, posted as its own row before the utterance it led to, so the
 // reader watches the mind work in order instead of receiving a finished answer from nowhere.
-export const KINDS = ['utterance', 'thought', 'presence', 'system'] as const;
+// 'recall' is what the mind pulled from memory for a turn, when it says so; rendered like a thought.
+export const KINDS = ['utterance', 'thought', 'recall', 'presence', 'system'] as const;
 export type Kind = typeof KINDS[number];
 
 export const MAX_EVENTS_PAGE = 200;

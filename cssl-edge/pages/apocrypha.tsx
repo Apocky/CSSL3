@@ -20,6 +20,7 @@
 // Sign-in still exists elsewhere on the site; it is simply not in the way of talking.
 
 import Head from 'next/head';
+import Link from 'next/link';
 import { useMemo } from 'react';
 
 import ApocryphaChat from '@/components/apocrypha/ApocryphaChat';
@@ -41,6 +42,7 @@ export default function ApocryphaPage(): JSX.Element {
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>
-    <ApocryphaChat lane={lane} signedIn={false} />
+    <p style={{ margin: 0, padding: '6px 16px', background: '#05060b', color: '#a9b5ffb0', fontSize: 13, textAlign: 'center' }}><Link href="/room" style={{ color: '#d2e6fa' }}>Enter the living room</Link> — it may speak first.</p>
+    <ApocryphaChat lane={lane} signedIn={false} height="calc(100dvh - 33px)" />
   </>;
 }

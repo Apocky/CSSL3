@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const input = record(req.body);
     const room = parseRoom(input.room);
     const kind = input.kind ?? 'utterance';
-    if (!isKind(kind)) throw new RoomError(400, 'KIND_INVALID', 'kind must be utterance, thought, presence or system');
+    if (!isKind(kind)) throw new RoomError(400, 'KIND_INVALID', 'kind must be utterance, thought, recall, presence or system');
     const body = typeof input.body === 'string' ? input.body.trim() : '';
     if (kind !== 'presence' && body === '') throw new RoomError(400, 'BODY_EMPTY', 'body is required');
     if (body.length > MAX_WORKER_BODY_CHARS) throw new RoomError(400, 'BODY_TOO_LONG', 'body is too long');

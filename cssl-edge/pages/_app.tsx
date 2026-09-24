@@ -35,6 +35,7 @@ function isBare(pathname: string): boolean {
     pathname === '/register' ||
     pathname.startsWith('/auth') ||
     pathname === '/apocrypha' ||
+    pathname === '/room' ||
     pathname === '/work' ||
     pathname === '/brain' ||
     pathname.startsWith('/admin') ||
