@@ -9,8 +9,8 @@
   },
   "qwen": {
     "base_url": "http://127.0.0.1:19124/v1",
-    "model_alias": "qwen3-coder-next-80b-a3b-q2kxl",
-    "profile_hash": "519f5b2c5696041130c8cd889cadc390147d99b5ce5dadc9cfda3415dce3a38f",
+    "model_alias": "qwen35-35b-a3b-q4",
+    "profile_hash": "5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9",
     "context_tokens": 16384,
     "max_output_tokens": 2048,
     "idle_timeout_ms": 180000,

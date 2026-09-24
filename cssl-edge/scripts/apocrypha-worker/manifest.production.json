@@ -1,8 +1,8 @@
 {
   "schema": "apocrypha.worker-manifest.v1",
   "model": {
-    "alias": "qwen3-coder-next-80b-a3b-q2kxl",
-    "profileHash": "519f5b2c5696041130c8cd889cadc390147d99b5ce5dadc9cfda3415dce3a38f",
+    "alias": "qwen35-35b-a3b-q4",
+    "profileHash": "5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9",
     "endpointEnv": "APOCRYPHA_QWEN_BASE_URL"
   },
   "tools": {

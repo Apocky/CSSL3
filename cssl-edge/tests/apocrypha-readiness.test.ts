@@ -17,7 +17,7 @@ function assert(condition: boolean, message: string): asserts condition {
 
 const NOW = Date.parse('2026-09-08T04:10:00.000Z');
 const expected = {
-  model_alias: 'qwen3-coder-next-80b-a3b-q2kxl',
+  model_alias: 'qwen35-35b-a3b-q4',
   profile_hash: 'profile-hash',
   tool_registry_version: 'apocrypha-readonly-v1',
   memory_manifest_hash: 'memory-hash',

@@ -15,7 +15,7 @@ const projected = externalJobSnapshot({
     status: 'succeeded',
     request: { question: 'What changes?' },
     current_attempt_id: '40000000-0000-4000-8000-000000000001',
-    model_alias: 'qwen3-coder-next-80b-a3b-q2kxl',
+    model_alias: 'qwen35-35b-a3b-q4',
     profile_hash: 'a'.repeat(64),
     tool_registry_version: 'apocrypha-readonly-v1',
     memory_manifest_hash: 'b'.repeat(64),

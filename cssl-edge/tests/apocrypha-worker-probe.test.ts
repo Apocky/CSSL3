@@ -15,7 +15,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const config = {
   qwenBaseUrl: 'http://127.0.0.1:19128/v1',
-  modelAlias: 'qwen3-coder-next-80b-a3b-q2kxl',
+  modelAlias: 'qwen35-35b-a3b-q4',
 } as WorkerConfig;
 
 function engine(options: {
@@ -24,7 +24,7 @@ function engine(options: {
   served?: string[];
   nCtx?: number;
 }): typeof fetch {
-  const { health = 200, models = 200, served = ['qwen3-coder-next-80b-a3b-q2kxl'], nCtx = 16_384 } = options;
+  const { health = 200, models = 200, served = ['qwen35-35b-a3b-q4'], nCtx = 16_384 } = options;
   return (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith('/health')) return new Response('{}', { status: health });
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   // MUST BE HEALTHY -----------------------------------------------------------------------------
   const matching = await new QwenClient(config, engine({})).probe();
   assert(matching.healthy, 'a matching alias was not healthy');
-  assert(matching.model === 'qwen3-coder-next-80b-a3b-q2kxl', `matching probe reported model ${matching.model}`);
+  assert(matching.model === 'qwen35-35b-a3b-q4', `matching probe reported model ${matching.model}`);
   assert(matching.contextTokens === 16_384, 'context tokens were not read from /props');
 
   // The case that took public chat down: the engine serving a model the worker was not configured

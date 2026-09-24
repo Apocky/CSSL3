@@ -39,7 +39,7 @@ const job: ClaimedJob = {
     structured_context: { task: 'saved_reading_followup', practical_reflection: true },
     options: { style: 'practical', depth: 'deep' },
   },
-  modelAlias: 'qwen3-coder-next-80b-a3b-q2kxl',
+  modelAlias: 'qwen35-35b-a3b-q4',
   profileHash: 'a'.repeat(64),
   toolRegistryVersion: 'apocrypha-readonly-v1',
   memoryManifestHash: 'b'.repeat(64),

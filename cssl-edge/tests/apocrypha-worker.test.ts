@@ -134,7 +134,7 @@ async function main(): Promise<void> {
   const output = 'The Tower names the break already underway; the Star asks what remains worth carrying through it. '.repeat(5);
   const qwen = await listen(async (request, response) => {
     if (request.url === '/health') return json(response, 200, { status: 'ok' });
-    if (request.url === '/v1/models') return json(response, 200, { data: [{ id: 'qwen3-coder-next-80b-a3b-q2kxl' }] });
+    if (request.url === '/v1/models') return json(response, 200, { data: [{ id: 'qwen35-35b-a3b-q4' }] });
     if (request.url === '/props') return json(response, 200, { default_generation_settings: { n_ctx: 4096 } });
     if (request.url === '/tokenize') {
       const received = await body(request);
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
       response.statusCode = 200;
       response.setHeader('content-type', 'text/event-stream');
       for (const delta of [output.slice(0, 90), output.slice(90, 260), output.slice(260)]) {
-        response.write(`data: ${JSON.stringify({ model: 'qwen3-coder-next-80b-a3b-q2kxl', choices: [{ delta: { content: delta } }] })}\n\n`);
+        response.write(`data: ${JSON.stringify({ model: 'qwen35-35b-a3b-q4', choices: [{ delta: { content: delta } }] })}\n\n`);
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
       response.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 80, total_tokens: 180 } })}\n\n`);
@@ -278,7 +278,7 @@ async function main(): Promise<void> {
     assert(authorizations.every((value) => value === 'Bearer test-node-token-never-log'), 'worker bearer authentication missing');
     assert(qwenRequests.length === 2, 'context rejection did not cause exactly one bounded retry');
     const qwenRequest = qwenRequests[1] as Record<string, unknown>;
-    assert(qwenRequest.model === 'qwen3-coder-next-80b-a3b-q2kxl', 'worker did not use accepted Qwen alias');
+    assert(qwenRequest.model === 'qwen35-35b-a3b-q4', 'worker did not use accepted Qwen alias');
     assert(qwenRequests.every((request) => request.max_tokens === 384), 'worker ignored the claimed output_budget');
     assert((qwenRequest.chat_template_kwargs as Record<string, unknown>).enable_thinking === false, 'ordinary reading left model thinking enabled');
     const messages = qwenRequest.messages as Array<{ role: string; content: string }>;

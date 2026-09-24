@@ -9,8 +9,8 @@ export const APOCRYPHA_RUNTIME_CAPABILITIES = [
   'apocky_member_chat',
 ] as const;
 export const APOCRYPHA_RUNTIME_CONFIGURATION: ApocryphaExpectedConfiguration = {
-  model_alias: 'qwen3-coder-next-80b-a3b-q2kxl',
-  profile_hash: '519f5b2c5696041130c8cd889cadc390147d99b5ce5dadc9cfda3415dce3a38f',
+  model_alias: 'qwen35-35b-a3b-q4',
+  profile_hash: '5d390055297aed74dbba092eb313dc8c4bf4e551ca4bf2c50fed16c8cb3a21a9',
   tool_registry_version: 'apocrypha-readonly-v1',
   memory_manifest_hash: '307a86ce2ec83a37ad30f86327195e47259167728cf32e4276af377f08988273',
 };
