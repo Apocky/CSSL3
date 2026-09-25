@@ -12,7 +12,7 @@
 // (APOCRYPHA_MIND_REASONING); the loop shows whatever arrives. The yes/no decision goes to the raw
 // engine with reasoning off: one token, no memory, no ceremony.
 //
-// Run:  node --env-file=D:\Apocrypha\apocrypha-runtime.env --import tsx scripts/apocrypha-room/loop.ts
+// Run:  node --env-file=C:\Apocrypha\apocrypha-runtime.env --import tsx scripts/apocrypha-room/loop.ts
 // Reads APOCRYPHA_CONTROL_PLANE_URL + APOCRYPHA_WORKER_TOKEN + APOCRYPHA_WORKER_NODE_ID (the same
 // admission the outbound worker uses).
 
