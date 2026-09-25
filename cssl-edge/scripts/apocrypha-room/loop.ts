@@ -483,6 +483,12 @@ async function freeSpeech(room: Room): Promise<void> {
     await degrade(room, error);
     return;
   }
+  // A decision with no letters ('////') is NaN logits in the engine, not a "no" (2026-09-25:
+  // 25 minutes of '/' rows while health stayed ok). Surface it as an engine fault.
+  if (!/[a-z]/i.test(decision)) {
+    await degrade(room, new Error(`engine output is not words: ${JSON.stringify(decision.slice(0, 16))}`));
+    return;
+  }
   const yes = decision.trim().toLowerCase().startsWith('y');
   log('free.decision', { room, decision: decision.trim().slice(0, 8), yes });
   if (!yes) return;
