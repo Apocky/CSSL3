@@ -51,8 +51,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const speaker = await resolveSpeaker(req, { mintGuest: false });
     if (speaker.kind === 'guest') throw new RoomError(401, 'SIGN_IN_REQUIRED', 'Sign in to talk in the room.');
-    if (speaker.setCookie) res.setHeader('Set-Cookie', speaker.setCookie);
-    }
     if (lane === 'flagship' && !flagshipReady(req)) {
       throw new RoomError(503, 'PREMIUM_OFFLINE', 'Apocrypha+ is not connected right now. Switch to Local, or try again soon.');
     }
