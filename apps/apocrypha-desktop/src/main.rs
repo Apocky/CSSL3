@@ -2,10 +2,8 @@
 
 //! Apocrypha for Windows.
 //!
-//! A thin account client over the same public contract the phone apps use:
-//! `https://www.apocky.com/api/mobile/{config,status,turn,sessions}`. Nothing
-//! about Apocrypha runs locally — this window signs in, sends a message, and
-//! reads the account's own history back from the service.
+//! The default workbench uses the local Work host. Legacy cloud-account
+//! modules remain available for compatibility but are not the entry screen.
 //!
 //! The webview is a renderer. It never sees a token, never reaches the network,
 //! and cannot name an endpoint: every command below hands work to the Rust
@@ -14,6 +12,8 @@
 mod api;
 mod controller;
 mod journal;
+mod local;
+mod local_stream;
 mod protocol;
 mod session;
 mod store;
@@ -137,10 +137,64 @@ async fn sign_out(state: tauri::State<'_, App>) -> Result<View, String> {
     run(state, |controller| controller.sign_out()).await
 }
 
+struct LocalApp(Arc<local_stream::LocalController>);
+
+async fn run_local<F>(state: tauri::State<'_, LocalApp>, job: F) -> Result<serde_json::Value, String>
+where
+    F: FnOnce(&local_stream::LocalController) -> Result<serde_json::Value, String> + Send + 'static,
+{
+    let controller = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || job(&controller)).await
+        .map_err(|_| "The native local request could not finish. Check task history before retrying.".to_string())?
+}
+
+#[tauri::command]
+async fn local_bootstrap(state: tauri::State<'_, LocalApp>) -> Result<serde_json::Value, String> {
+    run_local(state, |controller| Ok(controller.bootstrap())).await
+}
+
+#[tauri::command]
+async fn local_new_session(state: tauri::State<'_, LocalApp>, title: String) -> Result<serde_json::Value, String> {
+    run_local(state, move |controller| controller.create(&title)).await
+}
+
+#[tauri::command]
+async fn local_open_session(state: tauri::State<'_, LocalApp>, session_id: String) -> Result<serde_json::Value, String> {
+    run_local(state, move |controller| controller.open(local::session_id(&session_id)?)).await
+}
+
+#[tauri::command]
+async fn local_send(state: tauri::State<'_, LocalApp>, session_id: String, options: local::SendOptions) -> Result<serde_json::Value, String> {
+    run_local(state, move |controller| controller.send(local::session_id(&session_id)?, options)).await
+}
+
+#[tauri::command]
+async fn local_cancel(state: tauri::State<'_, LocalApp>, session_id: String) -> Result<serde_json::Value, String> {
+    run_local(state, move |controller| controller.cancel(local::session_id(&session_id)?)).await
+}
+
+#[tauri::command]
+async fn local_consent(state: tauri::State<'_, LocalApp>, session_id: String, epoch: u64, request_id: String, decision: local::ConsentDecision) -> Result<serde_json::Value, String> {
+    run_local(state, move |controller| controller.consent(local::session_id(&session_id)?, epoch, local::session_id(&request_id)?, decision)).await
+}
+
+#[tauri::command]
+async fn local_request(app: tauri::AppHandle, state: tauri::State<'_, LocalApp>, request: local_stream::LocalRequest) -> Result<serde_json::Value, String> {
+    run_local(state, move |controller| controller.request(request, Arc::new(move |event, payload| { let _ = app.emit(event, payload); }))).await
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(App::new())
+        .manage(LocalApp(Arc::new(local_stream::LocalController::new())))
         .invoke_handler(tauri::generate_handler![
+            local_bootstrap,
+            local_new_session,
+            local_open_session,
+            local_send,
+            local_cancel,
+            local_consent,
+            local_request,
             bootstrap,
             send_code,
             create_account,

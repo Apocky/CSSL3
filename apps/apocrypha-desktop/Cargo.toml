@@ -1,6 +1,6 @@
 [package]
 name        = "apocrypha-desktop"
-description = "Apocrypha desktop client · Windows · thin account client over the public apocky.com mobile contract"
+description = "Apocrypha local coding workbench for Windows"
 version     = "0.1.0"
 edition     = "2021"
 license     = "MIT"
@@ -16,6 +16,9 @@ publish     = false
 [[bin]]
 name = "apocrypha-desktop"
 path = "src/main.rs"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

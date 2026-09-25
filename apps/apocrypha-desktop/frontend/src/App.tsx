@@ -4,8 +4,13 @@ import { ipc } from './lib/ipc.ts';
 import { EMPTY_VIEW, TURN_DELTA_EVENT, type Live, type View } from './lib/view.ts';
 import { SignIn } from './pages/SignIn.tsx';
 import { Chat } from './pages/Chat.tsx';
+import { Work } from './pages/Work.tsx';
 
 export function App() {
+  return <Work />;
+}
+
+export function CloudAccountApp() {
   const [view, setView] = useState<View>(EMPTY_VIEW);
   const [busy, setBusy] = useState(true);
   const [live, setLive] = useState<Live | null>(null);
