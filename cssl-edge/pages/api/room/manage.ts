@@ -14,7 +14,7 @@ import { hasSameOrigin } from '@/lib/auth-session';
 import {
   acceptInvite, addFriendToRoom, createInvite, createLobby, leaveRoom, listFriends, listMembers, listRooms, resolveRoomKey, setDisplayName,
 } from '@/lib/room/rooms';
-import { RoomError, parseRoom } from '@/lib/room/store';
+import { RoomError, parseRoom, roomClient } from '@/lib/room/store';
 import { resolveSpeaker } from '@/lib/room/turn';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,6 +45,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!UUID.test(str(body.friend))) throw new RoomError(400, 'FRIEND_INVALID', 'Pick a friend.');
         await addFriendToRoom(speaker, await member(), str(body.friend).toLowerCase());
         res.status(200).json({ ok: true });
+        return;
+      }
+      case 'quiet': {
+        const access = await resolveRoomKey(speaker, parseRoom(str(body.room)));
+        if (access.role !== 'owner') throw new RoomError(403, 'OWNER_ONLY', 'Only the room owner can mute Apocrypha here.');
+        const { error } = await roomClient().from('apocrypha_room').update({ quiet: body.on === true }).eq('key', access.key);
+        if (error) throw new RoomError(503, 'ROOM_UNAVAILABLE', 'Could not change that.');
+        res.status(200).json({ ok: true, quiet: body.on === true });
         return;
       }
       case 'name': await setDisplayName(speaker, str(body.name)); res.status(200).json({ ok: true }); return;

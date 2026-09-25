@@ -18,14 +18,13 @@ import { PeoplePanel, manage } from './People';
 import styles from './Room.module.css';
 
 const POLL_MS = 1_500;
-const MUTE_KEY = 'apocrypha.room.mute';
 const LANE_KEY = 'apocrypha.room.lane';
 const PAGE = 200;
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 interface EventsPayload {
   ok?: boolean;
-  room?: { key: string; kind: string; role: string };
+  room?: { key: string; kind: string; role: string; quiet?: boolean };
   names?: Record<string, string>;
   events?: RoomEventView[];
   live?: LiveTurnView[];
@@ -89,7 +88,6 @@ export default function Room(): JSX.Element {
   const generation = useRef(0);
 
   useEffect(() => {
-    setMuted(read(MUTE_KEY) === '1');
     const tick = setInterval(() => setNowMs(Date.now()), 1_000);
     return () => clearInterval(tick);
   }, []);
@@ -135,8 +133,15 @@ export default function Room(): JSX.Element {
 
   const chooseLane = (next: EngineLane) => { setLane(next); write(LANE_KEY, next); };
 
+  // Mute is the room's switch on the server: Apocrypha stops speaking unprompted there. Nothing
+  // already said is hidden. Only the room's owner may flip it.
   const toggleMute = () => {
-    setMuted((m) => { write(MUTE_KEY, m ? '0' : '1'); return !m; });
+    const next = !muted;
+    setMuted(next);
+    void manage({ action: 'quiet', room, on: next }).catch((cause: unknown) => {
+      setMuted(!next);
+      setRoomNote(cause instanceof Error ? cause.message : 'Could not change that.');
+    });
   };
 
   const changeConsent = async (on: boolean) => {
@@ -164,6 +169,7 @@ export default function Room(): JSX.Element {
       setNeedsSignIn(false);
       asked.current = true;
       if (payload.viewer) setViewer(payload.viewer);
+      if (payload.room) setMuted(payload.room.quiet === true);
       if (payload.names) setNames((n) => ({ ...n, ...payload.names }));
       if (payload.room && room === 'me') { generation.current += 1; setRoom(payload.room.key); return; }
       const incoming = payload.events ?? [];
@@ -272,7 +278,7 @@ export default function Room(): JSX.Element {
     }
   };
 
-  const visible = muted ? events.filter((e) => !(e.author === 'apocrypha' && e.meta.unprompted === true)) : events;
+  const visible = events;
   const me = viewer?.author ?? null;
 
   return <>

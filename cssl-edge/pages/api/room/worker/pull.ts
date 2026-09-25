@@ -8,7 +8,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import {
-  MAX_EVENTS_PAGE, RoomError, listEvents, listInbox, parseId, parseLimit, parseRoom, requireRoomWorker,
+  MAX_EVENTS_PAGE, RoomError, listEvents, listInbox, parseId, parseLimit, parseRoom, requireRoomWorker, roomClient,
 } from '@/lib/room/store';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
@@ -25,7 +25,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const room = parseRoom(req.query.room);
       const limit = parseLimit(tail, 20);
       const events = await listEvents(room, 0, limit);
-      res.status(200).json({ ok: true, node_id: nodeId, room, events, now: new Date().toISOString() });
+      const { data: settings } = await roomClient().from('apocrypha_room').select('quiet').eq('key', room).maybeSingle();
+      res.status(200).json({ ok: true, node_id: nodeId, room, quiet: settings?.quiet === true, events, now: new Date().toISOString() });
       return;
     }
     const after = parseId(req.query.after);

@@ -467,6 +467,9 @@ async function reply(row: RoomEvent): Promise<boolean> {
 }
 
 async function freeSpeech(room: Room): Promise<void> {
+  // Muted rooms (owner's per-room switch, 0063): no unprompted speech there at all.
+  const settings = await site(`/api/room/worker/pull?room=${room}&tail=1`, { method: 'GET' });
+  if (settings.quiet === true) { log('free.skipped', { room, why: 'muted' }); return; }
   const rows = await tail(room);
   const context = [persona(room), ...history(rows)];
   const clock = new Date().toLocaleString('en-US', { weekday: 'long', hour: 'numeric', minute: '2-digit' });

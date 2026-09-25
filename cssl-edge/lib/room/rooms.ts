@@ -48,14 +48,14 @@ export async function ensurePrivate(speaker: Speaker, client: SupabaseClient = r
 }
 
 /** 'me' means the speaker's own private room; anything else must be a room they belong to. */
-export async function resolveRoomKey(speaker: Speaker, requested: string, client: SupabaseClient = roomClient()): Promise<{ key: string; role: string; kind: string }> {
+export async function resolveRoomKey(speaker: Speaker, requested: string, client: SupabaseClient = roomClient()): Promise<{ key: string; role: string; kind: string; quiet: boolean }> {
   const userId = requireUser(speaker);
   const key = requested === 'me' || requested === '' ? await ensurePrivate(speaker, client) : requested;
   const { data, error } = await client.rpc('apocrypha_room_role', { p_room_key: key, p_user_id: userId });
   if (error) fail(error, 'The room could not be opened.');
   if (typeof data !== 'string') throw new RoomError(403, 'NOT_A_MEMBER', 'You are not in that room.');
-  const { data: room } = await client.from('apocrypha_room').select('kind').eq('key', key).maybeSingle();
-  return { key, role: data, kind: String(room?.kind ?? 'lobby') };
+  const { data: room } = await client.from('apocrypha_room').select('kind,quiet').eq('key', key).maybeSingle();
+  return { key, role: data, kind: String(room?.kind ?? 'lobby'), quiet: room?.quiet === true };
 }
 
 export async function listRooms(speaker: Speaker, client: SupabaseClient = roomClient()): Promise<RoomSummary[]> {

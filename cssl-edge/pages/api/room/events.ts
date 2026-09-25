@@ -56,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     }
     const names = await namesFor(events.map((e) => e.author));
-    res.status(200).json({ ok: true, room: { key: room, kind: access.kind, role: access.role }, events, live, presence, names, now, ...(viewer ? { viewer } : {}) });
+    res.status(200).json({ ok: true, room: { key: room, kind: access.kind, role: access.role, quiet: access.quiet }, events, live, presence, names, now, ...(viewer ? { viewer } : {}) });
   } catch (error) {
     if (error instanceof RoomError) {
       res.status(error.status).json({ ok: false, code: error.code, error: error.message });

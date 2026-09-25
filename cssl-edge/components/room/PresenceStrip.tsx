@@ -64,7 +64,7 @@ export default function PresenceStrip({
     };
   }, [settings]);
 
-  const muteLabel = 'Stop Apocrypha speaking unprompted in this browser (local, only you)';
+  const muteLabel = 'Stop Apocrypha speaking unprompted in this room (room owner only; nothing already said is hidden)';
 
   return <header className={styles.strip}>
     <div className={styles.stripLeft} role="status" aria-live="polite">
@@ -105,7 +105,7 @@ export default function PresenceStrip({
           <label className={styles.setting}>
             <span>
               <strong>Mute unprompted speech</strong>
-              <small>Hide what Apocrypha says on its own initiative, in this browser only. Replies to messages still appear.</small>
+              <small>Apocrypha stops speaking on its own initiative in this room. It still answers messages, and nothing already said is hidden.</small>
             </span>
             <input type="checkbox" role="switch" checked={muted} onChange={onToggleMute} />
           </label>
