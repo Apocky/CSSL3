@@ -5,6 +5,7 @@ import { methodNotAllowed, noStore, objectField, requireChaosIdentity, respondJo
 
 const ALLOWED_KINDS = new Set<ApocryphaJobKind>([
   'interpretation', 'followup', 'summary', 'astrology_natal', 'astrology_synastry', 'astrology_transit', 'continuation',
+  'oracle_chat',
 ]);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

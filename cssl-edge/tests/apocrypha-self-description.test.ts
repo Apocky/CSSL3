@@ -63,3 +63,13 @@ assert.ok(/a failed adapter is not evidence/i.test(prompt),
   'the prompt must say a retrieval failure is not evidence -- it reasoned FROM the failures to a claim about itself');
 
 console.log('apocrypha-self-description OK - substrate admitted from the job alias, provenance envelope barred by name');
+
+// -- oracle_chat: its own practitioner prompt, never the two-part reading shape ---------------------
+{
+  const oracle = baseSystem({ ...job(ALIAS, 'chaos_tarot_reading'), kind: 'oracle_chat' } as ClaimedJob);
+  assert.ok(oracle.includes('Oracle of Chaos Tarot, in live conversation'), 'oracle_chat must get the Oracle prompt');
+  assert.ok(!oracle.includes('**The Esoteric Read**'), 'oracle_chat must not be forced into the reading shape');
+  assert.ok(/crisis line/.test(oracle) && /Codes to Swords/.test(oracle), 'oracle_chat carries care rules and the deck mapping');
+  const reading = baseSystem({ ...job(ALIAS, 'chaos_tarot_reading'), kind: 'interpretation' } as ClaimedJob);
+  assert.ok(reading.includes('**The Esoteric Read**'), 'interpretation keeps the two-part reading shape');
+}

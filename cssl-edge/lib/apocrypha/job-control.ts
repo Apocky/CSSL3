@@ -15,7 +15,8 @@ export type ApocryphaJobKind =
   | 'astrology_natal'
   | 'astrology_synastry'
   | 'astrology_transit'
-  | 'continuation';
+  | 'continuation'
+  | 'oracle_chat';
 
 export type ApocryphaJobStatus =
   | 'queued'
