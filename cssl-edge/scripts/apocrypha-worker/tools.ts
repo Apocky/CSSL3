@@ -7,6 +7,7 @@
 // turns -- they reach the owner's private memory, which no member or guest may read.
 
 import { DatabaseSync } from 'node:sqlite';
+import { CANON_TOOLS, runCanonTool } from './canon';
 
 export interface ToolCall {
   readonly id: string;
@@ -47,6 +48,7 @@ const REGION_TOOLS: ReadonlyArray<{ name: string; tiers: string; description: st
 ];
 
 export const MEMORY_TOOLS: readonly ToolSpec[] = [
+  ...CANON_TOOLS,
   ...REGION_TOOLS.map((tool) => ({ type: 'function' as const, function: { name: tool.name, description: tool.description, parameters: QUERY } })),
   {
     type: 'function',
@@ -116,6 +118,8 @@ function searchSessions(query: string, limit: number): string {
 
 /** Run one tool call. Never throws: a failed tool is reported to the model as its result. */
 export async function runTool(call: ToolCall): Promise<string> {
+  const canon = runCanonTool(call.name, call.arguments);
+  if (canon !== null) return canon;
   const { query, limit } = args(call.arguments);
   if (!query) return 'the tool needs a "query"';
   const region = REGION_TOOLS.find((tool) => tool.name === call.name);

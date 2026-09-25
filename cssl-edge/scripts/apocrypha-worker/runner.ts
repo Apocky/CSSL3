@@ -5,6 +5,7 @@ import { log } from './log';
 import { ApocryphaWorker } from './worker';
 import { join } from 'node:path';
 import { configureLogFile } from './log';
+import { syncCanon } from './canon';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -21,6 +22,9 @@ async function main(): Promise<void> {
   };
   process.once('SIGINT', () => stop('SIGINT'));
   process.once('SIGTERM', () => stop('SIGTERM'));
+  const canon = (): void => { void syncCanon().then((m) => log('info', 'worker.canon.synced', { documents: m.documents.length, missing: m.documents.filter((d) => d.missing).map((d) => d.id) })).catch((e) => log('warn', 'worker.canon.sync_failed', { detail: String(e) })); };
+  canon();
+  setInterval(canon, 10 * 60_000).unref();
   log('info', 'worker.starting', {
     node_id: config.nodeId,
     control_plane: config.controlPlaneUrl,
