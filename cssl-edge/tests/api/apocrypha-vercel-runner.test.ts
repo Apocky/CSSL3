@@ -39,7 +39,11 @@ async function main(): Promise<void> {
   };
   const fetchImpl = (async (_url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as { model: string; messages: Array<{ content: string }>; stream: boolean; reasoning: { effort: string } };
-    assert(body.model === 'anthropic/claude-opus-5.5' && body.stream === true && body.reasoning.effort === 'low', 'gateway request pins the flagship, streams, and sets effort');
+    // Owner steering 2026-09-25: the flagship runs at maximum effort with its full output budget,
+    // and names gateway fallbacks because Opus is rate-limited per team at the gateway.
+    assert(body.model === 'anthropic/claude-opus-5.5' && body.stream === true && body.reasoning.effort === 'max', 'gateway request pins the flagship, streams, and sets effort');
+    assert(body.max_tokens === 64_000, 'the flagship gets its full output budget (thinking counts against it)');
+    assert(Array.isArray(body.models) && body.models.includes('anthropic/claude-sonnet-5'), 'gateway fallbacks are named');
     if (body.messages.at(-1)?.content === 'FAIL') return new Response('quota', { status: 429 });
     return sse([
       { model: 'anthropic/claude-opus-5.5', choices: [{ delta: { content: '<think>plan</think>' + reply.slice(0, 300) } }] },

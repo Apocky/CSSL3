@@ -111,6 +111,15 @@ function extractContent(payload: unknown): string {
       : '';
 }
 
+function hostedContent(payload: unknown): string {
+  const root = (payload ?? {}) as Record<string, unknown>;
+  const choice = (Array.isArray(root.choices) ? root.choices[0] : null) as Record<string, unknown> | null;
+  const delta = (choice?.delta ?? {}) as Record<string, unknown>;
+  const message = (choice?.message ?? {}) as Record<string, unknown>;
+  if (typeof delta.content === 'string') return delta.content;
+  return typeof message.content === 'string' ? message.content : '';
+}
+
 export function isQwenContextOverflow(status: number, detail: string): boolean {
   if (![400, 413, 422].includes(status)) return false;
   return /(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit).{0,80}(?:context|token|prompt)|(?:context|token|prompt).{0,80}(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit)/iu.test(detail);
@@ -127,7 +136,7 @@ export function hostedEngineConfig(config: WorkerConfig): EngineConfig | null {
     modelAlias: config.hosted.modelAlias,
     contextWindowTokens: config.hosted.contextWindowTokens,
     maxOutputTokens: config.hosted.maxOutputTokens,
-    qwenIdleTimeoutMs: config.qwenIdleTimeoutMs,
+    qwenIdleTimeoutMs: config.hosted.idleTimeoutMs ?? config.qwenIdleTimeoutMs,
     qwenMaxRuntimeMs: config.qwenMaxRuntimeMs,
     ...(config.hosted.apiKey ? { apiKey: config.hosted.apiKey } : {}),
   };
@@ -305,7 +314,10 @@ export class QwenClient {
         top_p: options.topP ?? BALANCED.topP,
         ...(options.seed === undefined ? {} : { seed: options.seed }),
         // llama.cpp-only dials stay on the local lane; the gateway rejects or ignores them.
-        ...(this.hosted ? { reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'low' } } : {
+        ...(this.hosted ? {
+          // Owner steering 2026-09-25: maximum reasoning on the flagship.
+          reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'max' },
+        } : {
           top_k: options.topK ?? BALANCED.topK,
           min_p: options.minP ?? BALANCED.minP,
           repeat_penalty: options.repeatPenalty ?? BALANCED.repeatPenalty,
@@ -322,7 +334,7 @@ export class QwenClient {
       // 403 no access): observed 2026-09-25, Opus 5.5 answered once and then returned
       // "No access to this model at this time" for every turn after.
       const chain = this.hosted
-        ? [this.config.modelAlias, ...(process.env.APOCRYPHA_HOSTED_FALLBACK_MODELS ?? 'anthropic/claude-sonnet-5')
+        ? [this.config.modelAlias, ...(process.env.APOCRYPHA_HOSTED_FALLBACK_MODELS ?? 'anthropic/claude-opus-5,anthropic/claude-sonnet-5')
           .split(',').map((m) => m.trim()).filter((m) => m && m !== this.config.modelAlias)]
         : [this.config.modelAlias];
       let response!: Response;
@@ -333,7 +345,9 @@ export class QwenClient {
             'content-type': 'application/json', accept: 'text/event-stream, application/json',
             ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
           },
-          body: JSON.stringify({ ...body, model }),
+          // The gateway's own fallback list rides along too, so a refused model can fall over
+          // inside ONE request before this loop has to spend another.
+          body: JSON.stringify({ ...body, model, ...(this.hosted && index < chain.length - 1 ? { models: chain.slice(index + 1) } : {}) }),
           signal: controller.signal,
         });
         if (!(this.hosted && (response.status === 429 || response.status === 403) && index < chain.length - 1)) break;
@@ -412,7 +426,9 @@ export class QwenClient {
           resetIdle();
           return;
         }
-        const delta = extractContent(payload);
+        // On the hosted lane a reasoning delta is thinking, never answer text: it keeps the stream
+        // alive (resetIdle above) but is not shown or stored.
+        const delta = this.hosted ? hostedContent(payload) : extractContent(payload);
         if (delta) {
           acceptedOutputBytes += Buffer.byteLength(delta, 'utf8');
           if (acceptedOutputBytes > maxAcceptedOutputBytes) {

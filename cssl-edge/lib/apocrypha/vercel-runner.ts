@@ -22,7 +22,7 @@ const PRICE_PROMPT_USD_PER_M = Number(process.env.APOCRYPHA_HOSTED_PROMPT_USD_PE
 const PRICE_COMPLETION_USD_PER_M = Number(process.env.APOCRYPHA_HOSTED_COMPLETION_USD_PER_M ?? 20);
 const CHUNK_CHARS = 200;
 const LEASE_SECONDS = 240;
-const MAX_OUTPUT_TOKENS = 4_096;
+const MAX_OUTPUT_TOKENS = 64_000;
 
 type Rpc = { rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { code?: string | null; message?: string | null } | null }> };
 
@@ -89,7 +89,7 @@ export function composeMessages(request: Record<string, unknown>): Message[] {
     .map((item) => String(item.content).trim()).filter(Boolean).join(" ").slice(0, 4_000);
   if (callerSystem) out[0] = { role: 'system', content: `${out[0]!.content}
 ${callerSystem}` };
-  for (const item of (history as Array<Record<string, unknown>>).slice(-40)) {
+  for (const item of (history as Array<Record<string, unknown>>).slice(-400)) {
     const role = item.role === 'assistant' ? 'assistant' : item.role === 'user' ? 'user' : null;
     const content = typeof item.content === 'string' ? item.content.trim() : '';
     if (role && content) out.push({ role, content: content.slice(0, 24_000) });
@@ -132,7 +132,9 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
         stream: true,
         stream_options: { include_usage: true },
         max_tokens: MAX_OUTPUT_TOKENS,
-        reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'low' },
+        reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'max' },
+        // Gateway-native fallbacks: Opus is rate-limited per team at the gateway (measured 2026-09-25).
+        models: ['anthropic/claude-opus-5', 'anthropic/claude-sonnet-5'].filter((m) => m !== RUNNER_MODEL),
       }),
     });
     clearTimeout(firstByteTimer);

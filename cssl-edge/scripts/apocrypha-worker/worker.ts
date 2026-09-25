@@ -464,7 +464,12 @@ export class ApocryphaWorker {
       // would only produce overflow rejections.
       const serverContext = probe.contextTokens;
       const laneConfig: WorkerConfig = lane === 'flagship'
-        ? { ...this.config, contextWindowTokens: engineConfig.contextWindowTokens, maxOutputTokens: engineConfig.maxOutputTokens }
+        ? {
+          ...this.config,
+          contextWindowTokens: engineConfig.contextWindowTokens,
+          maxOutputTokens: engineConfig.maxOutputTokens,
+          memoryContextChars: this.config.hosted?.memoryContextChars ?? this.config.memoryContextChars,
+        }
         : this.config;
       const effectiveConfig = serverContext && serverContext < laneConfig.contextWindowTokens
         ? { ...laneConfig, contextWindowTokens: serverContext }

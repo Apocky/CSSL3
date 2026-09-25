@@ -29,6 +29,8 @@ export const ROOM_TOOLS = ['image', 'web'] as const;
 export type RoomTool = typeof ROOM_TOOLS[number];
 
 const HISTORY_ROWS = 24;
+// Apocrypha+ has a 1M-token window: give it the room's real history, not the last few lines.
+const FLAGSHIP_HISTORY_ROWS = 200;
 const GUEST_HISTORY_TURNS = 12;
 const MAX_ATTACHMENTS = 8;
 
@@ -195,7 +197,7 @@ function receipt(data: unknown): SayReceipt & { raw: Record<string, unknown> } {
 /** Post the message and enqueue its job, in one transaction. */
 export async function say(speaker: Speaker, input: SayInput, client: SupabaseClient = roomClient()): Promise<SayReceipt> {
   if (input.attachmentIds.length > MAX_ATTACHMENTS) throw new RoomError(400, 'TOO_MANY_ATTACHMENTS', `At most ${MAX_ATTACHMENTS} attachments per message.`);
-  const tail = await listEvents(input.room, 0, HISTORY_ROWS, client);
+  const tail = await listEvents(input.room, 0, input.lane === 'flagship' ? FLAGSHIP_HISTORY_ROWS : HISTORY_ROWS, client);
   const shared = input.kind === 'lobby';
   const history = roomHistory(tail, shared);
 
@@ -232,7 +234,9 @@ export async function say(speaker: Speaker, input: SayInput, client: SupabaseCli
       ],
       conversation_history: history,
       retrieval_query: input.body,
-      output_budget: 1536,
+      // 1,536 tokens cut Apocrypha+ answers mid-sentence (2026-09-25); on the flagship, thinking
+      // counts against output too, so it gets the lane's full budget.
+      output_budget: input.lane === 'flagship' ? 64_000 : 1536,
       response_mode: 'standard',
       source: 'apocky.com/room',
       privacy_class: shared ? 'room-lobby' : 'restricted',

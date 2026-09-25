@@ -86,8 +86,11 @@ function priceEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): numbe
  */
 export function loadHostedLane(env: NodeJS.ProcessEnv): HostedLaneConfig | null {
   if (!boolEnv(env, 'APOCRYPHA_HOSTED_ENABLED', false)) return null;
-  const contextWindowTokens = integerEnv(env, 'APOCRYPHA_HOSTED_CONTEXT_TOKENS', 200_000, 8_192, 1_000_000);
-  const maxOutputTokens = integerEnv(env, 'APOCRYPHA_HOSTED_MAX_OUTPUT_TOKENS', 8_192, 256, 64_000);
+  // Opus 5.5 / Opus 5 / Sonnet 5 on the gateway: 1M context, 128K output (measured 2026-09-25 via
+  // /v1/models/<id>/endpoints). Owner steering: the flagship runs at its ceiling. Thinking counts
+  // against output, so the output budget is large; it is a cap, not a target.
+  const contextWindowTokens = integerEnv(env, 'APOCRYPHA_HOSTED_CONTEXT_TOKENS', 1_000_000, 8_192, 1_000_000);
+  const maxOutputTokens = integerEnv(env, 'APOCRYPHA_HOSTED_MAX_OUTPUT_TOKENS', 64_000, 256, 128_000);
   if (maxOutputTokens > contextWindowTokens - 4_096) throw new Error('hosted output tokens must leave room for the prompt');
   return {
     baseUrl: safeUrl(env.APOCRYPHA_HOSTED_BASE_URL?.trim() || 'http://127.0.0.1:19135/v1', 'APOCRYPHA_HOSTED_BASE_URL', true),
@@ -96,6 +99,9 @@ export function loadHostedLane(env: NodeJS.ProcessEnv): HostedLaneConfig | null 
     maxOutputTokens,
     promptUsdPerMillion: priceEnv(env, 'APOCRYPHA_HOSTED_PROMPT_USD_PER_M', 4),
     completionUsdPerMillion: priceEnv(env, 'APOCRYPHA_HOSTED_COMPLETION_USD_PER_M', 20),
+    // Max-effort thinking can stream nothing for minutes; the local 3-minute idle rule would cut it.
+    idleTimeoutMs: integerEnv(env, 'APOCRYPHA_HOSTED_IDLE_TIMEOUT_MS', 600_000, 30_000, 1_800_000),
+    memoryContextChars: integerEnv(env, 'APOCRYPHA_HOSTED_MEMORY_CHARS', 200_000, 1_000, 2_000_000),
     ...(env.AI_GATEWAY_API_KEY?.trim() ? { apiKey: env.AI_GATEWAY_API_KEY.trim() } : {}),
   };
 }

@@ -21,7 +21,7 @@ export interface ToolSpec {
 
 const RECALL_URL = (process.env.APOCRYPHA_RECALL_URL ?? 'http://127.0.0.1:19129').replace(/\/+$/, '');
 const ANAMNESIS_DB = process.env.APOCRYPHA_ANAMNESIS_DB_PATH ?? 'C:\\Users\\Apocky\\source\\repos\\anamnesis\\anamnesis.db';
-const MAX_RESULT_CHARS = 9_000;
+const MAX_RESULT_CHARS = 24_000;
 
 const QUERY = {
   type: 'object',
