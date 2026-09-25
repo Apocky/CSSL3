@@ -102,6 +102,8 @@ export interface HostedLaneConfig {
   /** USD per million tokens, for the receipt on every hosted turn. */
   promptUsdPerMillion: number;
   completionUsdPerMillion: number;
+  /** Bearer for the gateway when calling it directly (AI_GATEWAY_API_KEY); never logged. */
+  apiKey?: string;
 }
 
 export interface WorkerConfig {

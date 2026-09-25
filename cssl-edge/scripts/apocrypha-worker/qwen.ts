@@ -112,7 +112,7 @@ export function isQwenContextOverflow(status: number, detail: string): boolean {
 
 /** The engine-facing slice of the worker config; the hosted lane substitutes its own values. */
 export type EngineConfig = Pick<WorkerConfig,
-  'qwenBaseUrl' | 'modelAlias' | 'contextWindowTokens' | 'maxOutputTokens' | 'qwenIdleTimeoutMs' | 'qwenMaxRuntimeMs'>;
+  'qwenBaseUrl' | 'modelAlias' | 'contextWindowTokens' | 'maxOutputTokens' | 'qwenIdleTimeoutMs' | 'qwenMaxRuntimeMs'> & { apiKey?: string };
 
 export function hostedEngineConfig(config: WorkerConfig): EngineConfig | null {
   if (!config.hosted) return null;
@@ -123,6 +123,7 @@ export function hostedEngineConfig(config: WorkerConfig): EngineConfig | null {
     maxOutputTokens: config.hosted.maxOutputTokens,
     qwenIdleTimeoutMs: config.qwenIdleTimeoutMs,
     qwenMaxRuntimeMs: config.qwenMaxRuntimeMs,
+    ...(config.hosted.apiKey ? { apiKey: config.hosted.apiKey } : {}),
   };
 }
 
@@ -294,7 +295,7 @@ export class QwenClient {
         top_p: options.topP ?? BALANCED.topP,
         ...(options.seed === undefined ? {} : { seed: options.seed }),
         // llama.cpp-only dials stay on the local lane; the gateway rejects or ignores them.
-        ...(this.hosted ? {} : {
+        ...(this.hosted ? { reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'low' } } : {
           top_k: options.topK ?? BALANCED.topK,
           min_p: options.minP ?? BALANCED.minP,
           repeat_penalty: options.repeatPenalty ?? BALANCED.repeatPenalty,
@@ -309,7 +310,10 @@ export class QwenClient {
       };
       const response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'text/event-stream, application/json' },
+        headers: {
+          'content-type': 'application/json', accept: 'text/event-stream, application/json',
+          ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
+        },
         body: JSON.stringify(body),
         signal: controller.signal,
       });

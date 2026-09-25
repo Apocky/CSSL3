@@ -123,6 +123,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           capability_memory: scopedMemory,
           generation_deadline_ms: generationDeadlineMs,
           phase: body.status,
+          // 0064: a node that can reach the hosted gateway claims flagship turns (with its memory).
+          ...(typeof body.flagship === 'string' && body.flagship.length <= 160 ? { flagship: body.flagship } : {}),
           load: body.load,
         },
       })

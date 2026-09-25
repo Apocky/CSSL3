@@ -96,6 +96,7 @@ export function loadHostedLane(env: NodeJS.ProcessEnv): HostedLaneConfig | null 
     maxOutputTokens,
     promptUsdPerMillion: priceEnv(env, 'APOCRYPHA_HOSTED_PROMPT_USD_PER_M', 4),
     completionUsdPerMillion: priceEnv(env, 'APOCRYPHA_HOSTED_COMPLETION_USD_PER_M', 20),
+    ...(env.AI_GATEWAY_API_KEY?.trim() ? { apiKey: env.AI_GATEWAY_API_KEY.trim() } : {}),
   };
 }
 

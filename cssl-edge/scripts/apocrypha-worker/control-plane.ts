@@ -245,6 +245,7 @@ export class ControlPlaneClient {
             adapter_probe_at: runtime.capabilityAdapterProbeAt[capability] ?? null,
           }])),
           generation_deadline_ms: this.config.qwenMaxRuntimeMs,
+          flagship: this.config.hosted?.modelAlias ?? null,
         },
         idempotencyKey: `${this.config.nodeId}:heartbeat:${Math.floor(Date.now() / this.config.heartbeatIntervalMs)}`,
         attempts: 1,
