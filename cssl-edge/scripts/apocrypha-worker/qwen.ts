@@ -85,17 +85,37 @@ export function isQwenContextOverflow(status: number, detail: string): boolean {
   return /(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit).{0,80}(?:context|token|prompt)|(?:context|token|prompt).{0,80}(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit)/iu.test(detail);
 }
 
+/** The engine-facing slice of the worker config; the hosted lane substitutes its own values. */
+export type EngineConfig = Pick<WorkerConfig,
+  'qwenBaseUrl' | 'modelAlias' | 'contextWindowTokens' | 'maxOutputTokens' | 'qwenIdleTimeoutMs' | 'qwenMaxRuntimeMs'>;
+
+export function hostedEngineConfig(config: WorkerConfig): EngineConfig | null {
+  if (!config.hosted) return null;
+  return {
+    qwenBaseUrl: config.hosted.baseUrl,
+    modelAlias: config.hosted.modelAlias,
+    contextWindowTokens: config.hosted.contextWindowTokens,
+    maxOutputTokens: config.hosted.maxOutputTokens,
+    qwenIdleTimeoutMs: config.qwenIdleTimeoutMs,
+    qwenMaxRuntimeMs: config.qwenMaxRuntimeMs,
+  };
+}
+
 export class QwenClient {
-  private readonly config: WorkerConfig;
+  readonly config: EngineConfig;
+  /** True for the hosted flagship lane: OpenAI-dialect gateway, no llama.cpp-only dials. */
+  readonly hosted: boolean;
   private readonly fetchImpl: Fetch;
 
-  constructor(config: WorkerConfig, fetchImpl: Fetch = fetch) {
+  constructor(config: EngineConfig, fetchImpl: Fetch = fetch, options: { hosted?: boolean } = {}) {
     this.config = config;
     this.fetchImpl = fetchImpl;
+    this.hosted = options.hosted === true;
   }
 
   /** Exact prompt token count from llama-server /tokenize; null when the endpoint is unavailable. */
   async tokenCount(messages: QwenMessage[], signal?: AbortSignal): Promise<number | null> {
+    if (this.hosted) return null;
     const base = this.config.qwenBaseUrl.replace(/\/v1$/, '');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('Qwen tokenize timeout')), 2_500);
@@ -198,11 +218,14 @@ export class QwenClient {
         max_tokens: outputTokenLimit,
         temperature: options.temperature ?? 0.65,
         top_p: options.topP ?? 0.9,
-        top_k: options.topK ?? 40,
-        min_p: options.minP ?? 0.05,
-        repeat_penalty: options.repeatPenalty ?? 1.08,
         ...(options.seed === undefined ? {} : { seed: options.seed }),
-        chat_template_kwargs: { enable_thinking: false },
+        // llama.cpp-only dials stay on the local lane; the gateway rejects or ignores them.
+        ...(this.hosted ? {} : {
+          top_k: options.topK ?? 40,
+          min_p: options.minP ?? 0.05,
+          repeat_penalty: options.repeatPenalty ?? 1.08,
+          chat_template_kwargs: { enable_thinking: false },
+        }),
       };
       const response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
         method: 'POST',

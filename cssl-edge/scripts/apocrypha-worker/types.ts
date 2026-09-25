@@ -90,6 +90,20 @@ export interface MemoryProbeScope {
   capability: string;
 }
 
+/** Which engine answers a turn: the local Qwen lane (free) or the hosted flagship lane (premium). */
+export type EngineLane = 'local' | 'flagship';
+
+/** The hosted (flagship) lane: a loopback proxy in front of the Vercel AI Gateway. Null = lane off (law L10). */
+export interface HostedLaneConfig {
+  baseUrl: string;
+  modelAlias: string;
+  contextWindowTokens: number;
+  maxOutputTokens: number;
+  /** USD per million tokens, for the receipt on every hosted turn. */
+  promptUsdPerMillion: number;
+  completionUsdPerMillion: number;
+}
+
 export interface WorkerConfig {
   controlPlaneUrl: string;
   nodeId: string;
@@ -125,6 +139,8 @@ export interface WorkerConfig {
   memoryProbePrincipalId: string;
   memoryProbeCapability: string;
   memoryAdditionalProbeScopes?: ReadonlyArray<MemoryProbeScope>;
+  /** Hosted flagship lane; absent or null means every job runs on the local lane. */
+  hosted?: HostedLaneConfig | null;
   once: boolean;
   probeOnly: boolean;
   recoverOnly: boolean;

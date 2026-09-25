@@ -2,7 +2,8 @@ import { ControlPlaneClient, ControlPlaneError, fenceFromClaim } from './control
 import { AttemptJournal } from './journal';
 import { log } from './log';
 import { composeQwenRequest } from './prompt';
-import { QwenClient, QwenError } from './qwen';
+import { QwenClient, QwenError, hostedEngineConfig } from './qwen';
+import { presentable } from '../../lib/apocrypha/deliberation';
 import { probeMemoryAdapters, retrieveMemory } from './retrieval';
 import type {
   AttemptJournalState,
@@ -10,6 +11,7 @@ import type {
   FailurePayload,
   OutputChunk,
   QwenResult,
+  EngineLane,
   RetrievalBundle,
   WorkerConfig,
   WorkerRuntimeState,
@@ -45,6 +47,8 @@ class LeaseLostError extends Error {
 interface Dependencies {
   controlPlane?: ControlPlaneClient;
   qwen?: QwenClient;
+  /** Hosted flagship lane client; when absent, built from config.hosted or left off. */
+  hosted?: QwenClient | null;
   journal?: AttemptJournal;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
@@ -54,6 +58,7 @@ export class ApocryphaWorker {
   readonly runtime: WorkerRuntimeState;
   readonly journal: AttemptJournal;
   readonly qwen: QwenClient;
+  readonly hosted: QwenClient | null;
   private readonly config: WorkerConfig;
   private readonly controlPlane: ControlPlaneClient;
   private readonly env: NodeJS.ProcessEnv;
@@ -72,6 +77,10 @@ export class ApocryphaWorker {
     this.fetchImpl = dependencies.fetchImpl ?? fetch;
     this.controlPlane = dependencies.controlPlane ?? new ControlPlaneClient(config, this.fetchImpl);
     this.qwen = dependencies.qwen ?? new QwenClient(config, this.fetchImpl);
+    const hostedConfig = hostedEngineConfig(config);
+    this.hosted = dependencies.hosted !== undefined
+      ? dependencies.hosted
+      : hostedConfig ? new QwenClient(hostedConfig, this.fetchImpl, { hosted: true }) : null;
     this.journal = dependencies.journal ?? new AttemptJournal(config.journalDir, config.nodeToken, config.nodeId);
     this.runtime = {
       phase: 'starting',
@@ -248,8 +257,18 @@ export class ApocryphaWorker {
     const started = Date.now();
     try {
       this.assertCompatibleClaim(claim);
-      const probe = await this.qwen.probe(abortController.signal);
-      if (!probe.healthy) throw new QwenError(`Qwen is not ready: ${probe.detail}`, 'QWEN_NOT_READY', true);
+      // Lane: the job asks for 'flagship' only when the control plane admitted it (premium
+      // entitlement, enforced in SQL). Without a hosted lane on this node the turn still answers,
+      // on the local lane, and the receipt says so instead of failing silently.
+      const requestedLane: EngineLane = claim.request.engine_lane === 'flagship' ? 'flagship' : 'local';
+      const engine = requestedLane === 'flagship' && this.hosted ? this.hosted : this.qwen;
+      const lane: EngineLane = engine === this.hosted && this.hosted ? 'flagship' : 'local';
+      const laneFallback = requestedLane === 'flagship' && lane === 'local' ? 'hosted lane is not enabled on this worker' : null;
+      // Engine-facing limits come from config, not the client: test doubles carry no config.
+      const engineConfig = (lane === 'flagship' ? hostedEngineConfig(this.config) : null) ?? this.config;
+      if (laneFallback) log('warn', 'worker.lane.fallback', { job_id: claim.jobId, requested: requestedLane, detail: laneFallback });
+      const probe = await engine.probe(abortController.signal);
+      if (!probe.healthy) throw new QwenError(`${lane} engine is not ready: ${probe.detail}`, 'QWEN_NOT_READY', true);
       this.runtime.phase = 'retrieving';
       memory = await this.serializeMemoryOperation(
         () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
@@ -315,7 +334,7 @@ export class ApocryphaWorker {
             seq,
             chunkKind: 'token',
             delta,
-            metadata: { model_alias: this.config.modelAlias },
+            metadata: { model_alias: engineConfig.modelAlias, engine_lane: lane },
           };
           this.runtime.phase = 'delivering';
           await enqueueChunk(chunk);
@@ -337,9 +356,12 @@ export class ApocryphaWorker {
       // The server's real window is authoritative; a larger configured window
       // would only produce overflow rejections.
       const serverContext = probe.contextTokens;
-      const effectiveConfig = serverContext && serverContext < this.config.contextWindowTokens
-        ? { ...this.config, contextWindowTokens: serverContext }
+      const laneConfig: WorkerConfig = lane === 'flagship'
+        ? { ...this.config, contextWindowTokens: engineConfig.contextWindowTokens, maxOutputTokens: engineConfig.maxOutputTokens }
         : this.config;
+      const effectiveConfig = serverContext && serverContext < laneConfig.contextWindowTokens
+        ? { ...laneConfig, contextWindowTokens: serverContext }
+        : laneConfig;
       if (effectiveConfig !== this.config && !this.contextClampLogged) {
         this.contextClampLogged = true;
         log('warn', 'worker.qwen.context_clamped', {
@@ -351,9 +373,9 @@ export class ApocryphaWorker {
         let request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry });
         if (!overflowRetry) {
           // Exact count from the server; fall back to the byte estimate when unavailable.
-          const counter = (this.qwen as { tokenCount?: QwenClient['tokenCount'] }).tokenCount;
-          const count = counter ? await counter.call(this.qwen, request.messages, abortController.signal) : null;
-          const ceiling = effectiveConfig.contextWindowTokens - (request.generation.maxTokens ?? this.config.maxOutputTokens) - 64;
+          const counter = (engine as { tokenCount?: QwenClient['tokenCount'] }).tokenCount;
+          const count = counter ? await counter.call(engine, request.messages, abortController.signal) : null;
+          const ceiling = effectiveConfig.contextWindowTokens - (request.generation.maxTokens ?? effectiveConfig.maxOutputTokens) - 64;
           if (count !== null && count > ceiling) {
             log('warn', 'worker.qwen.prompt_recompacted', { job_id: claim.jobId, prompt_tokens: count, ceiling });
             request = composeQwenRequest(effectiveConfig, claim, memory as RetrievalBundle, { overflowRetry: true });
@@ -367,7 +389,7 @@ export class ApocryphaWorker {
             });
           }
         }
-        return this.qwen.generate(request.messages, request.generation, onDelta, abortController.signal);
+        return engine.generate(request.messages, request.generation, onDelta, abortController.signal);
       };
       let result: QwenResult;
       try {
@@ -382,11 +404,23 @@ export class ApocryphaWorker {
         result = await generate(true);
       }
       await flush(true);
+      // A leaked thought is never the answer: the stored revision is what a reader may see.
+      const shown = presentable(result.content);
+      if (shown.withheld) log('warn', 'worker.answer.withheld', { job_id: claim.jobId, lane, why: shown.withheld });
+      const hostedRate = lane === 'flagship' ? this.config.hosted : null;
+      const totalCostUsd = hostedRate
+        ? ((result.usage.promptTokens ?? 0) * hostedRate.promptUsdPerMillion
+          + (result.usage.completionTokens ?? 0) * hostedRate.completionUsdPerMillion) / 1_000_000
+        : 0;
       const completion = {
-        content: result.content,
+        content: shown.text,
         revisionRole: 'primary' as const,
         provenance: {
           model_alias: result.model,
+          engine_lane: lane,
+          lane_requested: requestedLane,
+          ...(laneFallback ? { lane_fallback: laneFallback } : {}),
+          withheld: shown.withheld,
           model_profile_hash: this.config.profileHash,
           tool_registry_version: this.config.toolRegistryVersion,
           memory_manifest_hash: this.config.memoryManifestHash,
@@ -400,6 +434,11 @@ export class ApocryphaWorker {
           total_tokens: result.usage.totalTokens,
           first_token_ms: result.firstTokenMs,
           duration_ms: result.durationMs,
+          elapsed_s: Math.round(result.durationMs / 100) / 10,
+          engine_lane: lane,
+          model: result.model,
+          total_cost_usd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
+          withheld: shown.withheld !== null,
         },
       };
       // Once Qwen has returned and every byte is journaled, preserve the exact

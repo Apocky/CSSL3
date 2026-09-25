@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sha256, stableJson } from './crypto';
-import type { MemoryProbeScope, WorkerConfig, WorkerManifest } from './types';
+import type { HostedLaneConfig, MemoryProbeScope, WorkerConfig, WorkerManifest } from './types';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const EXACT_MODEL_ALIAS = 'qwen35-35b-a3b-q4';
@@ -69,6 +69,34 @@ function additionalProbeScopes(
     result.push({ tenantId, principalId, capability });
   }
   return result;
+}
+
+function priceEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const raw = env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 10_000) throw new Error(`${name} must be a USD-per-million price`);
+  return parsed;
+}
+
+/**
+ * Hosted flagship lane. Off unless APOCRYPHA_HOSTED_ENABLED is true (kernel law L10: remote
+ * adapters ship disabled). The base URL is the loopback hosted-s2 proxy by default; HTTPS is
+ * accepted for a direct gateway URL.
+ */
+export function loadHostedLane(env: NodeJS.ProcessEnv): HostedLaneConfig | null {
+  if (!boolEnv(env, 'APOCRYPHA_HOSTED_ENABLED', false)) return null;
+  const contextWindowTokens = integerEnv(env, 'APOCRYPHA_HOSTED_CONTEXT_TOKENS', 200_000, 8_192, 1_000_000);
+  const maxOutputTokens = integerEnv(env, 'APOCRYPHA_HOSTED_MAX_OUTPUT_TOKENS', 8_192, 256, 64_000);
+  if (maxOutputTokens > contextWindowTokens - 4_096) throw new Error('hosted output tokens must leave room for the prompt');
+  return {
+    baseUrl: safeUrl(env.APOCRYPHA_HOSTED_BASE_URL?.trim() || 'http://127.0.0.1:19135/v1', 'APOCRYPHA_HOSTED_BASE_URL', true),
+    modelAlias: env.APOCRYPHA_HOSTED_MODEL_ALIAS?.trim() || 'anthropic/claude-opus-5.5',
+    contextWindowTokens,
+    maxOutputTokens,
+    promptUsdPerMillion: priceEnv(env, 'APOCRYPHA_HOSTED_PROMPT_USD_PER_M', 4),
+    completionUsdPerMillion: priceEnv(env, 'APOCRYPHA_HOSTED_COMPLETION_USD_PER_M', 20),
+  };
 }
 
 function safeUrl(raw: string, label: string, allowLoopbackHttp: boolean): string {
@@ -176,6 +204,7 @@ export function loadConfig(
     memoryProbeCapability: env.APOCRYPHA_MEMORY_PROBE_CAPABILITY?.trim()
       || (manifest.capabilities.includes('chaos_tarot_reading') ? 'chaos_tarot_reading' : manifest.capabilities[0] as string),
     memoryAdditionalProbeScopes: additionalProbeScopes(env, manifest),
+    hosted: loadHostedLane(env),
     once: argv.includes('--once'),
     probeOnly: argv.includes('--probe'),
     recoverOnly: argv.includes('--recover-only'),
