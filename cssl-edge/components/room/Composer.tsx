@@ -102,11 +102,11 @@ export default function Composer({
 
   const attachHint = signedIn ? null : 'Sign in to attach files';
   const premiumHint = !premium
-    ? (signedIn ? 'Premium is part of the Apocrypha Premium plan' : 'Sign in with an Apocrypha Premium plan to use Premium')
-    : !premiumReady ? 'Premium (Opus 5.5) is not connected right now' : null;
-  const toolHint = premiumHint ?? (lane !== 'flagship' ? 'Tools run on Premium: switch the model to Opus 5.5' : null);
+    ? (signedIn ? 'Apocrypha+ is part of the Premium plan' : 'Sign in with a Premium plan to use Apocrypha+')
+    : !premiumReady ? 'Apocrypha+ is not connected right now' : null;
+  const toolHint = premiumHint ?? (lane !== 'flagship' ? 'Tools run on Apocrypha+: switch the model to Apocrypha+' : null);
 
-  const modelName = lane === 'flagship' ? 'Opus 5.5' : 'Local';
+  const modelName = lane === 'flagship' ? 'Apocrypha+' : 'Local';
 
   return <div className={styles.composer} ref={wrap}>
     <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={picked} />
@@ -124,8 +124,8 @@ export default function Composer({
 
     {menu === 'model' ? <div className={`${styles.menu} ${styles.menuRight}`} role="menu" aria-label="Choose who answers">
       <MenuItem
-        label="Opus 5.5" sub="Premium · Claude Opus 5.5, the flagship"
-        hint={premiumHint ?? 'Premium: answered by Claude Opus 5.5 (flagship)'}
+        label="Apocrypha+" sub="Premium · the flagship"
+        hint={premiumHint ?? 'Apocrypha+: Premium, the flagship'}
         locked={premiumHint !== null} checked={lane === 'flagship'}
         onClick={() => { onLane('flagship'); setMenu('none'); }}
       />

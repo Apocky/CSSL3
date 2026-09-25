@@ -143,12 +143,12 @@ function Live({ turn, nowMs }: { readonly turn: LiveTurnView; readonly nowMs: nu
   const seconds = Math.max(0, Math.round((nowMs - startedAt) / 1000));
   const waiting = turn.status === 'queued';
   const label = waiting
-    ? (turn.lane === 'flagship' ? 'Waiting for Opus 5.5' : 'Waiting for Apocrypha')
+    ? (turn.lane === 'flagship' ? 'Waiting for Apocrypha+' : 'Waiting for Apocrypha')
     : `Thinking${seconds > 0 ? ` · ${seconds}s` : '…'}`;
   return <div className={`${styles.msgRow} ${styles.side_apocrypha} ${styles.groupStart}`} aria-live="polite">
     <Avatar thinking />
     <div className={styles.msgCol}>
-      <div className={styles.msgName}>Apocrypha <span className={styles.laneTag}>{turn.lane === 'flagship' ? 'Opus 5.5' : 'Local'}</span></div>
+      <div className={styles.msgName}>Apocrypha <span className={styles.laneTag}>{turn.lane === 'flagship' ? 'Apocrypha+' : 'Local'}</span></div>
       {turn.text === '' ? <div className={`${styles.bubble} ${styles.typing}`}>
         <span className={styles.dots} aria-hidden="true"><i /><i /><i /></span>
         <span className={styles.typingLabel}>{label}</span>

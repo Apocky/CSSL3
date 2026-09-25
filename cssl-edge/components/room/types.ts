@@ -58,8 +58,7 @@ export function authorLabel(author: string): string {
 
 export function modelLabel(meta: Record<string, unknown>): string | null {
   const model = typeof meta.model === 'string' ? meta.model : '';
-  if (model.includes('opus')) return 'Opus 5.5';
+  if (meta.engine_lane === 'flagship') return 'Apocrypha+';
   if (model !== '') return 'Local';
-  if (meta.engine_lane === 'flagship') return 'Opus 5.5';
   return null;
 }

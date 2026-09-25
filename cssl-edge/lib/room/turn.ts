@@ -3,7 +3,7 @@
 // apocrypha_room_say / apocrypha_room_say_guest write the human row AND enqueue its job in one
 // database transaction, so a message either has a job or was never posted. This module decides
 // the three things the database cannot: WHO is speaking (owner, signed-in member, guest), which
-// LANE they may use (flagship = Opus on the Vercel runner, local = the PC worker), and what the
+// LANE they may use (flagship = Apocrypha+ on the Vercel runner, local = the PC worker), and what the
 // job CARRIES (the room persona, the room's recent conversation, any attachments).
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -163,7 +163,7 @@ function sayFailure(error: { code?: string | null; message?: string | null } | n
   const code = error?.code ?? '';
   if (code === 'P4091') throw new RoomError(409, 'BUSY', 'Apocrypha is still answering your last message.');
   if (code === 'P4290') throw new RoomError(429, 'QUOTA', 'You have reached the hourly limit for this room. Try again later.');
-  if (code === 'P4020') throw new RoomError(402, 'PREMIUM_REQUIRED', 'Premium (Opus 5.5) needs an Apocrypha Premium plan.');
+  if (code === 'P4020') throw new RoomError(402, 'PREMIUM_REQUIRED', 'Apocrypha+ needs a Premium plan.');
   if (code === 'P4031') throw new RoomError(403, 'OWNER_REQUIRED', 'That room is private.');
   if (code === '22023' || code === '23502') throw new RoomError(400, 'MESSAGE_INVALID', 'That message could not be accepted.');
   throw new RoomError(503, 'ROOM_UNAVAILABLE', 'The room could not take that message right now.');
@@ -191,7 +191,7 @@ export async function say(speaker: Speaker, input: SayInput, client: SupabaseCli
   let result: { data: unknown; error: { code?: string | null; message?: string | null } | null };
   if (speaker.kind === 'guest') {
     if (!speaker.guestId) throw new RoomError(401, 'GUEST_REQUIRED', 'Reload the page and try again.');
-    if (input.lane !== 'local') throw new RoomError(402, 'PREMIUM_REQUIRED', 'Premium (Opus 5.5) needs a signed-in Premium plan.');
+    if (input.lane !== 'local') throw new RoomError(402, 'PREMIUM_REQUIRED', 'Apocrypha+ needs a signed-in Premium plan.');
     if (input.attachmentIds.length > 0) throw new RoomError(403, 'ATTACHMENTS_NEED_SIGN_IN', 'Sign in to attach files.');
     result = await client.rpc('apocrypha_room_say_guest', {
       p_author: speaker.author,

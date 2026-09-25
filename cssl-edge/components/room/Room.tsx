@@ -2,7 +2,7 @@
 //
 // The page polls one append-only river plus the room's in-flight turns and shows whatever
 // arrived, whoever wrote it, prompted or not. Every message is a job in the queue (migration
-// 0061): the local lane is answered by the PC worker, Premium by Opus 5.5 on the Vercel runner,
+// 0061): the local lane is answered by the PC worker, Apocrypha+ (Premium, the flagship) by the Vercel runner,
 // and both answers land in the same river.
 
 import Head from 'next/head';

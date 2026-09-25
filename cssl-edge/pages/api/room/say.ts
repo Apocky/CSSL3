@@ -59,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     if (lane === 'flagship' && !flagshipReady(req)) {
-      throw new RoomError(503, 'PREMIUM_OFFLINE', 'Premium (Opus 5.5) is not connected right now. Switch to Free, or try again soon.');
+      throw new RoomError(503, 'PREMIUM_OFFLINE', 'Apocrypha+ is not connected right now. Switch to Local, or try again soon.');
     }
 
     const receipt = await say(speaker, { room, body, lane, attachmentIds, tools });
