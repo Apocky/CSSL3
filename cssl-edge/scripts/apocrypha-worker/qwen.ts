@@ -110,16 +110,35 @@ export function isQwenContextOverflow(status: number, detail: string): boolean {
   return /(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit).{0,80}(?:context|token|prompt)|(?:context|token|prompt).{0,80}(?:exceed(?:s|ed)?|maximum|too\s+(?:many|long|large)|limit)/iu.test(detail);
 }
 
+/** The engine-facing slice of the worker config; the hosted lane substitutes its own values. */
+export type EngineConfig = Pick<WorkerConfig,
+  'qwenBaseUrl' | 'modelAlias' | 'contextWindowTokens' | 'maxOutputTokens' | 'qwenIdleTimeoutMs' | 'qwenMaxRuntimeMs'>;
+
+export function hostedEngineConfig(config: WorkerConfig): EngineConfig | null {
+  if (!config.hosted) return null;
+  return {
+    qwenBaseUrl: config.hosted.baseUrl,
+    modelAlias: config.hosted.modelAlias,
+    contextWindowTokens: config.hosted.contextWindowTokens,
+    maxOutputTokens: config.hosted.maxOutputTokens,
+    qwenIdleTimeoutMs: config.qwenIdleTimeoutMs,
+    qwenMaxRuntimeMs: config.qwenMaxRuntimeMs,
+  };
+}
+
 export class QwenClient {
-  private readonly config: WorkerConfig;
+  readonly config: EngineConfig;
+  /** True for the hosted flagship lane: OpenAI-dialect gateway, no llama.cpp-only dials. */
+  readonly hosted: boolean;
   private readonly fetchImpl: Fetch;
   /** null until a /props probe has read the live chat template. Null means NOT YET MEASURED --
    *  distinct from false, which means the template was read and does not declare the variable. */
   private thinkingKwargSupported: boolean | null = null;
 
-  constructor(config: WorkerConfig, fetchImpl: Fetch = fetch) {
+  constructor(config: EngineConfig, fetchImpl: Fetch = fetch, options: { hosted?: boolean } = {}) {
     this.config = config;
     this.fetchImpl = fetchImpl;
+    this.hosted = options.hosted === true;
   }
 
   /** Send enable_thinking:false? Explicit override wins; otherwise what the live template says.
@@ -133,6 +152,7 @@ export class QwenClient {
 
   /** Exact prompt token count from llama-server /tokenize; null when the endpoint is unavailable. */
   async tokenCount(messages: QwenMessage[], signal?: AbortSignal): Promise<number | null> {
+    if (this.hosted) return null;
     const base = this.config.qwenBaseUrl.replace(/\/v1$/, '');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('Qwen tokenize timeout')), 2_500);
@@ -272,17 +292,20 @@ export class QwenClient {
         // a turn that asks for `precise` gets the code band instead.
         temperature: options.temperature ?? BALANCED.temperature,
         top_p: options.topP ?? BALANCED.topP,
-        top_k: options.topK ?? BALANCED.topK,
-        min_p: options.minP ?? BALANCED.minP,
-        repeat_penalty: options.repeatPenalty ?? BALANCED.repeatPenalty,
         ...(options.seed === undefined ? {} : { seed: options.seed }),
-        // Sent ONLY when the loaded model's template actually declares this variable. Qwen3.5's
-        // GGUF does; Qwen3-Coder-Next's does NOT -- grep of the two .gguf files: 1 hit vs 0. With
-        // --jinja (which the work-lane launcher passes) handing a template a variable it never
-        // declares risks a 400 on every turn, and this line would have been the thing that broke
-        // chat the moment one engine started serving both. Off by default for that reason; set
-        // APOCRYPHA_QWEN_THINKING_KWARG=on only for a model whose template takes it.
-        ...(this.sendThinkingKwarg() ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        // llama.cpp-only dials stay on the local lane; the gateway rejects or ignores them.
+        ...(this.hosted ? {} : {
+          top_k: options.topK ?? BALANCED.topK,
+          min_p: options.minP ?? BALANCED.minP,
+          repeat_penalty: options.repeatPenalty ?? BALANCED.repeatPenalty,
+          // Sent ONLY when the loaded model's template actually declares this variable. Qwen3.5's
+          // GGUF does; Qwen3-Coder-Next's does NOT -- grep of the two .gguf files: 1 hit vs 0. With
+          // --jinja (which the work-lane launcher passes) handing a template a variable it never
+          // declares risks a 400 on every turn, and this line would have been the thing that broke
+          // chat the moment one engine started serving both. Off by default for that reason; set
+          // APOCRYPHA_QWEN_THINKING_KWARG=on only for a model whose template takes it.
+          ...(this.sendThinkingKwarg() ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        }),
       };
       const response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
         method: 'POST',

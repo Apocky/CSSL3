@@ -259,7 +259,6 @@ function PrivateMemoryWorkbench(): JSX.Element {
           <p>Only the server-derived profile for this verified session can be reached. The browser never chooses a profile name.</p>
         </div>
         <div className={styles.inlineActions}>
-          {access === 'owner' ? <Link href="/brain">Open private Brain</Link> : null}
           <button type="button" onClick={() => { void exportPrivate(); }} disabled={busy !== null}>Export my data</button>
         </div>
       </div>

@@ -70,7 +70,7 @@ function Inspector() {
   const messages = conversation && Array.isArray(conversation.messages) ? conversation.messages.filter(object) : [];
   return <div className="inspection">
     <p>Inspect selected accounts for debugging and research, and control your connected desktop.</p>
-    <p><Link href="/brain">Private Brain</Link> · <Link href="/admin/logs">Logs and traces</Link> · <Link href="/admin/mcp">Game MCP tools</Link></p>
+    <p><Link href="/admin/logs">Logs and traces</Link> · <Link href="/admin/mcp">Game MCP tools</Link></p>
     <section aria-labelledby="accounts-title">
       <h2 id="accounts-title">Account inspection</h2>
       <label>Purpose<select value={purpose} onChange={event => setPurpose(event.target.value)}><option value="debugging">Debugging</option><option value="research">Research and development</option></select></label>

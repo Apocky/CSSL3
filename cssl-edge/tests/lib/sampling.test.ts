@@ -76,7 +76,13 @@ assert.ok(
   !/^\s*chat_template_kwargs:/m.test(worker),
   'enable_thinking must never be sent unconditionally -- it is model-specific',
 );
-assert.ok(worker.includes('THINKING_KWARG_SUPPORTED'), 'the thinking kwarg must be gated behind an explicit opt-in');
+// The gate is APOCRYPHA_QWEN_THINKING_KWARG (on/off) over a probed template flag; the kwarg is only
+// spread in through sendThinkingKwarg(). (This line used to look for a THINKING_KWARG_SUPPORTED
+// identifier that no version of qwen.ts ever contained.)
+assert.ok(
+  worker.includes('APOCRYPHA_QWEN_THINKING_KWARG') && worker.includes('...(this.sendThinkingKwarg() ? { chat_template_kwargs'),
+  'the thinking kwarg must be gated behind an explicit opt-in',
+);
 assert.ok(
   worker.includes("=== 'on'"),
   'the gate must default OFF: a template that wants the kwarg and misses it still renders; one that gets an undeclared kwarg can refuse',

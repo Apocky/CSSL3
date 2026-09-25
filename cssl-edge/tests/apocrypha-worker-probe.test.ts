@@ -48,9 +48,12 @@ async function main(): Promise<void> {
   // The case that took public chat down: the engine serving a model the worker was not configured
   // for. The direction flipped on 2026-09-16 -- the coder IS the configured model now, so the
   // divergent case is the 35B chat model being loaded underneath it.
-  const swapped = await new QwenClient(config, engine({ served: ['qwen35-35b-a3b-q4'] })).probe();
+  // The fixture's configured alias is the chat model again (see `config` above), so the swapped
+  // engine must serve something ELSE -- serving the configured alias here was a matching probe in
+  // disguise and could never surface a divergence.
+  const swapped = await new QwenClient(config, engine({ served: ['qwen3-coder-next-80b-a3b'] })).probe();
   assert(swapped.healthy, 'a deliberately swapped model was reported unhealthy -- the worker would refuse to claim');
-  assert(swapped.model === 'qwen35-35b-a3b-q4',
+  assert(swapped.model === 'qwen3-coder-next-80b-a3b',
     `provenance must record the model that actually answered, got ${swapped.model}`);
   assert(swapped.detail.includes('serving='), 'the divergence was not surfaced in the probe detail');
 

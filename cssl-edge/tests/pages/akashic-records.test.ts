@@ -6,6 +6,7 @@ import {
   findAkashicRecord,
   getAkashicRecordSummaries,
 } from '@/lib/akashic-records';
+import { renderSiteDirectory } from '../helpers/render-site-directory';
 
 const root = process.cwd();
 const read = (relative: string): string => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -14,6 +15,7 @@ const indexSource = read('pages/akashic-records/index.tsx');
 const detailSource = read('pages/akashic-records/[slug].tsx');
 const shellSource = read('components/SiteShell.tsx');
 const homeSource = read('pages/index.tsx');
+const hubSource = read('pages/hub.tsx');
 const docsDetailSource = read('pages/docs/[slug].tsx');
 const sitemap = read('public/sitemap.xml');
 
@@ -119,9 +121,12 @@ async function run(): Promise<void> {
   // the site is Apocrypha). It must still EXIST and answer -- unlinked is not deleted.
   assert.ok(fs.existsSync(path.join(process.cwd(), 'pages/akashic-records/index.tsx')), 'the archive page must still answer on its URL');
   assert.doesNotMatch(shellSource, /href: '\/akashic-records'/, 'global navigation must no longer advertise the archive');
-  assert.doesNotMatch(homeSource, /<SiteDirectory/, 'the homepage is an Apocrypha front door, not a destination index');
-  // The home page no longer links the archive directly -- it is an Apocrypha front door now.
-  // Reachability is asserted above (the page file exists) and by the sitemap check.
+  assert.doesNotMatch(homeSource, /<SiteDirectory/, 'the homepage is the living room, not a destination index');
+  assert.match(homeSource, /<Room\b/, 'the front door is the living room');
+  // The former directory lives on, unadvertised, at /hub (owner decision 2026-09-25) and still
+  // links the archive directly.
+  assert.match(hubSource, /<SiteDirectory\s*\/>/, 'the hub renders the shared destination panels');
+  assert.match(renderSiteDirectory(), /href="\/akashic-records"/, 'the hub directory must expose a direct archive link');
   assert.match(docsDetailSource, /spec\.slug === '18_AKASHIC_RECORDS'/, 'legacy qualifier must target only the existing technical document');
   assert.match(
     docsDetailSource,

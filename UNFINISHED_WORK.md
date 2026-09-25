@@ -11,3 +11,14 @@
 - this task: push worklane-prod -> merge origin/main (84c91bc) -> room = only chat surface -> bubbles/tooltips/plus-menu -> flagship lane -> migration 0057 on hub -> deploy + prove -> ff main
 - resume: git -C C:\Users\Apocky\source\repos\CSSLv3-wt-worklane-prod log --oneline -12 ; git ls-remote origin worklane-prod
 - next: commit the foreign edits as named slices (always-commit), push HEAD:worklane-prod
+
+## 2026-09-24 steering: "make room messages pass through the jobs queue as intended" -- PARK
+- in flight: `git merge --no-commit --no-ff origin/main` UNRESOLVED in this tree (15 conflicts: DU AccountChat/ChatThread/apocrypha.tsx,
+  UU member-chat.ts package.json index.tsx worker/{prompt,qwen,worker}.ts 6 tests tsbuildinfo). origin/worklane-prod = e7b799e (pre-merge).
+- resume: git status --porcelain | grep -E '^(UU|DU|UD|AA) ' ; abort path = git merge --abort
+- supersedes step 4 "wire the room loop": room say -> enqueue job -> Vercel runner (flagship) / PC worker (free) -> answer row in the river.
+
+## 2026-09-24 status check from Apocky ("where are the bubbles...") -- PARK
+- in flight: merge of origin/main resolved + staged (tsc 0, npm test 0); committing + pushing now.
+- NOT done yet: step 3 UI (bubbles/tooltips/plus menu), room->jobs queue, migrations (0057 fn half + room jobs), deploy.
+- resume: git -C C:\Users\Apocky\source\repos\CSSLv3-wt-worklane-prod log --oneline -3 ; next = components/room/* UI pass

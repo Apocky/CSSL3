@@ -337,10 +337,11 @@ export class WorkAgent {
         const raw = outcome.content;
         const capped = raw.length > maxResultChars
           // Say what was cut AND how to get it: a truncated result the model cannot act on just
-          // buys another wasted tool call.
-          ? `${raw.slice(0, maxResultChars)}
+          // buys another wasted tool call. The notice LEADS the result because fit.ts shortens from
+          // the tail when a turn still overflows, and a trailing notice was the first thing it cut.
+          ? `[This result was capped to fit the context window: the first ${maxResultChars} of ${raw.length} characters follow; call the tool again with a narrower line range or path to see the rest.]
 
-[...${raw.length - maxResultChars} more characters. This result was capped to fit the context window; call the tool again with a narrower line range or path to see the rest.]`
+${raw.slice(0, maxResultChars)}`
           : raw;
         messages.push({
           role: 'tool',

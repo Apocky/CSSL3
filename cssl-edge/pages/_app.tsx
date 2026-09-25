@@ -31,13 +31,12 @@ import { SiteSessionProvider } from '@/components/hub/SiteSession';
 // Everything else gets the global nav + footer so the whole site is navigable.
 function isBare(pathname: string): boolean {
   return (
+    pathname === '/' || // the front door is Apocrypha (owner decision 2026-09-25): its own chrome
     pathname === '/login' ||
     pathname === '/register' ||
     pathname.startsWith('/auth') ||
-    pathname === '/apocrypha' ||
     pathname === '/room' ||
     pathname === '/work' ||
-    pathname === '/brain' ||
     pathname.startsWith('/admin') ||
     pathname === '/clearing' ||
     pathname.startsWith('/clearing/') ||
@@ -209,7 +208,7 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
   }, [router.events]);
 
   const bare = isBare(router.pathname);
-  const privateBrainSurface = router.pathname === '/apocrypha' || router.pathname === '/work' || router.pathname === '/brain';
+  const privateBrainSurface = router.pathname === '/work';
   const content = (
     <>
       {!privateBrainSurface ? (
@@ -223,7 +222,7 @@ export default function App({ Component, pageProps }: AppProps): JSX.Element {
           <meta name="apple-mobile-web-app-title" content="Apocky" />
         </Head>
       ) : null}
-      {router.pathname === '/room' ? null : <AkashicConsent />}
+      {router.pathname === '/room' || router.pathname === '/' ? null : <AkashicConsent />}
       {bare ? (
         <Component {...pageProps} />
       ) : (

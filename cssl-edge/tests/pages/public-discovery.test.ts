@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
+import { renderSiteDirectory } from '../helpers/render-site-directory';
 import { PUBLIC_SURFACE_NODES } from '../../lib/public-surface-graph';
 import { DIRECTORY_NODES, DIRECTORY_GROUPS, directoryGroup, findDirectoryItems } from '../../lib/site-directory';
 
@@ -37,16 +38,21 @@ const membershipPage = read('pages/membership.tsx');
 const membershipFallback = read('public/commons/membership.html');
 const principlesPage = read('pages/principles.tsx');
 const principlesFallback = read('public/commons/principles.html');
-const homePage = read('pages/index.tsx');
+const frontDoor = read('pages/index.tsx');
+const homePage = read('pages/hub.tsx');
 const siteShell = read('components/SiteShell.tsx');
-const apocryphaPage = read('pages/apocrypha.tsx');
-const chatAlias = read('pages/chat.tsx');
+const roomComponent = read('components/room/Room.tsx');
+const homePanels = renderSiteDirectory();
 
 const publicDestinations = PUBLIC_SURFACE_NODES.filter((node) => node.id !== 'home');
 const sortedIds = (nodes: ReadonlyArray<{ id: string }>) => nodes.map((node) => node.id).sort();
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;',
 })[character]!);
+assert.match(frontDoor, /<Room\b/, 'the front door (/) is the living room (owner decisions 2026-09-24/25)');
+assert.match(frontDoor, /consumeAuthCallbackFromLocation/, 'the front door still consumes the OAuth callback that lands on /');
+assert.match(roomComponent, /rel="canonical" href="https:\/\/www\.apocky\.com\/"/, 'the room canonicalizes on the front door whether served at / or /room');
+assert.match(homePage, /<SiteDirectory\s*\/>/, 'the hub (/hub) renders the shared destination panels');
 assert.deepEqual(sortedIds(DIRECTORY_NODES), sortedIds(publicDestinations), 'every non-home public destination enters the home directory');
 assert.deepEqual(sortedIds(findDirectoryItems('')), sortedIds(publicDestinations), 'default search includes every destination');
 // The home page no longer renders a directory -- that invariant moved to
@@ -72,16 +78,12 @@ assert.equal(exists('public/apocrypha-manifest.json'), false, 'retired manifest 
 // 2026-09-20, Apocky: "The entire flow is too complicated for now just exclude sign-in."
 // The public room is the guest lane for every reader. The owner rail was not deleted --
 // it lives on /admin/apocrypha and tests/pages/admin-chat.test.ts still holds it there.
-assert.match(apocryphaPage, /guestLane\(\)/, 'exact /apocrypha is open to everyone, no account');
-assert.doesNotMatch(apocryphaPage, /ownerLane|memberLane/, 'no entitlement branch on the public room');
-assert.doesNotMatch(apocryphaPage, /requireBrainOwner/, 'the public room does no owner authorization; that rail is /admin/apocrypha');
-assert.doesNotMatch(apocryphaPage, /memberLane/, 'accounts get the same open room as everyone else');
-assert.doesNotMatch(apocryphaPage, /PublicChat|ClearingRoom/, 'exact /apocrypha must not revive the retired public chat');
-for (const retiredPage of ['pages/apoc.tsx', 'pages/apx.tsx']) {
-  assert.equal(exists(retiredPage), false, `${retiredPage} must not be built as a page`);
-}
-assert.match(chatAlias, /destination: `\/apocrypha\$\{suffix\}`/, 'legacy /chat traffic redirects into the unified Apocrypha conversation');
-assert.match(chatAlias, /permanent: true/, 'legacy /chat traffic uses a permanent redirect');
+// The bubble chat is retired (2026-09-24): the living room is the only chat surface, and the old
+// addresses are permanent redirects into it rather than pages of their own.
+assert.equal(exists('pages/apocrypha.tsx'), false, 'no second chat page at /apocrypha');
+assert.equal(exists('pages/chat.tsx'), false, 'no second chat page at /chat');
+assert.match(nextConfig, /source: '\/apocrypha', destination: '\/room', permanent: true/, '/apocrypha redirects into the room');
+assert.match(nextConfig, /source: '\/chat', destination: '\/room', permanent: true/, '/chat redirects into the room');
 
 const activePublicSurfaces: Record<string, string> = {
   words: read('pages/words.tsx'),
@@ -113,6 +115,8 @@ for (const [surface, source] of Object.entries(activePublicSurfaces)) {
   assert.doesNotMatch(source, /(?:href=["']|href:\s*["'])\/(?:apoc|apx|chat)(?:[?"'/])|(?:href=["']|href:\s*["'])\/apocrypha\//i, `${surface} must not link retired routes or descendants`);
 }
 assert.match(siteShell, /href:\s*'\/apocrypha'/, 'shell links the exact existing account conversation route');
+assert.doesNotMatch(`${frontDoor}\n${homePage}\n${homePanels}\n${siteShell}`, /href=["']\/apocrypha\//, 'public navigation must not revive an Apocrypha descendant');
+assert.doesNotMatch(homePanels, /href="\/(?:apoc|apx|chat)(?:[?"/])|href="\/(?:admin|api|content|shawn)(?:[?"/])/, 'home panels preserve route retirement and private publication boundaries');
 
 const entryPoints = JSON.stringify(manifest['entry_points']);
 assert.match(entryPoints, /words_and_symbols/);
@@ -186,9 +190,9 @@ assert.doesNotMatch(nextConfig, /source:\s*'\/auth\/callback'/, 'public redirect
 assert.match(contentPage, /notFound:\s*true/);
 assert.doesNotMatch(contentPage, /destination:\s*['"]\/apoc/);
 
-assert.equal(vercel.crons?.some((cron) => /apocrypha/i.test(cron.path)), false, 'retired worker must not be scheduled');
+assert.deepEqual((vercel.crons ?? []).filter((cron) => /apocrypha/i.test(cron.path)).map((cron) => cron.path), ['/api/cron/apocrypha-runner'], 'the only scheduled Apocrypha job is the flagship runner sweep; the retired worker stays unscheduled');
 assert.equal(
-  Object.keys(vercel.functions ?? {}).some((route) => /apocrypha/i.test(route) && route !== 'pages/api/admin/apocrypha/inspect.ts'),
+  Object.keys(vercel.functions ?? {}).some((route) => /apocrypha/i.test(route) && !['pages/api/admin/apocrypha/inspect.ts', 'pages/api/apocrypha/runner/run.ts'].includes(route)),
   false,
   'retired routes must not receive dedicated function configuration',
 );

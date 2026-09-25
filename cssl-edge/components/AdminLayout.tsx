@@ -48,8 +48,6 @@ const NAV: ReadonlyArray<NavItem> = [
   // own <title>.
   { href: '/admin/chat', label: 'Chat', glyph: '“',
     tip: 'The owner conversation, inside the console' },
-  { href: '/admin/cognition', label: 'Cognition', glyph: '∞',
-    tip: 'Live cognition view · event stream' },
   { href: '/admin/diagnostics', label: 'Diagnostics', glyph: '⌬',
     tip: 'Apocrypha runtime diagnostics' },
   { href: '/admin/controls', label: 'Controls', glyph: '⎈',

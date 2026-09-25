@@ -5,6 +5,7 @@ import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 
 import { PUBLIC_SURFACE_EDGES, PUBLIC_SURFACE_NODES } from '@/lib/public-surface-graph';
+import { renderSiteDirectory } from '../helpers/render-site-directory';
 
 function read(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -15,6 +16,9 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const home = read('pages/index.tsx');
+const hub = read('pages/hub.tsx');
+const roomComponent = read('components/room/Room.tsx');
+const homePanels = renderSiteDirectory();
 const start = read('pages/start.tsx');
 const membership = read('pages/membership.tsx');
 const quests = read('pages/quests.tsx');
@@ -38,7 +42,8 @@ const sitemap = read('public/sitemap.xml');
 const llms = read('public/llms.txt');
 
 for (const [name, source, canonical] of [
-  ['home', home, 'https://www.apocky.com/'],
+  ['home', `${home}\n${roomComponent}`, 'https://www.apocky.com/'],
+  ['hub', hub, 'https://www.apocky.com/hub'],
   ['start', start, 'https://www.apocky.com/start'],
   ['membership', membership, 'https://www.apocky.com/membership'],
   ['quests', quests, 'https://www.apocky.com/quests'],
@@ -63,10 +68,18 @@ for (const route of ['/tools', '/codex-apockalypsis', '/start', '/divination', '
 }
 assert(llms.includes('https://chaos-tarot.com/yes-no') && llms.includes('external sign-in required'), 'discovery text must disclose the actual Oracle destination and sign-in requirement');
 
-assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the complete project index beneath its primary paths');
-assert(!home.includes("access === 'owner'"), 'account chat entry must not be restricted to the owner');
+assert(homePanels.includes('href="https://chaos-tarot.com/free-reading?source=apocky-directory"'), 'the hub must hand off directly to the registered free Chaos reading');
+assert(homePanels.includes('href="https://chaos-tarot.com/yes-no"'), 'the Oracle panel must use its actual external destination');
+assert(!homePanels.includes('href="/oracle"'), 'the hub must not host or advertise the local Yes / No route');
+assert(!home.includes('const CREATIVE_WORK') && !hub.includes('const CREATIVE_WORK'), 'neither the front door nor the hub duplicates the complete project index');
+for (const node of PUBLIC_SURFACE_NODES.filter(node => node.id !== 'home')) {
+  assert(homePanels.includes(`data-destination="${node.id}"`), `the hub must expose a complete panel for ${node.id}`);
+}
+assert(!home.includes("access === 'owner'"), 'the front door must not restrict its entry to the owner');
 assert(!home.includes('public relay remains closed'), 'home must not retain the superseded owner-only copy');
-assert(!home.includes('runtime ready') && !home.includes('release verified'), 'home must not make unsupported runtime or release claims');
+assert(hub.includes('<SiteDirectory />'), 'the hub (/hub) must render the complete public destination collection');
+assert(home.includes('<Room'), 'the front door (/) is the living room');
+assert(!home.includes('runtime ready') && !home.includes('release verified') && !hub.includes('runtime ready') && !hub.includes('release verified'), 'home and hub must not make unsupported runtime or release claims');
 assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
 assert(home.includes('location.replace(returnTo)'), 'home simplification must preserve the normalized post-auth return path');
 assert(membership.includes('https://chaos-tarot.com/pricing'), 'membership must expose the usable Chaos product path');

@@ -29,7 +29,8 @@ assert.match(experience, /PROFILE NOT PROVISIONED/, 'signed-in missing-profile s
 assert.match(experience, /No profile was created automatically/, 'missing profile must not trigger implicit provisioning');
 assert.match(experience, /Save correction/, 'topic-bound correction flow must be exposed');
 assert.match(experience, /Export my data/, 'private export must be exposed when authorized');
-assert.match(experience, /access === 'owner'.*href="\/brain"/, 'owner memory tools must reveal the private Brain contextually');
+// The /brain page is retired (2026-09-24): the living room is the one Apocrypha surface, so memory tools no longer link it.
+assert.doesNotMatch(experience, /href="\/brain"/, 'memory tools must not link the retired /brain page');
 assert.match(experience, /Yes, delete it/, 'private forgetting must require explicit confirmation');
 
 assert.match(help, /aria-expanded=\{open\}/, 'help trigger must expose its state');

@@ -71,6 +71,21 @@ export interface ProductDescriptor {
 export const COSMETIC_LAUNCH_PAUSED = true;
 
 export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
+  // § Apocrypha Premium (owner decision 2026-09-25): the flagship lane (Opus 5.5 through Vercel AI
+  // Gateway) for members; free members run on the local model. A subscription; the webhook's
+  // existing subscription handling grants/revokes the entitlement by this product id, and
+  // migration 0057's apocrypha_member_has_flagship() reads it. Not a game product: this is
+  // access to compute, not power in a game, so the cosmetic-only axiom is not in play.
+  {
+    id: 'apocrypha-premium',
+    display_name: 'Apocrypha · Premium',
+    blurb: 'The flagship lane: Apocrypha answers with the newest frontier model, with the same memory, tools and threads. Cancel any time.',
+    price_cents: 2000,
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_APOCRYPHA_PREMIUM',
+    tier: 'subscription',
+    visible: true,
+  },
   {
     id: 'loa-cosmetic-mycelial-bloom',
     display_name: 'Mycelial Bloom · cosmetic shader-pack',

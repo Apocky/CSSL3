@@ -103,6 +103,7 @@ export function middleware(request: NextRequest): NextResponse {
     || request.nextUrl.pathname === '/admin/apocrypha'
     || request.nextUrl.pathname === '/api/admin/apocrypha/inspect'
     || request.nextUrl.pathname === '/apocrypha'
+    // The /brain page is retired (2026-09-24); its URLs stay private and unindexed regardless.
     || request.nextUrl.pathname === '/brain'
     || request.nextUrl.pathname.startsWith('/brain/')
     || request.nextUrl.pathname.startsWith('/api/brain/');
@@ -151,7 +152,6 @@ export const config = {
     '/admin/apocrypha/:path*',
     '/admin/chat',
     '/admin/coder',
-    '/admin/cognition',
     '/admin/controls',
     '/admin/diagnostics',
     '/admin/sub-minds',

@@ -269,7 +269,7 @@ async function main(): Promise<void> {
       'adapter probe blocked publication of the worker heartbeat');
     assert(completed !== null, 'completion was not delivered');
     const completion = completed as Record<string, unknown>;
-    assert(completion.content === output, 'completion content differs from streamed Qwen output');
+    assert(completion.content === output.trim(), 'completion content differs from streamed Qwen output (trimmed: a leaked thought is never the answer)');
     assert(completion.revision_role === 'primary', 'Qwen completion was not committed as primary');
     assert([...chunks.values()].join('') === output, 'buffered chunks do not reconstruct the final output');
     assert([...chunks.values()].every((value) => value.length <= 64), 'chunk exceeded configured buffer size');
@@ -531,7 +531,7 @@ async function main(): Promise<void> {
     const savedBeforeDelivery = (await journal.list())[0]?.state;
     assert(appendStarted, 'completion recovery never reached the blocked append');
     assert(savedBeforeDelivery?.terminal?.kind === 'complete', 'completed Qwen answer was not journaled before delivery');
-    assert(savedBeforeDelivery.terminal.payload.content === recoveryOutput, 'journaled completion changed Qwen output');
+    assert(savedBeforeDelivery.terminal.payload.content === recoveryOutput.trim(), 'journaled completion changed Qwen output (beyond trimming)');
     assert(savedBeforeDelivery.pendingChunks.length > 0, 'completion recovery fixture has no pending chunks');
     assert(!originalSettled, 'worker completed while its delivery boundary was still blocked');
     releaseFailedAppend();
@@ -573,7 +573,7 @@ async function main(): Promise<void> {
     await recoveryWorker.recoverPendingAttempts();
     assert(replayedChunks.map((chunk) => chunk.seq).join(',') === '0,1,2,3', 'recovery did not replay chunks in exact order');
     assert(replayedChunks.map((chunk) => chunk.delta).join('') === recoveryOutput, 'recovery changed the completed output bytes');
-    assert(replayedCompletionContent === recoveryOutput, 'recovery did not commit the exact saved completion');
+    assert(replayedCompletionContent === recoveryOutput.trim(), 'recovery did not commit the exact saved completion');
     assert(recoveryRenewals > 1, 'long recovery replay did not renew its lease');
     assert(await journal.pendingCount() === 0, 'recovered completion journal remained after acknowledgement');
 
