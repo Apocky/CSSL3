@@ -36,7 +36,7 @@ function loadPendingAccountTurn(account: string): Promise<unknown> {
 function AccountResolutionUnavailable(): JSX.Element {
   return <main id="main-content" className={styles.page}>
     <header className={styles.header}>
-      <Link href="/" className={styles.brand} aria-label="Apocky home"><span className="apx-brand-mark" aria-hidden="true" /></Link>
+      <Link href="/hub" className={styles.brand} aria-label="Apocky hub"><span className="apx-brand-mark" aria-hidden="true" /></Link>
       <div className={styles.roomTitle}><h1>Apocrypha</h1><p>Room to think</p></div>
       <nav aria-label="Apocrypha navigation"><Link href="/download/apocrypha">Get the app</Link><Link href="/login?next=%2Fapocrypha">Sign in</Link></nav>
     </header>

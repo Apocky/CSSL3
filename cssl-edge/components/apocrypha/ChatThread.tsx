@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authFetch } from '../../lib/browser-auth';
 import { ApocryphaAvatar } from './ApocryphaAvatar';
+import { presentable, splitReasoning } from '../../lib/apocrypha/deliberation';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -695,7 +696,7 @@ export function ChatThread() {
                 <MessageBubble key={i} msg={m} showTrace={showTrace} />
               ))}
               {streamingText && (
-                <MessageBubble msg={{ role: 'apocrypha', text: streamingText, ts: new Date() }} showTrace={showTrace} />
+                <MessageBubble msg={{ role: 'apocrypha', text: streamingText, ts: new Date() }} showTrace={showTrace} live />
               )}
             </div>
 
@@ -913,8 +914,11 @@ export function ChatThread() {
 
 // ─── presentation sub-components ──────────────────────────────────
 
-function MessageBubble({ msg, showTrace }: { msg: ChatMessage; showTrace: boolean }) {
+function MessageBubble({ msg, showTrace, live = false }: { msg: ChatMessage; showTrace: boolean; live?: boolean }) {
   const isUser = msg.role === 'user';
+  // A leaked thought is never the answer (lib/apocrypha/deliberation.ts). While a reply is still
+  // streaming only the tagged part can be split; the shape check runs once the reply is whole.
+  const shown = isUser ? msg.text : live ? splitReasoning(msg.text).answer : presentable(msg.text).text;
   return (
     <div style={{
       marginBottom: '1.5rem',
@@ -938,7 +942,7 @@ function MessageBubble({ msg, showTrace }: { msg: ChatMessage; showTrace: boolea
         wordBreak: 'break-word',
         color: '#e6e6f0',
       }}>
-        {msg.text}
+        {shown}
         {showTrace && msg.toolCalls && msg.toolCalls.length > 0 && (
           <div style={{
             marginTop: '0.7rem',

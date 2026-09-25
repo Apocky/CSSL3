@@ -417,7 +417,7 @@ export default function AccountChat(
     }}
   >
     <header className={styles.header}>
-      <Link href="/" className={styles.brand} aria-label="Apocky home"><span className="apx-brand-mark" aria-hidden="true" /></Link>
+      <Link href="/hub" className={styles.brand} aria-label="Apocky hub"><span className="apx-brand-mark" aria-hidden="true" /></Link>
       <div className={styles.roomTitle}>
         <h1>Apocrypha</h1>
         <p>{sending ? 'Responding…' : outstanding ? 'Message saved' : authenticated ? 'Your private conversation' : 'Room to think'}</p>

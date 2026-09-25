@@ -1,24 +1,18 @@
-import Head from 'next/head';
-import Link from 'next/link';
+// cssl-edge · pages/index.tsx
+// apocky.com's front door is Apocrypha (owner decision 2026-09-25). The former hub lives at
+// /hub. The OAuth callback still lands on / (registered redirect), so it is consumed here
+// before the page renders; a `next` path is honoured, otherwise the visitor stays in the room.
+
 import { useEffect, useState } from 'react';
 import { useSiteSession } from '../components/hub/SiteSession';
-import SiteDirectory from '../components/site/SiteDirectory';
 import { consumeAuthCallbackFromLocation, readAuthCallbackParams } from '../lib/auth-callback';
 import { normalizeAuthReturnPath } from '../lib/auth-return';
-import styles from '../styles/UsefulHub.module.css';
+import ApocryphaPage, { getServerSideProps as apocryphaProps } from './apocrypha';
+import type { GetServerSideProps } from 'next';
 
-const structuredData = {
-  '@context': 'https://schema.org',
-  '@graph': [
-    { '@type': 'WebSite', '@id': 'https://www.apocky.com/#website', name: 'Apocky', url: 'https://www.apocky.com/',
-      description: 'Useful tools, words, thoughts, and stories from Shawn Apocky.',
-      creator: { '@id': 'https://www.apocky.com/#shawn-apocky' },
-      potentialAction: { '@type': 'SearchAction', target: 'https://www.apocky.com/atlas?q={search_term_string}', 'query-input': 'required name=search_term_string' } },
-    { '@type': 'Person', '@id': 'https://www.apocky.com/#shawn-apocky', name: 'Shawn Apocky', url: 'https://www.apocky.com/' },
-  ],
-};
+export const getServerSideProps: GetServerSideProps = (context) => apocryphaProps(context);
 
-export default function Home(): JSX.Element {
+export default function Home(props: { readonly ownerConversation: boolean }): JSX.Element {
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const { refresh } = useSiteSession();
 
@@ -33,7 +27,7 @@ export default function Home(): JSX.Element {
       if (cancelled) return;
       if (callbackResult.ok) {
         if (returnTo) { location.replace(returnTo); return; }
-        setAuthNotice('You are signed in.');
+        setAuthNotice(null);
         await refresh();
       } else {
         setAuthNotice(`Sign-in failed: ${callbackResult.reason ?? 'please try again'}`);
@@ -43,30 +37,7 @@ export default function Home(): JSX.Element {
   }, [refresh]);
 
   return <>
-    <Head>
-      <title>Apocky · Tools, thoughts, and stories</title>
-      <meta name="description" content="Make a sigil, find a meaning, explore an idea, or read Codex Apockalypsis. Useful tools and unusual thoughts from Shawn Apocky." />
-      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-      <meta name="theme-color" content="#101116" />
-      <meta property="og:title" content="Apocky · Curiosity, put to use." />
-      <meta property="og:description" content="Tools to try. Words to understand. Thoughts and stories to get lost in." />
-      <meta property="og:type" content="website" />
-      <meta property="og:url" content="https://www.apocky.com/" />
-      <meta property="og:site_name" content="Apocky" />
-      <meta name="twitter:card" content="summary_large_image" />
-      <link rel="canonical" href="https://www.apocky.com/" />
-      <link rel="alternate" type="text/plain" href="/llms.txt" title="Apocky for language models and digital intelligences" />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
-    </Head>
-    <main className={styles.home}>
-      <section className={styles.welcome} aria-labelledby="home-title">
-        <p className={styles.overline}>Shawn Apocky</p>
-        <h1 id="home-title">Curiosity, <em>put to use.</em></h1>
-        <p>Make a symbol. Find a meaning. Follow a thought somewhere new.</p>
-        <p role="status" hidden={!authNotice}>{authNotice}</p>
-      </section>
-      <SiteDirectory />
-      <aside className={styles.support}><p>If something here gave you a little wonder, you can help me make more.</p><Link href="/buy">Support the work →</Link></aside>
-    </main>
+    {authNotice ? <p role="status" style={{ position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 20, background: '#111524', color: '#f3f3fa', border: '1px solid #a9b5ff40', borderRadius: 12, padding: '6px 14px', fontSize: 14 }}>{authNotice}</p> : null}
+    <ApocryphaPage ownerConversation={props.ownerConversation} />
   </>;
 }
