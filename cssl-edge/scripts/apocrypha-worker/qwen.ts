@@ -1,6 +1,8 @@
 import { log } from './log';
 import type { QwenResult, QwenUsage, WorkerConfig } from './types';
 import { presetById } from '../../lib/apocrypha/sampling';
+import { hostedEffort } from '../../lib/apocrypha/hosted-effort';
+import { attemptFields, hostedAttempts, noteAttempt, retryableStatus, type HostedAttempt } from '../../lib/apocrypha/hosted-route';
 
 const BALANCED = presetById('balanced').profile;
 
@@ -315,8 +317,8 @@ export class QwenClient {
         ...(options.seed === undefined ? {} : { seed: options.seed }),
         // llama.cpp-only dials stay on the local lane; the gateway rejects or ignores them.
         ...(this.hosted ? {
-          // Owner steering 2026-09-25: maximum reasoning on the flagship.
-          reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'max' },
+          // Least-effort thinking (lib/apocrypha/hosted-effort.ts).
+          reasoning: { effort: hostedEffort() },
         } : {
           top_k: options.topK ?? BALANCED.topK,
           min_p: options.minP ?? BALANCED.minP,
@@ -330,27 +332,26 @@ export class QwenClient {
           ...(this.sendThinkingKwarg() ? { chat_template_kwargs: { enable_thinking: false } } : {}),
         }),
       };
-      // The hosted lane walks a fallback chain when the gateway refuses a model (429 rate limit,
-      // 403 no access): observed 2026-09-25, Opus 5.5 answered once and then returned
-      // "No access to this model at this time" for every turn after.
-      const chain = this.hosted
-        ? [this.config.modelAlias, ...(process.env.APOCRYPHA_HOSTED_FALLBACK_MODELS ?? 'anthropic/claude-opus-5,anthropic/claude-sonnet-5')
-          .split(',').map((m) => m.trim()).filter((m) => m && m !== this.config.modelAlias)]
-        : [this.config.modelAlias];
+      // The hosted lane tries the flagship once per provider, rotating on refusal, before any other
+      // model (lib/apocrypha/hosted-route.ts: the gateway refuses Opus 5.5 intermittently).
+      const attempts: HostedAttempt[] = this.hosted
+        ? hostedAttempts(this.config.modelAlias, (process.env.APOCRYPHA_HOSTED_FALLBACK_MODELS ?? 'anthropic/claude-opus-5,anthropic/claude-sonnet-5')
+          .split(',').map((m) => m.trim()).filter(Boolean))
+        : [{ model: this.config.modelAlias }];
       let response!: Response;
-      for (const [index, model] of chain.entries()) {
+      for (const [index, attempt] of attempts.entries()) {
         response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json', accept: 'text/event-stream, application/json',
             ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
           },
-          // The gateway's own fallback list rides along too, so a refused model can fall over
-          // inside ONE request before this loop has to spend another.
-          body: JSON.stringify({ ...body, model, ...(this.hosted && index < chain.length - 1 ? { models: chain.slice(index + 1) } : {}) }),
+          body: JSON.stringify({ ...body, ...(this.hosted ? attemptFields(attempt) : { model: attempt.model }) }),
           signal: controller.signal,
         });
-        if (!(this.hosted && (response.status === 429 || response.status === 403) && index < chain.length - 1)) break;
+        if (this.hosted) noteAttempt(attempt, response.ok);
+        if (!(this.hosted && retryableStatus(response.status) && index < attempts.length - 1)) break;
+        log('warn', 'worker.hosted.route_refused', { model: attempt.model, provider: attempt.provider ?? null, status: response.status });
         await response.body?.cancel().catch(() => undefined);
       }
       if (!response.ok) {
@@ -396,6 +397,7 @@ export class QwenClient {
       let model = this.config.modelAlias;
       let firstTokenMs: number | undefined;
       const toolCalls: Array<{ id: string; name: string; arguments: string }> = [];
+      let finishReason: string | null = null;
       let transportBytes = 0;
       let acceptedOutputBytes = 0;
       const consumeLine = async (line: string): Promise<void> => {
@@ -412,7 +414,13 @@ export class QwenClient {
         resetIdle();
         if (payload.usage) usage = parseUsage(payload.usage);
         if (typeof payload.model === 'string') model = payload.model;
+        // A gateway error mid-stream arrives as an event, not a status; unread it looked like silence.
+        if (payload.error && !Array.isArray(payload.choices)) {
+          const detail = typeof payload.error === 'object' ? JSON.stringify(payload.error) : String(payload.error);
+          throw new QwenError(`gateway stream error: ${detail.slice(0, 400)}`, 'QWEN_UPSTREAM_ERROR', true);
+        }
         const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;
+        if (choice && typeof choice.finish_reason === 'string') finishReason = choice.finish_reason;
         const rawDelta = choice && typeof choice.delta === 'object' && choice.delta ? choice.delta as Record<string, unknown> : {};
         if (Array.isArray(rawDelta.tool_calls)) {
           for (const piece of rawDelta.tool_calls as Array<Record<string, unknown>>) {
@@ -462,7 +470,10 @@ export class QwenClient {
       for (const line of buffer.split(/\r?\n/)) await consumeLine(line);
       const calls = toolCalls.filter((call) => call && call.name).map((call, i) => ({ ...call, id: call.id || `call_${i}` }));
       if (calls.length > 0) return { content, usage, model, firstTokenMs, durationMs: Date.now() - started, toolCalls: calls };
-      if (!content.trim()) throw new QwenError('Qwen returned no visible content', 'QWEN_EMPTY_RESPONSE', true);
+      if (!content.trim() && finishReason === 'length') {
+        throw new QwenError(`${model} spent its whole ${outputTokenLimit}-token budget thinking and wrote no answer`, 'QWEN_THINKING_EXHAUSTED', true);
+      }
+      if (!content.trim()) throw new QwenError(`Qwen returned no visible content (finish_reason ${finishReason ?? 'none'})`, 'QWEN_EMPTY_RESPONSE', true);
       return { content, usage, model, firstTokenMs, durationMs: Date.now() - started };
     } catch (error) {
       if (callbackError === error) throw error;

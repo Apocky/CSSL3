@@ -73,7 +73,10 @@ async function recallRegions(query: string, limit: number, tiers: string): Promi
     const response = await fetch(`${RECALL_URL}/recall`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ query, n: limit, tiers }),
+      // The service's 1.5 s region deadline is sized for the pre-turn read. Six tool calls at once
+      // missed it on the ledger (2026-09-25 thesis run), and two misses open the region's breaker
+      // for every caller -- the ledger went "skipped" mid-answer. A deliberate search can wait.
+      body: JSON.stringify({ query, n: limit, tiers, timeout: 8 }),
       signal: controller.signal,
     });
     if (!response.ok) return `recall service answered HTTP ${response.status}`;

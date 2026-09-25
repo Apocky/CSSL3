@@ -1,7 +1,8 @@
 // The flagship runner on Vercel: claims through the control-plane RPCs, streams Opus 5.5 from the
-// AI Gateway into chunks, completes with a lane/model/cost receipt, fails visibly, and stays off
+// AI Gateway (one provider at a time, then other models) into chunks, completes with a lane/model/cost receipt, fails visibly, and stays off
 // without gateway credentials (the PC worker keeps answering).
 import { composeMessages, gatewayToken, resetRunnerNodeForTests, runQueuedJobs } from '@/lib/apocrypha/vercel-runner';
+import { resetHostedRouteForTests } from '@/lib/apocrypha/hosted-route';
 
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(`assert failed : ${message}`); }
 
@@ -37,13 +38,15 @@ async function main(): Promise<void> {
       return { data: null, error: null };
     },
   };
+  type GatewayBody = { model: string; messages: Array<{ content: string }>; stream: boolean; max_tokens: number; reasoning: { effort: string }; models?: string[]; providerOptions?: { gateway?: { only?: string[] } } };
+  const bodies: GatewayBody[] = [];
   const fetchImpl = (async (_url: string, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body)) as { model: string; messages: Array<{ content: string }>; stream: boolean; reasoning: { effort: string } };
-    // Owner steering 2026-09-25: the flagship runs at maximum effort with its full output budget,
-    // and names gateway fallbacks because Opus is rate-limited per team at the gateway.
-    assert(body.model === 'anthropic/claude-opus-5.5' && body.stream === true && body.reasoning.effort === 'max', 'gateway request pins the flagship, streams, and sets effort');
+    const body = JSON.parse(String(init?.body)) as GatewayBody;
+    bodies.push(body);
+    // Owner steering 2026-09-25: least-effort thinking (max spent the whole budget thinking), the
+    // full output budget, and a provider ring for Opus 5.5 before any other model.
+    assert(body.stream === true && body.reasoning.effort === 'low', 'gateway request streams at least effort');
     assert(body.max_tokens === 64_000, 'the flagship gets its full output budget (thinking counts against it)');
-    assert(Array.isArray(body.models) && body.models.includes('anthropic/claude-sonnet-5'), 'gateway fallbacks are named');
     if (body.messages.at(-1)?.content === 'FAIL') return new Response('quota', { status: 429 });
     return sse([
       { model: 'anthropic/claude-opus-5.5', choices: [{ delta: { content: '<think>plan</think>' + reply.slice(0, 300) } }] },
@@ -51,6 +54,7 @@ async function main(): Promise<void> {
       { choices: [], usage: { prompt_tokens: 1000, completion_tokens: 500, total_tokens: 1500 } },
     ]);
   }) as unknown as typeof fetch;
+  resetHostedRouteForTests();
   resetRunnerNodeForTests();
   const outcome = await runQueuedJobs({ env: { NODE_ENV: 'test', AI_GATEWAY_API_KEY: 'k' }, client, fetchImpl, budgetMs: 10_000 });
   assert(outcome.state === 'ran' && outcome.jobs.length === 2, `two jobs ran: ${JSON.stringify(outcome)}`);
@@ -66,6 +70,10 @@ async function main(): Promise<void> {
   const fail = calls.find((c) => c.name === 'apocrypha_fail_job');
   assert(fail && fail.args.p_retryable === true && String(fail.args.p_error_code).startsWith('GATEWAY_HTTP_429'), 'fail_job carries a retryable code');
   assert(calls.filter((c) => c.name === 'apocrypha_issue_worker_token').length === 1, 'one node identity per instance');
+  assert(bodies[0]?.model === 'anthropic/claude-opus-5.5' && bodies[0].providerOptions?.gateway?.only?.[0] === 'anthropic' && bodies[0].models === undefined, 'first try pins Opus 5.5 to one provider, no gateway model swap');
+  assert(bodies.length === 7, `one try for the answered job, six for the refused one: ${bodies.length}`);
+  assert(bodies.slice(1, 5).every((b) => b.model === 'anthropic/claude-opus-5.5') && new Set(bodies.slice(1, 5).map((b) => b.providerOptions?.gateway?.only?.[0])).size === 4, 'every provider tried for Opus 5.5');
+  assert(bodies.slice(5).map((b) => b.model).join(',') === 'anthropic/claude-opus-5,anthropic/claude-sonnet-5', 'other models only after every provider refused');
   console.log('apocrypha-vercel-runner.test : OK · off without credentials, claim/stream/complete with receipt, visible failure');
 }
 

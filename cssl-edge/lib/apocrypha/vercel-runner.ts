@@ -15,6 +15,8 @@
 import { randomUUID } from 'node:crypto';
 import { getApocryphaServiceClient } from '@/lib/apocrypha/job-control';
 import { presentable } from '@/lib/apocrypha/deliberation';
+import { hostedEffort } from '@/lib/apocrypha/hosted-effort';
+import { attemptFields, hostedAttempts, noteAttempt, retryableStatus } from '@/lib/apocrypha/hosted-route';
 
 export const RUNNER_MODEL = process.env.APOCRYPHA_FLAGSHIP_MODEL?.trim() || 'anthropic/claude-opus-5.5';
 const GATEWAY = (process.env.AI_GATEWAY_BASE_URL?.trim() || 'https://ai-gateway.vercel.sh/v1').replace(/\/$/, '');
@@ -122,21 +124,29 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
   try {
     const firstByte = new AbortController();
     const firstByteTimer = setTimeout(() => firstByte.abort(new Error('GATEWAY_TIMEOUT:no response in 60s')), 60_000);
-    const response = await fetchImpl(`${GATEWAY}/chat/completions`, {
-      signal: firstByte.signal,
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}`, accept: 'text/event-stream' },
-      body: JSON.stringify({
-        model: RUNNER_MODEL,
-        messages: composeMessages(job.request),
-        stream: true,
-        stream_options: { include_usage: true },
-        max_tokens: MAX_OUTPUT_TOKENS,
-        reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'max' },
-        // Gateway-native fallbacks: Opus is rate-limited per team at the gateway (measured 2026-09-25).
-        models: ['anthropic/claude-opus-5', 'anthropic/claude-sonnet-5'].filter((m) => m !== RUNNER_MODEL),
-      }),
-    });
+    // One try per provider for the flagship, rotating on refusal, then the other models
+    // (lib/apocrypha/hosted-route.ts: the gateway refuses Opus 5.5 intermittently).
+    const messages = composeMessages(job.request);
+    const attempts = hostedAttempts(RUNNER_MODEL, ['anthropic/claude-opus-5', 'anthropic/claude-sonnet-5']);
+    let response!: Response;
+    for (const [index, attempt] of attempts.entries()) {
+      response = await fetchImpl(`${GATEWAY}/chat/completions`, {
+        signal: firstByte.signal,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}`, accept: 'text/event-stream' },
+        body: JSON.stringify({
+          ...attemptFields(attempt),
+          messages,
+          stream: true,
+          stream_options: { include_usage: true },
+          max_tokens: MAX_OUTPUT_TOKENS,
+          reasoning: { effort: hostedEffort() },
+        }),
+      });
+      noteAttempt(attempt, response.ok);
+      if (!(retryableStatus(response.status) && index < attempts.length - 1)) break;
+      await response.body?.cancel().catch(() => undefined);
+    }
     clearTimeout(firstByteTimer);
     if (!response.ok || !response.body) {
       const detail = (await response.text().catch(() => '')).slice(0, 300);
@@ -145,6 +155,7 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let pending = '';
+    let finish: string | null = null;
     const consume = async (line: string): Promise<void> => {
       const trimmed = line.trim();
       if (!trimmed.startsWith('data:')) return;
@@ -152,9 +163,11 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
       if (!data || data === '[DONE]') return;
       let payload: Record<string, unknown>;
       try { payload = JSON.parse(data) as Record<string, unknown>; } catch { return; }
+      if (payload.error && !Array.isArray(payload.choices)) throw new Error(`GATEWAY_STREAM_ERROR:${JSON.stringify(payload.error).slice(0, 300)}`);
       if (payload.usage && typeof payload.usage === 'object') usage = payload.usage as typeof usage;
       if (typeof payload.model === 'string') model = payload.model;
       const choice = (Array.isArray(payload.choices) ? payload.choices[0] : null) as Record<string, unknown> | null;
+      if (typeof choice?.finish_reason === 'string') finish = choice.finish_reason;
       const delta = choice?.delta && typeof choice.delta === 'object' ? (choice.delta as Record<string, unknown>).content : null;
       if (typeof delta === 'string' && delta) { content += delta; buffer += delta; await flush(); }
     };
@@ -168,7 +181,7 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
     }
     for (const line of (pending + decoder.decode()).split(/\r?\n/)) await consume(line);
     await flush(true);
-    if (!content.trim()) throw new Error('GATEWAY_EMPTY_RESPONSE');
+    if (!content.trim()) throw new Error(finish === 'length' ? 'GATEWAY_THINKING_EXHAUSTED' : 'GATEWAY_EMPTY_RESPONSE');
     const shown = presentable(content);
     const elapsedS = Math.round((Date.now() - started) / 100) / 10;
     const totalCostUsd = Math.round((((usage.prompt_tokens ?? 0) * PRICE_PROMPT_USD_PER_M + (usage.completion_tokens ?? 0) * PRICE_COMPLETION_USD_PER_M) / 1_000_000) * 1_000_000) / 1_000_000;
