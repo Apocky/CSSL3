@@ -76,3 +76,7 @@ graphify-out/cache/
 
 # placeholder harness env — never track a real one
 tools/grok-mcp-harness/.env
+
+# graphify dated snapshots: ~60-76 MB each, regenerated daily; the live graph is
+# graphify-out/graph.json. Added 2026-09-24 so the tree can be clean without pushing ~800 MB.
+graphify-out/2026-09-*/

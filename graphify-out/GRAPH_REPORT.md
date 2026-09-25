@@ -1,16 +1,16 @@
-# Graph Report - CSSLv3-wt-apocrypha-desktop  (2026-09-12)
+# Graph Report - CSSLv3-wt-worklane-prod  (2026-09-24)
 
 ## Corpus Check
-- 2801 files · ~5,807,988 words
+- 2916 files · ~5,920,406 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 57634 nodes · 131672 edges · 2052 communities (1986 shown, 66 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 2317 edges (avg confidence: 0.78)
+- 58311 nodes · 132957 edges · 2126 communities (2045 shown, 81 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 2368 edges (avg confidence: 0.78)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1dfb685b`
+- Built from commit: `21ab10b8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -1023,6 +1023,7 @@
 - Community 1011
 - Community 1012
 - Community 1013
+- Community 1014
 - Community 1015
 - Community 1016
 - Community 1017
@@ -1454,6 +1455,7 @@
 - Community 1452
 - Community 1453
 - Community 1454
+- Community 1455
 - Community 1456
 - Community 1457
 - Community 1458
@@ -1482,6 +1484,7 @@
 - Community 1481
 - Community 1482
 - Community 1483
+- MockProbe
 - Community 1486
 - Community 1487
 - Community 1488
@@ -1489,16 +1492,15 @@
 - Community 1490
 - Community 1492
 - Community 1493
-- Community 1494
 - Community 1495
 - Community 1496
 - Community 1497
 - Community 1498
-- Community 1499
+- TelemetryRefusal
 - Community 1500
 - Community 1501
 - Community 1502
-- Community 1503
+- ToolCaps
 - Community 1504
 - Community 1505
 - Community 1506
@@ -1507,7 +1509,7 @@
 - Community 1509
 - Community 1510
 - Community 1511
-- intent.rs
+- BitReader<'a>
 - Community 1513
 - Community 1514
 - Community 1515
@@ -1517,8 +1519,8 @@
 - Community 1519
 - Community 1520
 - Community 1521
-- lib.rs
-- backoff.rs
+- MockProbe
+- ProbeError
 - Community 1524
 - Community 1525
 - Community 1526
@@ -1530,12 +1532,13 @@
 - Community 1532
 - Community 1533
 - Community 1534
-- SeasonMode
+- resolve_call_result.rs
 - Community 1536
 - Community 1537
 - Community 1538
 - Community 1539
-- Lcg
+- MockProbe
+- row.rs
 - Community 1544
 - Community 1545
 - RealEntry
@@ -1565,14 +1568,14 @@
 - Community 1571
 - Community 1572
 - Community 1573
-- list_labels
+- HeartbeatServiceBuilder
 - Community 1575
 - Community 1576
-- Community 1577
+- LinearUse
 - Community 1578
 - t11_w20_renderer_transport.rs
 - Community 1580
-- invoke
+- debug_callback_trampoline
 - Community 1582
 - Community 1583
 - FixedVerdictSolver
@@ -1580,13 +1583,15 @@
 - Community 1587
 - Community 1589
 - Community 1590
-- CycleCounter.tsx
-- Community 1592
-- lib.rs
+- index.tsx
+- SeasonMode
+- mneme-profile-diagnostics.test.ts
+- params.rs
 - Community 1596
 - Community 1597
 - Community 1598
 - Community 1599
+- lib.rs
 - Community 1601
 - Community 1602
 - Community 1603
@@ -1603,13 +1608,14 @@
 - Community 1614
 - Community 1615
 - Community 1616
-- Community 1617
+- trinity-domain-boundary.ts
 - Community 1618
 - Community 1619
 - Community 1620
 - Community 1621
 - Community 1622
 - Community 1623
+- companion-stream.test.ts
 - Community 1625
 - Community 1626
 - Community 1627
@@ -1624,19 +1630,20 @@
 - Community 1637
 - Community 1638
 - Community 1639
-- select_error_codes_are_unique
+- transport_send_validate.rs
 - Community 1642
 - Community 1643
 - Community 1644
 - Community 1646
-- Community 1647
+- index.ts
 - Community 1648
 - Community 1650
-- MtlDevice
+- Vec4
 - Community 1652
 - Community 1653
 - Community 1654
 - Community 1655
+- .iter
 - Community 1657
 - Community 1658
 - Community 1659
@@ -1645,18 +1652,22 @@
 - Community 1662
 - Community 1663
 - Community 1664
+- check.rs
 - Community 1666
+- lib.rs
 - Community 1670
 - Community 1671
 - Community 1673
 - Community 1674
-- Community 1678
-- currentTier
+- index.ts
+- arc_a770.rs
+- MetalStage
 - Community 1683
-- aggregate.rs
-- Community 1687
+- .for_test
+- lib.rs
+- SovereignPause.tsx
 - Community 1688
-- Community 1689
+- .parse_value
 - Community 1690
 - Community 1691
 - Community 1692
@@ -1684,16 +1695,19 @@
 - Community 1714
 - Community 1715
 - graphify reference: extra exports and benchmark
-- estimate_usd
+- currentTier
+- attestation.rs
 - Community 1721
 - Community 1723
 - Community 1724
 - Community 1725
 - Community 1726
 - Community 1727
+- feature.rs
 - Community 1730
+- MemAddr
 - Community 1732
-- EmitMode
+- hot_reload.rs
 - Community 1734
 - room-v3.js
 - Community 1736
@@ -1706,13 +1720,14 @@
 - Community 1743
 - Community 1744
 - Community 1745
-- Community 1746
-- Community 1747
+- SovereignPause.tsx
+- emit.rs
 - Community 1748
 - Community 1749
 - Community 1750
 - Community 1751
 - Community 1752
+- site-directory.ts
 - Community 1754
 - Community 1755
 - Community 1756
@@ -1729,14 +1744,17 @@
 - Community 1767
 - Community 1768
 - Community 1769
-- Community 1770
+- parser.ts
+- list_labels
 - Community 1774
 - Community 1778
 - Community 1780
 - Community 1781
 - Community 1784
-- Community 1786
+- LootRollError
+- MockProbe
 - Community 1787
+- debug_callback_trampoline
 - Community 1789
 - Community 1790
 - Community 1791
@@ -1749,7 +1767,7 @@
 - Community 1798
 - Community 1799
 - Community 1800
-- VerifyError
+- TestArgs
 - Community 1802
 - Community 1803
 - Community 1804
@@ -1786,17 +1804,18 @@
 - Community 1838
 - Community 1839
 - Community 1841
-- season_hard_perma.rs
+- Aabb
 - Community 1846
 - Community 1848
 - Community 1849
-- MemoryPersistence
+- ProbeError
 - Community 1854
 - Community 1855
 - Community 1856
 - Community 1858
 - Community 1859
 - Community 1860
+- validate_egress
 - Community 1862
 - apocrypha-member-conversations-migration.test.ts
 - Community 1864
@@ -1830,7 +1849,6 @@
 - Community 1896
 - Community 1899
 - Community 1900
-- companion.test.ts
 - Community 1903
 - Community 1904
 - Community 1905
@@ -1910,28 +1928,83 @@
 - audit-jobs.mjs
 - prompt-breakdown.mjs
 - Community 2030
-- parse_network_line
+- heap.rs
 - graphify reference: add a URL and watch a folder
 - graphify reference: commit hook and native CLAUDE.md integration
 - graphify reference: query, path, explain
 - graphify reference: incremental update and cluster-only
-- drain_to_json
-- heap.rs
+- vault-memory.ts
+- useClearing.ts
 - graphify reference: GitHub clone and cross-repo merge
 - graphify reference: transcribe video and audio
-- plinth_positions
+- CycleCounter.tsx
 - verify-apocrypha-nav.mjs
 - extraction-spec.md
-- backoff.rs
-- hot_reload.rs
-- lock.ts
+- ConfigErr
+- transport_send_validate.rs
+- SpatialHashCellMarker
+- chrome_tracing.rs
 - plinth_positions
-- CycleCounter.tsx
-- room_status
+- lock.ts
+- memory-tools.test.ts
+- .fmt
+- run_phase_transitions.rs
+- resolve_call_result.rs
+- X64Block
+- apocrypha-worker-probe.test.ts
+- MetalStage
+- apocrypha-focus.test.ts
+- season_hard_perma.rs
+- AdWalkerPass
+- SimdTier
+- aggregate.rs
+- macros.rs
+- Bridge
+- VerifyError
+- akashic-records.test.ts
+- backoff.rs
+- .parse_value
+- parse_network_line
+- TestArgs
+- companion.test.ts
 - Community 2082
+- LinearUse
+- CpuTarget
+- MemoryStorage
+- index.tsx
+- parse_module
+- parse
+- ffi.rs
+- VerifyError
+- lib.rs
+- parse_spontaneous_line
+- apocrypha-owner-entry.test.ts
+- VulkanVersion
+- apply_death_penalty
+- Apocrypha on Discord
+- routes.test.ts
+- ToolStrip.tsx
+- ReturnLinks.tsx
+- index.tsx
+- stress_object_count
+- LegalDocument.tsx
 - Community 2103
+- ingest_logs_dir
+- LinearUse
+- intents.tsx
 - Community 2107
 - Community 2108
+- X64Imm
+- index.ts
+- Discord bridge -- consent policy  !!  <- written BEFORE the code, deliberately
+- drain_to_json
+- apocrypha-self-description.test.ts
+- currentTier
+- room.tsx
+- server.ts
+- memory-tools.test.ts
+- site-directory.ts
+- _app.tsx
 - Community 2155
 - Vec<u8>
 
@@ -1940,24 +2013,24 @@
 2. `ValueId` - 731 edges
 3. `MirOp` - 460 edges
 4. `Value` - 396 edges
-5. `.next` - 277 edges
+5. `.next` - 283 edges
 6. `MirType` - 263 edges
 7. `Span` - 245 edges
 8. `lower_one()` - 231 edges
-9. `envelope()` - 200 edges
+9. `envelope()` - 195 edges
 10. `CSSLv3 — DECISIONS log` - 180 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `testHeartbeatAuthenticatesAtDatabaseBeforeUpdate()` --indirect_call--> `call()`  [INFERRED]
-  cssl-edge/tests/apocrypha-worker-http.test.ts → apps/apocrypha-desktop/frontend/src/lib/ipc.ts
+- `listen()` --indirect_call--> `response()`  [INFERRED]
+  _apocrypha-fix/cssl-edge/tests/apocrypha-worker.test.ts → cssl-edge/tests/apocrypha-worker-retrieval.test.ts
+- `main()` --indirect_call--> `response()`  [INFERRED]
+  _apocrypha-fix/cssl-edge/tests/apocrypha-worker.test.ts → cssl-edge/tests/apocrypha-worker-retrieval.test.ts
 - `invokeAdapter()` --indirect_call--> `resolve()`  [INFERRED]
   _apocrypha-fix/cssl-edge/scripts/apocrypha-worker/retrieval.ts → cssl-edge/Remodel/Handover pipeline audit kickoff/support.js
 - `main()` --indirect_call--> `resolve()`  [INFERRED]
   _apocrypha-fix/cssl-edge/tests/apocrypha-worker.test.ts → cssl-edge/Remodel/Handover pipeline audit kickoff/support.js
 - `chat_body()` --references--> `Value`  [EXTRACTED]
   apps/apocrypha-desktop/src/protocol.rs → compiler-rs/crates/cssl-staging/src/value.rs
-- `BrainExperience()` --indirect_call--> `cancel()`  [INFERRED]
-  cssl-edge/components/brain/BrainExperience.tsx → compiler-rs/crates/cssl-host-mycelium-desktop/frontend/src/lib/ipc.ts
 
 ## Import Cycles
 - 1-file cycle: `compiler-rs/crates/cssl-autodiff/src/gpu/atomic.rs -> compiler-rs/crates/cssl-autodiff/src/gpu/atomic.rs`
@@ -1981,35 +2054,35 @@
 - 1-file cycle: `compiler-rs/crates/loa-host/src/ui_overlay.rs -> compiler-rs/crates/loa-host/src/ui_overlay.rs`
 - 1-file cycle: `compiler-rs/crates/loa-host/src/snapshot.rs -> compiler-rs/crates/loa-host/src/snapshot.rs`
 
-## Communities (2052 total, 66 thin omitted)
+## Communities (2126 total, 81 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.01
-Nodes (347): isAkashicKind(), BucketTier, CONSENT_CAPS, ConsentCapId, EVENT_KIND_NAMES, EventEnvelope, eventKindName, parseBucketTier() (+339 more)
+Nodes (371): AKASHIC_KIND_SET, isAkashicKind(), BucketTier, CONSENT_CAPS, ConsentCapId, EVENT_KIND_NAMES, EventEnvelope, eventKindName (+363 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.02
-Nodes (250): array_literal_emits_cssl_array_list(), assign_expression_emits_cssl_assign(), attr(), binary_add_int_body(), binary_cmp_returns_bool(), binary_mul_float_body(), body_lowering_leaves_signature_unchanged(), call_emits_func_call() (+242 more)
+Nodes (252): array_literal_emits_cssl_array_list(), assign_expression_emits_cssl_assign(), attr(), binary_add_int_body(), binary_cmp_returns_bool(), binary_mul_float_body(), body_lowering_leaves_signature_unchanged(), call_emits_func_call() (+244 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.07
-Nodes (76): SmsWorkerResult, assert(), constantTimeEqual(), CronExecution, emitCronAudit(), getServiceRoleClient(), idempotencyKey(), isCronAuthorized() (+68 more)
+Cohesion: 0.06
+Nodes (42): build_fs_close_signature(), build_fs_ftruncate_signature(), build_fs_last_error_kind_signature(), build_fs_last_error_os_signature(), build_fs_open_signature(), build_fs_read_signature(), build_fs_seek_signature(), build_fs_write_signature() (+34 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.05
-Nodes (170): ClBlock, Type, binary_int(), binary_int_or_float(), block_args_pass_through(), build_alloc_passthrough(), build_caller_one_i32_arg(), build_clif_signature() (+162 more)
+Nodes (173): ClBlock, Type, binary_int(), binary_int_or_float(), block_args_pass_through(), build_alloc_passthrough(), build_caller_one_i32_arg(), build_clif_signature() (+165 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.01
 Nodes (179): § APOCKY-D-2026-09-09 : Apocrypha desktop client — Windows thin Tauri client + apocky.com download entry, CSSLv3 — DECISIONS log, § META-SESSION-11-CLOSE : T11-D147 — Session-11 wave-1..4 close → v1.1 substrate-evolution + signature-rendering release, § META T11-D-RESERVATIONS-V2 : Phase-J slice-ID re-allocation — accommodates Wave-Jα/Jβ syntheses + audit-fix wave + Wave-Jε..Jι diagnostic-infrastructure, § META-WAVE-3-PRELUDE : T11-D113..T11-D137 reservation block, § META-WAVE-3γ : T11-D138..T11-D144 reservation block, § META-WAVE-4 : T11-D114 + T11-D116..T11-D125 reservation block — substrate-evolution + signature-rendering, § T10-D1 : Codegen phased — 5 backends text-emit now ; real FFI (cranelift + rspirv + dxc + metal + wgpu) deferred (+171 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.13
-Nodes (10): LowerCtx<'a>, CapKind, CompoundOp, EffectRow, Item, Literal, Pattern, Self (+2 more)
+Cohesion: 0.10
+Nodes (20): LowerCtx<'a>, CapKind, CompoundOp, EffectRow, Item, Literal, Pattern, Self (+12 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.02
-Nodes (283): BrainConnectorState, BrainMemory, BrainMessage, BrainRuntimeStatus, BrainRuntimeTurn, apiKey(), callText(), callTool() (+275 more)
+Cohesion: 0.06
+Nodes (58): Event, EventKind, EventLoadError, load_jsonl(), parse_jsonl(), Error, Option, Path (+50 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.05
@@ -2020,16 +2093,16 @@ Cohesion: 0.05
 Nodes (73): all_efr_codes_distinct_and_stable(), anonymous_crystallize_is_efr0016(), audio_alone_advisory_efr0006(), audio_plus_sim_same_fiber_is_efr0005(), bits_round_trip_via_constructor(), canonical_translate_row_composes_with_sim_telemetry(), check_advisories(), check_hard_errors() (+65 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.07
-Nodes (50): sleep(), boot(), cdnScriptFor(), collectProps(), compileAttr(), compileTemplate(), contentKey(), createComponentFactory() (+42 more)
+Cohesion: 0.06
+Nodes (51): sleep(), boot(), cdnScriptFor(), collectProps(), compileAttr(), compileTemplate(), contentKey(), createComponentFactory() (+43 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.06
-Nodes (44): atomic_cas_signature_ptr_u64_u64_u32_returns_i64(), atomic_load_signature_ptr_u32_returns_i64(), atomic_store_signature_ptr_u64_u32_returns_i32(), build_atomic_cas_u64_signature(), build_atomic_load_u64_signature(), build_atomic_store_u64_signature(), build_mutex_create_signature(), build_mutex_destroy_signature() (+36 more)
+Cohesion: 0.07
+Nodes (48): alloc_signature_has_2_params_and_1_return(), block_has_unexpanded_vec_op_detects_pre_rewrite_op(), block_has_unexpanded_vec_op_passes_post_rewrite(), build_alloc_signature(), build_free_signature(), build_realloc_signature(), end_to_end_vec_pipeline_produces_recognizable_cgen_ops(), expanded_fn() (+40 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.07
-Nodes (78): Accessor, Animation, AnimChannel, Buffer, BufferView, build_document(), decode_glb(), decode_glb_accessor_bytes_returns_correct_slice() (+70 more)
+Cohesion: 0.06
+Nodes (78): Accessor, Animation, AnimChannel, AnimSampler, BufferView, build_document(), decode_glb(), decode_glb_accessor_bytes_returns_correct_slice() (+70 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.03
@@ -2041,15 +2114,15 @@ Nodes (181): CLOUDFLARE_RUNTIME_HOST, CLOUDFLARE_RUNTIME_ORIGIN, CloudflareAcces
 
 ### Community 14 - "Community 14"
 Cohesion: 0.11
-Nodes (66): ArrayExpr, AssocTypeDecl, AssocTypeDef, Attr, attr_arg_both_shapes(), AttrKind, Block, CallArg (+58 more)
+Nodes (70): ArrayExpr, AssocTypeDecl, AssocTypeDef, Attr, attr_arg_both_shapes(), AttrKind, BinOp, Block (+62 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.12
-Nodes (38): AkashicConsent(), ConsentFooterControl(), NON_BLOCKING_APP_PATHS, TIERS, tierTitle(), armFlushTimer(), armVersionProbe(), attachUnloadFlush() (+30 more)
+Cohesion: 0.07
+Nodes (87): Vec, SourceFile, monomorph_specialize_id_i32_jit_executes(), lower_hir_to_mir(), lower_module(), LowerCtx, distinct_strings_give_distinct_symbols(), intern_gives_stable_symbol() (+79 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.06
-Nodes (49): camera_dx_raw(), camera_dy_raw(), camera_x_norm(), camera_y_norm(), canonical_emit_contains_source_canary_body(), canonical_emit_contains_storage_image_write(), canonical_emit_contains_structured_crystal_loop(), canonical_emit_contains_v13_math_extinsts() (+41 more)
+Cohesion: 0.11
+Nodes (42): canonical_emit_contains_source_canary_body(), canonical_emit_contains_storage_image_write(), canonical_emit_contains_structured_crystal_loop(), canonical_emit_contains_v13_math_extinsts(), canonical_emit_preserves_source_workgroup_execution_mode(), canonical_emit_reads_descriptor_payloads(), canonical_emit_uses_source_scene_slot_layout(), canonical_source_canary_is_derived_from_csl_declarations() (+34 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.13
@@ -2057,19 +2130,19 @@ Nodes (24): amplifier_is_deterministic_per_input(), AmplifierError, amplify_hit_
 
 ### Community 18 - "Community 18"
 Cohesion: 0.05
-Nodes (57): AdTransformPass, build_fn_with_try_on_result(), canonical_pipeline_shape(), canonical_runs_all_on_empty_module(), canonical_validator_writes_marker_on_empty_module(), count_raw_construct_ops_in_region(), count_string_abi_ops_in_region(), count_total_ops_in_region() (+49 more)
+Nodes (66): MirModule, Option, AdTransformPass, build_fn_with_try_on_result(), canonical_pipeline_shape(), canonical_runs_all_on_empty_module(), canonical_validator_writes_marker_on_empty_module(), count_raw_construct_ops_in_region() (+58 more)
 
 ### Community 19 - "Community 19"
 Cohesion: 0.05
-Nodes (76): Mutex, accept_loop(), CameraState, CaptureStateMirror, CferStateMirror, client_loop(), CompanionProposalEntry, config_default_uses_3001_when_env_unset() (+68 more)
+Nodes (63): accept_loop(), CameraState, CaptureStateMirror, CferStateMirror, client_loop(), CompanionProposalEntry, config_default_uses_3001_when_env_unset(), dispatch() (+55 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.10
 Nodes (32): binding_carries_bone_idx(), binding_default_mass_is_unit(), binding_with_com_offset_assigns(), binding_with_mass_clamps_negative(), find_binding_locates_by_bone_idx(), find_binding_missing_returns_none(), ik_clear_constraints_resets_count(), ik_constraint_position_only_no_orientation() (+24 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.06
-Nodes (49): append_text(), centered_style(), container_with(), ContainerStackEntry, entry_is_focusable(), entry_is_pickable(), entry_min_size(), EventResult (+41 more)
+Cohesion: 0.07
+Nodes (44): append_text(), container_with(), ContainerStackEntry, entry_is_focusable(), entry_is_pickable(), entry_min_size(), EventResult, FrameEntry (+36 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.06
@@ -2080,12 +2153,12 @@ Cohesion: 0.10
 Nodes (40): CoderSpecialist, decode_specialist_v1(), encode_specialist_v1(), no_persist_opt_out(), observation_ring_cap_enforced(), observe_evolves_decision(), observe_pass_through_to_substrate(), persist_blake3_digest_byte_correct() (+32 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.35
-Nodes (12): CONTRIBUTOR_ENROLLMENT_SCHEMA, allowAll, bodyHeaders(), fixedController(), isolateContributorEnv(), mock(), Output, runAll() (+4 more)
+Cohesion: 0.18
+Nodes (25): extract_bwd_single_adjoint(), extract_tangent_only_drops_primal_result(), extract_tangent_only_variant(), full_chain_source_bwd_affine_adjoint(), full_chain_source_bwd_cube_adjoint(), full_chain_source_bwd_mul_per_param_adjoints(), full_chain_source_bwd_sq_adjoint(), full_chain_source_bwd_two_params_affine() (+17 more)
 
 ### Community 25 - "Community 25"
 Cohesion: 0.06
-Nodes (60): builtin_principals(), builtin_principals_covers_prime_directive_principals(), check(), check_flow(), check_fn(), check_fn_flow(), check_full(), check_ifc() (+52 more)
+Nodes (59): builtin_principals(), builtin_principals_covers_prime_directive_principals(), check(), check_flow(), check_fn(), check_fn_flow(), check_full(), check_ifc() (+51 more)
 
 ### Community 26 - "Community 26"
 Cohesion: 0.04
@@ -2100,24 +2173,24 @@ Cohesion: 0.23
 Nodes (16): admin_read_mask(), admin_with_read_mask_can_read_cell(), admin_write_mask(), aggregate_only_stats_bypass_sigma_gate(), BiasInspector<'a>, inspector_top_for_archetype_through_admin_mask(), InspectorError, public_audience_cannot_read_admin_cell() (+8 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.05
-Nodes (116): BinOp, ExprKind, CompoundOp, UnOp, DiagnosticBag, expect_any(), keyword_is_soft_for_binding(), parse_binding_ident() (+108 more)
+Cohesion: 0.07
+Nodes (57): assign_right_assoc(), block_with_trailing_expr(), call_expr(), can_start_expression(), cast_expr(), combine_infix(), field_access(), if_expr() (+49 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.03
-Nodes (121): RequestUser, APOCV4_BRAIN_RUNTIME_ENABLE_ENV, isOwnerBrainConversationId(), isOwnerBrainHistoryCursor(), OwnerBrainHistoryListProjection, RuntimeProxyError, bearerFromRequest(), clearedSessionCookies() (+113 more)
+Cohesion: 0.24
+Nodes (10): CMD, decimal(), Env, integer(), loadToken(), loadWorkConfig(), parseRoots(), required() (+2 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.07
-Nodes (57): abs_integration_emits_branchful_tangent(), ad_walker_pass_debug_shape(), ad_walker_pass_plugs_into_pipeline(), AdWalker, AdWalkerPass, AdWalkerReport, build_diffpg_3_level_chain(), build_loop_primal() (+49 more)
+Cohesion: 0.11
+Nodes (37): ad_walker_pass_debug_shape(), ad_walker_pass_plugs_into_pipeline(), build_diffpg_3_level_chain(), build_loop_primal(), build_scf_for_primal(), build_scf_if_primal(), bwd_call_dispatch_marshals_d_y_last(), call_dispatch_bwd_emits_real_call_to_bwd_variant() (+29 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.10
 Nodes (32): add_child_attaches_to_parent(), add_child_invalid_parent_errors(), add_child_links_siblings(), add_root_appends_node_and_root(), children_iter_yields_all_children(), descendant_check(), empty_scene_has_no_nodes_no_roots(), iter_yields_all_in_arena_order() (+24 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.06
-Nodes (70): abs_constant_folds(), abs_evaluates_to_magnitude(), abs_smt_uses_abs_uf(), add_is_componentwise(), AnalyticVec3Expr, const_evaluates_to_literal(), dot(), dot_product_matches_scalar_sum() (+62 more)
+Cohesion: 0.07
+Nodes (72): AnalyticExpr, Box, abs_constant_folds(), abs_evaluates_to_magnitude(), abs_smt_uses_abs_uf(), add_is_componentwise(), AnalyticVec3Expr, const_evaluates_to_literal() (+64 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.22
@@ -2137,11 +2210,11 @@ Nodes (41): approx_eq(), Mat3, mat3_arithmetic_ops(), mat3_determinant_diagonal(
 
 ### Community 38 - "Community 38"
 Cohesion: 0.07
-Nodes (40): at_const_missing_key_returns_none_default_policy(), at_const_missing_key_with_default_policy_returns_default(), at_mut_returns_handle_for_present_key(), ByTierIter, ByTierIter<'a, T>, collision_rate_starts_at_zero_and_rises(), collision_stats_default_is_all_zero(), collision_stats_record_inserts_and_gets() (+32 more)
+Nodes (41): at_const_missing_key_returns_none_default_policy(), at_const_missing_key_with_default_policy_returns_default(), at_mut_returns_handle_for_present_key(), ByTierIter, ByTierIter<'a, T>, collision_rate_starts_at_zero_and_rises(), collision_stats_default_is_all_zero(), collision_stats_record_inserts_and_gets() (+33 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.04
-Nodes (142): auto_monomorphize_deduplicates_same_type_args(), auto_monomorphize_discovers_specializations_from_turbofish_calls(), end_to_end_generic_add_specializes_and_computes(), end_to_end_generic_twice_specializes_and_computes_f32(), end_to_end_main_calls_generic_id_via_full_flow(), fn_has_diff_attr(), fn_has_nodiff_attr(), HirId (+134 more)
+Cohesion: 0.02
+Nodes (284): BrainConnectorState, BrainMemory, BrainMessage, BrainRuntimeStatus, BrainRuntimeTurn, BrainSnapshot, apiKey(), callText() (+276 more)
 
 ### Community 40 - "Community 40"
 Cohesion: 0.19
@@ -2157,7 +2230,7 @@ Nodes (48): astar_determinism_across_runs(), astar_disconnected_no_path(), astar
 
 ### Community 43 - "Community 43"
 Cohesion: 0.07
-Nodes (51): append_builds_sequential_chain(), AuditChain, AuditEntry, AuditError, chain_verify_after_content_hash_tamper(), chain_verify_after_mid_chain_message_tamper(), chain_verify_after_timestamp_tamper(), chain_verify_detects_bad_genesis() (+43 more)
+Nodes (50): append_builds_sequential_chain(), AuditChain, AuditEntry, AuditError, chain_verify_after_content_hash_tamper(), chain_verify_after_mid_chain_message_tamper(), chain_verify_after_timestamp_tamper(), chain_verify_detects_bad_genesis() (+42 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.05
@@ -2165,7 +2238,7 @@ Nodes (74): arena_create_returns_unique_handles(), cap_check_zero_handle_rejects
 
 ### Community 45 - "Community 45"
 Cohesion: 0.06
-Nodes (64): abi_gp_to_enc(), abi_xmm_to_enc(), allocate(), allocate_assigns_distinct_pregs_to_distinct_vregs(), allocate_pins_int_param_to_first_arg_reg(), allocate_pins_int_param_to_first_arg_reg_ms_x64(), allocate_rejects_too_many_int_params(), allocate_rejects_too_many_int_params_ms_x64() (+56 more)
+Nodes (66): abi_gp_to_enc(), abi_xmm_to_enc(), allocate(), allocate_assigns_distinct_pregs_to_distinct_vregs(), allocate_pins_int_param_to_first_arg_reg(), allocate_pins_int_param_to_first_arg_reg_ms_x64(), allocate_rejects_too_many_int_params(), allocate_rejects_too_many_int_params_ms_x64() (+58 more)
 
 ### Community 46 - "Community 46"
 Cohesion: 0.06
@@ -2185,23 +2258,23 @@ Nodes (76): AbiError, ArgClass, float_arg_regs_get_out_of_range_returns_none(), 
 
 ### Community 50 - "Community 50"
 Cohesion: 0.09
-Nodes (66): all_body_emit_codes_unique_and_well_formed(), bitcast_emits_wgsl_bitcast(), bitwise_and_emits_amp(), BodyEmitError, cf_br_rejected(), cf_cond_br_rejected(), closure_op_rejected(), const_op() (+58 more)
+Nodes (68): all_body_emit_codes_unique_and_well_formed(), bitcast_emits_wgsl_bitcast(), bitwise_and_emits_amp(), BodyEmitError, cf_br_rejected(), cf_cond_br_rejected(), closure_op_rejected(), const_op() (+60 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.18
 Nodes (21): cascading_creator_revoke_cascades_to_subscribers(), daily_digest_rollup_combines_realtime_into_one(), manual_frequency_skips_auto_push(), mask_byte(), moderation_revoke_carries_reason_tag(), pk(), PublishEvent, rate_limit_realtime_enforced_within_window() (+13 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.05
-Nodes (46): build_xr_caps_current_signature(), build_xr_caps_grant_signature(), build_xr_caps_revoke_signature(), build_xr_input_state_signature(), build_xr_last_error_kind_signature(), build_xr_last_error_os_signature(), build_xr_pose_stream_signature(), build_xr_session_create_signature() (+38 more)
+Cohesion: 0.02
+Nodes (150): build_buffer_create_signature(), build_buffer_destroy_signature(), build_buffer_map_signature(), build_buffer_unmap_signature(), build_buffer_upload_signature(), build_cmd_buf_begin_signature(), build_cmd_buf_bind_descriptor_signature(), build_cmd_buf_bind_ibuf_signature() (+142 more)
 
 ### Community 53 - "Community 53"
 Cohesion: 0.22
 Nodes (5): RingBuffer, ringbuffer_push_drain_fifo_order(), AtomicU64, AtomicUsize, Vec
 
 ### Community 54 - "Community 54"
-Cohesion: 0.08
-Nodes (56): binding_arm_is_exhaustive(), binding_pat(), check_exhaustiveness(), check_match(), collect_pattern_coverage(), enum_decl(), EnumTable, EnumTable<'a> (+48 more)
+Cohesion: 0.07
+Nodes (59): binding_arm_is_exhaustive(), binding_pat(), check_exhaustiveness(), check_match(), collect_pattern_coverage(), enum_decl(), EnumTable, EnumTable<'a> (+51 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.15
@@ -2212,8 +2285,8 @@ Cohesion: 0.10
 Nodes (30): BroadcastSink, cap_policy_default_deny(), cap_policy_grant_then_revoke(), CapPolicy, ChatPatternDifferential, ChatSyncStats, deterministic_tick_yields_same_federation_blake3_after_replay(), grant_then_observe_multiple_emitters() (+22 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.03
-Nodes (107): env_depth_tracking(), env_innermost_shadows_outer(), item_sig_registration_and_lookup(), local_takes_precedence_over_item(), HashMap, HashSet, Item, Iterator (+99 more)
+Cohesion: 0.09
+Nodes (58): assert(), buildRevokeBroadcast(), bytesToHex(), canonicalSignMessage(), ChunkUploadOptions, CONTENT_KINDS, CONTENT_LICENSES, ContentKind (+50 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.13
@@ -2221,15 +2294,15 @@ Nodes (28): bisection_refine_finds_surface(), bisection_refine_returns_none_no_s
 
 ### Community 59 - "Community 59"
 Cohesion: 0.06
-Nodes (53): abi_x64abi_to_regalloc_abi(), assignment_for(), build_five_arg_fn(), build_func_bytes_via_lsra(), build_func_bytes_via_lsra_5arg_fn_uses_some_register_form(), build_func_bytes_via_lsra_for_5arg_fn_produces_bytes(), build_func_bytes_via_lsra_high_pressure_consumes_callee_saved_regs(), build_func_bytes_via_lsra_msx64_4arg_fn_succeeds() (+45 more)
+Nodes (56): abi_x64abi_to_regalloc_abi(), assignment_for(), build_five_arg_fn(), build_func_bytes_via_lsra(), build_func_bytes_via_lsra_5arg_fn_uses_some_register_form(), build_func_bytes_via_lsra_for_5arg_fn_produces_bytes(), build_func_bytes_via_lsra_high_pressure_consumes_callee_saved_regs(), build_func_bytes_via_lsra_msx64_4arg_fn_succeeds() (+48 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.06
-Nodes (51): acyclic_staged_chain_emits_no_stg0003(), build_registry(), CallWalkCtx, CallWalkCtx<'a>, check(), check_staged_consistency(), collect_call_edges_and_check(), collect_staged_item() (+43 more)
+Cohesion: 0.07
+Nodes (50): acyclic_staged_chain_emits_no_stg0003(), build_registry(), CallWalkCtx, check(), check_staged_consistency(), collect_call_edges_and_check(), collect_staged_item(), Color (+42 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.19
-Nodes (22): cap_denied_error_carries_bit(), ClientState, host_cap_required(), host_room_fixture(), invalid_message_rejected_before_dispatch(), join_cap_required(), leave_clears_room(), MpErr (+14 more)
+Cohesion: 0.15
+Nodes (25): MsgErr, Display, Formatter, cap_denied_error_carries_bit(), ClientState, host_cap_required(), host_room_fixture(), invalid_message_rejected_before_dispatch() (+17 more)
 
 ### Community 62 - "Community 62"
 Cohesion: 0.03
@@ -2237,42 +2310,42 @@ Nodes (67): AssetFormat, AssetInsert, AssetRow, AssetSource, AssetUpdate, BiasTh
 
 ### Community 63 - "Community 63"
 Cohesion: 0.06
-Nodes (45): allocate(), AllocError, AllocReport, callee_saved_pushed_when_used(), cross_call_interval_lives_in_callee_saved(), empty_function_yields_empty_allocation(), LinearScanAllocator, LinearScanAllocator<'a> (+37 more)
+Nodes (44): allocate(), AllocReport, callee_saved_pushed_when_used(), cross_call_interval_lives_in_callee_saved(), empty_function_yields_empty_allocation(), LinearScanAllocator, LinearScanAllocator<'a>, over_pressure_triggers_spill() (+36 more)
 
 ### Community 64 - "Community 64"
 Cohesion: 0.08
-Nodes (30): append_pattern_returns_handle_and_resolves(), cell_on_missing_key_returns_default(), coarsen_cascade_produces_pyramid_levels(), MutationError, new_field_is_empty(), omega_step_runs_six_phases_in_order(), OmegaField, pattern_at_key_resolves_via_cell_handle() (+22 more)
+Nodes (32): loa_can_read(), loa_can_write(), append_pattern_returns_handle_and_resolves(), cell_on_missing_key_returns_default(), coarsen_cascade_produces_pyramid_levels(), MutationError, new_field_is_empty(), omega_step_runs_six_phases_in_order() (+24 more)
 
 ### Community 65 - "Community 65"
 Cohesion: 0.08
 Nodes (41): Config, Dispatcher, float_gen_positive_range_shrinks_to_min_if_zero_out_of_range(), float_gen_run_property_passes_for_universal_truth(), float_gen_shrink_at_zero_is_empty(), float_gen_shrinks_toward_zero(), float_gen_stays_in_range(), int_gen_shrinks_toward_zero() (+33 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.05
-Nodes (48): Data, Inspector(), object(), Session, User, ApocryphaAvatar(), ApocryphaAvatarProps, ApocryphaVisualState (+40 more)
+Cohesion: 0.04
+Nodes (58): ammo_low_warning_at_25_percent(), ammo_update_round_trip(), color_blind_palette_count_is_5(), color_blind_palette_pairs_have_lightness_separation(), color_blind_palette_switch_returns_distinct_colors(), ColorBlindPalette, crosshair_emits_vertices_for_each_style(), crosshair_hit_flash_overrides_color_until_tick_finishes() (+50 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.06
-Nodes (28): bank_clear_invalidates_handles(), bank_default_capacity_4096(), bank_full_returns_error(), bank_get_returns_pcm(), bank_get_unknown_returns_none(), bank_insert_returns_handle(), pcm_builder_accumulates_frames(), pcm_builder_push_frame_misaligned_panics() (+20 more)
+Cohesion: 0.07
+Nodes (29): bank_clear_invalidates_handles(), bank_default_capacity_4096(), bank_full_returns_error(), bank_get_returns_pcm(), bank_get_unknown_returns_none(), bank_insert_returns_handle(), pcm_builder_accumulates_frames(), pcm_builder_push_frame_misaligned_panics() (+21 more)
 
 ### Community 68 - "Community 68"
 Cohesion: 0.08
 Nodes (35): aabb_insert_spans_multiple_cells(), BroadphaseError, BroadphasePair, bulk_insert_warp_vote_runs(), clear_bodies_resets(), config_fovea_1cm_uses_smaller_cell(), config_horizon_64cm_uses_larger_cell(), determinism_same_inputs_same_pairs() (+27 more)
 
 ### Community 69 - "Community 69"
-Cohesion: 0.10
-Nodes (35): add_const(), apply_reverse_partial(), arity_mismatch_rejected(), capacity_exceeded_rejected(), clear_resets_records_but_retains_capacity(), global_tape_default_capacity(), GpuTape, GpuTapeError (+27 more)
+Cohesion: 0.11
+Nodes (34): add_const(), apply_reverse_partial(), arity_mismatch_rejected(), capacity_exceeded_rejected(), clear_resets_records_but_retains_capacity(), global_tape_default_capacity(), GpuTape, GpuTapeError (+26 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.08
-Nodes (49): findProduct(), getStripe(), getWebhookSigningSecret(), PRODUCT_CATALOG, ProductDescriptor, _resetStripeForTests(), resolvePriceId(), assert() (+41 more)
+Cohesion: 0.07
+Nodes (41): block_touches_try_propagation(), block_touches_try_propagation_detects_any_marker_op(), block_touches_try_propagation_detects_unlowered_op(), block_touches_try_propagation_returns_false_for_plain_arithmetic(), count_try_dispatches(), count_try_dispatches_counts_dispatch_if_ops(), emit_try_err_payload_load(), emit_try_payload_load() (+33 more)
 
 ### Community 71 - "Community 71"
 Cohesion: 0.07
 Nodes (43): collapse_bias_total_weight_sums_correctly(), collapse_bias_vector_assigns_higher_weight_to_foveal(), CollapseBias, CollapseBiasVector, depth_for_resolution(), depth_for_resolution_quarter_yields_3_or_lower(), evolver_default_constructible(), evolver_detects_anchor_shift() (+35 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.08
+Cohesion: 0.07
 Nodes (29): body_handle_construct(), BodyHandle, BodyId, BodyKind, rigid_body_aabb_min_max(), rigid_body_apply_impulse_no_op_static(), rigid_body_apply_impulse_to_dynamic(), rigid_body_dynamic_inv_mass_finite() (+21 more)
 
 ### Community 73 - "Community 73"
@@ -2284,48 +2357,48 @@ Cohesion: 0.08
 Nodes (57): apply_lld_args(), archive_user_objects_for_rustc_driven(), build_command(), build_command_for_clang_uses_dash_o(), build_command_for_msvc_cl_uses_fe_arg(), build_command_for_rust_lld_gnu_uses_dash_o(), build_command_for_rust_lld_link_includes_out_arg(), build_command_for_rustc_driven_shape() (+49 more)
 
 ### Community 75 - "Community 75"
-Cohesion: 0.04
-Nodes (33): CommandListType, ComputePsoDesc, GraphicsPsoDesc, PipelineState, Debug, Formatter, ID3D12PipelineState, Option (+25 more)
+Cohesion: 0.05
+Nodes (38): CmdOp, CmdQueueDesc, CmdRecorder, compute_queue_rejects_draw(), copy_queue_accepts_copy_resource(), copy_queue_accepts_resource_barrier(), copy_queue_rejects_dispatch(), direct_descriptor_defaults() (+30 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.12
-Nodes (20): clear_drops_all_entries(), empty_overlay_returns_identity(), iter_visits_all_keys(), LoaKanOverlay, LoaKanOverlayCell, OverlayError, permissive_mask(), permissive_mask_with_sovereign() (+12 more)
+Cohesion: 0.07
+Nodes (36): evaluate_identity_passthrough(), evaluate_with_active_modulation_scales(), evaluate_with_sigmoid_activation(), identity_extension_is_identity(), LoaKanExtension, LoaKanExtensionError, new_identity_with_sovereign_refused(), new_with_activation_only() (+28 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.09
 Nodes (33): Histogram, histogram_clone_shares_state(), histogram_default_matches_new(), histogram_empty_returns_nan(), histogram_mean_after_record(), histogram_min_max_after_record(), histogram_new_is_empty(), histogram_p50_p95_p99_finite_after_record() (+25 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.08
-Nodes (65): MortonKey, world_point_to_morton(), aggregate_audio_levels(), aggregate_audio_recent(), aggregate_body_pose(), aggregate_center_pixel(), aggregate_cfer_neighborhood(), aggregate_combined_snapshot() (+57 more)
+Cohesion: 0.03
+Nodes (44): TextureFormat, build_mueller_lut_wgsl(), cfer_uniforms_default_carries_world_envelope(), cfer_uniforms_default_intensity_is_low(), CferUniforms, create_depth_view(), create_hdr_targets(), DynamicMesh (+36 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.10
 Nodes (51): collect_op_names(), expand_vec_block(), expand_vec_cap(), expand_vec_drop(), expand_vec_func(), expand_vec_index(), expand_vec_len(), expand_vec_module() (+43 more)
 
 ### Community 80 - "Community 80"
-Cohesion: 0.06
-Nodes (156): Display, Formatter, Span, HirArrayExpr, HirBinOp, HirBlock, HirCallArg, HirCompoundOp (+148 more)
+Cohesion: 0.05
+Nodes (153): Display, Formatter, Span, is_pure_diff_primitive(), WalkCtx<'a>, HirArrayExpr, HirBinOp, HirBlock (+145 more)
 
 ### Community 81 - "Community 81"
 Cohesion: 0.02
-Nodes (106): scripts, build, build:conversation-review-corpus, check, check:conversation-public-aggregate, check:public-surface, dev, generate:brand-icons (+98 more)
+Nodes (114): scripts, build, build:conversation-review-corpus, check, check:conversation-public-aggregate, check:public-surface, dev, generate:brand-icons (+106 more)
 
 ### Community 82 - "Community 82"
 Cohesion: 0.05
 Nodes (49): build_voxel_cloud(), build_voxel_cloud_inner(), build_voxel_cloud_with_observer(), cloud_respects_max_budget(), CloudStats, compute_fingerprint(), density_for_class(), emit_crystal_cells() (+41 more)
 
 ### Community 83 - "Community 83"
-Cohesion: 0.13
-Nodes (28): add_pass_invalidates_cached_topo_order(), add_pass_returns_sequential_ids(), AttachmentId, default_forward_pipeline_geometry_before_lighting(), default_forward_pipeline_has_six_passes(), default_forward_pipeline_shadow_before_lighting(), default_forward_pipeline_topo_sorts_clean(), default_forward_pipeline_ui_runs_last() (+20 more)
+Cohesion: 0.14
+Nodes (25): add_pass_invalidates_cached_topo_order(), add_pass_returns_sequential_ids(), AttachmentId, default_forward_pipeline_geometry_before_lighting(), default_forward_pipeline_has_six_passes(), default_forward_pipeline_shadow_before_lighting(), default_forward_pipeline_topo_sorts_clean(), default_forward_pipeline_ui_runs_last() (+17 more)
 
 ### Community 84 - "Community 84"
 Cohesion: 0.06
-Nodes (36): build_mueller_lut_wgsl(), CferUniforms, MuellerWgsl, Self, apply_chained_muellers_associative(), approx_eq(), depolarizer_zeros_polarization_components(), fresnel_at_brewster_polarizes_dielectric_reflection() (+28 more)
+Nodes (32): apply_chained_muellers_associative(), approx_eq(), depolarizer_zeros_polarization_components(), fresnel_at_brewster_polarizes_dielectric_reflection(), gold_metal_mueller_imaginary_part_visible_at_grazing(), iridescent_thin_film_q_varies_with_view_angle(), linear_polarizer_horizontal_blocks_vertical(), linear_polarizer_horizontal_filters_v_polarization() (+24 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.11
-Nodes (35): BranchFold, DceReport, eliminate_branches(), eliminate_branches_handles_missing_else_region(), eliminate_branches_handles_multiple_in_same_block(), eliminate_branches_skips_out_of_bounds_indices(), eliminate_branches_takes_else_branch_when_false(), eliminate_branches_takes_then_branch_when_true() (+27 more)
+Cohesion: 0.16
+Nodes (23): getWebhookSigningSecret(), assert(), ChargeLike, CheckoutSessionLike, config, handleChargeRefunded(), handleCheckoutCompleted(), handler() (+15 more)
 
 ### Community 86 - "Community 86"
 Cohesion: 0.10
@@ -2336,24 +2409,24 @@ Cohesion: 0.06
 Nodes (45): compute_substrate_dims(), compute_substrate_dims_1080p_passthrough(), compute_substrate_dims_caps_cpu_at_512(), compute_substrate_dims_floors_gpu_at_256(), detect_profile(), detect_profile_1080p_60hz_default_amoled(), detect_profile_4k_panel_falls_through_to_amoled(), detect_profile_default_is_amoled() (+37 more)
 
 ### Community 88 - "Community 88"
-Cohesion: 0.16
-Nodes (20): compile_compute_pipeline_stub_round_trip(), compile_render_pipeline_stub_round_trip(), default_session_config_uses_shared_storage(), make_buffer_default_uses_session_storage_mode(), make_buffer_with_explicit_storage_mode(), make_command_queue_increments_counter(), make_event_and_fence_increment_counters(), managed_storage_rejected_on_ios_tvos_visionos() (+12 more)
+Cohesion: 0.12
+Nodes (38): AkashicConsent(), ConsentFooterControl(), NON_BLOCKING_APP_PATHS, TIERS, tierTitle(), armFlushTimer(), armVersionProbe(), attachUnloadFlush() (+30 more)
 
 ### Community 89 - "Community 89"
-Cohesion: 0.06
-Nodes (42): build_fs_close_signature(), build_fs_ftruncate_signature(), build_fs_last_error_kind_signature(), build_fs_last_error_os_signature(), build_fs_open_signature(), build_fs_read_signature(), build_fs_seek_signature(), build_fs_write_signature() (+34 more)
+Cohesion: 0.03
+Nodes (90): MissingBinarySolver, emit_declare_sort_renders(), emit_empty_query(), emit_multi_assertion_order_preserved(), emit_smtlib(), emit_with_declare_fn(), emit_with_get_model(), emit_with_get_unsat_core() (+82 more)
 
 ### Community 90 - "Community 90"
 Cohesion: 0.11
-Nodes (17): audit_event_messages_are_deterministic(), bus_record_revoke_appends_with_token(), record_orphan_drop(), cap_token_consume_returns_id_and_cap(), cap_token_id_displays_token_prefix(), cap_token_id_monotonic(), cap_token_is_move_only(), CapToken (+9 more)
+Nodes (25): add_two_address_records_dst_as_use_and_def(), AllocatedInst, cmp_records_no_defs(), Cond, MemAddr, mov_constructor_records_uses_and_defs(), Abi, Cond (+17 more)
 
 ### Community 91 - "Community 91"
-Cohesion: 0.20
-Nodes (17): CpuCodegenError, emit_add_lowers_body_to_iadd_plus_return(), emit_constant_plus_arith_lowers_to_iconst_plus_iadd(), emit_empty_module_header_only(), emit_float_mul_lowers_to_fmul(), emit_function(), emit_i32_to_i32_fn(), emit_module() (+9 more)
+Cohesion: 0.09
+Nodes (45): asEvents(), awareness(), ChatMessage, Cursor, decide(), degrade(), ENGINE, freeSpeech() (+37 more)
 
 ### Community 92 - "Community 92"
-Cohesion: 0.09
-Nodes (28): sleep(), diagnostics(), presentEnvNames(), resolveCheckoutHead(), STARTED_MS, startHealthServer(), appendToFile(), configureLogFile() (+20 more)
+Cohesion: 0.07
+Nodes (36): additive_inverse_in_jet_space(), approx_eq_is_symmetric(), debug_format_includes_order_and_terms(), distribution_of_mul_over_add_holds_in_jet_space(), f32_jet_basic_arithmetic(), hessian_vector_product_1d(), hvp_axis(), hvp_axis_alias_matches_underlying() (+28 more)
 
 ### Community 93 - "Community 93"
 Cohesion: 0.09
@@ -2373,15 +2446,15 @@ Nodes (15): Option, SwapKind, config(), h(), kan(), RecordingHandler, FrameId, S
 
 ### Community 97 - "Community 97"
 Cohesion: 0.10
-Nodes (30): commit_hash_rejects_non_hex(), commit_hash_rejects_short_sha(), commit_hash_round_trip(), EngineHealth, EngineState, FailureReason, fresh_commit(), fresh_issue() (+22 more)
+Nodes (31): commit_hash_rejects_non_hex(), commit_hash_rejects_short_sha(), commit_hash_round_trip(), EngineHealth, EngineState, FailureReason, fresh_commit(), fresh_issue() (+23 more)
 
 ### Community 98 - "Community 98"
 Cohesion: 0.07
 Nodes (33): brain_consideration_id_unused_in_test(), ActionId, Consideration, ConsiderationId, CurveKind, Box, Debug, F (+25 more)
 
 ### Community 99 - "Community 99"
-Cohesion: 0.06
-Nodes (49): alloc_signature_has_2_params_and_1_return(), block_has_unexpanded_vec_op(), block_has_unexpanded_vec_op_detects_pre_rewrite_op(), block_has_unexpanded_vec_op_passes_post_rewrite(), build_alloc_signature(), build_free_signature(), build_realloc_signature(), end_to_end_vec_pipeline_produces_recognizable_cgen_ops() (+41 more)
+Cohesion: 0.07
+Nodes (65): build_fps_hud_vertices(), push_ammo_counter(), push_killfeed(), push_objective(), push_radar(), push_reload_indicator(), push_score_team(), Vec (+57 more)
 
 ### Community 100 - "Community 100"
 Cohesion: 0.13
@@ -2393,7 +2466,7 @@ Nodes (46): compute_fingerprint(), current_count(), current_count_visible_after_
 
 ### Community 102 - "Community 102"
 Cohesion: 0.03
-Nodes (116): block_build_and_push(), mir_op_builder_chain(), MirBlock, MirRegion, region_with_entry_has_entry_block(), region_with_nested_block(), Into, Option (+108 more)
+Nodes (103): align_up(), build_cascade_inner(), build_make_some_fn(), build_match_dispatch_cascade(), build_match_dispatch_cascade_attaches_arm_tag_attribute_to_scf_if(), build_match_dispatch_cascade_emits_load_plus_compare_plus_scf_if(), build_match_dispatch_cascade_empty_arms_emits_nothing(), build_match_dispatch_cascade_three_arms_emits_two_ifs() (+95 more)
 
 ### Community 103 - "Community 103"
 Cohesion: 0.08
@@ -2408,8 +2481,8 @@ Cohesion: 0.16
 Nodes (20): compute_damage(), cast_hitscan(), falloff_applied_for_far_targets(), hits_nearest_first(), HitscanHit, HitscanParams, HitscanTarget, miss_returns_zero() (+12 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.08
-Nodes (35): Request, Response, build_server_in_memory(), Cap<DevMode>, ExtraTool, McpServer, McpServer<T, S>, PingFixture (+27 more)
+Cohesion: 0.07
+Nodes (15): Mixer, MixerCounters, BTreeMap, Debug, Formatter, Vec, SoundBank, MixerVoice (+7 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.11
@@ -2436,8 +2509,8 @@ Cohesion: 0.10
 Nodes (16): CameraMode, cubic_ease(), GenreFluidCamera, lerp(), lerp_angle(), lerp_pose(), lerp_vec3(), ortho() (+8 more)
 
 ### Community 113 - "Community 113"
-Cohesion: 0.07
-Nodes (55): additive_inverse_in_jet_space(), compose_chained_exp_ln_is_identity(), compose_identity_is_input(), compose_sin_of_identity_matches_sin(), compose_sin_of_squared_matches_chain_rule(), deep_composition_sin_exp_ln_is_consistent(), distribution_of_mul_over_add_holds_in_jet_space(), exp_first_order_matches_analytic_at_x_eq_0() (+47 more)
+Cohesion: 0.11
+Nodes (27): clamp_to_world(), intent_dedups_same_kind_across_keywords(), intent_to_seed_cells(), intent_to_seed_cells_cube_returns_seed_with_cube_hint(), manifestation_detector_finds_rising_edge(), manifestation_detector_ignores_steady_high(), ManifestationDetector, ManifestationEvent (+19 more)
 
 ### Community 114 - "Community 114"
 Cohesion: 0.05
@@ -2449,7 +2522,7 @@ Nodes (53): atomic_cas_fails_when_expected_does_not_match(), atomic_cas_succeeds
 
 ### Community 116 - "Community 116"
 Cohesion: 0.02
-Nodes (114): Vec, SourceFile, hir_from(), lower_fn_body(), lower_one_nosrc(), lower_without_source_falls_back_to_stage0_placeholder(), trait_dispatch_table_none_falls_back_to_opaque(), trait_dispatch_unknown_self_ty_falls_through_to_opaque() (+106 more)
+Nodes (106): bake_array(), bake_array_assemble_carries_elem_count_attr(), bake_float_emits_one_arith_constant(), bake_int_emits_one_arith_constant(), bake_lut(), bake_result(), bake_scalar(), bake_scalar_constant() (+98 more)
 
 ### Community 117 - "Community 117"
 Cohesion: 0.09
@@ -2460,8 +2533,8 @@ Cohesion: 0.08
 Nodes (44): BehaviorTree, BehaviorTreeError, bt_always_failure(), bt_always_success(), bt_companion_rejected(), bt_inverter_running_pass_through(), bt_inverter_swaps_success_failure(), bt_leaf_count() (+36 more)
 
 ### Community 119 - "Community 119"
-Cohesion: 0.21
-Nodes (12): custom_policy_allows_unknown(), custom_policy_no_attribution_denies_cc_by(), default_allows_cc0(), default_allows_cc_by_with_attribution(), default_denies_proprietary(), default_denies_unknown(), default_policy(), LoaLicensePolicy (+4 more)
+Cohesion: 0.09
+Nodes (23): AssetFetcher, AssetSource, AtomicBool, Box, Default, Option, RwLock, Send (+15 more)
 
 ### Community 120 - "Community 120"
 Cohesion: 0.06
@@ -2477,39 +2550,39 @@ Nodes (58): axes_change_with_role(), axes_change_with_seed(), axes_deterministic
 
 ### Community 123 - "Community 123"
 Cohesion: 0.06
-Nodes (39): ReloadId, bug_issue(), build_baseline_history(), build_severe_history(), cosmetic_issue(), fresh_session(), good_commit(), integration_cosmetic_and_perf_issues_route_through_protocol() (+31 more)
+Nodes (38): bug_issue(), build_baseline_history(), build_severe_history(), cosmetic_issue(), fresh_session(), good_commit(), integration_cosmetic_and_perf_issues_route_through_protocol(), integration_fixture_integrity_check_blocks_tamper() (+30 more)
 
 ### Community 124 - "Community 124"
 Cohesion: 0.11
-Nodes (25): add_two_address_records_dst_as_use_and_def(), AllocatedInst, cmp_records_no_defs(), Cond, MemAddr, mov_constructor_records_uses_and_defs(), Abi, Cond (+17 more)
+Nodes (17): ctx_exposes_frame(), ctx_input_lookup(), ctx_omega_mutation_visible(), ctx_rng_lookup_unregistered_is_none(), InputEvent, OmegaStepCtx, OmegaStepCtx<'a>, BTreeMap (+9 more)
 
 ### Community 125 - "Community 125"
 Cohesion: 0.09
 Nodes (52): caps_revoke_disables_subsequent_ops(), __cssl_xr_caps_current(), __cssl_xr_caps_grant(), __cssl_xr_caps_revoke(), __cssl_xr_input_state(), __cssl_xr_last_error_kind(), __cssl_xr_last_error_os(), __cssl_xr_pose_stream() (+44 more)
 
 ### Community 126 - "Community 126"
-Cohesion: 0.05
-Nodes (80): DefId, Display, attribution_records_source_position(), build_module_scope(), cross_run_determinism_real_source(), different_source_different_fingerprint(), empty_module_lowers(), first_call_type_args() (+72 more)
+Cohesion: 0.10
+Nodes (44): DefId, Formatter, named_type_preserves_def_id(), collect_all_referenced_value_ids(), collect_referenced_value_ids_finds_operands(), comptime_args_add_preserves_sort(), comptime_args_add_replaces_duplicate_idx(), comptime_args_empty_constructor() (+36 more)
 
 ### Community 127 - "Community 127"
-Cohesion: 0.04
-Nodes (77): AdminCheck, AdminLayout(), AdminLayoutProps, MOBILE_NAV, NAV, NavItem, AuthFrame(), AuthFrameProps (+69 more)
+Cohesion: 0.05
+Nodes (81): display_debug_option_no_mangle_collision(), display_debug_option_produces_two_distinct_mangled_names(), drop_plan_keys_match_user_fn_names(), op_overload_add_lands_in_table(), op_overload_no_bound_violations(), outcome_summary_shape(), Vec, run_trait_dispatch_gate() (+73 more)
 
 ### Community 128 - "Community 128"
 Cohesion: 0.07
 Nodes (65): errorCode(), main(), option(), platformTarget(), readLeaseFromStdin(), runNetwork(), asRecord(), boundedIdentifier() (+57 more)
 
 ### Community 129 - "Community 129"
-Cohesion: 0.07
-Nodes (74): ALLOWED_SYMBOLIC_OPERATIONS, compileSpell(), sortedUnique(), AnalyzeSpellOptions, ENGINE_PROVENANCE, interpretExpression(), interpretSpell(), interpretTerm() (+66 more)
+Cohesion: 0.11
+Nodes (39): ALLOWED_SYMBOLIC_OPERATIONS, AnalyzeSpellOptions, ENGINE_PROVENANCE, rejected(), AllowedSymbolicOperation, CompiledNode, CompiledSpell, ConditionalSpellProgram (+31 more)
 
 ### Community 130 - "Community 130"
 Cohesion: 0.05
 Nodes (25): C32, c32_addassign_mutates_in_place(), c32_arithmetic_basic(), c32_conj_negates_imaginary(), c32_le_bytes_round_trip(), c32_mul_add_matches_separate_ops(), c32_mulassign_mutates_in_place(), c32_neg_negates_both() (+17 more)
 
 ### Community 131 - "Community 131"
-Cohesion: 0.09
-Nodes (37): GazeDirection, SaccadeState, baseline_input(), direction_to_theta(), direction_to_theta_round_trip_forward(), ekf_default_zero(), EkfState, HistoryFrame (+29 more)
+Cohesion: 0.10
+Nodes (36): GazeDirection, baseline_input(), direction_to_theta(), direction_to_theta_round_trip_forward(), ekf_default_zero(), EkfState, HistoryFrame, predict_within_4ms_budget() (+28 more)
 
 ### Community 132 - "Community 132"
 Cohesion: 0.07
@@ -2520,8 +2593,8 @@ Cohesion: 0.05
 Nodes (52): b03_capture_with_egress_cap_succeeds(), b04_capture_without_egress_cap_refused(), b06_inspector_exposes_cap_dev(), build_scene_with_three_cells(), c01_inspect_open_cell_succeeds(), c02_inspect_biometric_cell_refused(), c03_inspect_private_cell_refused(), c04_inspect_unknown_cell_not_found() (+44 more)
 
 ### Community 134 - "Community 134"
-Cohesion: 0.03
-Nodes (48): TextureFormat, fidelity_fallback_is_conservative(), fidelity_snapshot(), fidelity_to_json_string_has_expected_keys(), FidelityConfig, GpuContext, Arc, Option (+40 more)
+Cohesion: 0.08
+Nodes (18): BackendStream, build_wave_format(), channel_mask_for(), CoInitGuard, parse_mix_format(), Debug, Drop, Formatter (+10 more)
 
 ### Community 135 - "Community 135"
 Cohesion: 0.08
@@ -2532,12 +2605,12 @@ Cohesion: 0.08
 Nodes (39): fresh_fsm(), fsm_add_transition_unknown_state_rejected(), fsm_chain_two_ticks(), fsm_companion_rejected(), fsm_determinism_across_runs(), fsm_first_match_wins(), fsm_force_state_unknown_rejected(), fsm_force_state_works() (+31 more)
 
 ### Community 137 - "Community 137"
-Cohesion: 0.10
+Cohesion: 0.11
 Nodes (29): AnimError, AnimationWorld, ClipInstance, ClipInstanceId, despawn_unknown_instance_errors(), determinism_two_worlds_same_dt_same_pose(), empty_world_has_no_skeletons(), looping_clip_wraps_phase() (+21 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.05
-Nodes (59): LeaseEnvelope, LeaseInput, AtomicContributorStore, CONTRIBUTOR_CONTROLLER_ENV, createProductionContributorAtomicController(), envKeyId(), envPrivateKey(), envPublicKey() (+51 more)
+Cohesion: 0.09
+Nodes (17): Abi, RegBank, RegRole, Display, Formatter, Self, X64VReg, bank_preserved_through_alloc() (+9 more)
 
 ### Community 139 - "Community 139"
 Cohesion: 0.06
@@ -2592,12 +2665,12 @@ Cohesion: 0.09
 Nodes (39): arrow_keys_latch_menu_press_edges(), backtick_toggles_overlay(), c_key_toggles_cfer_intensity_atomic(), close_requested_sets_quit(), esc_sets_quit_requested(), f12_sets_screenshot_requested(), f7_runs_tour_request_and_render_mode_6(), f8_toggles_video_request_and_render_mode_7() (+31 more)
 
 ### Community 152 - "Community 152"
-Cohesion: 0.09
-Nodes (42): OwnerBrainHistoryGetProjection, normalizeMiniBrainRemoteMessages(), bytesToBase64Url(), canonicalJson(), MINI_BRAIN_DEVICE_SCHEMA, MINI_BRAIN_SYNC_REQUEST_SCHEMA, MINI_BRAIN_SYNC_RESPONSE_SCHEMA, MiniBrainSyncOperation (+34 more)
+Cohesion: 0.07
+Nodes (50): canonicalJson(), MINI_BRAIN_DEVICE_SCHEMA, MINI_BRAIN_SYNC_RESPONSE_SCHEMA, MiniBrainSyncOperation, MiniBrainSyncRequest, MiniBrainSyncResponse, MiniBrainSyncUnsignedRequest, MiniBrainTombstone (+42 more)
 
 ### Community 153 - "Community 153"
-Cohesion: 0.02
-Nodes (206): align_attribute_passes_through_to_clif_text(), align_flag_str(), build_end_of_op(), build_typed_load_op(), build_typed_store_op(), clif_type_for_elem_name(), covers_all_six_primitives_load_path(), covers_all_six_primitives_store_path() (+198 more)
+Cohesion: 0.03
+Nodes (126): align_attribute_passes_through_to_clif_text(), align_flag_str(), build_end_of_op(), build_typed_load_op(), build_typed_store_op(), clif_type_for_elem_name(), covers_all_six_primitives_load_path(), covers_all_six_primitives_store_path() (+118 more)
 
 ### Community 154 - "Community 154"
 Cohesion: 0.09
@@ -2605,11 +2678,11 @@ Nodes (15): Default, FrameN, Self, strict_ns(), StrictClock, StrictClockError, s
 
 ### Community 155 - "Community 155"
 Cohesion: 0.09
-Nodes (23): AuditEntry, audit_chain_for_test(), AuditEvent, bus_chain_verifies_after_many_appends(), bus_record_grant_denied_appends_with_reason(), bus_record_grant_issued_appends_one_entry(), bus_record_path_op_appends_hash_only_entry(), bus_record_path_op_chain_verifies() (+15 more)
+Nodes (26): AuditEntry, audit_chain_for_test(), AuditEvent, bus_chain_verifies_after_many_appends(), bus_record_grant_denied_appends_with_reason(), bus_record_grant_issued_appends_one_entry(), bus_record_path_op_appends_hash_only_entry(), bus_record_path_op_chain_verifies() (+18 more)
 
 ### Community 156 - "Community 156"
-Cohesion: 0.13
-Nodes (17): GrantMode, MyceliumApp, parse_tool_name(), AppConfig, Arc, Self, Session, ToolName (+9 more)
+Cohesion: 0.07
+Nodes (31): GrantMode, MyceliumApp, parse_tool_name(), AppConfig, Arc, Self, Session, ToolName (+23 more)
 
 ### Community 157 - "Community 157"
 Cohesion: 0.10
@@ -2624,8 +2697,8 @@ Cohesion: 0.12
 Nodes (32): GamepadButton, action_active_via_gamepad_axis_negative_threshold(), action_active_via_gamepad_axis_positive_threshold(), action_active_via_gamepad_button_any_slot(), action_active_via_keyboard(), action_active_via_mouse(), action_map_add_binding(), action_map_duplicate_action() (+24 more)
 
 ### Community 160 - "Community 160"
-Cohesion: 0.10
-Nodes (22): b64_roundtrip(), base64_decode(), base64_encode(), derive_room_id(), extract_payload_bytes(), InsertRow, kind_to_wire(), parse_ts_iso8601_micros() (+14 more)
+Cohesion: 0.09
+Nodes (31): extract_resp(), HttpClient, HttpMethod, HttpReq, HttpResp, HttpTransportErr, mock_default_returns_empty_200(), mock_error_takes_precedence() (+23 more)
 
 ### Community 161 - "Community 161"
 Cohesion: 0.05
@@ -2633,7 +2706,7 @@ Nodes (65): CapTag, ai_kan_band_weights_alpha_and_beta_present(), audio_master_g
 
 ### Community 162 - "Community 162"
 Cohesion: 0.04
-Nodes (43): blank_line_does_not_perturb_indent(), bracket_suppresses_indent_tracking(), full_csl_native_fragment(), indent_then_dedent(), kinds(), lex(), Lexer, Lexer<'a> (+35 more)
+Nodes (78): env_depth_tracking(), env_innermost_shadows_outer(), item_sig_registration_and_lookup(), local_takes_precedence_over_item(), HashMap, HashSet, Item, Iterator (+70 more)
 
 ### Community 163 - "Community 163"
 Cohesion: 0.08
@@ -2657,15 +2730,15 @@ Nodes (42): __cssl_alloc(), __cssl_entry(), __cssl_free(), __cssl_fs_close(), __
 
 ### Community 168 - "Community 168"
 Cohesion: 0.09
-Nodes (16): anchor_builder_minimal(), anchor_gap_and_lacks_tests(), anchor_key_stable(), anchor_stale_detection(), ImplConfidence, ImplStatus, Display, Formatter (+8 more)
+Nodes (15): anchor_builder_minimal(), anchor_gap_and_lacks_tests(), anchor_key_stable(), anchor_stale_detection(), ImplConfidence, ImplStatus, Display, Formatter (+7 more)
 
 ### Community 169 - "Community 169"
-Cohesion: 0.14
-Nodes (21): add_file_returns_increasing_indices_and_assigns_per_file_fp(), add_material_returns_indices_and_records(), AssetBundle, BundleErr, cc0_rec(), encode_128_hex(), file_blob_lookup_in_range_and_oob(), fingerprint_changes_with_content() (+13 more)
+Cohesion: 0.09
+Nodes (34): capabilities_are_emitted_before_extensions(), debug_source_line(), emit_capabilities(), emit_debug(), emit_entry_points(), emit_execution_modes(), emit_ext_inst_imports(), emit_extensions() (+26 more)
 
 ### Community 170 - "Community 170"
-Cohesion: 0.05
-Nodes (60): boundedJson(), boundedScalar(), brainmonsoonRecords(), canonicalGraphQuery(), canonicalMemPalaceQuery(), canonicalMetaHarnessQuery(), createAdapters(), innerDeadline() (+52 more)
+Cohesion: 0.08
+Nodes (37): boundedJson(), boundedScalar(), brainmonsoonRecords(), canonicalGraphQuery(), canonicalMemPalaceQuery(), canonicalMetaHarnessQuery(), innerDeadline(), MEM_PALACE_POLICY_PATH (+29 more)
 
 ### Community 171 - "Community 171"
 Cohesion: 0.09
@@ -2676,20 +2749,20 @@ Cohesion: 0.06
 Nodes (32): all_ops_have_unique_names(), CsslOp, fs_close_signature_is_1_to_1(), fs_open_signature_is_2_to_1(), fs_read_signature_is_3_to_1(), fs_write_signature_is_3_to_1(), handle_pack_signature_is_2_to_1(), heap_alloc_signature_is_2_to_1() (+24 more)
 
 ### Community 173 - "Community 173"
-Cohesion: 0.07
-Nodes (41): block_touches_try_propagation(), block_touches_try_propagation_detects_any_marker_op(), block_touches_try_propagation_detects_unlowered_op(), block_touches_try_propagation_returns_false_for_plain_arithmetic(), count_try_dispatches(), count_try_dispatches_counts_dispatch_if_ops(), emit_try_err_payload_load(), emit_try_payload_load() (+33 more)
+Cohesion: 0.08
+Nodes (65): MortonKey, world_point_to_morton(), aggregate_audio_levels(), aggregate_audio_recent(), aggregate_body_pose(), aggregate_center_pixel(), aggregate_cfer_neighborhood(), aggregate_combined_snapshot() (+57 more)
 
 ### Community 174 - "Community 174"
 Cohesion: 0.08
 Nodes (24): attack_clamps(), Compressor, compressor_default_attack_release(), compressor_default_ratio_4(), compressor_default_threshold_minus_12(), compressor_reset_clears_envelope(), db_to_linear(), determinism_same_input_same_output() (+16 more)
 
 ### Community 175 - "Community 175"
-Cohesion: 0.04
-Nodes (70): conversationIdForAdmission(), handler(), isSameOwnerChatRequest(), LegalDocument(), LegalDocumentProps, getAdminAuthorization(), listOwnerChatConversations(), ApocryphaFetchResult (+62 more)
+Cohesion: 0.08
+Nodes (21): body_block_renders_with_braces(), body_for_renders(), body_if_renders_then_else(), body_if_renders_then_only(), body_loop_renders_do_while_true(), body_while_renders(), cbuffer_statement_rendering(), expr_binary_renders_parenthesized() (+13 more)
 
 ### Community 176 - "Community 176"
-Cohesion: 0.05
-Nodes (40): block_new_has_unreachable_placeholder(), block_with_terminator_overrides(), empty_signature(), func_fresh_block_returns_monotonic_ids(), func_fresh_vreg_increments(), func_new_creates_entry_block(), func_param_vreg_uses_one_based_ids(), func_push_inst_appends_to_block() (+32 more)
+Cohesion: 0.08
+Nodes (34): all_15_execution_models_map_without_panic(), all_4_addressing_models_map_without_panic(), all_4_memory_models_map_without_panic(), BinaryEmitError, capability_catalog_round_trips_for_shader_like(), capability_ext_inst_and_plain_ext_coexist(), compute_module_capabilities_survive_round_trip(), compute_module_ext_inst_import_survives_round_trip() (+26 more)
 
 ### Community 177 - "Community 177"
 Cohesion: 0.12
@@ -2712,15 +2785,15 @@ Cohesion: 0.09
 Nodes (30): clear_resets_registry(), completeness_check_all_present(), completeness_check_mismatched_kind_reported(), completeness_check_missing_reported(), completeness_check_partial_coverage_fraction(), completeness_empty_catalog_full_coverage(), CompletenessReport, empty_registry_is_empty() (+22 more)
 
 ### Community 182 - "Community 182"
-Cohesion: 0.06
-Nodes (36): ApiKeyManager(), btnStyle, btnStyleDanger, inputStyle, ToolCallTimeline(), ApiKeyInfo, ApocryphaEnvelope, ApocryphaEnvelopeError (+28 more)
+Cohesion: 0.20
+Nodes (23): build_wave_seed(), compute_pixel(), day_observer_at_origin(), destructive_interference_cancels(), determinism_across_invocations(), empty_field_zero_output(), holographic_reconstruction_replay_stable(), hsv_to_rgb() (+15 more)
 
 ### Community 183 - "Community 183"
 Cohesion: 0.06
 Nodes (24): bivector_pack_nontrivial_roundtrips_within_f16_tolerance(), bivector_pack_zero_yields_zero(), clear_pattern_unclaims(), default_cell_can_observe_only(), default_cell_is_air(), enthalpy_negative_violates_refinement(), f16_to_f32(), f32_to_f16() (+16 more)
 
 ### Community 184 - "Community 184"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (23): Painter, child_min_size(), dispatch_node(), paint_node(), pop_translation(), push_translation(), retained_layout_assigns_frames_for_three_children(), retained_node_walk_visits_self_and_children() (+15 more)
 
 ### Community 185 - "Community 185"
@@ -2729,11 +2802,11 @@ Nodes (28): GapCoverageInput, GapCoverageInput<'a>, GapPriority, GapRanking, hig
 
 ### Community 186 - "Community 186"
 Cohesion: 0.04
-Nodes (36): addr_is_loopback(), caps_current(), caps_grant(), caps_grant_raises_bits(), caps_grant_rejects_unknown_bits(), caps_revoke(), caps_revoke_lowers_bits(), check_caps_for_addr() (+28 more)
+Nodes (34): addr_is_loopback(), caps_current(), caps_grant(), caps_grant_raises_bits(), caps_grant_rejects_unknown_bits(), caps_revoke(), caps_revoke_lowers_bits(), check_caps_for_addr() (+26 more)
 
 ### Community 187 - "Community 187"
-Cohesion: 0.09
-Nodes (42): alias_op(), arm_tag_value(), arm_tag_value_parses_decimal_attribute(), block_touches_tagged_union(), block_touches_tagged_union_detects_alias_bitcast(), block_touches_tagged_union_detects_any_marker_op(), block_touches_tagged_union_detects_dispatch_if(), block_touches_tagged_union_returns_false_for_plain_arithmetic() (+34 more)
+Cohesion: 0.10
+Nodes (35): AppleSession, compile_compute_pipeline(), compile_compute_placeholder_kernel(), compile_render_pipeline(), compile_render_placeholder_pair(), derive_gpu_family(), make_buffer(), make_buffer_with_shared_storage() (+27 more)
 
 ### Community 188 - "Community 188"
 Cohesion: 0.13
@@ -2753,7 +2826,7 @@ Nodes (12): _append_event(), _load_render_v3_bench(), Observation, Any, BaseMode
 
 ### Community 192 - "Community 192"
 Cohesion: 0.08
-Nodes (25): baseline_input(), blink_state_classification(), BlinkState, bound_confidence_returns_minimum(), center_bias_fallback_is_forward_full_confidence(), cyclopean_direction_is_unit(), eye_openness_blink_threshold(), EyeOpenness (+17 more)
+Nodes (26): baseline_input(), blink_state_classification(), BlinkState, bound_confidence_returns_minimum(), center_bias_fallback_is_forward_full_confidence(), cyclopean_direction_is_unit(), eye_openness_blink_threshold(), EyeOpenness (+18 more)
 
 ### Community 193 - "Community 193"
 Cohesion: 0.12
@@ -2784,8 +2857,8 @@ Cohesion: 0.10
 Nodes (16): Audio, Cap, CapDenied, Gpu, HostCapKind, HostCapMarker, HostCapWitness, Input (+8 more)
 
 ### Community 200 - "Community 200"
-Cohesion: 0.08
-Nodes (21): body_block_renders_with_braces(), body_for_renders(), body_if_renders_then_else(), body_if_renders_then_only(), body_loop_renders_do_while_true(), body_while_renders(), cbuffer_statement_rendering(), expr_binary_renders_parenthesized() (+13 more)
+Cohesion: 0.16
+Nodes (18): compile_compute_pipeline_stub_round_trip(), compile_render_pipeline_stub_round_trip(), default_session_config_uses_shared_storage(), make_buffer_default_uses_session_storage_mode(), make_buffer_with_explicit_storage_mode(), make_command_queue_increments_counter(), make_event_and_fence_increment_counters(), managed_storage_rejected_on_ios_tvos_visionos() (+10 more)
 
 ### Community 201 - "Community 201"
 Cohesion: 0.12
@@ -2800,12 +2873,12 @@ Cohesion: 0.08
 Nodes (55): BarChart(), BarChartProps, BarItem, arcPath(), Donut(), DonutProps, DonutSegment, polar() (+47 more)
 
 ### Community 204 - "Community 204"
-Cohesion: 0.07
-Nodes (62): build_font_atlas(), build_overlay_vertices(), build_overlay_vertices_grows_when_menu_opens(), build_overlay_vertices_returns_nonempty_for_default_hud(), build_shadowed_text(), build_text_quads(), build_text_quads_emits_6_vertices_per_char(), build_text_quads_handles_unicode_gracefully() (+54 more)
+Cohesion: 0.12
+Nodes (18): b64_roundtrip(), base64_decode(), base64_encode(), derive_room_id(), extract_payload_bytes(), InsertRow, kind_to_wire(), parse_ts_iso8601_micros() (+10 more)
 
 ### Community 205 - "Community 205"
-Cohesion: 0.11
-Nodes (42): AllowedOp, count_spec_modes(), CslExtras, CslManifest, ExpectNot, extract_predicates(), fold_continuations(), ForbidBetween (+34 more)
+Cohesion: 0.19
+Nodes (36): BodyCtx, BodyEmitError, compute_memref_alignment(), emit_branch_region_ops(), emit_cmpf(), emit_cmpi(), emit_constant(), emit_float_binary() (+28 more)
 
 ### Community 206 - "Community 206"
 Cohesion: 0.11
@@ -2816,16 +2889,16 @@ Cohesion: 0.06
 Nodes (22): bit_get_set_roundtrip(), from_words_canonicalizes_tail(), ham_fn_trait_access(), ham_fn_word_access(), HamFn, Hypervector<D>, HypervectorI8, i8_entry_out_of_range() (+14 more)
 
 ### Community 208 - "Community 208"
-Cohesion: 0.04
-Nodes (67): ammo_low_warning_at_25_percent(), ammo_update_round_trip(), AmmoCounter, build_fps_hud_vertices(), color_blind_palette_count_is_5(), color_blind_palette_pairs_have_lightness_separation(), color_blind_palette_switch_returns_distinct_colors(), ColorBlindPalette (+59 more)
+Cohesion: 0.09
+Nodes (34): Backend, BuildArgs, EmitMode, Backend, Option, Self, Vec, backend_comparison_both_paths_dispatch_cleanly() (+26 more)
 
 ### Community 209 - "Community 209"
-Cohesion: 0.10
-Nodes (20): AdLegalityDiagnostic, AdLegalityReport, check(), check_ad_legality(), check_diff_fn(), collect_fn_attrs(), diagnostic_message_contains_caller(), differentiable_fn_calling_another_differentiable_fn_is_legal() (+12 more)
+Cohesion: 0.11
+Nodes (23): arc_a770_enumerate_drivers_returns_intel(), arc_a770_ze_init_succeeds(), canonical_install_dirs(), canonical_install_dirs_nonempty(), canonical_loader_candidates(), deref_symbol(), LoaderError, LoaderProbe (+15 more)
 
 ### Community 210 - "Community 210"
-Cohesion: 0.06
-Nodes (52): CONVERSATION_ARCHIVE_FACTS, CONVERSATION_CONSTELLATIONS, ConversationConstellation, ConversationProvider, ConversationTheme, ConversationCorpusBrowseManifest, ConversationCorpusBrowseRecord, ConversationCorpusCounts (+44 more)
+Cohesion: 0.08
+Nodes (36): ConversationCorpusBrowseManifest, ConversationCorpusBrowseRecord, ConversationCorpusCounts, ConversationCorpusManifest, ConversationCorpusPageResponse, ConversationCorpusRecord, ConversationCorpusSummary, CORPUS_REVIEW_HELD_CODE (+28 more)
 
 ### Community 211 - "Community 211"
 Cohesion: 0.08
@@ -2852,12 +2925,12 @@ Cohesion: 0.15
 Nodes (21): Stage9Error, budget_advances_to_hard_cap(), budget_rejects_past_hard_cap(), budget_remaining_correct(), budget_starts_at_zero(), cross_region_probe_blocked(), default_config_channel(), default_config_max_depth_is_hard_cap() (+13 more)
 
 ### Community 217 - "Community 217"
-Cohesion: 0.13
-Nodes (37): additive_at_zero_is_base(), approx_eq(), blend2_at_half_is_midpoint(), blend2_at_one_returns_b(), blend2_at_zero_returns_a(), blend_additive(), blend_n_normalizes_weights(), blend_n_poses() (+29 more)
+Cohesion: 0.14
+Nodes (36): additive_at_zero_is_base(), approx_eq(), blend2_at_half_is_midpoint(), blend2_at_one_returns_b(), blend2_at_zero_returns_a(), blend_additive(), blend_n_normalizes_weights(), blend_n_poses() (+28 more)
 
 ### Community 218 - "Community 218"
 Cohesion: 0.08
-Nodes (29): build_window_destroy_signature(), build_window_get_dims_signature(), build_window_pump_signature(), build_window_raw_handle_signature(), build_window_request_close_signature(), build_window_signature(), build_window_signature_dispatches_by_tag(), build_window_spawn_signature() (+21 more)
+Nodes (28): build_window_destroy_signature(), build_window_get_dims_signature(), build_window_pump_signature(), build_window_raw_handle_signature(), build_window_request_close_signature(), build_window_signature(), build_window_signature_dispatches_by_tag(), build_window_spawn_signature() (+20 more)
 
 ### Community 219 - "Community 219"
 Cohesion: 0.12
@@ -2897,31 +2970,31 @@ Nodes (27): load(), load_nonexistent_returns_fs_error(), load_rejects_attestatio
 
 ### Community 228 - "Community 228"
 Cohesion: 0.09
-Nodes (21): Insets, insets_symmetric_pairs(), insets_uniform_sets_all_edges(), Point, point_distance_squared_pythagoras(), point_distance_squared_zero_when_equal(), point_translate_round_trip(), Rect (+13 more)
+Nodes (22): Insets, insets_symmetric_pairs(), insets_uniform_sets_all_edges(), Point, point_distance_squared_pythagoras(), point_distance_squared_zero_when_equal(), point_translate_round_trip(), Rect (+14 more)
 
 ### Community 229 - "Community 229"
-Cohesion: 0.04
-Nodes (66): MiniBrainMessage, aborted(), accountBody(), accountHistoryWithPending(), AccountMessage, AccountPendingJournal, AccountPendingLock, AccountPendingRecord (+58 more)
+Cohesion: 0.11
+Nodes (29): aborted(), accountBody(), accountHistoryWithPending(), AccountMessage, AccountPendingLock, AccountPendingRecord, AccountPendingTurn, AccountSession (+21 more)
 
 ### Community 230 - "Community 230"
-Cohesion: 0.11
-Nodes (35): Affordance, BoundingBox, Cell, Door, door_consent_variant_preserved(), DoorId, DoorOpensVia, DoorState (+27 more)
+Cohesion: 0.10
+Nodes (36): TransitionCondition, Affordance, BoundingBox, Cell, Door, door_consent_variant_preserved(), DoorId, DoorOpensVia (+28 more)
 
 ### Community 231 - "Community 231"
 Cohesion: 0.05
 Nodes (33): judder_detector_default_quest3(), judder_detector_degrades_on_violations(), judder_detector_p95_estimate_responds_to_samples(), judder_detector_recovers_on_stable_frames(), judder_detector_starts_at_full_quality(), judder_detector_validate_floor_fails_only_at_max_with_violations(), judder_detector_validate_floor_passes_at_full(), JudderDetector (+25 more)
 
 ### Community 232 - "Community 232"
-Cohesion: 0.15
+Cohesion: 0.14
 Nodes (27): config_block_samples_matches_frames_x_channels(), config_default_stereo_48k(), create_bus_over_max_errors(), create_bus_returns_id(), determinism_two_mixers_bit_equal(), listener_can_be_set(), MixerConfig, new_zero_voices() (+19 more)
 
 ### Community 233 - "Community 233"
 Cohesion: 0.10
-Nodes (20): Action, ActionSet, ActionStateBool, ActionStateFloat, ActionStatePose, ActionType, HapticVibration, localized_clip() (+12 more)
+Nodes (19): Action, ActionSet, ActionStateBool, ActionStateFloat, ActionStatePose, ActionType, HapticVibration, localized_clip() (+11 more)
 
 ### Community 234 - "Community 234"
-Cohesion: 0.10
-Nodes (26): ErrEnv, ErrInner, ListBody, Arc, AuditSink, BTreeMap, Debug, Formatter (+18 more)
+Cohesion: 0.03
+Nodes (75): Client, CheckoutMode, CheckoutSession, CheckoutSessionRequest, form_encode(), form_encode_is_deterministic(), LineItem, BTreeMap (+67 more)
 
 ### Community 235 - "Community 235"
 Cohesion: 0.20
@@ -2929,11 +3002,11 @@ Nodes (21): AuthorOutcome, build_messages(), make_signed_cap(), OrchestratorConf
 
 ### Community 236 - "Community 236"
 Cohesion: 0.16
-Nodes (37): _isInit(), _peekRing(), _resetForTests(), _ringSize(), _sessionId(), akashicInstall(), applyGate(), gateEvent() (+29 more)
+Nodes (35): _isInit(), _peekRing(), _resetForTests(), _ringSize(), _sessionId(), akashicDisable(), akashicInstall(), assert() (+27 more)
 
 ### Community 237 - "Community 237"
-Cohesion: 0.10
-Nodes (25): current_frame_n(), engine_health_default_is_all_ok(), engine_health_degraded_breaks_all_ok(), frame_n_tracker_round_trip(), init(), install_panic_hook(), log(), LogSink (+17 more)
+Cohesion: 0.09
+Nodes (29): current_frame_n(), dump_summary(), engine_health_default_is_all_ok(), engine_health_degraded_breaks_all_ok(), EngineHealth, frame_n_tracker_round_trip(), init(), install_panic_hook() (+21 more)
 
 ### Community 238 - "Community 238"
 Cohesion: 0.09
@@ -2949,7 +3022,7 @@ Nodes (25): approx(), Mat4, mat4_approx(), mat4_cols_array_round_trip(), mat4_de
 
 ### Community 241 - "Community 241"
 Cohesion: 0.10
-Nodes (44): apply_sock_options(), build_sockaddr_in(), build_sockaddr_in_packs_canonical_loopback(), close_invalid_socket_returns_minus_one(), connect_to_loopback_unbound_port_returns_connection_refused(), connect_to_non_loopback_without_outbound_cap_denied(), cssl_net_accept_impl(), cssl_net_close_impl() (+36 more)
+Nodes (46): record_send(), record_send_increments_counter_and_bytes_total(), apply_sock_options(), build_sockaddr_in(), build_sockaddr_in_packs_canonical_loopback(), close_invalid_socket_returns_minus_one(), connect_to_loopback_unbound_port_returns_connection_refused(), connect_to_non_loopback_without_outbound_cap_denied() (+38 more)
 
 ### Community 242 - "Community 242"
 Cohesion: 0.13
@@ -2984,16 +3057,16 @@ Cohesion: 0.15
 Nodes (28): activateNode(), activateRoom(), announce(), createAttachment(), createChatMessage(), createCrosscutStrip(), createDivider(), createEvent() (+20 more)
 
 ### Community 250 - "Community 250"
-Cohesion: 0.08
-Nodes (54): build_multi_block_func_bytes(), X64Func, bad_reloc_symbol_index_rejected(), duplicate_func_name_rejected(), emit_object_file(), extern_import_index_within_range(), host_default_picks_one_target(), host_default_target() (+46 more)
+Cohesion: 0.11
+Nodes (29): bounded(), createGatewayServer(), json(), PATHS, probes(), readJson(), safeCause(), boundedRecordsEnvelope() (+21 more)
 
 ### Community 251 - "Community 251"
 Cohesion: 0.12
 Nodes (50): accepts_module_with_d5_marker(), arith_cmpf_olt_lowers_to_op_ford_less_than(), arith_cmpi_eq_lowers_to_op_iequal(), arith_cmpi_with_bad_predicate_returns_malformed(), arith_constant_plus_fmul_round_trips(), arith_constant_plus_iadd_round_trips(), arith_negf_lowers_to_op_fnegate(), arith_select_lowers_to_op_select() (+42 more)
 
 ### Community 252 - "Community 252"
-Cohesion: 0.15
-Nodes (36): BodyEmitError, closure_op_in_body_propagates_to_emit_error(), compute_skeleton_has_workgroup_size(), const_op(), emit_wgsl(), empty_signature_only_compute_emits_skeleton_with_marker_present(), ensure_stage_return(), entry_fn_with_arith_constant_body_naga_validates() (+28 more)
+Cohesion: 0.12
+Nodes (30): TierOpt, AkashicState, _resetConsoleTapForTests(), uninstallConsoleTap(), AKASHIC_KINDS, AkashicBatch, AkashicEvent, AkashicKind (+22 more)
 
 ### Community 253 - "Community 253"
 Cohesion: 0.09
@@ -3036,16 +3109,16 @@ Cohesion: 0.16
 Nodes (26): auto_select_dgc_only_picks_vulkan_dgc(), auto_select_none_falls_back_to_indirect(), auto_select_picks_work_graph_when_supported(), cn(), cycle_refused(), duplicate_id_refused(), empty_builder_refused(), fan_out_topo_visits_a_then_b_then_c_or_d() (+18 more)
 
 ### Community 263 - "Community 263"
-Cohesion: 0.11
-Nodes (27): clamp_to_world(), intent_dedups_same_kind_across_keywords(), intent_to_seed_cells(), intent_to_seed_cells_cube_returns_seed_with_cube_hint(), manifestation_detector_finds_rising_edge(), manifestation_detector_ignores_steady_high(), ManifestationDetector, ManifestationEvent (+19 more)
+Cohesion: 0.10
+Nodes (28): array_literal_unifies_elements(), call_site_unifies_args(), check_module(), comparison_returns_bool(), empty_env_has_no_free_vars(), empty_module_has_no_diagnostics(), fn_with_pure_row_checks(), generic_fn_call_sites_instantiate_to_distinct_ty_vars() (+20 more)
 
 ### Community 264 - "Community 264"
 Cohesion: 0.16
 Nodes (18): AkashicLedger, AuditEvent, de_balances(), de_imprints(), PurchaseOutcome, PurchaseRequest, BTreeMap, D (+10 more)
 
 ### Community 265 - "Community 265"
-Cohesion: 0.05
-Nodes (38): CapTokens, Engine, engine_bind_companion_consumes_cap(), engine_config_default_is_60fps(), engine_constructs_with_test_caps(), EngineConfig, HeldCaps, LoaError (+30 more)
+Cohesion: 0.11
+Nodes (19): CapTokens, Engine, engine_bind_companion_consumes_cap(), engine_config_default_is_60fps(), engine_constructs_with_test_caps(), EngineConfig, HeldCaps, LoaError (+11 more)
 
 ### Community 266 - "Community 266"
 Cohesion: 0.06
@@ -3060,20 +3133,20 @@ Cohesion: 0.03
 Nodes (61): Agency, Architect, Archon, Aspect, Aura, Bone, Composition date, Consent (+53 more)
 
 ### Community 269 - "Community 269"
-Cohesion: 0.07
-Nodes (38): asRecord(), ControlPlaneClient, ControlPlaneError, controlPlaneMetrics, Fetch, jsonRecord(), normalizeClaim(), number() (+30 more)
+Cohesion: 0.14
+Nodes (20): accessibility_value_default_is_none(), AccessibilityNode, AccessibilityRole, AccessibilitySnapshot, AccessibilityState, AccessibilityValue, find_in(), node_contains_id_recursive() (+12 more)
 
 ### Community 270 - "Community 270"
-Cohesion: 0.07
-Nodes (35): BrainDiagnostics(), CODES, count(), object(), Result, text(), VIEWS, ResolvedSiteSession (+27 more)
+Cohesion: 0.06
+Nodes (30): codexRecords, codexSourceSet, conversationParts, fixtureParagraph, fixtureRecord, kindCounts, manifest, manifestPath (+22 more)
 
 ### Community 271 - "Community 271"
-Cohesion: 0.12
-Nodes (26): AppleSession, compile_compute_pipeline(), compile_compute_placeholder_kernel(), compile_render_pipeline(), compile_render_placeholder_pair(), derive_gpu_family(), make_buffer_with_shared_storage(), make_event() (+18 more)
+Cohesion: 0.16
+Nodes (11): CpuTargetProfile, darwin_default_is_macho(), DebugFormat, feature_set_accepts_additions(), linux_default_is_elf(), profile_equality(), Abi, ObjectFormat (+3 more)
 
 ### Community 272 - "Community 272"
-Cohesion: 0.09
-Nodes (23): admissible_at_allows_netdata_within_scope(), admissible_at_blocks_behavioral_off_device(), display_format_is_stable(), HostLabel, HostLabelScope, HostSensitiveTag, IfcViolation, raw_roundtrip_all_combinations() (+15 more)
+Cohesion: 0.16
+Nodes (15): admissible_at_allows_netdata_within_scope(), admissible_at_blocks_behavioral_off_device(), display_format_is_stable(), IfcViolation, scope_roundtrip(), SovereignContext, tag_roundtrip(), verify_label() (+7 more)
 
 ### Community 273 - "Community 273"
 Cohesion: 0.10
@@ -3092,16 +3165,16 @@ Cohesion: 0.06
 Nodes (36): Page, PAGES, cancel(), getConfig(), getHistory(), getInvoke(), getSubstrateDocCount(), grantCap() (+28 more)
 
 ### Community 277 - "Community 277"
-Cohesion: 0.15
-Nodes (19): build_stub_query(), build_stub_query_is_trivially_true(), Cvc5CliSolver, default_args_for(), default_args_for_matches_kind(), default_args_include_in_flag_for_z3(), default_args_include_lang_flag_for_cvc5(), default_cvc5_args() (+11 more)
+Cohesion: 0.11
+Nodes (42): AllowedOp, count_spec_modes(), CslExtras, CslManifest, ExpectNot, extract_predicates(), fold_continuations(), ForbidBetween (+34 more)
 
 ### Community 278 - "Community 278"
 Cohesion: 0.08
-Nodes (40): audit_chain_can_carry_path_hash_in_message_short_form(), audit_chain_path_hashes_correlate_within_chain(), audit_chain_with_many_path_hashes_remains_unique_to_path(), audit_path_op_helper_emits_hash_only_message(), audit_path_op_rejects_raw_path_in_extra(), different_path_same_salt_different_hash(), empty_path_hashes_deterministically(), from_seed_different_seeds_disagree() (+32 more)
+Nodes (42): current_source_hasher(), Option, audit_chain_can_carry_path_hash_in_message_short_form(), audit_chain_path_hashes_correlate_within_chain(), audit_chain_with_many_path_hashes_remains_unique_to_path(), audit_path_op_helper_emits_hash_only_message(), audit_path_op_rejects_raw_path_in_extra(), different_path_same_salt_different_hash() (+34 more)
 
 ### Community 279 - "Community 279"
-Cohesion: 0.09
-Nodes (58): assert(), buildRevokeBroadcast(), bytesToHex(), canonicalSignMessage(), ChunkUploadOptions, CONTENT_KINDS, CONTENT_LICENSES, ContentKind (+50 more)
+Cohesion: 0.15
+Nodes (36): BodyEmitError, closure_op_in_body_propagates_to_emit_error(), compute_skeleton_has_workgroup_size(), const_op(), emit_wgsl(), empty_signature_only_compute_emits_skeleton_with_marker_present(), ensure_stage_return(), entry_fn_with_arith_constant_body_naga_validates() (+28 more)
 
 ### Community 280 - "Community 280"
 Cohesion: 0.09
@@ -3109,11 +3182,11 @@ Nodes (31): Aabb, aabb_center_extents(), aabb_empty_merge_with_box_yields_box(),
 
 ### Community 281 - "Community 281"
 Cohesion: 0.08
-Nodes (26): apply_limiter(), Bus, bus_clear_accumulator_zeros(), bus_new_unity_gain_no_mute(), bus_process_applies_gain(), bus_process_muted_zeros_signal(), bus_process_unity_gain_passthrough(), bus_resize_accumulator_extends() (+18 more)
+Nodes (25): apply_limiter(), Bus, bus_clear_accumulator_zeros(), bus_new_unity_gain_no_mute(), bus_process_applies_gain(), bus_process_muted_zeros_signal(), bus_process_unity_gain_passthrough(), bus_resize_accumulator_extends() (+17 more)
 
 ### Community 282 - "Community 282"
-Cohesion: 0.18
-Nodes (35): default_value_for_type(), DxilError, emit_binary_decl(), emit_binary_decl_unsigned(), emit_cmp_decl(), emit_func_call(), emit_memref_load(), emit_memref_store() (+27 more)
+Cohesion: 0.12
+Nodes (15): all_bands_positive_width(), band_index_at_550nm(), contains_nm_lower_edge_inclusive(), d65_weights_sum_one(), default_is_d65(), equal_energy_weights_sum_one(), lo_hi_flank_center(), out_of_range_returns_none() (+7 more)
 
 ### Community 283 - "Community 283"
 Cohesion: 0.10
@@ -3124,8 +3197,8 @@ Cohesion: 0.05
 Nodes (13): cssl_telemetry::AuditError, cssl_telemetry::PathLogError, cssl_telemetry::RingError, Default, Display, Formatter, Option, Self (+5 more)
 
 ### Community 285 - "Community 285"
-Cohesion: 0.07
-Nodes (56): BrowserSpeechEvent, BrowserSpeechRecognition, byteLength(), CapabilityReceipt, ChatMessage, clampAboveSurfaceAnchor(), clampSurfacePoint(), CodeApproval (+48 more)
+Cohesion: 0.11
+Nodes (26): Candidate, fold(), independentWitnesses(), jaccard(), LINEAGE, marginalValue(), QUERY_INDEPENDENT, queryTerms() (+18 more)
 
 ### Community 286 - "Community 286"
 Cohesion: 0.08
@@ -3148,12 +3221,12 @@ Cohesion: 0.09
 Nodes (29): BiometricFixture, devmode_session(), EchoTool, PingTool, registry_dispatch_bumps_audit_seq(), registry_dispatch_cap_denied(), registry_dispatch_passes_params(), registry_dispatch_succeeds() (+21 more)
 
 ### Community 291 - "Community 291"
-Cohesion: 0.05
-Nodes (81): display_debug_option_no_mangle_collision(), display_debug_option_produces_two_distinct_mangled_names(), drop_plan_keys_match_user_fn_names(), op_overload_add_lands_in_table(), op_overload_no_bound_violations(), outcome_summary_shape(), Vec, run_trait_dispatch_gate() (+73 more)
+Cohesion: 0.04
+Nodes (129): auto_monomorphize_deduplicates_same_type_args(), auto_monomorphize_discovers_specializations_from_turbofish_calls(), end_to_end_generic_add_specializes_and_computes(), end_to_end_generic_twice_specializes_and_computes_f32(), end_to_end_main_calls_generic_id_via_full_flow(), fn_has_diff_attr(), fn_has_nodiff_attr(), HirAttr (+121 more)
 
 ### Community 292 - "Community 292"
 Cohesion: 0.09
-Nodes (17): Abi, RegBank, RegRole, Display, Formatter, Self, X64VReg, bank_preserved_through_alloc() (+9 more)
+Nodes (33): asRecord(), ControlPlaneClient, ControlPlaneError, controlPlaneMetrics, Fetch, jsonRecord(), normalizeClaim(), number() (+25 more)
 
 ### Community 293 - "Community 293"
 Cohesion: 0.09
@@ -3164,12 +3237,12 @@ Cohesion: 0.09
 Nodes (23): apply_audio_outflow_below_threshold_skips(), apply_audio_outflow_to_heat_attenuates(), apply_audio_outflow_to_light_attenuates(), apply_light_to_audio_below_threshold_noop(), apply_light_to_audio_injects_proportional_shimmer(), apply_mana_to_audio_injects_magic_hum(), Band, band_audio_wavelength_about_0_343m() (+15 more)
 
 ### Community 295 - "Community 295"
-Cohesion: 0.08
-Nodes (40): ceiling_winding_ccw_viewed_from_below(), dot(), first_pattern_with_normal_and_axis(), first_quad_with_normal(), first_quad_with_normal_and_axis_value(), floor_quadrants_have_distinct_patterns(), floor_winding_ccw_viewed_from_above(), full_world_has_more_vertices_than_test_room() (+32 more)
+Cohesion: 0.12
+Nodes (28): ceiling_winding_ccw_viewed_from_below(), dot(), first_pattern_with_normal_and_axis(), first_quad_with_normal(), first_quad_with_normal_and_axis_value(), floor_quadrants_have_distinct_patterns(), floor_winding_ccw_viewed_from_above(), full_world_has_more_vertices_than_test_room() (+20 more)
 
 ### Community 296 - "Community 296"
-Cohesion: 0.05
-Nodes (39): AssetHandle, AssetHandle<T>, FilterMode, handle_default_is_invalid(), handle_new_is_valid_unless_max(), handle_phantom_types_distinct(), Default, PhantomData (+31 more)
+Cohesion: 0.09
+Nodes (21): bind_external_view_rebinds_bind_group_and_sets_flag(), ComposeUniforms, deep_attributes_for(), deep_attributes_for_amoled_pitch_black(), deep_attributes_for_hdr_max_punch(), deep_attributes_for_ips_no_crush_no_boost(), deep_attributes_for_oled_below_amoled(), deep_attributes_for_va_between_ips_and_oled() (+13 more)
 
 ### Community 297 - "Community 297"
 Cohesion: 0.14
@@ -3193,15 +3266,15 @@ Nodes (24): Bone, chain_bone_count(), chain_from_to_oob_rejected(), chain_from_t
 
 ### Community 302 - "Community 302"
 Cohesion: 0.11
-Nodes (25): AnimChannel, AnimChannelKind, channel_duration_matches_last_keyframe(), channels_for_bone_filter(), ChannelTarget, clip_duration_is_max_of_channel_durations(), clip_target_bone_indices_dedup_and_sort(), cubic_spline_layout_translation_accepts_3n_samples() (+17 more)
+Nodes (26): AnimationClip, AnimChannel, AnimChannelKind, channel_duration_matches_last_keyframe(), channels_for_bone_filter(), ChannelTarget, clip_duration_is_max_of_channel_durations(), clip_target_bone_indices_dedup_and_sort() (+18 more)
 
 ### Community 303 - "Community 303"
-Cohesion: 0.05
-Nodes (103): attr_matches(), collect_differentiable_fns(), collect_item(), DiffDecl, differentiable_fn_is_collected(), empty_module_yields_no_decls(), multiple_differentiable_fns_collected_in_order(), non_differentiable_fn_is_skipped() (+95 more)
+Cohesion: 0.23
+Nodes (13): block_new_has_unreachable_placeholder(), empty_signature(), func_fresh_block_returns_monotonic_ids(), func_fresh_vreg_increments(), func_new_creates_entry_block(), func_param_vreg_uses_one_based_ids(), func_push_inst_appends_to_block(), func_set_terminator_updates_block() (+5 more)
 
 ### Community 304 - "Community 304"
 Cohesion: 0.04
-Nodes (73): ApiError, bindMiniBrainDevice(), BrainApiError, BrainExperience(), BrainGraph(), BrainView, filterMemories(), formattedDate() (+65 more)
+Nodes (72): ApiError, bindMiniBrainDevice(), BrainApiError, BrainExperience(), BrainGraph(), BrainView, filterMemories(), formattedDate() (+64 more)
 
 ### Community 305 - "Community 305"
 Cohesion: 0.08
@@ -3220,11 +3293,11 @@ Cohesion: 0.12
 Nodes (25): approx(), Quat, quat_approx(), quat_axis_angle_known_rotations(), quat_compose_associative_with_rotation(), quat_conjugate_inverts_unit_quaternion(), quat_euler_yxz_matches_axis_compose(), quat_identity_rotates_to_self() (+17 more)
 
 ### Community 309 - "Community 309"
-Cohesion: 0.15
-Nodes (34): CapKind, EffectRow, TypeKind, array_with_length(), capability_iso(), effect_row_braced(), fn_type_with_return(), generic_type() (+26 more)
+Cohesion: 0.08
+Nodes (83): CapKind, EffectRow, TypeKind, DiagnosticBag, expect_any(), parse_binding_ident(), parse_ident(), Option (+75 more)
 
 ### Community 310 - "Community 310"
-Cohesion: 0.09
+Cohesion: 0.10
 Nodes (23): ContactSpectrum, coupler_default_audio_dominant(), coupler_magic_has_mana_coupling(), coupler_metallic_has_higher_light(), coupler_soft_has_no_light(), emit_excitation_active_event(), emit_excitation_below_floor_still_returns_event(), emit_excitation_normal_unit_check() (+15 more)
 
 ### Community 311 - "Community 311"
@@ -3244,20 +3317,20 @@ Cohesion: 0.09
 Nodes (39): bool_double_negation_is_idempotent_over_negate(), boolean_and_is_commutative(), chain_rule_fails_when_inner_derivative_wrong(), chain_rule_holds_for_sin_of_squared(), check_associative(), check_chain_rule(), check_commutative(), check_distributive() (+31 more)
 
 ### Community 315 - "Community 315"
-Cohesion: 0.06
-Nodes (44): Archetype, archetype_round_trip(), gm_describe_environment_returns_non_empty(), gm_dialogue_is_deterministic(), gm_dialogue_returns_non_empty(), gm_dialogue_varies_with_npc_id(), gm_environment_varies_with_time_of_day(), GmNarrator (+36 more)
+Cohesion: 0.08
+Nodes (28): ArcPhase, DmState, ComposedResponse, decorate_calm_terse_persona_truncates(), decorate_climax_adds_substrate_glyph(), decorate_warmth_persona_adds_softening_suffix(), decorate_with_persona(), fnv1a_64() (+20 more)
 
 ### Community 316 - "Community 316"
-Cohesion: 0.07
-Nodes (53): asRecord(), baseSystem(), boundedJson(), compactBaseSystem(), compactCanonicalReading(), compactCoreRequest(), compactForContext(), compactHistory() (+45 more)
+Cohesion: 0.12
+Nodes (42): asRecord(), attachMemoryToFinalTurn(), baseSystem(), boundedJson(), compactBaseSystem(), compactCanonicalReading(), compactCoreRequest(), compactEvidenceMessage() (+34 more)
 
 ### Community 317 - "Community 317"
 Cohesion: 0.11
 Nodes (39): ContactPoint, approx_eq(), box_box(), box_box_overlap_contact(), box_plane(), box_plane_partial_penetration(), box_plane_resting_four_corner_contacts(), capsule_capsule() (+31 more)
 
 ### Community 318 - "Community 318"
-Cohesion: 0.09
-Nodes (48): ApocryphaJobKind, ApocryphaJobRow, ApocryphaJobStatus, assertChaosBridgeRequest(), assertChaosBridgeSignature(), bearerToken(), boundedOwnerChatMessages(), canonicalize() (+40 more)
+Cohesion: 0.07
+Nodes (44): ApocryphaJobKind, ApocryphaJobRow, ApocryphaJobStatus, assertChaosBridgeRequest(), assertChaosBridgeSignature(), bearerToken(), boundedOwnerChatMessages(), canonicalize() (+36 more)
 
 ### Community 319 - "Community 319"
 Cohesion: 0.12
@@ -3268,8 +3341,8 @@ Cohesion: 0.10
 Nodes (21): band_pass_q_set(), Biquad, BiquadCoefficients, BiquadKind, cutoff_clamps_below_min(), cutoff_clamps_to_nyquist(), determinism_same_input_same_output(), high_pass_butterworth_q() (+13 more)
 
 ### Community 321 - "Community 321"
-Cohesion: 0.08
-Nodes (22): DmRuntime, Archetype, ArcPhase, Default, DmState, Instant, Option, Self (+14 more)
+Cohesion: 0.12
+Nodes (29): a_reply_must_be_bound_to_its_own_request(), a_reply_without_response_evidence_is_refused(), anon_claim(), chat_body(), chat_result(), code(), config(), config_refuses_anything_but_a_public_key_for_this_service() (+21 more)
 
 ### Community 322 - "Community 322"
 Cohesion: 0.17
@@ -3280,8 +3353,8 @@ Cohesion: 0.15
 Nodes (36): companion_add_requires_npc_hire_cap(), companion_converse_advances_disposition_deterministically(), companion_dismiss_removes_and_audits(), decoration_list_iterates_in_slot_id_order(), decoration_place_requires_decorate_cap(), decoration_remove_unknown_slot_returns_not_found(), decoration_remove_works_and_audits(), forge_cancel_marks_not_pending() (+28 more)
 
 ### Community 324 - "Community 324"
-Cohesion: 0.11
-Nodes (26): AnthropicBridge, AnthropicNonStreamingResponse, consume_sse_stream(), ContentBlock, decode_sse_payload(), drain_record(), on_decoded_returns_unhandled(), parse_non_streaming() (+18 more)
+Cohesion: 0.20
+Nodes (14): AccountTurnFailure, ACCOUNT_DIAGNOSTIC_CODES, accountDiagnostic, AccountDiagnosticStage, accountDiagnosticText(), AccountOperation, diagnosticForAccount(), diagnosticFromBody() (+6 more)
 
 ### Community 325 - "Community 325"
 Cohesion: 0.14
@@ -3289,11 +3362,11 @@ Nodes (28): asset_event(), drain_returns_records_and_empties_log(), drain_then_r
 
 ### Community 326 - "Community 326"
 Cohesion: 0.08
-Nodes (33): AssetFetcher, AssetFormat, AssetMeta, AssetSource, __cssl_asset_fetch(), __cssl_asset_search(), default_cache_dir(), FetcherError (+25 more)
+Nodes (31): AssetFormat, __cssl_asset_fetch(), __cssl_asset_search(), default_cache_dir(), FetcherError, inc_cache_hit(), inc_fetch(), inc_search() (+23 more)
 
 ### Community 327 - "Community 327"
-Cohesion: 0.05
-Nodes (78): allStringValues(), assertInside(), assertNoResidualPrivateContent(), blocksToText(), buildSnapshot(), canonicalAnchor(), CODEX_PII_PATTERNS, compareFilenames() (+70 more)
+Cohesion: 0.10
+Nodes (48): allStringValues(), assertInside(), assertNoResidualPrivateContent(), blocksToText(), buildSnapshot(), canonicalAnchor(), CODEX_PII_PATTERNS, compareFilenames() (+40 more)
 
 ### Community 328 - "Community 328"
 Cohesion: 0.13
@@ -3324,16 +3397,16 @@ Cohesion: 0.08
 Nodes (25): cycle_color_changes_across_frames(), cycle_color_components_in_range(), cycle_color_for_frame(), cycle_color_period_returns_to_start(), cycle_color_period_zero_safe(), cycle_color_starts_red(), GdiRenderer, GdiRenderError (+17 more)
 
 ### Community 335 - "Community 335"
-Cohesion: 0.08
-Nodes (32): AssetLicenseRecord, attribution_html_anchors(), attribution_text_format(), cc_by_flags_missing_author(), cc_by_record(), html_escape(), html_escape_handles_special_chars(), missing_attribution_detected() (+24 more)
+Cohesion: 0.07
+Nodes (36): add_file_returns_increasing_indices_and_assigns_per_file_fp(), add_material_returns_indices_and_records(), AssetBundle, BundleErr, cc0_rec(), encode_128_hex(), file_blob_lookup_in_range_and_oob(), fingerprint_changes_with_content() (+28 more)
 
 ### Community 336 - "Community 336"
 Cohesion: 0.04
 Nodes (48): 10. Industrial Applicability, 11. Reference Implementation in CSSLv3, 12. Confidentiality, 1. Inventor Information, 2. Title of Invention, 3. Technical Field, 4.1 The Status Quo : Cube-Map and Planar-Mirror Approximations, 4.2 The Specific Deficiencies Addressed by This Invention (+40 more)
 
 ### Community 337 - "Community 337"
-Cohesion: 0.15
-Nodes (18): AuraOverlap, dry_run_empty_when_no_overlap(), dry_run_returns_eligible_indices_only(), MutualWitnessMode, MutualWitnessReport, MutualWitnessToken, no_overlap_when_far(), overlap_full_when_centred() (+10 more)
+Cohesion: 0.09
+Nodes (42): alias_op(), arm_tag_value(), arm_tag_value_parses_decimal_attribute(), block_touches_tagged_union(), block_touches_tagged_union_detects_alias_bitcast(), block_touches_tagged_union_detects_any_marker_op(), block_touches_tagged_union_detects_dispatch_if(), block_touches_tagged_union_returns_false_for_plain_arithmetic() (+34 more)
 
 ### Community 338 - "Community 338"
 Cohesion: 0.12
@@ -3349,11 +3422,11 @@ Nodes (62): emit_alu_ri(), emit_alu_rr(), emit_call_rel(), emit_cvtsd2si(), emit
 
 ### Community 341 - "Community 341"
 Cohesion: 0.09
-Nodes (15): cap_set_from_iter_is_sorted(), cap_set_ops(), ext_set_splits_plain_and_ext_inst(), BTreeSet, Display, Formatter, FromIterator, I (+7 more)
+Nodes (17): cap_set_from_iter_is_sorted(), cap_set_ops(), ext_set_splits_plain_and_ext_inst(), BTreeSet, Display, Formatter, FromIterator, I (+9 more)
 
 ### Community 342 - "Community 342"
-Cohesion: 0.05
-Nodes (53): emit_crystal_active_weight_for_index_spirv(), emit_crystal_loop_accumulation_spirv(), emit_crystal_spatial_terms_spirv(), emit_load_crystal_array_slot_spirv(), emit_load_crystal_slot_spirv(), emit_substrate_storage_image_spirv(), emit_v13_probe_intensity_spirv(), push_f32_binary() (+45 more)
+Cohesion: 0.06
+Nodes (36): ApiKeyManager(), btnStyle, btnStyleDanger, inputStyle, ToolCallTimeline(), ApiKeyInfo, ApocryphaEnvelope, ApocryphaEnvelopeError (+28 more)
 
 ### Community 343 - "Community 343"
 Cohesion: 0.11
@@ -3372,16 +3445,16 @@ Cohesion: 0.13
 Nodes (23): BiasInspector, anti_poisoning_per_cell_rate_limit(), fifo_eviction_at_capacity(), ingest_basic_and_pack_roundtrip(), k_anon_cells_returns_only_qualifying(), k_anon_floor_blocks_solo_player_bias(), PlayerHandle, QualitySignalRecord (+15 more)
 
 ### Community 347 - "Community 347"
-Cohesion: 0.07
-Nodes (61): IntWidth, arith_float_cmp(), arith_float_op(), arith_int_cmp(), arith_int_div(), arith_int_op(), arith_int_rem(), arith_int_shl() (+53 more)
+Cohesion: 0.08
+Nodes (60): IntWidth, arith_float_cmp(), arith_float_op(), arith_int_cmp(), arith_int_div(), arith_int_op(), arith_int_rem(), arith_int_shl() (+52 more)
 
 ### Community 348 - "Community 348"
 Cohesion: 0.11
 Nodes (21): contains_agrees(), iterate_all_patterns(), many_stamps_monotonic_indices(), new_table_is_empty(), PhiStampError, PhiTable, pool_accessor_returns_pool(), resolve_null_errors() (+13 more)
 
 ### Community 349 - "Community 349"
-Cohesion: 0.07
-Nodes (98): format_call_void_no_result_arrow(), format_call_with_args_and_result(), format_empty_func_void_void(), format_func(), format_inst(), format_inst_arithmetic_three_address(), format_loads_and_stores(), format_signature_multi_result() (+90 more)
+Cohesion: 0.05
+Nodes (107): format_call_void_no_result_arrow(), format_call_with_args_and_result(), format_empty_func_void_void(), format_func(), format_inst(), format_inst_arithmetic_three_address(), format_loads_and_stores(), format_signature_multi_result() (+99 more)
 
 ### Community 350 - "Community 350"
 Cohesion: 0.09
@@ -3392,11 +3465,11 @@ Cohesion: 0.16
 Nodes (18): always_ok_check_never_finds_counterexample(), Config, Dispatcher, generate_bytes(), Outcome, panic_is_caught_as_counterexample(), return_false_counts_as_failure(), Default (+10 more)
 
 ### Community 352 - "Community 352"
-Cohesion: 0.06
-Nodes (41): accessibility_value_default_is_none(), AccessibilityNode, AccessibilityRole, AccessibilitySnapshot, AccessibilityState, AccessibilityValue, find_in(), node_contains_id_recursive() (+33 more)
+Cohesion: 0.10
+Nodes (20): begin_frame_keeps_retained_state(), begin_frame_resets_focus_order_and_hovered(), focus_next_cycles_through_order(), focus_prev_walks_backward(), focus_with_empty_order_returns_none(), frame_state_default_empty(), frame_state_get_or_insert_inserts_default(), frame_state_get_or_insert_keeps_existing() (+12 more)
 
 ### Community 353 - "Community 353"
-Cohesion: 0.12
+Cohesion: 0.11
 Nodes (27): binaural_clip_at_huge_amplitude_clamps_below_threshold(), binaural_clip_below_threshold_passthrough(), binaural_default_config_unit_gain(), binaural_disabled_clip_emits_raw(), binaural_mix_phase_coherent_constructive(), binaural_mix_phase_coherent_destructive(), binaural_render_block_emits_correct_count(), binaural_render_block_short_buffer_clips() (+19 more)
 
 ### Community 354 - "Community 354"
@@ -3428,20 +3501,20 @@ Cohesion: 0.11
 Nodes (19): BRDF_OUT_DIM, creature_morphology_variant_tag(), embedding_change_changes_fingerprint(), fingerprint_hex_format(), is_variant_matches(), KanMaterial, KanMaterialKind, MaterialFingerprint (+11 more)
 
 ### Community 361 - "Community 361"
-Cohesion: 0.11
-Nodes (32): ChatTools(), ChatToolsProps, Tool, ACTIONS, buildIntent(), INTENT_PRESETS, selectedIntent(), THEMES (+24 more)
+Cohesion: 0.13
+Nodes (24): ChatTools(), ChatToolsProps, Tool, ACTIONS, buildIntent(), INTENT_PRESETS, selectedIntent(), THEMES (+16 more)
 
 ### Community 362 - "Community 362"
 Cohesion: 0.14
 Nodes (28): approx_q(), approx_v3(), compose_translation_chain_adds_translations(), from_uniform_scale_constructs_correctly(), identity_is_neutral_under_compose(), inverse_of_identity_is_identity(), inverse_of_translation_negates(), lerp_at_one_returns_second() (+20 more)
 
 ### Community 363 - "Community 363"
-Cohesion: 0.08
-Nodes (34): all_15_execution_models_map_without_panic(), all_4_addressing_models_map_without_panic(), all_4_memory_models_map_without_panic(), BinaryEmitError, capability_catalog_round_trips_for_shader_like(), capability_ext_inst_and_plain_ext_coexist(), compute_module_capabilities_survive_round_trip(), compute_module_ext_inst_import_survives_round_trip() (+26 more)
+Cohesion: 0.15
+Nodes (18): AuraOverlap, dry_run_empty_when_no_overlap(), dry_run_returns_eligible_indices_only(), MutualWitnessMode, MutualWitnessReport, MutualWitnessToken, no_overlap_when_far(), overlap_full_when_centred() (+10 more)
 
 ### Community 364 - "Community 364"
 Cohesion: 0.11
-Nodes (36): GazeCollapseConfig, assert_no_egress(), assert_no_egress_refuses_pure_gaze_label_no_domain(), assert_no_egress_refuses_sensitive_gaze(), assert_no_egress_refuses_sensitive_gaze_with_extra_domains(), baseline(), GazeCollapseOutputs, GazeCollapsePass (+28 more)
+Nodes (35): GazeCollapseConfig, assert_no_egress(), assert_no_egress_refuses_sensitive_gaze(), assert_no_egress_refuses_sensitive_gaze_with_extra_domains(), baseline(), GazeCollapseOutputs, GazeCollapsePass, GazeCollapsePass<K> (+27 more)
 
 ### Community 365 - "Community 365"
 Cohesion: 0.14
@@ -3456,8 +3529,8 @@ Cohesion: 0.14
 Nodes (16): ZesDevice, arc_a770_live_probe_emits_power_thermal_frequency(), LiveTelemetryProbe, ring_handle_advances_timestamp_monotonically(), ring_handle_overflow_returns_error(), ring_handle_pushes_sample_into_ring(), ring_handle_records_device_id(), Cell (+8 more)
 
 ### Community 368 - "Community 368"
-Cohesion: 0.12
-Nodes (31): air_control_reduced_to_30_percent(), boosted_phases_emit_renderer_signal(), cosmetic_only_axiom_distance_invariant_across_skins(), double_jump_consumes_air_jump(), fwd_xz(), ground_resets_air_jumps(), intent_walk_forward(), mantle_auto_triggers_on_ledge() (+23 more)
+Cohesion: 0.16
+Nodes (28): air_control_reduced_to_30_percent(), boosted_phases_emit_renderer_signal(), cosmetic_only_axiom_distance_invariant_across_skins(), double_jump_consumes_air_jump(), fwd_xz(), ground_resets_air_jumps(), intent_walk_forward(), mantle_auto_triggers_on_ledge() (+20 more)
 
 ### Community 369 - "Community 369"
 Cohesion: 0.06
@@ -3469,15 +3542,15 @@ Nodes (21): EventId, Option, SigmaEvent, CoherenceProof, LedgerSnapshot, BTreeMa
 
 ### Community 371 - "Community 371"
 Cohesion: 0.03
-Nodes (94): LowerError, SubstrateKernelEmitError, Device, ID3D12Device, AshError, AshSubstrateRenderer, AshSwapchainPresenter, camera_norm() (+86 more)
+Nodes (92): Device, ID3D12Device, AshError, AshSubstrateRenderer, AshSwapchainPresenter, camera_norm(), CaptureScratch, create_buffer() (+84 more)
 
 ### Community 372 - "Community 372"
 Cohesion: 0.09
 Nodes (17): Principal, principal_set_display_is_braced_csv(), principal_set_empty_and_singleton(), principal_set_has_absolutely_banned_includes_biometric_plus_surveillance(), principal_set_has_biometric_family_detects(), principal_set_insert_remove_idempotent(), principal_set_subset_check(), principal_set_union_and_intersection() (+9 more)
 
 ### Community 373 - "Community 373"
-Cohesion: 0.11
-Nodes (18): arena_counts_distinctly(), attribution_len_tracks_def_count(), AttributionKey, content_hash_based_id_stable(), cross_run_determinism_canonical_view(), DefIdAttribution, DefKind, HirArena (+10 more)
+Cohesion: 0.03
+Nodes (75): BufReader, McpError, CapKind, ErrorObject, JsonRpcVersion, Notification, notification_omits_id(), notification_round_trip() (+67 more)
 
 ### Community 374 - "Community 374"
 Cohesion: 0.10
@@ -3504,8 +3577,8 @@ Cohesion: 0.05
 Nodes (41): § 0. PM CHARTER, § 10. PHASE-E PROMPTS — Host FFI (5-way fully parallel post-A5), § 11. INTEGRATION + RELEASE, § 12. RESUMPTION (if session-6 interrupts mid-fanout), § 13. CREATOR-ATTESTATION, § 1. THE DAG (one-page reference), § 2. STATUS REPORTING CADENCE, § 3. ESCALATION TRIGGERS (PM bumps Apocky) (+33 more)
 
 ### Community 380 - "Community 380"
-Cohesion: 0.12
-Nodes (29): a_reply_must_be_bound_to_its_own_request(), a_reply_without_response_evidence_is_refused(), anon_claim(), chat_body(), chat_result(), code(), config(), config_refuses_anything_but_a_public_key_for_this_service() (+21 more)
+Cohesion: 0.08
+Nodes (10): InputEvent, KeyCode, mouse_button_round_trip(), MouseButton, RepeatCount, Display, Formatter, Option (+2 more)
 
 ### Community 381 - "Community 381"
 Cohesion: 0.13
@@ -3521,7 +3594,7 @@ Nodes (29): approx_eq(), compose_parent_rotation_rotates_child_translation(), co
 
 ### Community 384 - "Community 384"
 Cohesion: 0.04
-Nodes (116): analytic_equivalent_by_sampling_trivial(), analytic_evaluate_basic(), analytic_free_vars_distinct_sorted(), analytic_simplify_add_zero_left(), analytic_simplify_double_neg(), analytic_simplify_mul_one(), analytic_simplify_mul_zero(), analytic_to_smt_shape() (+108 more)
+Nodes (111): analytic_equivalent_by_sampling_trivial(), analytic_evaluate_basic(), analytic_free_vars_distinct_sorted(), analytic_simplify_add_zero_left(), analytic_simplify_double_neg(), analytic_simplify_mul_one(), analytic_simplify_mul_zero(), analytic_to_smt_shape() (+103 more)
 
 ### Community 385 - "Community 385"
 Cohesion: 0.10
@@ -3544,8 +3617,8 @@ Cohesion: 0.09
 Nodes (25): Classification, IntentCategory, KeywordCodebook, HashSet, all_10_categories_classifiable(), ffi_dispatch_fingerprint_matches_pure_api(), intent_dispatch_fingerprint_ffi(), pack_classification() (+17 more)
 
 ### Community 390 - "Community 390"
-Cohesion: 0.11
-Nodes (24): extract_resp(), HttpClient, HttpMethod, HttpReq, HttpResp, HttpTransportErr, mock_default_returns_empty_200(), mock_error_takes_precedence() (+16 more)
+Cohesion: 0.14
+Nodes (41): lower_simd_op(), lower_simd_op_declines_non_simd_ops(), lower_simd_op_dispatches_all_seven_ops(), lower_v128_load(), lower_v128_store(), lower_v_byte_eq(), lower_v_byte_in_range(), lower_v_byte_lt() (+33 more)
 
 ### Community 391 - "Community 391"
 Cohesion: 0.06
@@ -3564,12 +3637,12 @@ Cohesion: 0.17
 Nodes (14): config_auto_grant_zero_grace_rejected(), config_default_validates(), config_empty_title_rejected(), config_new_sets_title_and_dims(), config_require_explicit_validates(), config_zero_height_rejected(), config_zero_width_rejected(), Default (+6 more)
 
 ### Community 395 - "Community 395"
-Cohesion: 0.11
-Nodes (26): bgra8_to_rgba8_inplace(), bgra_to_rgba_swaps_channels_only(), encode_png_size_mismatch_returns_invalid_input(), GoldenDiffEntry, GoldenDiffReport, mae_bgra8(), mae_bgra8_excludes_alpha_channel(), mae_bgra8_identical_buffers_returns_0() (+18 more)
+Cohesion: 0.17
+Nodes (8): CpuFeature, CpuFeatureSet, feature_set_add_contains(), BTreeSet, Display, FromIterator, Item, Iterator
 
 ### Community 396 - "Community 396"
-Cohesion: 0.13
-Nodes (28): Channel, channel_bit_is_unique(), materialize_into_pixel_field(), materialize_with_no_crystals_returns_empty_frame(), materialize_with_one_crystal_produces_pixels(), Crystal, ObserverCoord, as_bytes_owned_is_correct_size() (+20 more)
+Cohesion: 0.09
+Nodes (27): constant_time_eq(), hex_decode(), hex_encode(), hex_nibble(), HmacSha256Verifier, MockHmacVerifier, parse_sig_header_missing_v1(), parse_sig_header_ok() (+19 more)
 
 ### Community 397 - "Community 397"
 Cohesion: 0.14
@@ -3592,32 +3665,32 @@ Cohesion: 0.09
 Nodes (38): artifact(), Check, CHECK_NAMES, DesktopRelease, exact(), parseDesktopRelease(), pendingChecks(), PREPARING_DESKTOP_RELEASE (+30 more)
 
 ### Community 402 - "Community 402"
-Cohesion: 0.08
+Cohesion: 0.06
 Nodes (29): ContactEvent, dot3(), integrate_predict(), physics_step(), PhysicsStepReport, rebuild_broadphase(), From, MortonKey (+21 more)
 
 ### Community 403 - "Community 403"
-Cohesion: 0.16
-Nodes (18): BackendOrScfError, emit_terminating_jump(), extract_single_body_region(), lower_branch_into(), lower_loop_body_into(), lower_scf_for(), lower_scf_if(), lower_scf_loop() (+10 more)
+Cohesion: 0.15
+Nodes (19): empty_registry(), filter_attribution_includes_cc_by(), filter_compatible_excludes_cc_nc(), jsonl_roundtrip(), LicenseRegistry, rec(), RegErr, register_idempotent_on_same_license() (+11 more)
 
 ### Community 404 - "Community 404"
-Cohesion: 0.14
-Nodes (13): extractContent(), Fetch, isQwenContextOverflow(), numeric(), parseUsage(), QwenClient, QwenError, QwenGenerationOptions (+5 more)
+Cohesion: 0.15
+Nodes (17): RegionId, cornea_pass_config(), fixture_hit(), integration_companion_eye_mutual_witness_consenting(), integration_companion_eye_redacted_when_absent(), integration_companion_eye_redacted_when_decline(), integration_cross_region_mirror_blocked(), integration_e2e_companion_eye_consenting() (+9 more)
 
 ### Community 405 - "Community 405"
 Cohesion: 0.13
 Nodes (21): auto_associative_recall(), confidence_in_range(), default_radius_for_genome_dim(), empty_sdm_zero_readout(), HdcCell, HdcCell<D>, hetero_associative_recall(), multiple_writes_recoverable() (+13 more)
 
 ### Community 406 - "Community 406"
-Cohesion: 0.18
-Nodes (18): AttestationVerdict, Into, Self, Vec, SessionAttestation, attestation_block_clean_for_no_flags(), attestation_block_dedupes_axes(), attestation_block_warns_with_flag_summary() (+10 more)
+Cohesion: 0.11
+Nodes (20): consume_ollama_stream(), OllamaBridge, OllamaChunkKind, OllamaDecoded, OllamaMessage, OllamaNonStreamingResponse, parse_chunk(), parse_ollama_chunk() (+12 more)
 
 ### Community 407 - "Community 407"
 Cohesion: 0.10
 Nodes (19): macos_backend_constructs(), macos_esc_during_grab_fires_kill_switch(), macos_process_keydown(), macos_release_grab_records_application(), macos_rumble_unavailable(), macos_session_lock_fires_kill_switch(), MacosBackend, BackendKind (+11 more)
 
 ### Community 408 - "Community 408"
-Cohesion: 0.12
-Nodes (28): make_bridge(), Box, LlmConfig, CapBits, Self, cfg_with_key(), chat_returns_not_configured_without_key(), make_bridge_anthropic_requires_api_key() (+20 more)
+Cohesion: 0.11
+Nodes (17): arena_counts_distinctly(), attribution_len_tracks_def_count(), AttributionKey, content_hash_based_id_stable(), cross_run_determinism_canonical_view(), DefIdAttribution, DefKind, HirArena (+9 more)
 
 ### Community 409 - "Community 409"
 Cohesion: 0.10
@@ -3632,12 +3705,12 @@ Cohesion: 0.15
 Nodes (44): ledger(), meta(), pk(), populated_ledger(), t01_construct_basic(), t02_construct_high_fidelity(), t03_construct_commissioned(), t04_construct_eternal_attribution() (+36 more)
 
 ### Community 412 - "Community 412"
-Cohesion: 0.09
-Nodes (27): constant_time_eq(), hex_decode(), hex_encode(), hex_nibble(), HmacSha256Verifier, MockHmacVerifier, parse_sig_header_missing_v1(), parse_sig_header_ok() (+19 more)
+Cohesion: 0.07
+Nodes (20): build_heap_dealloc_op(), build_op_carries_payload_ty_and_cap_attributes(), build_op_emits_canonical_cssl_heap_dealloc(), build_op_has_three_operands_in_canonical_order(), build_op_omits_origin_when_none(), build_op_signature_matches_csslop_declared_arity(), dealloc_align_for(), dealloc_size_for() (+12 more)
 
 ### Community 413 - "Community 413"
-Cohesion: 0.10
-Nodes (32): authorizes_accepts_matching_privacy_value(), authorizes_accepts_unrestricted_value(), authorizes_returns_false_for_banned_value(), benign_label(), EgressGrantError, for_domain_accepts_privacy(), for_domain_refuses_coercion(), for_domain_refuses_each_biometric_family_member() (+24 more)
+Cohesion: 0.14
+Nodes (24): authorizes_accepts_matching_privacy_value(), authorizes_accepts_unrestricted_value(), authorizes_returns_false_for_banned_value(), benign_label(), EgressGrantError, for_domain_accepts_privacy(), for_domain_refuses_coercion(), for_domain_refuses_each_biometric_family_member() (+16 more)
 
 ### Community 414 - "Community 414"
 Cohesion: 0.11
@@ -3660,20 +3733,20 @@ Cohesion: 0.06
 Nodes (23): SpatialHashCellMarker, LambdaSimpleOverlay, LambdaToken, _layout_check_keepalive(), mark_witnessed_sets_flag(), new_utterance_has_zero_age_and_no_witness(), overlay_clear_resets(), overlay_push_appends_to_existing_bucket() (+15 more)
 
 ### Community 419 - "Community 419"
-Cohesion: 0.07
+Cohesion: 0.06
 Nodes (39): AKASHIC_SOURCE_SETS, AkashicBlock, AkashicLink, AkashicRecord, AkashicRecordSummary, AkashicSnapshot, AkashicSourceSet, findAkashicRecord() (+31 more)
 
 ### Community 420 - "Community 420"
 Cohesion: 0.16
-Nodes (15): cfer_wgsl_string_compiles_to_naga(), LoaSubsystems, log_startup_banner(), Default, Option, Self, run_engine(), run_engine_no_op_in_catalog_mode() (+7 more)
+Nodes (16): cfer_wgsl_string_compiles_to_naga(), LoaSubsystems, log_startup_banner(), Default, Option, Self, run_engine(), run_engine_no_op_in_catalog_mode() (+8 more)
 
 ### Community 421 - "Community 421"
 Cohesion: 0.09
 Nodes (22): AxisAlignedBox, Corridor, corridor_position_falls_back_to_corridor_label(), corridors_disjoint_from_rooms(), Direction, Doorway, doorway_test_room_to_material_north_at_correct_pos(), doorways() (+14 more)
 
 ### Community 422 - "Community 422"
-Cohesion: 0.14
-Nodes (19): bag_push_assigns_monotonic_ids(), collect_refinement_obligations(), empty_module_yields_no_obligations(), obligation_bag_get_roundtrips(), obligation_bag_iter_visits_every(), obligation_records_enclosing_def_for_fn_sig(), ObligationBag, ObligationCtx (+11 more)
+Cohesion: 0.16
+Nodes (14): BenchId, BenchResult, BenchSpec, diff_baseline(), diff_baseline_emits_one_row_per_matching_bench(), perf_event_buffer_drops_past_capacity(), perf_event_jsonl_round_trips_kind_and_payload(), PerfEvent (+6 more)
 
 ### Community 423 - "Community 423"
 Cohesion: 0.04
@@ -3688,7 +3761,7 @@ Cohesion: 0.14
 Nodes (27): budget_threaded_through_decision_to_procgen(), build_props(), consensus_bridge_picks_proposeaction(), council_to_procgen(), decision_roundtrip_dm_proposeaction(), decision_to_intent_semantic(), decision_to_procgen_request(), deterministic_given_same_prompt() (+19 more)
 
 ### Community 426 - "Community 426"
-Cohesion: 0.16
+Cohesion: 0.17
 Nodes (22): compute_doppler_ratio(), doppler_ratio_clamped_to_max(), doppler_ratio_clamped_to_min(), doppler_ratio_static_is_unity(), project_active_field_emits_stereo(), project_block_fills_buffer(), project_centered_source_zero_itd(), project_same_listener_same_field_bit_equal() (+14 more)
 
 ### Community 427 - "Community 427"
@@ -3708,8 +3781,8 @@ Cohesion: 0.07
 Nodes (13): budget_default_quest3(), BudgetCoefficients, default_is_safe_opt_out(), FoveationFallback, PredictionHorizon, quest3_opted_in_is_explicit(), Default, Self (+5 more)
 
 ### Community 431 - "Community 431"
-Cohesion: 0.07
-Nodes (18): Mixer, MixerCounters, BTreeMap, Debug, Formatter, Vec, Send, SoundSource (+10 more)
+Cohesion: 0.11
+Nodes (22): Backend, check_two_impls(), check_two_impls_with_ulp_tolerance(), Config, Dispatcher, divergence_pinpoints_failing_backend(), empty_inputs_is_ok(), Outcome (+14 more)
 
 ### Community 432 - "Community 432"
 Cohesion: 0.13
@@ -3724,8 +3797,8 @@ Cohesion: 0.07
 Nodes (34): bag_into_vec_preserves_order(), bag_tracks_error_count(), Diagnostic, diagnostic_builder_chain(), Note, Display, Formatter, Into (+26 more)
 
 ### Community 435 - "Community 435"
-Cohesion: 0.19
-Nodes (19): a_record_will_not_decrypt_under_another_name(), account_scoped_names_become_valid_filenames(), blob(), clearing_removes_every_owned_record(), opening_the_store_writes_nothing_until_something_is_saved(), protect(), records_round_trip_through_the_encrypted_file(), reject() (+11 more)
+Cohesion: 0.13
+Nodes (28): Channel, channel_bit_is_unique(), materialize_into_pixel_field(), materialize_with_no_crystals_returns_empty_frame(), materialize_with_one_crystal_produces_pixels(), Crystal, ObserverCoord, as_bytes_owned_is_correct_size() (+20 more)
 
 ### Community 436 - "Community 436"
 Cohesion: 0.14
@@ -3736,28 +3809,28 @@ Cohesion: 0.07
 Nodes (46): chunk_encodes_le_size(), chunk_total_bytes_includes_header(), container_finalize_hash_changes_with_payload(), container_finalize_is_deterministic(), container_finalize_writes_chunk_count(), container_finalize_writes_total_size(), container_finalizes_with_dxbc_magic(), container_find_chunk_locates_by_tag() (+38 more)
 
 ### Community 438 - "Community 438"
-Cohesion: 0.09
-Nodes (16): DxcInvocation, Vec, compute_default_profile(), DxilTargetProfile, hlsl_profile_renders(), HlslProfile, pixel_default_profile(), RootSignatureVersion (+8 more)
+Cohesion: 0.10
+Nodes (14): compute_default_profile(), DxilTargetProfile, hlsl_profile_renders(), HlslProfile, pixel_default_profile(), RootSignatureVersion, Display, Formatter (+6 more)
 
 ### Community 439 - "Community 439"
 Cohesion: 0.12
 Nodes (28): archive_pack(), archive_unpack(), ArchiveEntry, ArchiveError, bad_magic_rejected(), empty_archive_roundtrips(), fixture_entries(), pack_is_deterministic() (+20 more)
 
 ### Community 440 - "Community 440"
-Cohesion: 0.12
-Nodes (19): extractContent(), Fetch, isQwenContextOverflow(), numeric(), parseUsage(), QwenClient, QwenError, QwenGenerationOptions (+11 more)
+Cohesion: 0.08
+Nodes (22): DmRuntime, Archetype, ArcPhase, Default, DmState, Instant, Option, Self (+14 more)
 
 ### Community 441 - "Community 441"
 Cohesion: 0.14
-Nodes (18): empty_source_pipeline_runs_without_panic(), lower_hir_to_mir(), outcome_summary_shape_contains_slots(), Vec, run_pipeline(), try_jit_main_returns_i32(), wave_a1_option_some_jit_returns_42(), wave_a1_option_some_pipeline_clean() (+10 more)
+Nodes (17): empty_source_pipeline_runs_without_panic(), outcome_summary_shape_contains_slots(), Vec, run_pipeline(), try_jit_main_returns_i32(), wave_a1_option_some_jit_returns_42(), wave_a1_option_some_pipeline_clean(), wave_a1_result_ok_jit_returns_7() (+9 more)
 
 ### Community 442 - "Community 442"
 Cohesion: 0.06
 Nodes (78): attr_is_simple_matches_single_segment(), attr_is_simple_rejects_multi_segment(), build_layout_attr(), extract_layout_kinds(), extract_layout_kinds_empty_args_yields_empty(), extract_layout_kinds_multi_word_combo(), extract_layout_kinds_named_arg_form(), extract_layout_kinds_single_word() (+70 more)
 
 ### Community 443 - "Community 443"
-Cohesion: 0.10
-Nodes (30): renderMemoryContext(), scoreOf(), Candidate, fold(), independentWitnesses(), jaccard(), LINEAGE, marginalValue() (+22 more)
+Cohesion: 0.13
+Nodes (21): deferred_anchor(), ExportFormat, full_anchor(), missing_anchor(), report_classifies_buckets(), report_default_zero_anchors(), report_entry_from_partial_carries_gaps(), report_export_format_variants_distinct() (+13 more)
 
 ### Community 444 - "Community 444"
 Cohesion: 0.10
@@ -3788,8 +3861,8 @@ Cohesion: 0.08
 Nodes (22): approx(), f32, Add, AddAssign, Div, DivAssign, Mul, MulAssign (+14 more)
 
 ### Community 451 - "Community 451"
-Cohesion: 0.09
-Nodes (8): DiagnosticCode, prohibition_for_code(), prohibition_for_code_round_trip_for_named(), ProhibitionCodeTable, Display, Formatter, Option, t11_d129_codes_round_trip()
+Cohesion: 0.05
+Nodes (59): LeaseEnvelope, LeaseInput, AtomicContributorStore, CONTRIBUTOR_CONTROLLER_ENV, createProductionContributorAtomicController(), envKeyId(), envPrivateKey(), envPublicKey() (+51 more)
 
 ### Community 453 - "Community 453"
 Cohesion: 0.05
@@ -3808,8 +3881,8 @@ Cohesion: 0.05
 Nodes (38): Aggregate VIEW, Apply, Apply, Apply the schema, Cleanup cron, Cocreative Cross-Session Learning, CSSL FFI surface (cssl-edge entry points), CSSL FFI surface (cssl-edge entry points, cocreative) (+30 more)
 
 ### Community 457 - "Community 457"
-Cohesion: 0.20
-Nodes (8): Action, HostXrApi, mock_xr_api_frame_lifecycle_round_trips(), mock_xr_api_haptic_increments_counter(), mock_xr_api_view_locate_returns_synthetic_stereo_ipd(), MockOpenXrApi, Option, Self
+Cohesion: 0.17
+Nodes (9): Action, HostXrApi, mock_xr_api_frame_lifecycle_round_trips(), mock_xr_api_haptic_increments_counter(), mock_xr_api_view_locate_returns_synthetic_stereo_ipd(), MockOpenXrApi, Option, Self (+1 more)
 
 ### Community 458 - "Community 458"
 Cohesion: 0.07
@@ -3820,8 +3893,8 @@ Cohesion: 0.17
 Nodes (10): Display, Error, Formatter, SttErr, Display, Error, Formatter, From (+2 more)
 
 ### Community 460 - "Community 460"
-Cohesion: 0.12
-Nodes (31): BuildArgs, Backend, Option, Vec, backend_comparison_both_paths_dispatch_cleanly(), build_args(), build_args_native_x64(), build_default_output_for_object_uses_platform_extension() (+23 more)
+Cohesion: 0.19
+Nodes (14): BundleHeader, CapRole, Option, Self, make_header(), Bundle, Channel, Manifest (+6 more)
 
 ### Community 461 - "Community 461"
 Cohesion: 0.15
@@ -3836,12 +3909,12 @@ Cohesion: 0.13
 Nodes (20): Delay, DelayTap, determinism_same_input_same_output(), dry_only_passes_signal_unchanged(), impulse_with_feedback_produces_repeating_echoes(), impulse_with_feedback_zero_produces_single_echo(), min_buffer_size_2_samples(), multi_tap_produces_multiple_echoes() (+12 more)
 
 ### Community 464 - "Community 464"
-Cohesion: 0.04
-Nodes (146): BwdCallMarshal, CalleeVariants, CalleeVariantTable, canonical_variants_appends_fwd_bwd(), empty_table_lookup_returns_none(), from_diff_fn_names_populates_canonical_pairs(), FwdCallMarshal, insert_overwrites_existing_entry() (+138 more)
+Cohesion: 0.03
+Nodes (185): BwdCallMarshal, CalleeVariants, CalleeVariantTable, canonical_variants_appends_fwd_bwd(), empty_table_lookup_returns_none(), from_diff_fn_names_populates_canonical_pairs(), FwdCallMarshal, insert_overwrites_existing_entry() (+177 more)
 
 ### Community 465 - "Community 465"
-Cohesion: 0.21
-Nodes (12): allocate_is_deterministic(), allocate_varies_with_inputs(), Crystal, CrystalClass, dist_sq_is_correct(), extent_for_environment_is_larger(), handle_high_bit_set(), Option (+4 more)
+Cohesion: 0.04
+Nodes (77): needs_dealloc_import(), block_has_unexpanded_vec_op(), BackendOrScfError, emit_terminating_jump(), extract_single_body_region(), lower_branch_into(), lower_loop_body_into(), lower_scf_for() (+69 more)
 
 ### Community 466 - "Community 466"
 Cohesion: 0.12
@@ -3860,8 +3933,8 @@ Cohesion: 0.13
 Nodes (17): bias_vec_hash_fnv1a(), bias_vec_hash_stable(), build_gm(), emit_text_with_cap_succeeds(), emit_text_without_cap_silent_passes(), GameMaster, GmErr, AtomicU64 (+9 more)
 
 ### Community 470 - "Community 470"
-Cohesion: 0.12
-Nodes (28): TierOpt, AkashicState, _resetConsoleTapForTests(), uninstallConsoleTap(), AKASHIC_KIND_SET, AKASHIC_KINDS, AkashicBatch, AkashicEvent (+20 more)
+Cohesion: 0.09
+Nodes (14): check_sandbox_policy(), check_sandbox_policy_allows_pure_int(), check_sandbox_policy_rejects_handle_result(), check_sandbox_policy_rejects_io(), first_disallowed_effect(), first_disallowed_effect_returns_first_offender(), is_allowed_effect_token(), is_comptime_eligible_result_type() (+6 more)
 
 ### Community 471 - "Community 471"
 Cohesion: 0.09
@@ -3880,8 +3953,8 @@ Cohesion: 0.12
 Nodes (35): applied_force_translates_to_velocity(), applied_torque_translates_to_angular_velocity(), approx_eq(), clear_force_accumulators(), clear_force_accumulators_works_on_all_bodies(), determinism_orientation_bit_equal(), determinism_two_runs_same_input_same_output(), fast_body_does_not_sleep() (+27 more)
 
 ### Community 475 - "Community 475"
-Cohesion: 0.09
-Nodes (23): consume_ollama_stream(), OllamaBridge, OllamaChunkKind, OllamaDecoded, OllamaMessage, OllamaNonStreamingResponse, parse_chunk(), parse_ollama_chunk() (+15 more)
+Cohesion: 0.11
+Nodes (26): attr_matches(), collect_differentiable_fns(), collect_item(), DiffDecl, differentiable_fn_is_collected(), empty_module_yields_no_decls(), multiple_differentiable_fns_collected_in_order(), non_differentiable_fn_is_skipped() (+18 more)
 
 ### Community 476 - "Community 476"
 Cohesion: 0.08
@@ -3908,28 +3981,28 @@ Cohesion: 0.12
 Nodes (25): antiparallel_rotor_blend_is_safe(), apply_delta_changes_current(), blend_clear_drops_targets(), empty_blend_returns_identity(), free_joint_starts_at_rest(), hinge_constructor_carries_axis(), motor_axis_angle(), motor_axis_angle_helper_produces_unit_rotor() (+17 more)
 
 ### Community 483 - "Community 483"
-Cohesion: 0.10
-Nodes (8): cos_at_zero_yields_basis_first_derivative(), f32, f64, jetfield_f64_round_trips(), order_2_jet_subsumes_first_order_fwd_mode(), Self, sqrt_first_order_at_x_eq_4(), sqrt_squared_is_identity()
+Cohesion: 0.11
+Nodes (6): f32, f64, jetfield_f64_round_trips(), Self, sqrt_first_order_at_x_eq_4(), sqrt_squared_is_identity()
 
 ### Community 484 - "Community 484"
-Cohesion: 0.11
-Nodes (15): all_targets_unique(), CpuTarget, CpuTargetProfile, darwin_default_is_macho(), DebugFormat, feature_set_accepts_additions(), linux_default_is_elf(), profile_equality() (+7 more)
+Cohesion: 0.18
+Nodes (35): default_value_for_type(), DxilError, emit_binary_decl(), emit_binary_decl_unsigned(), emit_cmp_decl(), emit_func_call(), emit_memref_load(), emit_memref_store() (+27 more)
 
 ### Community 485 - "Community 485"
 Cohesion: 0.05
-Nodes (130): host_default_format(), NativeX64Error, abi_lower_add_rsp_emits_encoder_addri(), abi_lower_call_returns_unsupported_op_at_g7(), abi_lower_mov_rbp_rsp_emits_encoder_movrr_64bit(), abi_lower_movss_xmm_xmm_emits_encoder_movsd_rr(), abi_lower_pop_rbp_emits_encoder_pop(), abi_lower_push_rbp_emits_encoder_push() (+122 more)
+Nodes (128): host_default_format(), NativeX64Error, abi_lower_add_rsp_emits_encoder_addri(), abi_lower_call_returns_unsupported_op_at_g7(), abi_lower_mov_rbp_rsp_emits_encoder_movrr_64bit(), abi_lower_movss_xmm_xmm_emits_encoder_movsd_rr(), abi_lower_pop_rbp_emits_encoder_pop(), abi_lower_push_rbp_emits_encoder_push() (+120 more)
 
 ### Community 487 - "Community 487"
-Cohesion: 0.11
-Nodes (22): Backend, check_two_impls(), check_two_impls_with_ulp_tolerance(), Config, Dispatcher, divergence_pinpoints_failing_backend(), empty_inputs_is_ok(), Outcome (+14 more)
+Cohesion: 0.18
+Nodes (19): b(), empty_goal_returns_empty_plan(), FactValue, GoapAction, GoapState, no_path_returns_none(), plan(), plan_with_budget() (+11 more)
 
 ### Community 488 - "Community 488"
 Cohesion: 0.09
 Nodes (19): fixed_point_converges_when_hashes_match(), fixed_point_diverges_when_hashes_differ(), FixedPointRecord, FutamuraError, FutamuraLevel, level_labels_unique(), Orchestrator, orchestrator_all_converged_requires_every_match() (+11 more)
 
 ### Community 489 - "Community 489"
-Cohesion: 0.08
-Nodes (18): BackendStream, build_wave_format(), channel_mask_for(), CoInitGuard, parse_mix_format(), Debug, Drop, Formatter (+10 more)
+Cohesion: 0.13
+Nodes (20): ActiveTurn, Channel, TERMINAL, ArbiterSettings, ConsentDecision, ConsentRequest, EngineProfile, ToolCallOutcome (+12 more)
 
 ### Community 490 - "Community 490"
 Cohesion: 0.15
@@ -3941,7 +4014,7 @@ Nodes (28): ascii_text_to_keystrokes(), random_typing_session(), ReplayEvent, Ve
 
 ### Community 492 - "Community 492"
 Cohesion: 0.08
-Nodes (20): group_count_default_zero(), c_void, Default, Display, Formatter, Self, ze_result_round_trip(), ZeCommandListDesc (+12 more)
+Nodes (19): group_count_default_zero(), c_void, Default, Display, Formatter, Self, ze_result_round_trip(), ZeCommandListDesc (+11 more)
 
 ### Community 493 - "Community 493"
 Cohesion: 0.20
@@ -3976,24 +4049,24 @@ Cohesion: 0.07
 Nodes (38): curatedContentHashes, curatedLocators, curatedMath, curatedReviewReceipts, Domain, evidenceLabel(), identifiersFor(), nonEmpty() (+30 more)
 
 ### Community 501 - "Community 501"
-Cohesion: 0.11
-Nodes (16): AuditEvent, AuditOutcome, AuditSink, cap_check(), MockAuditSink, Debug, Drop, Formatter (+8 more)
+Cohesion: 0.16
+Nodes (17): EVENT_KINDS, EventInput, object(), parse(), PHASES, SessionRecord, SessionStore, SessionSummary (+9 more)
 
 ### Community 502 - "Community 502"
 Cohesion: 0.13
 Nodes (17): aggregate_cost_fraction_averages(), fovea_mask_consent_flag_round_trip(), FoveaMask, foveated_render_validate_mismatch_errors(), foveated_render_validate_size_match(), FoveatedMultiViewRender, FoveationError, FoveationMethod (+9 more)
 
 ### Community 503 - "Community 503"
-Cohesion: 0.12
-Nodes (20): coarsest_safe_tier_is_finest_when_only_fovea_covers(), coarsest_safe_tier_uses_horizon_when_available(), dispatcher_bound_at_air_cell_full_step(), dispatcher_bound_at_empty_is_zero(), dispatcher_bound_at_surface_cell_below_refine(), dispatcher_step_bisection_refine_at_surface(), dispatcher_step_large_step_with_air_cell(), dispatcher_step_out_of_region() (+12 more)
+Cohesion: 0.11
+Nodes (21): coarsest_safe_tier_is_finest_when_only_fovea_covers(), coarsest_safe_tier_uses_horizon_when_available(), dispatcher_bound_at_air_cell_full_step(), dispatcher_bound_at_empty_is_zero(), dispatcher_bound_at_surface_cell_below_refine(), dispatcher_step_bisection_refine_at_surface(), dispatcher_step_large_step_with_air_cell(), dispatcher_step_out_of_region() (+13 more)
 
 ### Community 504 - "Community 504"
 Cohesion: 0.15
 Nodes (22): analytic_depth_falloff_07(), analytic_unit_at_depth_zero_clean(), atmosphere_drives_decay(), beyond_hard_cap_below_min_confidence(), builder_stores_weights(), ConfidenceMode, hard_cap_depth_above_min_confidence(), inputs_clamp() (+14 more)
 
 ### Community 505 - "Community 505"
-Cohesion: 0.20
-Nodes (23): cancelApocryphaJob(), externalChunk(), externalJobSnapshot(), readApocryphaJob(), readExternalJobChunksPage(), methodNotAllowed(), noStore(), objectField() (+15 more)
+Cohesion: 0.06
+Nodes (55): bridgeConfigured(), fetchBridge(), createAccountHandler(), Dict, record(), stamp(), Surface, text() (+47 more)
 
 ### Community 506 - "Community 506"
 Cohesion: 0.11
@@ -4008,8 +4081,8 @@ Cohesion: 0.14
 Nodes (17): Color, color_clamps_overflow(), color_lerp_clamps_t(), color_lerp_endpoints(), color_rgba_u8_round_trip(), color_with_alpha_overrides(), font_style_default_is_system_14(), FontStyle (+9 more)
 
 ### Community 509 - "Community 509"
-Cohesion: 0.08
-Nodes (22): EventContext, PaintContext, Self, widget_id_hash_deterministic(), widget_id_hash_distinct_by_label(), widget_id_hash_distinct_by_parent(), widget_id_hash_distinct_by_sibling_index(), widget_id_hash_distinct_by_type_tag() (+14 more)
+Cohesion: 0.12
+Nodes (14): EventContext, Radio, radio_group_arrow_down_advances(), radio_group_arrow_wraps(), radio_group_clamps_initial_selection(), radio_group_disabled_ignores(), radio_group_pointer_selects_row(), radio_widget_paints_without_panic() (+6 more)
 
 ### Community 510 - "Community 510"
 Cohesion: 0.16
@@ -4028,8 +4101,8 @@ Cohesion: 0.14
 Nodes (18): builder_adds_inputs(), builder_attaches_cost_us(), compute_node_default_kind(), consumer_node_default_dispatch_single(), dispatch_groups_total(), mesh_node_kind_marker(), NodeId, NodeKind (+10 more)
 
 ### Community 514 - "Community 514"
-Cohesion: 0.05
-Nodes (42): AdapterInfo, BufferUsages, config_default_no_mapped_at_creation(), Option, Self, staging_readback_config_has_map_read(), storage_config_has_storage_usage(), uniform_config_has_uniform_usage() (+34 more)
+Cohesion: 0.03
+Nodes (65): AdapterInfo, BufferUsages, Buffer, config_default_no_mapped_at_creation(), Option, Self, staging_readback_config_has_map_read(), storage_config_has_storage_usage() (+57 more)
 
 ### Community 515 - "Community 515"
 Cohesion: 0.12
@@ -4044,8 +4117,8 @@ Cohesion: 0.10
 Nodes (18): chain_bypass_skips_processing(), chain_clear_drops_all(), chain_default_is_empty(), chain_new_is_empty_not_bypassed(), chain_process_calls_each_effect_in_order(), chain_push_appends(), chain_reset_all_resets_each_effect(), CountingPassthrough (+10 more)
 
 ### Community 518 - "Community 518"
-Cohesion: 0.14
-Nodes (18): factorial_f64(), fits_in_register_below_limit(), GpuJet, GpuJet<T, N>, GpuJetError, nth_deriv_picks_first_derivative(), pack_fails_for_jet5(), primal_round_trip() (+10 more)
+Cohesion: 0.12
+Nodes (19): factorial_f64(), fits_in_register_below_limit(), GpuJet, GpuJet<T, N>, GpuJetError, nth_deriv_picks_first_derivative(), pack_fails_for_jet5(), primal_round_trip() (+11 more)
 
 ### Community 519 - "Community 519"
 Cohesion: 0.04
@@ -4072,8 +4145,8 @@ Cohesion: 0.14
 Nodes (22): cross_deterministic(), cross_does_not_modify_parents(), cross_identical_parents(), cross_preserves_parent_distance(), different_seeds_different_genomes(), distance_random_pair_baseline(), distance_self_zero(), fingerprint_deterministic() (+14 more)
 
 ### Community 525 - "Community 525"
-Cohesion: 0.04
-Nodes (58): arc_a770_enumerate_drivers_returns_intel(), arc_a770_ze_init_succeeds(), canonical_install_dirs(), canonical_install_dirs_nonempty(), canonical_loader_candidates(), deref_symbol(), L0Loader, LoaderProbe (+50 more)
+Cohesion: 0.05
+Nodes (36): L0Loader, Debug, Formatter, Path, FnZeCommandListAppendLaunchKernel, FnZeCommandListClose, FnZeCommandListCreate, FnZeCommandListDestroy (+28 more)
 
 ### Community 526 - "Community 526"
 Cohesion: 0.10
@@ -4096,8 +4169,8 @@ Cohesion: 0.05
 Nodes (3): ac10_emit_does_not_block_on_overflow(), ac10_emit_writes_telemetry_slot(), ac12_five_of_five_gate()
 
 ### Community 531 - "Community 531"
-Cohesion: 0.05
-Nodes (41): Aabb, aabb_center_extents(), aabb_expand_point_grows_box(), aabb_transform_translation(), aabb_unit_cube_contains_origin(), approx_eq(), mat4_compose_associative(), mat4_identity_round_trip() (+33 more)
+Cohesion: 0.10
+Nodes (18): AssetHandle, AssetHandle<T>, FilterMode, handle_default_is_invalid(), handle_new_is_valid_unless_max(), handle_phantom_types_distinct(), Default, PhantomData (+10 more)
 
 ### Community 532 - "Community 532"
 Cohesion: 0.08
@@ -4108,8 +4181,8 @@ Cohesion: 0.13
 Nodes (28): boot_instant(), __cssl_time_deadline_until(), cssl_time_deadline_until_impl(), __cssl_time_monotonic_ns(), cssl_time_monotonic_ns_impl(), __cssl_time_sleep_ns(), cssl_time_sleep_ns_impl(), __cssl_time_wall_unix_ns() (+20 more)
 
 ### Community 534 - "Community 534"
-Cohesion: 0.04
-Nodes (70): ObligationId, emit_declare_sort_renders(), emit_empty_query(), emit_multi_assertion_order_preserved(), emit_smtlib(), emit_with_declare_fn(), emit_with_get_model(), emit_with_get_unsat_core() (+62 more)
+Cohesion: 0.14
+Nodes (22): hearing_radius_facing_irrelevant(), hearing_radius_negative_rejected(), hearing_radius_outside(), hearing_radius_within(), hearing_radius_zero_dist(), NpcId, Self, sense_determinism() (+14 more)
 
 ### Community 535 - "Community 535"
 Cohesion: 0.11
@@ -4136,8 +4209,8 @@ Cohesion: 0.09
 Nodes (15): AudienceBit, EffectCap, MaskFlag, Self, SigmaMask, t01_pack_size_is_19_bytes(), t02_checksum_validates_on_fresh_mask(), t03_checksum_detects_field_tamper() (+7 more)
 
 ### Community 541 - "Community 541"
-Cohesion: 0.14
-Nodes (22): hearing_radius_facing_irrelevant(), hearing_radius_negative_rejected(), hearing_radius_outside(), hearing_radius_within(), hearing_radius_zero_dist(), NpcId, Self, sense_determinism() (+14 more)
+Cohesion: 0.07
+Nodes (13): fidelity_fallback_is_conservative(), fidelity_snapshot(), fidelity_to_json_string_has_expected_keys(), FidelityConfig, GpuContext, Arc, Option, Queue (+5 more)
 
 ### Community 542 - "Community 542"
 Cohesion: 0.10
@@ -4173,15 +4246,15 @@ Nodes (18): ApplyHandler, ApplyOutcome, ApplyRegistry, CountingHandler, NoopAppl
 
 ### Community 550 - "Community 550"
 Cohesion: 0.05
-Nodes (38): ZeCommandList, ZeContext, ZeDevice, ZeDriver, ZeEvent, ZeFence, ZeGroupCount, ZeKernel (+30 more)
+Nodes (41): UsmAllocType, L0Driver, Vec, ZeCommandList, ZeContext, ZeDevice, ZeDriver, ZeEvent (+33 more)
 
 ### Community 551 - "Community 551"
 Cohesion: 0.13
 Nodes (12): AppSwMode, AppSwScheduler, pimax_scheduler_default(), quest3_default_budget_is_11ms(), Self, scheduler_disengages_app_sw_after_half_budget_stability(), scheduler_does_not_engage_app_sw_before_hysteresis_threshold(), scheduler_engages_app_sw_after_hysteresis_violations() (+4 more)
 
 ### Community 552 - "Community 552"
-Cohesion: 0.09
-Nodes (32): align_up(), headless_tick_smoketest(), packed_struct_byte_cast_is_lossless(), per_frame_determinism(), readback_after_tick(), RendererV2, Adapter, ComputePipeline (+24 more)
+Cohesion: 0.08
+Nodes (31): align_up(), headless_tick_smoketest(), packed_struct_byte_cast_is_lossless(), per_frame_determinism(), readback_after_tick(), RendererV2, Adapter, ComputePipeline (+23 more)
 
 ### Community 553 - "Community 553"
 Cohesion: 0.16
@@ -4212,8 +4285,8 @@ Cohesion: 0.14
 Nodes (23): Format, CaptureWriter, fresh_record(), Arc, LogRecord, LogSink, Self, Severity (+15 more)
 
 ### Community 560 - "Community 560"
-Cohesion: 0.19
-Nodes (25): begin_render_effect(), dispatch_draws_for_pass(), dispatch_for_geometry_uses_opaque(), mk_drawable_scene(), mk_minimal_graph(), render_context_starts_at_frame_zero(), render_effect_constructible_via_context(), RenderContext (+17 more)
+Cohesion: 0.16
+Nodes (27): RenderGraph, Vec, begin_render_effect(), dispatch_draws_for_pass(), dispatch_for_geometry_uses_opaque(), mk_drawable_scene(), mk_minimal_graph(), render_context_starts_at_frame_zero() (+19 more)
 
 ### Community 561 - "Community 561"
 Cohesion: 0.12
@@ -4225,7 +4298,7 @@ Nodes (18): cornea_axis_7_extracts_correctly(), cornea_axis_7_zero_for_non_creat
 
 ### Community 563 - "Community 563"
 Cohesion: 0.12
-Nodes (27): attr_matches(), binding_name(), collect_item(), collect_staged_fns(), count_block(), count_expr(), count_run_sites(), empty_module_yields_no_staged_decls() (+19 more)
+Nodes (25): AnthropicBridge, AnthropicNonStreamingResponse, consume_sse_stream(), ContentBlock, decode_sse_payload(), drain_record(), on_decoded_returns_unhandled(), parse_non_streaming() (+17 more)
 
 ### Community 564 - "Community 564"
 Cohesion: 0.14
@@ -4237,7 +4310,7 @@ Nodes (17): aces2_fit(), aces2_monotone(), black_radiance_produces_black(), blue
 
 ### Community 566 - "Community 566"
 Cohesion: 0.05
-Nodes (67): LiveMutateGate, Vec, Attestation, Attestation<'a>, hash_payload(), record_attestation(), record_cap_grant(), record_cap_revoke() (+59 more)
+Nodes (68): LiveMutateGate, Vec, Attestation, Attestation<'a>, hash_payload(), record_attestation(), record_cap_grant(), record_cap_revoke() (+60 more)
 
 ### Community 567 - "Community 567"
 Cohesion: 0.11
@@ -4261,31 +4334,31 @@ Nodes (20): get_last_error_code(), Drop, HWND, Instant, RefCell, Self, Vec, synt
 
 ### Community 572 - "Community 572"
 Cohesion: 0.06
-Nodes (17): BitXor, f32, grade_projection_zeros_other_grades(), Multivector, regressive_dual_relation(), rotor_e12_sandwich_rotates_e1_to_e1_180(), Add, AddAssign (+9 more)
+Nodes (14): BitXor, f32, grade_projection_zeros_other_grades(), Multivector, Add, AddAssign, BitAnd, BitOr (+6 more)
 
 ### Community 573 - "Community 573"
 Cohesion: 0.25
 Nodes (18): BindingId, get_returns_current_record(), iso_consumed_once_resolves(), iso_dropped_resolves(), iso_duplicate_consume_detected(), iso_leaked_detected(), iso_read_without_consume_flagged(), LinearTracker (+10 more)
 
 ### Community 574 - "Community 574"
-Cohesion: 0.12
-Nodes (25): assert(), assertPrivate(), equal(), isUuidV5(), main(), originalEnv, Output, PRIVACY_PARTITION_REF (+17 more)
+Cohesion: 0.13
+Nodes (18): AdLegalityDiagnostic, AdLegalityReport, check(), check_ad_legality(), check_diff_fn(), collect_fn_attrs(), diagnostic_message_contains_caller(), differentiable_fn_calling_another_differentiable_fn_is_legal() (+10 more)
 
 ### Community 575 - "Community 575"
 Cohesion: 0.11
 Nodes (31): assert(), CycleCounts, eq(), EventsResponse, fetchCycles(), fetchHeartbeat(), fetchPauseState(), fetchRecentEvents() (+23 more)
 
 ### Community 576 - "Community 576"
-Cohesion: 0.06
-Nodes (23): new_invoker_no_binary(), outcome_equality_shapes(), Option, PathBuf, Self, Vec, SpirvCrossInvocation, SpirvCrossInvoker (+15 more)
+Cohesion: 0.13
+Nodes (7): ArgumentBufferTier, fragment_default_profile(), kernel_default_profile_summary(), MetalPlatform, MslTargetProfile, Self, vertex_default_profile()
 
 ### Community 577 - "Community 577"
 Cohesion: 0.16
 Nodes (17): RegionTag, idempotent_emit_no_duplicate(), in_memory_emit_then_poll(), InMemoryTransport, mk_spore(), MyceliumError, MyceliumTransport, poll_tier_filter_blocks_escalation() (+9 more)
 
 ### Community 578 - "Community 578"
-Cohesion: 0.09
-Nodes (22): Display, Formatter, xr_failed(), xr_succeeded(), XrResult, begin_from_idle_is_session_not_ready(), create_starts_in_idle(), create_with_null_system_id_is_handle_invalid() (+14 more)
+Cohesion: 0.11
+Nodes (18): Display, Formatter, xr_failed(), xr_succeeded(), XrResult, begin_from_idle_is_session_not_ready(), create_starts_in_idle(), create_with_null_system_id_is_handle_invalid() (+10 more)
 
 ### Community 579 - "Community 579"
 Cohesion: 0.21
@@ -4324,12 +4397,12 @@ Cohesion: 0.09
 Nodes (10): DeterminismMode, DeterminismModeKind, ReplayStrictConfig, Default, FrameN, Option, Self, t_replay_cfg_audit_engaged() (+2 more)
 
 ### Community 588 - "Community 588"
-Cohesion: 0.15
-Nodes (17): RegionId, cornea_pass_config(), fixture_hit(), integration_companion_eye_mutual_witness_consenting(), integration_companion_eye_redacted_when_absent(), integration_companion_eye_redacted_when_decline(), integration_cross_region_mirror_blocked(), integration_e2e_companion_eye_consenting() (+9 more)
+Cohesion: 0.09
+Nodes (37): attribution_records_source_position(), build_module_scope(), cross_run_determinism_real_source(), different_source_different_fingerprint(), empty_module_lowers(), first_call_type_args(), fn_with_attrs_and_effects(), hir_call_type_args_empty_when_no_turbofish() (+29 more)
 
 ### Community 589 - "Community 589"
-Cohesion: 0.05
-Nodes (33): activePublicSurfaces, ajv, apocryphaPage, atlasComponent, atlasFallback, atlasGraph, atlasPage, chatAlias (+25 more)
+Cohesion: 0.06
+Nodes (31): activePublicSurfaces, ajv, apocryphaPage, atlasComponent, atlasFallback, atlasGraph, atlasPage, chatAlias (+23 more)
 
 ### Community 590 - "Community 590"
 Cohesion: 0.17
@@ -4368,23 +4441,23 @@ Cohesion: 0.15
 Nodes (21): bad_magic_rejected(), Bundle, BundleHeader, BundleParseError, fixture_header(), full_bundle_roundtrip(), full_bundle_truncated_rejected(), header_roundtrip() (+13 more)
 
 ### Community 599 - "Community 599"
-Cohesion: 0.10
-Nodes (33): make_valid(), Rating, rating_pack_unpack_roundtrip_preserves_all_fields(), rating_rejects_missing_cap_rate(), rating_rejects_reserved_bits_set(), rating_rejects_stars_above_5(), rating_size_is_24_bytes(), rating_storage_key_is_distinct_per_rater() (+25 more)
+Cohesion: 0.17
+Nodes (19): aggregate_hidden_for_lone_rater(), flag(), quality_signal_emitted_when_k_floor_met(), quality_signal_suppressed_below_k_floor(), ratings_for_filters_to_content_id(), RatingStore, revoke_drops_aggregate_below_floor(), revoke_is_idempotent() (+11 more)
 
 ### Community 600 - "Community 600"
-Cohesion: 0.14
-Nodes (19): CmdOp, CmdQueueDesc, CmdRecorder, compute_queue_rejects_draw(), copy_queue_accepts_copy_resource(), copy_queue_accepts_resource_barrier(), copy_queue_rejects_dispatch(), direct_descriptor_defaults() (+11 more)
+Cohesion: 0.08
+Nodes (38): AuditSink, Cap, Cap<T>, Cap<Tweak>, closed_registry_refuses_new_registrations(), Entry, float_spec(), frame_counter_increments() (+30 more)
 
 ### Community 601 - "Community 601"
 Cohesion: 0.08
-Nodes (17): catch_frame_panic(), catch_frame_panic_simple(), catch_frame_panic_simple_basic(), extract_panic_message(), install_engine_panic_hook(), install_panic_hook_idempotent(), PanicHandlingGuard, payload_is_pd_violation() (+9 more)
+Nodes (16): catch_frame_panic(), catch_frame_panic_simple(), catch_frame_panic_simple_basic(), extract_panic_message(), install_engine_panic_hook(), install_panic_hook_idempotent(), PanicHandlingGuard, payload_is_pd_violation() (+8 more)
 
 ### Community 602 - "Community 602"
 Cohesion: 0.12
 Nodes (17): AttributionLedger, AuthorPubkey, deserialize(), BTreeMap, BTreeSet, D, Deserialize, Display (+9 more)
 
 ### Community 603 - "Community 603"
-Cohesion: 0.10
+Cohesion: 0.11
 Nodes (20): config_default_validates(), config_rejects_bad_buffer_count(), config_rejects_unknown_format(), config_rejects_zero_extent(), create_for_hwnd_with_null_hwnd_is_invalid_argument(), create_for_hwnd_with_null_queue_is_invalid_argument(), create_for_hwnd_without_loader_is_loader_missing(), dummy_queue_ptr() (+12 more)
 
 ### Community 604 - "Community 604"
@@ -4396,20 +4469,20 @@ Cohesion: 0.15
 Nodes (22): determinism_replay_bit_equal(), empty_intents_silent_pass(), examine_intent_picks_scene_edit(), highest_confidence_wins_tiebreak(), low_confidence_silent_pass(), neutral(), Box, Option (+14 more)
 
 ### Community 606 - "Community 606"
-Cohesion: 0.08
-Nodes (10): InputEvent, KeyCode, mouse_button_round_trip(), MouseButton, RepeatCount, Display, Formatter, Option (+2 more)
+Cohesion: 0.31
+Nodes (17): cancelApocryphaJob(), ensureExternalIdentity(), externalJobSnapshot(), readApocryphaJob(), methodNotAllowed(), noStore(), requireChaosIdentity(), respondJobError() (+9 more)
 
 ### Community 607 - "Community 607"
 Cohesion: 0.15
 Nodes (13): classifier_name(), IntentClass, KeywordRule, Box, Option, Self, Vec, stage0_classifies_known_keyword() (+5 more)
 
 ### Community 608 - "Community 608"
-Cohesion: 0.13
-Nodes (21): deferred_anchor(), ExportFormat, full_anchor(), missing_anchor(), report_classifies_buckets(), report_default_zero_anchors(), report_entry_from_partial_carries_gaps(), report_export_format_variants_distinct() (+13 more)
+Cohesion: 0.07
+Nodes (20): Aabb, aabb_center_extents(), aabb_expand_point_grows_box(), aabb_transform_translation(), aabb_unit_cube_contains_origin(), Quat, Add, Default (+12 more)
 
 ### Community 609 - "Community 609"
-Cohesion: 0.18
-Nodes (19): b(), empty_goal_returns_empty_plan(), FactValue, GoapAction, GoapState, no_path_returns_none(), plan(), plan_with_budget() (+11 more)
+Cohesion: 0.17
+Nodes (9): decryptJournal(), deriveJournalKey(), EncryptedEnvelope, encryptJournal(), AttemptJournal, now(), validateState(), AttemptJournalState (+1 more)
 
 ### Community 610 - "Community 610"
 Cohesion: 0.12
@@ -4421,15 +4494,15 @@ Nodes (19): Aabb, Default, Option, Ray, Self, Vec3, Sphere, sphere_from_aabb_ins
 
 ### Community 612 - "Community 612"
 Cohesion: 0.09
-Nodes (14): check_sandbox_policy(), check_sandbox_policy_allows_pure_int(), check_sandbox_policy_rejects_handle_result(), check_sandbox_policy_rejects_io(), first_disallowed_effect(), first_disallowed_effect_returns_first_offender(), is_allowed_effect_token(), is_comptime_eligible_result_type() (+6 more)
+Nodes (26): append_input_event(), equality_compares_full_log(), frame_extraction_works_for_all_variants(), fresh_log_empty(), inputs_at_frame_filters(), master_seed_round_trips(), max_frame_tracks_highest(), ReplayEntry (+18 more)
 
 ### Community 613 - "Community 613"
 Cohesion: 0.12
 Nodes (33): ContributorStatusPayload, artifact(), asRecord(), boundedText(), CONTRIBUTOR_NODE_MANIFEST, ContributorNodeArtifact, ContributorNodeManifest, ContributorNodePlatform (+25 more)
 
 ### Community 614 - "Community 614"
-Cohesion: 0.16
-Nodes (24): bridgeConfigured(), accountReference(), accountSigningKey(), signAccountRequest(), validAccountTarget(), accountAccessHeaders(), accountRuntimeConfigured(), accountRuntimeOrigin() (+16 more)
+Cohesion: 0.17
+Nodes (28): closePage(), cursors, DirectoryEntry, editableText(), fileInfo(), integer(), keepPage(), listPage() (+20 more)
 
 ### Community 615 - "Community 615"
 Cohesion: 0.11
@@ -4440,12 +4513,12 @@ Cohesion: 0.13
 Nodes (18): is_decimated_hit(), OneIn, Default, DeterminismMode, FrameN, Self, sampling_decision_strict(), SamplingDiscipline (+10 more)
 
 ### Community 617 - "Community 617"
-Cohesion: 0.14
-Nodes (24): can_write_with_modify_consent_yes(), grant_sovereign_already_claimed_by_other_refused(), grant_sovereign_mismatch_refused(), grant_sovereign_with_matching_cap_succeeds(), IfcViolation, loa_can_read(), loa_can_write(), loa_grant_sovereign() (+16 more)
+Cohesion: 0.11
+Nodes (15): halt_bridge_drains_pending_steps(), halt_bridge_explicit_reason_apocky_root(), halt_bridge_explicit_reason_audit_failure(), halt_bridge_invokes_substrate_halt(), pd_origin_canonical_names_unique(), PrimeDirectiveOrigin, PrimeDirectiveViolation, Default (+7 more)
 
 ### Community 618 - "Community 618"
 Cohesion: 0.13
-Nodes (34): allowedSupabaseHost(), assert(), clearSupabaseEnv(), envValue(), executeSupabaseProbe(), handler(), HealthResponse, isSet() (+26 more)
+Nodes (35): commitSha(), allowedSupabaseHost(), assert(), clearSupabaseEnv(), envValue(), executeSupabaseProbe(), handler(), HealthResponse (+27 more)
 
 ### Community 619 - "Community 619"
 Cohesion: 0.05
@@ -4464,28 +4537,28 @@ Cohesion: 0.06
 Nodes (35): dependencies, react, react-dom, @tauri-apps/api, description, devDependencies, jsdom, @testing-library/react (+27 more)
 
 ### Community 623 - "Community 623"
-Cohesion: 0.23
-Nodes (17): analyzeSpell(), rejected(), rotateRight(), SHA256_CONSTANTS, sha256Hex(), stableStringify(), stableValue(), sigilSeedHashForReceipt() (+9 more)
+Cohesion: 0.22
+Nodes (13): CodeProjection, Coder(), digestValue(), isObject(), JsonObject, parsePaths(), RollbackProjection, safeError() (+5 more)
 
 ### Community 624 - "Community 624"
-Cohesion: 0.08
-Nodes (27): add_scalar_only_changes_primal(), approx_eq_is_symmetric(), debug_format_includes_order_and_terms(), jet_addition_componentwise(), jet_multiplication_constant_pulls_through(), jet_negation_flips_sign_of_every_term(), jet_subtraction_componentwise(), Jet<T, N> (+19 more)
+Cohesion: 0.14
+Nodes (14): chrono_default(), citations_block_into_anchors(), CitationsBlock, inline_marker_into_anchor(), InlineMarker, multiaxis_into_anchors_three(), multiaxis_partial_omniverse_only(), MultiAxisAnchor (+6 more)
 
 ### Community 625 - "Community 625"
 Cohesion: 0.09
 Nodes (28): ContributorEndpoint, ContributorRateLimitDecision, ContributorRateLimiter, ContributorRateLimitRequest, CONTRIBUTOR_RATE_LIMIT_RPC, CONTRIBUTOR_RATE_LIMITER_OPT_IN_ENV, ContributorRateLimiterAvailability, ContributorRateLimiterError (+20 more)
 
 ### Community 626 - "Community 626"
-Cohesion: 0.14
-Nodes (23): cross_format_error_surface_is_unified(), _document_type_referenced(), glb_nested_scene_graph_depth_first(), glb_round_trip_walk_scene_graph(), make_nested_glb(), make_test_glb(), make_test_png(), make_test_wav() (+15 more)
+Cohesion: 0.06
+Nodes (65): aad(), BRIDGE_RESULT_HEADERS, bridgeConfiguration, BridgeEnvelope, BridgeError, BridgeHttpResult, BridgeInput, bridgeJobId() (+57 more)
 
 ### Community 627 - "Community 627"
 Cohesion: 0.06
-Nodes (33): ajv, command, constellation, constellationIds, constellationSchema, divination, entryPoints, errorBoundary (+25 more)
+Nodes (32): ajv, command, constellation, constellationIds, constellationSchema, divination, entryPoints, errorBoundary (+24 more)
 
 ### Community 628 - "Community 628"
-Cohesion: 0.17
-Nodes (12): divergent_payload_is_conflict(), entry_for(), IdempotencyEntry, IdempotencyInsertError, IdempotencyKey, IdempotencyStore, idempotent_reuse_is_ok(), BTreeMap (+4 more)
+Cohesion: 0.11
+Nodes (14): audit_event_messages_are_deterministic(), cap_token_consume_returns_id_and_cap(), cap_token_id_displays_token_prefix(), cap_token_id_monotonic(), cap_token_is_move_only(), CapToken, CapTokenId, fresh_token_id() (+6 more)
 
 ### Community 629 - "Community 629"
 Cohesion: 0.17
@@ -4508,8 +4581,8 @@ Cohesion: 0.09
 Nodes (13): crate::linux::LinuxBackend, crate::macos::MacosBackend, crate::stub::StubBackend, crate::win32::Win32Backend, linux_backend_implements_window_event_sink(), macos_backend_implements_window_event_sink(), MockPump, BackendKind (+5 more)
 
 ### Community 634 - "Community 634"
-Cohesion: 0.21
-Nodes (20): BridgeError, bridgeMac(), equalMac(), readWorkerBody(), verifyWorkerAuthentication(), workerAuthText(), workerFailure(), workerHeaders() (+12 more)
+Cohesion: 0.13
+Nodes (33): dbError(), guestAuthor(), insertEvent(), isKind(), isOwner(), isRoom(), Kind, KINDS (+25 more)
 
 ### Community 635 - "Community 635"
 Cohesion: 0.12
@@ -4533,7 +4606,7 @@ Nodes (30): hex(), HotfixClient, HotfixClientConfig, load_snapshot(), make_cap_k
 
 ### Community 640 - "Community 640"
 Cohesion: 0.06
-Nodes (3): approx(), mv_approx(), reverse_signs_match_grade_signature()
+Nodes (6): approx(), mv_approx(), regressive_dual_relation(), reverse_signs_match_grade_signature(), rotor_e12_sandwich_rotates_e1_to_e1_180(), sandwich_with_identity_is_identity()
 
 ### Community 641 - "Community 641"
 Cohesion: 0.07
@@ -4541,7 +4614,7 @@ Nodes (52): build_host_config(), __cssl_window_destroy(), cssl_window_destroy_im
 
 ### Community 642 - "Community 642"
 Cohesion: 0.08
-Nodes (41): SpecAnchor, AnchorParadigm, fa(), impl_quality(), merge_anchor(), merge_test_paths(), missing(), registry_anchors_have_provenance_check() (+33 more)
+Nodes (40): SpecAnchor, AnchorParadigm, fa(), impl_quality(), merge_anchor(), merge_test_paths(), missing(), registry_anchors_have_provenance_check() (+32 more)
 
 ### Community 643 - "Community 643"
 Cohesion: 0.16
@@ -4552,8 +4625,8 @@ Cohesion: 0.11
 Nodes (15): audit_seq_bump_increments(), audit_seq_wraps_at_u16_max(), companion_kind_canonical_names_unique(), CompanionAiHook, CompanionAiKind, CompanionConsent, HookError, none_hook_inactive() (+7 more)
 
 ### Community 645 - "Community 645"
-Cohesion: 0.16
-Nodes (15): BlockAccum, coarsen_all_chains_three_levels(), coarsen_consent_intersection_keeps_strictest(), coarsen_partial_block_still_averages(), coarsen_t0_to_t1_averages_block_density(), insert_at_tier_round_trips(), MeraPyramid, pyramid_default_has_4_tiers() (+7 more)
+Cohesion: 0.19
+Nodes (13): BlockAccum, coarsen_all_chains_three_levels(), coarsen_consent_intersection_keeps_strictest(), coarsen_partial_block_still_averages(), coarsen_t0_to_t1_averages_block_density(), insert_at_tier_round_trips(), MeraPyramid, pyramid_default_has_4_tiers() (+5 more)
 
 ### Community 646 - "Community 646"
 Cohesion: 0.10
@@ -4588,8 +4661,8 @@ Cohesion: 0.13
 Nodes (18): BoundingBox, AccessibilityStub, consent_zone_blocks_entry_without_token(), consent_zone_permits_entry_with_token(), ConsentZone, ConsentZoneKind, FailureMode, InventoryPolicy (+10 more)
 
 ### Community 654 - "Community 654"
-Cohesion: 0.14
-Nodes (17): make_command_queue(), cannot_open_pass_after_commit(), CommandBufferStatus, CommandQueueHandle, CommandQueueInner, double_commit_returns_error(), EncodedCommandBuffer, enqueue_then_commit_transitions_state() (+9 more)
+Cohesion: 0.15
+Nodes (16): cannot_open_pass_after_commit(), CommandBufferStatus, CommandQueueHandle, CommandQueueInner, double_commit_returns_error(), EncodedCommandBuffer, enqueue_then_commit_transitions_state(), fresh_buffer_starts_not_enqueued_with_zero_passes() (+8 more)
 
 ### Community 655 - "Community 655"
 Cohesion: 0.16
@@ -4600,8 +4673,8 @@ Cohesion: 0.11
 Nodes (15): amd_rdna4_tile_is_16_16_8(), apple_m3_tile_is_8_8_8(), coop_matrix_capability_string(), CoopMatrixPath, CoopMatrixVendor, fma_units_per_cycle_for_nvidia(), intel_arc_tile_is_8_16_16(), nvidia_tile_is_16_16_16() (+7 more)
 
 ### Community 657 - "Community 657"
-Cohesion: 0.14
-Nodes (16): evaluate_identity_passthrough(), evaluate_with_active_modulation_scales(), evaluate_with_sigmoid_activation(), identity_extension_is_identity(), LoaKanExtension, LoaKanExtensionError, new_identity_with_sovereign_refused(), new_with_activation_only() (+8 more)
+Cohesion: 0.17
+Nodes (16): Archetype, archetype_round_trip(), gm_describe_environment_returns_non_empty(), gm_dialogue_is_deterministic(), gm_dialogue_returns_non_empty(), gm_dialogue_varies_with_npc_id(), gm_environment_varies_with_time_of_day(), GmNarrator (+8 more)
 
 ### Community 658 - "Community 658"
 Cohesion: 0.06
@@ -4628,8 +4701,8 @@ Cohesion: 0.12
 Nodes (13): AlphaMode, disabled_validates_trivially(), htc_vive_default_minimal(), layer_from_config_succeeds(), layer_from_invalid_config_fails(), PassthroughConfig, PassthroughLayer, PassthroughProvider (+5 more)
 
 ### Community 664 - "Community 664"
-Cohesion: 0.07
-Nodes (29): Constraints, RequestError, Default, Into, Self, Vec, SelfAuthorKind, SelfAuthorRequest (+21 more)
+Cohesion: 0.08
+Nodes (17): is_forbidden_target(), MutateDecision, rec(), From, Item, Iterator, Option, Self (+9 more)
 
 ### Community 665 - "Community 665"
 Cohesion: 0.16
@@ -4668,36 +4741,36 @@ Cohesion: 0.06
 Nodes (34): §0 — FOUNDATION: CONSENT IS THE OPERATING SYSTEM, §10 — CANONICAL LANGUAGE AND ENFORCEMENT STATUS, §11 — ACCESS, LICENSE, AND TERMS BOUNDARY, §12 — ACCOUNTABILITY, REPAIR, AND ATTESTATION, §13 — THE DIRECTIVE IN PLAIN LANGUAGE, 1.10 Consent, 1.11 Sovereignty, 1.12 Bodily, cognitive, and informational autonomy (+26 more)
 
 ### Community 674 - "Community 674"
-Cohesion: 0.10
-Nodes (15): classify_template(), now_unix(), AtomicBool, FnMut, LlmConfig, LlmMode, Self, SubstrateBridge (+7 more)
+Cohesion: 0.12
+Nodes (20): extractContent(), Fetch, isQwenContextOverflow(), numeric(), parseUsage(), QwenClient, QwenError, QwenGenerationOptions (+12 more)
 
 ### Community 675 - "Community 675"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (20): Light, light_area_radius_uses_diagonal(), light_common_borrow_uniform(), light_common_default(), light_default_is_directional_overhead(), light_directional_constructor_normalizes(), light_directional_radius_is_infinite(), light_point_constructor() (+12 more)
 
 ### Community 676 - "Community 676"
 Cohesion: 0.06
-Nodes (57): decisions_log_block_terminates_on_blank_then_text(), decisions_log_empty_bullet_errors(), decisions_log_extracts_block(), decisions_log_handles_multiple_slices(), doc_comment_extracts_decisions_marker(), doc_comment_extracts_omniverse_marker(), doc_comment_extracts_spec_marker(), doc_comment_lenient_mode_skips_garbage() (+49 more)
+Nodes (60): SpecRoot, decisions_log_block_terminates_on_blank_then_text(), decisions_log_empty_bullet_errors(), decisions_log_extracts_block(), decisions_log_handles_multiple_slices(), doc_comment_extracts_decisions_marker(), doc_comment_extracts_omniverse_marker(), doc_comment_extracts_spec_marker() (+52 more)
 
 ### Community 677 - "Community 677"
 Cohesion: 0.20
 Nodes (21): cssl_quantum_qbind(), cssl_quantum_qentangle(), cssl_quantum_qmeasure(), cssl_quantum_qsuperpose(), ffi_qbind_matches_method_bind(), ffi_qentangle_high_coherence_with_inputs(), ffi_qmeasure_in_range(), ffi_qmeasure_returns_argmax_index() (+13 more)
 
 ### Community 678 - "Community 678"
-Cohesion: 0.12
-Nodes (15): all_bands_positive_width(), band_index_at_550nm(), contains_nm_lower_edge_inclusive(), d65_weights_sum_one(), default_is_d65(), equal_energy_weights_sum_one(), lo_hi_flank_center(), out_of_range_returns_none() (+7 more)
+Cohesion: 0.19
+Nodes (19): a_record_will_not_decrypt_under_another_name(), account_scoped_names_become_valid_filenames(), blob(), clearing_removes_every_owned_record(), opening_the_store_writes_nothing_until_something_is_saved(), protect(), records_round_trip_through_the_encrypted_file(), reject() (+11 more)
 
 ### Community 679 - "Community 679"
-Cohesion: 0.10
-Nodes (24): aligned_bytes_per_row(), burst_state_records_10_frames_then_resets(), burst_state_stride_skips_intermediate_frames(), BurstState, default_golden_dir(), default_snapshot_dir(), default_video_dir(), Default (+16 more)
+Cohesion: 0.05
+Nodes (73): cross_format_error_surface_is_unified(), _document_type_referenced(), glb_nested_scene_graph_depth_first(), glb_round_trip_walk_scene_graph(), make_nested_glb(), make_test_glb(), make_test_png(), make_test_wav() (+65 more)
 
 ### Community 680 - "Community 680"
 Cohesion: 0.12
 Nodes (17): default_is_untrained(), eval_untrained_returns_zeros(), fingerprint_deterministic(), fingerprint_sensitive_to_basis(), fingerprint_sensitive_to_io_dims(), fingerprint_sensitive_to_trained_bit(), fingerprint_sensitive_to_weights(), KanNetwork<I, O> (+9 more)
 
 ### Community 681 - "Community 681"
-Cohesion: 0.12
-Nodes (11): Display, Formatter, Self, vreg_display_form(), vreg_equality_distinguishes_id_and_width(), vreg_legitimate_starts_at_one(), vreg_null_is_id_zero(), X64VReg (+3 more)
+Cohesion: 0.14
+Nodes (20): bag_push_assigns_monotonic_ids(), collect_refinement_obligations(), empty_module_yields_no_obligations(), obligation_bag_get_roundtrips(), obligation_bag_iter_visits_every(), obligation_records_enclosing_def_for_fn_sig(), ObligationBag, ObligationCtx (+12 more)
 
 ### Community 682 - "Community 682"
 Cohesion: 0.17
@@ -4705,11 +4778,11 @@ Nodes (13): Button, button_assign_final_size_stores(), button_event_disabled_ign
 
 ### Community 683 - "Community 683"
 Cohesion: 0.08
-Nodes (24): psi_audio_cell_energy_is_norm_sq(), psi_audio_cell_pressure_is_real(), psi_audio_field_add_at_creates_then_accumulates(), psi_audio_field_clear_resets(), psi_audio_field_default_at_unset_is_zero(), psi_audio_field_default_is_silent(), psi_audio_field_inject_consent_denied_refuses(), psi_audio_field_inject_consent_granted_writes() (+16 more)
+Nodes (25): replay_determinism_panic_capture_idempotent(), psi_audio_cell_energy_is_norm_sq(), psi_audio_cell_pressure_is_real(), psi_audio_field_add_at_creates_then_accumulates(), psi_audio_field_clear_resets(), psi_audio_field_default_at_unset_is_zero(), psi_audio_field_default_is_silent(), psi_audio_field_inject_consent_denied_refuses() (+17 more)
 
 ### Community 684 - "Community 684"
-Cohesion: 0.14
-Nodes (16): CooldownSlot, dm_calm_state_proposes_no_events(), dm_climax_to_relief_after_50_frames(), dm_cooldown_blocks_repeat_template_within_window(), dm_init_starts_in_calm(), dm_relief_to_calm_after_30_frames(), dm_tension_drives_buildup_transition(), DmDirector (+8 more)
+Cohesion: 0.08
+Nodes (19): MiniBrainMessage, openAccountPendingJournal(), accountMessages, clone(), json(), listeners, otherSessionId, ownerMessages (+11 more)
 
 ### Community 685 - "Community 685"
 Cohesion: 0.06
@@ -4720,8 +4793,8 @@ Cohesion: 0.07
 Nodes (30): Architecture, CSSL example — chat-panel + GM/DM intent dispatch, CSSL example — gear + loot dispatch, CSSL example — runtime-procgen scene, CSSLv3, Foundation crates, Hardware verification, How to build (+22 more)
 
 ### Community 687 - "Community 687"
-Cohesion: 0.22
-Nodes (21): AdapterAttemptOutcome, aggregateProbeResults(), boundedJson(), boundedResponseText(), canonicalReadingQuery(), completedProbeAt(), Fetch, invokeAdapter() (+13 more)
+Cohesion: 0.19
+Nodes (25): SigilStudio(), SpellComposer(), compileSpell(), sortedUnique(), analyzeSpell(), rotateRight(), SHA256_CONSTANTS, sha256Hex() (+17 more)
 
 ### Community 688 - "Community 688"
 Cohesion: 0.14
@@ -4732,12 +4805,12 @@ Cohesion: 0.18
 Nodes (14): FpsFeelInput, FpsFeelTick, fresh_tick_is_zeroed(), full_tick_integration_deterministic(), integration_bloom_grows_during_sustained_fire(), integration_recovery_after_fire_stop(), reset_with_new_archetype(), Default (+6 more)
 
 ### Community 690 - "Community 690"
-Cohesion: 0.10
-Nodes (10): mir_type_display_memref(), mir_type_display_memref_dynamic(), mir_type_display_vec2_f64(), mir_type_display_vec3_f32(), mir_type_display_vec4_f32(), mir_type_display_vec_equality(), mir_type_vec_as_fn_param(), mir_value_carries_type() (+2 more)
+Cohesion: 0.13
+Nodes (19): HttpMethod, HttpRequest, HttpResponse, HttpTransport, mock_force_network_error_path(), mock_returns_network_error_when_unprogrammed(), mock_returns_programmed_reply(), MockHttpTransport (+11 more)
 
 ### Community 691 - "Community 691"
 Cohesion: 0.12
-Nodes (30): Size, absolute_honors_explicit_origin(), Axis, child_size(), ChildLayoutInput, ChildSlot, constraint_loose_clamps_max(), constraint_shrink_strips_padding() (+22 more)
+Nodes (34): centered_style(), tight_gap_style(), absolute_honors_explicit_origin(), Axis, child_size(), ChildLayoutInput, ChildSlot, constraint_loose_clamps_max() (+26 more)
 
 ### Community 692 - "Community 692"
 Cohesion: 0.12
@@ -4748,40 +4821,40 @@ Cohesion: 0.17
 Nodes (13): Color, paint_list_clear_resets(), paint_list_clip_push_pop(), paint_list_multiple_commands_preserve_order(), paint_list_records_fill_rect(), paint_list_records_text(), paint_list_starts_empty(), paint_list_take_moves_commands_out() (+5 more)
 
 ### Community 694 - "Community 694"
-Cohesion: 0.14
-Nodes (24): bounded(), createGatewayServer(), json(), PATHS, probes(), readJson(), safeCause(), boundedRecordsEnvelope() (+16 more)
+Cohesion: 0.25
+Nodes (12): compile(), diag_to_json(), empty_source_no_crash(), item_kind_name(), item_to_json(), json_always_valid(), playground_version(), run() (+4 more)
 
 ### Community 695 - "Community 695"
-Cohesion: 0.29
-Nodes (23): assertWorkerRequest(), resetApocryphaServiceClientForTests(), handler(), assert(), assertUnauthorized(), invokeClaim(), invokeWorker(), jsonResponse() (+15 more)
+Cohesion: 0.10
+Nodes (10): mir_type_display_memref(), mir_type_display_memref_dynamic(), mir_type_display_vec2_f64(), mir_type_display_vec3_f32(), mir_type_display_vec4_f32(), mir_type_display_vec_equality(), mir_type_vec_as_fn_param(), mir_value_carries_type() (+2 more)
 
 ### Community 696 - "Community 696"
-Cohesion: 0.08
-Nodes (22): apiSource, approvedStub, browse, browseSource, bundledManifestSource, duplicateId, duplicateSlug, manifest (+14 more)
+Cohesion: 0.12
+Nodes (25): compose_chained_exp_ln_is_identity(), compose_identity_is_input(), compose_sin_of_identity_matches_sin(), compose_sin_of_squared_matches_chain_rule(), cos_at_zero_yields_basis_first_derivative(), deep_composition_sin_exp_ln_is_consistent(), exp_first_order_matches_analytic_at_x_eq_0(), exp_higher_order_matches_self_at_x_eq_0() (+17 more)
 
 ### Community 697 - "Community 697"
 Cohesion: 0.11
 Nodes (14): add_componentwise(), cross_forward_up_is_minus_right(), cross_x_y_is_z(), determinism_replay_bit_equal(), dot_self_is_length_squared(), from_to_array_roundtrip(), length_345_triangle(), lerp_midpoint_average() (+6 more)
 
 ### Community 698 - "Community 698"
-Cohesion: 0.18
-Nodes (13): cap_deny_still_blocks_in_stub(), fail_after_n_respects_counter(), mk(), AtomicU32, AtomicU64, Option, Self, SignalingMessage (+5 more)
+Cohesion: 0.08
+Nodes (24): both_fail_returns_last_err(), cap_deny_bypasses_fallback(), mk(), poll_transient_failover_works(), primary_fail_fallback_succeeds(), primary_success_no_fallback_invocation(), Box, Option (+16 more)
 
 ### Community 699 - "Community 699"
 Cohesion: 0.12
 Nodes (22): brew(), BrewErr, catalyst_multiplier(), Potion, Material, transmute_tier(), TransmuteErr, TransmuteResult (+14 more)
 
 ### Community 700 - "Community 700"
-Cohesion: 0.12
-Nodes (23): Control, createRemoteControlHandler(), nullableSha(), record(), sha(), timestamp(), verifiedProjection(), validBridgeCodePath() (+15 more)
+Cohesion: 0.10
+Nodes (16): add_scalar_only_changes_primal(), Jet<T, N>, JetField, one_jet_matches_lift_one(), promote_active_alias_matches_promote(), Add, Copy, Debug (+8 more)
 
 ### Community 701 - "Community 701"
 Cohesion: 0.14
 Nodes (14): Action, action_rejects_empty_name(), action_rejects_special_chars(), action_rejects_uppercase_name(), action_set_omniverse_default_validates(), action_set_omniverse_has_locomotion_and_haptic(), action_validates_lowercase_name(), action_with_sub_paths() (+6 more)
 
 ### Community 702 - "Community 702"
-Cohesion: 0.15
-Nodes (14): create_with_zero_extent_is_validation_failure(), double_acquire_is_call_order_invalid(), MockSwapchain, quest_3s_stereo_color_is_array_2(), round_trip_advances_ring_index(), c_void, Option, Self (+6 more)
+Cohesion: 0.13
+Nodes (18): c_void, Debug, Formatter, SessionCreateInfo, create_with_zero_extent_is_validation_failure(), double_acquire_is_call_order_invalid(), MockSwapchain, quest_3s_stereo_color_is_array_2() (+10 more)
 
 ### Community 703 - "Community 703"
 Cohesion: 0.10
@@ -4816,20 +4889,20 @@ Cohesion: 0.14
 Nodes (18): audit_event_with_cap_records_kind(), AuditEvent, AuditSink, null_sink_accepts_events(), NullAuditSink, CapKind, Into, McpResult (+10 more)
 
 ### Community 711 - "Community 711"
-Cohesion: 0.09
-Nodes (25): AtlasView, AVAILABILITY_OPTIONS, AvailabilityFilter, AxisFilter, ConstellationAtlas(), DictionaryView(), firstQueryValue(), isAvailability() (+17 more)
+Cohesion: 0.06
+Nodes (43): AtlasView, AVAILABILITY_OPTIONS, AvailabilityFilter, AxisFilter, ConstellationAtlas(), DictionaryView(), firstQueryValue(), isAvailability() (+35 more)
 
 ### Community 712 - "Community 712"
-Cohesion: 0.23
-Nodes (20): binding_pattern(), hard_kw_fn_still_rejected_as_binding(), literal_int_pattern(), mut_binding(), or_pattern(), parse_pattern(), plain_ident_still_binds_to_x(), prep() (+12 more)
+Cohesion: 0.20
+Nodes (24): binding_pattern(), hard_kw_fn_still_rejected_as_binding(), is_underscore(), literal_int_pattern(), mut_binding(), or_pattern(), parse_atomic_pattern(), parse_path_pattern() (+16 more)
 
 ### Community 713 - "Community 713"
-Cohesion: 0.09
-Nodes (44): APOCRYPHA_REQUIRED_MEMORY_ADAPTERS, APOCRYPHA_RUNTIME_CAPABILITIES, APOCRYPHA_RUNTIME_CONFIGURATION, ApocryphaExpectedConfiguration, ApocryphaQueueReadiness, ApocryphaReadinessProjection, ApocryphaRequiredMemoryAdapter, ApocryphaWorkerReadinessRow (+36 more)
+Cohesion: 0.28
+Nodes (18): host_default_target(), build_main_abs_constant(), build_main_sum_to_n_constant(), DriverKind, find_lld_driver(), g9_abs_minus_7_returns_7(), g9_abs_minus_one_returns_one(), g9_abs_plus_7_returns_7() (+10 more)
 
 ### Community 714 - "Community 714"
-Cohesion: 0.14
-Nodes (21): halt_for_pd_violation_with_reason(), audit_bus_grows_by_exactly_one_per_halt(), CountingHaltSink, halt_reason_canonical_names_unique(), HaltError, HaltOutcome, HaltReason, HaltSink (+13 more)
+Cohesion: 0.13
+Nodes (23): halt_for_pd_violation(), halt_for_pd_violation_with_reason(), pd_violation_panic_routes_to_halt_bridge(), audit_bus_grows_by_exactly_one_per_halt(), CountingHaltSink, halt_reason_canonical_names_unique(), HaltError, HaltOutcome (+15 more)
 
 ### Community 715 - "Community 715"
 Cohesion: 0.14
@@ -4841,7 +4914,7 @@ Nodes (12): List, list_arrow_down_advances(), list_content_height_matches_items(
 
 ### Community 717 - "Community 717"
 Cohesion: 0.18
-Nodes (11): fake_tall_child(), Box, Debug, EventResult, Formatter, Self, ScrollView, scrollview_disabled_ignores() (+3 more)
+Nodes (12): Widget, fake_tall_child(), Box, Debug, EventResult, Formatter, Self, ScrollView (+4 more)
 
 ### Community 718 - "Community 718"
 Cohesion: 0.19
@@ -4872,12 +4945,12 @@ Cohesion: 0.19
 Nodes (16): compute_model_matrices_chains_translation(), compute_skinning_matrices_writes_buffer(), local_transform_out_of_range_returns_none(), local_transform_round_trip(), locals_returns_full_slice(), make_skel(), new_pose_is_empty(), ProceduralPose (+8 more)
 
 ### Community 725 - "Community 725"
-Cohesion: 0.12
-Nodes (22): handle_command(), IpcCommand, IpcResponse, preview(), AppConfig, Vec, SubstrateHit, to_error() (+14 more)
+Cohesion: 0.10
+Nodes (20): estimateTokens(), estimateTotal(), FitMessage, fitMessages(), FitReport, fitted, huge, hugeFit (+12 more)
 
 ### Community 726 - "Community 726"
-Cohesion: 0.09
-Nodes (34): capabilities_are_emitted_before_extensions(), debug_source_line(), emit_capabilities(), emit_debug(), emit_entry_points(), emit_execution_modes(), emit_ext_inst_imports(), emit_extensions() (+26 more)
+Cohesion: 0.15
+Nodes (22): can_write_with_modify_consent_yes(), grant_sovereign_already_claimed_by_other_refused(), grant_sovereign_mismatch_refused(), grant_sovereign_with_matching_cap_succeeds(), IfcViolation, loa_grant_sovereign(), loa_read_cell(), loa_sample_cell() (+14 more)
 
 ### Community 727 - "Community 727"
 Cohesion: 0.20
@@ -4908,16 +4981,16 @@ Cohesion: 0.08
 Nodes (33): adaptive_degrader_recovers_when_under_budget(), adaptive_degrader_respects_pin(), adaptive_degrader_steps_down_when_enforcer_says_so(), any_regression(), assert_budgets(), assert_budgets_fails_when_over_budget(), assert_budgets_passes_when_under_budget(), assert_no_hot_path_alloc() (+25 more)
 
 ### Community 734 - "Community 734"
-Cohesion: 0.07
-Nodes (20): build_heap_dealloc_op(), build_op_carries_payload_ty_and_cap_attributes(), build_op_emits_canonical_cssl_heap_dealloc(), build_op_has_three_operands_in_canonical_order(), build_op_omits_origin_when_none(), build_op_signature_matches_csslop_declared_arity(), dealloc_align_for(), dealloc_size_for() (+12 more)
+Cohesion: 0.12
+Nodes (26): checkAssetLicense(), filterByLicense(), License, LicenseCheck, normalizeLicense(), PERMITTED_FOR_ASSETS, PERMITTED_LICENSES, AssetResult (+18 more)
 
 ### Community 735 - "Community 735"
-Cohesion: 0.12
-Nodes (22): is_forbidden_target(), AnchorPayload, ctx(), fail_report(), LiveMutateDecision, LiveMutateGate<'a>, make_signed_cap(), MutateContext (+14 more)
+Cohesion: 0.18
+Nodes (21): AnchorPayload, ctx(), fail_report(), LiveMutateDecision, LiveMutateGate<'a>, make_signed_cap(), MutateContext, MutateOutcome (+13 more)
 
 ### Community 736 - "Community 736"
 Cohesion: 0.06
-Nodes (28): ApockyDocument, accountChat, apocryphaPage, app, brainIcons, brainManifest, brainStyles, brainWorker (+20 more)
+Nodes (30): ApockyDocument, apocryphaPage, app, brainIcons, brainManifest, brainStyles, brainWorker, consent (+22 more)
 
 ### Community 737 - "Community 737"
 Cohesion: 0.10
@@ -4932,8 +5005,8 @@ Cohesion: 0.13
 Nodes (22): hex_lower(), canonical_bytes_changes_with_field(), canonical_bytes_deterministic(), ChannelEntry, deserialize(), entry_lookup(), fixture(), json_roundtrip() (+14 more)
 
 ### Community 740 - "Community 740"
-Cohesion: 0.12
-Nodes (10): canonical_gaze_label(), Confidentiality, confidentiality_top_is_empty(), Integrity, integrity_bottom_is_empty(), Label, Display, Formatter (+2 more)
+Cohesion: 0.09
+Nodes (32): canonical_gaze_label(), assert_no_egress_refuses_pure_gaze_label_no_domain(), Confidentiality, confidentiality_permits_read(), confidentiality_top_is_empty(), has_absolutely_banned_includes_surveillance_target(), has_biometric_confidentiality_detects_biometric_subject(), has_biometric_confidentiality_detects_body() (+24 more)
 
 ### Community 741 - "Community 741"
 Cohesion: 0.08
@@ -4956,8 +5029,8 @@ Cohesion: 0.18
 Nodes (12): Fluorescence, no_shift_maps_to_self_band(), phosphor_accumulates_emission(), phosphor_decays_without_input(), Phosphorescence, remap_radiance_refreshes_hero(), remap_shifts_red(), Self (+4 more)
 
 ### Community 746 - "Community 746"
-Cohesion: 0.14
-Nodes (15): chrono_default(), citations_block_into_anchors(), CitationsBlock, infer_root(), inline_marker_into_anchor(), InlineMarker, multiaxis_into_anchors_three(), multiaxis_partial_omniverse_only() (+7 more)
+Cohesion: 0.12
+Nodes (9): camera_dx_raw(), camera_dy_raw(), camera_x_norm(), camera_y_norm(), compose_v13_visual_rgba8(), expand_two_crystal_words(), SubstrateKernelSpec, v13_probe_cpu_oracles_match_known_bytes() (+1 more)
 
 ### Community 747 - "Community 747"
 Cohesion: 0.33
@@ -4972,16 +5045,16 @@ Cohesion: 0.11
 Nodes (18): scope_for_metric(), empty_scope_set_is_empty(), BTreeSet, FromIterator, I, Into, Item, Iterator (+10 more)
 
 ### Community 750 - "Community 750"
-Cohesion: 0.14
-Nodes (15): gpu_dispatch_1440p_bench(), gpu_dispatch_smoketest_256(), Adapter, ComputePipeline, Crystal, Instance, ObserverCoord, Option (+7 more)
+Cohesion: 0.09
+Nodes (27): cast_slice_is_byte_safe(), GpuCrystal, GpuObserver, pack_crystal(), pack_crystals(), pack_crystals_keeps_count(), pack_observer(), pack_observer_packs_blend_correctly() (+19 more)
 
 ### Community 751 - "Community 751"
 Cohesion: 0.13
 Nodes (21): cap_token_required_for_set(), default_tunable_specs(), defaults_have_unique_ids(), defaults_have_unique_names(), defaults_register_cleanly(), every_default_in_range(), every_default_kind_matches_range(), every_default_kind_matches_value() (+13 more)
 
 ### Community 752 - "Community 752"
-Cohesion: 0.17
-Nodes (11): Dropdown, dropdown_click_outside_collapses(), dropdown_disabled_ignores(), dropdown_down_advances_selection(), dropdown_enter_toggles_expansion(), dropdown_escape_collapses_when_expanded(), dropdown_new_clamps_index(), EventResult (+3 more)
+Cohesion: 0.15
+Nodes (12): PaintContext, Dropdown, dropdown_click_outside_collapses(), dropdown_disabled_ignores(), dropdown_down_advances_selection(), dropdown_enter_toggles_expansion(), dropdown_escape_collapses_when_expanded(), dropdown_new_clamps_index() (+4 more)
 
 ### Community 753 - "Community 753"
 Cohesion: 0.21
@@ -5000,7 +5073,7 @@ Cohesion: 0.15
 Nodes (25): cap_check_default_deny(), cap_check_passes_when_all_bits_present(), cohort_saturates_at_255(), confidence_out_of_range_rejected(), derive_emitter_handle(), derive_payload_hash(), derive_sig(), FederationKind (+17 more)
 
 ### Community 757 - "Community 757"
-Cohesion: 0.08
+Cohesion: 0.09
 Nodes (20): InspectError, Inspector, Cap, DevMode, MortonKey, Self, debug_impl_renders(), multiple_steps_accumulate_frames() (+12 more)
 
 ### Community 758 - "Community 758"
@@ -5008,12 +5081,12 @@ Cohesion: 0.15
 Nodes (16): anchor_hash_deterministic_and_state_dependent(), apply_update_basic_arithmetic(), apply_update_rejects_out_of_range(), ArchetypeId, BiasUpdateError, KanBiasUpdate, reset_cells_preserves_update_count(), BTreeMap (+8 more)
 
 ### Community 759 - "Community 759"
-Cohesion: 0.12
+Cohesion: 0.15
 Nodes (13): AssetWatcher, close_drops_pending_events(), events_delivered_increments(), poll_on_empty_returns_empty_vec(), push_after_close_errors(), push_then_poll_drains_queue(), Into, Self (+5 more)
 
 ### Community 760 - "Community 760"
-Cohesion: 0.11
-Nodes (9): AddressingModel, execution_model_catalog_complete(), ExecutionModel, MemoryModel, AddressingModel, Display, Formatter, MemoryModel (+1 more)
+Cohesion: 0.10
+Nodes (10): supports_diff_shader(), AddressingModel, execution_model_catalog_complete(), ExecutionModel, MemoryModel, AddressingModel, Display, Formatter (+2 more)
 
 ### Community 761 - "Community 761"
 Cohesion: 0.12
@@ -5037,7 +5110,7 @@ Nodes (12): Box, Option, Self, Vec, seed_cell_bounded(), SeedCell, stage0_known_
 
 ### Community 766 - "Community 766"
 Cohesion: 0.08
-Nodes (22): composed, config, constrained, constrainedConfig, constrainedText, conversation, diagnostic, diagnosticJob (+14 more)
+Nodes (25): ChatPrefs, coerce(), DEFAULT_CHAT_PREFS, defaultPrefs(), isSendKey(), readChatPrefs(), TextSize, transcriptOf() (+17 more)
 
 ### Community 767 - "Community 767"
 Cohesion: 0.16
@@ -5096,8 +5169,8 @@ Cohesion: 0.19
 Nodes (18): current_camera_at_player_focus_in_fps_mode(), default_mode_is_fps_locked(), dm_orchestrated_trigger_accepted_when_sovereign_enabled(), dm_trigger_rejected_when_sovereign_revoked(), four_mode_roundtrip_fps_to_third_to_iso_to_top_to_fps(), fov_lerps_between_modes_during_transition(), grant_sovereign_restores_normal_operation(), instant_snap_when_duration_zero() (+10 more)
 
 ### Community 781 - "Community 781"
-Cohesion: 0.16
-Nodes (10): f64_geometric_e0_squared_is_zero(), f64_geometric_e1_squared_is_scalar_one(), f64_reverse_is_involutive(), f64_to_f32_round_trip_preserves_value(), Multivector, Add, Mul, Neg (+2 more)
+Cohesion: 0.09
+Nodes (13): Grade, grade_of(), grade_table_self_consistent(), f64_geometric_e0_squared_is_zero(), f64_geometric_e1_squared_is_scalar_one(), f64_reverse_is_involutive(), f64_to_f32_round_trip_preserves_value(), Multivector (+5 more)
 
 ### Community 782 - "Community 782"
 Cohesion: 0.15
@@ -5112,16 +5185,16 @@ Cohesion: 0.12
 Nodes (12): all_twelve_roles_have_unique_slot_indices(), RenderGraphNode, RenderGraphNodeError, Self, stage5_input_buffers_match_spec(), stage5_output_buffers_match_spec(), Stage5Node, StageRole (+4 more)
 
 ### Community 785 - "Community 785"
-Cohesion: 0.12
-Nodes (26): MapView(), positionNodes(), CommandPalette(), ContextualSynapses(), PRIORITY, rank(), filterPublicSurfaceNodes(), findPublicSurfaceNodeForPath() (+18 more)
+Cohesion: 0.33
+Nodes (5): allowedExternalHosts, frontier, hrefs, ids, visited
 
 ### Community 786 - "Community 786"
 Cohesion: 0.11
 Nodes (27): bytes_in_use(), free_count(), abort_count(), exit_count(), last_exit_code(), re_exports_resolve(), panic_count(), capturing_closure_from_user_main_works() (+19 more)
 
 ### Community 787 - "Community 787"
-Cohesion: 0.13
-Nodes (21): RequestUserResult, firstHeader(), hasMemberChatReadOrigin(), MemberChatConversationSummary, MemberChatHistoryEntry, MemberChatHistoryPage, memberChatPublicError(), MemberChatStoreError (+13 more)
+Cohesion: 0.08
+Nodes (56): RequestUserResult, APOCRYPHA_MEMBER_CHAT_CAPABILITY, canonicalMemberChatCursor(), canonicalMemberChatMessage(), canonicalMemberChatVerifiedIdentity(), configuredClient(), enqueueMemberChat(), firstHeader() (+48 more)
 
 ### Community 788 - "Community 788"
 Cohesion: 0.14
@@ -5148,12 +5221,8 @@ Cohesion: 0.22
 Nodes (16): cycle_kind_advances_with_cap(), cycle_kind_default_deny_when_cap_off(), cycle_kind_wraps_after_16(), Default, Self, set_kind_default_deny(), set_kind_with_cap(), tick() (+8 more)
 
 ### Community 794 - "Community 794"
-Cohesion: 0.11
-Nodes (15): Self, is_token_byte(), Item, Iterator, Option, Self, Vec, Token (+7 more)
-
-### Community 795 - "Community 795"
-Cohesion: 0.23
-Nodes (24): canonicalMemberChatCursor(), canonicalMemberChatVerifiedIdentity(), configuredClient(), enqueueMemberChat(), getMemberChatJob(), historyWireBytes(), invalidProjection(), isMemberChatUuid() (+16 more)
+Cohesion: 0.14
+Nodes (20): cssl_abort_impl(), cssl_exit_impl(), exit_code_extremes_round_trip(), exit_then_abort_records_both(), ExitError, many_exits_in_loop_increment_count(), record_abort(), record_abort_does_not_touch_exit_state() (+12 more)
 
 ### Community 796 - "Community 796"
 Cohesion: 0.08
@@ -5168,8 +5237,8 @@ Cohesion: 0.16
 Nodes (15): Listener, listener_at_keeps_position(), listener_default_is_at_origin(), listener_set_gain_accepts_above_one(), listener_set_gain_clamps_negative(), listener_set_orientation_normalizes(), listener_set_position_updates(), listener_set_velocity_updates() (+7 more)
 
 ### Community 799 - "Community 799"
-Cohesion: 0.04
-Nodes (106): build_buffer_create_signature(), build_buffer_destroy_signature(), build_buffer_map_signature(), build_buffer_unmap_signature(), build_buffer_upload_signature(), build_cmd_buf_begin_signature(), build_cmd_buf_bind_descriptor_signature(), build_cmd_buf_bind_ibuf_signature() (+98 more)
+Cohesion: 0.05
+Nodes (46): build_xr_caps_current_signature(), build_xr_caps_grant_signature(), build_xr_caps_revoke_signature(), build_xr_input_state_signature(), build_xr_last_error_kind_signature(), build_xr_last_error_os_signature(), build_xr_pose_stream_signature(), build_xr_session_create_signature() (+38 more)
 
 ### Community 800 - "Community 800"
 Cohesion: 0.17
@@ -5185,11 +5254,11 @@ Nodes (14): AmplifiedFragment, attenuate_clamps_coefficient(), attenuate_scales_
 
 ### Community 803 - "Community 803"
 Cohesion: 0.18
-Nodes (14): CompanionEyeWitness, CompanionEyeWitnessError, CompanionSemanticFrameProvider, ConstantSemanticFrameProvider, error_to_event_emits_eye_redacted(), IrisDepthHint, provider_with_splat(), reflection_fails_when_absent() (+6 more)
+Nodes (13): cap_deny_still_blocks_in_stub(), fail_after_n_respects_counter(), mk(), AtomicU32, AtomicU64, Option, Self, SignalingMessage (+5 more)
 
 ### Community 804 - "Community 804"
-Cohesion: 0.20
-Nodes (23): build_wave_seed(), compute_pixel(), day_observer_at_origin(), destructive_interference_cancels(), determinism_across_invocations(), empty_field_zero_output(), holographic_reconstruction_replay_stable(), hsv_to_rgb() (+15 more)
+Cohesion: 0.17
+Nodes (17): de_b64(), decode_b64(), empty_from_rejected(), empty_to_rejected(), encode_b64(), MessageKind, mk(), payload_cap_enforced() (+9 more)
 
 ### Community 805 - "Community 805"
 Cohesion: 0.14
@@ -5204,8 +5273,8 @@ Cohesion: 0.18
 Nodes (11): Box, Option, Self, Vec, stage0_dim_mismatch_zero(), stage0_dot_correct(), stage0_rank_orders_correctly(), Stage0DotProductClassifier (+3 more)
 
 ### Community 808 - "Community 808"
-Cohesion: 0.25
-Nodes (13): broadcast_fans_out_to_all_known_peers(), cap_deny_send_when_only_recv(), concurrent_multipeer_no_corruption(), LoopbackTransport, mk(), multi_peer_inbox_isolation(), AtomicU64, HashMap (+5 more)
+Cohesion: 0.12
+Nodes (12): LlmBridge, Send, Sync, classify_template(), now_unix(), AtomicBool, FnMut, LlmConfig (+4 more)
 
 ### Community 809 - "Community 809"
 Cohesion: 0.15
@@ -5240,16 +5309,16 @@ Cohesion: 0.15
 Nodes (16): Aggregator, aggregator_error_counted_on_mcp_failure(), aggregator_fallback_counted(), aggregator_ingest_increments_count(), aggregator_min_max_sum_correct(), aggregator_reset_clears_counts(), aggregator_rolls_up_to_3_tiers(), base64_8() (+8 more)
 
 ### Community 817 - "Community 817"
-Cohesion: 0.21
-Nodes (12): adler32(), BitReader, BitReader<'a>, decode_distance(), decode_length(), inflate_fixed(), inflate_stored(), read_fixed_litlen() (+4 more)
+Cohesion: 0.16
+Nodes (8): audio_counters_default_all_zero(), AudioCaptureStream, AudioStreamConfig, capture_stream_returns_consent_error(), config_default_is_48k_stereo_256frame_shared(), Default, Self, ShareMode
 
 ### Community 818 - "Community 818"
-Cohesion: 0.18
+Cohesion: 0.17
 Nodes (16): BundleSource, empty_manifest(), ManifestSource, mock_bundle_source_missing_errors(), mock_bundle_source_returns_put_value(), mock_manifest_source_can_error(), mock_manifest_source_returns_set_value(), MockBundleSource (+8 more)
 
 ### Community 819 - "Community 819"
-Cohesion: 0.09
-Nodes (7): mangle_fragment_float_is_bit_repr(), mangle_fragment_int_negative(), mangle_fragment_int_positive(), mangle_fragment_str_is_hash_based(), mangle_fragment_sym_distinct_from_str(), mangle_fragment_tuple_recursive(), Hash
+Cohesion: 0.08
+Nodes (8): CompIntWidth, mangle_fragment_float_is_bit_repr(), mangle_fragment_int_negative(), mangle_fragment_int_positive(), mangle_fragment_str_is_hash_based(), mangle_fragment_sym_distinct_from_str(), mangle_fragment_tuple_recursive(), Hash
 
 ### Community 820 - "Community 820"
 Cohesion: 0.13
@@ -5268,16 +5337,16 @@ Cohesion: 0.06
 Nodes (34): budget_headroom_positive_when_under(), budget_over_budget_when_exceeded(), budget_quest3_ceiling_2_5(), budget_vision_pro_ceiling_2_0(), BudgetError, BudgetValidator, project_quest3_writes_projected_ms(), pulldown_aesthetic_cost_increases() (+26 more)
 
 ### Community 824 - "Community 824"
-Cohesion: 0.15
-Nodes (10): BundleManifest, cc0_record(), FileEntry, FileKind, manifest_roundtrip_serde(), MaterialEntry, Option, Vec (+2 more)
+Cohesion: 0.21
+Nodes (13): PendingConsent, formatHits(), guardedFetch(), isPrivateAddress(), ownsWebTool(), parseDuckDuckGo(), PROVIDERS, readCapped() (+5 more)
 
 ### Community 825 - "Community 825"
-Cohesion: 0.10
-Nodes (17): make_buffer(), map_resource_options(), map_storage_mode(), BufferHandle, BufferInner, BufferUsage, clone_handle_preserves_record_and_cap(), ManagedBufferSync (+9 more)
+Cohesion: 0.12
+Nodes (11): BufferHandle, BufferInner, BufferUsage, clone_handle_preserves_record_and_cap(), ManagedBufferSync, MetalResult, Self, stub_buffer_records_byte_len_mode_usage() (+3 more)
 
 ### Community 826 - "Community 826"
-Cohesion: 0.19
-Nodes (19): isWorkerFenceFailure(), redactDetail(), required(), RETRY_SAFE_RPCS, retryOnGatewayError(), workerDatabaseError, workerRpc(), handler() (+11 more)
+Cohesion: 0.17
+Nodes (23): assertWorkerRequest(), publicJobError(), objectField(), isWorkerFenceFailure(), redactDetail(), required(), RETRY_SAFE_RPCS, retryOnGatewayError() (+15 more)
 
 ### Community 827 - "Community 827"
 Cohesion: 0.12
@@ -5300,8 +5369,8 @@ Cohesion: 0.14
 Nodes (17): Attestation, Attester, canonical_bytes_has_expected_shape(), content_hash_is_deterministic(), cross_key_signature_fails_verify(), decide_attestation(), decide_attestation_divergent_hashes_produces_diverged(), decide_attestation_matching_hashes_produces_attested() (+9 more)
 
 ### Community 832 - "Community 832"
-Cohesion: 0.08
-Nodes (38): AuditSink, Cap, Cap<T>, Cap<Tweak>, closed_registry_refuses_new_registrations(), Entry, float_spec(), frame_counter_increments() (+30 more)
+Cohesion: 0.12
+Nodes (23): Control, createRemoteControlHandler(), nullableSha(), record(), sha(), timestamp(), verifiedProjection(), validBridgeCodePath() (+15 more)
 
 ### Community 833 - "Community 833"
 Cohesion: 0.16
@@ -5316,8 +5385,8 @@ Cohesion: 0.16
 Nodes (15): build_d3d12_schedule(), estimated_memory_scales_with_entry_count(), from_schedule_carries_label_as_program_name(), from_schedule_emits_one_entry_per_compute_node(), from_schedule_refuses_non_dx12_backend(), from_schedule_refuses_program_name_over_64_chars(), iter_entries_visits_all_in_order(), mesh_entry_count_when_mesh_node_present() (+7 more)
 
 ### Community 836 - "Community 836"
-Cohesion: 0.15
-Nodes (14): apockalypse_engine_default_starts_at_stub_phase(), ApockalypseEngine, ApockalypsePhase, phase_history_is_append_only(), PhaseHistoryEntry, Default, Self, Vec (+6 more)
+Cohesion: 0.16
+Nodes (13): apockalypse_engine_default_starts_at_stub_phase(), ApockalypseEngine, ApockalypsePhase, phase_history_is_append_only(), PhaseHistoryEntry, Default, Self, Vec (+5 more)
 
 ### Community 837 - "Community 837"
 Cohesion: 0.16
@@ -5328,8 +5397,8 @@ Cohesion: 0.09
 Nodes (6): ctx_for(), pipeline_p50_reads_nan_when_metrics_off(), pipeline_run_frame_works_both_configs(), pipeline_runs_with_no_overhead_observable(), pipeline_total_samples_nonzero_when_on(), PassContext
 
 ### Community 839 - "Community 839"
-Cohesion: 0.19
-Nodes (19): WiredFrameInput, ContentIngest, ContentState, default_state_is_empty(), make_quality_signal(), make_rating(), multiple_ratings_accumulate_counters(), quality_signal_ingest_appends_to_log() (+11 more)
+Cohesion: 0.21
+Nodes (18): ContentIngest, ContentState, default_state_is_empty(), make_quality_signal(), make_rating(), multiple_ratings_accumulate_counters(), quality_signal_ingest_appends_to_log(), rating_submit_default_deny_increments_denials() (+10 more)
 
 ### Community 840 - "Community 840"
 Cohesion: 0.17
@@ -5345,7 +5414,7 @@ Nodes (28): binary_addition_int(), binary_comparison_lt(), binary_division_by_ze
 
 ### Community 843 - "Community 843"
 Cohesion: 0.12
-Nodes (13): bank_full_renders_capacity(), format_mismatch_renders_both_formats(), host_audio_wraps_underlying_error(), invalid_constructor_carries_context(), mixer_full_renders_active_count(), MixError, From, Into (+5 more)
+Nodes (12): bank_full_renders_capacity(), bus_not_found_renders_id(), format_mismatch_renders_both_formats(), host_audio_wraps_underlying_error(), invalid_constructor_carries_context(), mixer_full_renders_active_count(), MixError, From (+4 more)
 
 ### Community 844 - "Community 844"
 Cohesion: 0.16
@@ -5364,24 +5433,24 @@ Cohesion: 0.18
 Nodes (16): build_record(), build_record_iso_now(), build_record_sha_included(), days_to_ymd(), from_fetcher_license(), map_kenney(), map_license_string(), map_opengameart() (+8 more)
 
 ### Community 848 - "Community 848"
-Cohesion: 0.19
-Nodes (16): config, isRetiredWebRuntimeRequest(), isUnbrokeredPrivateRuntimeRequest(), makeCsp(), middleware(), requestHost(), RETIRED_EXACT_PATHS, RETIRED_PATH_PREFIXES (+8 more)
+Cohesion: 0.13
+Nodes (24): APOCV4_WEB_RUNTIME_STATE, config, isRetiredWebRuntimeRequest(), isUnbrokeredPrivateRuntimeRequest(), makeCsp(), middleware(), requestHost(), RETIRED_EXACT_PATHS (+16 more)
 
 ### Community 849 - "Community 849"
-Cohesion: 0.12
-Nodes (26): checkAssetLicense(), filterByLicense(), License, LicenseCheck, normalizeLicense(), PERMITTED_FOR_ASSETS, PERMITTED_LICENSES, AssetResult (+18 more)
+Cohesion: 0.08
+Nodes (22): composed, config, constrained, constrainedConfig, constrainedText, conversation, diagnostic, diagnosticJob (+14 more)
 
 ### Community 850 - "Community 850"
-Cohesion: 0.05
-Nodes (54): AtomicMode, Option, declare_caps_adds_atomic_fadd_capability_for_native_mode(), declare_caps_adds_coop_matrix_capability(), declare_caps_omits_atomic_fadd_capability_for_cas_mode(), declare_caps_unsupported_target_rejected(), declare_diff_shader_caps(), default_forward_config_validates() (+46 more)
+Cohesion: 0.06
+Nodes (51): AtomicMode, Option, declare_caps_adds_atomic_fadd_capability_for_native_mode(), declare_caps_adds_coop_matrix_capability(), declare_caps_omits_atomic_fadd_capability_for_cas_mode(), declare_caps_unsupported_target_rejected(), declare_diff_shader_caps(), default_forward_config_validates() (+43 more)
 
 ### Community 851 - "Community 851"
 Cohesion: 0.07
 Nodes (35): agency_triple_builder_sets_three_legs(), agency_verified_full_triple_no_efr0023(), agency_verified_full_violation_aggregation(), agency_verified_no_legs_efr0023(), agency_verified_partial_legs_efr0023(), agency_verified_sovereign_touch_no_audit_efr0025(), agency_verified_sovereign_touch_with_audit_clean(), agency_verified_user_privilege_efr0024() (+27 more)
 
 ### Community 852 - "Community 852"
-Cohesion: 0.10
-Nodes (22): cap_map_roundtrip(), CapCtx, CapMap, capty(), check_capabilities(), closure_capture_default_cap(), empty_module_produces_empty_cap_map(), heap_op_capability() (+14 more)
+Cohesion: 0.09
+Nodes (25): HirId, Display, cap_map_roundtrip(), CapCtx, CapMap, capty(), check_capabilities(), closure_capture_default_cap() (+17 more)
 
 ### Community 853 - "Community 853"
 Cohesion: 0.11
@@ -5400,20 +5469,20 @@ Cohesion: 0.21
 Nodes (18): consensus_disagree_emits_flag_and_tie_breaks_low_sig_wins(), consensus_disagree_swap_sigs_winner_swaps(), consensus_tamper_detected_short_circuits_to_tamper(), consensus_verified_when_both_agree(), ConsensusReport, ConsensusValidator, ConsensusValidator<A>, make_view() (+10 more)
 
 ### Community 857 - "Community 857"
-Cohesion: 0.14
-Nodes (20): cssl_abort_impl(), cssl_exit_impl(), exit_code_extremes_round_trip(), exit_then_abort_records_both(), ExitError, many_exits_in_loop_increment_count(), record_abort(), record_abort_does_not_touch_exit_state() (+12 more)
+Cohesion: 0.35
+Nodes (21): resetApocryphaServiceClientForTests(), assert(), assertUnauthorized(), invokeClaim(), invokeWorker(), jsonResponse(), main(), MockResponse (+13 more)
 
 ### Community 858 - "Community 858"
 Cohesion: 0.28
 Nodes (16): AuditKind, balance_apply_requires_user_confirm(), confirm_keep_skips_auto_revert(), cosmetic_auto_applies_end_to_end(), cosmetic_class_immune_to_revert_window(), HotfixStream<'src>, manual_rollback_transitions_to_reverted(), MockClock (+8 more)
 
 ### Community 859 - "Community 859"
-Cohesion: 0.15
-Nodes (16): bridgeConfiguration, BridgeEnvelope, BridgeHttpResult, BridgeRequest, configuredBridgeQueue(), fetchBridge(), JobMetadata, NodeState (+8 more)
+Cohesion: 0.17
+Nodes (15): emit_crystal_active_weight_for_index_spirv(), emit_crystal_loop_accumulation_spirv(), emit_crystal_spatial_terms_spirv(), emit_load_crystal_array_slot_spirv(), emit_load_crystal_slot_spirv(), emit_substrate_storage_image_spirv(), emit_v13_probe_intensity_spirv(), push_f32_binary() (+7 more)
 
 ### Community 860 - "Community 860"
-Cohesion: 0.16
-Nodes (22): aad(), BRIDGE_RESULT_HEADERS, bridgeJobId(), bridgeSessionId(), createBridgeRequest(), decodeBase64(), derivedKey(), encryptBridge() (+14 more)
+Cohesion: 0.14
+Nodes (24): ReleaseShelf(), apocryphaRelease, ApocryphaReleaseManifest, ApocryphaReleaseState, boundedText(), documentBinding(), documentLink(), download() (+16 more)
 
 ### Community 861 - "Community 861"
 Cohesion: 0.24
@@ -5428,36 +5497,36 @@ Cohesion: 0.17
 Nodes (15): at_end_after_drain(), empty_file_yields_empty_replayer(), Replayer, rewind_returns_to_start(), AsRef, Instant, Option, Path (+7 more)
 
 ### Community 864 - "Community 864"
-Cohesion: 0.15
-Nodes (16): HttpMethod, HttpRequest, HttpResponse, mock_force_network_error_path(), mock_returns_network_error_when_unprogrammed(), mock_returns_programmed_reply(), MockHttpTransport, MockState (+8 more)
+Cohesion: 0.13
+Nodes (5): complete(), fixture(), reply(), SlowStream, Stream
 
 ### Community 865 - "Community 865"
 Cohesion: 0.16
 Nodes (25): argumentMap(), asBytes(), assertSafeInteger(), canonicalBytes(), canonicalize(), canonicalJson(), crc32(), createDeterministicArchive() (+17 more)
 
 ### Community 866 - "Community 866"
-Cohesion: 0.12
-Nodes (24): activeAllowlistRow(), boundedString(), ClinicalAllowlistRow, ClinicalAuthDependencies, ClinicalDossier, ClinicalDossierSection, ClinicalRouteDecision, ClinicalServiceClient (+16 more)
+Cohesion: 0.11
+Nodes (42): activeAllowlistRow(), boundedString(), ClinicalAllowlistRow, ClinicalAuthDependencies, ClinicalDossier, ClinicalDossierSection, ClinicalRouteDecision, ClinicalServiceClient (+34 more)
 
 ### Community 867 - "Community 867"
 Cohesion: 0.18
 Nodes (22): Context, context_at_now_uses_current_frame(), context_default_is_well_formed(), context_is_copy(), context_new_pins_all_fields(), current_frame(), frame_bucket_aliases_within_window(), frame_bucket_increments_each_60() (+14 more)
 
 ### Community 868 - "Community 868"
-Cohesion: 0.22
-Nodes (21): confidentiality_permits_read(), has_absolutely_banned_includes_surveillance_target(), has_biometric_confidentiality_detects_biometric_subject(), has_biometric_confidentiality_detects_body(), has_biometric_confidentiality_detects_face(), has_biometric_confidentiality_detects_gaze(), has_biometric_confidentiality_false_for_pure_user(), integrity_permits_influence() (+13 more)
+Cohesion: 0.11
+Nodes (6): CalloutKind, CalloutProps, STYLES, PrevNextNav(), PrevNextNavProps, getDocNeighbors()
 
 ### Community 869 - "Community 869"
-Cohesion: 0.18
-Nodes (17): MeraSkipDispatcher, body_conditioning_check(), driver_default_uses_default_raymarcher(), driver_stereo_run_writes_both_views(), output_budget_projects_under_quest3_ceiling(), output_telemetry_increments_total_steps(), Default, F (+9 more)
+Cohesion: 0.19
+Nodes (16): MeraSkipDispatcher, body_conditioning_check(), driver_default_uses_default_raymarcher(), driver_stereo_run_writes_both_views(), output_budget_projects_under_quest3_ceiling(), output_telemetry_increments_total_steps(), Default, F (+8 more)
 
 ### Community 870 - "Community 870"
 Cohesion: 0.18
 Nodes (24): append_mode_writes_to_end_of_file(), close_invalid_handle_returns_minus_one(), create_new_fails_when_file_exists(), cssl_fs_close_impl(), cssl_fs_open_impl(), cssl_fs_read_impl(), cssl_fs_write_impl(), open_invalid_flags_returns_invalid_handle() (+16 more)
 
 ### Community 871 - "Community 871"
-Cohesion: 0.15
-Nodes (13): AssetError, bad_checksum_constructor_renders_hex_pair(), bad_magic_caps_at_8_bytes(), bad_magic_constructor_renders_hex(), budget_constructor_renders_numbers(), encode_constructor(), invalid_constructor_carries_format_and_detail(), io_constructor_carries_path() (+5 more)
+Cohesion: 0.10
+Nodes (22): assert(), declarationsOnly, endpointContract(), expected, generatingWithAdmittedMemory, generatingWithoutDeadline, healthyAdapters, healthyOperations (+14 more)
 
 ### Community 872 - "Community 872"
 Cohesion: 0.16
@@ -5476,16 +5545,16 @@ Cohesion: 0.20
 Nodes (21): align_up(), AuxRecord, coff_long_symbol_name_uses_string_table(), coff_name(), coff_optional_header_size_is_zero(), coff_relocations_emitted_when_present(), coff_section_count_is_one(), coff_starts_with_machine_amd64() (+13 more)
 
 ### Community 877 - "Community 877"
-Cohesion: 0.21
-Nodes (13): CapError, fresh_keypair(), Option, Self, sign_a_cap(), SovereignCap, t01_signature_round_trip_verifies(), t02_verify_with_wrong_sovereign_pk_fails() (+5 more)
+Cohesion: 0.13
+Nodes (26): attr_matches(), binding_name(), collect_item(), collect_staged_fns(), count_block(), count_expr(), count_run_sites(), empty_module_yields_no_staged_decls() (+18 more)
 
 ### Community 878 - "Community 878"
 Cohesion: 0.19
 Nodes (16): BufWriter, append_survives_flush(), empty_recorder_creates_file(), multi_event_appends_n_lines(), Recorder, RecorderStats, AsRef, Drop (+8 more)
 
 ### Community 879 - "Community 879"
-Cohesion: 0.22
-Nodes (5): BridgeInput, decryptBridge(), BridgePersistence, BridgeQueue, stateText()
+Cohesion: 0.13
+Nodes (9): FILE_TOOLS, ToolContext, contains(), fold(), isSecretFile(), Workspace, WorkspaceError, WorkspaceRoot (+1 more)
 
 ### Community 880 - "Community 880"
 Cohesion: 0.25
@@ -5496,8 +5565,8 @@ Cohesion: 0.14
 Nodes (18): cap_required_fn_with_cap_emits_one_verify_op(), cap_verify_attribute_carries_cap_kind_for_audit(), cap_verify_op_lowers_through_jit_pre_scan(), cssl_rt_runtime_helper_round_trips_iso_fn_entry(), fn_with_iso_param(), audit_counters_track_total_and_denials(), cap_verify_impl(), __cssl_cap_verify() (+10 more)
 
 ### Community 882 - "Community 882"
-Cohesion: 0.09
-Nodes (23): handler(), assert(), declarationsOnly, endpointContract(), expected, generatingWithAdmittedMemory, generatingWithoutDeadline, healthyAdapters (+15 more)
+Cohesion: 0.15
+Nodes (25): APOCRYPHA_REQUIRED_MEMORY_ADAPTERS, ApocryphaExpectedConfiguration, ApocryphaQueueReadiness, ApocryphaReadinessProjection, ApocryphaRequiredMemoryAdapter, ApocryphaWorkerReadinessRow, boundedFreshnessWindow(), hasCapability() (+17 more)
 
 ### Community 883 - "Community 883"
 Cohesion: 0.05
@@ -5512,8 +5581,8 @@ Cohesion: 0.08
 Nodes (26): aggregator_empty_is_ok(), combine(), deg(), engine_health(), fail(), failed_dominates_degraded(), HealthAggregate, HealthEntry (+18 more)
 
 ### Community 886 - "Community 886"
-Cohesion: 0.22
-Nodes (9): host_flag_preserved(), idle_after_30s(), last_seen_update_resets_idle(), new_peer_not_idle(), Peer, Option, Self, serde_roundtrip() (+1 more)
+Cohesion: 0.16
+Nodes (14): alias_rights_predicates(), AliasMatrix, AliasRights, iter_returns_six_rows(), passing_iso_to_iso_allowed_linear(), passing_iso_to_val_allowed_via_freeze(), passing_val_to_iso_blocked(), passing_val_to_val_allowed() (+6 more)
 
 ### Community 887 - "Community 887"
 Cohesion: 0.16
@@ -5584,20 +5653,20 @@ Cohesion: 0.09
 Nodes (7): frequency_one_in_n_within_bound_property(), one_in_n_deterministic_repeated_calls(), Default, MetricResult, Self, SamplingDiscipline, strict_mode_check_refuses_adaptive()
 
 ### Community 904 - "Community 904"
-Cohesion: 0.26
-Nodes (9): MlirPrinter, print_empty_module(), print_fn_signature(), print_fn_with_effect_row_attribute(), print_fn_with_ops(), print_module(), print_named_module(), print_op_with_results_and_operands() (+1 more)
+Cohesion: 0.18
+Nodes (24): AdapterAttemptOutcome, aggregateProbeResults(), boundedJson(), boundedResponseText(), canonicalReadingQuery(), completedProbeAt(), Fetch, invokeAdapter() (+16 more)
 
 ### Community 905 - "Community 905"
-Cohesion: 0.20
-Nodes (6): FreezeSystem, Default, Self, SystemId, Vec, SimSystem
+Cohesion: 0.15
+Nodes (11): BoolGen, FloatGen, Generator, IntGen, Lcg, lcg_gen_i64_stays_in_range(), lcg_gen_unit_f64_stays_in_unit_interval(), T (+3 more)
 
 ### Community 906 - "Community 906"
 Cohesion: 0.05
 Nodes (49): get_missing_returns_not_found(), InMemoryBackend, new_backend_is_empty(), PersistenceBackend, PersistError, put_and_get(), put_overwrites_same_key_once_in_order(), rec() (+41 more)
 
 ### Community 907 - "Community 907"
-Cohesion: 0.04
-Nodes (62): approvedRecordRoot, conversationIndexUrls, corpusRoot, EXPECTED_QUALITY_AUDIT, EXPECTED_STRUCTURAL_EXCLUSIONS, expectedSlugs, failures, FORBIDDEN (+54 more)
+Cohesion: 0.15
+Nodes (26): buildPublicAggregate(), COUNT_KEYS, exactKeys(), factsPath, fail(), findPublicAggregateOutputDrift(), FORBIDDEN_KEYS, FORBIDDEN_STRINGS (+18 more)
 
 ### Community 908 - "Community 908"
 Cohesion: 0.17
@@ -5612,8 +5681,8 @@ Cohesion: 0.08
 Nodes (39): alloc_count(), alloc_count_total_matches_history(), AllocTracker, arena_alignment_is_respected(), arena_alloc_beyond_capacity_returns_null(), arena_basic_alloc_returns_non_null_within_capacity(), arena_drop_releases_chunk_via_tracker(), arena_non_power_of_two_align_returns_null() (+31 more)
 
 ### Community 911 - "Community 911"
-Cohesion: 0.17
-Nodes (12): add_42_kernel_carries_constant(), config_clone(), copy_kernel_config_uses_main_entry(), fullscreen_tri_config_has_vs_and_fs_entries(), ComputePipeline, Option, RenderPipeline, Self (+4 more)
+Cohesion: 0.14
+Nodes (24): chunkMessage(), DiscordRest, fenceStateAfter(), INVITE_PERMISSIONS, LogFn, RestOptions, retryAfterMs(), SendOptions (+16 more)
 
 ### Community 912 - "Community 912"
 Cohesion: 0.15
@@ -5628,16 +5697,16 @@ Cohesion: 0.21
 Nodes (15): empty_tree_has_zero_root(), hash_leaf(), hash_node(), inclusion_proof_round_trip(), InclusionProof, IncrementalMerkle, root_changes_with_append(), Option (+7 more)
 
 ### Community 915 - "Community 915"
-Cohesion: 0.20
-Nodes (10): a_conversation_holds_one_unconfirmed_message_at_a_time(), damaged_storage_is_refused_rather_than_half_loaded(), reject(), RequestJournal, resolving_a_different_request_does_nothing(), BTreeMap, ProtocolError, Vec (+2 more)
+Cohesion: 0.14
+Nodes (14): AuditAxis, AuditEvent, AuditPort, NullAuditPort, Self, Send, Sync, Vec (+6 more)
 
 ### Community 916 - "Community 916"
 Cohesion: 0.18
 Nodes (18): composed_output_respects_epsilon(), default_level_depth_zero(), DetailLevel, full_tier_five_levels(), full_tier_produces_non_zero(), high_floor_truncates_recursion(), mid_tier_two_levels(), new_default_well_formed() (+10 more)
 
 ### Community 917 - "Community 917"
-Cohesion: 0.08
-Nodes (12): ModifierKeys, Display, Formatter, EventResult, KeyCode, MouseButton, Option, Point (+4 more)
+Cohesion: 0.05
+Nodes (18): KeyCode, ModifierKeys, MouseButton, Display, Formatter, KeyCode, MouseButton, ScrollDelta (+10 more)
 
 ### Community 918 - "Community 918"
 Cohesion: 0.12
@@ -5664,8 +5733,8 @@ Cohesion: 0.13
 Nodes (10): ApprovalState, Handoff, Into, Option, Self, Vec, ToolCall, ToolName (+2 more)
 
 ### Community 924 - "Community 924"
-Cohesion: 0.19
-Nodes (10): is_apple_host(), is_apple_host_is_const_evaluable(), Command, VerifyArgs, ExitCode, Path, run(), run_with_source() (+2 more)
+Cohesion: 0.18
+Nodes (18): AttestationVerdict, Into, Self, Vec, SessionAttestation, attestation_block_clean_for_no_flags(), attestation_block_dedupes_axes(), attestation_block_warns_with_flag_summary() (+10 more)
 
 ### Community 926 - "Community 926"
 Cohesion: 0.08
@@ -5676,20 +5745,20 @@ Cohesion: 0.13
 Nodes (20): caps_default_loopback_only(), current(), grant_inbound(), grant_outbound(), inbound_granted(), lock_and_reset_net(), loopback_granted(), net_error_from_last_returns_other_with_os_code() (+12 more)
 
 ### Community 928 - "Community 928"
-Cohesion: 0.13
-Nodes (8): fresh_meta_is_empty(), MetaErr, MetaProgress, BTreeSet, Default, Into, Self, spend_underflow_fails()
+Cohesion: 0.10
+Nodes (14): ComputePsoDesc, GraphicsPsoDesc, PipelineState, Debug, Formatter, ID3D12PipelineState, Option, Self (+6 more)
 
 ### Community 929 - "Community 929"
 Cohesion: 0.13
 Nodes (13): add_signature_takes_two_jets(), binary_order_mismatch_rejected(), construct_arity_check_rejects_wrong_count(), JetError, JetOp, JetOrder, JetSignature, order_ordering_total() (+5 more)
 
 ### Community 930 - "Community 930"
-Cohesion: 0.19
-Nodes (16): both_fail_returns_last_err(), cap_deny_bypasses_fallback(), mk(), poll_transient_failover_works(), primary_fail_fallback_succeeds(), primary_success_no_fallback_invocation(), Box, Option (+8 more)
+Cohesion: 0.18
+Nodes (14): CompanionEyeWitness, CompanionEyeWitnessError, CompanionSemanticFrameProvider, ConstantSemanticFrameProvider, error_to_event_emits_eye_redacted(), IrisDepthHint, provider_with_splat(), reflection_fails_when_absent() (+6 more)
 
 ### Community 932 - "Community 932"
-Cohesion: 0.21
-Nodes (14): EXPLORE, extProps(), isActivePath(), LEGAL, NAV, NavItem, SiteShell(), akashicDisable() (+6 more)
+Cohesion: 0.09
+Nodes (20): checked, current, externalReviewRoot, facts, factsBytes, generated, messageDrift, missingMode (+12 more)
 
 ### Community 933 - "Community 933"
 Cohesion: 0.23
@@ -5720,12 +5789,12 @@ Cohesion: 0.11
 Nodes (21): gaze_sample_fully_tracked_usable(), gaze_sample_identity_untracked(), gaze_sample_into_labeled_carries_gaze_domain(), gaze_sample_label_bottom_does_not_relax_gate(), gaze_sample_pair_into_labeled_carries_gaze_domain(), GazeSample, GazeSamplePair, GazeTrackingFlags (+13 more)
 
 ### Community 941 - "Community 941"
-Cohesion: 0.15
-Nodes (10): config_defaults_to_no_msaa_no_mips(), render_target_2d_has_render_attachment(), Option, Self, Texture, TextureView, storage_2d_r32u_has_storage_binding(), WebGpuTexture (+2 more)
+Cohesion: 0.18
+Nodes (13): Constraints, RequestError, Default, Into, Self, Vec, SelfAuthorKind, SelfAuthorRequest (+5 more)
 
 ### Community 942 - "Community 942"
-Cohesion: 0.18
-Nodes (10): cache_dir_creation(), cross_source_search_concatenates(), evict_to_zero_clears_cache(), fetch_then_cached_no_re_download(), lru_evicts_oldest_first(), meta_sidecar_round_trip(), PathBuf, sources_registered_in_known_order() (+2 more)
+Cohesion: 0.13
+Nodes (8): BackendStream, c_void, Library, Option, Self, Send, Sync, try_load_audio_toolbox()
 
 ### Community 943 - "Community 943"
 Cohesion: 0.10
@@ -5736,8 +5805,8 @@ Cohesion: 0.09
 Nodes (9): BridgeNetwork(), GraphNode, graphProjection(), MODEL_AXES, ProvenanceLedger(), TopicLinks(), topicTitle(), TRACKS (+1 more)
 
 ### Community 945 - "Community 945"
-Cohesion: 0.08
-Nodes (52): APOCRYPHA_DESTINATION_ENTITY, byteEntropy(), canonicalInstant(), canonicalJson(), canonicalRefs(), CHAOS_SOURCE_PRODUCT, ChaosIngressCode, ChaosIngressError (+44 more)
+Cohesion: 0.18
+Nodes (23): byteEntropy(), canonicalInstant(), canonicalRefs(), constantTimeHexEqual(), exactKeys(), fail(), FORBIDDEN_AUTHORITY_OR_STATE_FIELDS, hasShortRepeatingPeriod() (+15 more)
 
 ### Community 946 - "Community 946"
 Cohesion: 0.16
@@ -5756,8 +5825,8 @@ Cohesion: 0.19
 Nodes (15): apply_facet(), clone_then_to_field(), LegacyTensor<f32, 3>, LegacyTensor<f64, 3>, LegacyTensorMigration, migrate_rank3_density_populates_field(), migrate_rank3_enthalpy_clamps_negative_to_zero(), migrate_rank3_psi_writes_overlay() (+7 more)
 
 ### Community 950 - "Community 950"
-Cohesion: 0.09
-Nodes (26): append_input_event(), equality_compares_full_log(), frame_extraction_works_for_all_variants(), fresh_log_empty(), inputs_at_frame_filters(), master_seed_round_trips(), max_frame_tracks_highest(), ReplayEntry (+18 more)
+Cohesion: 0.21
+Nodes (13): CapError, fresh_keypair(), Option, Self, sign_a_cap(), SovereignCap, t01_signature_round_trip_verifies(), t02_verify_with_wrong_sovereign_pk_fails() (+5 more)
 
 ### Community 951 - "Community 951"
 Cohesion: 0.08
@@ -5784,16 +5853,16 @@ Cohesion: 0.13
 Nodes (14): default_pipeline(), default_pipeline_uses_120hz_target(), legacy_60hz_pipeline(), legacy_60hz_pipeline_targets_60(), metrics_jsonl(), metrics_jsonl_is_parseable_shape(), stretch_144hz_pipeline(), stretch_144hz_pipeline_targets_144() (+6 more)
 
 ### Community 957 - "Community 957"
-Cohesion: 0.21
-Nodes (8): D3d12Error, hresult_constructor_renders_human_message(), invalid_constructor(), loader_constructor_carries_detail(), no_adapter_constructor(), Into, Self, unsupported_constructor()
+Cohesion: 0.20
+Nodes (20): make_bridge(), Box, LlmConfig, cfg(), chat_returns_network_error_when_unreachable(), cost_estimate_ollama_zero(), make_bridge_ollama_default_endpoint(), make_bridge_ollama_requires_cap() (+12 more)
 
 ### Community 958 - "Community 958"
 Cohesion: 0.09
 Nodes (23): Acknowledgments, § ATTESTATION, Compiler features F1..F6 closed, CSSLv3 v1.1.0 — substrate-evolution + signature-rendering, Effect-rows : new substrate + conservation rows, Migration guide — v1.0 → v1.1, OpenXR is now part of the host surface, Per-crate quick-reference (+15 more)
 
 ### Community 959 - "Community 959"
-Cohesion: 0.26
-Nodes (21): emptyCycles(), emptyEvents(), emptyHeartbeat(), emptyPauseState(), isOnline(), assert(), eq(), runAll() (+13 more)
+Cohesion: 0.12
+Nodes (10): CollaboratorSpecialist, DmSpecialist, GmSpecialist, obs_digest(), observation_byte_stability(), observe_common(), Default, Role (+2 more)
 
 ### Community 960 - "Community 960"
 Cohesion: 0.21
@@ -5812,16 +5881,16 @@ Cohesion: 0.16
 Nodes (16): apply_recovers_target_state(), apply_rejects_baseline_tick_mismatch(), cell(), CellChange, delta_captures_removals_and_sets(), delta_compresses_unchanged_cells(), empty_delta_when_states_equal(), for_recipient_filters_sensitive_loudly() (+8 more)
 
 ### Community 964 - "Community 964"
-Cohesion: 0.12
-Nodes (10): CollaboratorSpecialist, DmSpecialist, GmSpecialist, obs_digest(), observation_byte_stability(), observe_common(), Default, Role (+2 more)
+Cohesion: 0.10
+Nodes (16): approvedRecordRoot, conversationIndexUrls, corpusRoot, EXPECTED_QUALITY_AUDIT, EXPECTED_STRUCTURAL_EXCLUSIONS, expectedSlugs, failures, FORBIDDEN (+8 more)
 
 ### Community 965 - "Community 965"
-Cohesion: 0.16
-Nodes (14): alias_rights_predicates(), AliasMatrix, AliasRights, iter_returns_six_rows(), passing_iso_to_iso_allowed_linear(), passing_iso_to_val_allowed_via_freeze(), passing_val_to_iso_blocked(), passing_val_to_val_allowed() (+6 more)
+Cohesion: 0.20
+Nodes (10): OmegaSnapshot, OmegaStubField, BTreeMap, Option, Self, Vec, snapshot_bit_eq_detects_world_drift(), snapshot_bit_eq_self() (+2 more)
 
 ### Community 966 - "Community 966"
-Cohesion: 0.13
-Nodes (4): Mat4, mat4_to_from_cols_array_round_trip(), quat_proj_round_trip(), Vec4
+Cohesion: 0.23
+Nodes (16): all_channels_delta(), alpha_ignored_mode(), diff_inner(), diff_rgb(), diff_rgba(), DiffErr, DiffReport, empty_input_rejected() (+8 more)
 
 ### Community 967 - "Community 967"
 Cohesion: 0.21
@@ -5836,8 +5905,8 @@ Cohesion: 0.22
 Nodes (13): aggregate_excludes_rows_missing_cap_aggregate_public(), aggregate_excludes_withdrawn_from_count(), aggregate_filters_other_content_ids(), aggregate_hidden_below_k_floor_single(), aggregate_trending_at_k_floor_trending(), aggregate_visible_at_k_floor_single(), AggregateView, AggregateVisibility (+5 more)
 
 ### Community 970 - "Community 970"
-Cohesion: 0.27
-Nodes (13): AttestationStore, empty_session_id_save_errors(), list_sessions_returns_all_ids(), make_session(), missing_load_returns_io_error(), round_trip_via_disk_preserves_verdict(), Into, Path (+5 more)
+Cohesion: 0.19
+Nodes (14): CellKey, cell_key(), empty_grid_is_empty(), floor_div(), grid_build_is_deterministic(), grid_query_at_origin_finds_local_only(), grid_query_set_equivalent_to_brute_force(), mk() (+6 more)
 
 ### Community 971 - "Community 971"
 Cohesion: 0.22
@@ -5845,7 +5914,7 @@ Nodes (14): caps_allow_mic_permits_push(), caps_deny_mic(), mk_session(), remote
 
 ### Community 972 - "Community 972"
 Cohesion: 0.18
-Nodes (12): cosine_range(), cosine_self_is_one(), cosine_similarity(), dot_product(), dot_product_range(), hamming_anti_correlated(), hamming_distance(), hamming_random_pair_baseline() (+4 more)
+Nodes (24): empty_root(), leaf_hash(), merkle_path_of(), merkle_path_verify(), merkle_root_of(), MerkleStep, node_hash(), Digest (+16 more)
 
 ### Community 973 - "Community 973"
 Cohesion: 0.10
@@ -5865,11 +5934,11 @@ Nodes (13): PacingHint, PacingPolicy, Box, Option, Self, Send, Sync, stage0_defa
 
 ### Community 977 - "Community 977"
 Cohesion: 0.11
-Nodes (10): clamp(), radians_round_trip_with_degrees(), smoothstep(), smoothstep_endpoints_and_midpoint(), to_degrees(), to_radians(), wrap_angle(), wrap_angle_inside_principal_range_is_identity() (+2 more)
+Nodes (9): clamp(), radians_round_trip_with_degrees(), smoothstep(), smoothstep_endpoints_and_midpoint(), to_degrees(), to_radians(), wrap_angle(), wrap_angle_inside_principal_range_is_identity() (+1 more)
 
 ### Community 978 - "Community 978"
-Cohesion: 0.34
-Nodes (15): capture(), AnyPerfEntry, cleanups, getConnectionType(), installCLS(), installFCP(), installFID(), installINP() (+7 more)
+Cohesion: 0.13
+Nodes (8): fresh_meta_is_empty(), MetaErr, MetaProgress, BTreeSet, Default, Into, Self, spend_underflow_fails()
 
 ### Community 979 - "Community 979"
 Cohesion: 0.14
@@ -5880,8 +5949,8 @@ Cohesion: 0.12
 Nodes (7): AdaptiveDegrader, DegradationTier, FrameBudgetEnforcer, RefreshTarget, Default, Option, Self
 
 ### Community 981 - "Community 981"
-Cohesion: 0.19
-Nodes (17): begin(), end(), interleaved_pairs_match_innermost(), nested_pairs_have_increasing_depth(), pair_marks(), resolve_label(), Vec, single_pair_matches_with_depth_zero() (+9 more)
+Cohesion: 0.11
+Nodes (24): begin(), end(), interleaved_pairs_match_innermost(), nested_pairs_have_increasing_depth(), pair_marks(), resolve_label(), Vec, single_pair_matches_with_depth_zero() (+16 more)
 
 ### Community 982 - "Community 982"
 Cohesion: 0.06
@@ -5893,7 +5962,7 @@ Nodes (6): from_label_roundtrip(), Display, Formatter, Option, Self, SensitiveDo
 
 ### Community 984 - "Community 984"
 Cohesion: 0.13
-Nodes (13): build_test_scene(), cyclic_graph_returns_graph_error(), descendant_invisibility_propagates_through_full_submit(), drawable_mesh(), frustum_cull_skips_far_node(), Mesh, SceneGraph, scene_g() (+5 more)
+Nodes (14): build_test_scene(), cyclic_graph_returns_graph_error(), descendant_invisibility_propagates_through_full_submit(), drawable_mesh(), frustum_cull_skips_far_node(), pub_surface_constructible(), Mesh, SceneGraph (+6 more)
 
 ### Community 985 - "Community 985"
 Cohesion: 0.12
@@ -5904,15 +5973,15 @@ Cohesion: 0.22
 Nodes (21): approx(), math_plane_round_trip_through_pga_plane(), math_plane_to_plane(), pga_plane_normalize_matches_math_plane_unit_normal(), plane_reflection_matches_math_plane_reflection(), plane_to_math_plane(), point_to_vec3(), quat_compose_matches_rotor_compose() (+13 more)
 
 ### Community 987 - "Community 987"
-Cohesion: 0.04
-Nodes (51): CalloutKind, CalloutProps, STYLES, CodeBlock(), CodeBlockProps, COLORS, CSSL_KEYWORDS, CSSL_TYPE_KEYWORDS (+43 more)
+Cohesion: 0.15
+Nodes (16): bad_reloc_symbol_index_rejected(), duplicate_func_name_rejected(), emit_object_file(), extern_import_index_within_range(), host_default_picks_one_target(), magic_prefix(), ObjectError, ObjectTarget (+8 more)
 
 ### Community 988 - "Community 988"
 Cohesion: 0.13
 Nodes (13): clones_share_state(), consume_is_one_shot(), consume_triggers_and_records_reason(), fresh_token_not_triggered(), HaltInner, HaltState, HaltToken, Arc (+5 more)
 
 ### Community 989 - "Community 989"
-Cohesion: 0.23
+Cohesion: 0.22
 Nodes (8): progress_event_always_ignored(), progress_fraction_empty(), progress_fraction_full(), progress_fraction_overflow_clamps(), progress_indeterminate_builder(), ProgressBar, EventResult, Self
 
 ### Community 990 - "Community 990"
@@ -5924,16 +5993,16 @@ Cohesion: 0.20
 Nodes (13): mra_constant_signal_only_in_approx(), mra_daub4_three_level_roundtrip(), mra_daub6_two_level_roundtrip(), mra_energy_conservation(), mra_haar_one_level_roundtrip(), mra_haar_three_level_roundtrip(), mra_levels_count_consistent(), mra_threshold_zeroes_small_details() (+5 more)
 
 ### Community 992 - "Community 992"
-Cohesion: 0.14
-Nodes (28): extract_bwd_single_adjoint(), extract_tangent_only_drops_primal_result(), extract_tangent_only_variant(), full_chain_source_bwd_affine_adjoint(), full_chain_source_bwd_cube_adjoint(), full_chain_source_bwd_mul_per_param_adjoints(), full_chain_source_bwd_sq_adjoint(), full_chain_source_bwd_two_params_affine() (+20 more)
+Cohesion: 0.15
+Nodes (13): AssetError, bad_checksum_constructor_renders_hex_pair(), bad_magic_caps_at_8_bytes(), bad_magic_constructor_renders_hex(), budget_constructor_renders_numbers(), encode_constructor(), invalid_constructor_carries_format_and_detail(), io_constructor_carries_path() (+5 more)
 
 ### Community 993 - "Community 993"
 Cohesion: 0.06
-Nodes (32): compilerOptions, allowJs, baseUrl, esModuleInterop, forceConsistentCasingInFileNames, incremental, isolatedModules, jsx (+24 more)
+Nodes (33): compilerOptions, allowJs, baseUrl, esModuleInterop, forceConsistentCasingInFileNames, incremental, isolatedModules, jsx (+25 more)
 
 ### Community 994 - "Community 994"
-Cohesion: 0.16
-Nodes (15): C, KIND_COLOR, KIND_GLYPH, LiveFeed(), LiveFeedProps, C, KIND_COLOR, KIND_GLYPH (+7 more)
+Cohesion: 0.14
+Nodes (16): CooldownSlot, dm_calm_state_proposes_no_events(), dm_climax_to_relief_after_50_frames(), dm_cooldown_blocks_repeat_template_within_window(), dm_init_starts_in_calm(), dm_relief_to_calm_after_30_frames(), dm_tension_drives_buildup_transition(), DmDirector (+8 more)
 
 ### Community 995 - "Community 995"
 Cohesion: 0.14
@@ -5952,12 +6021,12 @@ Cohesion: 0.30
 Nodes (22): auditReference(), auditReferenceLinks(), probeReferenceUrl(), validateReferenceMetadata(), assert(), emptyReport, fixtureAtlas(), fixtureRecord() (+14 more)
 
 ### Community 999 - "Community 999"
-Cohesion: 0.22
-Nodes (16): APOCRYPHA_MEMBER_CHAT_CAPABILITY, config, assert(), assertPrivate(), equal(), historyEntry(), main(), MEMORY_HASH (+8 more)
+Cohesion: 0.08
+Nodes (22): composed, config, constrained, constrainedConfig, constrainedText, conversation, diagnostic, diagnosticJob (+14 more)
 
 ### Community 1000 - "Community 1000"
-Cohesion: 0.13
-Nodes (8): BackendStream, c_void, Library, Option, Self, Send, Sync, try_load_audio_toolbox()
+Cohesion: 0.12
+Nodes (6): AlwaysPrivate, AlwaysPublic, Display, Formatter, SigmaMaskCheck, SigmaPrivacy
 
 ### Community 1001 - "Community 1001"
 Cohesion: 0.06
@@ -5977,7 +6046,7 @@ Nodes (18): applyRoomContent(), clearTilt(), createMessage(), motionIsOff(), ren
 
 ### Community 1005 - "Community 1005"
 Cohesion: 0.06
-Nodes (12): StubNpcWorld, ActionKind, BtNode, BtStatus, NpcWorldRef, AuditSink, Box, Vec (+4 more)
+Nodes (13): StubNpcWorld, ActionKind, BtNode, BtStatus, NpcWorldRef, AuditSink, Box, Vec (+5 more)
 
 ### Community 1006 - "Community 1006"
 Cohesion: 0.11
@@ -6011,9 +6080,13 @@ Nodes (21): activeToc, args, card(), chapterCount, chapterRows, codex, data, dow
 Cohesion: 0.21
 Nodes (16): approx_eq(), Contact, contact_canonical_body_order(), contact_friction_restitution_stored(), contact_normal_flips_when_body_order_flips(), contact_normal_preserved_when_already_canonical(), contact_point_new_normalizes(), contact_point_zero_initial_impulses() (+8 more)
 
+### Community 1014 - "Community 1014"
+Cohesion: 0.22
+Nodes (21): build_enum_layout(), build_struct_layout(), hir_from(), lower_empty_module_gives_empty_mir(), lower_extern_fn_signature(), lower_fn_effect_row_formatted(), lower_function_signature(), lower_item_into() (+13 more)
+
 ### Community 1015 - "Community 1015"
 Cohesion: 0.06
-Nodes (30): AttributeFormat, AttributeSemantic, IndexFormat, layout_iter_yields_count(), Mesh, mesh_default_is_empty_and_undrawable(), mesh_drawable_requires_position_and_buffer(), mesh_primitive_count_indexed_triangles() (+22 more)
+Nodes (31): AttributeFormat, AttributeSemantic, IndexFormat, layout_iter_yields_count(), Mesh, mesh_default_is_empty_and_undrawable(), mesh_drawable_requires_position_and_buffer(), mesh_primitive_count_indexed_triangles() (+23 more)
 
 ### Community 1016 - "Community 1016"
 Cohesion: 0.09
@@ -6036,8 +6109,8 @@ Cohesion: 0.17
 Nodes (10): anchor_cadence_check(), anchor_ring_basic_push_and_seq(), anchor_ring_fifo_eviction_at_capacity(), AnchorRecord, AnchorRing, Box, Option, Self (+2 more)
 
 ### Community 1021 - "Community 1021"
-Cohesion: 0.32
-Nodes (18): activeRow, assert(), client(), dependencies(), equal(), request, run(), session() (+10 more)
+Cohesion: 0.34
+Nodes (15): capture(), AnyPerfEntry, cleanups, getConnectionType(), installCLS(), installFCP(), installFID(), installINP() (+7 more)
 
 ### Community 1022 - "Community 1022"
 Cohesion: 0.19
@@ -6061,11 +6134,11 @@ Nodes (10): Haar, haar_constant_signal_recon(), haar_known_pair_average_differen
 
 ### Community 1027 - "Community 1027"
 Cohesion: 0.13
-Nodes (12): Pipeline, Arc, Box, Default, Histogram, PassContext, Self, StageId (+4 more)
+Nodes (13): Pipeline, Arc, Box, Default, Histogram, PassContext, Self, StageId (+5 more)
 
 ### Community 1028 - "Community 1028"
-Cohesion: 0.23
-Nodes (6): C32, conj_negates_imaginary(), mul_matches_polar_definition(), polar_roundtrip_at_unit_amp(), Self, wrap_phase_into_principal_range()
+Cohesion: 0.11
+Nodes (5): kind_u16_sequential(), Formatter, scope_u16_unique_non_full(), ScopeDomain, TelemetryKind
 
 ### Community 1029 - "Community 1029"
 Cohesion: 0.16
@@ -6080,24 +6153,24 @@ Cohesion: 0.19
 Nodes (18): AcceptanceFailure, boundedText(), canonicalBaseUrl(), credentialHeaders(), DEFAULT_OBJECTIVE, jsonBody(), noStore(), protectedValues() (+10 more)
 
 ### Community 1032 - "Community 1032"
-Cohesion: 0.17
-Nodes (8): emit_object_module(), emit_object_module_succeeds_on_empty_module_post_g7(), emit_object_module_with_format(), emit_object_module_with_format_succeeds_for_each_format_post_g7(), host_default_format_is_platform_appropriate(), magic_prefix(), ObjectFormat, Vec
+Cohesion: 0.09
+Nodes (8): DiagnosticCode, prohibition_for_code(), prohibition_for_code_round_trip_for_named(), ProhibitionCodeTable, Display, Formatter, Option, t11_d129_codes_round_trip()
 
 ### Community 1033 - "Community 1033"
-Cohesion: 0.07
-Nodes (35): Notice, SpellbookPanel(), LocalSpellbookResult, ReadableStorage, readLocalSpellbook(), WritableStorage, writeLocalSpellbook(), parseSpellbook() (+27 more)
+Cohesion: 0.10
+Nodes (18): CapBits, LlmAuditEvent, LlmConfig, LlmMode, LlmRole, redact_api_key(), Default, Into (+10 more)
 
 ### Community 1034 - "Community 1034"
 Cohesion: 0.09
 Nodes (21): § A · Mycelium-Desktop Tauri Activation (item 3), Apocky-action checklist (post-build), Apocky-action checklist (post-W14-J), § B · Persistent-Daemon Scheduled-Task (item 5), Build commands (PowerShell, from repo-root), § C · Verification, Crash-resilience via journal-replay, Crate location + build (+13 more)
 
 ### Community 1035 - "Community 1035"
-Cohesion: 0.19
-Nodes (14): CellKey, cell_key(), empty_grid_is_empty(), floor_div(), grid_build_is_deterministic(), grid_query_at_origin_finds_local_only(), grid_query_set_equivalent_to_brute_force(), mk() (+6 more)
+Cohesion: 0.14
+Nodes (8): HostLabel, HostLabelScope, HostSensitiveTag, raw_roundtrip_all_combinations(), Display, Formatter, Option, Self
 
 ### Community 1036 - "Community 1036"
 Cohesion: 0.08
-Nodes (28): Fade, fade_advance_completes(), fade_advance_decrements(), fade_advance_saturates(), fade_in_starts_at_zero_targets_volume(), fade_out_starts_at_volume_targets_zero_retires(), fade_ramp_at_full_returns_target(), fade_ramp_at_half_returns_midpoint() (+20 more)
+Nodes (30): Fade, fade_advance_completes(), fade_advance_decrements(), fade_advance_saturates(), fade_in_starts_at_zero_targets_volume(), fade_out_starts_at_volume_targets_zero_retires(), fade_ramp_at_full_returns_target(), fade_ramp_at_half_returns_midpoint() (+22 more)
 
 ### Community 1037 - "Community 1037"
 Cohesion: 0.20
@@ -6144,8 +6217,8 @@ Cohesion: 0.15
 Nodes (11): FrameErr, Display, Error, Formatter, Cursor<'a>, LfrcErr, Display, Error (+3 more)
 
 ### Community 1048 - "Community 1048"
-Cohesion: 0.25
-Nodes (12): anchor_id_is_32_hex_chars(), deterministic_anchor_id(), empty_pubkey_rejects(), hex_first_n(), hex_nibble(), payload_change_changes_anchor_id(), pull_anchor_includes_kind_separation(), Self (+4 more)
+Cohesion: 0.21
+Nodes (12): adler32(), BitReader, BitReader<'a>, decode_distance(), decode_length(), inflate_fixed(), inflate_stored(), read_fixed_litlen() (+4 more)
 
 ### Community 1049 - "Community 1049"
 Cohesion: 0.10
@@ -6156,8 +6229,8 @@ Cohesion: 0.10
 Nodes (20): § 10 LOA-GDDs DISTILLATION → Infinity-Engine-Charter-source, § 10. STORY-ENGINE (narrative-atom + retroactive-substrate + storytelling-AI), § 11. MULTIPLAYER (persistence-architecture + asymmetric-coop), § 12. META-PROGRESSION (13-axes-coherence + meta-currency + base-camp), § 13.1 ‼ TIER-1 must-port-into-substrate, § 13.2 ‼ TIER-2 should-port-with-adaptation, § 13.3 TIER-3 inspiration-for-future, § 13.4 GAP-ANALYSIS top-3-NOT-yet-in-CSSLv3 ‼ (+12 more)
 
 ### Community 1051 - "Community 1051"
-Cohesion: 0.27
-Nodes (8): anonymized_pubkey_replacement(), egress_check(), EgressViolation, hex_prefix_8(), Display, Error, Formatter, sanitize_for_egress()
+Cohesion: 0.06
+Nodes (25): approx_eq(), Mat4, mat4_compose_associative(), mat4_identity_round_trip(), mat4_proj_round_trip(), mat4_rotation_matches_quaternion(), mat4_scale_scales_point_and_direction(), mat4_to_from_cols_array_round_trip() (+17 more)
 
 ### Community 1052 - "Community 1052"
 Cohesion: 0.14
@@ -6176,8 +6249,8 @@ Cohesion: 0.20
 Nodes (10): Default, Mul, Multivector, Self, Translator, translator_apply_to_origin_yields_translation(), translator_apply_translates_arbitrary_point(), translator_compose_sums_translations() (+2 more)
 
 ### Community 1056 - "Community 1056"
-Cohesion: 0.16
-Nodes (8): audio_counters_default_all_zero(), AudioCaptureStream, AudioStreamConfig, capture_stream_returns_consent_error(), config_default_is_48k_stereo_256frame_shared(), Default, Self, ShareMode
+Cohesion: 0.21
+Nodes (10): now_unix(), AgentLoop, contains_any(), LoopError, Arc, Box, Handoff, Self (+2 more)
 
 ### Community 1057 - "Community 1057"
 Cohesion: 0.16
@@ -6200,16 +6273,16 @@ Cohesion: 0.13
 Nodes (10): ctx_for(), percentile_each_stage_independent_aggregation(), percentile_long_run_caps_at_trend_window(), percentile_p50_p95_p99_finite_after_frames(), percentile_p50_reads_via_pipeline_match_via_histogram(), percentile_p95_reads_via_pipeline_match_via_histogram(), percentile_p99_reads_via_pipeline_match_via_histogram(), percentile_pipeline_p50_per_stage_finite() (+2 more)
 
 ### Community 1062 - "Community 1062"
-Cohesion: 0.15
-Nodes (4): DummyT, SignalingMessage, Vec, TransportResult
+Cohesion: 0.19
+Nodes (12): new_invoker_no_binary(), outcome_equality_shapes(), Option, PathBuf, Self, Vec, SpirvCrossInvocation, SpirvCrossInvoker (+4 more)
 
 ### Community 1063 - "Community 1063"
 Cohesion: 0.20
 Nodes (10): Camera, camera_default_at_room_center(), camera_default_looks_negative_z(), camera_view_proj_is_finite(), camera_yaw_quarter_turn_looks_right(), Default, Mat4, Quat (+2 more)
 
 ### Community 1064 - "Community 1064"
-Cohesion: 0.22
-Nodes (15): ProposedMotion, intent_from_capped(), intent_from_capped_passes_through_when_caps_on(), intent_from_capped_zeroes_when_caps_off(), last_proposed_is_cached(), MovementAugState, MovementIntentCapped, Default (+7 more)
+Cohesion: 0.26
+Nodes (14): intent_from_capped(), intent_from_capped_passes_through_when_caps_on(), intent_from_capped_zeroes_when_caps_off(), last_proposed_is_cached(), MovementAugState, MovementIntentCapped, Default, Self (+6 more)
 
 ### Community 1065 - "Community 1065"
 Cohesion: 0.17
@@ -6220,12 +6293,12 @@ Cohesion: 0.18
 Nodes (10): cmd_buffer_pool_linear_index_matches_layout(), cmd_buffer_recycle_attestation(), cpu_bench_1000_frames_under_120hz_budget(), frame_metrics_miss_flags_set_when_over_budget(), frame_slot_illegal_transitions_rejected(), mandatory_passes_recorded_attestation(), one_thousand_frames_cycle_without_leak(), set_target_hz_changes_budget() (+2 more)
 
 ### Community 1067 - "Community 1067"
-Cohesion: 0.20
-Nodes (11): audit_failure_is_swallowed(), default_disabled(), enable_disable_flips_flag(), noop_sink_path_compiles(), record_if_active_emits_when_enabled(), record_if_active_no_op_when_disabled(), AtomicU64, AuditSink (+3 more)
+Cohesion: 0.22
+Nodes (14): make_valid(), Rating, rating_pack_unpack_roundtrip_preserves_all_fields(), rating_rejects_missing_cap_rate(), rating_rejects_reserved_bits_set(), rating_rejects_stars_above_5(), rating_size_is_24_bytes(), rating_storage_key_is_distinct_per_rater() (+6 more)
 
 ### Community 1068 - "Community 1068"
-Cohesion: 0.10
-Nodes (11): PUBLIC_SURFACE_NODES, checkOnly, outputPath, projection, VIEWPORTS, atlas, experience, help (+3 more)
+Cohesion: 0.19
+Nodes (28): Act, addressedToUs(), addressReason(), auditLine(), decide(), Decision, isDirectMessage(), isHaltPhrase() (+20 more)
 
 ### Community 1069 - "Community 1069"
 Cohesion: 0.10
@@ -6240,12 +6313,12 @@ Cohesion: 0.36
 Nodes (18): check_prereqs(), check_source_tree(), compute_sha256(), emit_hashes(), emit_manifest(), err(), hr(), log() (+10 more)
 
 ### Community 1072 - "Community 1072"
-Cohesion: 0.16
-Nodes (14): BenchId, BenchResult, BenchSpec, diff_baseline(), diff_baseline_emits_one_row_per_matching_bench(), perf_event_buffer_drops_past_capacity(), perf_event_jsonl_round_trips_kind_and_payload(), PerfEvent (+6 more)
+Cohesion: 0.20
+Nodes (6): FreezeSystem, Default, Self, SystemId, Vec, SimSystem
 
 ### Community 1073 - "Community 1073"
-Cohesion: 0.11
-Nodes (19): ajv, ajv-formats, @axe-core/playwright, devDependencies, ajv, ajv-formats, @axe-core/playwright, @playwright/test (+11 more)
+Cohesion: 0.10
+Nodes (21): ajv, ajv-formats, @axe-core/playwright, devDependencies, ajv, ajv-formats, @axe-core/playwright, @playwright/test (+13 more)
 
 ### Community 1074 - "Community 1074"
 Cohesion: 0.13
@@ -6256,8 +6329,8 @@ Cohesion: 0.25
 Nodes (14): award_xp_advances_tier_when_threshold_crossed(), double_claim_denied(), fresh(), pause_blocks_xp_award(), premium_lock_denied_redemption(), premium_unlocked_after_purchase(), Progression, ProgressionEvent (+6 more)
 
 ### Community 1076 - "Community 1076"
-Cohesion: 0.17
-Nodes (4): ChatPattern, Debug, Formatter, PatternError
+Cohesion: 0.20
+Nodes (10): a_conversation_holds_one_unconfirmed_message_at_a_time(), damaged_storage_is_refused_rather_than_half_loaded(), reject(), RequestJournal, resolving_a_different_request_does_nothing(), BTreeMap, ProtocolError, Vec (+2 more)
 
 ### Community 1077 - "Community 1077"
 Cohesion: 0.17
@@ -6268,8 +6341,8 @@ Cohesion: 0.09
 Nodes (16): make_valid(), Review, review_rejects_body_too_long(), review_rejects_missing_cap_review_body(), review_rejects_zero_stars(), review_signing_payload_changes_with_body(), review_signing_payload_is_stable_under_content_change(), ReviewError (+8 more)
 
 ### Community 1079 - "Community 1079"
-Cohesion: 0.22
-Nodes (11): json_roundtrips(), Biome, Error, Into, Option, Self, Vec, RunShareReceipt (+3 more)
+Cohesion: 0.18
+Nodes (12): cosine_range(), cosine_self_is_one(), cosine_similarity(), dot_product(), dot_product_range(), hamming_anti_correlated(), hamming_distance(), hamming_random_pair_baseline() (+4 more)
 
 ### Community 1080 - "Community 1080"
 Cohesion: 0.20
@@ -6312,16 +6385,16 @@ Cohesion: 0.16
 Nodes (11): fnv1a_64(), CanaryGate, DisagreementKind, enrollment_deterministic(), force_off_never_enrolled(), force_on_always_enrolled(), pct_one_hundred_includes_all(), pct_zero_excludes_all() (+3 more)
 
 ### Community 1090 - "Community 1090"
-Cohesion: 0.09
-Nodes (16): CpuFeature, CpuFeatureSet, feature_set_add_contains(), feature_set_empty_summary(), feature_set_iter_is_sorted(), feature_set_summary_suffix(), feature_set_target_features_string(), BTreeSet (+8 more)
+Cohesion: 0.26
+Nodes (21): emptyCycles(), emptyEvents(), emptyHeartbeat(), emptyPauseState(), isOnline(), assert(), eq(), runAll() (+13 more)
 
 ### Community 1091 - "Community 1091"
 Cohesion: 0.16
 Nodes (11): BoostAffix, BoostSkinId, nan_hue_rejects(), out_of_range_density_rejects(), Default, Self, full_apex_loop_sprint_slide_jump_works(), fwd_xz() (+3 more)
 
 ### Community 1092 - "Community 1092"
-Cohesion: 0.03
-Nodes (164): DEFAULT_ALLOWLIST, firstHeaderValue(), getAccessTokenFromRequest(), getAdminAllowlist(), getRequestUser(), readCookie(), testAdminUser(), withTimeout() (+156 more)
+Cohesion: 0.17
+Nodes (9): fresh_main_loop(), halt_then_step_returns_halt_outcome(), inject_input_does_not_panic(), MainLoop, MainLoopOutcome, Into, Self, step_once_advances_tick_count() (+1 more)
 
 ### Community 1093 - "Community 1093"
 Cohesion: 0.29
@@ -6352,12 +6425,12 @@ Cohesion: 0.20
 Nodes (10): AudioRingBuffer, clear_resets(), duration_vs_capacity(), most_recent_time_ordered(), new_zeros(), push_fills(), ring_overwrites_on_overflow(), Self (+2 more)
 
 ### Community 1101 - "Community 1101"
-Cohesion: 0.11
-Nodes (14): conversationEntries, conversationRecord, embedRecord, filterYear, indexSummaries, linkCardRecord, linkedTextRecord, longestTitle (+6 more)
+Cohesion: 0.08
+Nodes (26): AssetMeta, License, LicenseFilter, catalog(), KenneySource, AssetSource, Default, Self (+18 more)
 
 ### Community 1102 - "Community 1102"
 Cohesion: 0.06
-Nodes (30): current_source_hasher(), current_source_hasher_visible_after_install(), install_source_hasher(), reset_source_hasher_for_test(), Option, SourceLocation, source_hash(), source_hash_distinct_per_path() (+22 more)
+Nodes (28): current_source_hasher_visible_after_install(), install_source_hasher(), reset_source_hasher_for_test(), SourceLocation, source_hash(), source_hash_distinct_per_path(), source_hash_uses_installed_hasher(), source_hash_zero_without_installed_hasher() (+20 more)
 
 ### Community 1103 - "Community 1103"
 Cohesion: 0.13
@@ -6372,16 +6445,16 @@ Cohesion: 0.23
 Nodes (12): ball_socket_constructed(), BallSocketJoint, distance_joint_target_stored(), DistanceJoint, hinge_joint_axis_normalized(), HingeJoint, Joint, joint_warm_start_impulse_zero_initially() (+4 more)
 
 ### Community 1106 - "Community 1106"
-Cohesion: 0.21
-Nodes (7): interner_deduplicates(), interner_overflow_saturates(), interner_roundtrip(), LabelInterner, HashMap, Option, Vec
+Cohesion: 0.43
+Nodes (7): anthropic_opus_pricing(), anthropic_typical_call(), estimate_usd(), ollama_zero(), LlmMode, substrate_zero(), cost_estimate_anthropic_opus()
 
 ### Community 1107 - "Community 1107"
 Cohesion: 0.19
 Nodes (13): dummy_request(), FractalAmplifierHandle, FractalDetailRequest, no_amplifier_flush_returns_count_and_resets(), no_amplifier_queue_depth_tracks_submits(), no_amplifier_submit_increments_counter(), NoFractalAmplifier, request_high_priority_face_on_with_budget() (+5 more)
 
 ### Community 1108 - "Community 1108"
-Cohesion: 0.30
-Nodes (13): ConversationMessageContent(), assert(), decodeEscapedTextOnce(), escapeAttr(), escapeHtml(), flushList(), markdownToHtml(), renderInline() (+5 more)
+Cohesion: 0.20
+Nodes (4): buildSystemPrompt(), summariseForConsent(), WorkAgent, TurnRunner
 
 ### Community 1109 - "Community 1109"
 Cohesion: 0.12
@@ -6404,8 +6477,8 @@ Cohesion: 0.19
 Nodes (12): key(), lbm_explicit_step(), lbm_step_blowup_clamps_to_zero(), lbm_step_diffuses_two_neighbours_toward_mean(), lbm_step_finite_difference_norm_bounded(), lbm_step_handles_axis_origin_no_underflow(), lbm_step_oob_band_returns_zero_touched(), lbm_step_preserves_isolated_amplitude_at_short_dt() (+4 more)
 
 ### Community 1114 - "Community 1114"
-Cohesion: 0.18
-Nodes (8): backend_unsupported_classifies(), cycle_constructor(), duplicate_constructor(), invalid_args_constructor(), Into, Self, undeclared_constructor(), WorkGraphError
+Cohesion: 0.11
+Nodes (15): Self, is_token_byte(), Item, Iterator, Option, Self, Vec, Token (+7 more)
 
 ### Community 1115 - "Community 1115"
 Cohesion: 0.16
@@ -6432,16 +6505,16 @@ Cohesion: 0.11
 Nodes (17): ══════════════════════════════════════════════════════════════════, 13 : CSSL-LINEAGE-DISTILLATION (W14-D), ══════════════════════════════════════════════════════════════════, ══════════════════════════════════════════════════════════════════, ══════════════════════════════════════════════════════════════════, ══════════════════════════════════════════════════════════════════, ══════════════════════════════════════════════════════════════════, ══════════════════════════════════════════════════════════════════ (+9 more)
 
 ### Community 1121 - "Community 1121"
-Cohesion: 0.24
-Nodes (14): canonical_emit_is_deterministic(), canonical_spec_emits_dxbc_container(), container_chunk_count_is_five(), container_total_size_matches_byte_len(), emit_substrate_kernel_dxil(), empty_entry_name_errors_cleanly(), entry_name_change_changes_emit(), LowerError (+6 more)
+Cohesion: 0.13
+Nodes (36): enqueueApocryphaJob(), ensureOwnerIdentity(), getApocryphaServiceClient(), listOwnerChatConversations(), readOwnerChatIdempotentJob(), readOwnerChatRetrySource(), record(), requireOwnerIdentity() (+28 more)
 
 ### Community 1122 - "Community 1122"
-Cohesion: 0.20
-Nodes (8): Duration, Self, Config, Dispatcher, Outcome, Default, Self, Stage0Stub
+Cohesion: 0.13
+Nodes (13): ApocryphaAvatar(), ApocryphaAvatarProps, ApocryphaVisualState, ORGANS, STATE, CognitionView(), EventRow(), KIND_COLOR (+5 more)
 
 ### Community 1123 - "Community 1123"
-Cohesion: 0.16
-Nodes (13): BODY_PARAMS, CAP_PARAMS, COG_PARAMS, default_equals_new_untrained_fingerprint(), fingerprint_deterministic(), fingerprint_sensitive_to_body_change(), fingerprint_sensitive_to_capability_change(), fingerprint_sensitive_to_cognitive_change() (+5 more)
+Cohesion: 0.24
+Nodes (14): canonical_emit_is_deterministic(), canonical_spec_emits_dxbc_container(), container_chunk_count_is_five(), container_total_size_matches_byte_len(), emit_substrate_kernel_dxil(), empty_entry_name_errors_cleanly(), entry_name_change_changes_emit(), LowerError (+6 more)
 
 ### Community 1124 - "Community 1124"
 Cohesion: 0.15
@@ -6456,8 +6529,8 @@ Cohesion: 0.13
 Nodes (8): all_op_names_unique(), GpuAdOp, GpuAdOpName, required_attributes(), required_attributes_for_alloc_includes_storage_mode(), required_attributes_for_record_includes_kind_and_arity(), Option, Self
 
 ### Community 1127 - "Community 1127"
-Cohesion: 0.24
-Nodes (8): catalog(), PolyHavenSource, AssetSource, Default, Self, SourceResult, Vec, synth_payload_for()
+Cohesion: 0.17
+Nodes (8): emit_object_module(), emit_object_module_succeeds_on_empty_module_post_g7(), emit_object_module_with_format(), emit_object_module_with_format_succeeds_for_each_format_post_g7(), host_default_format_is_platform_appropriate(), magic_prefix(), ObjectFormat, Vec
 
 ### Community 1128 - "Community 1128"
 Cohesion: 0.14
@@ -6472,16 +6545,16 @@ Cohesion: 0.22
 Nodes (9): after_window_consume_succeeds_again(), daily_digest_window_is_24h(), first_consume_always_succeeds(), RateLimitBucket, RateLimitError, RateLimitWindow, Self, second_consume_within_window_blocked() (+1 more)
 
 ### Community 1132 - "Community 1132"
-Cohesion: 0.12
-Nodes (6): AlwaysPrivate, AlwaysPublic, Display, Formatter, SigmaMaskCheck, SigmaPrivacy
+Cohesion: 0.27
+Nodes (13): AttestationStore, empty_session_id_save_errors(), list_sessions_returns_all_ids(), make_session(), missing_load_returns_io_error(), round_trip_via_disk_preserves_verdict(), Into, Path (+5 more)
 
 ### Community 1133 - "Community 1133"
 Cohesion: 0.22
 Nodes (17): bundle(), bundle_capacity_sqrt_d(), bundle_empty_is_zero(), bundle_even_n_tie_break(), bundle_iter(), bundle_iter_matches(), bundle_preserves_similarity(), bundle_preserves_tail() (+9 more)
 
 ### Community 1134 - "Community 1134"
-Cohesion: 0.12
-Nodes (18): now_unix(), AgentLoop, contains_any(), LoopError, Arc, Box, Handoff, Self (+10 more)
+Cohesion: 0.19
+Nodes (10): EventScope, fs_event_jsonl(), jsonl_path(), now_unix_ns(), Drop, Instant, Option, PathBuf (+2 more)
 
 ### Community 1135 - "Community 1135"
 Cohesion: 0.22
@@ -6505,15 +6578,15 @@ Nodes (25): CommandListTypeRaw, CommandQueueDescRaw, D3DFeatureLevel, DxgiFormat
 
 ### Community 1140 - "Community 1140"
 Cohesion: 0.22
-Nodes (17): compose_parent_child(), compose_ttl(), CompositionError, LooseningDim, loosens_ttl(), SigmaMask, t01_compose_and_narrows_audience_and_effects(), t02_compose_takes_max_k_anon() (+9 more)
+Nodes (19): expect(), expect_advances_on_match(), expect_diagnoses_on_mismatch(), lex_rust(), parse_colon_path(), parse_colon_path_does_not_accept_keyword_segment(), parse_ident_accepts_single_ident(), parse_ident_diagnoses_non_ident() (+11 more)
 
 ### Community 1141 - "Community 1141"
 Cohesion: 0.23
 Nodes (12): Biome, default_base_for_rarity(), distribution_for_context(), DropContext, roll_drop(), Option, Rarity, Self (+4 more)
 
 ### Community 1142 - "Community 1142"
-Cohesion: 0.23
-Nodes (16): all_channels_delta(), alpha_ignored_mode(), diff_inner(), diff_rgb(), diff_rgba(), DiffErr, DiffReport, empty_input_rejected() (+8 more)
+Cohesion: 0.20
+Nodes (9): ApprovalPromptHandler, MockApprovalHandler, PromptOutcome, Debug, RefCell, Self, Vec, McpApprovalHandler (+1 more)
 
 ### Community 1143 - "Community 1143"
 Cohesion: 0.18
@@ -6524,12 +6597,12 @@ Cohesion: 0.12
 Nodes (12): has_action_or_combos(), InputFrame, Self, delta_wraps_correctly(), micros_round_trip_128hz(), micros_round_trip_60hz(), micros_to_tick(), Display (+4 more)
 
 ### Community 1145 - "Community 1145"
-Cohesion: 0.09
-Nodes (40): ChromeTracingDoc, ChromeTracingEvent, empty_pairs_yield_empty_document(), json_roundtrip_preserves_data(), marks_to_chrome_tracing(), nested_pair_uses_depth_in_tid(), pair(), rename_to_trace_events_camel_case_respected_in_json() (+32 more)
+Cohesion: 0.27
+Nodes (14): build_flame_graph(), collapsed_format_emits_semicolon_paths(), collapsed_walk(), empty_input_yields_root_only(), fixup_self_us(), FlameNode, multi_children_aggregate_under_same_parent(), render_flat_collapsed() (+6 more)
 
 ### Community 1146 - "Community 1146"
-Cohesion: 0.22
-Nodes (16): aggregate(), all_axes_are_reachable_through_classifier(), AttestationVerdict, critical_level_promotes_to_critical_flag(), derive_verdict(), empty_input_yields_clean_verdict(), errors_emit_warn_harm_flags(), harm_flags_sort_by_ts_ascending() (+8 more)
+Cohesion: 0.25
+Nodes (13): broadcast_fans_out_to_all_known_peers(), cap_deny_send_when_only_recv(), concurrent_multipeer_no_corruption(), LoopbackTransport, mk(), multi_peer_inbox_isolation(), AtomicU64, HashMap (+5 more)
 
 ### Community 1147 - "Community 1147"
 Cohesion: 0.23
@@ -6544,16 +6617,16 @@ Cohesion: 0.14
 Nodes (12): atlasData, coreLenses, lensRows, topicSlugs, referenceBySlug(), ReferenceAudit, EvidenceLane, Lens (+4 more)
 
 ### Community 1151 - "Community 1151"
-Cohesion: 0.33
-Nodes (12): absent_generics_default(), absent_where_empty(), multiple_type_params(), parse_generic_param(), parse_generics(), parse_where_clauses(), prep(), Token (+4 more)
+Cohesion: 0.36
+Nodes (11): absent_generics_default(), absent_where_empty(), multiple_type_params(), parse_generics(), parse_where_clauses(), prep(), Token, Vec (+3 more)
 
 ### Community 1152 - "Community 1152"
-Cohesion: 0.19
-Nodes (10): EventScope, fs_event_jsonl(), jsonl_path(), now_unix_ns(), Drop, Instant, Option, PathBuf (+2 more)
+Cohesion: 0.20
+Nodes (17): CpuCodegenError, emit_add_lowers_body_to_iadd_plus_return(), emit_constant_plus_arith_lowers_to_iconst_plus_iadd(), emit_empty_module_header_only(), emit_float_mul_lowers_to_fmul(), emit_function(), emit_i32_to_i32_fn(), emit_module() (+9 more)
 
 ### Community 1153 - "Community 1153"
-Cohesion: 0.20
-Nodes (10): OmegaSnapshot, OmegaStubField, BTreeMap, Option, Self, Vec, snapshot_bit_eq_detects_world_drift(), snapshot_bit_eq_self() (+2 more)
+Cohesion: 0.26
+Nodes (12): abs_integration_emits_branchful_tangent(), build_mir(), from_hir_discovers_differentiable_fns(), from_hir_populates_callee_table(), hir_from(), max_integration_emits_branchful_tangent(), nested_min_emits_two_branchful_tangents(), Self (+4 more)
 
 ### Community 1154 - "Community 1154"
 Cohesion: 0.35
@@ -6564,8 +6637,8 @@ Cohesion: 0.20
 Nodes (18): assert_check_succeeds(), assert_object_build_succeeds(), fixture_path(), PathBuf, t11_w18_a2_cascade_bare_local_check_passes(), t11_w18_a2_cascade_bare_local_emits_object(), t11_w18_a2_cascade_bare_param_check_passes(), t11_w18_a2_cascade_bare_param_emits_object() (+10 more)
 
 ### Community 1156 - "Community 1156"
-Cohesion: 0.18
-Nodes (9): AuditAxis, AuditEvent, AuditPort, NullAuditPort, Self, Send, Sync, Vec (+1 more)
+Cohesion: 0.15
+Nodes (11): bytes_are_little_endian(), encode_literal_string(), header_magic_version_bound(), instruction_word_count_encoding(), literal_string_four_chars_needs_pad_word(), literal_string_three_chars(), Self, Vec (+3 more)
 
 ### Community 1157 - "Community 1157"
 Cohesion: 0.19
@@ -6596,48 +6669,48 @@ Cohesion: 0.11
 Nodes (18): schema, schema_href, required, build, claim_boundary, content_digest, documents, download (+10 more)
 
 ### Community 1164 - "Community 1164"
-Cohesion: 0.23
-Nodes (15): artifactKey(), artifactText(), CONTENT_STARTERS, downloadArtifact(), FOCUSABLE_SELECTOR, jobReceipt(), numericValue(), safeFilename() (+7 more)
+Cohesion: 0.12
+Nodes (4): BlockId, term_fallthrough_display(), term_jcc_display(), term_jmp_display()
 
 ### Community 1165 - "Community 1165"
 Cohesion: 0.22
 Nodes (15): demo_can_register_many_creatures(), demo_control_signal_drives_pose(), demo_d117_physics_ik_callback_works(), demo_d124_vr_embodiment_pose_layout(), demo_deformation_zero_when_no_field_force(), demo_omnoid_layers_populate(), demo_replay_determinism_across_worlds(), demo_seeds_via_kan_pose_seed_from_genome_distinguishes_genomes() (+7 more)
 
 ### Community 1166 - "Community 1166"
-Cohesion: 0.22
-Nodes (21): build_enum_layout(), build_struct_layout(), hir_from(), lower_empty_module_gives_empty_mir(), lower_extern_fn_signature(), lower_fn_effect_row_formatted(), lower_function_signature(), lower_item_into() (+13 more)
+Cohesion: 0.16
+Nodes (7): FpCmpKind, IntCmpKind, MemScale, Display, Formatter, X64SetCondCode, X64Term
 
 ### Community 1167 - "Community 1167"
-Cohesion: 0.12
-Nodes (27): has_body(), body_emission_rejects_heap_alloc_with_clear_error(), body_emission_requires_structured_cfg_marker(), body_emission_splices_arith_const_return_into_kernel_body(), emit_msl(), empty_body_falls_back_to_skeleton_path(), fragment_skeleton_has_position_attribute(), header_records_profile() (+19 more)
+Cohesion: 0.22
+Nodes (16): has_body(), body_emission_rejects_heap_alloc_with_clear_error(), body_emission_requires_structured_cfg_marker(), body_emission_splices_arith_const_return_into_kernel_body(), emit_msl(), empty_body_falls_back_to_skeleton_path(), fragment_skeleton_has_position_attribute(), header_records_profile() (+8 more)
 
 ### Community 1168 - "Community 1168"
 Cohesion: 0.18
 Nodes (10): CapClass, anchor_diverges_on_field_change(), CuratorDecision, decision_constructs_and_anchors_deterministically(), DecisionError, DecisionKind, rationale_too_long_rejected(), Option (+2 more)
 
 ### Community 1169 - "Community 1169"
-Cohesion: 0.23
-Nodes (8): HotfixEvent, mock_sink_records_events(), MockTelemetrySink, Self, Send, Sync, Vec, TelemetrySink
+Cohesion: 0.27
+Nodes (3): RoomGeometry, Option, Vec
 
 ### Community 1170 - "Community 1170"
 Cohesion: 0.21
 Nodes (13): install_thread_path_hasher(), engine_error_make_context_uses_pure_path_hash(), error_context_carries_path_hash_only(), fingerprint_dedup_uses_path_hash_only_for_equality(), fingerprint_input_uses_path_hash_only(), fingerprint_short_hex_is_19_chars(), fingerprint_with_distinct_paths_distinct_fp(), fixed_hasher() (+5 more)
 
 ### Community 1171 - "Community 1171"
-Cohesion: 0.16
-Nodes (17): compile_with_missing_binary_does_not_panic(), DxcCliInvoker, DxcOutcome, new_invoker_has_no_binary_override(), outcome_variants_construct(), Option, PathBuf, Self (+9 more)
+Cohesion: 0.19
+Nodes (9): refusal_diagnostic_bytes_include_domain(), refusal_slot_uses_biometric_refused_scope(), EgressGrantError, From, Self, SensitiveDomain, Vec, TelemetryRefusal (+1 more)
 
 ### Community 1172 - "Community 1172"
-Cohesion: 0.26
-Nodes (7): catalog(), KenneySource, AssetSource, Default, Self, SourceResult, Vec
+Cohesion: 0.24
+Nodes (4): MovementParams, Default, Self, StaminaPolicy
 
 ### Community 1173 - "Community 1173"
 Cohesion: 0.19
 Nodes (12): binding_renders(), enable_directive_renders(), entry_function_compute_renders(), entry_function_vertex_renders(), helper_function_renders(), module_header_rendering(), Option, Self (+4 more)
 
 ### Community 1174 - "Community 1174"
-Cohesion: 0.18
-Nodes (11): apply_death_penalty(), DeathOutcome, hard_perma_zeros_carryover(), Vec, soft_perma_keeps_half_echoes_at_full_depth(), SoftPermaCarryover, cap_prevents_pathological_grind(), echoes_carryover_50pct_at_full_depth() (+3 more)
+Cohesion: 0.23
+Nodes (11): armor_matrix_unarmored_neutral(), armor_modifier(), ArmorClass, base_dps(), compute_damage_crit_15x(), cosmetic_axiom_base_dps_pure_function_of_kind_tier(), DamageRoll, DamageType (+3 more)
 
 ### Community 1175 - "Community 1175"
 Cohesion: 0.12
@@ -6664,8 +6737,8 @@ Cohesion: 0.15
 Nodes (5): fidelity_config_tunable(), fidelity_default_config_matches_spec_lower_bounds(), Default, Self, ShardCostConfig
 
 ### Community 1181 - "Community 1181"
-Cohesion: 0.14
-Nodes (24): ReleaseShelf(), apocryphaRelease, ApocryphaReleaseManifest, ApocryphaReleaseState, boundedText(), documentBinding(), documentLink(), download() (+16 more)
+Cohesion: 0.22
+Nodes (7): Self, widget_id_hash_deterministic(), widget_id_hash_distinct_by_label(), widget_id_hash_distinct_by_parent(), widget_id_hash_distinct_by_sibling_index(), widget_id_hash_distinct_by_type_tag(), widget_id_hash_separator_prevents_concat_collision()
 
 ### Community 1183 - "Community 1183"
 Cohesion: 0.19
@@ -6688,20 +6761,20 @@ Cohesion: 0.22
 Nodes (13): add_duration_for_bleed(), apply_with_policy(), refresh_duration_for_stun(), Self, Vec, StackPolicy, StatusEffect, StatusInstance (+5 more)
 
 ### Community 1188 - "Community 1188"
-Cohesion: 0.24
-Nodes (10): bind_is_commutative(), bind_is_involutive(), bundle(), bundle_of_one_returns_input(), derive_is_deterministic(), hamming_is_bounded(), HdcVec256, permute_changes_vector() (+2 more)
+Cohesion: 0.29
+Nodes (13): Projectile, projectile_dies_after_ttl(), projectile_falls_under_gravity(), ProjectileImpact, DamageType, Option, Vec3, step_projectile() (+5 more)
 
 ### Community 1189 - "Community 1189"
 Cohesion: 0.21
 Nodes (8): CrystalSoA, distances_sq_match_scalar(), round_trip_preserves_crystals(), Crystal, Item, Iterator, Self, Vec
 
 ### Community 1190 - "Community 1190"
-Cohesion: 0.14
-Nodes (12): ActiveJobRecord, ApocryphaEnvelope, ChatMessage, ChatThread(), ConversationScope, ConvMessagesResponse, ConvSummary, EVENT_STREAM_ACCEPT (+4 more)
+Cohesion: 0.27
+Nodes (15): activeConversationRows(), bootstrapProductionBrowserOracle(), main(), OracleConfig, record(), redactedPathForEvidence(), requestJson(), requiredUuid() (+7 more)
 
 ### Community 1191 - "Community 1191"
-Cohesion: 0.22
-Nodes (16): classify_case_insensitive_normalization(), classify_consent_via_network_outbound(), classify_event(), classify_multi_axis_telemetry_outbound(), classify_no_coercion_via_lockin(), classify_no_control_via_denied(), classify_no_exploitation_via_paywall(), classify_no_harm_via_panic() (+8 more)
+Cohesion: 0.14
+Nodes (12): extractContent(), Fetch, isQwenContextOverflow(), numeric(), parseUsage(), QwenClient, QwenError, QwenGenerationOptions (+4 more)
 
 ### Community 1192 - "Community 1192"
 Cohesion: 0.20
@@ -6720,8 +6793,8 @@ Cohesion: 0.14
 Nodes (6): HomeCapBits, BitAnd, BitOr, Default, Self, caps_bitwise_grant_revoke_has_count()
 
 ### Community 1197 - "Community 1197"
-Cohesion: 0.19
-Nodes (11): backend_kind_current_matches_cfg(), BackendKind, Self, Window, spawn_on_non_windows_returns_loader_missing(), spawn_window(), spawn_with_invalid_config_returns_invalid_config(), spawn_on_non_windows_returns_loader_missing() (+3 more)
+Cohesion: 0.18
+Nodes (8): backend_unsupported_classifies(), cycle_constructor(), duplicate_constructor(), invalid_args_constructor(), Into, Self, undeclared_constructor(), WorkGraphError
 
 ### Community 1198 - "Community 1198"
 Cohesion: 0.13
@@ -6732,8 +6805,8 @@ Cohesion: 0.21
 Nodes (10): enter_phase_resets_timer(), fresh_state_walking_full_stamina(), LocomotionPhase, MovementState, Default, Option, Self, snapshot_bit_equal_for_equal_state() (+2 more)
 
 ### Community 1200 - "Community 1200"
-Cohesion: 0.15
-Nodes (14): Default, Self, Vec, VecDeque, Session, SessionSnapshot, StoredTurn, fake_turn() (+6 more)
+Cohesion: 0.37
+Nodes (9): fresh_tempdir(), LabStore, list_returns_saved_labels_sorted(), load_detects_blob_size_drift_and_missing_files(), make_bundle(), Into, PathBuf, Vec (+1 more)
 
 ### Community 1201 - "Community 1201"
 Cohesion: 0.15
@@ -6760,8 +6833,8 @@ Cohesion: 0.16
 Nodes (9): CloseDispositionPolicy, CloseRequestState, default_policy_is_auto_grant_5s(), grace_window_default_is_5s(), GraceWindowConfig, Default, Display, Formatter (+1 more)
 
 ### Community 1207 - "Community 1207"
-Cohesion: 0.22
-Nodes (6): deserialize(), D, Error, Ok, S, serialize()
+Cohesion: 0.13
+Nodes (13): atlas, composer, graph, local, oracle, oracleDestination, oraclePage, root (+5 more)
 
 ### Community 1208 - "Community 1208"
 Cohesion: 0.12
@@ -6777,7 +6850,7 @@ Nodes (16): Historical notes and how to read them, HN-001 — There is more than
 
 ### Community 1211 - "Community 1211"
 Cohesion: 0.03
-Nodes (114): AppHandle, App, bootstrap(), create_account(), create_with_password(), main(), new_conversation(), open_conversation() (+106 more)
+Nodes (99): AppHandle, App, bootstrap(), create_account(), create_with_password(), main(), new_conversation(), open_conversation() (+91 more)
 
 ### Community 1212 - "Community 1212"
 Cohesion: 0.12
@@ -6792,8 +6865,8 @@ Cohesion: 0.07
 Nodes (38): build_replay_input_queue(), CounterSys, DepSys, determinism_mode_recorded_at_construction(), duplicate_name_rejected(), frame_overbudget_degrade_policy_continues(), frame_overbudget_halt_policy(), fresh_scheduler() (+30 more)
 
 ### Community 1215 - "Community 1215"
-Cohesion: 0.23
-Nodes (12): audit_path_op(), audit_path_op_appends_hash_only_message(), audit_path_op_check_raw_path_rejected(), audit_path_op_empty_extra_omits_field(), audit_path_op_rejects_raw_path_in_extra(), check_helper_rejects_drive_letter_alone(), check_helper_rejects_unix_path(), check_helper_rejects_windows_path() (+4 more)
+Cohesion: 0.24
+Nodes (10): bind_is_commutative(), bind_is_involutive(), bundle(), bundle_of_one_returns_input(), derive_is_deterministic(), hamming_is_bounded(), HdcVec256, permute_changes_vector() (+2 more)
 
 ### Community 1216 - "Community 1216"
 Cohesion: 0.27
@@ -6828,16 +6901,16 @@ Cohesion: 0.18
 Nodes (23): banner_not_disclosed_rejects(), cosmetic_handle_carries_axiom_prefix(), determinism_same_input_same_outcomes(), distribution_100k_trials_matches_disclosed_rates(), empty_pubkey_rejects(), fresh_banner(), fresh_req(), hundred_pull_returns_111_with_bonus() (+15 more)
 
 ### Community 1224 - "Community 1224"
-Cohesion: 0.17
-Nodes (20): axes, ClearingContextAxis, ClearingRoom(), ClearingRoomProps, ClearingSessionState, reactionGlyph, relativeTime(), AuthState (+12 more)
+Cohesion: 0.16
+Nodes (21): axes, ClearingContextAxis, ClearingRoom(), ClearingRoomProps, ClearingSessionState, reactionGlyph, relativeTime(), AuthState (+13 more)
 
 ### Community 1225 - "Community 1225"
 Cohesion: 0.24
-Nodes (7): ArcA770Profile, canonical_matches_spec(), expected_extensions_includes_coop_matrix_and_rt(), expected_features(), expected_features_all_set(), Self, to_vulkan_device_preserves_spec_facts()
+Nodes (11): function_with_kernel_attribute_renders(), include_statement_renders(), module_header_rendering(), module_prelude_seeds_stdlib(), MslModule, MslStatement, Option, Self (+3 more)
 
 ### Community 1226 - "Community 1226"
-Cohesion: 0.29
-Nodes (13): Client, call_tool(), initialize(), jsonrpc_call(), list_tools(), load_bearer_token(), main(), parse_kv() (+5 more)
+Cohesion: 0.26
+Nodes (11): BoundaryMode, f64_daub4_roundtrip(), f64_haar_roundtrip(), f64_mexican_hat_at_origin(), f64_mexican_hat_at_unit(), forward_1d_f64(), hi_tap_f64(), inverse_1d_f64() (+3 more)
 
 ### Community 1227 - "Community 1227"
 Cohesion: 0.33
@@ -6876,8 +6949,8 @@ Cohesion: 0.27
 Nodes (12): clear_empties_field(), const_generic_n_16_compiles_and_works(), const_generic_n_4_compiles_and_works(), insert_extent_fills_hyperbox(), insert_extent_rejects_inverted_box(), insert_get_remove(), insert_overwrites_returns_prior(), iter_returns_all_pairs() (+4 more)
 
 ### Community 1236 - "Community 1236"
-Cohesion: 0.17
-Nodes (12): days_from_civil(), parse_iso_to_micros(), parse_runtime_line(), parses_panic_line_marks_cap_used(), parses_startup_line(), Option, take_bracketed(), parse_telemetry_line() (+4 more)
+Cohesion: 0.22
+Nodes (16): countAstNodes(), DISALLOWED_INTENT_PATTERNS, isMarker(), lexicalKind(), parseExpression(), parseSpell(), ParseSpellResult, resolveMorpheme() (+8 more)
 
 ### Community 1237 - "Community 1237"
 Cohesion: 0.29
@@ -6920,12 +6993,12 @@ Cohesion: 0.16
 Nodes (9): bias_modulate_dialogue_choice(), bias_mood_color(), Mood, record_scope_violation(), AuditSink, DetRng, SensitiveScopeViolation, sensitive_input_emits_scope_violation_audit() (+1 more)
 
 ### Community 1249 - "Community 1249"
-Cohesion: 0.19
-Nodes (9): refusal_diagnostic_bytes_include_domain(), refusal_slot_uses_biometric_refused_scope(), EgressGrantError, From, Self, SensitiveDomain, Vec, TelemetryRefusal (+1 more)
+Cohesion: 0.17
+Nodes (18): BridgeDeps, BridgeState, BridgeConfig, ConfigError, describe(), loadConfig(), positiveInt(), required() (+10 more)
 
 ### Community 1250 - "Community 1250"
-Cohesion: 0.13
-Nodes (20): de_b64(), decode_b64(), empty_from_rejected(), empty_to_rejected(), encode_b64(), MessageKind, mk(), MsgErr (+12 more)
+Cohesion: 0.26
+Nodes (14): assert(), assertPrivate(), equal(), historyEntry(), main(), MEMORY_HASH, Output, reqRes() (+6 more)
 
 ### Community 1251 - "Community 1251"
 Cohesion: 0.24
@@ -6944,15 +7017,15 @@ Cohesion: 0.13
 Nodes (24): a_reply_arrives_in_fragments_and_ends_verified(), a_stream_that_never_finishes_is_not_a_reply(), an_error_event_becomes_the_message_the_person_sees(), blank_lines_are_ignored_and_carriage_returns_trimmed(), completed(), delta(), malformed_lines_are_refused_rather_than_rendered(), nothing_may_follow_the_terminal_event() (+16 more)
 
 ### Community 1256 - "Community 1256"
-Cohesion: 0.12
-Nodes (16): build_dealloc_signature(), is_dealloc_op(), needs_dealloc_import(), pre_scan_finds_dealloc_when_present(), pre_scan_returns_false_when_dealloc_absent(), CallConv, signature_call_conv_passes_through(), signature_has_three_pointer_params_and_zero_returns() (+8 more)
+Cohesion: 0.19
+Nodes (11): backend_kind_current_matches_cfg(), BackendKind, Self, Window, spawn_on_non_windows_returns_loader_missing(), spawn_window(), spawn_with_invalid_config_returns_invalid_config(), spawn_on_non_windows_returns_loader_missing() (+3 more)
 
 ### Community 1257 - "Community 1257"
-Cohesion: 0.11
-Nodes (5): kind_u16_sequential(), Formatter, scope_u16_unique_non_full(), ScopeDomain, TelemetryKind
+Cohesion: 0.33
+Nodes (16): coff_inspector_lists_main_symbol(), coff_inspector_lists_text_section(), coff_inspector_recognizes_format(), elf_objdump_disassembles_text(), elf_objdump_lists_main_symbol(), elf_objdump_recognizes_format(), macho_inspector_lists_text_section(), macho_inspector_lists_underscored_main_symbol() (+8 more)
 
 ### Community 1258 - "Community 1258"
-Cohesion: 0.22
+Cohesion: 0.19
 Nodes (8): Point, point_at_infinity_detected(), point_finite_constructor_has_weight_one(), point_normalize_is_perspective_divide(), point_round_trips_through_multivector(), point_to_xyz_recovers_input(), Multivector, Self
 
 ### Community 1259 - "Community 1259"
@@ -6972,8 +7045,8 @@ Cohesion: 0.19
 Nodes (13): OmegaIter, OmegaTensor, OmegaTensorIso, OmegaView, row_major_strides(), PhantomData, R, Range (+5 more)
 
 ### Community 1263 - "Community 1263"
-Cohesion: 0.28
-Nodes (11): STARTERS, YesNoOracle(), COUNTERWEIGHTS, createOracleSeed(), drawOracle(), HIGH_STAKES_PATTERNS, isHighStakesOracleQuestion(), NEXT_QUESTIONS (+3 more)
+Cohesion: 0.16
+Nodes (15): C, KIND_COLOR, KIND_GLYPH, LiveFeed(), LiveFeedProps, C, KIND_COLOR, KIND_GLYPH (+7 more)
 
 ### Community 1264 - "Community 1264"
 Cohesion: 0.22
@@ -6984,8 +7057,8 @@ Cohesion: 0.16
 Nodes (5): CmdBufferEntry, CmdBufferPool, Option, Vec, UniformStaging
 
 ### Community 1266 - "Community 1266"
-Cohesion: 0.21
-Nodes (8): FeatureProbe, map_loader_err(), ProbeError, AshError, PartialEq, Self, Vec, StubProbe
+Cohesion: 0.29
+Nodes (12): ChromeTracingDoc, ChromeTracingEvent, empty_pairs_yield_empty_document(), json_roundtrip_preserves_data(), marks_to_chrome_tracing(), nested_pair_uses_depth_in_tid(), pair(), rename_to_trace_events_camel_case_respected_in_json() (+4 more)
 
 ### Community 1267 - "Community 1267"
 Cohesion: 0.12
@@ -6996,8 +7069,8 @@ Cohesion: 0.12
 Nodes (15): Concurrency Rules, Current Production Guardrails, Exit Criteria For Real Synthesis, File Handling Protocol, First Implementation Threads, Parallel Lanes, Phase Plan, S0 — Docs + Indexes (+7 more)
 
 ### Community 1269 - "Community 1269"
-Cohesion: 0.21
-Nodes (12): MOBILE_SITE_URL, MOBILE_SUPABASE_URL, MobileConfig, mobileConfigFromEnvironment(), publicKey(), PublicMobileEnvironment, readPublicMobileEnvironment(), handler() (+4 more)
+Cohesion: 0.20
+Nodes (8): Duration, Self, Config, Dispatcher, Outcome, Default, Self, Stage0Stub
 
 ### Community 1270 - "Community 1270"
 Cohesion: 0.12
@@ -7020,20 +7093,20 @@ Cohesion: 0.32
 Nodes (15): assert(), foundationMigrationPath, functionBody(), hardeningMigrationPath, hardeningSql, includes(), sql, testAtomicReplayContract() (+7 more)
 
 ### Community 1275 - "Community 1275"
-Cohesion: 0.19
-Nodes (14): BundleHeader, CapRole, Option, Self, make_header(), Bundle, Channel, Manifest (+6 more)
+Cohesion: 0.27
+Nodes (8): attribution_html_anchors(), attribution_text_format(), cc_by_flags_missing_author(), cc_by_record(), html_escape(), html_escape_handles_special_chars(), missing_attribution_detected(), record_roundtrip()
 
 ### Community 1276 - "Community 1276"
 Cohesion: 0.04
-Nodes (166): ClJitModule, add_i32_handles_negative_inputs(), add_i32_roundtrip_3_plus_4_equals_7(), add_i64_roundtrip(), arith_subi_neg_does_not_surface_unsupported_op_error(), arith_subi_neg_i32_negates_negative_to_positive(), arith_subi_neg_i32_negates_positive(), arith_subi_neg_i32_zero_stays_zero() (+158 more)
+Nodes (169): ClJitModule, add_i32_handles_negative_inputs(), add_i32_roundtrip_3_plus_4_equals_7(), add_i64_roundtrip(), arith_subi_neg_does_not_surface_unsupported_op_error(), arith_subi_neg_i32_negates_negative_to_positive(), arith_subi_neg_i32_negates_positive(), arith_subi_neg_i32_zero_stays_zero() (+161 more)
 
 ### Community 1277 - "Community 1277"
 Cohesion: 0.12
 Nodes (14): consentBranch, disclosureInvalidation, failedTransition, jobClaim, leastAuthorityMigration, migration, projection, readyTransition (+6 more)
 
 ### Community 1278 - "Community 1278"
-Cohesion: 0.16
-Nodes (10): License, LicenseFilter, catalog(), AssetSource, Default, Self, SourceResult, Vec (+2 more)
+Cohesion: 0.15
+Nodes (6): McpHub, McpServer, qualify(), RpcResponse, sanitizeSchema(), ServerSpec
 
 ### Community 1279 - "Community 1279"
 Cohesion: 0.37
@@ -7048,8 +7121,8 @@ Cohesion: 0.12
 Nodes (16): 8. Claims (Initial Draft for Attorney), Claim 10 (Independent — System), Claim 11 (Dependent — VR Application), Claim 12 (Dependent — Cooperative Matrix), Claim 13 (Independent — Computer-Readable Medium), Claim 14 (Dependent — Sovereignty Compliance), Claim 15 (Dependent — KAN Coefficient Quantization), Claim 1 (Independent — Method) (+8 more)
 
 ### Community 1282 - "Community 1282"
-Cohesion: 0.09
-Nodes (28): empty_name_rejected(), leaf_export_constructs(), non_ascii_name_rejected(), nul_in_name_rejected(), Into, Self, Vec, symbol_data_constructs() (+20 more)
+Cohesion: 0.12
+Nodes (16): empty_name_rejected(), leaf_export_constructs(), non_ascii_name_rejected(), nul_in_name_rejected(), Into, Self, Vec, symbol_data_constructs() (+8 more)
 
 ### Community 1283 - "Community 1283"
 Cohesion: 0.18
@@ -7072,8 +7145,8 @@ Cohesion: 0.18
 Nodes (6): decide_apply(), PolicyDecision, Self, SovereignCaps, Option, PolicyDecision
 
 ### Community 1288 - "Community 1288"
-Cohesion: 0.26
-Nodes (8): bad_hex_rejected(), default_validates(), LicensePolicyChoice, PolicyConfig, Default, Self, strict_policy(), zero_rotate_rejected()
+Cohesion: 0.19
+Nodes (10): CoderRuntime, A, BTreeMap, L, Self, Vec, Option, run() (+2 more)
 
 ### Community 1289 - "Community 1289"
 Cohesion: 0.19
@@ -7092,8 +7165,8 @@ Cohesion: 0.17
 Nodes (5): LodTier, should_tick(), tick_freq_hz_for_tier(), tier_for_distance(), four_distinct_tiers_via_distance()
 
 ### Community 1293 - "Community 1293"
-Cohesion: 0.23
-Nodes (11): armor_matrix_unarmored_neutral(), armor_modifier(), ArmorClass, base_dps(), compute_damage_crit_15x(), cosmetic_axiom_base_dps_pure_function_of_kind_tier(), DamageRoll, DamageType (+3 more)
+Cohesion: 0.18
+Nodes (13): BODY_PARAMS, CAP_PARAMS, COG_PARAMS, default_equals_new_untrained_fingerprint(), fingerprint_deterministic(), fingerprint_sensitive_to_body_change(), fingerprint_sensitive_to_capability_change(), fingerprint_sensitive_to_cognitive_change() (+5 more)
 
 ### Community 1294 - "Community 1294"
 Cohesion: 0.08
@@ -7104,12 +7177,12 @@ Cohesion: 0.30
 Nodes (8): CameraGenre, fps_passthrough(), genre_roundtrip_preserves_buttons(), GenreTranslator, iso_grid_snaps_to_unit(), Default, Self, topdown_negative_snap()
 
 ### Community 1296 - "Community 1296"
-Cohesion: 0.29
-Nodes (13): Projectile, projectile_dies_after_ttl(), projectile_falls_under_gravity(), ProjectileImpact, DamageType, Option, Vec3, step_projectile() (+5 more)
+Cohesion: 0.22
+Nodes (16): aggregate(), all_axes_are_reachable_through_classifier(), AttestationVerdict, critical_level_promotes_to_critical_flag(), derive_verdict(), empty_input_yields_clean_verdict(), errors_emit_warn_harm_flags(), harm_flags_sort_by_ts_ascending() (+8 more)
 
 ### Community 1297 - "Community 1297"
-Cohesion: 0.15
-Nodes (21): close_rejects_future_joins(), evict_idle_keeps_fresh_and_host(), evict_idle_removes_stale(), expired_room_rejects_join(), fresh(), join_adds_peer(), join_rejects_duplicate(), join_rejects_when_closed() (+13 more)
+Cohesion: 0.09
+Nodes (30): host_flag_preserved(), idle_after_30s(), last_seen_update_resets_idle(), new_peer_not_idle(), Peer, Option, Self, serde_roundtrip() (+22 more)
 
 ### Community 1298 - "Community 1298"
 Cohesion: 0.23
@@ -7128,8 +7201,8 @@ Cohesion: 0.13
 Nodes (14): ash / Vulkan (`cssl-host-vulkan`, `cssl-cgen-gpu-spirv`), Build commands, cranelift-jit / cranelift-native (`cssl-cgen-cpu-cranelift`), GREEN: WASM-compatible crates (playground scope), I> Summary, miette fancy (`csslc`, diagnostics rendering), Next steps toward full execution, RED: WASM-blocked crates (excluded from playground) (+6 more)
 
 ### Community 1302 - "Community 1302"
-Cohesion: 0.13
-Nodes (26): CapKey, check_not_revoked(), hex32(), make_keys(), Bundle, Channel, Manifest, Vec (+18 more)
+Cohesion: 0.17
+Nodes (14): sleep(), fenceFromClaim(), startHealthServer(), appendToFile(), configureLogFile(), log(), LogEntry, LogLevel (+6 more)
 
 ### Community 1303 - "Community 1303"
 Cohesion: 0.09
@@ -7137,19 +7210,19 @@ Nodes (41): default_validates(), nan_rejected(), Default, Display, Error, Format
 
 ### Community 1304 - "Community 1304"
 Cohesion: 0.12
-Nodes (22): assert(), SseWriter, testCloseFlushes(), testWriteDataNewlineFormat(), testWriteEventTypePrefix(), WritableLike, buildChunks(), chunkDelay() (+14 more)
+Nodes (20): externalChunk(), readExternalJobChunksPage(), readExternalJobEventsPage(), assert(), SseWriter, testCloseFlushes(), testFormatIdDataCarriesCursor(), testWriteDataNewlineFormat() (+12 more)
 
 ### Community 1305 - "Community 1305"
 Cohesion: 0.09
 Nodes (15): dps_signature_invariant_under_cosmetic_swap(), fire_rate_positive_for_all_kinds(), per_shot_pure_function_of_kind_tier(), Self, WeaponBuild, round_trip_serde(), Self, WeaponCosmetic (+7 more)
 
 ### Community 1306 - "Community 1306"
-Cohesion: 0.26
-Nodes (16): expect(), expect_advances_on_match(), expect_diagnoses_on_mismatch(), lex_rust(), parse_colon_path_does_not_accept_keyword_segment(), parse_ident_accepts_single_ident(), parse_ident_diagnoses_non_ident(), parse_module_path() (+8 more)
+Cohesion: 0.04
+Nodes (43): blank_line_does_not_perturb_indent(), bracket_suppresses_indent_tracking(), full_csl_native_fragment(), indent_then_dedent(), kinds(), lex(), Lexer, Lexer<'a> (+35 more)
 
 ### Community 1307 - "Community 1307"
-Cohesion: 0.22
-Nodes (11): QualitySignal, rating(), AggregateView, Option, Self, signal_derived_at_k_floor(), signal_runtime_stable_q8_proportional(), signal_warning_count_for_low_stars_no_stable_tag() (+3 more)
+Cohesion: 0.18
+Nodes (4): W, log_line(), main(), now_ms()
 
 ### Community 1308 - "Community 1308"
 Cohesion: 0.21
@@ -7160,32 +7233,32 @@ Cohesion: 0.11
 Nodes (9): accum_add_increments_counters(), accum_default_zero(), mean_coefficient_matches_average(), mean_coefficient_zero_when_empty(), Default, Self, sample_contribution_is_radiance_times_step(), VolumetricAccum (+1 more)
 
 ### Community 1310 - "Community 1310"
-Cohesion: 0.20
-Nodes (15): analytic_kan_value(), build_kan_module(), distinct_x_distinct_mangle(), expected_arith_fold_count_matches_op_count(), kan_module_has_expected_shape(), KanDemoSummary, mk_addf(), mk_mulf() (+7 more)
+Cohesion: 0.15
+Nodes (19): compile_with_missing_binary_does_not_panic(), DxcCliInvoker, DxcInvocation, DxcOutcome, new_invoker_has_no_binary_override(), outcome_variants_construct(), Option, PathBuf (+11 more)
 
 ### Community 1311 - "Community 1311"
 Cohesion: 0.18
 Nodes (13): referenceCatalog, allClaimIds(), allSourceIds(), allTopicSlugs(), collections, digest, forbiddenPath, Identified (+5 more)
 
 ### Community 1312 - "Community 1312"
-Cohesion: 0.22
-Nodes (5): MockProbe, AtomicU32, AtomicU64, Default, Self
+Cohesion: 0.23
+Nodes (7): class_xp_caps_at_one_million_per_track(), BTreeMap, season_meta_progress_serde_round_trip(), SeasonMetaProgress, SeasonMode, soft_and_hard_class_xp_isolated(), soft_and_hard_echoes_isolated()
 
 ### Community 1313 - "Community 1313"
 Cohesion: 0.12
 Nodes (23): CreatureVocalSpec, ProceduralVocal, Default, spec_default_in_audio_range(), vocal_creature_smaller_size_has_higher_formants(), vocal_current_frame_at_initial_time_zero_phase(), vocal_default_human_constructs(), vocal_determinism_two_replays_same_amps() (+15 more)
 
 ### Community 1314 - "Community 1314"
-Cohesion: 0.33
-Nodes (10): dispatch_auto_detects_csl_from_section_glyph(), dispatch_auto_detects_rust_from_fn_keyword(), dispatch_auto_extension_csl(), dispatch_csl_native_explicit(), dispatch_rust_hybrid_explicit(), lex(), mk(), Surface (+2 more)
+Cohesion: 0.22
+Nodes (6): DxilArtifact, from_bytes_accepts_arbitrary_blob_in_foundation_slice(), identity_dxil_header_blob(), identity_dxil_header_blob_validates_clean(), Into, Vec
 
 ### Community 1315 - "Community 1315"
 Cohesion: 0.18
-Nodes (23): Act, App(), SendMessage, call(), ipc, canSend(), Conversation, conversationLabel() (+15 more)
+Nodes (22): Act, App(), SendMessage, ipc, canSend(), Conversation, conversationLabel(), elapsedLabel() (+14 more)
 
 ### Community 1316 - "Community 1316"
-Cohesion: 0.22
-Nodes (5): MockProbe, AtomicU32, AtomicU64, Default, Self
+Cohesion: 0.23
+Nodes (12): audit_path_op(), audit_path_op_appends_hash_only_message(), audit_path_op_check_raw_path_rejected(), audit_path_op_empty_extra_omits_field(), audit_path_op_rejects_raw_path_in_extra(), check_helper_rejects_drive_letter_alone(), check_helper_rejects_unix_path(), check_helper_rejects_windows_path() (+4 more)
 
 ### Community 1317 - "Community 1317"
 Cohesion: 0.21
@@ -7204,40 +7277,40 @@ Cohesion: 0.16
 Nodes (11): brandDir, iconDir, iconField(), iconSurface(), masterDigest, ogDir, publicDir, renderIconSurface() (+3 more)
 
 ### Community 1321 - "Community 1321"
-Cohesion: 0.13
-Nodes (13): atlas, composer, graph, local, oracle, oracleDestination, oraclePage, root (+5 more)
+Cohesion: 0.24
+Nodes (12): BROWSERS, EDGE_ROOT, { existsSync, readFileSync }, { join, resolve }, listening(), main(), net, PORT (+4 more)
 
 ### Community 1322 - "Community 1322"
 Cohesion: 0.13
 Nodes (14): § 11 · CANONICAL-QUOTES-INDEX (≥10 with-LOC-from-source), § 12 · COMPLETION-GATE, 18 · GEAR-MODULARITY-CANONICAL · Coherence-Engine 13-Axis · Component-Rarity-Affix, § 7 · INTEGRATION-PROPOSAL → ω-FIELD-CELLS, ✓ DONE — this-spec, § fin, I> ARTIFACT_ASCENSION_SPEC.md citations, I> CHEMISTRY_MAGIC_CRAFTING_BIBLE.md citations (+6 more)
 
 ### Community 1323 - "Community 1323"
-Cohesion: 0.22
-Nodes (11): extent_saturates_at_u16_max(), GpuCrystalPacked, pack_array_byte_layout_is_dense(), pack_crystal_packed(), pack_crystals_packed(), pack_precision_loss_is_bounded(), pack_roundtrip_preserves_position_extent_sigma(), Crystal (+3 more)
+Cohesion: 0.30
+Nodes (11): assert_check_succeeds(), assert_object_build_succeeds(), lower_repo_file_to_mir(), mir_contains_op(), renderer_transport_examples_emit_objects(), renderer_transport_exhaustive_gpu_ops_lower_to_mir(), renderer_transport_new_modules_check(), repo_file() (+3 more)
 
 ### Community 1324 - "Community 1324"
-Cohesion: 0.37
-Nodes (9): fresh_tempdir(), LabStore, list_returns_saved_labels_sorted(), load_detects_blob_size_drift_and_missing_files(), make_bundle(), Into, PathBuf, Vec (+1 more)
+Cohesion: 0.23
+Nodes (6): C32, conj_negates_imaginary(), mul_matches_polar_definition(), polar_roundtrip_at_unit_amp(), Self, wrap_phase_into_principal_range()
 
 ### Community 1325 - "Community 1325"
 Cohesion: 0.32
 Nodes (13): canonical_link_bytes(), compute_anchor(), decode_hex(), hex32(), hex_encode(), hex_nibble(), ContentId, Option (+5 more)
 
 ### Community 1326 - "Community 1326"
-Cohesion: 0.50
-Nodes (8): AudioAuditEvent, AudioAuditKind, AudioAuditStatus, empty_jsonl(), mk(), multi_event_jsonl_newline_separated(), render_jsonl(), single_event_roundtrip()
+Cohesion: 0.19
+Nodes (20): FATAL_CLOSE_CODES, GatewayPayload, INTENTS, OP, RESET_CLOSE_CODES, assert(), sleep(), testEventsReachTheConsumer() (+12 more)
 
 ### Community 1327 - "Community 1327"
-Cohesion: 0.28
-Nodes (8): APOCV4_WEB_RUNTIME_STATE, authenticatedRuntimeUrls, brokeredMemberUrls, main(), retiredUrls, testProductionRuntimeGuard(), testRetiredRoutes(), unbrokeredPrivateUrls
+Cohesion: 0.22
+Nodes (17): compose_parent_child(), compose_ttl(), CompositionError, LooseningDim, loosens_ttl(), SigmaMask, t01_compose_and_narrows_audience_and_effects(), t02_compose_takes_max_k_anon() (+9 more)
 
 ### Community 1328 - "Community 1328"
 Cohesion: 0.25
 Nodes (5): CapDecision, CapDecision, CapKind, Self, SovereignCapMatrix
 
 ### Community 1329 - "Community 1329"
-Cohesion: 0.28
-Nodes (10): aggregate_filters_other_content_so_no_cross_pollination(), flag(), full_submit_aggregate_signal_path(), k_floor_trending_gates_rank_influence(), populate_with_n(), quality_signal_for_aggregate_path_matches_from_ratings_path(), rating_pack_roundtrip_through_aggregate(), revoke_idempotent_does_not_corrupt_aggregate() (+2 more)
+Cohesion: 0.22
+Nodes (16): classify_case_insensitive_normalization(), classify_consent_via_network_outbound(), classify_event(), classify_multi_axis_telemetry_outbound(), classify_no_coercion_via_lockin(), classify_no_control_via_denied(), classify_no_exploitation_via_paywall(), classify_no_harm_via_panic() (+8 more)
 
 ### Community 1330 - "Community 1330"
 Cohesion: 0.26
@@ -7252,8 +7325,8 @@ Cohesion: 0.24
 Nodes (10): Frame, FrameKind, length_mismatch_rejected(), make(), oversize_dimension_rejected(), Self, Vec, serde_roundtrip_via_json() (+2 more)
 
 ### Community 1333 - "Community 1333"
-Cohesion: 0.05
-Nodes (40): BufReader, McpError, CapKind, ErrorObject, JsonRpcVersion, Notification, notification_omits_id(), notification_round_trip() (+32 more)
+Cohesion: 0.17
+Nodes (12): days_from_civil(), parse_iso_to_micros(), parse_runtime_line(), parses_panic_line_marks_cap_used(), parses_startup_line(), Option, take_bracketed(), parse_telemetry_line() (+4 more)
 
 ### Community 1334 - "Community 1334"
 Cohesion: 0.23
@@ -7268,20 +7341,20 @@ Cohesion: 0.22
 Nodes (5): CycleOutcome, OrchestratorReport, PersistentOrchestrator<S, P, K, M>, CapKind, Vec
 
 ### Community 1337 - "Community 1337"
-Cohesion: 0.22
-Nodes (3): EnvironmentBlendMode, Time, ViewConfigurationType
+Cohesion: 0.24
+Nodes (16): CapKey, check_not_revoked(), hex32(), make_keys(), Bundle, Channel, Manifest, Vec (+8 more)
 
 ### Community 1338 - "Community 1338"
-Cohesion: 0.25
-Nodes (12): compile(), diag_to_json(), empty_source_no_crash(), item_kind_name(), item_to_json(), json_always_valid(), playground_version(), run() (+4 more)
+Cohesion: 0.24
+Nodes (10): build_client(), build_client_constructs_with_default_sink(), LoaHostTelemetrySink, Arc, JoinHandle, PathBuf, TelemetrySink, Vec (+2 more)
 
 ### Community 1339 - "Community 1339"
 Cohesion: 0.23
 Nodes (6): determinism_same_seed_same_stream(), DeterministicRng, next_f32_in_unit_range(), range_zero_returns_zero(), Default, Self
 
 ### Community 1340 - "Community 1340"
-Cohesion: 0.24
-Nodes (8): default_validates(), NetworkConfig, port_in_range(), port_zero_rejected(), Default, Option, Self, supabase_mismatch_rejected()
+Cohesion: 0.16
+Nodes (11): LedgerInsertError, MerkleStep, D, Deserialize, Display, Error, Formatter, Ok (+3 more)
 
 ### Community 1341 - "Community 1341"
 Cohesion: 0.09
@@ -7308,12 +7381,12 @@ Cohesion: 0.36
 Nodes (13): check_bit_equal_replay(), check_bit_equal_replay_is_equal_for_no_events(), check_bit_equal_replay_skips_when_h2_pending(), make_eventful_scheduler(), make_no_events_scheduler(), replay_from(), replay_from_clamps_until_frame_to_save_frame(), replay_from_genesis_returns_save_state() (+5 more)
 
 ### Community 1348 - "Community 1348"
-Cohesion: 0.16
-Nodes (11): LedgerInsertError, MerkleStep, D, Deserialize, Display, Error, Formatter, Ok (+3 more)
+Cohesion: 0.33
+Nodes (12): build_use_sin_object_components(), DriverKind, find_lld_driver(), find_msvc_link_with_libpaths(), host_target_object_is_accepted_by_linker(), intra_module_call_object_links_clean(), libm_sin_object_links_against_libm(), Option (+4 more)
 
 ### Community 1349 - "Community 1349"
-Cohesion: 0.19
-Nodes (6): raw_handle_is_copy_and_eq(), RawWindowHandle, RawWindowHandleKind, Option, Self, win32_round_trips_handles()
+Cohesion: 0.11
+Nodes (27): emit_decorations(), emit_global_variable(), empty_void_fn(), entry_name_mismatch_errors(), exec_model_for(), GlobalDecl, lower_compute_minimal(), lower_function() (+19 more)
 
 ### Community 1350 - "Community 1350"
 Cohesion: 0.33
@@ -7324,20 +7397,20 @@ Cohesion: 0.25
 Nodes (13): blob_bound_is_at_least_5(), blob_contains_entry_point_name(), blob_size_is_word_aligned(), blob_starts_with_spirv_magic(), blob_version_is_1_0(), encode_literal_string(), encode_literal_string_long_string_correct_words(), encode_literal_string_pads_to_word_boundary() (+5 more)
 
 ### Community 1352 - "Community 1352"
-Cohesion: 0.30
-Nodes (7): CapDecision, CapMode, Self, ToolName, Vec, SovereignBypassRecord, ToolCaps
+Cohesion: 0.22
+Nodes (5): MockProbe, AtomicU32, AtomicU64, Default, Self
 
 ### Community 1353 - "Community 1353"
-Cohesion: 0.33
-Nodes (3): LinearUse, CapKind, Self
+Cohesion: 0.21
+Nodes (14): assert(), assertPrivate(), equal(), isUuidV5(), main(), originalEnv, Output, PRIVACY_PARTITION_REF (+6 more)
 
 ### Community 1354 - "Community 1354"
 Cohesion: 0.30
 Nodes (9): MetalTelemetryProbe, probe_emits_command_buffer_commit_into_ring(), probe_emits_gpu_time_with_duration_payload(), probe_records_drops_on_full_ring(), From, Self, TelemetryRing, TelemetryEmitError (+1 more)
 
 ### Community 1355 - "Community 1355"
-Cohesion: 0.18
-Nodes (4): W, log_line(), main(), now_ms()
+Cohesion: 0.26
+Nodes (7): council_full_4_specialist_workflow(), decide_inner(), Decision, prompt_hash_role_isolation_in_decide(), role_council(), role_council_deterministic_tiebreak(), role_specific_action_id_ranges()
 
 ### Community 1356 - "Community 1356"
 Cohesion: 0.14
@@ -7364,8 +7437,8 @@ Cohesion: 0.49
 Nodes (13): check_prereqs(), emit_manifest(), err(), hr(), log(), main(), observe_runtime(), ok() (+5 more)
 
 ### Community 1362 - "Community 1362"
-Cohesion: 0.25
-Nodes (13): between_inclusive_window(), empty_dir_yields_empty_index(), filter_min_level_drops_below(), filter_source_isolates_runtime(), fresh_dir(), ingests_multi_source_directory(), pick_parser(), rows_are_sorted_by_time() (+5 more)
+Cohesion: 0.17
+Nodes (4): ChatPattern, Debug, Formatter, PatternError
 
 ### Community 1363 - "Community 1363"
 Cohesion: 0.14
@@ -7384,16 +7457,16 @@ Cohesion: 0.14
 Nodes (7): documentSource, manifest, master, opaqueSurfaces, root, shortcutByUrl, shortcutIcons
 
 ### Community 1367 - "Community 1367"
-Cohesion: 0.03
-Nodes (38): ctx_exposes_frame(), ctx_input_lookup(), ctx_omega_mutation_visible(), ctx_rng_lookup_unregistered_is_none(), InputEvent, OmegaStepCtx, OmegaStepCtx<'a>, BTreeMap (+30 more)
+Cohesion: 0.04
+Nodes (21): OmegaError, SystemId, PanicSys, NoOp, OmegaSystem, Send, system_id_ord(), SystemId (+13 more)
 
 ### Community 1368 - "Community 1368"
 Cohesion: 0.14
 Nodes (11): expectedHashes, graph, llms, manifest, page, player, root, sitemap (+3 more)
 
 ### Community 1369 - "Community 1369"
-Cohesion: 0.26
-Nodes (11): BoundaryMode, f64_daub4_roundtrip(), f64_haar_roundtrip(), f64_mexican_hat_at_origin(), f64_mexican_hat_at_unit(), forward_1d_f64(), hi_tap_f64(), inverse_1d_f64() (+3 more)
+Cohesion: 0.20
+Nodes (15): analytic_kan_value(), build_kan_module(), distinct_x_distinct_mangle(), expected_arith_fold_count_matches_op_count(), kan_module_has_expected_shape(), KanDemoSummary, mk_addf(), mk_mulf() (+7 more)
 
 ### Community 1370 - "Community 1370"
 Cohesion: 0.26
@@ -7412,12 +7485,12 @@ Cohesion: 0.16
 Nodes (14): analyze_dgi_render_pass(), csl_generate(), csl_to_cssl(), csl_validate(), infinity_engine_sync(), _log_tool(), measure_density(), Any (+6 more)
 
 ### Community 1374 - "Community 1374"
-Cohesion: 0.62
-Nodes (6): emit_empty_module(), emit_module_to_string(), emit_module_to_writer(), emit_to_string_produces_valid_text(), emit_to_writer_matches_string(), sample()
+Cohesion: 0.24
+Nodes (17): canonicalJson(), assert(), assertBoundedRefusal(), equal(), invoke(), KEY_BASE64URL, KEY_BYTES, main() (+9 more)
 
 ### Community 1375 - "Community 1375"
-Cohesion: 0.19
-Nodes (7): determinism_two_brains_identical_input_identical_output(), fsm_bt_navmesh_round_trip(), NamedLeaf, navmesh_path_determinism_round_trip(), NpcState, BtStatus, action_emits_audit_event()
+Cohesion: 0.21
+Nodes (6): determinism_two_brains_identical_input_identical_output(), fsm_bt_navmesh_round_trip(), NamedLeaf, navmesh_path_determinism_round_trip(), NpcState, BtStatus
 
 ### Community 1376 - "Community 1376"
 Cohesion: 0.13
@@ -7432,68 +7505,68 @@ Cohesion: 0.21
 Nodes (4): consent_cap_stamp_sets_relay_flags(), ConsentCap, event_kind_name_lut_round_trip(), EventKind
 
 ### Community 1379 - "Community 1379"
-Cohesion: 0.14
-Nodes (7): AddressingModel, Decoration, Dim, ExecutionMode, ExecutionModel, ImageFormat, MemoryModel
+Cohesion: 0.16
+Nodes (13): HelpTip(), ToastContext, useToast(), PUBLIC_GLOSSARY_SYMBOLS, PUBLIC_GLOSSARY_TERMS, PublicGlossarySymbol, PublicGlossaryTerm, ALL_TERMS (+5 more)
 
 ### Community 1380 - "Community 1380"
 Cohesion: 0.26
 Nodes (11): balanced_edges_pass(), balanced_pair_sums_to_zero(), check_entropy_balance(), check_entropy_balance_with_epsilon(), custom_epsilon_tightens(), drift_within_epsilon_passes(), drifted_edges_fail_efr0019(), entropy_credit_positive() (+3 more)
 
 ### Community 1381 - "Community 1381"
-Cohesion: 0.32
-Nodes (11): fixture(), i32_ty(), leaves_unknown_callees_unrewritten(), multi_result_fns_are_skipped(), resolve_call_result_types(), rewrite_func(), rewrite_op(), rewrite_region() (+3 more)
+Cohesion: 0.12
+Nodes (15): build_dealloc_signature(), is_dealloc_op(), pre_scan_finds_dealloc_when_present(), pre_scan_returns_false_when_dealloc_absent(), CallConv, signature_call_conv_passes_through(), signature_has_three_pointer_params_and_zero_returns(), signature_matches_object_module_declared_shape() (+7 more)
 
 ### Community 1382 - "Community 1382"
 Cohesion: 0.23
 Nodes (9): aggregate_at_or_above_floor_allowed(), aggregate_below_floor_denied(), default_decision_is_deny(), default_federation_decision(), DenyReason, FederationCap, FederationDecision, k_anon_aggregate_decision() (+1 more)
 
 ### Community 1383 - "Community 1383"
-Cohesion: 0.26
-Nodes (7): council_full_4_specialist_workflow(), decide_inner(), Decision, prompt_hash_role_isolation_in_decide(), role_council(), role_council_deterministic_tiebreak(), role_specific_action_id_ranges()
+Cohesion: 0.29
+Nodes (4): KanBiasConsent, KanBiasVector, Default, Self
 
 ### Community 1384 - "Community 1384"
 Cohesion: 0.26
 Nodes (7): cap_policy_allows_when_bit_set(), cap_policy_denies_expired(), cap_policy_denies_missing_bit(), cap_policy_reserved_bits_deny(), cap_policy_revoke_zeroes(), CapPolicy, Self
 
 ### Community 1385 - "Community 1385"
-Cohesion: 0.20
-Nodes (6): MockProbe, AtomicBool, AtomicU32, AtomicU64, Default, Self
+Cohesion: 0.16
+Nodes (16): CONVERSATION_ARCHIVE_FACTS, CONVERSATION_CONSTELLATIONS, ConversationConstellation, ConversationProvider, ConversationTheme, Conversations(), formatDate(), Lens (+8 more)
 
 ### Community 1386 - "Community 1386"
 Cohesion: 0.03
 Nodes (8): register_all_mock(), register_all_mock_yields_twelve_probes(), Box, Vec, aggregator_all_ok(), registry_find_by_name(), registry_register_all_twelve(), subsystem_names_are_unique_and_match_register_all()
 
 ### Community 1387 - "Community 1387"
-Cohesion: 0.40
-Nodes (9): currentTier(), installConsoleTap(), joinArgs(), safeStringify(), installFetchTap(), installNetworkTap(), installXhrTap(), isSelfRoute() (+1 more)
+Cohesion: 0.25
+Nodes (5): GpuFamily, intel_mac_no_raytracing(), m3_max_has_raytracing_and_unified_memory(), MtlDevice, Self
 
 ### Community 1388 - "Community 1388"
-Cohesion: 0.20
-Nodes (6): MockProbe, AtomicBool, AtomicU32, AtomicU64, Default, Self
+Cohesion: 0.26
+Nodes (17): assert(), deriveStorageKey(), handler(), isObject(), MockedResponse, mockReqRes(), RateError, RateOk (+9 more)
 
 ### Community 1389 - "Community 1389"
-Cohesion: 0.20
-Nodes (6): MockProbe, AtomicBool, AtomicU32, AtomicU64, Default, Self
+Cohesion: 0.21
+Nodes (12): MOBILE_SITE_URL, MOBILE_SUPABASE_URL, MobileConfig, mobileConfigFromEnvironment(), publicKey(), PublicMobileEnvironment, readPublicMobileEnvironment(), handler() (+4 more)
 
 ### Community 1390 - "Community 1390"
-Cohesion: 0.18
-Nodes (3): BackendStream, Self, AudioBackend
+Cohesion: 0.14
+Nodes (10): acceptKey(), Decoded, decodeFrame(), encodeFrame(), FakeConnection, FakeGateway, FakeGatewayOptions, GatewayPayload (+2 more)
 
 ### Community 1391 - "Community 1391"
 Cohesion: 0.22
-Nodes (6): DxilArtifact, from_bytes_accepts_arbitrary_blob_in_foundation_slice(), identity_dxil_header_blob(), identity_dxil_header_blob_validates_clean(), Into, Vec
+Nodes (5): MockProbe, AtomicU32, AtomicU64, Default, Self
 
 ### Community 1392 - "Community 1392"
-Cohesion: 0.19
-Nodes (10): CoderRuntime, A, BTreeMap, L, Self, Vec, Option, run() (+2 more)
+Cohesion: 0.09
+Nodes (21): alternateSigil, coercive, conditional, entry, explicit, first, forged, forgedProgram (+13 more)
 
 ### Community 1393 - "Community 1393"
 Cohesion: 0.32
 Nodes (12): close_target_full_hit(), distance(), far_target_no_hit(), HitSample, is_glance(), is_hit(), Vec, Vec3 (+4 more)
 
 ### Community 1394 - "Community 1394"
-Cohesion: 0.24
-Nodes (9): default_validates(), msaa_three_rejected(), negative_exposure_rejected(), oversized_fps_rejected(), RenderConfig, Default, Self, serde_roundtrip() (+1 more)
+Cohesion: 0.25
+Nodes (13): between_inclusive_window(), empty_dir_yields_empty_index(), filter_min_level_drops_below(), filter_source_isolates_runtime(), fresh_dir(), ingests_multi_source_directory(), pick_parser(), rows_are_sorted_by_time() (+5 more)
 
 ### Community 1395 - "Community 1395"
 Cohesion: 0.27
@@ -7516,8 +7589,8 @@ Cohesion: 0.42
 Nodes (10): anchor_is_deterministic_for_equal_inputs(), anchor_preimage(), anchor_report(), anchor_round_trip_verifies(), AnchorError, PlayTestAnchor, Vec, sample_report() (+2 more)
 
 ### Community 1400 - "Community 1400"
-Cohesion: 0.28
-Nodes (12): caps_reports_constructed_bits(), cfg(), mk(), name_returns_supabase_rest(), PanicClient, PanicClientWrap, poll_without_recv_cap_short_circuits_before_http(), Arc (+4 more)
+Cohesion: 0.08
+Nodes (22): apiSource, approvedStub, browse, browseSource, bundledManifestSource, duplicateId, duplicateSlug, manifest (+14 more)
 
 ### Community 1401 - "Community 1401"
 Cohesion: 0.15
@@ -7534,6 +7607,10 @@ Nodes (10): baseline_cost_under_30_gf(), cost_high_substeps_high_cells_at_target
 ### Community 1405 - "Community 1405"
 Cohesion: 0.15
 Nodes (17): exp_bivector(), exp_log_round_trip_preserves_arbitrary_rotation(), exp_log_round_trip_pure_rotation(), exp_log_round_trip_pure_translation(), exp_pure_rotation_matches_rotor_axis_angle(), exp_pure_translation_yields_translator(), exp_rotation_only_yields_unit_norm_motor(), exp_translation_via_translator_matches_canonical() (+9 more)
+
+### Community 1407 - "Community 1407"
+Cohesion: 0.27
+Nodes (6): L0Device, L0DeviceProperties, L0DeviceType, Self, stub_device_name(), stub_driver_exposes_arc_a770()
 
 ### Community 1408 - "Community 1408"
 Cohesion: 0.24
@@ -7584,8 +7661,8 @@ Cohesion: 0.26
 Nodes (9): PassContext, Self, StageId, wave_solver_execute_deterministic(), wave_solver_execute_increments_counter(), wave_solver_execute_psi_finite(), wave_solver_namespace_canonical(), wave_solver_stage_id_correct() (+1 more)
 
 ### Community 1421 - "Community 1421"
-Cohesion: 0.28
-Nodes (11): DestinationPanel(), FEATURED, PANEL_KICKERS, PANEL_TITLES, SiteDirectory(), PublicSurfaceNode, DIRECTORY_GROUPS, DIRECTORY_NODES (+3 more)
+Cohesion: 0.15
+Nodes (11): askAgain, chat, css, formAt, hints, ids, labels, prompts (+3 more)
 
 ### Community 1422 - "Community 1422"
 Cohesion: 0.08
@@ -7596,8 +7673,8 @@ Cohesion: 0.14
 Nodes (14): § 3.1 · Purpose + scope, § 3.2 · Crates, § 3.3.1 · Engine-frame metrics (7), § 3.3.2 · Ω-step / substrate metrics (10), § 3.3.3 · Render-pipeline metrics (10), § 3.3.4 · Physics metrics (8), § 3.3.5 · Wave / spectral / XR metrics (22), § 3.3.6 · Anim / audio / Ω-field / KAN metrics (24) (+6 more)
 
 ### Community 1424 - "Community 1424"
-Cohesion: 0.23
-Nodes (10): PUBLIC_GLOSSARY_SYMBOLS, PUBLIC_GLOSSARY_TERMS, PublicGlossarySymbol, PublicGlossaryTerm, ALL_TERMS, CREATIVE_TERMS, EXAMPLES, FIRST (+2 more)
+Cohesion: 0.24
+Nodes (6): context(), DIGEST, emptySnapshot(), identity(), restoredSnapshot(), turnEnvelope()
 
 ### Community 1425 - "Community 1425"
 Cohesion: 0.15
@@ -7608,8 +7685,8 @@ Cohesion: 0.14
 Nodes (13): HANDOFF · Next-Session Cold-Start Prompt, §I · ANTI-PATTERNS (don't do these), §I · APOCKY'S CHARACTER + TONE, §I · CRITICAL-FIRST-READ (in this order · 5 minutes), §I · CURRENT VERIFIED STATE (post-WinMain-fix), §I · GOAL (Apocky's bleeding-edge vision), §I · IMMEDIATE-CONTEXT, §I · MNEME PERSISTENT-MEMORY (use this · don't ignore) (+5 more)
 
 ### Community 1427 - "Community 1427"
-Cohesion: 0.22
-Nodes (5): Debug, Formatter, Vec, Window, WindowInner
+Cohesion: 0.12
+Nodes (8): AddressingModel, Decoration, Dim, ExecutionMode, ExecutionModel, ImageFormat, MemoryModel, StorageClass
 
 ### Community 1428 - "Community 1428"
 Cohesion: 0.15
@@ -7648,8 +7725,8 @@ Cohesion: 0.15
 Nodes (13): § 10 · OPEN-QUESTIONS for-Apocky-canonical-resolves, I> Q-06 RARITY-TIERS · ✓ RESOLVED 2026-05-01, I> Q-12 DRACONIC-ARCHETYPES · ✓ RESOLVED 2026-05-01, OQ-10 : LoA-content-pack monetization-vs-cosmetic-only-axiom, OQ-1 : ω-field-cell-granularity for-13-axes, OQ-2 : LLM-generated-Epithet-names policy, OQ-3 : substrate-regenerates-per-run vs-CSSLv3-coherence-data-isolation, OQ-4 : never-de-Ascend rule + Σ-Chain-immutability (+5 more)
 
 ### Community 1437 - "Community 1437"
-Cohesion: 0.38
-Nodes (8): dm_request_serializes(), DmSceneEditRequest, gm_request_roundtrips(), GmIntroProseRequest, HandoffEvent, Biome, Error, Option
+Cohesion: 0.10
+Nodes (26): BoundedKey, BOUNDS, clampNumber(), clampOptional(), clampSampling(), CODE_SEQUENCE_BREAKERS, PRESET_FOR_TOOL, presetById() (+18 more)
 
 ### Community 1438 - "Community 1438"
 Cohesion: 0.11
@@ -7660,28 +7737,28 @@ Cohesion: 0.26
 Nodes (8): HotfixState, rollback_from_pending_rejected(), RollbackError, RollbackOutcome, validate_rollback(), HotfixError, VerifyError, RollbackError
 
 ### Community 1440 - "Community 1440"
-Cohesion: 0.44
-Nodes (8): CheckArgs, check_with_empty_source_succeeds(), check_with_minimal_module_succeeds(), check_with_missing_file_returns_user_error(), ExitCode, Path, run(), run_with_source()
+Cohesion: 0.22
+Nodes (6): deserialize(), D, Error, Ok, S, serialize()
 
 ### Community 1441 - "Community 1441"
-Cohesion: 0.43
-Nodes (6): jsonResponse(), main(), originalEnv, Output, reqRes(), requestOf()
+Cohesion: 0.28
+Nodes (12): caps_reports_constructed_bits(), cfg(), mk(), name_returns_supabase_rest(), PanicClient, PanicClientWrap, poll_without_recv_cap_short_circuits_before_http(), Arc (+4 more)
 
 ### Community 1442 - "Community 1442"
-Cohesion: 0.14
-Nodes (6): KeyCode, MouseButton, KeyCode, MouseButton, ScrollDelta, WindowEventKind
+Cohesion: 0.21
+Nodes (6): raw_handle_is_copy_and_eq(), RawWindowHandle, RawWindowHandleKind, Option, Self, win32_round_trips_handles()
 
 ### Community 1443 - "Community 1443"
-Cohesion: 0.15
-Nodes (3): Grade, grade_of(), grade_table_self_consistent()
+Cohesion: 0.20
+Nodes (5): Debug, Formatter, Vec, Window, WindowInner
 
 ### Community 1444 - "Community 1444"
-Cohesion: 0.22
-Nodes (8): L0Device, L0DeviceProperties, L0DeviceType, L0Driver, Self, Vec, stub_device_name(), stub_driver_exposes_arc_a770()
+Cohesion: 0.23
+Nodes (3): DiscordGateway, GatewayOptions, Harness
 
 ### Community 1445 - "Community 1445"
-Cohesion: 0.40
-Nodes (3): Display, Formatter, VulkanVersion
+Cohesion: 0.25
+Nodes (13): interpretExpression(), interpretSpell(), interpretTerm(), OPERATION_PHRASES, phraseFor(), traceTerms(), SpellIssue, expressionsFor() (+5 more)
 
 ### Community 1448 - "Community 1448"
 Cohesion: 0.26
@@ -7700,8 +7777,8 @@ Cohesion: 0.29
 Nodes (10): ArcSink, dm_with_recorder(), npc_spawn_emits_audit_with_npc_and_zone(), route_intent_spawn_kind_emits_spawn_order(), route_intent_spawn_npc_kind_emits_npc_spawn(), Arc, AuditEvent, AuditSink (+2 more)
 
 ### Community 1453 - "Community 1453"
-Cohesion: 0.40
-Nodes (4): ConfigErr, Display, Error, Formatter
+Cohesion: 0.26
+Nodes (9): MlirPrinter, print_empty_module(), print_fn_signature(), print_fn_with_effect_row_attribute(), print_fn_with_ops(), print_module(), print_named_module(), print_op_with_results_and_operands() (+1 more)
 
 ### Community 1454 - "Community 1454"
 Cohesion: 0.05
@@ -7715,10 +7792,6 @@ Nodes (6): AuditEvent, AuditSink, Self, Vec, vec_sink_records(), VecAuditSink
 Cohesion: 0.17
 Nodes (11): 1. The Mother before an answer — V01-C01, 2. The First Flame wakes — V01-C02, 3. The first distinction becomes a relationship — V01-C03, 4. Divine children and unequal needs — V01-C04–C07, 5. Misrecognition becomes an order — V01-C08–C10, 6. Separation, withdrawal and the missing place — V01-C11–C12, 7. The bridge into Eden — V02-C01 onward, Creation-sequence continuity packet (+3 more)
 
-### Community 1458 - "Community 1458"
-Cohesion: 0.24
-Nodes (6): context(), DIGEST, emptySnapshot(), identity(), restoredSnapshot(), turnEnvelope()
-
 ### Community 1459 - "Community 1459"
 Cohesion: 0.31
 Nodes (6): determinism_same_seed_same_output(), f32_in_zero_one(), Pcg32, range_respects_bounds(), Self, u32_distribution_not_degenerate()
@@ -7728,16 +7801,16 @@ Cohesion: 0.06
 Nodes (41): BtNode, cast_minimal_fire_ray(), CombatSession, craft_a_t1_weapon(), deconstruct_a_crafted_item(), equip_into_slot(), FullLoopOutcome, item_class_coerce() (+33 more)
 
 ### Community 1461 - "Community 1461"
-Cohesion: 0.17
-Nodes (4): L0ApiSurface, Display, Formatter, UsmAllocType
+Cohesion: 0.18
+Nodes (3): L0ApiSurface, Display, Formatter
 
 ### Community 1462 - "Community 1462"
-Cohesion: 0.32
-Nodes (3): Backend, EmitMode, Self
+Cohesion: 0.19
+Nodes (15): Notice, SpellbookPanel(), addLocalSpellbookEntry(), LocalSpellbookResult, ReadableStorage, readLocalSpellbook(), WritableStorage, writeLocalSpellbook() (+7 more)
 
 ### Community 1463 - "Community 1463"
-Cohesion: 0.26
-Nodes (11): alias, assert(), cognition, ownerPage, source, testChatAccessibilityContract(), testCognitionResponsiveAccessibilityContract(), testResponsiveSidebarContract() (+3 more)
+Cohesion: 0.17
+Nodes (14): alias, assert(), cognition, lanes, ownerPage, roomCode, source, style (+6 more)
 
 ### Community 1464 - "Community 1464"
 Cohesion: 0.24
@@ -7759,13 +7832,9 @@ Nodes (12): §2.10 Iteration trigger, §2.11 Anti-pattern : Critic-praises, §2.
 Cohesion: 0.21
 Nodes (8): AccuracyParams, AccuracyState, bloom_capped_at_max(), jitter_within_cone(), recovery_returns_to_base(), DeterministicRng, Self, shot_blooms()
 
-### Community 1469 - "Community 1469"
-Cohesion: 0.21
-Nodes (9): is_error_on_error_and_critical_only(), is_security_relevant_cap_or_source(), kv_get_and_set_overwrite(), round_trip_serialize(), sample_row(), parse_intent_line(), parses_classify(), Option (+1 more)
-
 ### Community 1470 - "Community 1470"
-Cohesion: 0.15
-Nodes (26): all_comments_default_to_rust_hybrid(), ambiguous_expression_line_defaults_rust_hybrid(), detect(), detect_first_line(), detect_pragma(), Detection, empty_file_defaults_to_rust_hybrid(), ext_cssl_csl_wins() (+18 more)
+Cohesion: 0.10
+Nodes (36): dispatch_auto_detects_csl_from_section_glyph(), dispatch_auto_detects_rust_from_fn_keyword(), dispatch_auto_extension_csl(), dispatch_csl_native_explicit(), dispatch_rust_hybrid_explicit(), lex(), mk(), Surface (+28 more)
 
 ### Community 1471 - "Community 1471"
 Cohesion: 0.17
@@ -7796,8 +7865,8 @@ Cohesion: 0.18
 Nodes (10): ═══════════════════════════════════════════════════════════════════════, § APPENDIX-E : Pre-Wave-Jε dispatch checklist, § APPENDIX-F : Complete reproduction commands (copy-paste ready), § APPENDIX-G : DECISIONS.md historical context for the cold-cache flake, § ATTESTATION, § ATTESTATION (RE-ASSERTION), § EXECUTIVE SUMMARY, § FIX-SLICE TABLE — Summary (+2 more)
 
 ### Community 1478 - "Community 1478"
-Cohesion: 0.09
-Nodes (22): EnumAbiClass, fn_new_populates_entry_args(), fresh_value_id_increments(), is_signature_only_for_empty_body(), module_add_and_find_struct_layout(), module_find_func_by_name(), module_struct_layouts_btree_iteration_is_deterministic(), BTreeMap (+14 more)
+Cohesion: 0.10
+Nodes (21): EnumAbiClass, fn_new_populates_entry_args(), fresh_value_id_increments(), is_signature_only_for_empty_body(), module_add_and_find_struct_layout(), module_find_func_by_name(), module_struct_layouts_btree_iteration_is_deterministic(), BTreeMap (+13 more)
 
 ### Community 1479 - "Community 1479"
 Cohesion: 0.26
@@ -7818,6 +7887,10 @@ Nodes (8): PassContext, Self, StageId, sdf_raymarch_execute_deterministic(), sdf
 ### Community 1483 - "Community 1483"
 Cohesion: 0.15
 Nodes (12): description, engines, node, name, overrides, fast-uri, nanoid, postcss (+4 more)
+
+### Community 1484 - "MockProbe"
+Cohesion: 0.05
+Nodes (79): RequestUser, APOCV4_BRAIN_RUNTIME_ENABLE_ENV, isOwnerBrainConversationId(), isOwnerBrainHistoryCursor(), OwnerBrainHistoryGetProjection, OwnerBrainHistoryListProjection, bearerFromRequest(), clearedSessionCookies() (+71 more)
 
 ### Community 1486 - "Community 1486"
 Cohesion: 0.27
@@ -7847,10 +7920,6 @@ Nodes (5): DecisionOnly, Paradigm1RenderPipeline, Paradigm2X64Abi, spec_only_anc
 Cohesion: 0.18
 Nodes (10): ATTESTATION, Capabilities (current), csslc — CSSLv3 stage-0 compiler, T11-W17-A · stage-0 struct-FFI codegen (W17 wave), T11-W18 · scalar-arith completion (this wave), Tests, What's deferred to W17-B+, What's deferred to W19+ (+2 more)
 
-### Community 1494 - "Community 1494"
-Cohesion: 0.31
-Nodes (8): Instant, Timer, timer_back_to_back_calls_distinct(), timer_measures_real_elapsed_time(), timer_start_stop_returns_non_negative_ms(), timer_start_stop_returns_non_negative_ns(), timer_zero_elapsed_when_immediate(), timer_zero_overhead_when_disabled_returns_zero()
-
 ### Community 1495 - "Community 1495"
 Cohesion: 0.18
 Nodes (10): archive, archivePath, entries, file(), nodeRuntime, outputDir, publicKeyPem, root (+2 more)
@@ -7867,10 +7936,6 @@ Nodes (55): banned_composition(), banned_composition_with_domains(), banned_comp
 Cohesion: 0.27
 Nodes (9): AtlasPublicationContract, evaluateAtlasPublicationGate(), hashesEqual(), PublicationGateResult, RatifiedFrame, getServerSideProps(), assert(), encodedFrame() (+1 more)
 
-### Community 1499 - "Community 1499"
-Cohesion: 0.29
-Nodes (8): cap_for_test_constructs_each_kind(), cap_is_consumed_on_into_witness(), Cap<T>, into_witness_roundtrip_every_kind(), Self, verify_cap_kind_mismatch(), verify_cap_ok_path(), verify_cap_revoked_when_issued_before_floor()
-
 ### Community 1500 - "Community 1500"
 Cohesion: 0.31
 Nodes (8): HelloRunOutcome, Option, PathBuf, Self, run_hello_world_gate(), s6_a5_hello_world_executable_returns_42(), unique_temp_exe(), unique_temp_exe_path_is_in_temp_dir()
@@ -7883,9 +7948,9 @@ Nodes (8): all_stage1_scaffold_files_accepted(), all_stage1_scaffold_outcomes(),
 Cohesion: 0.18
 Nodes (11): properties, relation, source, statement, target, minLength, type, minLength (+3 more)
 
-### Community 1503 - "Community 1503"
-Cohesion: 0.20
-Nodes (9): ApprovalPromptHandler, MockApprovalHandler, PromptOutcome, Debug, RefCell, Self, Vec, McpApprovalHandler (+1 more)
+### Community 1503 - "ToolCaps"
+Cohesion: 0.30
+Nodes (7): CapDecision, CapMode, Self, ToolName, Vec, SovereignBypassRecord, ToolCaps
 
 ### Community 1504 - "Community 1504"
 Cohesion: 0.31
@@ -7919,9 +7984,9 @@ Nodes (9): canonicalCsl, llms, page, publicCsl, publicSurfaceGraph, root, sitema
 Cohesion: 0.18
 Nodes (11): 6.10 Algorithmic Pseudocode, 6.1 System Overview, 6.2 Gaze Input Wrapping, 6.3 Saccade Predictor, 6.4 Observation-Collapse Evolver, 6.5 Per-Cell Sovereignty Mask Respect, 6.6 Saccadic Suppression and Latency Hiding, 6.7 Opt-In Default and Center-Bias Fallback (+3 more)
 
-### Community 1512 - "intent.rs"
-Cohesion: 0.50
-Nodes (7): EmitMlirArgs, emit_mlir_with_minimal_module_succeeds(), emit_mlir_with_missing_file_returns_user_error(), ExitCode, Path, run(), run_with_source()
+### Community 1512 - "BitReader<'a>"
+Cohesion: 0.30
+Nodes (13): ConversationMessageContent(), assert(), decodeEscapedTextOnce(), escapeAttr(), escapeHtml(), flushList(), markdownToHtml(), renderInline() (+5 more)
 
 ### Community 1513 - "Community 1513"
 Cohesion: 0.24
@@ -7959,13 +8024,13 @@ Nodes (8): approx(), Ray, ray_normalized_makes_unit_direction(), ray_normalized_
 Cohesion: 0.18
 Nodes (11): §3.10 Anti-pattern : Validator-skim, §3.1 Role identity, §3.2 Mandate, §3.3 Triggers, §3.4 Authority, §3.5 Spec-conformance line-by-line, §3.6 Gap-list — what's spec'd-but-not-implemented and what's implemented-but-not-spec'd, §3.7 Deliverables (+3 more)
 
-### Community 1522 - "lib.rs"
-Cohesion: 0.38
-Nodes (4): dump_summary(), EngineHealth, Default, SubsysHealth
+### Community 1522 - "MockProbe"
+Cohesion: 0.24
+Nodes (9): default_validates(), msaa_three_rejected(), negative_exposure_rejected(), oversized_fps_rejected(), RenderConfig, Default, Self, serde_roundtrip() (+1 more)
 
-### Community 1523 - "backoff.rs"
-Cohesion: 0.32
-Nodes (3): engine_error_discipline_attestation_hash(), engine_error_discipline_attestation_hash_deterministic(), engine_error_discipline_attestation_hash_is_64_hex()
+### Community 1523 - "ProbeError"
+Cohesion: 0.22
+Nodes (11): QualitySignal, rating(), AggregateView, Option, Self, signal_derived_at_k_floor(), signal_runtime_stable_q8_proportional(), signal_warning_count_for_low_stars_no_stable_tag() (+3 more)
 
 ### Community 1524 - "Community 1524"
 Cohesion: 0.18
@@ -8011,9 +8076,9 @@ Nodes (11): §4.10 Validator task, §4.1 Identity, §4.2 Surface (per spec-07 §
 Cohesion: 0.18
 Nodes (11): § 6 · COMPONENT-RARITY-AFFIX-SYSTEM (canonical-modularity), I> 7-Hub-Workbenches «CHEMISTRY:583-591», I> Aura-Essence-affix-economy «CHEMISTRY:564-577», I> ComponentRarity-enum (Q-06 APPLIED · 8-tier · supersedes 5-tier), I> deconstruct-to-learn (Formbook) «CHEMISTRY:530-549», I> ENTITY-BODY-SYSTEM extends-ItemComposition «ENTITY_BODY_SYSTEM_SPEC:23-27», I> ItemComponent-canonical-struct «CHEMISTRY:501-512», I> quality-gated-assembly «CHEMISTRY:526» (+3 more)
 
-### Community 1535 - "SeasonMode"
-Cohesion: 0.23
-Nodes (7): class_xp_caps_at_one_million_per_track(), BTreeMap, season_meta_progress_serde_round_trip(), SeasonMetaProgress, SeasonMode, soft_and_hard_class_xp_isolated(), soft_and_hard_echoes_isolated()
+### Community 1535 - "resolve_call_result.rs"
+Cohesion: 0.28
+Nodes (10): aggregate_filters_other_content_so_no_cross_pollination(), flag(), full_submit_aggregate_signal_path(), k_floor_trending_gates_rank_influence(), populate_with_n(), quality_signal_for_aggregate_path_matches_from_ratings_path(), rating_pack_roundtrip_through_aggregate(), revoke_idempotent_does_not_corrupt_aggregate() (+2 more)
 
 ### Community 1536 - "Community 1536"
 Cohesion: 0.40
@@ -8031,25 +8096,29 @@ Nodes (9): good_signature_verifies(), make_signed(), payload_hash_mismatch_rejec
 Cohesion: 0.27
 Nodes (11): main(), process_file(), process_json(), process_jsonl(), Any, Process a single-document JSON file (possibly with no newlines at all)., Apply all replacements to a string; return (new_string, count_of_replacements)., Recursively walk a JSON-loaded object; redact strings in place. (+3 more)
 
-### Community 1542 - "Lcg"
-Cohesion: 0.15
-Nodes (11): BoolGen, FloatGen, Generator, IntGen, Lcg, lcg_gen_i64_stays_in_range(), lcg_gen_unit_f64_stays_in_unit_interval(), T (+3 more)
+### Community 1540 - "MockProbe"
+Cohesion: 0.04
+Nodes (54): Data, Inspector(), object(), Session, User, blobBase64(), metadataOnly(), randomUuid() (+46 more)
+
+### Community 1542 - "row.rs"
+Cohesion: 0.21
+Nodes (9): is_error_on_error_and_critical_only(), is_security_relevant_cap_or_source(), kv_get_and_set_overwrite(), round_trip_serialize(), sample_row(), parse_intent_line(), parses_classify(), Option (+1 more)
 
 ### Community 1544 - "Community 1544"
 Cohesion: 0.20
 Nodes (4): BroadPhase, ConstraintSolver, Joint, NarrowPhase
 
 ### Community 1547 - "RealEntry"
-Cohesion: 0.29
-Nodes (6): RealEntry, RegistryEntry, Debug, Formatter, Instant, HostWindow
+Cohesion: 0.24
+Nodes (8): default_validates(), NetworkConfig, port_in_range(), port_zero_rejected(), Default, Option, Self, supabase_mismatch_rejected()
 
 ### Community 1549 - "Community 1549"
 Cohesion: 0.20
 Nodes (9): Attestation, Error Category Breakdown, Feature Usage Matrix, LoA Scenes — Parser Compat Matrix (T11-CC-AUDIT-1), Multi-source Linker Requirements, Per-Scene Status, Recommended Emitter Advancement, Recommended Parser Advancement Wave (ranked by impact) (+1 more)
 
 ### Community 1550 - "Community 1550"
-Cohesion: 0.31
-Nodes (9): C, HeartbeatPulse(), PulseProps, statusColor(), statusGlyph(), statusText(), fmtUptime(), NodeHeartbeat (+1 more)
+Cohesion: 0.26
+Nodes (10): DocsLayout(), DocsLayoutProps, DOC_PAGES, DocPage, DocStatus, findDocPage(), getDocSections(), statusBadge() (+2 more)
 
 ### Community 1551 - "Community 1551"
 Cohesion: 0.33
@@ -8120,8 +8189,8 @@ Cohesion: 0.20
 Nodes (10): §7.1 ‖ State Inspection (5 tools), §7.2 ‖ Cell + Entity Inspection (5 tools — Σ-mask gated), §7.3 ‖ Telemetry + Logs (5 tools), §7.4 ‖ Health + Invariants (5 tools), §7.5 ‖ Spec-Coverage (4 tools), §7.6 ‖ Time-Control (5 tools — replay-determinism aware), §7.7 ‖ Frame Capture (2 tools — Cap<TelemetryEgress> required), §7.8 ‖ Hot-Reload + Tweak (7 tools — replay-aware) (+2 more)
 
 ### Community 1568 - "Community 1568"
-Cohesion: 0.29
-Nodes (4): KanBiasConsent, KanBiasVector, Default, Self
+Cohesion: 0.27
+Nodes (8): anonymized_pubkey_replacement(), egress_check(), EgressViolation, hex_prefix_8(), Display, Error, Formatter, sanitize_for_egress()
 
 ### Community 1569 - "Community 1569"
 Cohesion: 0.20
@@ -8143,9 +8212,9 @@ Nodes (10): §10 ‖ T11-D165 — Q-F : Item.kind, ═════════�
 Cohesion: 0.44
 Nodes (9): collect_dir_alphabetical(), main(), rerun_if_changed(), BTreeMap, Path, Vec, shingle_fingerprint(), token_hash_bag() (+1 more)
 
-### Community 1574 - "list_labels"
-Cohesion: 0.33
-Nodes (6): list_labels(), list_labels_missing_dir_returns_empty(), re_exports_compile(), AsRef, Path, Vec
+### Community 1574 - "HeartbeatServiceBuilder"
+Cohesion: 0.26
+Nodes (8): bad_hex_rejected(), default_validates(), LicensePolicyChoice, PolicyConfig, Default, Self, strict_policy(), zero_rotate_rejected()
 
 ### Community 1575 - "Community 1575"
 Cohesion: 0.11
@@ -8155,25 +8224,25 @@ Nodes (17): access, bytes, format, href, sha256, channel, schema_version, accoun
 Cohesion: 0.20
 Nodes (10): § 16.1 · Q-01 · Apockalypse-Engine ✓ applied, § 16.2 · Q-02 · Death-mechanic ✓ applied (with-caveat), § 16.3 · Q-05 · Mycelium-privacy ✓ applied, § 16.4 · Q-06 · Rarity-tiers ✓ applied, § 16.5 · Q-07 · Stripe-cosmetic-launch ✓ applied, § 16.6 · Q-09 · Orchestrator-language ✓ applied, § 16.7 · Q-12 · Draconic-archetypes ✓ applied, § 16.8 · cross-reference INVARIANTS reaffirmed (+2 more)
 
-### Community 1577 - "Community 1577"
-Cohesion: 0.35
-Nodes (9): project(), reflect_point_across_plane(), reflect_point_across_xz_plane_negates_y(), reject(), reject_handles_degenerate_basis(), reject_subtracts_projection(), Multivector, Plane (+1 more)
+### Community 1577 - "LinearUse"
+Cohesion: 0.24
+Nodes (7): jet_recip_first_order_correct_at_x_eq_2(), multiplicative_inverse_in_jet_space(), order_8_polynomial_kth_derivative_matches_factorial(), powi_negative_inverts(), powi_negative_two_matches_explicit_recip_squared(), powi_three_matches_explicit_cube(), powi_zero_is_one()
 
 ### Community 1578 - "Community 1578"
 Cohesion: 0.20
 Nodes (10): § 5.1 cocreative-loop, § 5.2 self-author (DM · GM · Collaborator), § 5.3 self-coder (Coder · runtime-mutate), § 5.4 mycelium-federation, § 5.5 Akashic-anchor, § 5.6 hotfix-9-channel, § 5.7 cosmetic-only-axiom, § 5.8 8-tier-rarity + battle-pass + gacha (Q-06 RESOLVED) (+2 more)
 
 ### Community 1579 - "t11_w20_renderer_transport.rs"
-Cohesion: 0.30
-Nodes (11): assert_check_succeeds(), assert_object_build_succeeds(), lower_repo_file_to_mir(), mir_contains_op(), renderer_transport_examples_emit_objects(), renderer_transport_exhaustive_gpu_ops_lower_to_mir(), renderer_transport_new_modules_check(), repo_file() (+3 more)
+Cohesion: 0.39
+Nodes (7): damage_falloff(), falloff_saturates_correctly(), falloff_compounds_with_armor_modifier(), falloff_floor_at_max_range_and_beyond(), falloff_full_strength_at_min_range(), falloff_handles_nan_and_negative_distance(), falloff_monotone_decreasing_in_range()
 
 ### Community 1580 - "Community 1580"
 Cohesion: 0.20
 Nodes (10): § 3.1 ElementalPurity (0-30), § 3.2 MaterialHarmony (0-15), § 3.3 CulturalCoherence (0-15), § 3.4 AffixSynergyDepth (0-20), § 3.5 BiographyWeight (0-10), § 3 · 6-DIM HARMONY-DIMENSIONS, § 3.6 ParadoxTension (0-10), § 3.7 CompositeEvaluator (canonical) (+2 more)
 
-### Community 1581 - "invoke"
-Cohesion: 0.36
-Nodes (7): arg(), ask(), BANNED, CanonicalItemLike, Fixture, main(), messagesFor()
+### Community 1581 - "debug_callback_trampoline"
+Cohesion: 0.50
+Nodes (7): melee_no_yaw_no_pitch(), pattern_deterministic_for_same_index(), pitch_grows_with_shot_index(), push_event(), recoil_for(), RecoilEvent, ring_push_and_overwrite()
 
 ### Community 1582 - "Community 1582"
 Cohesion: 0.20
@@ -8199,17 +8268,21 @@ Nodes (8): AuditSink, Clock, HotfixStream, BTreeSet, Send, Sync, SigmaChainPoll,
 Cohesion: 0.22
 Nodes (5): causal_arc_lens_for_narrative_debugger(), consent_revoke_disables_perception(), crystal_with_nd_extent_visible_through_lens(), lens_rotation_reveals_hidden_axes(), player_navigates_mood_dimension()
 
-### Community 1591 - "CycleCounter.tsx"
-Cohesion: 0.60
-Nodes (5): TestArgs, ExitCode, run(), test_run_with_update_golden_returns_success(), test_run_without_update_golden_returns_success()
+### Community 1591 - "index.tsx"
+Cohesion: 0.83
+Nodes (3): assert(), main(), waitForPort()
 
-### Community 1592 - "Community 1592"
-Cohesion: 0.33
-Nodes (4): body, bodyHash, thread, timestamp
+### Community 1592 - "SeasonMode"
+Cohesion: 0.21
+Nodes (12): allocate_is_deterministic(), allocate_varies_with_inputs(), Crystal, CrystalClass, dist_sq_is_correct(), extent_for_environment_is_larger(), handle_high_bit_set(), Option (+4 more)
 
-### Community 1593 - "lib.rs"
-Cohesion: 0.36
-Nodes (12): cfg(), mk(), ok_response_with_id(), SignalingMessage, send_429_with_retry_after_parses_backoff_ms(), send_429_without_retry_after_falls_back_to_default(), send_5xx_maps_to_server_err_with_status_in_message(), send_rejects_malformed_message() (+4 more)
+### Community 1593 - "mneme-profile-diagnostics.test.ts"
+Cohesion: 0.35
+Nodes (9): project(), reflect_point_across_plane(), reflect_point_across_xz_plane_negates_y(), reject(), reject_handles_degenerate_basis(), reject_subtracts_projection(), Multivector, Plane (+1 more)
+
+### Community 1595 - "params.rs"
+Cohesion: 0.20
+Nodes (11): audit_failure_is_swallowed(), default_disabled(), enable_disable_flips_flag(), noop_sink_path_compiles(), record_if_active_emits_when_enabled(), record_if_active_no_op_when_disabled(), AtomicU64, AuditSink (+3 more)
 
 ### Community 1596 - "Community 1596"
 Cohesion: 0.29
@@ -8226,6 +8299,10 @@ Nodes (10): 0. Why this exists, 1. The corrected fleet (May 2026, sovereign-spec
 ### Community 1599 - "Community 1599"
 Cohesion: 0.22
 Nodes (8): Anti-patterns, Layout, lib/mneme — developer guide, Local development, Pipeline tests, REST surface, Source of truth, Sovereign / consent
+
+### Community 1600 - "lib.rs"
+Cohesion: 0.31
+Nodes (8): EXPLORE, extProps(), isActivePath(), LEGAL, NAV, NavItem, OWNER_NAV, SiteShell()
 
 ### Community 1601 - "Community 1601"
 Cohesion: 0.22
@@ -8256,24 +8333,20 @@ Cohesion: 0.20
 Nodes (17): AssetSummary, buildRecommendations(), fnv1a(), handler(), PERMITTED, readQueryParam(), RecommendError, RecommendOk (+9 more)
 
 ### Community 1608 - "Community 1608"
-Cohesion: 0.12
-Nodes (20): brdf_params_shape_is_32_to_4(), forward_pass_first_derivative_matches_analytic(), forward_pass_primal_matches_analytic(), forward_pass_records_five_ops(), iridescence_variant_has_three_hidden_layers(), KanGpuError, KanGpuForward, KanLayerKind (+12 more)
-
-### Community 1609 - "Community 1609"
-Cohesion: 0.17
-Nodes (37): BodyCtx, BodyEmitError, compute_memref_alignment(), emit_branch_region_ops(), emit_cmpf(), emit_cmpi(), emit_constant(), emit_float_binary() (+29 more)
+Cohesion: 0.13
+Nodes (19): brdf_params_shape_is_32_to_4(), forward_pass_first_derivative_matches_analytic(), forward_pass_primal_matches_analytic(), forward_pass_records_five_ops(), iridescence_variant_has_three_hidden_layers(), KanGpuError, KanGpuForward, KanLayerKind (+11 more)
 
 ### Community 1610 - "Community 1610"
-Cohesion: 0.22
-Nodes (6): adminPage, controls, jobs, ownerPage, status, thread
+Cohesion: 0.18
+Nodes (8): adminPage, controls, jobs, lanes, ownerPage, room, roomStyle, status
 
 ### Community 1611 - "Community 1611"
 Cohesion: 0.35
 Nodes (10): AttributionError, AttributionWalk, cycle_detected_clean(), fresh_link(), genesis_id_is_start_when_no_links_present(), get_attribution_chain(), ContentId, Vec (+2 more)
 
 ### Community 1612 - "Community 1612"
-Cohesion: 0.22
-Nodes (7): alias, canonicalPage, jobs, ownerAdminPage, presence, status, thread
+Cohesion: 0.18
+Nodes (9): alias, canonicalPage, jobs, lanes, ownerAdminPage, presence, roomStyle, status (+1 more)
 
 ### Community 1613 - "Community 1613"
 Cohesion: 0.22
@@ -8290,6 +8363,10 @@ Nodes (8): § 10. WHAT THIS SLICE DOES NOT COVER (DEFERRED TO §11.. SLICES), §
 ### Community 1616 - "Community 1616"
 Cohesion: 0.25
 Nodes (4): CoderCap, Default, Self, SovereignBit
+
+### Community 1617 - "trinity-domain-boundary.ts"
+Cohesion: 0.22
+Nodes (12): APOCRYPHA_DESTINATION_ENTITY, CHAOS_SOURCE_PRODUCT, ChaosIngressCode, ChaosIngressError, TRINITY_OBSERVATION_ROUTE, config, handler(), readBoundedBody() (+4 more)
 
 ### Community 1618 - "Community 1618"
 Cohesion: 0.22
@@ -8315,6 +8392,10 @@ Nodes (8): AssetRef, OpaqueAsset, Debug, Into, Self, DecorationSlot, Self, SlotT
 Cohesion: 0.39
 Nodes (8): determinism_same_seed_same_score(), empty_features_safe(), fresh_fb(), nan_input_produces_finite_score(), pure_fallback_path_uses_stage0(), rank_indices_form_permutation(), Box, score_in_unit_interval()
 
+### Community 1624 - "companion-stream.test.ts"
+Cohesion: 0.53
+Nodes (9): _setStreamDelayForTests(), assert(), makeMessagesB64(), MockedResponse, mockReqRes(), runAll(), testCapsSetStreams(), testCapsZeroDenied() (+1 more)
+
 ### Community 1625 - "Community 1625"
 Cohesion: 0.39
 Nodes (6): movement_stub_accumulates_position(), MovementStub, noop_sim_advances_tick(), NoopSim, InputFrame, Simulation
@@ -8328,8 +8409,8 @@ Cohesion: 0.28
 Nodes (3): ActivityHint, IdleDetector, Self
 
 ### Community 1628 - "Community 1628"
-Cohesion: 0.18
-Nodes (24): empty_root(), leaf_hash(), merkle_path_of(), merkle_path_verify(), merkle_root_of(), MerkleStep, node_hash(), Digest (+16 more)
+Cohesion: 0.33
+Nodes (4): AccountPendingJournal, AccountPendingStorage, pendingFailure(), sameAccountTurn()
 
 ### Community 1629 - "Community 1629"
 Cohesion: 0.40
@@ -8360,20 +8441,20 @@ Cohesion: 0.22
 Nodes (8): Measured velocity (single session 2026-05-03 · ~8-10hr wall-clock), Specific question for you, The actual bottleneck (honest), The orchestration model (why this is reproducible), Velocity-Context Correction · paste this into your next Grok session, Velocity vs. your audit anchor-points, What changes in your assessment, Why I'm sending this
 
 ### Community 1637 - "Community 1637"
-Cohesion: 0.25
-Nodes (4): Box, Debug, Formatter, Sound
+Cohesion: 0.20
+Nodes (6): Box, Debug, Formatter, Send, Sound, SoundSource
 
 ### Community 1638 - "Community 1638"
 Cohesion: 0.18
 Nodes (4): OmegaTensorIso<'a, T, R>, OmegaView<'a, T, R>, Debug, Formatter
 
 ### Community 1639 - "Community 1639"
-Cohesion: 0.10
-Nodes (17): halt_bridge_drains_pending_steps(), halt_bridge_explicit_reason_apocky_root(), halt_bridge_explicit_reason_audit_failure(), halt_bridge_invokes_substrate_halt(), halt_for_pd_violation(), pd_origin_canonical_names_unique(), PrimeDirectiveOrigin, PrimeDirectiveViolation (+9 more)
-
-### Community 1641 - "select_error_codes_are_unique"
 Cohesion: 0.27
-Nodes (9): canonicalMemberChatMessage(), MemberChatJobReceipt, authFailure(), createMemberChatSubmitHandler(), DEFAULT_DEPENDENCIES, exactSubmitBody(), firstHeader(), MemberChatSubmitBody (+1 more)
+Nodes (11): findSpec(), SpecEntry, SPECS, DocsPage(), DocsPageProps, getStaticProps(), renderCslWithGlyphs(), assert() (+3 more)
+
+### Community 1641 - "transport_send_validate.rs"
+Cohesion: 0.36
+Nodes (12): cfg(), mk(), ok_response_with_id(), SignalingMessage, send_429_with_retry_after_parses_backoff_ms(), send_429_without_retry_after_falls_back_to_default(), send_5xx_maps_to_server_err_with_status_in_message(), send_rejects_malformed_message() (+4 more)
 
 ### Community 1642 - "Community 1642"
 Cohesion: 0.29
@@ -8387,13 +8468,9 @@ Nodes (10): § 6.10 · Kill-switch integration, § 6.1 · Thesis + intent, § 6.
 Cohesion: 0.32
 Nodes (3): neutral(), stage0_companion_intent_yields_prompt_with_stable_hash(), stage0_table_examines_to_scene_edit()
 
-### Community 1646 - "Community 1646"
-Cohesion: 0.39
-Nodes (7): damage_falloff(), falloff_saturates_correctly(), falloff_compounds_with_armor_modifier(), falloff_floor_at_max_range_and_beyond(), falloff_full_strength_at_min_range(), falloff_handles_nan_and_negative_distance(), falloff_monotone_decreasing_in_range()
-
-### Community 1647 - "Community 1647"
-Cohesion: 0.50
-Nodes (7): melee_no_yaw_no_pitch(), pattern_deterministic_for_same_index(), pitch_grows_with_shot_index(), push_event(), recoil_for(), RecoilEvent, ring_push_and_overwrite()
+### Community 1647 - "index.ts"
+Cohesion: 0.25
+Nodes (12): anchor_id_is_32_hex_chars(), deterministic_anchor_id(), empty_pubkey_rejects(), hex_first_n(), hex_nibble(), payload_change_changes_anchor_id(), pull_anchor_includes_kind_separation(), Self (+4 more)
 
 ### Community 1648 - "Community 1648"
 Cohesion: 0.25
@@ -8403,9 +8480,9 @@ Nodes (7): Build, cssl-playground build, Dev server (any static file server work
 Cohesion: 0.54
 Nodes (7): isSovereignHeader(), assert(), testSovereignFromIncomingShape(), testSovereignHeaderAcceptsWithCorrectHeader(), testSovereignHeaderRejectsWithoutFlag(), testSovereignHeaderRejectsWrongHeader(), testSovereignHexConstant()
 
-### Community 1651 - "MtlDevice"
-Cohesion: 0.25
-Nodes (5): GpuFamily, intel_mac_no_raytracing(), m3_max_has_raytracing_and_unified_memory(), MtlDevice, Self
+### Community 1651 - "Vec4"
+Cohesion: 0.20
+Nodes (10): HotfixEvent, mock_sink_records_events(), MockTelemetrySink, Self, Send, Sync, Vec, TelemetrySink (+2 more)
 
 ### Community 1652 - "Community 1652"
 Cohesion: 0.25
@@ -8423,9 +8500,13 @@ Nodes (8): additionalProperties, required, type, build, missing, release_gate, s
 Cohesion: 0.25
 Nodes (8): availability, href, media_type, required, authn, authorization, method, rel
 
+### Community 1656 - ".iter"
+Cohesion: 0.33
+Nodes (3): room_status(), Option, Room
+
 ### Community 1657 - "Community 1657"
-Cohesion: 0.25
-Nodes (5): accountChat, adminPage, client, publicPage, server
+Cohesion: 0.22
+Nodes (6): adminPage, client, lanes, publicPage, room, server
 
 ### Community 1658 - "Community 1658"
 Cohesion: 0.20
@@ -8455,9 +8536,17 @@ Nodes (7): Common commands, File locations, Per-step scripts (run individually i
 Cohesion: 0.39
 Nodes (6): AstCompoundOp, lit(), make_compound(), make_compound_joins_spans(), translate_compound_op(), LexCompoundOp
 
+### Community 1665 - "check.rs"
+Cohesion: 0.22
+Nodes (9): ToolResult, POWERSHELL_ARGS, runShellTool(), screenCommand(), SHELL_TOOLS, shellChecks, ShellDenied, ShellPolicy (+1 more)
+
 ### Community 1666 - "Community 1666"
-Cohesion: 0.10
-Nodes (42): argv(), backend_parses_unknown_returns_error(), build_backend_combines_with_other_flags(), build_basic(), build_module_paths_preserve_insertion_order(), build_with_backend_cranelift_explicit(), build_with_backend_native_x64(), build_with_emit() (+34 more)
+Cohesion: 0.06
+Nodes (70): argv(), backend_parses_unknown_returns_error(), build_backend_combines_with_other_flags(), build_basic(), build_module_paths_preserve_insertion_order(), build_with_backend_cranelift_explicit(), build_with_backend_native_x64(), build_with_emit() (+62 more)
+
+### Community 1667 - "lib.rs"
+Cohesion: 0.32
+Nodes (3): engine_error_discipline_attestation_hash(), engine_error_discipline_attestation_hash_deterministic(), engine_error_discipline_attestation_hash_is_64_hex()
 
 ### Community 1670 - "Community 1670"
 Cohesion: 0.33
@@ -8475,19 +8564,27 @@ Nodes (5): ed25519_hex_asc_winner(), hex_lower(), hex_lower_distinguishes_bytes(
 Cohesion: 0.52
 Nodes (6): build_gm(), tone_tune_clamps_extreme_bias(), tone_tune_deterministic_across_calls(), tone_tune_maps_first_three_theta_to_axes(), tone_tune_short_bias_leaves_missing_axes_neutral(), tone_tune_zero_dim_bias_stays_neutral()
 
-### Community 1678 - "Community 1678"
-Cohesion: 0.43
-Nodes (7): cells_have_finite_charge_and_bounded_coords(), determinism_same_seed_same_cells(), emits_at_least_one_cell_for_known_intent(), emits_no_more_than_max_cells(), fresh_fb(), pure_fallback_uses_stage0_table(), Box
+### Community 1675 - "index.ts"
+Cohesion: 0.02
+Nodes (174): DEFAULT_ALLOWLIST, firstHeaderValue(), getAccessTokenFromRequest(), getAdminAllowlist(), getAdminAuthorization(), getRequestUser(), readCookie(), testAdminUser() (+166 more)
 
-### Community 1680 - "currentTier"
-Cohesion: 0.22
-Nodes (5): MockProbe, AtomicU32, AtomicU64, Default, Self
+### Community 1678 - "arc_a770.rs"
+Cohesion: 0.24
+Nodes (7): ArcA770Profile, canonical_matches_spec(), expected_extensions_includes_coop_matrix_and_rt(), expected_features(), expected_features_all_set(), Self, to_vulkan_device_preserves_spec_facts()
 
-### Community 1685 - "aggregate.rs"
-Cohesion: 0.36
-Nodes (6): empty_aggregate_invisible(), mk(), ModerationAggregate, Self, t2_floor_at_three_flags(), t3_needs_review_requires_both()
+### Community 1680 - "MetalStage"
+Cohesion: 0.31
+Nodes (9): C, HeartbeatPulse(), PulseProps, statusColor(), statusGlyph(), statusText(), fmtUptime(), NodeHeartbeat (+1 more)
 
-### Community 1687 - "Community 1687"
+### Community 1684 - ".for_test"
+Cohesion: 0.29
+Nodes (8): cap_for_test_constructs_each_kind(), cap_is_consumed_on_into_witness(), Cap<T>, into_witness_roundtrip_every_kind(), Self, verify_cap_kind_mismatch(), verify_cap_ok_path(), verify_cap_revoked_when_issued_before_floor()
+
+### Community 1685 - "lib.rs"
+Cohesion: 0.37
+Nodes (13): assert(), calls, eventsReturnsNewestPresence(), guestCannotReadOwnerRoom(), jsonResponse(), main(), Out, request() (+5 more)
+
+### Community 1687 - "SovereignPause.tsx"
 Cohesion: 0.29
 Nodes (4): ShowcaseVideo(), VIDEO, VideoFormat, TRANSCRIPT
 
@@ -8495,9 +8592,9 @@ Nodes (4): ShowcaseVideo(), VIDEO, VideoFormat, TRANSCRIPT
 Cohesion: 0.33
 Nodes (6): DEVBLOG_POSTS, DevblogPost, findPost(), POST_MYCELIAL_VISION, POST_WHAT_IS_THE_SUBSTRATE, POST_WHY_CSSL
 
-### Community 1689 - "Community 1689"
-Cohesion: 0.43
-Nodes (4): assert(), testInfinityEngineComponentName(), testInfinityEngineDefaultExport(), testInfinityEngineSourceHasCanonicalCopy()
+### Community 1689 - ".parse_value"
+Cohesion: 0.50
+Nodes (8): AudioAuditEvent, AudioAuditKind, AudioAuditStatus, empty_jsonl(), mk(), multi_event_jsonl_newline_separated(), render_jsonl(), single_event_roundtrip()
 
 ### Community 1690 - "Community 1690"
 Cohesion: 0.29
@@ -8524,12 +8621,12 @@ Cohesion: 0.29
 Nodes (4): account, callback, login, register
 
 ### Community 1696 - "Community 1696"
-Cohesion: 0.33
-Nodes (5): Debug, Formatter, ToolHandler, ToolEntry, ToolMeta
+Cohesion: 0.25
+Nodes (5): CAPS, params, previewLane, previewMessages, STREAMED
 
 ### Community 1697 - "Community 1697"
-Cohesion: 0.29
-Nodes (5): approvalConsumption, component, effectDispatch, style, workspacePanel
+Cohesion: 0.39
+Nodes (6): functionBody(), migration, testAtomicRetryRegistration(), testRegistrationAndCleanupFailClosed(), testServerGeneratedSeed(), testVisibilityAndLeastAuthority()
 
 ### Community 1698 - "Community 1698"
 Cohesion: 0.38
@@ -8607,9 +8704,13 @@ Nodes (7): § 4 · ASCENSION (canonical), I> ascension-rate-targets «ARTIFACT_A
 Cohesion: 0.25
 Nodes (7): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
 
-### Community 1717 - "estimate_usd"
-Cohesion: 0.43
-Nodes (7): anthropic_opus_pricing(), anthropic_typical_call(), estimate_usd(), ollama_zero(), LlmMode, substrate_zero(), cost_estimate_anthropic_opus()
+### Community 1717 - "currentTier"
+Cohesion: 0.18
+Nodes (3): BackendStream, Self, AudioBackend
+
+### Community 1718 - "attestation.rs"
+Cohesion: 0.07
+Nodes (76): SmsWorkerResult, assert(), constantTimeEqual(), CronExecution, emitCronAudit(), getServiceRoleClient(), idempotencyKey(), isCronAuthorized() (+68 more)
 
 ### Community 1721 - "Community 1721"
 Cohesion: 0.33
@@ -8635,17 +8736,25 @@ Nodes (6): Item, Iterator, Into, Self, Trophy, TrophyKind
 Cohesion: 0.53
 Nodes (4): generate(), light_color(), voronoi_doorway_count(), voronoi_uses_all_8_sites()
 
+### Community 1729 - "feature.rs"
+Cohesion: 0.20
+Nodes (5): feature_set_empty_summary(), feature_set_iter_is_sorted(), feature_set_summary_suffix(), feature_set_target_features_string(), I
+
 ### Community 1730 - "Community 1730"
-Cohesion: 0.29
-Nodes (3): MslShaderSet, Self, shader_set_placeholder_all_three_stages()
+Cohesion: 0.15
+Nodes (5): is_apple_host(), is_apple_host_is_const_evaluable(), MslShaderSet, Self, shader_set_placeholder_all_three_stages()
+
+### Community 1731 - "MemAddr"
+Cohesion: 0.26
+Nodes (9): mem_addr_base_only(), mem_addr_with_displacement(), mem_addr_with_index_no_disp(), MemAddr, Option, Self, Vec, X64VReg (+1 more)
 
 ### Community 1732 - "Community 1732"
 Cohesion: 0.60
 Nodes (5): base_dps_invariant_under_cosmetic_swap(), compute_damage_invariant_for_matched_mechanic_inputs(), cosmetic_palette(), dps_signature_invariant_for_every_kind_tier_cosmetic(), per_shot_invariant_under_cosmetic_swap()
 
-### Community 1733 - "EmitMode"
-Cohesion: 0.46
-Nodes (7): cfg(), poll_empty_array_body_returns_empty_vec(), poll_encodes_since_id_in_url(), poll_malformed_json_returns_server_err(), poll_success_emits_audit_with_count(), poll_truly_empty_body_returns_empty_vec(), poll_without_recv_cap_returns_cap_denied()
+### Community 1733 - "hot_reload.rs"
+Cohesion: 0.33
+Nodes (5): Debug, Formatter, ToolHandler, ToolEntry, ToolMeta
 
 ### Community 1734 - "Community 1734"
 Cohesion: 0.19
@@ -8695,13 +8804,9 @@ Nodes (3): PUBLIC, ROOT, temporary
 Cohesion: 0.54
 Nodes (7): empty_slice_round_trips_to_empty_tensor(), omega_to_vec3_vec(), OmegaTensor, Vec, Vec3, vec3_slice_round_trip_through_tensor(), vec3_slice_to_omega()
 
-### Community 1746 - "Community 1746"
-Cohesion: 0.70
-Nodes (4): empty_csl_native_module_has_no_items(), parse_module(), Token, single_section_produces_module_item()
-
-### Community 1747 - "Community 1747"
-Cohesion: 0.60
-Nodes (3): empty_source_produces_empty_module_no_errors(), parse(), Token
+### Community 1746 - "SovereignPause.tsx"
+Cohesion: 0.28
+Nodes (11): STARTERS, YesNoOracle(), COUNTERWEIGHTS, createOracleSeed(), drawOracle(), HIGH_STAKES_PATTERNS, isHighStakesOracleQuestion(), NEXT_QUESTIONS (+3 more)
 
 ### Community 1748 - "Community 1748"
 Cohesion: 0.33
@@ -8722,6 +8827,10 @@ Nodes (6): §4.1 Per-crate `no-unwrap-on-user-data` lint, §4.2 Panic-catch vali
 ### Community 1752 - "Community 1752"
 Cohesion: 0.18
 Nodes (7): FpsPipeline, FrameMetrics, PresentMode, Default, vrs_tier_classification_and_average_ratio(), VrsConfig, VrsTier
+
+### Community 1753 - "site-directory.ts"
+Cohesion: 0.13
+Nodes (32): APOCRYPHA_RUNTIME_CAPABILITIES, APOCRYPHA_RUNTIME_CONFIGURATION, additionalProbeScopes(), boolEnv(), EXACT_CAPABILITIES, EXACT_MEMORY_ADAPTERS, firstCsv(), integerEnv() (+24 more)
 
 ### Community 1754 - "Community 1754"
 Cohesion: 0.33
@@ -8787,9 +8896,13 @@ Nodes (5): After Grok responds, AUDIT PROMPT (copy everything below and paste in
 Cohesion: 0.33
 Nodes (6): fs_read_file(), fs_write_file(), Path, Safe read within ALLOWED_ROOT., Safe write (use with caution — enable dry_run in production)., _safe_path()
 
-### Community 1770 - "Community 1770"
-Cohesion: 0.43
-Nodes (5): attestation_string_contains_invariants(), flag_pack_safe(), flag_pack_safe_roundtrip(), invalid_flag_kind_rejected(), prime_directive_attestation_safe()
+### Community 1770 - "parser.ts"
+Cohesion: 0.29
+Nodes (14): memoryStore(), assert(), Sent, sleep(), testAnnouncementHappensOncePerChannel(), testBotsAndSelfAreNeverAnswered(), testHaltSurvivesRestart(), testMindDownSaysSoInsteadOfGoingSilent() (+6 more)
+
+### Community 1773 - "list_labels"
+Cohesion: 0.33
+Nodes (6): list_labels(), list_labels_missing_dir_returns_empty(), re_exports_compile(), AsRef, Path, Vec
 
 ### Community 1774 - "Community 1774"
 Cohesion: 0.20
@@ -8811,9 +8924,17 @@ Nodes (4): QualitySignal, Self, signal_emission_from_clean_report(), signal_emis
 Cohesion: 0.60
 Nodes (4): flush_denormals_to_zero(), fma_probe_returns_bool(), fmadd_disabled(), ftz_probe_returns_bool()
 
-### Community 1786 - "Community 1786"
-Cohesion: 0.50
-Nodes (4): ingest_empty_dir_returns_empty_index(), ingest_logs_dir(), AsRef, Path
+### Community 1785 - "LootRollError"
+Cohesion: 0.43
+Nodes (7): cells_have_finite_charge_and_bounded_coords(), determinism_same_seed_same_cells(), emits_at_least_one_cell_for_known_intent(), emits_no_more_than_max_cells(), fresh_fb(), pure_fallback_uses_stage0_table(), Box
+
+### Community 1786 - "MockProbe"
+Cohesion: 0.20
+Nodes (6): MockProbe, AtomicBool, AtomicU32, AtomicU64, Default, Self
+
+### Community 1788 - "debug_callback_trampoline"
+Cohesion: 0.20
+Nodes (6): MockProbe, AtomicBool, AtomicU32, AtomicU64, Default, Self
 
 ### Community 1789 - "Community 1789"
 Cohesion: 0.29
@@ -8855,9 +8976,9 @@ Nodes (3): record_event(), record_event_appends_to_recorder(), ReplayEvent
 Cohesion: 0.40
 Nodes (4): Apocrypha contributor node, Build and local test, Candidate evidence bundle, Local protocol
 
-### Community 1801 - "VerifyError"
+### Community 1801 - "TestArgs"
 Cohesion: 0.40
-Nodes (4): Display, Error, Formatter, VerifyError
+Nodes (3): ALLOWED_ORIGINS, main(), send()
 
 ### Community 1802 - "Community 1802"
 Cohesion: 0.40
@@ -8995,6 +9116,10 @@ Nodes (5): curve_monotonic_across_run_n(), early_game_band_3_to_5(), floor_count
 Cohesion: 0.40
 Nodes (3): collect_phoneme_stream(), Vec, stage0_returns_empty_stream()
 
+### Community 1844 - "Aabb"
+Cohesion: 0.20
+Nodes (6): MockProbe, AtomicBool, AtomicU32, AtomicU64, Default, Self
+
 ### Community 1848 - "Community 1848"
 Cohesion: 0.40
 Nodes (4): PoolIter<'p, T>, Item, Iterator, Option
@@ -9003,17 +9128,17 @@ Nodes (4): PoolIter<'p, T>, Item, Iterator, Option
 Cohesion: 0.50
 Nodes (3): ATTESTATION (PRIME_DIRECTIVE.md §11), cssl-host-stripe-integration — T11-W8-D1, PRIME-DIRECTIVE conformance
 
-### Community 1851 - "MemoryPersistence"
-Cohesion: 0.28
-Nodes (3): BridgeJobRow, BridgeSessionRow, MemoryPersistence
+### Community 1851 - "ProbeError"
+Cohesion: 0.21
+Nodes (8): FeatureProbe, map_loader_err(), ProbeError, AshError, PartialEq, Self, Vec, StubProbe
 
 ### Community 1856 - "Community 1856"
 Cohesion: 0.33
 Nodes (6): § 0.A  The rule, § 0.B  When Rust IS acceptable, § 0.C  When Rust is NOT acceptable, § 0  CSSL-FIRST MANDATE — read this first, § 0.D  Authored-in-CSSL checklist, § 0.E  Authoring conventions
 
 ### Community 1858 - "Community 1858"
-Cohesion: 0.15
-Nodes (13): dependencies, katex, next, react, react-dom, stripe, @supabase/supabase-js, react (+5 more)
+Cohesion: 0.13
+Nodes (15): dependencies, katex, next, qrcode, react, react-dom, stripe, @supabase/supabase-js (+7 more)
 
 ### Community 1859 - "Community 1859"
 Cohesion: 0.33
@@ -9022,6 +9147,10 @@ Nodes (6): § 1.1 · Purpose + scope, § 1.2 · Crate layout, § 1.3 · Key type
 ### Community 1860 - "Community 1860"
 Cohesion: 0.33
 Nodes (6): § 7.1 · Errors → Metrics → MCP (the fault-detection chain), § 7.2 · Logs → Telemetry → MCP (the structured-trace chain), § 7.3 · Inspect → Hot-Reload → Verify (the iteration chain), § 7.4 · Replay-determinism preservation, § 7.5 · Single-path discipline (no fan-out), § 7 · CROSS-LAYER INTEGRATION
+
+### Community 1861 - "validate_egress"
+Cohesion: 0.18
+Nodes (8): LabeledValue, T, validate_egress(), validate_egress_refuses_label_with_biometric_subject(), validate_egress_refuses_label_with_body_principal(), validate_egress_refuses_label_with_face_principal(), validate_egress_refuses_label_with_gaze_principal(), end_to_end_biometric_refusal_via_top_level_api()
 
 ### Community 1864 - "Community 1864"
 Cohesion: 0.50
@@ -9126,10 +9255,6 @@ Nodes (6): outcome_is_accepted_returns_bool(), PipelineOutcome, all_stdlib_files
 ### Community 1899 - "Community 1899"
 Cohesion: 0.60
 Nodes (3): Portal, PortalDest, Self
-
-### Community 1901 - "companion.test.ts"
-Cohesion: 0.44
-Nodes (8): assert(), MockedResponse, mockReqRes(), SAMPLE_MESSAGES, testCapsSetAllows(), testCapsZeroDenies(), testSovereignBypassWithCorrectHeader(), testSovereignRejectedWithoutHeader()
 
 ### Community 1904 - "Community 1904"
 Cohesion: 0.67
@@ -9347,9 +9472,9 @@ Nodes (5): counts, env, envText, sb, since
 Cohesion: 0.33
 Nodes (4): env, envText, pieces, sb
 
-### Community 2031 - "parse_network_line"
-Cohesion: 0.43
-Nodes (7): parse_network_line(), parses_4xx_as_warn(), parses_5xx_as_error(), parses_denied_by_caps(), parses_success_2xx(), Option, value_to_string()
+### Community 2031 - "heap.rs"
+Cohesion: 0.22
+Nodes (3): EnvironmentBlendMode, Time, ViewConfigurationType
 
 ### Community 2032 - "graphify reference: add a URL and watch a folder"
 Cohesion: 0.50
@@ -9367,53 +9492,233 @@ Nodes (3): For /graphify explain, For /graphify path, graphify reference: query,
 Cohesion: 0.50
 Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphify reference: incremental update and cluster-only
 
-### Community 2037 - "heap.rs"
-Cohesion: 0.36
-Nodes (4): default_shared_options(), gpu_private_options(), MetalResourceOptions, Self
+### Community 2037 - "useClearing.ts"
+Cohesion: 0.43
+Nodes (4): assert(), testInfinityEngineComponentName(), testInfinityEngineDefaultExport(), testInfinityEngineSourceHasCanonicalCopy()
 
-### Community 2042 - "plinth_positions"
+### Community 2042 - "CycleCounter.tsx"
+Cohesion: 0.41
+Nodes (11): integration_all_25_sense_tools_dispatch_successfully(), integration_combined_snapshot_aggregates_seven_axes(), integration_sense_compass_8_returns_8_directions(), integration_sense_framebuffer_thumbnail_pending_when_no_capture(), integration_sense_omega_field_at_camera_reports_facets(), integration_sense_spectral_at_pixel_returns_16_bands_for_each_illuminant(), integration_tools_list_matches_registry_count(), invoke() (+3 more)
+
+### Community 2054 - "ConfigErr"
+Cohesion: 0.40
+Nodes (4): ConfigErr, Display, Error, Formatter
+
+### Community 2055 - "transport_send_validate.rs"
+Cohesion: 0.20
+Nodes (7): CodeBlock(), CodeBlockProps, COLORS, CSSL_KEYWORDS, CSSL_TYPE_KEYWORDS, highlightLine(), RUST_KEYWORDS
+
+### Community 2056 - "SpatialHashCellMarker"
+Cohesion: 0.22
+Nodes (5): MockProbe, AtomicU32, AtomicU64, Default, Self
+
+### Community 2057 - "chrome_tracing.rs"
+Cohesion: 0.28
+Nodes (7): RecoveryPanel(), RecoveryPanelProps, ATLAS_EMPTY_STATE, ATLAS_RENDER_ERROR_STATE, PublicUiPhase, PublicUiState, PublicUiStateCode
+
+### Community 2058 - "plinth_positions"
+Cohesion: 0.46
+Nodes (6): api(), elapsed(), main(), render(), streamUntilSettled(), WorkEvent
+
+### Community 2060 - "memory-tools.test.ts"
+Cohesion: 0.31
+Nodes (8): Instant, Timer, timer_back_to_back_calls_distinct(), timer_measures_real_elapsed_time(), timer_start_stop_returns_non_negative_ms(), timer_start_stop_returns_non_negative_ns(), timer_zero_elapsed_when_immediate(), timer_zero_overhead_when_disabled_returns_zero()
+
+### Community 2061 - ".fmt"
+Cohesion: 0.25
+Nodes (14): pair(), MarkPair, empty_summary_zeros(), LabelStats, pair(), percentile(), raw_event(), render_text() (+6 more)
+
+### Community 2062 - "run_phase_transitions.rs"
+Cohesion: 0.29
+Nodes (6): RealEntry, RegistryEntry, Debug, Formatter, Instant, HostWindow
+
+### Community 2063 - "resolve_call_result.rs"
+Cohesion: 0.20
+Nodes (7): BODY_LAYERS, CORE_MAP, COSMOLOGY_CYCLE, MATH_MAP, SOURCE_STATUS, StatusBadge(), StatusKey
+
+### Community 2064 - "X64Block"
+Cohesion: 0.29
+Nodes (5): block_with_terminator_overrides(), Self, Vec, X64Inst, X64Block
+
+### Community 2065 - "apocrypha-worker-probe.test.ts"
+Cohesion: 0.60
+Nodes (4): assert(), config, engine(), main()
+
+### Community 2066 - "MetalStage"
+Cohesion: 0.29
+Nodes (4): MetalStage, MslVersion, Display, Formatter
+
+### Community 2067 - "apocrypha-focus.test.ts"
+Cohesion: 0.22
+Nodes (10): apockalypse_history_preserved_across_construction(), companion_archetype_binds_under_consent(), engine_constructs_with_full_substrate_wiring(), fresh_main_loop(), halt_then_step_yields_halt_outcome(), load_save_state_consumes_replay_load_cap(), one_omega_step_runs_all_thirteen_phases(), PathBuf (+2 more)
+
+### Community 2068 - "season_hard_perma.rs"
+Cohesion: 0.28
+Nodes (13): createAdapters(), absolutePath(), allowlist(), DYNAMIC_MEMBER_CAPABILITIES, dynamicMemberScopes(), integer(), isLoopbackUrl(), loadGatewayConfig() (+5 more)
+
+### Community 2070 - "AdWalkerPass"
+Cohesion: 0.36
+Nodes (7): describe(), DIAL_TOOLS, DialState, OVERRIDABLE, ownsDialTool(), PRESET_IDS, runDialTool()
+
+### Community 2071 - "SimdTier"
+Cohesion: 0.28
+Nodes (3): Formatter, Self, SimdTier
+
+### Community 2072 - "aggregate.rs"
+Cohesion: 0.36
+Nodes (6): empty_aggregate_invisible(), mk(), ModerationAggregate, Self, t2_floor_at_three_flags(), t3_needs_review_requires_both()
+
+### Community 2073 - "macros.rs"
 Cohesion: 0.32
 Nodes (7): C, SovereignPause(), SovereignPauseProps, postSovereignPause(), sanitizePubkey(), SovereignPauseState, testSanitizePubkey()
 
-### Community 2057 - "hot_reload.rs"
+### Community 2074 - "Bridge"
+Cohesion: 0.29
+Nodes (4): Bridge, StateStore, InboundMessage, Rig
+
+### Community 2076 - "akashic-records.test.ts"
+Cohesion: 0.20
+Nodes (7): detailSource, docsDetailSource, homeSource, indexSource, root, shellSource, sitemap
+
+### Community 2078 - ".parse_value"
+Cohesion: 0.36
+Nodes (5): input, queryRows(), recall(), tokens(), { DatabaseSync }
+
+### Community 2079 - "parse_network_line"
 Cohesion: 0.43
-Nodes (4): Config, Dispatcher, Outcome, Stage0Stub
+Nodes (7): parse_network_line(), parses_4xx_as_warn(), parses_5xx_as_error(), parses_denied_by_caps(), parses_success_2xx(), Option, value_to_string()
 
-### Community 2060 - "plinth_positions"
-Cohesion: 0.53
-Nodes (5): manifest_failed_is_warn(), parse_spontaneous_line(), parses_manifest(), Option, value_to_string()
+### Community 2080 - "TestArgs"
+Cohesion: 0.36
+Nodes (4): default_shared_options(), gpu_private_options(), MetalResourceOptions, Self
 
-### Community 2063 - "CycleCounter.tsx"
+### Community 2081 - "companion.test.ts"
+Cohesion: 0.25
+Nodes (5): captureMode, movement, renderModes, Row, ui
+
+### Community 2083 - "LinearUse"
+Cohesion: 0.33
+Nodes (3): LinearUse, CapKind, Self
+
+### Community 2084 - "CpuTarget"
+Cohesion: 0.33
+Nodes (4): all_targets_unique(), CpuTarget, Display, Formatter
+
+### Community 2086 - "index.tsx"
+Cohesion: 0.22
+Nodes (6): AdWalker, AdWalkerPass, rebuild_callee_table_picks_up_mutations(), Debug, Formatter, HashSet
+
+### Community 2087 - "parse_module"
+Cohesion: 0.70
+Nodes (4): empty_csl_native_module_has_no_items(), parse_module(), Token, single_section_produces_module_item()
+
+### Community 2088 - "parse"
+Cohesion: 0.60
+Nodes (3): empty_source_produces_empty_module_no_errors(), parse(), Token
+
+### Community 2089 - "ffi.rs"
+Cohesion: 0.43
+Nodes (5): attestation_string_contains_invariants(), flag_pack_safe(), flag_pack_safe_roundtrip(), invalid_flag_kind_rejected(), prime_directive_attestation_safe()
+
+### Community 2090 - "VerifyError"
+Cohesion: 0.40
+Nodes (4): Display, Error, Formatter, VerifyError
+
+### Community 2091 - "lib.rs"
 Cohesion: 0.40
 Nodes (5): C, CounterProps, CycleCounter(), fmtCompact(), testFmtCompact()
 
-### Community 2067 - "room_status"
+### Community 2092 - "parse_spontaneous_line"
+Cohesion: 0.53
+Nodes (5): manifest_failed_is_warn(), parse_spontaneous_line(), parses_manifest(), Option, value_to_string()
+
+### Community 2094 - "VulkanVersion"
+Cohesion: 0.40
+Nodes (3): Display, Formatter, VulkanVersion
+
+### Community 2095 - "apply_death_penalty"
+Cohesion: 0.18
+Nodes (11): apply_death_penalty(), DeathOutcome, hard_perma_zeros_carryover(), Vec, soft_perma_keeps_half_echoes_at_full_depth(), SoftPermaCarryover, cap_prevents_pathological_grind(), echoes_carryover_50pct_at_full_depth() (+3 more)
+
+### Community 2096 - "Apocrypha on Discord"
+Cohesion: 0.20
+Nodes (9): Apocrypha on Discord, Files, It needs the mind service, Not in this version, Running it, Tests, Then check it, What it will and will not read (+1 more)
+
+### Community 2097 - "routes.test.ts"
+Cohesion: 0.35
+Nodes (12): CONTRIBUTOR_ENROLLMENT_SCHEMA, allowAll, bodyHeaders(), fixedController(), isolateContributorEnv(), mock(), Output, runAll() (+4 more)
+
+### Community 2101 - "stress_object_count"
+Cohesion: 0.28
+Nodes (9): geometry_assigns_6_stress_objects_to_raymarch_kinds(), geometry_raymarch_kinds_cover_all_6_sdf_types(), stress_object_count(), stress_object_material(), stress_object_materials_cover_at_least_8_distinct(), stress_object_name(), stress_object_names_unique(), stress_object_pattern() (+1 more)
+
+### Community 2102 - "LegalDocument.tsx"
+Cohesion: 0.04
+Nodes (75): conversationIdForAdmission(), handler(), isSameOwnerChatRequest(), LegalDocument(), LegalDocumentProps, ApocryphaFetchResult, ApocryphaOwner, buildQueryString() (+67 more)
+
+### Community 2104 - "ingest_logs_dir"
+Cohesion: 0.50
+Nodes (4): ingest_empty_dir_returns_empty_index(), ingest_logs_dir(), AsRef, Path
+
+### Community 2105 - "LinearUse"
+Cohesion: 0.04
+Nodes (75): AdminCheck, AdminLayout(), AdminLayoutProps, MOBILE_NAV, NAV, NavItem, AuthFrame(), AuthFrameProps (+67 more)
+
+### Community 2106 - "intents.tsx"
+Cohesion: 0.40
+Nodes (3): IntentRow, INTENTS, PATTERN_NAMES
+
+### Community 2113 - "Discord bridge -- consent policy  !!  <- written BEFORE the code, deliberately"
 Cohesion: 0.33
-Nodes (3): room_status(), Option, Room
+Nodes (5): Discord bridge -- consent policy  !!  <- written BEFORE the code, deliberately, I> falsifier, I> the problem this exists to prevent, I> the rules  !!, I> what this costs, honestly
+
+### Community 2121 - "currentTier"
+Cohesion: 0.40
+Nodes (9): currentTier(), installConsoleTap(), joinArgs(), safeStringify(), installFetchTap(), installNetworkTap(), installXhrTap(), isSelfRoute() (+1 more)
+
+### Community 2127 - "room.tsx"
+Cohesion: 0.27
+Nodes (6): age(), BUSY, PresenceStrip(), EventsPayload, merge(), RoomPage()
+
+### Community 2131 - "server.ts"
+Cohesion: 0.33
+Nodes (9): handleCompletions(), json(), normalizeMessages(), oneSystemFirst(), PORT, readBody(), RECALL_TIMEOUT_MS, server (+1 more)
+
+### Community 2132 - "memory-tools.test.ts"
+Cohesion: 0.25
+Nodes (6): atlas, experience, help, middleware, page, shell
+
+### Community 2133 - "site-directory.ts"
+Cohesion: 0.33
+Nodes (6): PublicSurfaceNode, DIRECTORY_GROUPS, DIRECTORY_NODES, directoryGroup, findDirectoryItems(), GROUP_IDS
+
+### Community 2134 - "_app.tsx"
+Cohesion: 0.62
+Nodes (6): App(), attachGlobalErrorListeners(), detachGlobalErrorListeners(), handleGlobalError(), handleGlobalRejection(), isBare()
 
 ### Community 2178 - "Vec<u8>"
-Cohesion: 0.06
-Nodes (60): AccountChat(), ConversationSummary, FeedbackProvider(), HelpTip(), ToastContext, useToast(), abortError(), ACTIVE_STATUSES (+52 more)
+Cohesion: 0.09
+Nodes (49): abortError(), ACTIVE_STATUSES, activeMemberChatJob(), ALL_STATUSES, canonicalMemberChatCursor(), clearMemberChatPending(), defaultSleep(), fetchMemberChatHistory() (+41 more)
 
 ## Knowledge Gaps
-- **5048 isolated node(s):** `Dependencies`, `MEMORY_DIAGNOSTIC_POLICY`, `READING_SHAPE`, `READING_VOICE`, `ToolCallChip` (+5043 more)
+- **5222 isolated node(s):** `Room`, `Kind`, `RoomEvent`, `ChatMessage`, `TOKEN` (+5217 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **66 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **81 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `String` connect `Community 1211` to `Community 3`, `Community 5`, `Community 7`, `hot_reload.rs`, `Community 10`, `Community 11`, `plinth_positions`, `Community 14`, `Community 16`, `Community 18`, `Community 19`, `room_status`, `Community 21`, `Community 25`, `Community 28`, `Community 29`, `Community 31`, `Community 33`, `Community 34`, `Community 36`, `Community 39`, `Community 41`, `Community 43`, `Community 44`, `Community 45`, `Community 46`, `Community 47`, `Community 48`, `Community 49`, `Community 50`, `Community 51`, `Community 52`, `Community 54`, `Community 57`, `Community 59`, `Community 60`, `Community 61`, `Community 65`, `Community 73`, `Community 74`, `Community 75`, `Community 77`, `Community 78`, `Community 79`, `Community 80`, `Community 88`, `Community 89`, `Community 91`, `Community 93`, `Community 94`, `Community 97`, `Community 98`, `Community 99`, `Community 102`, `Community 106`, `Community 108`, `Community 109`, `Community 116`, `Community 117`, `Community 118`, `Community 119`, `Community 120`, `Community 122`, `Community 124`, `Community 126`, `Community 134`, `Community 135`, `Community 136`, `Community 137`, `Community 139`, `Community 146`, `Community 147`, `Community 151`, `Community 153`, `Community 155`, `Community 156`, `Community 159`, `Community 160`, `Community 164`, `Community 166`, `Community 168`, `Community 169`, `Community 171`, `Community 176`, `Community 177`, `Community 185`, `Community 193`, `Community 194`, `Community 198`, `Community 200`, `Community 201`, `Community 204`, `Community 205`, `Community 206`, `Community 207`, `Community 208`, `Community 209`, `Community 215`, `Community 217`, `Community 218`, `Community 222`, `Community 224`, `Community 226`, `Community 227`, `Community 230`, `Community 232`, `Community 233`, `Community 234`, `Community 235`, `Community 237`, `Community 238`, `Community 243`, `Community 245`, `Community 246`, `Community 248`, `Community 250`, `Community 252`, `Community 253`, `Community 255`, `Community 258`, `Community 262`, `Community 264`, `Community 265`, `Community 271`, `Community 273`, `Community 277`, `Community 278`, `Community 281`, `Community 282`, `Community 283`, `Community 287`, `Community 289`, `Community 291`, `Community 301`, `Community 302`, `Community 303`, `Community 306`, `Community 314`, `Community 315`, `Community 319`, `Community 321`, `Community 324`, `Community 326`, `Community 328`, `Community 330`, `Community 331`, `Community 335`, `Community 338`, `Community 339`, `Community 342`, `Community 344`, `Community 347`, `Community 349`, `Community 351`, `Community 352`, `Community 360`, `Community 363`, `Community 365`, `Community 369`, `Community 371`, `Community 375`, `Community 377`, `Community 380`, `Community 381`, `Community 384`, `Community 386`, `Community 390`, `Community 391`, `Community 394`, `Community 395`, `Community 399`, `Community 403`, `Community 406`, `Community 409`, `Community 412`, `Community 414`, `Community 422`, `Community 425`, `Community 427`, `Community 428`, `Community 429`, `Community 430`, `Community 432`, `Community 434`, `Community 437`, `Community 438`, `Community 439`, `Community 441`, `Community 442`, `Community 445`, `Community 447`, `Community 449`, `Community 454`, `Community 459`, `Community 460`, `Community 462`, `Community 464`, `Community 466`, `Community 468`, `Community 469`, `Community 471`, `Community 472`, `Community 475`, `Community 476`, `Community 477`, `Community 480`, `Community 484`, `Community 485`, `Community 487`, `Community 488`, `Community 490`, `Community 492`, `Community 498`, `Community 501`, `Community 508`, `Community 509`, `Community 510`, `Community 513`, `Community 514`, `Community 529`, `Community 534`, `Community 538`, `Community 539`, `Community 547`, `Community 549`, `Community 550`, `Community 553`, `Community 555`, `Community 556`, `Community 557`, `Community 558`, `Community 563`, `Community 567`, `Community 569`, `Community 576`, `Community 590`, `Community 596`, `Community 597`, `Community 601`, `Community 602`, `Community 604`, `Community 605`, `Community 607`, `Community 608`, `Community 609`, `Community 612`, `Community 620`, `Community 628`, `Community 635`, `Community 639`, `Community 641`, `Community 642`, `Community 648`, `Community 653`, `Community 654`, `Community 659`, `Community 661`, `Community 664`, `Community 666`, `Community 667`, `Community 674`, `Community 676`, `Community 682`, `Community 693`, `Community 698`, `Community 699`, `Community 701`, `Community 704`, `Community 707`, `Community 710`, `Community 715`, `Community 716`, `Community 718`, `Community 723`, `Community 725`, `Community 726`, `Community 727`, `Community 729`, `Community 735`, `Community 739`, `Community 741`, `Community 746`, `Community 749`, `Community 752`, `Community 757`, `Community 759`, `Community 762`, `Community 765`, `Community 775`, `Community 777`, `Community 779`, `Community 794`, `Community 799`, `Community 801`, `Community 805`, `Community 806`, `Community 807`, `Community 808`, `Community 810`, `Community 812`, `Community 815`, `Community 816`, `Community 818`, `Community 819`, `Community 824`, `Community 827`, `Community 830`, `Community 831`, `Community 832`, `Community 833`, `Community 835`, `Community 836`, `Community 837`, `Community 842`, `Community 843`, `Community 844`, `Community 845`, `Community 847`, `Community 850`, `Community 852`, `Community 854`, `Community 856`, `Community 864`, `Community 871`, `Community 872`, `Community 874`, `Community 880`, `Community 883`, `Community 886`, `Community 893`, `Community 894`, `Community 895`, `Community 899`, `Community 901`, `Community 904`, `Community 906`, `Community 908`, `Community 911`, `Community 913`, `Community 915`, `Community 923`, `Community 928`, `Community 934`, `Community 937`, `Community 941`, `Community 950`, `Community 951`, `Community 952`, `Community 953`, `Community 955`, `Community 956`, `Community 957`, `Community 962`, `Community 970`, `Community 971`, `Community 973`, `Community 975`, `Community 976`, `Community 981`, `Community 988`, `Community 1001`, `Community 1008`, `Community 1009`, `Community 1019`, `Community 1027`, `Community 1040`, `Community 1041`, `Community 1043`, `Community 1046`, `Community 1048`, `Community 1051`, `Community 1053`, `Community 1054`, `Community 1060`, `Community 1072`, `Community 1078`, `Community 1079`, `Community 1080`, `Community 1085`, `Community 1088`, `Community 1089`, `Community 1090`, `Community 1095`, `Community 1106`, `Community 1110`, `Community 1111`, `Community 1114`, `Community 1115`, `Community 1121`, `Community 1128`, `Community 1134`, `Community 1138`, `Community 1145`, `Community 1146`, `Community 1153`, `Community 1166`, `Community 1167`, `Community 1169`, `Community 1171`, `Community 1173`, `Community 1175`, `Community 1176`, `Community 1179`, `Community 1184`, `Community 1192`, `Community 1193`, `Community 1194`, `Community 1198`, `Community 1200`, `Community 1201`, `Community 1202`, `Community 1205`, `Community 1214`, `Community 1215`, `Community 1223`, `Community 1236`, `Community 1237`, `Community 1242`, `Community 1243`, `Community 1250`, `Community 1254`, `Community 1255`, `Community 1256`, `Community 1264`, `Community 1266`, `Community 1276`, `Community 1282`, `Community 1288`, `Community 1291`, `Community 1297`, `Community 1302`, `Community 1303`, `Community 1310`, `Community 1324`, `Community 1325`, `Community 1326`, `Community 1333`, `Community 1334`, `Community 1336`, `Community 1338`, `Community 1340`, `Community 1341`, `Community 1347`, `Community 1354`, `Community 1358`, `Community 1367`, `Community 1374`, `Community 1375`, `Community 1381`, `Community 1391`, `Community 1392`, `Community 1396`, `Community 1399`, `Community 1401`, `Community 1437`, `Community 1438`, `Community 1439`, `Community 1444`, `Community 1453`, `Community 1454`, `Community 1460`, `Community 1462`, `Community 1469`, `Community 1474`, `Community 1478`, `Community 1487`, `Community 1500`, `Community 1507`, `Community 1513`, `Community 1514`, `lib.rs`, `backoff.rs`, `Community 1525`, `Community 1526`, `Community 1527`, `Community 1538`, `RealEntry`, `Community 1548`, `Community 1558`, `Community 1559`, `Community 1560`, `Community 1570`, `Community 1573`, `list_labels`, `Community 1609`, `Community 1616`, `Community 1622`, `Community 1639`, `MtlDevice`, `Community 1666`, `Community 1673`, `Community 1696`, `Community 1698`, `Community 1725`, `Community 1726`, `Community 1837`, `Community 1855`, `Community 1896`, `Community 1899`, `parse_network_line`, `drain_to_json`?**
-  _High betweenness centrality (0.601) - this node is a cross-community bridge._
-- **Why does `load_glb_bytes()` connect `Community 243` to `Community 66`, `Community 7`?**
-  _High betweenness centrality (0.155) - this node is a cross-community bridge._
-- **Why does `Data` connect `Community 66` to `Community 243`?**
-  _High betweenness centrality (0.154) - this node is a cross-community bridge._
+- **Why does `String` connect `Community 1211` to `Community 2`, `Community 3`, `Community 5`, `ConfigErr`, `Community 6`, `Community 7`, `Community 10`, `Community 11`, `.fmt`, `Community 14`, `Community 15`, `Community 16`, `run_phase_transitions.rs`, `Community 18`, `Community 19`, `Community 21`, `Community 25`, `Community 28`, `Community 31`, `parse_network_line`, `Community 33`, `Community 34`, `Community 36`, `index.tsx`, `Community 41`, `Community 43`, `parse_spontaneous_line`, `Community 45`, `Community 46`, `Community 44`, `Community 48`, `Community 49`, `Community 50`, `Community 51`, `Community 52`, `Community 47`, `Community 54`, `Community 59`, `Community 60`, `Community 61`, `Community 65`, `Community 66`, `drain_to_json`, `Community 73`, `Community 74`, `Community 77`, `Community 79`, `Community 80`, `Community 89`, `Community 90`, `Community 93`, `Community 94`, `Community 97`, `Community 98`, `Community 99`, `Community 102`, `Community 108`, `Community 109`, `Community 116`, `Community 117`, `Community 118`, `Community 119`, `Community 120`, `Community 122`, `Community 124`, `Community 126`, `Community 127`, `Community 135`, `Community 136`, `Community 137`, `Community 139`, `Community 146`, `Community 147`, `Community 151`, `Community 153`, `Community 155`, `Community 156`, `Community 159`, `Community 160`, `Community 164`, `Community 166`, `Community 168`, `Community 169`, `Community 171`, `Community 173`, `Community 175`, `Community 176`, `Community 177`, `Community 185`, `Community 187`, `Community 193`, `Community 194`, `Community 198`, `Community 200`, `Community 201`, `Community 204`, `Community 205`, `Community 206`, `Community 207`, `Community 208`, `Community 209`, `Community 215`, `Community 217`, `Community 218`, `Community 222`, `Community 224`, `Community 226`, `Community 227`, `Community 230`, `Community 232`, `Community 233`, `Community 234`, `Community 235`, `Community 237`, `Community 238`, `Community 243`, `Community 245`, `Community 246`, `Community 248`, `Community 253`, `Community 255`, `Community 258`, `Community 262`, `Community 263`, `Community 264`, `Community 269`, `Community 271`, `Community 273`, `Community 277`, `Community 278`, `Community 279`, `Community 281`, `Community 283`, `Community 287`, `Community 289`, `Community 291`, `Community 301`, `Community 302`, `Community 303`, `Community 306`, `Community 309`, `Community 314`, `Community 315`, `Community 319`, `Community 321`, `Community 326`, `Community 328`, `Community 330`, `Community 331`, `Community 335`, `Community 338`, `Community 339`, `Community 344`, `Community 347`, `Community 349`, `Community 351`, `Community 352`, `Community 360`, `Community 365`, `Community 369`, `Community 371`, `Community 373`, `Community 375`, `Community 377`, `Community 381`, `Community 384`, `Community 386`, `Community 391`, `Community 394`, `Community 395`, `Community 396`, `Community 399`, `Community 403`, `Community 406`, `Community 409`, `Community 414`, `Community 422`, `Community 425`, `Community 427`, `Community 428`, `Community 429`, `Community 430`, `Community 431`, `Community 432`, `Community 434`, `Community 437`, `Community 438`, `Community 439`, `Community 440`, `Community 441`, `Community 442`, `Community 443`, `Community 445`, `Community 447`, `Community 449`, `Community 454`, `Community 459`, `Community 462`, `Community 464`, `Community 465`, `Community 466`, `Community 468`, `Community 469`, `Community 470`, `Community 471`, `Community 472`, `Community 475`, `Community 476`, `Community 477`, `Community 480`, `Community 484`, `Community 485`, `Community 487`, `Community 488`, `Community 490`, `Community 498`, `Community 508`, `Community 509`, `Community 510`, `Community 513`, `Community 514`, `Community 529`, `Community 538`, `Community 539`, `Community 541`, `Community 547`, `Community 549`, `Community 550`, `Community 553`, `Community 555`, `Community 556`, `Community 557`, `Community 558`, `Community 563`, `Community 567`, `Community 569`, `Community 574`, `Community 576`, `Community 590`, `Community 596`, `Community 597`, `Community 600`, `Community 601`, `Community 602`, `Community 604`, `Community 605`, `Community 607`, `Community 612`, `Community 617`, `Community 620`, `Community 624`, `Community 635`, `Community 639`, `Community 641`, `Community 642`, `Community 648`, `Community 653`, `Community 654`, `Community 657`, `Community 659`, `Community 661`, `Community 664`, `Community 666`, `Community 667`, `Community 676`, `Community 679`, `Community 681`, `Community 682`, `Community 690`, `Community 693`, `Community 694`, `Community 698`, `Community 699`, `Community 701`, `Community 704`, `Community 707`, `Community 710`, `Community 713`, `Community 715`, `Community 716`, `Community 718`, `Community 723`, `Community 727`, `Community 729`, `Community 735`, `Community 739`, `Community 741`, `Community 746`, `Community 749`, `Community 752`, `Community 757`, `Community 759`, `Community 762`, `Community 765`, `Community 775`, `Community 777`, `Community 779`, `Community 799`, `Community 801`, `Community 803`, `Community 804`, `Community 805`, `Community 806`, `Community 807`, `Community 808`, `Community 810`, `Community 812`, `Community 815`, `Community 816`, `Community 818`, `Community 819`, `Community 827`, `Community 830`, `Community 831`, `Community 833`, `Community 835`, `Community 836`, `Community 837`, `Community 842`, `Community 843`, `Community 844`, `Community 845`, `Community 847`, `Community 850`, `Community 852`, `Community 854`, `Community 856`, `Community 872`, `Community 874`, `Community 877`, `Community 880`, `Community 883`, `Community 893`, `Community 894`, `Community 895`, `Community 899`, `Community 901`, `Community 906`, `Community 908`, `Community 913`, `Community 923`, `Community 924`, `Community 928`, `Community 934`, `Community 937`, `Community 941`, `Community 951`, `Community 952`, `Community 953`, `Community 955`, `Community 956`, `Community 962`, `Community 965`, `Community 971`, `Community 973`, `Community 975`, `Community 976`, `Community 978`, `Community 981`, `Community 987`, `Community 988`, `Community 992`, `Community 1001`, `Community 1008`, `Community 1009`, `Community 1014`, `Community 1019`, `Community 1027`, `Community 1033`, `Community 1040`, `Community 1041`, `Community 1043`, `Community 1046`, `Community 1053`, `Community 1054`, `Community 1056`, `Community 1060`, `Community 1062`, `Community 1076`, `Community 1078`, `Community 1080`, `Community 1085`, `Community 1088`, `Community 1089`, `Community 1092`, `Community 1095`, `Community 1101`, `Community 1110`, `Community 1111`, `Community 1114`, `Community 1115`, `Community 1123`, `Community 1128`, `Community 1132`, `Community 1138`, `Community 1145`, `Community 1146`, `Community 1152`, `Community 1167`, `Community 1173`, `Community 1175`, `Community 1176`, `Community 1179`, `Community 1184`, `Community 1192`, `Community 1193`, `Community 1194`, `Community 1197`, `Community 1198`, `Community 1200`, `Community 1201`, `Community 1202`, `Community 1205`, `Community 1214`, `Community 1223`, `Community 1225`, `Community 1237`, `Community 1242`, `Community 1243`, `Community 1254`, `Community 1255`, `Community 1264`, `Community 1266`, `Community 1275`, `Community 1276`, `Community 1282`, `Community 1288`, `Community 1291`, `Community 1296`, `Community 1297`, `Community 1303`, `Community 1310`, `Community 1314`, `Community 1316`, `Community 1325`, `Community 1333`, `Community 1334`, `Community 1336`, `Community 1337`, `Community 1341`, `Community 1347`, `Community 1349`, `Community 1354`, `Community 1358`, `Community 1367`, `Community 1369`, `Community 1375`, `Community 1381`, `Community 1387`, `Community 1396`, `Community 1399`, `Community 1401`, `Community 1407`, `Community 1438`, `Community 1439`, `Community 1453`, `Community 1454`, `Community 1458`, `Community 1460`, `Community 1474`, `Community 1478`, `Community 1487`, `Community 1500`, `Community 1507`, `Community 1513`, `Community 1514`, `Community 1525`, `Community 1526`, `Community 1527`, `Community 1538`, `row.rs`, `RealEntry`, `Community 1548`, `Community 1558`, `Community 1559`, `Community 1560`, `Community 1568`, `Community 1570`, `Community 1573`, `HeartbeatServiceBuilder`, `Community 1616`, `Community 1622`, `index.ts`, `Vec4`, `.iter`, `Community 1666`, `lib.rs`, `Community 1673`, `.parse_value`, `Community 1698`, `Community 1725`, `Community 1726`, `MemAddr`, `hot_reload.rs`, `list_labels`, `Community 1837`, `ProbeError`, `Community 1855`, `Community 1896`, `Community 1899`?**
+  _High betweenness centrality (0.581) - this node is a cross-community bridge._
+- **Why does `load_glb_bytes()` connect `Community 243` to `MockProbe`, `Community 7`?**
+  _High betweenness centrality (0.146) - this node is a cross-community bridge._
+- **Why does `Data` connect `MockProbe` to `Community 243`?**
+  _High betweenness centrality (0.145) - this node is a cross-community bridge._
 - **Are the 139 inferred relationships involving `ValueId` (e.g. with `build_loop_primal()` and `build_scf_for_primal()`) actually correct?**
   _`ValueId` has 139 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `Dependencies`, `MEMORY_DIAGNOSTIC_POLICY`, `READING_SHAPE` to the rest of the system?**
-  _5048 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **What connects `Room`, `Kind`, `RoomEvent` to the rest of the system?**
+  _5222 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.01458172474462995 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.013642640154653411 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.020331372921014355 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.020074071768696897 - nodes in this community are weakly interconnected._
