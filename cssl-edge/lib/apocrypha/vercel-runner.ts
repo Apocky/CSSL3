@@ -199,6 +199,9 @@ export async function runQueuedJobs(options: { budgetMs?: number; maxJobs?: numb
   const client = options.client ?? (getApocryphaServiceClient() as unknown as Rpc);
   const fetchImpl = options.fetchImpl ?? fetch;
   const deadline = Date.now() + (options.budgetMs ?? 200_000);
+  // Nothing else schedules the reaper: without this, a job whose worker died stays 'leased'
+  // forever (observed 2026-09-25: one sweep released six). Best-effort.
+  try { await client.rpc('apocrypha_reap', { p_limit: 100 }); } catch { /* next sweep */ }
   const nodeIdentity = await ensureNode(client);
   const jobs: RunnerOutcome['jobs'] = [];
   while (jobs.length < (options.maxJobs ?? 4) && Date.now() < deadline) {
