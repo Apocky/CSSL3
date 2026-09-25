@@ -20,5 +20,18 @@ assert(presentable(ENUMERATED).text === WITHHELD_TEXT && presentable(ENUMERATED)
 assert(presentable(DRAFTING).text === WITHHELD_TEXT, 'drafting -> withheld');
 assert(presentable(`<think>plan</think>\n${CLEAN}`).text === CLEAN, 'closed think -> the answer only');
 assert(presentable(CLEAN).withheld === null && presentable(CLEAN).text === CLEAN, 'clean -> unchanged');
+// 2026-09-25 lobby leak: a self-review checklist and polish pass, no <think>, no older marker.
+const CHECKLIST_LEAK = [
+  'Intelligence is not about brains.',
+  '* Cite sources correctly? Yes ([anamnesis:256]).',
+  '* No infrastructure leakage? Yes.',
+  '* Brief? Yes.',
+  '1. Final Polish:',
+  '* The draft looks good.',
+].join('\n');
+assert(presentable(CHECKLIST_LEAK).text === WITHHELD_TEXT, 'checklist + polish pass -> withheld');
+assert(presentable('Sure.\n* Brief? Yes.\n* No infrastructure leakage? Yes.').text === WITHHELD_TEXT, 'checklist alone -> withheld');
+const ONE_QUESTION = 'Yes, I remember.\n- Was it the second one? Yes, I think so.\nThat is all I have.';
+assert(presentable(ONE_QUESTION).withheld === null, 'one question answered in a list is still an answer');
 // eslint-disable-next-line no-console
-console.log('apocrypha-deliberation.test : OK · 11 assertions');
+console.log('apocrypha-deliberation.test : OK · 13 assertions');

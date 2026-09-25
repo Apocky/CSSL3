@@ -50,12 +50,26 @@ const LINE_MARKERS: ReadonlyArray<readonly [string, string]> = [
   ["Let's draft:", 'drafting out loud'],
   ['I must adhere to', 'its constraints restated'],
   ['So I just output the sentence', 'narrating its own output'],
+  // Observed 2026-09-25 in an unprompted lobby row: a self-review checklist and polish pass.
+  ['1. Final Polish', 'a polish pass'],
+  ['Final Polish:', 'a polish pass'],
+  ['*Final Polish', 'a polish pass'],
+  ['Self-Correction', 'correcting itself out loud'],
+  ['*Self-Correction', 'correcting itself out loud'],
+  ['* The draft looks good', 'reviewing its own draft'],
+  ['* Ensure flow and tone', 'reviewing its own draft'],
+  ['* Check against constraints', 'checking its constraints out loud'],
 ];
+
+// A self-review checklist ("* Brief? Yes.", "* Cite sources correctly? Yes") is deliberation even
+// when no single line matches a marker.
+const CHECKLIST_LINE = /^\s*[*-]\s.{2,80}\?\s*(?:Yes|No)\b/u;
 
 /** Why an answer is deliberation that leaked, or null if it reads as an answer. */
 export function deliberationLeak(answer: string): string | null {
   const head = answer.trimStart();
   if (head.startsWith('Thinking Process') || head.startsWith(OPEN)) return 'begins as a thinking process';
+  if (answer.split('\n').filter((line) => CHECKLIST_LINE.test(line)).length >= 2) return 'a self-review checklist';
   for (const line of answer.split('\n')) {
     const l = line.trimStart();
     for (const [marker, why] of LINE_MARKERS) {
