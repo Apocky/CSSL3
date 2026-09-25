@@ -254,7 +254,7 @@ export default function Room(): JSX.Element {
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          room, body, engine_lane: lane,
+          room, body, engine_lane: lane, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           attachment_ids: attachments.filter((a) => a.state === 'ready' && a.id).map((a) => a.id),
           tools: lane === 'flagship' ? tools : [],
         }),
@@ -315,7 +315,7 @@ export default function Room(): JSX.Element {
           <a className={styles.gatePrimary} href="/login?next=%2F">Sign in</a>
           <a className={styles.gateSecondary} href="/register?next=%2F">Create an account</a>
         </div>
-      </div> : <River events={visible} live={live} me={me} nowMs={nowMs} names={names} />}
+      </div> : <River events={visible} live={live} me={me} nowMs={nowMs} names={names} onRetry={(body) => void send(body)} />}
       {needsSignIn ? null : <Composer
         room={room}
         signedIn={viewer?.signed_in === true}

@@ -155,6 +155,14 @@ export interface SayInput {
   readonly lane: EngineLane;
   readonly attachmentIds: readonly string[];
   readonly tools: readonly RoomTool[];
+  /** The reader's IANA time zone, so "today" means their today. */
+  readonly timeZone?: string;
+}
+
+function nowFor(timeZone: string | undefined): string {
+  const opts: Intl.DateTimeFormatOptions = { dateStyle: 'full', timeStyle: 'short' };
+  try { return new Date().toLocaleString('en-US', { ...opts, timeZone: timeZone || 'UTC', timeZoneName: 'short' } as Intl.DateTimeFormatOptions); }
+  catch { return `${new Date().toUTCString()}`; }
 }
 
 export interface SayReceipt {
@@ -218,7 +226,7 @@ export async function say(speaker: Speaker, input: SayInput, client: SupabaseCli
     const request = {
       prompt: finalContent,
       messages: [
-        { role: 'system', content: roomPersona(shared ? 'lobby' : 'owner') },
+        { role: 'system', content: `${roomPersona(shared ? 'lobby' : 'owner')} Right now it is ${nowFor(input.timeZone)}.` },
         ...history,
         { role: 'user', content: finalContent },
       ],

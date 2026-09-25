@@ -57,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new RoomError(503, 'PREMIUM_OFFLINE', 'Apocrypha+ is not connected right now. Switch to Local, or try again soon.');
     }
 
-    const receipt = await say(speaker, { room: access.key, kind: access.kind, body, lane, attachmentIds, tools });
+    const receipt = await say(speaker, { timeZone: typeof input.time_zone === 'string' ? input.time_zone.slice(0, 64) : undefined, room: access.key, kind: access.kind, body, lane, attachmentIds, tools });
     res.status(201).json({ ok: true, event: receipt.event, job: receipt.job });
   } catch (error) {
     if (error instanceof RoomError) {

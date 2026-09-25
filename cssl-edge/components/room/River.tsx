@@ -54,12 +54,18 @@ function build(events: readonly RoomEventView[], live: readonly LiveTurnView[], 
       prev = null;
     }
     if (event.kind === 'thought' || event.kind === 'recall') { notes.push(event); continue; }
+    // Room status lines ("available now: ...") belong in the top bar, not the conversation.
+    if (event.kind === 'system' && event.body.startsWith('available now:')) continue;
     if (event.kind === 'system') {
+      notes = [];
       items.push({ type: 'notice', key: `n${event.id}`, event });
       prev = null;
       continue;
     }
     const side = event.author === 'apocrypha' ? 'apocrypha' : me !== null && event.author === me ? 'mine' : 'other';
+    if (side !== 'apocrypha') notes = [];
+    // A thought belongs to the reply that follows it within a few minutes, never to a later one.
+    if (side === 'apocrypha') notes = notes.filter((n) => Date.parse(event.created_at) - Date.parse(n.created_at) < 3 * 60_000);
     const at = Date.parse(event.created_at);
     const first = !(prev && prev.author === event.author && at - prev.at < GROUP_GAP_MS);
     const last = items[items.length - 1];
@@ -157,7 +163,8 @@ function Live({ turn, nowMs }: { readonly turn: LiveTurnView; readonly nowMs: nu
   </div>;
 }
 
-export default function River({ events, live, me, nowMs, names }: {
+export default function River({ events, live, me, nowMs, names, onRetry }: {
+  readonly onRetry?: (body: string) => void;
   readonly names: Record<string, string>;
   readonly events: readonly RoomEventView[];
   readonly live: readonly LiveTurnView[];
@@ -208,7 +215,15 @@ export default function River({ events, live, me, nowMs, names }: {
         </div> : null}
         {items.map((item) => {
           if (item.type === 'day') return <div key={item.key} className={styles.day}><span>{item.label}</span></div>;
-          if (item.type === 'notice') return <div key={item.key} className={styles.notice} title={timeLabel(item.event.created_at)}>{item.event.body}</div>;
+          if (item.type === 'notice') {
+            const replyTo = Number(item.event.meta.reply_to);
+            const failed = typeof item.event.meta.error_code === 'string' || /could not answer/i.test(item.event.body);
+            const original = failed ? events.find((e) => e.id === replyTo) : undefined;
+            return <div key={item.key} className={styles.notice} title={timeLabel(item.event.created_at)}>
+              {failed ? 'Apocrypha couldn’t answer that.' : item.event.body}
+              {failed && original && onRetry ? <> <button type="button" className={styles.retry} onClick={() => onRetry(original.body)}>Retry</button></> : null}
+            </div>;
+          }
           if (item.type === 'live') return <Live key={item.key} turn={item.turn} nowMs={nowMs} />;
           return <Message key={item.key} item={item} names={names} />;
         })}

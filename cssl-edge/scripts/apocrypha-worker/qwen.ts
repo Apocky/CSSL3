@@ -311,15 +311,27 @@ export class QwenClient {
           ...(this.sendThinkingKwarg() ? { chat_template_kwargs: { enable_thinking: false } } : {}),
         }),
       };
-      const response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json', accept: 'text/event-stream, application/json',
-          ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      // The hosted lane walks a fallback chain when the gateway refuses a model (429 rate limit,
+      // 403 no access): observed 2026-09-25, Opus 5.5 answered once and then returned
+      // "No access to this model at this time" for every turn after.
+      const chain = this.hosted
+        ? [this.config.modelAlias, ...(process.env.APOCRYPHA_HOSTED_FALLBACK_MODELS ?? 'anthropic/claude-sonnet-5')
+          .split(',').map((m) => m.trim()).filter((m) => m && m !== this.config.modelAlias)]
+        : [this.config.modelAlias];
+      let response!: Response;
+      for (const [index, model] of chain.entries()) {
+        response = await this.fetchImpl(`${this.config.qwenBaseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json', accept: 'text/event-stream, application/json',
+            ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
+          },
+          body: JSON.stringify({ ...body, model }),
+          signal: controller.signal,
+        });
+        if (!(this.hosted && (response.status === 429 || response.status === 403) && index < chain.length - 1)) break;
+        await response.body?.cancel().catch(() => undefined);
+      }
       if (!response.ok) {
         const detail = (await readResponseTextBounded(response, maxTransportBytes)).slice(0, 1_000);
         if (isQwenContextOverflow(response.status, detail)) {
