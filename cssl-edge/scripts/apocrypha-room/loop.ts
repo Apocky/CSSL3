@@ -48,6 +48,12 @@ const TOKEN = required('APOCRYPHA_WORKER_TOKEN');
 const NODE_ID = required('APOCRYPHA_WORKER_NODE_ID');
 const ENGINE = (process.env.APOCRYPHA_ROOM_ENGINE ?? 'http://127.0.0.1:19128').replace(/\/+$/, '');
 const MIND = (process.env.APOCRYPHA_ROOM_MIND ?? 'http://127.0.0.1:19132').replace(/\/+$/, '');
+// Owner rule 2026-09-25: unprompted speech never uses the paid frontier model. The loop speaks only
+// through the local engine and mind; a non-loopback address is refused at startup, not trusted.
+for (const [name, url] of [['APOCRYPHA_ROOM_ENGINE', ENGINE], ['APOCRYPHA_ROOM_MIND', MIND]] as const) {
+  const host = new URL(url).hostname;
+  if (!['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)) throw new Error(`${name} must be local (unprompted speech never uses a paid model): ${host}`);
+}
 const CURSOR_PATH = process.env.APOCRYPHA_ROOM_CURSOR_PATH ?? 'D:\\Apocrypha\\rooms\\site-room.cursor.json';
 const HEALTH_PORT = Number(process.env.APOCRYPHA_ROOM_LOOP_PORT ?? 19134);
 
