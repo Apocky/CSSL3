@@ -1,9 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import type { GetServerSideProps, NextApiRequest } from 'next';
-import { useEffect, useRef, useState } from 'react';
-import { withDeadline } from '@/lib/apocrypha/deadline';
-import { readMemberChatPending } from '@/lib/apocrypha/member-chat-client';
+import { useEffect, useState } from 'react';
 import { useSiteSession } from '@/components/hub/SiteSession';
 import AccountChat from '@/components/apocrypha/AccountChat';
 import { ChatThread } from '@/components/apocrypha/ChatThread';
@@ -11,7 +9,6 @@ import { requireBrainOwner } from '@/lib/brain/owner';
 import { usesOwnerRuntime } from '@/lib/mobile/owner-runtime';
 import styles from '@/styles/AccountChat.module.css';
 
-export const ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS = 4_000;
 export const ACCOUNT_SESSION_VISIBLE_DEADLINE_MS = 4_000;
 
 interface ApocryphaPageProps { readonly ownerConversation: boolean; readonly frontDoor?: boolean }
@@ -38,13 +35,6 @@ export const getFrontDoorServerSideProps: GetServerSideProps<ApocryphaPageProps>
   return result;
 };
 
-function loadPendingAccountTurn(account: string): Promise<unknown> {
-  return withDeadline(
-    Promise.resolve().then(() => readMemberChatPending(account, window.localStorage)),
-    ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS,
-  );
-}
-
 function AccountResolutionUnavailable(): JSX.Element {
   return <main id="main-content" className={styles.page}>
     <header className={styles.header}>
@@ -68,12 +58,10 @@ function AccountResolutionUnavailable(): JSX.Element {
 export default function ApocryphaPage({ ownerConversation, frontDoor = false }: ApocryphaPageProps): JSX.Element {
   const session = useSiteSession();
   const [sessionTimedOut, setSessionTimedOut] = useState(false);
+  // Owner decision 2026-09-25: the verified owner always gets the realtime ChatThread. A saved
+  // member-chat draft in this browser no longer flips the owner onto the account surface.
   const displayOwner = session.ownerConversation === true
     && (ownerConversation || session.access === 'owner');
-  const account = session.authenticated ? session.subjectKey : null;
-  const [pendingCheck, setPendingCheck] = useState<{ account: string; status: 'clear' | 'pending' | 'unavailable' } | null>(null);
-  const controller = useRef<{ account: string; choice: 'owner' | 'account' } | null>(null);
-  const [, redraw] = useState(0);
   useEffect(() => {
     if (session.access !== 'checking') {
       setSessionTimedOut(false);
@@ -82,29 +70,7 @@ export default function ApocryphaPage({ ownerConversation, frontDoor = false }: 
     const deadline = setTimeout(() => { setSessionTimedOut(true); }, ACCOUNT_SESSION_VISIBLE_DEADLINE_MS);
     return () => { clearTimeout(deadline); };
   }, [session.access]);
-  if (!account) controller.current = null;
-  else if (controller.current?.account !== account) controller.current = { account, choice: displayOwner ? 'owner' : 'account' };
-  useEffect(() => {
-    let active = true;
-    if (!account) return;
-    void loadPendingAccountTurn(account).then(pending => {
-      if (active) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
-    }, () => { if (active) setPendingCheck({ account, status: 'unavailable' }); });
-    return () => { active = false; };
-  }, [account]);
-  const checked = account !== null && pendingCheck?.account === account;
-  if (checked && pendingCheck?.status !== 'clear' && controller.current) controller.current.choice = 'account';
-  const showOwner = displayOwner && checked && pendingCheck?.status === 'clear' && controller.current?.choice === 'owner';
-  const checkingSaved = displayOwner && (!account || !checked);
-  const returnToOwner = async () => {
-    if (!account || !displayOwner) return;
-    try {
-      const pending = await loadPendingAccountTurn(account);
-      if (controller.current?.account !== account) return;
-      setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
-      if (!pending) { controller.current.choice = 'owner'; redraw(value => value + 1); }
-    } catch { if (controller.current?.account === account) setPendingCheck({ account, status: 'unavailable' }); }
-  };
+  const showOwner = displayOwner;
   return <>
     <Head>
       {frontDoor ? <title>Apocky · Apocrypha</title> : <title>Apocrypha · Apocky</title>}
@@ -126,11 +92,6 @@ export default function ApocryphaPage({ ownerConversation, frontDoor = false }: 
       <meta name="theme-color" content="#05060b" />
     </Head>
     {session.access === 'checking' && sessionTimedOut ? <AccountResolutionUnavailable />
-      : checkingSaved ? <main id="main-content" role="status"><p>Opening your saved conversation…</p></main>
-      : showOwner ? <main id="main-content" aria-label="Apocrypha owner conversation" style={{ height: '100dvh', minHeight: 480, overflow: 'hidden' }}><ChatThread /></main> : <AccountChat onPendingChange={pending => {
-        if (account && controller.current?.account === account) setPendingCheck({ account, status: pending ? 'pending' : 'clear' });
-      }} />}
-    {displayOwner && account && !checkingSaved && !showOwner ? <p><button type="button" disabled={pendingCheck?.status !== 'clear'}
-      onClick={() => { void returnToOwner(); }}>Open your main conversation</button></p> : null}
+      : showOwner ? <main id="main-content" aria-label="Apocrypha owner conversation" style={{ height: '100dvh', minHeight: 480, overflow: 'hidden' }}><ChatThread /></main> : <AccountChat onPendingChange={() => undefined} />}
   </>;
 }
