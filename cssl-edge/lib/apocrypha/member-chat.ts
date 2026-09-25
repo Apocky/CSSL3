@@ -301,6 +301,11 @@ export function migration0057Pending(error: RpcError | null): boolean {
 
 function storeFailure(operation: string, error: RpcError | null): never {
   const message = error?.message?.toLowerCase() ?? '';
+  // Live 2026-09-25: a 503 with no cause in the logs cost hours. Code and message only; no ids.
+  console.error(JSON.stringify({
+    at: new Date().toISOString(), level: 'error', event: 'apocrypha.member_chat.store_failure',
+    operation, database_code: error?.code ?? null, database_message: (error?.message ?? '').slice(0, 300),
+  }));
   if (error?.code === 'P4031') {
     throw new MemberChatStoreError(
       403,
