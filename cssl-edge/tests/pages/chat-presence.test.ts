@@ -17,7 +17,7 @@ for (const token of ['GetServerSideProps', '`/apocrypha${suffix}`', 'permanent: 
   assert(alias.includes(token), `chat alias contract missing: ${token}`);
 }
 assert(!alias.includes('ChatThread'), 'chat alias must not expose a second owner surface');
-assert(!canonicalPage.includes('ChatThread'), 'one chat interface: the canonical page never renders the owner-only thread');
+assert(canonicalPage.includes('<ChatThread />'), 'canonical page must render durable owner chat');
 assert(canonicalPage.includes('<AccountChat'), 'canonical page must retain account chat');
 for (const token of ['<ChatThread />', 'adminAuthorized', '<AdminLayout']) {
   assert(ownerAdminPage.includes(token), `owner admin chat contract missing: ${token}`);
@@ -47,6 +47,6 @@ assert(presence.includes('fetchRuntimeHealth'), 'public presence lacks the bound
 assert(presence.includes("display_authorized: false"), 'presence must fail hidden');
 assert(!presence.includes('CF-Access-Client'), 'presence still sends Cloudflare Access credentials');
 assert(!presence.includes('APOCRYPHA_TUNNEL_HOST'), 'presence still depends on the retired tunnel host');
-assert(ownerAdminPage.includes('<ChatThread />'), 'the durable owner thread survives under /admin/chat');
+assert(canonicalPage.includes("height: '100dvh'"), 'canonical owner chat must track the dynamic mobile viewport');
 
 console.log('chat-presence.test : OK · one canonical page and durable Qwen rail passed');

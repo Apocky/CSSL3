@@ -90,7 +90,8 @@ assert.equal(pwa['start_url'], '/', 'public PWA must not enter the owner-only ad
 assert.equal('apocrypha' in manifest, false, 'retired service must not have a discovery object');
 assert.equal(exists('public/apocrypha-manifest.json'), false, 'retired manifest alias must not ship');
 
-assert.doesNotMatch(apocryphaPage, /ChatThread|requireBrainOwner/, 'one chat interface: /apocrypha renders the account conversation for everyone, the owner included');
+assert.match(apocryphaPage, /ChatThread/, 'exact /apocrypha retains the owner conversation');
+assert.match(apocryphaPage, /requireBrainOwner/, 'owner conversation selection retains authorization');
 assert.match(apocryphaPage, /AccountChat/, 'other accounts retain their existing account conversation');
 assert.doesNotMatch(apocryphaPage, /PublicChat|ClearingRoom/, 'exact /apocrypha must not revive the retired public chat');
 for (const retiredPage of ['pages/apoc.tsx', 'pages/apx.tsx']) {

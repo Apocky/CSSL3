@@ -12,7 +12,7 @@ import ApocryphaPage, { getFrontDoorServerSideProps } from './apocrypha';
 // Indexable and self-canonical on https://www.apocky.com/ (the alias /apocrypha stays private).
 export const getServerSideProps = getFrontDoorServerSideProps;
 
-export default function Home(): JSX.Element {
+export default function Home(props: { readonly ownerConversation: boolean; readonly frontDoor?: boolean }): JSX.Element {
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const { refresh } = useSiteSession();
 
@@ -38,6 +38,6 @@ export default function Home(): JSX.Element {
 
   return <>
     {authNotice ? <p role="status" style={{ position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 20, background: '#111524', color: '#f3f3fa', border: '1px solid #a9b5ff40', borderRadius: 12, padding: '6px 14px', fontSize: 14 }}>{authNotice}</p> : null}
-    <ApocryphaPage frontDoor />
+    <ApocryphaPage ownerConversation={props.ownerConversation} frontDoor />
   </>;
 }
