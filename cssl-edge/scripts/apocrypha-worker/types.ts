@@ -190,6 +190,8 @@ export interface QwenUsage {
 
 export interface QwenResult {
   content: string;
+  /** Set when the model asked for tools instead of (or before) answering. */
+  toolCalls?: Array<{ id: string; name: string; arguments: string }>;
   usage: QwenUsage;
   model: string;
   firstTokenMs?: number;

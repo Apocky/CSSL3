@@ -23,8 +23,12 @@ const THINKING_OVERRIDE = process.env.APOCRYPHA_QWEN_THINKING_KWARG?.trim().toLo
 type Fetch = typeof fetch;
 
 export interface QwenMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** An assistant turn that asked for tools (OpenAI dialect). */
+  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+  /** A tool result answers the call with this id. */
+  tool_call_id?: string;
 }
 
 export interface QwenGenerationOptions {
@@ -35,6 +39,8 @@ export interface QwenGenerationOptions {
   minP?: number;
   repeatPenalty?: number;
   seed?: number;
+  /** Tools the model may call this round; tool calls come back in QwenResult.toolCalls. */
+  tools?: ReadonlyArray<Record<string, unknown>>;
 }
 
 export class QwenError extends Error {
@@ -286,6 +292,7 @@ export class QwenClient {
       const body = {
         model: this.config.modelAlias,
         messages,
+        ...(options.tools && options.tools.length > 0 ? { tools: options.tools, tool_choice: 'auto' } : {}),
         stream: true,
         stream_options: { include_usage: true },
         max_tokens: outputTokenLimit,
@@ -374,6 +381,7 @@ export class QwenClient {
       let usage: QwenUsage = {};
       let model = this.config.modelAlias;
       let firstTokenMs: number | undefined;
+      const toolCalls: Array<{ id: string; name: string; arguments: string }> = [];
       let transportBytes = 0;
       let acceptedOutputBytes = 0;
       const consumeLine = async (line: string): Promise<void> => {
@@ -390,6 +398,20 @@ export class QwenClient {
         resetIdle();
         if (payload.usage) usage = parseUsage(payload.usage);
         if (typeof payload.model === 'string') model = payload.model;
+        const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;
+        const rawDelta = choice && typeof choice.delta === 'object' && choice.delta ? choice.delta as Record<string, unknown> : {};
+        if (Array.isArray(rawDelta.tool_calls)) {
+          for (const piece of rawDelta.tool_calls as Array<Record<string, unknown>>) {
+            const index = typeof piece.index === 'number' ? piece.index : toolCalls.length;
+            const fn = (piece.function ?? {}) as Record<string, unknown>;
+            const slot = toolCalls[index] ?? (toolCalls[index] = { id: '', name: '', arguments: '' });
+            if (typeof piece.id === 'string') slot.id = piece.id;
+            if (typeof fn.name === 'string') slot.name += fn.name;
+            if (typeof fn.arguments === 'string') slot.arguments += fn.arguments;
+          }
+          resetIdle();
+          return;
+        }
         const delta = extractContent(payload);
         if (delta) {
           acceptedOutputBytes += Buffer.byteLength(delta, 'utf8');
@@ -422,6 +444,8 @@ export class QwenClient {
       }
       buffer += decoder.decode();
       for (const line of buffer.split(/\r?\n/)) await consumeLine(line);
+      const calls = toolCalls.filter((call) => call && call.name).map((call, i) => ({ ...call, id: call.id || `call_${i}` }));
+      if (calls.length > 0) return { content, usage, model, firstTokenMs, durationMs: Date.now() - started, toolCalls: calls };
       if (!content.trim()) throw new QwenError('Qwen returned no visible content', 'QWEN_EMPTY_RESPONSE', true);
       return { content, usage, model, firstTokenMs, durationMs: Date.now() - started };
     } catch (error) {

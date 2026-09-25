@@ -2,7 +2,15 @@ import { ControlPlaneClient, ControlPlaneError, fenceFromClaim } from './control
 import { AttemptJournal } from './journal';
 import { log } from './log';
 import { composeQwenRequest } from './prompt';
-import { QwenClient, QwenError, hostedEngineConfig } from './qwen';
+import { QwenClient, QwenError, hostedEngineConfig, type QwenMessage } from './qwen';
+import { MEMORY_TOOLS, TOOL_GUIDANCE, runTool } from './tools';
+
+const MAX_TOOL_ROUNDS = 3;
+
+/** Memory tools reach the owner's private memory: only the owner's own turns may use them. */
+function toolsAllowed(job: ClaimedJob): boolean {
+  return job.capability === 'apocky_owner_chat' && process.env.APOCRYPHA_MEMORY_TOOLS !== 'off';
+}
 import { presentable } from '../../lib/apocrypha/deliberation';
 import { probeMemoryAdapters, retrieveMemory } from './retrieval';
 import { WorkingMemory } from './working-memory';
@@ -488,7 +496,32 @@ export class ApocryphaWorker {
             });
           }
         }
-        const messages = nudge ? [...request.messages, { role: 'system' as const, content: nudge }] : request.messages;
+        let messages: QwenMessage[] = nudge ? [...request.messages, { role: 'system' as const, content: nudge }] : request.messages;
+        // The owner's turns get Apocrypha's own memory tools (tools.ts): the model may search
+        // UniRecall or any single region itself before answering. Rounds that offer tools are held
+        // back (a reply that turns into tool calls must not reach the reader half-said); the last
+        // round offers none and streams, so what is stored is exactly what was streamed.
+        if (toolsAllowed(claim) && !overflowRetry) {
+          messages = [{ role: 'system', content: TOOL_GUIDANCE }, ...messages];
+          for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+            const held: string[] = [];
+            const step = await engine.generate(messages, { ...request.generation, tools: MEMORY_TOOLS as unknown as ReadonlyArray<Record<string, unknown>> }, (delta) => { held.push(delta); }, abortController.signal);
+            if (!step.toolCalls?.length) {
+              for (const delta of held) await onDelta(delta);
+              return step;
+            }
+            const results = await Promise.all(step.toolCalls.slice(0, 6).map(async (call) => {
+              const output = await runTool(call);
+              log('info', 'worker.tool.ran', { job_id: claim.jobId, tool: call.name, chars: output.length, round });
+              return { call, output };
+            }));
+            messages = [
+              ...messages,
+              { role: 'assistant', content: step.content, tool_calls: results.map(({ call }) => ({ id: call.id, type: 'function' as const, function: { name: call.name, arguments: call.arguments } })) },
+              ...results.map(({ call, output }) => ({ role: 'tool' as const, content: output, tool_call_id: call.id })),
+            ];
+          }
+        }
         return engine.generate(messages, request.generation, onDelta, abortController.signal);
       };
       let result: QwenResult;
