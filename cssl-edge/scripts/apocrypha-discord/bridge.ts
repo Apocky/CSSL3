@@ -233,10 +233,11 @@ export class Bridge {
         if (persistable) {
           // Only the owner's exchanges are carried forward. A stranger's turn is answered and
           // then forgotten -- it never becomes context for anyone, including themselves.
-          this.history.set(msg.channelId, [
+          const carried: MindTurn[] = [
             ...turns,
             { role: 'assistant', content: answer.text },
-          ].slice(-HISTORY_TURNS));
+          ];
+          this.history.set(msg.channelId, carried.slice(-HISTORY_TURNS));
         }
       }
       await this.deps.rest.sendMessage(msg.channelId, answer.text, { replyTo: msg.id });
