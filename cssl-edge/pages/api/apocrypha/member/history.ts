@@ -21,6 +21,7 @@ export interface MemberChatHistoryDependencies {
     verifiedAuthUserId: string;
     conversationId: string;
     beforeCursor?: string | null;
+    threadId?: string | null;
   }): Promise<MemberChatHistoryPage>;
 }
 
@@ -62,11 +63,12 @@ export function createMemberChatHistoryHandler(
     const queryKeys = Object.keys(req.query).sort();
     if (
       queryKeys.length < 1
-      || queryKeys.length > 2
+      || queryKeys.length > 3
       || !queryKeys.includes('conversation_id')
-      || queryKeys.some((key) => key !== 'conversation_id' && key !== 'before')
+      || queryKeys.some((key) => key !== 'conversation_id' && key !== 'before' && key !== 'thread_id')
       || typeof req.query.conversation_id !== 'string'
       || (req.query.before !== undefined && typeof req.query.before !== 'string')
+      || (req.query.thread_id !== undefined && (typeof req.query.thread_id !== 'string' || !isMemberChatUuid(req.query.thread_id.toLowerCase())))
     ) {
       res.status(400).json({ ok: false, code: 'MEMBER_CHAT_HISTORY_QUERY_INVALID' });
       return;
@@ -99,6 +101,7 @@ export function createMemberChatHistoryHandler(
         verifiedAuthUserId: authoritativeConversationId,
         conversationId: authoritativeConversationId,
         beforeCursor,
+        threadId: typeof req.query.thread_id === 'string' ? req.query.thread_id.toLowerCase() : null,
       });
       if (
         !Array.isArray(page.history)

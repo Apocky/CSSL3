@@ -10,6 +10,8 @@ import {
   memberChatPublicError,
   requireMemberChatConversationBinding,
   setMemberChatPrivateHeaders,
+  MEMBER_CHAT_ENGINE_LANES,
+  type MemberChatEngineLane,
   type MemberChatJobReceipt,
 } from '@/lib/apocrypha/member-chat';
 
@@ -17,6 +19,9 @@ interface MemberChatSubmitBody {
   conversation_id?: unknown;
   request_id?: unknown;
   message?: unknown;
+  thread_id?: unknown;
+  engine_lane?: unknown;
+  attachment_ids?: unknown;
 }
 
 export interface MemberChatSubmitDependencies {
@@ -26,6 +31,9 @@ export interface MemberChatSubmitDependencies {
     conversationId: string;
     requestId: string;
     message: string;
+    threadId?: string | null;
+    engineLane?: MemberChatEngineLane;
+    attachmentIds?: string[];
   }): Promise<MemberChatJobReceipt>;
 }
 
@@ -46,13 +54,28 @@ function firstHeader(value: string | string[] | undefined): string | null {
   return (Array.isArray(value) ? value[0] : value)?.split(';')[0]?.trim().toLowerCase() || null;
 }
 
-function exactSubmitBody(value: unknown): value is Required<MemberChatSubmitBody> {
+const REQUIRED_SUBMIT_KEYS = ['conversation_id', 'message', 'request_id'] as const;
+const OPTIONAL_SUBMIT_KEYS = new Set(['thread_id', 'engine_lane', 'attachment_ids']);
+
+// The three original keys are required; the 0057 keys (thread, lane, attachments) are optional;
+// anything else is refused, as before.
+function exactSubmitBody(value: unknown): value is MemberChatSubmitBody & Required<Pick<MemberChatSubmitBody, 'conversation_id' | 'message' | 'request_id'>> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const keys = Object.keys(value).sort();
-  return keys.length === 3
-    && keys[0] === 'conversation_id'
-    && keys[1] === 'message'
-    && keys[2] === 'request_id';
+  const keys = Object.keys(value);
+  if (!REQUIRED_SUBMIT_KEYS.every((key) => keys.includes(key))) return false;
+  return keys.every((key) => (REQUIRED_SUBMIT_KEYS as readonly string[]).includes(key) || OPTIONAL_SUBMIT_KEYS.has(key));
+}
+
+function optionalSubmitFields(body: MemberChatSubmitBody): { threadId: string | null; engineLane: MemberChatEngineLane; attachmentIds: string[] } | null {
+  const threadId = body.thread_id === undefined || body.thread_id === null
+    ? null
+    : typeof body.thread_id === 'string' && isMemberChatUuid(body.thread_id.toLowerCase()) ? body.thread_id.toLowerCase() : undefined;
+  if (threadId === undefined) return null;
+  const engineLane = body.engine_lane === undefined ? 'local' : typeof body.engine_lane === 'string' && MEMBER_CHAT_ENGINE_LANES.has(body.engine_lane) ? body.engine_lane as MemberChatEngineLane : undefined;
+  if (engineLane === undefined) return null;
+  const rawIds = body.attachment_ids === undefined ? [] : body.attachment_ids;
+  if (!Array.isArray(rawIds) || rawIds.length > 8 || rawIds.some((id) => typeof id !== 'string' || !isMemberChatUuid(id.toLowerCase()))) return null;
+  return { threadId, engineLane, attachmentIds: (rawIds as string[]).map((id) => id.toLowerCase()) };
 }
 
 function authFailure(res: NextApiResponse, result: RequestUserResult): void {
@@ -93,8 +116,13 @@ export function createMemberChatSubmitHandler(
       res.status(400).json({
         ok: false,
         code: 'MEMBER_CHAT_BODY_INVALID',
-        error: 'Body must contain only conversation_id, request_id, and message.',
+        error: 'Body must contain conversation_id, request_id, and message, plus optional thread_id, engine_lane, attachment_ids.',
       });
+      return;
+    }
+    const optional = optionalSubmitFields(req.body);
+    if (optional === null) {
+      res.status(400).json({ ok: false, code: 'MEMBER_CHAT_INPUT_INVALID', error: 'Thread, lane, or attachment input is invalid.' });
       return;
     }
 
@@ -130,6 +158,9 @@ export function createMemberChatSubmitHandler(
         conversationId: authoritativeConversationId,
         requestId,
         message,
+        threadId: optional.threadId,
+        engineLane: optional.engineLane,
+        attachmentIds: optional.attachmentIds,
       });
       if (
         job.conversation_id.toLowerCase() !== authoritativeConversationId

@@ -167,7 +167,10 @@ async function testRpcReceivesOnlyServerBindings(): Promise<void> {
     requestId: REQUEST_ID,
     message: 'Hello, Apocrypha.',
   }, client);
-  equal(calledFunction, 'apocrypha_enqueue_member_chat_v2', 'canonical member enqueue RPC is used');
+  equal(calledFunction, 'apocrypha_enqueue_member_chat_v3', 'canonical member enqueue RPC is used (0057: thread + lane + attachments)');
+  equal(calledArgs.p_engine_lane, 'local', 'the lane defaults to local; the premium gate lives in the database');
+  equal(calledArgs.p_thread_id, null, 'no thread named -> the database picks the open thread');
+  assert(Array.isArray(calledArgs.p_attachment_ids) && (calledArgs.p_attachment_ids as unknown[]).length === 0, 'no attachments by default');
   equal(calledArgs.p_verified_auth_user_id, CONVERSATION_ID, 'verified user binds the RPC');
   equal(calledArgs.p_presented_conversation_id, CONVERSATION_ID, 'browser conversation id is validation only');
   equal(calledArgs.p_request_id, REQUEST_ID, 'opaque replay id crosses the boundary');
@@ -274,6 +277,28 @@ async function testRpcReceivesOnlyServerBindings(): Promise<void> {
   }
   assert(quotaRejected, 'the durable database quota has a stable public mapping');
 
+  // 0057: the flagship lane is refused by the database without an active premium entitlement.
+  const premiumClient: MemberChatRpcClient = {
+    async rpc() {
+      return { data: null, error: { code: 'P4020', message: 'the flagship lane needs an active Apocrypha Premium plan' } };
+    },
+  };
+  let premiumRejected = false;
+  try {
+    await enqueueMemberChat({
+      verifiedAuthUserId: CONVERSATION_ID,
+      conversationId: CONVERSATION_ID,
+      requestId: REQUEST_ID,
+      message: 'Hello, Apocrypha.',
+      engineLane: 'flagship',
+    }, premiumClient);
+  } catch (error) {
+    premiumRejected = error instanceof MemberChatStoreError
+      && error.publicStatus === 402
+      && error.publicCode === 'MEMBER_CHAT_PREMIUM_REQUIRED';
+  }
+  assert(premiumRejected, 'the flagship lane without the premium plan is a 402 with a stable code');
+
   equal(canonicalMemberChatMessage('safe\tline\nnext'), 'safe\tline\nnext', 'tab and newline remain valid');
   equal(canonicalMemberChatMessage('unsafe\u0000message'), null, 'NUL is rejected');
   equal(canonicalMemberChatMessage('unsafe\u0001message'), null, 'disallowed C0 controls are rejected');
@@ -300,7 +325,7 @@ async function testHistoryPaginationAndWireBound(): Promise<void> {
     conversationId: CONVERSATION_ID,
     beforeCursor: '50',
   }, pagedClient);
-  equal(calledFunction, 'apocrypha_list_member_chat_history_v2', 'canonical history RPC is used');
+  equal(calledFunction, 'apocrypha_list_member_chat_history_v3', 'canonical history RPC is used');
   equal(calledArgs.p_verified_auth_user_id, CONVERSATION_ID, 'history is auth bound');
   equal(calledArgs.p_presented_conversation_id, CONVERSATION_ID, 'presented id is validation only');
   equal(calledArgs.p_before_turn_sequence, '50', 'exclusive cursor crosses as lossless text');
