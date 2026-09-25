@@ -170,3 +170,24 @@
 .gatePrimary, .gateSecondary { padding: 10px 18px; border-radius: 999px; text-decoration: none; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 .gatePrimary { background: #eef0ff; color: #05060b; }
 .gateSecondary { border: 1px solid #a9b5ff55; color: #e8e9f3; }
+
+/* room picker + people panel */
+.pickerWrap { position: relative; }
+.picker { display: inline-flex; align-items: center; gap: 4px; max-width: 42vw; height: 34px; padding: 0 10px 0 12px; border-radius: 999px; border: 1px solid #a9b5ff33; background: #111524; color: #eef0ff; font: inherit; font-size: 13px; cursor: pointer; }
+.pickerLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menuDown { top: calc(100% + 6px); bottom: auto; left: auto; right: 0; }
+.inlineForm { display: flex; gap: 6px; padding: 6px; }
+.inlineForm input, .linkRow input { flex: 1 1 auto; min-width: 0; height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid #a9b5ff40; background: #0b0e1c; color: #eef0ff; font: inherit; font-size: 16px; }
+.inlineForm button, .softBtn { height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #a9b5ff40; background: #1a2040; color: #eef0ff; font: inherit; font-size: 13px; cursor: pointer; }
+.inlineForm button:disabled { opacity: .5; cursor: default; }
+.people { position: absolute; right: 8px; top: calc(52px + env(safe-area-inset-top, 0px)); width: min(360px, calc(100vw - 16px)); max-height: calc(100dvh - 140px); overflow: auto; z-index: 30; background: #0e1120; border: 1px solid #a9b5ff33; border-radius: 16px; padding: 10px 12px 12px; box-shadow: 0 12px 40px #0009; }
+.peopleHead { display: flex; align-items: center; justify-content: space-between; }
+.peopleHead h2 { margin: 0; font-size: 15px; }
+.people section { border-top: 1px solid #a9b5ff14; padding: 10px 0; }
+.people h3 { margin: 0 0 6px; font-size: 12px; color: #9ca6cc; text-transform: uppercase; letter-spacing: .06em; }
+.peopleNote { display: block; color: #9ca6cc; font-size: 12px; margin: 6px 0 0; }
+.linkRow { display: flex; gap: 6px; align-items: center; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dangerBtn { margin-top: 6px; width: 100%; height: 38px; border-radius: 10px; border: 1px solid #ff8db466; background: transparent; color: #ffc2d6; font: inherit; cursor: pointer; }
+.roomNote { margin: 6px auto 0; padding: 6px 12px; border-radius: 999px; background: #1a2040; color: #eef0ff; font-size: 13px; cursor: pointer; }

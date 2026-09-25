@@ -5,9 +5,10 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
-import { GearIcon, MutedIcon, SpeakerIcon } from './Icons';
+import { GearIcon, MutedIcon, PeopleIcon, SpeakerIcon } from './Icons';
+import { RoomPicker } from './People';
 import Tip from './Tip';
-import type { PresenceView, RoomName } from './types';
+import type { PresenceView, RoomName, RoomSummary } from './types';
 import styles from './Room.module.css';
 
 function age(iso: string, nowMs: number): string {
@@ -24,14 +25,16 @@ function age(iso: string, nowMs: number): string {
 const BUSY = new Set(['attending', 'thinking', 'recalling', 'speaking', 'remembering']);
 
 export default function PresenceStrip({
-  presence, disconnected, nowMs, owner, room, onRoom, muted, onToggleMute, signedIn, consent, onConsent,
+  presence, disconnected, nowMs, rooms, room, onRoom, onCreated, onPeople, muted, onToggleMute, signedIn, consent, onConsent,
 }: {
   readonly presence: PresenceView | null;
   readonly disconnected: boolean;
   readonly nowMs: number;
-  readonly owner: boolean;
+  readonly rooms: readonly RoomSummary[];
   readonly room: RoomName;
   readonly onRoom: (room: RoomName) => void;
+  readonly onCreated: (room: RoomName) => void;
+  readonly onPeople: () => void;
   readonly muted: boolean;
   readonly onToggleMute: () => void;
   readonly signedIn: boolean;
@@ -73,14 +76,10 @@ export default function PresenceStrip({
       </span>
     </div>
     <div className={styles.stripRight}>
-      {owner ? <div className={styles.segmented} role="radiogroup" aria-label="Room">
-        <Tip label="Shared room: everyone signed in reads and writes here" align="end" side="bottom">
-          <button type="button" role="radio" aria-checked={room === 'lobby'} className={room === 'lobby' ? styles.segOn : ''} onClick={() => onRoom('lobby')}>Lobby</button>
-        </Tip>
-        <Tip label="Your private room with Apocrypha" align="end" side="bottom">
-          <button type="button" role="radio" aria-checked={room === 'owner'} className={room === 'owner' ? styles.segOn : ''} onClick={() => onRoom('owner')}>Private</button>
-        </Tip>
-      </div> : null}
+      {signedIn ? <RoomPicker rooms={rooms} current={room} onPick={onRoom} onCreated={onCreated} /> : null}
+      {signedIn ? <Tip label="People: invite friends, see who is here, set your name" align="end" side="bottom">
+        <button type="button" className={styles.iconBtn} aria-label="People and invitations" onClick={onPeople}><PeopleIcon /></button>
+      </Tip> : null}
       <Tip label={muted ? `Muted. ${muteLabel}` : muteLabel} align="end" side="bottom">
         <button type="button" className={`${styles.iconBtn} ${muted ? styles.iconOn : ''}`} aria-pressed={muted} aria-label={muted ? 'Unmute unprompted speech' : 'Mute unprompted speech'} onClick={onToggleMute}>
           {muted ? <MutedIcon /> : <SpeakerIcon />}

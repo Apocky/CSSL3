@@ -10,6 +10,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { hasSameOrigin } from '@/lib/auth-session';
 import { MAX_SAY_CHARS, RoomError, parseRoom } from '@/lib/room/store';
+import { resolveRoomKey } from '@/lib/room/rooms';
 import { ROOM_TOOLS, flagshipReady, resolveSpeaker, say, type EngineLane, type RoomTool } from '@/lib/room/turn';
 
 export const config = { api: { bodyParser: { sizeLimit: '32kb' } } };
@@ -35,7 +36,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   try {
     const input = record(req.body);
-    const room = parseRoom(input.room);
     const body = typeof input.body === 'string' ? input.body.trim() : '';
     if (body === '') throw new RoomError(400, 'BODY_EMPTY', 'That message was empty.');
     if (body.length > MAX_SAY_CHARS) {
@@ -51,11 +51,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const speaker = await resolveSpeaker(req, { mintGuest: false });
     if (speaker.kind === 'guest') throw new RoomError(401, 'SIGN_IN_REQUIRED', 'Sign in to talk in the room.');
+    const requested = typeof input.room === 'string' ? input.room : 'me';
+    const access = await resolveRoomKey(speaker, requested === 'me' ? 'me' : parseRoom(requested));
     if (lane === 'flagship' && !flagshipReady(req)) {
       throw new RoomError(503, 'PREMIUM_OFFLINE', 'Apocrypha+ is not connected right now. Switch to Local, or try again soon.');
     }
 
-    const receipt = await say(speaker, { room, body, lane, attachmentIds, tools });
+    const receipt = await say(speaker, { room: access.key, kind: access.kind, body, lane, attachmentIds, tools });
     res.status(201).json({ ok: true, event: receipt.event, job: receipt.job });
   } catch (error) {
     if (error instanceof RoomError) {

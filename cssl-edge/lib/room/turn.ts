@@ -37,6 +37,7 @@ export interface Speaker {
   /** The author label on the row. Never an email or a raw id: every lobby reader can see it. */
   readonly author: string;
   readonly authUserId: string | null;
+  readonly email?: string | null;
   readonly guestId: string | null;
   /** A Set-Cookie header to send when a guest cookie was minted for this request. */
   readonly setCookie: string | null;
@@ -51,10 +52,10 @@ export function memberAuthor(authUserId: string): string {
 export async function resolveSpeaker(req: NextApiRequest, options: { mintGuest: boolean }): Promise<Speaker> {
   const auth = await getAdminAuthorization(req);
   if (auth.user && auth.authorized) {
-    return { kind: 'owner', author: 'apocky', authUserId: auth.user.id, guestId: null, setCookie: null };
+    return { kind: 'owner', author: 'apocky', authUserId: auth.user.id, email: auth.user.email ?? null, guestId: null, setCookie: null };
   }
   if (auth.user) {
-    return { kind: 'member', author: memberAuthor(auth.user.id), authUserId: auth.user.id, guestId: null, setCookie: null };
+    return { kind: 'member', author: memberAuthor(auth.user.id), authUserId: auth.user.id, email: auth.user.email ?? null, guestId: null, setCookie: null };
   }
   const existing = readGuestCookie(req.headers.cookie);
   if (existing) return { kind: 'guest', author: guestAuthor(existing), authUserId: null, guestId: existing, setCookie: null };
@@ -100,7 +101,7 @@ function speakerLabel(author: string): string {
 interface Turn { role: 'user' | 'assistant'; content: string }
 
 /** The room's recent conversation as chat turns. In the lobby every human turn carries its speaker. */
-export function roomHistory(rows: readonly RoomEvent[], room: Room): Turn[] {
+export function roomHistory(rows: readonly RoomEvent[], shared: boolean): Turn[] {
   const turns: Turn[] = [];
   for (const row of rows) {
     if (row.kind !== 'utterance' || row.body.trim() === '') continue;
@@ -109,7 +110,7 @@ export function roomHistory(rows: readonly RoomEvent[], room: Room): Turn[] {
       if (shown.withheld === null) turns.push({ role: 'assistant', content: shown.text.slice(0, 8_000) });
       continue;
     }
-    const content = room === 'lobby' ? `${speakerLabel(row.author)}: ${row.body}` : row.body;
+    const content = shared ? `${speakerLabel(row.author)}: ${row.body}` : row.body;
     turns.push({ role: 'user', content: content.slice(0, 8_000) });
   }
   return turns;
@@ -148,6 +149,8 @@ async function loadAttachments(speaker: Speaker, ids: readonly string[], client:
 
 export interface SayInput {
   readonly room: Room;
+  /** 'private' rooms are one person with Apocrypha; 'lobby' rooms are shared by invitation. */
+  readonly kind: string;
   readonly body: string;
   readonly lane: EngineLane;
   readonly attachmentIds: readonly string[];
@@ -183,10 +186,10 @@ function receipt(data: unknown): SayReceipt & { raw: Record<string, unknown> } {
 
 /** Post the message and enqueue its job, in one transaction. */
 export async function say(speaker: Speaker, input: SayInput, client: SupabaseClient = roomClient()): Promise<SayReceipt> {
-  if (input.room === 'owner' && speaker.kind !== 'owner') throw new RoomError(403, 'OWNER_REQUIRED', 'That room is private.');
   if (input.attachmentIds.length > MAX_ATTACHMENTS) throw new RoomError(400, 'TOO_MANY_ATTACHMENTS', `At most ${MAX_ATTACHMENTS} attachments per message.`);
   const tail = await listEvents(input.room, 0, HISTORY_ROWS, client);
-  const history = roomHistory(tail, input.room);
+  const shared = input.kind === 'lobby';
+  const history = roomHistory(tail, shared);
 
   let result: { data: unknown; error: { code?: string | null; message?: string | null } | null };
   if (speaker.kind === 'guest') {
@@ -211,11 +214,11 @@ export async function say(speaker: Speaker, input: SayInput, client: SupabaseCli
       : await memberIdentity(speaker.authUserId, client);
     const allowed = input.lane === 'flagship' ? await flagshipAllowed(speaker, client) : false;
     const attachments = await loadAttachments(speaker, input.attachmentIds, client);
-    const finalContent = input.room === 'lobby' ? `${speakerLabel(speaker.author)}: ${input.body}` : input.body;
+    const finalContent = shared ? `${speakerLabel(speaker.author)}: ${input.body}` : input.body;
     const request = {
       prompt: finalContent,
       messages: [
-        { role: 'system', content: roomPersona(input.room) },
+        { role: 'system', content: roomPersona(shared ? 'lobby' : 'owner') },
         ...history,
         { role: 'user', content: finalContent },
       ],
@@ -224,14 +227,15 @@ export async function say(speaker: Speaker, input: SayInput, client: SupabaseCli
       output_budget: 1536,
       response_mode: 'standard',
       source: 'apocky.com/room',
-      privacy_class: input.room === 'owner' ? 'restricted' : 'room-lobby',
+      privacy_class: shared ? 'room-lobby' : 'restricted',
       memory_scope: speaker.kind === 'owner' ? 'owner-authorized' : 'principal-scoped',
       speaker: speaker.kind,
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(input.tools.length > 0 ? { tools: [...input.tools] } : {}),
     };
-    result = await client.rpc('apocrypha_room_say', {
+    result = await client.rpc('apocrypha_room_say_as', {
       p_room: input.room,
+      p_user_id: speaker.authUserId,
       p_author: speaker.author,
       p_body: input.body,
       p_tenant_id: identity.tenantId,

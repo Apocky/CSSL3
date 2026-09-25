@@ -24,3 +24,4 @@ export const CopyIcon = ({ size }: P) => <svg {...base(size)}><rect x="9" y="9" 
 export const CheckIcon = ({ size }: P) => <svg {...base(size)}><path d="m5 12 5 5 9-10" /></svg>;
 export const DownIcon = ({ size }: P) => <svg {...base(size)}><path d="M12 5v14M5.5 12.5 12 19l6.5-6.5" /></svg>;
 export const CloseIcon = ({ size }: P) => <svg {...base(size)}><path d="M6 6l12 12M18 6 6 18" /></svg>;
+export const PeopleIcon = ({ size }: P) => <svg {...base(size)}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5" /></svg>;

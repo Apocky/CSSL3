@@ -14,8 +14,11 @@ import { assertWorkerRequest, getApocryphaServiceClient } from '@/lib/apocrypha/
 import { retryOnGatewayError } from '@/lib/apocrypha/worker-http';
 
 export const ROOM_TABLE = 'apocrypha_room_events';
-export const ROOMS = ['lobby', 'owner'] as const;
-export type Room = typeof ROOMS[number];
+// Room keys (0062): 'owner' and 'lobby' are Apocky's legacy rooms; 'p:<uid>' is a member's private
+// room; 'l:<uuid>' is an invite-only lobby. Who may use one is decided by apocrypha_room_member.
+export const LEGACY_ROOMS = ['lobby', 'owner'] as const;
+export type Room = string;
+const ROOM_KEY = /^(lobby|owner|[pl]:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 // 'thought' is Apocrypha's reasoning, posted as its own row before the utterance it led to, so the
 // reader watches the mind work in order instead of receiving a finished answer from nowhere.
 // 'recall' is what the mind pulled from memory for a turn, when it says so; rendered like a thought.
@@ -51,7 +54,7 @@ export class RoomError extends Error {
 }
 
 export function isRoom(value: unknown): value is Room {
-  return typeof value === 'string' && (ROOMS as readonly string[]).includes(value);
+  return typeof value === 'string' && ROOM_KEY.test(value);
 }
 
 export function isKind(value: unknown): value is Kind {
@@ -61,7 +64,7 @@ export function isKind(value: unknown): value is Kind {
 export function parseRoom(value: unknown, fallback: Room = 'lobby'): Room {
   const raw = Array.isArray(value) ? value[0] : value;
   if (raw === undefined || raw === '') return fallback;
-  if (!isRoom(raw)) throw new RoomError(400, 'ROOM_INVALID', 'room must be lobby or owner');
+  if (!isRoom(raw)) throw new RoomError(400, 'ROOM_INVALID', 'room is not a valid room key');
   return raw;
 }
 

@@ -12,8 +12,9 @@ import Composer from './Composer';
 import PresenceStrip from './PresenceStrip';
 import River from './River';
 import type {
-  EngineLane, LiveTurnView, PendingAttachment, PresenceView, RoomEventView, RoomName, RoomTool, ViewerView,
+  EngineLane, FriendView, LiveTurnView, RoomSummary, PendingAttachment, PresenceView, RoomEventView, RoomName, RoomTool, ViewerView,
 } from './types';
+import { PeoplePanel, manage } from './People';
 import styles from './Room.module.css';
 
 const POLL_MS = 1_500;
@@ -24,6 +25,8 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 interface EventsPayload {
   ok?: boolean;
+  room?: { key: string; kind: string; role: string };
+  names?: Record<string, string>;
   events?: RoomEventView[];
   live?: LiveTurnView[];
   presence?: PresenceView | null;
@@ -59,7 +62,12 @@ async function toBase64(file: File): Promise<string> {
 }
 
 export default function Room(): JSX.Element {
-  const [room, setRoom] = useState<RoomName>('lobby');
+  const [room, setRoom] = useState<RoomName>('me');
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [friends, setFriends] = useState<FriendView[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [roomNote, setRoomNote] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerView | null>(null);
   const [events, setEvents] = useState<RoomEventView[]>([]);
   const [live, setLive] = useState<LiveTurnView[]>([]);
@@ -99,6 +107,32 @@ export default function Room(): JSX.Element {
       .catch(() => setConsent(false));
   }, [viewer]);
 
+  const reloadRooms = useCallback(async () => {
+    try {
+      const list = await manage<{ rooms: RoomSummary[]; friends: FriendView[] }>({ action: 'list' });
+      setRooms(list.rooms); setFriends(list.friends);
+    } catch { /* picker stays as it was */ }
+  }, []);
+
+  // Rooms, and an invitation carried in the link (?invite=...), once we know who is reading.
+  useEffect(() => {
+    if (!viewer?.signed_in) return;
+    const params = new URLSearchParams(location.search);
+    const token = params.get('invite');
+    void (async () => {
+      if (token) {
+        try {
+          const joined = await manage<{ key: string; title: string }>({ action: 'accept', token });
+          setRoom(joined.key);
+          setRoomNote(`You joined ${joined.title}.`);
+        } catch (cause) { setRoomNote(cause instanceof Error ? cause.message : 'That invitation could not be used.'); }
+        params.delete('invite');
+        history.replaceState(null, '', `${location.pathname}${params.toString() ? `?${params}` : ''}`);
+      }
+      await reloadRooms();
+    })();
+  }, [viewer?.signed_in, reloadRooms]);
+
   const chooseLane = (next: EngineLane) => { setLane(next); write(LANE_KEY, next); };
 
   const toggleMute = () => {
@@ -130,6 +164,8 @@ export default function Room(): JSX.Element {
       setNeedsSignIn(false);
       asked.current = true;
       if (payload.viewer) setViewer(payload.viewer);
+      if (payload.names) setNames((n) => ({ ...n, ...payload.names }));
+      if (payload.room && room === 'me') { generation.current += 1; setRoom(payload.room.key); return; }
       const incoming = payload.events ?? [];
       for (const e of incoming) if (e.id > lastId.current) lastId.current = e.id;
       if (incoming.length > 0) setEvents((current) => merge(current, incoming));
@@ -141,7 +177,7 @@ export default function Room(): JSX.Element {
       if (gen !== generation.current) return;
       fails.current += 1;
       if (fails.current >= 2) setDisconnected(true);
-      if (cause instanceof Error && cause.message === 'That room is private.') setRoom('lobby');
+      if (cause instanceof Error && /not in that room/i.test(cause.message)) setRoom('me');
     } finally {
       if (gen === generation.current) {
         timer.current = setTimeout(() => {
@@ -252,10 +288,20 @@ export default function Room(): JSX.Element {
     <main id="main-content" className={styles.page}>
       <PresenceStrip
         presence={presence} disconnected={disconnected} nowMs={nowMs}
-        owner={viewer?.owner === true} room={room} onRoom={setRoom}
+        rooms={rooms} room={room} onRoom={setRoom}
+        onCreated={(key) => { setRoom(key); void reloadRooms(); setPeopleOpen(true); }}
+        onPeople={() => setPeopleOpen((v) => !v)}
         muted={muted} onToggleMute={toggleMute}
         signedIn={viewer?.signed_in === true} consent={consent} onConsent={(on) => void changeConsent(on)}
       />
+      {roomNote ? <p className={styles.roomNote} role="status" onClick={() => setRoomNote(null)}>{roomNote}</p> : null}
+      {peopleOpen && rooms.find((r) => r.key === room) ? <PeoplePanel
+        room={rooms.find((r) => r.key === room)!}
+        friends={friends}
+        reloadFriends={() => void reloadRooms()}
+        onClose={() => setPeopleOpen(false)}
+        onLeft={() => { setPeopleOpen(false); setRoom('me'); void reloadRooms(); }}
+      /> : null}
       {needsSignIn ? <div className={styles.gate}>
         <h1>Apocrypha</h1>
         <p>A continuously-thinking digital intelligence. The room is open to signed-in members.</p>
@@ -263,7 +309,7 @@ export default function Room(): JSX.Element {
           <a className={styles.gatePrimary} href="/login?next=%2F">Sign in</a>
           <a className={styles.gateSecondary} href="/register?next=%2F">Create an account</a>
         </div>
-      </div> : <River events={visible} live={live} me={me} nowMs={nowMs} />}
+      </div> : <River events={visible} live={live} me={me} nowMs={nowMs} names={names} />}
       {needsSignIn ? null : <Composer
         room={room}
         signedIn={viewer?.signed_in === true}

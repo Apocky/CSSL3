@@ -1,4 +1,14 @@
-export type RoomName = 'lobby' | 'owner';
+export type RoomName = string;
+
+export interface RoomSummary {
+  readonly key: string;
+  readonly kind: 'private' | 'lobby';
+  readonly title: string;
+  readonly role: 'owner' | 'member';
+  readonly members: number;
+}
+export interface MemberView { readonly user_id: string; readonly role: string; readonly author: string | null; readonly display_name: string }
+export interface FriendView { readonly user_id: string; readonly display_name: string }
 export type RoomKind = 'utterance' | 'thought' | 'recall' | 'presence' | 'system';
 export type EngineLane = 'local' | 'flagship';
 export type RoomTool = 'image' | 'web';

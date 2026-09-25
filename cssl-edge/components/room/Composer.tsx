@@ -163,7 +163,7 @@ export default function Composer({
         rows={1}
         value={text}
         maxLength={4000}
-        placeholder={room === 'owner' ? 'Message Apocrypha privately' : 'Message the room'}
+        placeholder={room.startsWith('l:') || room === 'lobby' ? 'Message the lobby' : 'Message Apocrypha'}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKey}
         autoComplete="off"

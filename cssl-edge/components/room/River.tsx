@@ -114,7 +114,7 @@ function Avatar({ thinking = false }: { readonly thinking?: boolean }): JSX.Elem
   </span>;
 }
 
-function Message({ item }: { readonly item: Extract<Item, { type: 'message' }> }): JSX.Element {
+function Message({ item, names }: { readonly item: Extract<Item, { type: 'message' }>; readonly names: Record<string, string> }): JSX.Element {
   const { event, side, first, last, notes } = item;
   const apocrypha = side === 'apocrypha';
   const body = apocrypha ? presentable(event.body).text : event.body;
@@ -124,7 +124,7 @@ function Message({ item }: { readonly item: Extract<Item, { type: 'message' }> }
   return <div className={`${styles.msgRow} ${styles[`side_${side}`]} ${first ? styles.groupStart : ''}`}>
     {side !== 'mine' ? (apocrypha && first ? <Avatar /> : <span className={styles.avatarSpacer} aria-hidden="true" />) : null}
     <div className={styles.msgCol}>
-      {first && side === 'other' ? <div className={styles.msgName}>{authorLabel(event.author)}</div> : null}
+      {first && side === 'other' ? <div className={styles.msgName}>{names[event.author] ?? authorLabel(event.author)}</div> : null}
       {first && apocrypha ? <div className={styles.msgName}>Apocrypha</div> : null}
       {apocrypha && notes.length + (typeof event.meta.recall_records === 'number' ? 1 : 0) > 0 ? <Thought notes={notes} meta={event.meta} /> : null}
       <div className={`${styles.bubble} ${event.pending ? styles.pending : ''}`} title={detail}>
@@ -157,7 +157,8 @@ function Live({ turn, nowMs }: { readonly turn: LiveTurnView; readonly nowMs: nu
   </div>;
 }
 
-export default function River({ events, live, me, nowMs }: {
+export default function River({ events, live, me, nowMs, names }: {
+  readonly names: Record<string, string>;
   readonly events: readonly RoomEventView[];
   readonly live: readonly LiveTurnView[];
   readonly me: string | null;
@@ -209,7 +210,7 @@ export default function River({ events, live, me, nowMs }: {
           if (item.type === 'day') return <div key={item.key} className={styles.day}><span>{item.label}</span></div>;
           if (item.type === 'notice') return <div key={item.key} className={styles.notice} title={timeLabel(item.event.created_at)}>{item.event.body}</div>;
           if (item.type === 'live') return <Live key={item.key} turn={item.turn} nowMs={nowMs} />;
-          return <Message key={item.key} item={item} />;
+          return <Message key={item.key} item={item} names={names} />;
         })}
       </div>
     </div>

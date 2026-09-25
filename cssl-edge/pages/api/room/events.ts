@@ -9,8 +9,9 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+import { namesFor, resolveRoomKey } from '@/lib/room/rooms';
 import {
-  RoomError, isOwner, listEvents, newestPresence, parseId, parseLimit, parseRoom,
+  RoomError, listEvents, newestPresence, parseId, parseLimit, parseRoom,
 } from '@/lib/room/store';
 import { flagshipAllowed, flagshipReady, liveTurns, resolveSpeaker } from '@/lib/room/turn';
 
@@ -23,20 +24,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
   try {
-    const room = parseRoom(req.query.room);
     const after = parseId(req.query.after);
     const limit = parseLimit(req.query.limit);
     const who = req.query.who === '1';
-    // Owner decision 2026-09-25: the room is readable only when signed in -- the lobby included.
+    // Signed-in only (owner decision 2026-09-25), and only rooms this account belongs to.
     const reader = await resolveSpeaker(req, { mintGuest: false });
     if (reader.kind === 'guest') {
       res.status(401).json({ ok: false, code: 'SIGN_IN_REQUIRED', error: 'Sign in to read the room.' });
       return;
     }
-    if (room === 'owner' && !(await isOwner(req))) {
-      res.status(403).json({ ok: false, code: 'OWNER_REQUIRED', error: 'That room is private.' });
-      return;
-    }
+    const requested = typeof req.query.room === 'string' ? req.query.room : 'me';
+    const access = await resolveRoomKey(reader, requested === 'me' ? 'me' : parseRoom(requested));
+    const room = access.key;
     const [events, lastPresence, live] = await Promise.all([
       listEvents(room, after, limit), newestPresence(room), liveTurns(room),
     ]);
@@ -56,7 +55,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         premium_ready: flagshipReady(req),
       };
     }
-    res.status(200).json({ ok: true, events, live, presence, now, ...(viewer ? { viewer } : {}) });
+    const names = await namesFor(events.map((e) => e.author));
+    res.status(200).json({ ok: true, room: { key: room, kind: access.kind, role: access.role }, events, live, presence, names, now, ...(viewer ? { viewer } : {}) });
   } catch (error) {
     if (error instanceof RoomError) {
       res.status(error.status).json({ ok: false, code: error.code, error: error.message });
