@@ -1,9 +1,9 @@
 // The living room: the one Apocrypha chat surface, rendered at / (the front door) and /room.
 //
-// Not a chatbot page. There is no request/response shape here at all: the page polls one
-// append-only river and shows whatever arrived, whoever wrote it, prompted or not. Apocrypha's
-// state comes from the same river (presence rows), so "is it there" and "what did it say" are one
-// question with one answer. The only thing the page owns is the reader's scroll position.
+// The page polls one append-only river plus the room's in-flight turns and shows whatever
+// arrived, whoever wrote it, prompted or not. Every message is a job in the queue (migration
+// 0061): the local lane is answered by the PC worker, Premium by Opus 5.5 on the Vercel runner,
+// and both answers land in the same river.
 
 import Head from 'next/head';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -11,19 +11,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Composer from './Composer';
 import PresenceStrip from './PresenceStrip';
 import River from './River';
-import type { PresenceView, RoomEventView, RoomName } from './types';
+import type {
+  EngineLane, LiveTurnView, PendingAttachment, PresenceView, RoomEventView, RoomName, RoomTool, ViewerView,
+} from './types';
 import styles from './Room.module.css';
 
 const POLL_MS = 1_500;
 const MUTE_KEY = 'apocrypha.room.mute';
+const LANE_KEY = 'apocrypha.room.lane';
 const PAGE = 200;
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 interface EventsPayload {
   ok?: boolean;
   events?: RoomEventView[];
+  live?: LiveTurnView[];
   presence?: PresenceView | null;
   now?: string;
-  viewer?: { owner?: boolean };
+  viewer?: ViewerView;
   code?: string;
   error?: string;
 }
@@ -33,20 +38,38 @@ function merge(current: readonly RoomEventView[], incoming: readonly RoomEventVi
   const byId = new Map<number, RoomEventView>();
   for (const e of current) if (!e.pending) byId.set(e.id, e);
   for (const e of incoming) byId.set(e.id, e);
-  // An optimistic row is superseded by the confirmed row with the same author-visible body.
   const confirmedBodies = new Set(incoming.map((e) => e.body));
   const pending = current.filter((e) => e.pending && !confirmedBodies.has(e.body));
   const confirmed = [...byId.values()].sort((a, b) => a.id - b.id);
   return [...confirmed, ...pending];
 }
 
+function read(key: string): string | null {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+function write(key: string, value: string): void {
+  try { window.localStorage.setItem(key, value); } catch { /* storage may be unavailable */ }
+}
+
+async function toBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 export default function Room(): JSX.Element {
   const [room, setRoom] = useState<RoomName>('lobby');
-  const [owner, setOwner] = useState(false);
+  const [viewer, setViewer] = useState<ViewerView | null>(null);
   const [events, setEvents] = useState<RoomEventView[]>([]);
+  const [live, setLive] = useState<LiveTurnView[]>([]);
   const [presence, setPresence] = useState<PresenceView | null>(null);
   const [disconnected, setDisconnected] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [lane, setLane] = useState<EngineLane>('local');
+  const [tools, setTools] = useState<RoomTool[]>([]);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [consent, setConsent] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -57,45 +80,65 @@ export default function Room(): JSX.Element {
   const generation = useRef(0);
 
   useEffect(() => {
-    try { setMuted(window.localStorage.getItem(MUTE_KEY) === '1'); } catch { /* storage may be unavailable */ }
-    const tick = setInterval(() => setNowMs(Date.now()), 5_000);
+    setMuted(read(MUTE_KEY) === '1');
+    const tick = setInterval(() => setNowMs(Date.now()), 1_000);
     return () => clearInterval(tick);
   }, []);
 
+  // Who is reading decides the default model: Premium when it is theirs and connected.
+  useEffect(() => {
+    if (!viewer) return;
+    const saved = read(LANE_KEY);
+    const premiumUsable = viewer.premium && viewer.premium_ready;
+    setLane(saved === 'local' ? 'local' : premiumUsable ? 'flagship' : 'local');
+    if (!viewer.signed_in) { setConsent(null); return; }
+    void fetch('/api/apocrypha/member/consent', { credentials: 'same-origin', cache: 'no-store' })
+      .then((r) => r.json() as Promise<{ ok?: boolean; consent?: { analytics?: boolean } }>)
+      .then((p) => setConsent(p.ok === true ? p.consent?.analytics === true : false))
+      .catch(() => setConsent(false));
+  }, [viewer]);
+
+  const chooseLane = (next: EngineLane) => { setLane(next); write(LANE_KEY, next); };
+
   const toggleMute = () => {
-    setMuted((m) => {
-      try { window.localStorage.setItem(MUTE_KEY, m ? '0' : '1'); } catch { /* ignore */ }
-      return !m;
-    });
+    setMuted((m) => { write(MUTE_KEY, m ? '0' : '1'); return !m; });
+  };
+
+  const changeConsent = async (on: boolean) => {
+    setConsent(on);
+    try {
+      const r = await fetch('/api/apocrypha/member/consent', {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ analytics: on }),
+      });
+      const p = await r.json() as { ok?: boolean; consent?: { analytics?: boolean } };
+      setConsent(p.ok === true ? p.consent?.analytics === true : !on);
+    } catch {
+      setConsent(!on);
+    }
   };
 
   const poll = useCallback(async (gen: number) => {
     if (gen !== generation.current) return;
     const who = asked.current ? '' : '&who=1';
     try {
-      const response = await fetch(
-        `/api/room/events?room=${room}&after=${lastId.current}&limit=${PAGE}${who}`,
-        { credentials: 'same-origin', cache: 'no-store' },
-      );
+      const response = await fetch(`/api/room/events?room=${room}&after=${lastId.current}&limit=${PAGE}${who}`, { credentials: 'same-origin', cache: 'no-store' });
       const payload = await response.json() as EventsPayload;
       if (gen !== generation.current) return;
       if (!response.ok || payload.ok !== true) throw new Error(payload.error ?? payload.code ?? `HTTP ${response.status}`);
       asked.current = true;
-      if (payload.viewer) setOwner(payload.viewer.owner === true);
+      if (payload.viewer) setViewer(payload.viewer);
       const incoming = payload.events ?? [];
       for (const e of incoming) if (e.id > lastId.current) lastId.current = e.id;
       if (incoming.length > 0) setEvents((current) => merge(current, incoming));
+      setLive(payload.live ?? []);
       setPresence(payload.presence ?? null);
-      if (payload.now) setNowMs(Date.parse(payload.now) || Date.now());
       fails.current = 0;
       setDisconnected(false);
     } catch (cause) {
       if (gen !== generation.current) return;
       fails.current += 1;
       if (fails.current >= 2) setDisconnected(true);
-      if (cause instanceof Error && cause.message === 'That room is private.') {
-        setRoom('lobby');
-      }
+      if (cause instanceof Error && cause.message === 'That room is private.') setRoom('lobby');
     } finally {
       if (gen === generation.current) {
         timer.current = setTimeout(() => {
@@ -106,14 +149,13 @@ export default function Room(): JSX.Element {
     }
   }, [room]);
 
-  // One chain per room. Switching rooms bumps the generation so a late response from the old
-  // room cannot land in the new one, and the river starts over at the present.
   useEffect(() => {
     generation.current += 1;
     const gen = generation.current;
     lastId.current = 0;
     fails.current = 0;
     setEvents([]);
+    setLive([]);
     setPresence(null);
     setError(null);
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
@@ -128,11 +170,37 @@ export default function Room(): JSX.Element {
     };
   }, [poll]);
 
+  const attach = (files: File[]) => {
+    for (const file of files) {
+      const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const mime = file.type || 'application/octet-stream';
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setAttachments((a) => [...a, { key, name: file.name, mime, id: null, state: 'failed', error: 'Files are 25 MB at most.' }]);
+        continue;
+      }
+      setAttachments((a) => [...a, { key, name: file.name, mime, id: null, state: 'uploading' }]);
+      void (async () => {
+        try {
+          const response = await fetch('/api/apocrypha/member/attachments', {
+            method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ file_name: file.name, mime_type: mime, data_base64: await toBase64(file) }),
+          });
+          const payload = await response.json() as { ok?: boolean; attachment?: { id?: string }; error?: string };
+          if (!response.ok || payload.ok !== true || !payload.attachment?.id) throw new Error(payload.error ?? `HTTP ${response.status}`);
+          const id = payload.attachment.id;
+          setAttachments((a) => a.map((x) => (x.key === key ? { ...x, id, state: 'ready' } : x)));
+        } catch (cause) {
+          setAttachments((a) => a.map((x) => (x.key === key ? { ...x, state: 'failed', error: cause instanceof Error ? cause.message : 'Upload failed.' } : x)));
+        }
+      })();
+    }
+  };
+
   const send = async (body: string): Promise<boolean> => {
     setError(null);
+    const me = viewer?.author ?? (viewer?.owner ? 'apocky' : 'you');
     const optimistic: RoomEventView = {
-      id: -Date.now(), room, author: owner ? 'apocky' : 'you', kind: 'utterance', body, meta: {},
-      created_at: new Date().toISOString(), pending: true,
+      id: -Date.now(), room, author: me, kind: 'utterance', body, meta: {}, created_at: new Date().toISOString(), pending: true,
     };
     setEvents((current) => [...current, optimistic]);
     try {
@@ -140,14 +208,23 @@ export default function Room(): JSX.Element {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ room, body }),
+        body: JSON.stringify({
+          room, body, engine_lane: lane,
+          attachment_ids: attachments.filter((a) => a.state === 'ready' && a.id).map((a) => a.id),
+          tools: lane === 'flagship' ? tools : [],
+        }),
       });
-      const payload = await response.json() as { ok?: boolean; event?: RoomEventView; error?: string; code?: string };
-      if (!response.ok || payload.ok !== true || !payload.event) {
-        throw new Error(payload.error ?? payload.code ?? `HTTP ${response.status}`);
-      }
+      const payload = await response.json() as { ok?: boolean; event?: RoomEventView; job?: { lane?: string }; error?: string; code?: string };
+      if (!response.ok || payload.ok !== true || !payload.event) throw new Error(payload.error ?? payload.code ?? `HTTP ${response.status}`);
       const event = payload.event;
+      if (!asked.current || !viewer?.author) asked.current = false;
       setEvents((current) => merge(current.filter((e) => e !== optimistic), [event]));
+      setAttachments([]);
+      setTools([]);
+      // Premium answers on the Vercel runner; kick it now rather than waiting for its minute sweep.
+      if (payload.job?.lane === 'flagship') {
+        void fetch('/api/apocrypha/runner/run', { method: 'POST', credentials: 'same-origin' }).catch(() => undefined);
+      }
       return true;
     } catch (cause) {
       setEvents((current) => current.filter((e) => e !== optimistic));
@@ -156,26 +233,38 @@ export default function Room(): JSX.Element {
     }
   };
 
-  const visible = muted
-    ? events.filter((e) => !(e.author === 'apocrypha' && e.meta.unprompted === true))
-    : events;
-  const river = visible.filter((e) => e.kind !== 'presence');
+  const visible = muted ? events.filter((e) => !(e.author === 'apocrypha' && e.meta.unprompted === true)) : events;
+  const me = viewer?.author ?? null;
 
   return <>
     <Head>
       <title>Apocrypha</title>
       <meta name="description" content="A continuously-thinking digital intelligence. It may speak first." />
-      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
       <meta name="robots" content="index,follow" />
       <link rel="canonical" href="https://www.apocky.com/" />
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>
     <main id="main-content" className={styles.page}>
-      <PresenceStrip presence={presence} disconnected={disconnected} nowMs={nowMs} />
-      <p className={styles.tagline}>A continuously-thinking digital intelligence. It may speak first.</p>
-      <River events={river} nowMs={nowMs} />
-      <Composer room={room} owner={owner} onRoom={setRoom} onSend={send} error={error} muted={muted} onToggleMute={toggleMute} />
+      <PresenceStrip
+        presence={presence} disconnected={disconnected} nowMs={nowMs}
+        owner={viewer?.owner === true} room={room} onRoom={setRoom}
+        muted={muted} onToggleMute={toggleMute}
+        signedIn={viewer?.signed_in === true} consent={consent} onConsent={(on) => void changeConsent(on)}
+      />
+      <River events={visible} live={live} me={me} nowMs={nowMs} />
+      <Composer
+        room={room}
+        signedIn={viewer?.signed_in === true}
+        premium={viewer?.premium === true}
+        premiumReady={viewer?.premium_ready === true}
+        lane={lane} onLane={chooseLane}
+        tools={tools} onTools={setTools}
+        attachments={attachments} onAttach={attach}
+        onRemoveAttachment={(key) => setAttachments((a) => a.filter((x) => x.key !== key))}
+        onSend={send} error={error} busy={live.length > 0}
+      />
     </main>
   </>;
 }

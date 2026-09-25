@@ -1,18 +1,20 @@
-// POST /api/room/say {room, body}
+// POST /api/room/say {room, body, engine_lane?, attachment_ids?, tools?}
 //
-// A human speaks. The owner principal is 'apocky'; everyone else is a guest, identified by the
-// same HttpOnly cookie the guest chat mints, digested before it becomes an author label. Guests
-// may not enter the owner room and may not write faster than one row per two seconds.
+// A human speaks, and the message becomes a job (migration 0061): the row and its job are written
+// in one transaction, then the PC worker (local lane) or the Vercel runner (flagship lane) answers
+// and the answer lands in the river by trigger. The speaker is decided from the session: the owner
+// principal is 'apocky', a signed-in member is 'member:<digest>', anyone else is a guest identified
+// by the HttpOnly guest cookie, digested before it becomes an author label.
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { hasSameOrigin } from '@/lib/auth-session';
-import { guestCookie, newGuestId, readGuestCookie } from '@/lib/apocrypha/guest-chat';
-import {
-  GUEST_MIN_GAP_MS, MAX_SAY_CHARS, RoomError, guestAuthor, insertEvent, isOwner, lastWriteAt, parseRoom,
-} from '@/lib/room/store';
+import { GUEST_MIN_GAP_MS, MAX_SAY_CHARS, RoomError, lastWriteAt, parseRoom } from '@/lib/room/store';
+import { ROOM_TOOLS, flagshipReady, resolveSpeaker, say, type EngineLane, type RoomTool } from '@/lib/room/turn';
 
 export const config = { api: { bodyParser: { sizeLimit: '32kb' } } };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -39,29 +41,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (body.length > MAX_SAY_CHARS) {
       throw new RoomError(400, 'BODY_TOO_LONG', `That message is too long (${MAX_SAY_CHARS} characters at most).`);
     }
+    const lane: EngineLane = input.engine_lane === 'flagship' ? 'flagship' : 'local';
+    const attachmentIds = Array.isArray(input.attachment_ids)
+      ? input.attachment_ids.filter((id): id is string => typeof id === 'string' && UUID_RE.test(id)).map((id) => id.toLowerCase())
+      : [];
+    const tools = Array.isArray(input.tools)
+      ? input.tools.filter((tool): tool is RoomTool => (ROOM_TOOLS as readonly unknown[]).includes(tool))
+      : [];
 
-    const owner = await isOwner(req);
-    let author = 'apocky';
-    if (!owner) {
-      if (room === 'owner') throw new RoomError(403, 'OWNER_REQUIRED', 'That room is private.');
-      const existing = readGuestCookie(req.headers.cookie);
-      const guestId = existing ?? newGuestId();
-      if (!existing) res.setHeader('Set-Cookie', guestCookie(guestId, process.env.NODE_ENV === 'production'));
-      author = guestAuthor(guestId);
-      const last = await lastWriteAt(author);
+    const speaker = await resolveSpeaker(req, { mintGuest: true });
+    if (speaker.setCookie) res.setHeader('Set-Cookie', speaker.setCookie);
+    if (speaker.kind === 'guest') {
+      const last = await lastWriteAt(speaker.author);
       if (last !== null && Date.now() - last < GUEST_MIN_GAP_MS) {
         res.setHeader('Retry-After', '2');
         throw new RoomError(429, 'TOO_FAST', 'One message every two seconds.');
       }
     }
+    if (lane === 'flagship' && !flagshipReady(req)) {
+      throw new RoomError(503, 'PREMIUM_OFFLINE', 'Premium (Opus 5.5) is not connected right now. Switch to Free, or try again soon.');
+    }
 
-    const event = await insertEvent({ room, author, kind: 'utterance', body, meta: {} });
-    res.status(201).json({ ok: true, event });
+    const receipt = await say(speaker, { room, body, lane, attachmentIds, tools });
+    res.status(201).json({ ok: true, event: receipt.event, job: receipt.job });
   } catch (error) {
     if (error instanceof RoomError) {
       res.status(error.status).json({ ok: false, code: error.code, error: error.message });
       return;
     }
-    res.status(503).json({ ok: false, code: 'ROOM_UNAVAILABLE' });
+    console.error(JSON.stringify({ at: new Date().toISOString(), level: 'error', event: 'room.say.failed', detail: String(error).slice(0, 300) }));
+    res.status(503).json({ ok: false, code: 'ROOM_UNAVAILABLE', error: 'The room could not take that message right now.' });
   }
 }

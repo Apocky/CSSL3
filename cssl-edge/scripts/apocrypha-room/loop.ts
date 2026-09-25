@@ -539,7 +539,9 @@ async function tick(): Promise<void> {
 
     for (const row of inbox) {
       if (now < state.backoffUntil) break;
-      if (row.kind !== 'utterance' || row.author === 'apocrypha') {
+      // Room messages are jobs now (migration 0061): the PC worker or the Vercel runner answers
+      // them and the answer lands by trigger. This loop only notes that someone spoke.
+      if (process.env.APOCRYPHA_ROOM_LOOP_REPLIES !== 'on' || row.kind !== 'utterance' || row.author === 'apocrypha') {
         state.cursor = { after: row.id, at: new Date().toISOString() };
         writeCursor(state.cursor);
         continue;

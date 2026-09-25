@@ -5,6 +5,12 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getRequestUser } from '@/lib/admin-auth';
 import { isCronAuthorized } from '@/lib/cron-auth';
 import { runQueuedJobs } from '@/lib/apocrypha/vercel-runner';
+import { oidcFromRequest } from '@/lib/room/turn';
+
+// Vercel hands each invocation its OIDC token in a header; the env var alone may be absent at runtime.
+function runnerEnv(req: NextApiRequest): NodeJS.ProcessEnv {
+  return { ...process.env, VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN || oidcFromRequest(req) };
+}
 
 export const config = { maxDuration: 300 };
 
@@ -17,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!session.user) { res.status(401).json({ ok: false, code: 'SESSION_REQUIRED' }); return; }
   }
   try {
-    const outcome = await runQueuedJobs({ budgetMs: 240_000 });
+    const outcome = await runQueuedJobs({ env: runnerEnv(req), budgetMs: 240_000 });
     res.status(200).json({ ok: true, ...outcome });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
