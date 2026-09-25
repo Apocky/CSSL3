@@ -241,6 +241,9 @@ interface Turn { reasoning: string; content: string; recall: string }
 
 function stripThink(text: string): { reasoning: string; content: string } {
   const match = /^\s*<think>([\s\S]*?)<\/think>\s*/u.exec(text);
+  // An unterminated <think> means the token budget ran out mid-thought: that is a thought, never an
+  // utterance (row 275 in the lobby on 2026-09-24 was a raw thinking dump for exactly this reason).
+  if (!match && /^\s*<think>/u.test(text)) return { reasoning: text.replace(/^\s*<think>/u, '').trim(), content: '' };
   if (!match) return { reasoning: '', content: text.trim() };
   return { reasoning: (match[1] ?? '').trim(), content: text.slice(match[0].length).trim() };
 }
@@ -451,7 +454,7 @@ async function reply(row: RoomEvent): Promise<boolean> {
   try {
     const rows = await tail(room);
     if (!rows.some((r) => r.id === row.id)) rows.push(row);
-    const turn = await speak(room, [persona(room), ...history(rows)], { reply_to: row.id }, 0.7, 400);
+    const turn = await speak(room, [persona(room), ...history(rows)], { reply_to: row.id }, 0.7, 1400);
     state.replies += 1;
     log(turn.content === '' ? 'reply.empty' : 'reply.posted', {
       room, reply_to: row.id, chars: turn.content.length, reasoning_chars: turn.reasoning.length, recall_chars: turn.recall.length,
@@ -484,7 +487,7 @@ async function freeSpeech(room: Room): Promise<void> {
     const turn = await speak(room, [
       ...context,
       { role: 'user', content: '(No one asked.) Say whatever you want to say now, on any topic, in your own voice, briefly.' },
-    ], { unprompted: true }, 0.9, 300);
+    ], { unprompted: true }, 0.9, 1000);
     if (turn.content !== '') state.unprompted += 1;
     log('free.posted', { room, chars: turn.content.length, reasoning_chars: turn.reasoning.length, recall_chars: turn.recall.length });
   } catch (error) {
