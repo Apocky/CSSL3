@@ -16,6 +16,7 @@ mod local;
 mod local_stream;
 mod protocol;
 mod session;
+mod shell;
 mod store;
 mod stream;
 
@@ -185,6 +186,8 @@ async fn local_request(app: tauri::AppHandle, state: tauri::State<'_, LocalApp>,
 
 fn main() {
     tauri::Builder::default()
+        .setup(|app| shell::setup(app))
+        .on_window_event(|window, event| shell::on_window_event(window, event))
         .manage(App::new())
         .manage(LocalApp(Arc::new(local_stream::LocalController::new())))
         .invoke_handler(tauri::generate_handler![

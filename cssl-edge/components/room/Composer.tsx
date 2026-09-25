@@ -17,7 +17,7 @@ import styles from './Room.module.css';
 const TOOL_LABEL: Record<RoomTool, string> = { image: 'Create image', web: 'Web search' };
 
 export default function Composer({
-  room, signedIn, premium, premiumReady, lane, onLane, tools, onTools, attachments, onAttach, onRemoveAttachment, onSend, error, busy,
+  room, signedIn, premium, premiumReady, lane, onLane, tools, onTools, attachments, onAttach, onRemoveAttachment, onSend, error, busy, inject,
 }: {
   readonly room: RoomName;
   readonly signedIn: boolean;
@@ -33,11 +33,16 @@ export default function Composer({
   readonly onSend: (body: string) => Promise<boolean>;
   readonly error: string | null;
   readonly busy: boolean;
+  /** Text to append to the draft (voice input in direct mode); a new `n` appends again. */
+  readonly inject?: { readonly text: string; readonly n: number };
 }): JSX.Element {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [menu, setMenu] = useState<'none' | 'plus' | 'model'>('none');
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    if (inject?.text) setText((t) => (t ? `${t} ${inject.text}` : inject.text));
+  }, [inject?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const wrap = useRef<HTMLDivElement | null>(null);
   const camera = useRef<HTMLInputElement | null>(null);
   const photos = useRef<HTMLInputElement | null>(null);

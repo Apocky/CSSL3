@@ -1,6 +1,7 @@
 import type { NextApiRequest } from 'next';
 
 import { getAuthClient } from './auth';
+import { directOwnerUserId, directViewer } from './direct/mode';
 
 export interface RequestUser {
   id: string;
@@ -79,6 +80,11 @@ export function getAccessTokenFromRequest(req: NextApiRequest): string | null {
 export async function getRequestUser(req: NextApiRequest, timeoutMs = 5000): Promise<RequestUserResult> {
   const testUser = testAdminUser(req);
   if (testUser) return { user: testUser, authConfigured: true };
+  // Direct mode (lib/direct/mode.ts): the owner on their own PC, never on Vercel.
+  const ownerId = directOwnerUserId();
+  if (ownerId && directViewer(req).owner) {
+    return { user: { id: ownerId, email: getAdminAllowlist()[0] ?? DEFAULT_ALLOWLIST[0]!, provider: 'direct', createdAt: new Date(0).toISOString() }, authConfigured: true };
+  }
 
   const accessToken = getAccessTokenFromRequest(req);
   if (!accessToken) {

@@ -8,6 +8,8 @@
 import Head from 'next/head';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import DirectTools from './DirectTools';
+
 import Composer from './Composer';
 import PresenceStrip from './PresenceStrip';
 import River from './River';
@@ -80,6 +82,7 @@ export default function Room(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [inject, setInject] = useState<{ text: string; n: number } | undefined>(undefined);
 
   const lastId = useRef(0);
   const fails = useRef(0);
@@ -316,6 +319,7 @@ export default function Room(): JSX.Element {
           <a className={styles.gateSecondary} href="/register?next=%2F">Create an account</a>
         </div>
       </div> : <River events={visible} live={live} me={me} nowMs={nowMs} names={names} onRetry={(body) => void send(body)} />}
+      {viewer?.direct ? <DirectTools events={visible} onText={(text) => setInject((i) => ({ text, n: (i?.n ?? 0) + 1 }))} /> : null}
       {needsSignIn ? null : <Composer
         room={room}
         signedIn={viewer?.signed_in === true}
@@ -325,7 +329,7 @@ export default function Room(): JSX.Element {
         tools={tools} onTools={setTools}
         attachments={attachments} onAttach={attach}
         onRemoveAttachment={(key) => setAttachments((a) => a.filter((x) => x.key !== key))}
-        onSend={send} error={error} busy={live.length > 0}
+        onSend={send} error={error} busy={live.length > 0} inject={inject}
       />}
     </main>
   </>;

@@ -13,6 +13,7 @@ import { namesFor, resolveRoomKey } from '@/lib/room/rooms';
 import {
   RoomError, listEvents, newestPresence, parseId, parseLimit, parseRoom,
 } from '@/lib/room/store';
+import { directViewer } from '@/lib/direct/mode';
 import { flagshipAllowed, flagshipReady, liveTurns, resolveSpeaker } from '@/lib/room/turn';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
@@ -53,6 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         author: speaker.author || null,
         premium: await flagshipAllowed(speaker),
         premium_ready: flagshipReady(req),
+        direct: directViewer(req).owner,
       };
     }
     const names = await namesFor(events.map((e) => e.author));

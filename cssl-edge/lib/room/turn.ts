@@ -11,6 +11,7 @@ import type { NextApiRequest } from 'next';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { getAdminAuthorization } from '@/lib/admin-auth';
+import { directOwnerUserId, directViewer } from '@/lib/direct/mode';
 import { presentable } from '@/lib/apocrypha/deliberation';
 import { guestCookie, guestSubjectHash, newGuestId, readGuestCookie } from '@/lib/apocrypha/guest-chat';
 import {
@@ -52,6 +53,12 @@ export function memberAuthor(authUserId: string): string {
 
 /** Owner, signed-in member, or guest -- decided from the session, never from the request body. */
 export async function resolveSpeaker(req: NextApiRequest, options: { mintGuest: boolean }): Promise<Speaker> {
+  // Direct mode (lib/direct/mode.ts): the owner reaching their own PC, from itself or over Tailscale.
+  const direct = directViewer(req);
+  const ownerId = directOwnerUserId();
+  if (direct.owner && ownerId) {
+    return { kind: 'owner', author: 'apocky', authUserId: ownerId, email: null, guestId: null, setCookie: null };
+  }
   const auth = await getAdminAuthorization(req);
   if (auth.user && auth.authorized) {
     return { kind: 'owner', author: 'apocky', authUserId: auth.user.id, email: auth.user.email ?? null, guestId: null, setCookie: null };

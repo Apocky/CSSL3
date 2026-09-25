@@ -47,6 +47,8 @@ export interface ViewerView {
   readonly author: string | null;
   readonly premium: boolean;
   readonly premium_ready: boolean;
+  /** The owner on their own PC (desktop direct mode): voice, notifications, services. */
+  readonly direct?: boolean;
 }
 
 export interface PendingAttachment {

@@ -1,0 +1,11 @@
+.bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 12px; border-top: 1px solid var(--room-line, rgba(127,127,127,.25)); font-size: 13px; }
+.btn, .on { border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; border-radius: 999px; padding: 4px 10px; cursor: pointer; font: inherit; }
+.btn:disabled { opacity: .5; cursor: default; }
+.on { background: rgba(127,127,255,.18); border-color: rgba(127,127,255,.55); }
+.note { opacity: .75; }
+.panel { flex-basis: 100%; display: grid; gap: 4px; padding: 6px 0; }
+.row { display: flex; gap: 8px; align-items: center; }
+.name { min-width: 130px; }
+.port { opacity: .6; min-width: 56px; }
+.up { color: #3a3; }
+.down { color: #c33; }

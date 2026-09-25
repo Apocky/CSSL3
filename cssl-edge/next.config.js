@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // The desktop direct server builds into its own folder so a dev build never pulls the rug from it.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   // Playwright binds the local verification server to this loopback host.
   // Declare that development origin explicitly so Next does not treat its
   // own test assets as a future cross-origin error. Production is unaffected.

@@ -2,13 +2,13 @@
   "schema_version": "apocky.desktop-release.v1",
   "access": "account",
   "channel": "preview",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "windows": {
     "state": "ready",
     "artifact": {
-      "href": "/downloads/Apocrypha-Desktop-0.1.0-windows-x64.exe",
-      "sha256": "2c5b596700412eabe79f967de549eb4171deff17280177a984dd65f348a9e84c",
-      "bytes": 1775266,
+      "href": "/downloads/Apocrypha-Desktop-0.2.0-windows-x64.exe",
+      "sha256": "3a4b8462f398039418868b314e0e415801d014968108a815f7dbddde5ca4045b",
+      "bytes": 1867425,
       "format": "nsis-installer"
     },
     "signing": "unsigned",
@@ -16,7 +16,7 @@
       "launch": "passed",
       "service_configuration": "passed",
       "account_sign_in_and_chat": "pending",
-      "installer_install_and_uninstall": "passed"
+      "installer_install_and_uninstall": "pending"
     }
   }
 }
