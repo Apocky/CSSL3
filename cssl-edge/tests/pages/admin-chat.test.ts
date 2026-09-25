@@ -18,9 +18,8 @@ const controls = source('pages/admin/controls.tsx');
 
 assert(adminPage.includes('<ChatThread />'), 'admin chat uses the canonical durable chat component');
 assert(adminPage.includes('adminAuthorized'), 'admin chat remains owner-gated');
-assert(ownerPage.includes('<ChatThread />'), 'the owner-facing Apocrypha page uses the same durable chat component');
-assert(ownerPage.includes('<AccountChat'), 'member conversations remain account-scoped');
-assert(ownerPage.includes("height: '100dvh'"), 'owner chat tracks the dynamic viewport');
+assert(!ownerPage.includes('ChatThread'), 'one chat interface: the durable owner thread lives only under /admin/chat');
+assert(ownerPage.includes('<AccountChat'), 'everyone signed in, the owner included, gets the account conversation');
 
 for (const token of [
   'ACTIVE_JOB_KEY',

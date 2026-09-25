@@ -41,10 +41,8 @@ assert.match(page, /noindex,nofollow,noarchive,nosnippet/, 'Brain page must be c
 assert.match(page, /viewport-fit=cover/, 'Brain page must expose iOS safe areas to its installed layout');
 assert.match(apocryphaPage, /<AccountChat onPendingChange=/, 'primary Apocrypha page must expose the account conversation surface');
 assert.match(apocryphaPage, /getServerSideProps/, 'account shell must receive the request nonce instead of static scripts blocked by CSP');
-assert.match(apocryphaPage, /owner\.ok && usesOwnerRuntime\(owner\.user\)/, 'owner conversation requires server authorization and the exact configured owner binding');
-assert.match(apocryphaPage, /const displayOwner = session\.ownerConversation === true\s*&& \(ownerConversation \|\| session\.access === 'owner'\)/, 'owner UI requires a current positive session even when the request was server-bound');
 assert.doesNotMatch(apocryphaPage, /ownerConversation && \(session\.access === 'checking' \|\| session\.access === 'unavailable'\)/, 'stale request-time admission must not expose owner UI while the current session is unresolved');
-assert.match(apocryphaPage, /showOwner \?[\s\S]*?<ChatThread \/>[\s\S]*?: <AccountChat onPendingChange=/, 'the primary route must preserve the durable owner chat while members keep account chat');
+assert.doesNotMatch(apocryphaPage, /ChatThread/, 'one chat interface (owner decision 2026-09-25): the front door never renders the owner-only thread');
 assert.doesNotMatch(accountChat, /href="\/brain"/, 'account conversation must not advertise a competing chat');
 assert.match(apocryphaPage, /<title>Apocrypha · Apocky<\/title>/, 'primary route must carry Apocrypha branding');
 assert.match(apocryphaPage, /Sign in to your Apocky account/, 'primary route must describe account access honestly');
