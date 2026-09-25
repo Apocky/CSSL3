@@ -67,6 +67,13 @@ interface Dependencies {
  * it is caller-supplied, and a caller-supplied key must never be able to address another
  * principal's memory. The prefix makes that structural rather than a matter of validation.
  */
+/** This turn's question, normalised: a different question needs a read of its own. */
+function turnQuestion(job: ClaimedJob): string {
+  const request = (job.request ?? {}) as Record<string, unknown>;
+  const raw = [request.retrieval_query, request.question, request.prompt].find((v) => typeof v === 'string' && v.trim() !== '');
+  return typeof raw === 'string' ? raw.trim().toLowerCase().replace(/\s+/gu, ' ').slice(0, 400) : '';
+}
+
 function conversationKey(job: ClaimedJob): string {
   const request = job.request ?? {};
   const supplied = ['conversation_id', 'conversationId', 'thread_id', 'session_id']
@@ -342,6 +349,7 @@ export class ApocryphaWorker {
         () => this.serializeMemoryOperation(
           () => retrieveMemory(this.config, claim, this.env, this.fetchImpl),
         ),
+        turnQuestion(claim),
       );
       memory = held.bundle;
       log('info', 'worker.memory.working_set', {

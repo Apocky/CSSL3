@@ -18,6 +18,7 @@ export type MemoryOrigin =
   | 'cold'          // nothing held; the turn waited for a real read
   | 'fresh'         // served from the working set, still inside the fresh window
   | 'revalidating'  // served warm; a refresh is running behind this turn
+  | 'requery'       // the question changed: this turn waited for a read OF ITS OWN QUESTION
   | 'expired'       // too old to serve; the turn waited for a real read
   | 'failed';       // refresh failed and nothing warm was holdable
 
@@ -43,6 +44,8 @@ interface Entry {
   touchedAt: number;
   episodic: RetrievalRecord[];
   refreshing: Promise<void> | null;
+  /** The question the last read answered. A different question is a different read. */
+  query: string;
 }
 
 function recordKey(record: RetrievalRecord): string {
@@ -104,9 +107,24 @@ export class WorkingMemory {
    * past the hard ceiling. Otherwise the warm set is returned straight away and any refresh runs
    * behind the turn, where it costs the user nothing.
    */
-  async ensure(key: string, load: () => Promise<RetrievalBundle>): Promise<EnsureResult> {
+  async ensure(key: string, load: () => Promise<RetrievalBundle>, query = ''): Promise<EnsureResult> {
     const entry = this.entries.get(key);
     const at = this.now();
+
+    // Observed 2026-09-25: a conversation that turned to Palworld kept being served the records
+    // its FIRST question retrieved, for fifteen minutes, so Apocrypha "remembered nothing" about
+    // the new topic. The warm set is only a stand-in for the same question; a new question reads
+    // now, and what it finds is merged on top of what the conversation already holds.
+    if (entry !== undefined && query !== '' && entry.query !== query) {
+      try {
+        const bundle = await load();
+        const stored = this.store(key, bundle, at, query);
+        return { bundle: this.project(stored), origin: 'requery', ageMs: 0, episodicRecords: stored.episodic.length };
+      } catch {
+        entry.touchedAt = at;
+        return { bundle: this.project(entry), origin: 'failed', ageMs: at - entry.fetchedAt, episodicRecords: entry.episodic.length };
+      }
+    }
 
     if (entry !== undefined) {
       const age = at - entry.fetchedAt;
@@ -130,7 +148,7 @@ export class WorkingMemory {
     const origin: MemoryOrigin = entry === undefined ? 'cold' : 'expired';
     try {
       const bundle = await load();
-      const stored = this.store(key, bundle, at);
+      const stored = this.store(key, bundle, at, query);
       return { bundle: this.project(stored), origin, ageMs: 0, episodicRecords: stored.episodic.length };
     } catch (error) {
       // An expired entry is still better than nothing, but it must not be reported as a healthy
@@ -145,17 +163,17 @@ export class WorkingMemory {
   private async refresh(key: string, load: () => Promise<RetrievalBundle>): Promise<void> {
     try {
       const bundle = await load();
-      this.store(key, bundle, this.now());
+      this.store(key, bundle, this.now(), this.entries.get(key)?.query ?? '');
     } catch {
       // Leave the warm entry in place; the next turn past maxAgeMs will block and retry properly.
     }
   }
 
-  private store(key: string, bundle: RetrievalBundle, at: number): Entry {
+  private store(key: string, bundle: RetrievalBundle, at: number, query: string): Entry {
     const prior = this.entries.get(key);
     const episodic = mergeEpisodic(prior?.episodic ?? [], bundle.records ?? [], this.maxRecords);
     const entry: Entry = {
-      bundle, fetchedAt: at, touchedAt: at, episodic, refreshing: prior?.refreshing ?? null,
+      bundle, fetchedAt: at, touchedAt: at, episodic, refreshing: prior?.refreshing ?? null, query,
     };
     this.entries.set(key, entry);
     this.evict();

@@ -12,10 +12,15 @@ function fail(code) {
   process.stdout.write(`${JSON.stringify({ ok: false, code })}\n`);
 }
 
+// Question words would match every chunk and drown the one topic word that matters.
+const STOP = new Set(('a an and are as at be but by can could did do does for from had has have how i if in into is it its ' +
+  'just me my of on or our so that the their them then there these they this to up was we were what when where which ' +
+  'who why will with would you your about again any anything remember now know tell think quick check').split(' '));
+
 function tokens(query) {
   return [...query.toLowerCase().matchAll(/[a-z0-9][a-z0-9_.-]*/gu)]
     .map((match) => match[0])
-    .filter((token) => token.length >= 2)
+    .filter((token) => token.length >= 2 && !STOP.has(token))
     .slice(0, 48);
 }
 
@@ -62,11 +67,33 @@ function queryRows(database, query, limit) {
   ).all(...fallbackTerms.map((term) => `%${term}%`), needle, needle, limit);
 }
 
+// The ledger's records are summaries; the WORK itself -- every Claude and Codex session -- is in
+// source_chunks (135k chunks, 2,904 of them about Palworld alone on 2026-09-25). Reading only the
+// records is why Apocrypha "didn't know what we do". Chunks come back beside the records, ranked.
+function chunkRows(database, query, limit) {
+  const terms = tokens(query);
+  if (!terms.length) return [];
+  const expression = terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(' OR ');
+  try {
+    return database.prepare(
+      'SELECT c.rowid AS id, c.text AS payload, c.source_path AS ref, c.session_id AS session, c.role AS kind, ' +
+      'bm25(source_chunks_fts) AS rank FROM source_chunks_fts c WHERE source_chunks_fts MATCH ? ' +
+      'ORDER BY rank LIMIT ?',
+    ).all(expression, limit);
+  } catch {
+    return [];
+  }
+}
+
 function recall(request) {
   const database = new DatabaseSync(request.db_path, { readOnly: true, timeout: request.deadline_ms });
   try {
     database.exec('PRAGMA query_only=ON');
-    const rows = queryRows(database, request.query.trim(), request.limit);
+    const ledger = queryRows(database, request.query.trim(), Math.max(1, Math.ceil(request.limit / 2)));
+    const chunks = chunkRows(database, request.query.trim(), request.limit).map((row) => ({
+      ...row, repo: 'transcript', ts: '', provenance: 'anamnesis-chunk', payload_sha: '', self_sha: '',
+    }));
+    const rows = [...ledger, ...chunks].slice(0, request.limit + ledger.length);
     let remaining = MAX_TOTAL_CHARS;
     const records = [];
     for (const row of rows) {

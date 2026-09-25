@@ -169,7 +169,25 @@ async function main(): Promise<void> {
     + `accumulation, degraded-not-healthy on failure, bounded, ${mutants.length}/${mutants.length} mutations caught`);
 }
 
-main().then(() => console.log('apocrypha-working-memory OK')).catch((error) => {
+// 2026-09-25: a conversation that changed topic kept the first question's records for 15 minutes.
+async function requeryOnNewQuestion(): Promise<void> {
+  let now = 0;
+  let reads = 0;
+  const memory = new WorkingMemory({ now: () => now });
+  const load = (text: string) => async () => { reads += 1; return bundle([record('anamnesis', text, text)]); };
+  await memory.ensure('conv', load('tarot'), 'what did we say about tarot');
+  now = 10_000; // well inside the fresh window
+  const same = await memory.ensure('conv', load('tarot-again'), 'what did we say about tarot');
+  if (same.origin !== 'fresh' || reads !== 1) throw new Error('the same question must be served warm');
+  const moved = await memory.ensure('conv', load('palworld'), 'what do you remember about my palworld mods');
+  if (moved.origin !== 'requery' || reads !== 2) throw new Error('a new question inside the fresh window was not re-read');
+  const first = need(moved.bundle.records[0], 'first record');
+  if (first.provenanceId !== 'palworld') throw new Error('the new question\'s records must lead the episodic set');
+  if (!moved.bundle.records.some((r) => r.provenanceId === 'tarot')) throw new Error('earlier records must survive underneath');
+  console.log('apocrypha-working-memory.test: a changed question re-reads at once; new records lead, old ones stay');
+}
+
+main().then(requeryOnNewQuestion).then(() => console.log('apocrypha-working-memory OK')).catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
