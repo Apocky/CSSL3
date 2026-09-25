@@ -85,6 +85,8 @@ export interface MemberPlan {
   flagship: boolean;
   default_lane: MemberChatEngineLane;
   product_id: string;
+  /** Set when the plan could not be read because migration 0057 is not applied; visible, not silent. */
+  degraded?: 'migration_0057_pending';
 }
 
 export interface MemberChatHistoryEntry {
@@ -289,6 +291,14 @@ function configuredClient(): MemberChatRpcClient {
   return getApocryphaServiceClient() as unknown as MemberChatRpcClient;
 }
 
+// PostgREST answers PGRST202 when a function is not in the schema: the 0057 functions are not
+// applied yet. The site then serves the v2 surface (one conversation, local lane, no
+// attachments) instead of a 503, and says so in the response where a caller can see it.
+export function migration0057Pending(error: RpcError | null): boolean {
+  const message = error?.message?.toLowerCase() ?? '';
+  return error?.code === 'PGRST202' || (message.includes('could not find the function') && message.includes('apocrypha_'));
+}
+
 function storeFailure(operation: string, error: RpcError | null): never {
   const message = error?.message?.toLowerCase() ?? '';
   if (error?.code === 'P4031') {
@@ -490,8 +500,24 @@ export async function enqueueMemberChat(
     p_engine_lane: engineLane,
     p_attachment_ids: attachmentIds,
   });
-  if (error) storeFailure('submission', error);
-  const row = rows(data)[0];
+  let result = { data, error };
+  if (error && migration0057Pending(error)) {
+    if (threadId !== null || engineLane !== 'local' || attachmentIds.length > 0) {
+      throw new MemberChatStoreError(503, 'MEMBER_CHAT_MIGRATION_PENDING', 'Threads, the flagship lane and attachments need database migration 0057, which is not applied yet.');
+    }
+    result = await client.rpc('apocrypha_enqueue_member_chat_v2', {
+      p_verified_auth_user_id: conversationId,
+      p_presented_conversation_id: conversationId,
+      p_request_id: requestId,
+      p_message: input.message,
+      p_model_alias: APOCRYPHA_MODEL_ALIAS,
+      p_profile_hash: APOCRYPHA_PROFILE_HASH,
+      p_tool_registry_version: APOCRYPHA_TOOL_REGISTRY_VERSION,
+      p_memory_manifest_hash: APOCRYPHA_MEMORY_MANIFEST_HASH,
+    });
+  }
+  if (result.error) storeFailure('submission', result.error);
+  const row = rows(result.data)[0];
   const receipt = normalizeJobReceipt(row);
   if (
     receipt.conversation_id.toLowerCase() !== conversationId
@@ -556,8 +582,17 @@ export async function listMemberChatHistory(
     p_before_turn_sequence: beforeCursor,
     p_limit: MEMBER_CHAT_HISTORY_LIMIT,
   });
-  if (error) storeFailure('history lookup', error);
-  const projected = rows(data).map(normalizeHistoryRpcRow);
+  let result = { data, error };
+  if (error && migration0057Pending(error)) {
+    result = await client.rpc('apocrypha_list_member_chat_history_v2', {
+      p_verified_auth_user_id: conversationId,
+      p_presented_conversation_id: conversationId,
+      p_before_turn_sequence: beforeCursor,
+      p_limit: MEMBER_CHAT_HISTORY_LIMIT,
+    });
+  }
+  if (result.error) storeFailure('history lookup', result.error);
+  const projected = rows(result.data).map(normalizeHistoryRpcRow);
   if (projected.length > MEMBER_CHAT_HISTORY_LIMIT) {
     throw new MemberChatStoreError(502, 'MEMBER_CHAT_INVALID_PROJECTION', 'The history projection exceeded its bound.');
   }
@@ -676,6 +711,7 @@ export async function listMemberThreads(
     p_verified_auth_user_id: userId,
     p_include_archived: input.includeArchived === true,
   });
+  if (error && migration0057Pending(error)) return [];
   if (error) storeFailure('thread listing', error);
   return rows(data).map(normalizeThread);
 }
@@ -723,6 +759,9 @@ export async function getMemberPlan(
 ): Promise<MemberPlan> {
   const userId = canonicalMemberChatVerifiedIdentity(input.verifiedAuthUserId);
   const { data, error } = await client.rpc('apocrypha_member_has_flagship', { p_verified_auth_user_id: userId });
+  if (error && migration0057Pending(error)) {
+    return { flagship: false, default_lane: 'local', product_id: APOCRYPHA_PREMIUM_PRODUCT_ID, degraded: 'migration_0057_pending' };
+  }
   if (error) storeFailure('plan lookup', error);
   const flagship = data === true;
   // Owner decision 2026-09-25: the flagship is the main lane; free members run local.

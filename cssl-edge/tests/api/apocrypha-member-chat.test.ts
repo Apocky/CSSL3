@@ -6,7 +6,9 @@ import {
   canonicalMemberChatMessage,
   enqueueMemberChat,
   getMemberChatJob,
+  getMemberPlan,
   listMemberChatHistory,
+  listMemberThreads,
   MEMBER_CHAT_ASSISTANT_MAX_BYTES,
   MEMBER_CHAT_HISTORY_CONTENT_MAX_BYTES,
   MEMBER_CHAT_HISTORY_LIMIT,
@@ -149,6 +151,34 @@ function assertPrivate(out: Output): void {
   assert(out.headers['cache-control']?.includes('no-store'), 'response is no-store');
   equal(out.headers.vary, 'Authorization, Cookie, Origin', 'response varies by member credentials and origin');
   equal(out.headers['x-frame-options'], 'DENY', 'member response cannot be framed');
+}
+
+// Live 2026-09-25: the site called the 0057 functions before the migration was applied and every
+// history read was a 503. PGRST202 (function not in schema) now falls back to the v2 surface.
+async function testFallsBackToV2UntilMigration0057Lands(): Promise<void> {
+  const calls: string[] = [];
+  const absent = { code: 'PGRST202', message: 'Could not find the function public.apocrypha_enqueue_member_chat_v3(...) in the schema cache' };
+  const client: MemberChatRpcClient = {
+    async rpc(functionName) {
+      calls.push(functionName);
+      if (functionName.endsWith('_v3') || functionName === 'apocrypha_member_has_flagship' || functionName === 'apocrypha_list_member_threads') return { data: null, error: absent };
+      if (functionName === 'apocrypha_list_member_chat_history_v2') return { data: [], error: null };
+      return { data: [receipt(false)], error: null };
+    },
+  };
+  const result = await enqueueMemberChat({ verifiedAuthUserId: CONVERSATION_ID, conversationId: CONVERSATION_ID, requestId: REQUEST_ID, message: 'Hello, Apocrypha.' }, client);
+  equal(result.job_id, JOB_ID, 'v2 enqueue answers when v3 is absent');
+  equal(calls.join(' > '), 'apocrypha_enqueue_member_chat_v3 > apocrypha_enqueue_member_chat_v2', 'v3 first, v2 only on PGRST202');
+  let premiumRefused = '';
+  try {
+    await enqueueMemberChat({ verifiedAuthUserId: CONVERSATION_ID, conversationId: CONVERSATION_ID, requestId: REQUEST_ID, message: 'Hello.', engineLane: 'flagship' }, client);
+  } catch (error) { premiumRefused = error instanceof MemberChatStoreError ? error.publicCode : String(error); }
+  equal(premiumRefused, 'MEMBER_CHAT_MIGRATION_PENDING', 'a flagship/thread/attachment request is refused visibly, never silently downgraded');
+  const history = await listMemberChatHistory({ verifiedAuthUserId: CONVERSATION_ID, conversationId: CONVERSATION_ID }, client);
+  equal(history.history.length, 0, 'v2 history answers when v3 is absent');
+  const plan = await getMemberPlan({ verifiedAuthUserId: CONVERSATION_ID }, client);
+  equal(plan.degraded, 'migration_0057_pending', 'the plan says why it is local-only');
+  equal((await listMemberThreads({ verifiedAuthUserId: CONVERSATION_ID }, client)).length, 0, 'no threads before 0057');
 }
 
 async function testRpcReceivesOnlyServerBindings(): Promise<void> {
@@ -602,6 +632,7 @@ async function testDurableHistoryBoundary(): Promise<void> {
 
 async function main(): Promise<void> {
   equal(APOCRYPHA_MEMBER_CHAT_CAPABILITY, 'apocky_member_chat', 'member capability is exact');
+  await testFallsBackToV2UntilMigration0057Lands();
   await testRpcReceivesOnlyServerBindings();
   await testHistoryPaginationAndWireBound();
   await testSubmitBoundary();
