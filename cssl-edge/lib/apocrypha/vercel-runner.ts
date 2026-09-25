@@ -120,7 +120,10 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
     }
   };
   try {
+    const firstByte = new AbortController();
+    const firstByteTimer = setTimeout(() => firstByte.abort(new Error('GATEWAY_TIMEOUT:no response in 60s')), 60_000);
     const response = await fetchImpl(`${GATEWAY}/chat/completions`, {
+      signal: firstByte.signal,
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}`, accept: 'text/event-stream' },
       body: JSON.stringify({
@@ -132,6 +135,7 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
         reasoning: { effort: process.env.APOCRYPHA_HOSTED_EFFORT?.trim() || 'low' },
       }),
     });
+    clearTimeout(firstByteTimer);
     if (!response.ok || !response.body) {
       const detail = (await response.text().catch(() => '')).slice(0, 300);
       throw new Error(`GATEWAY_HTTP_${response.status}:${detail}`);
@@ -178,7 +182,12 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     const retryable = !/GATEWAY_HTTP_4(?!29)/u.test(detail);
-    await client.rpc('apocrypha_fail_job', { ...fence, p_error_code: detail.split(':')[0]?.slice(0, 64) || 'RUNNER_ERROR', p_error_detail: detail.slice(0, 500), p_retryable: retryable, p_metrics: { duration_ms: Date.now() - started, engine_lane: 'flagship' } }).catch(() => undefined);
+    // supabase-js rpc() returns a thenable without .catch; the old `.catch(...)` threw here and left
+    // the job leased with no failure recorded (observed 2026-09-25).
+    console.error(JSON.stringify({ at: new Date().toISOString(), level: 'error', event: 'apocrypha.runner.job_failed', job_id: job.job_id, detail: detail.slice(0, 300) }));
+    try {
+      await client.rpc('apocrypha_fail_job', { ...fence, p_error_code: detail.split(':')[0]?.slice(0, 64) || 'RUNNER_ERROR', p_error_detail: detail.slice(0, 500), p_retryable: retryable, p_metrics: { duration_ms: Date.now() - started, engine_lane: 'flagship' } });
+    } catch { /* the lease reaper requeues it */ }
     return { job_id: job.job_id, status: 'failed', error: detail.slice(0, 200) };
   }
 }
