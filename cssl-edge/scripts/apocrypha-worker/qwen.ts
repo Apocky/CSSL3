@@ -185,10 +185,13 @@ export class QwenClient {
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
     try {
+      // The hosted gateway speaks only the OpenAI dialect: no llama.cpp /health or /props, and
+      // /models needs the bearer. Its liveness is /models answering.
+      const auth = this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : undefined;
       const [healthResponse, modelsResponse, propsResponse] = await Promise.all([
-        this.fetchImpl(`${base}/health`, { signal: controller.signal }),
-        this.fetchImpl(`${this.config.qwenBaseUrl}/models`, { signal: controller.signal }),
-        this.fetchImpl(`${base}/props`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(1_500)]) }).catch(() => null),
+        this.hosted ? Promise.resolve(new Response(null, { status: 200 })) : this.fetchImpl(`${base}/health`, { signal: controller.signal }),
+        this.fetchImpl(`${this.config.qwenBaseUrl}/models`, { signal: controller.signal, ...(auth ? { headers: auth } : {}) }),
+        this.hosted ? Promise.resolve(null) : this.fetchImpl(`${base}/props`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(1_500)]) }).catch(() => null),
       ]);
       let contextTokens: number | undefined;
       if (propsResponse?.ok) {
