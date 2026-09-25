@@ -9,7 +9,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { hasSameOrigin } from '@/lib/auth-session';
-import { GUEST_MIN_GAP_MS, MAX_SAY_CHARS, RoomError, lastWriteAt, parseRoom } from '@/lib/room/store';
+import { MAX_SAY_CHARS, RoomError, parseRoom } from '@/lib/room/store';
 import { ROOM_TOOLS, flagshipReady, resolveSpeaker, say, type EngineLane, type RoomTool } from '@/lib/room/turn';
 
 export const config = { api: { bodyParser: { sizeLimit: '32kb' } } };
@@ -49,14 +49,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? input.tools.filter((tool): tool is RoomTool => (ROOM_TOOLS as readonly unknown[]).includes(tool))
       : [];
 
-    const speaker = await resolveSpeaker(req, { mintGuest: true });
+    const speaker = await resolveSpeaker(req, { mintGuest: false });
+    if (speaker.kind === 'guest') throw new RoomError(401, 'SIGN_IN_REQUIRED', 'Sign in to talk in the room.');
     if (speaker.setCookie) res.setHeader('Set-Cookie', speaker.setCookie);
-    if (speaker.kind === 'guest') {
-      const last = await lastWriteAt(speaker.author);
-      if (last !== null && Date.now() - last < GUEST_MIN_GAP_MS) {
-        res.setHeader('Retry-After', '2');
-        throw new RoomError(429, 'TOO_FAST', 'One message every two seconds.');
-      }
     }
     if (lane === 'flagship' && !flagshipReady(req)) {
       throw new RoomError(503, 'PREMIUM_OFFLINE', 'Apocrypha+ is not connected right now. Switch to Local, or try again soon.');

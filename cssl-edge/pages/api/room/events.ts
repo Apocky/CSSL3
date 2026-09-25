@@ -27,6 +27,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const after = parseId(req.query.after);
     const limit = parseLimit(req.query.limit);
     const who = req.query.who === '1';
+    // Owner decision 2026-09-25: the room is readable only when signed in -- the lobby included.
+    const reader = await resolveSpeaker(req, { mintGuest: false });
+    if (reader.kind === 'guest') {
+      res.status(401).json({ ok: false, code: 'SIGN_IN_REQUIRED', error: 'Sign in to read the room.' });
+      return;
+    }
     if (room === 'owner' && !(await isOwner(req))) {
       res.status(403).json({ ok: false, code: 'OWNER_REQUIRED', error: 'That room is private.' });
       return;
@@ -40,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : lastPresence;
     let viewer: Record<string, unknown> | undefined;
     if (who) {
-      const speaker = await resolveSpeaker(req, { mintGuest: false });
+      const speaker = reader;
       viewer = {
         owner: speaker.kind === 'owner',
         kind: speaker.kind,

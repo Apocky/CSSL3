@@ -161,3 +161,12 @@
   .side_apocrypha .msgCol { max-width: 90%; }
   .riverInner { padding: 10px 10px 16px; }
 }
+
+/* signed-out gate */
+.gate { flex: 1 1 auto; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
+.gate h1 { margin: 0; font-size: 28px; font-weight: 650; }
+.gate p { margin: 0; max-width: 420px; color: #9ca6cc; }
+.gateActions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.gatePrimary, .gateSecondary { padding: 10px 18px; border-radius: 999px; text-decoration: none; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.gatePrimary { background: #eef0ff; color: #05060b; }
+.gateSecondary { border: 1px solid #a9b5ff55; color: #e8e9f3; }

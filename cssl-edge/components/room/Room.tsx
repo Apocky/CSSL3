@@ -72,6 +72,7 @@ export default function Room(): JSX.Element {
   const [consent, setConsent] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   const lastId = useRef(0);
   const fails = useRef(0);
@@ -124,7 +125,9 @@ export default function Room(): JSX.Element {
       const response = await fetch(`/api/room/events?room=${room}&after=${lastId.current}&limit=${PAGE}${who}`, { credentials: 'same-origin', cache: 'no-store' });
       const payload = await response.json() as EventsPayload;
       if (gen !== generation.current) return;
+      if (response.status === 401 && payload.code === 'SIGN_IN_REQUIRED') { setNeedsSignIn(true); return; }
       if (!response.ok || payload.ok !== true) throw new Error(payload.error ?? payload.code ?? `HTTP ${response.status}`);
+      setNeedsSignIn(false);
       asked.current = true;
       if (payload.viewer) setViewer(payload.viewer);
       const incoming = payload.events ?? [];
@@ -253,8 +256,15 @@ export default function Room(): JSX.Element {
         muted={muted} onToggleMute={toggleMute}
         signedIn={viewer?.signed_in === true} consent={consent} onConsent={(on) => void changeConsent(on)}
       />
-      <River events={visible} live={live} me={me} nowMs={nowMs} />
-      <Composer
+      {needsSignIn ? <div className={styles.gate}>
+        <h1>Apocrypha</h1>
+        <p>A continuously-thinking digital intelligence. The room is open to signed-in members.</p>
+        <div className={styles.gateActions}>
+          <a className={styles.gatePrimary} href="/login?next=%2F">Sign in</a>
+          <a className={styles.gateSecondary} href="/register?next=%2F">Create an account</a>
+        </div>
+      </div> : <River events={visible} live={live} me={me} nowMs={nowMs} />}
+      {needsSignIn ? null : <Composer
         room={room}
         signedIn={viewer?.signed_in === true}
         premium={viewer?.premium === true}
@@ -264,7 +274,7 @@ export default function Room(): JSX.Element {
         attachments={attachments} onAttach={attach}
         onRemoveAttachment={(key) => setAttachments((a) => a.filter((x) => x.key !== key))}
         onSend={send} error={error} busy={live.length > 0}
-      />
+      />}
     </main>
   </>;
 }
