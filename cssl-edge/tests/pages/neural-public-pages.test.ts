@@ -16,6 +16,8 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const home = read('pages/index.tsx');
+const hub = read('pages/hub.tsx');
+const apocryphaPage = read('pages/apocrypha.tsx');
 const homePanels = renderSiteDirectory();
 const start = read('pages/start.tsx');
 const membership = read('pages/membership.tsx');
@@ -40,7 +42,8 @@ const sitemap = read('public/sitemap.xml');
 const llms = read('public/llms.txt');
 
 for (const [name, source, canonical] of [
-  ['home', home, 'https://www.apocky.com/'],
+  ['home', `${home}\n${apocryphaPage}`, 'https://www.apocky.com/'],
+  ['hub', hub, 'https://www.apocky.com/hub'],
   ['start', start, 'https://www.apocky.com/start'],
   ['membership', membership, 'https://www.apocky.com/membership'],
   ['quests', quests, 'https://www.apocky.com/quests'],
@@ -68,15 +71,16 @@ assert(llms.includes('https://chaos-tarot.com/yes-no') && llms.includes('externa
 assert(homePanels.includes('href="https://chaos-tarot.com/free-reading?source=apocky-directory"'), 'home must hand off directly to the registered free Chaos reading');
 assert(homePanels.includes('href="https://chaos-tarot.com/yes-no"'), 'the Oracle panel must use its actual external destination');
 assert(!homePanels.includes('href="/oracle"'), 'home must not host or advertise the local Yes / No route');
-assert(!home.includes('const CREATIVE_WORK'), 'home must not duplicate the complete project index beneath its primary paths');
+assert(!hub.includes('const CREATIVE_WORK'), 'the hub must not duplicate the complete project index beneath its primary paths');
 for (const node of PUBLIC_SURFACE_NODES.filter(node => node.id !== 'home')) {
   assert(homePanels.includes(`data-destination="${node.id}"`), `home must expose a complete panel for ${node.id}`);
 }
 assert(homePanels.includes('href="/apocrypha"'), 'every visitor must have a direct Apocrypha entry');
 assert(!home.includes("access === 'owner'"), 'account chat entry must not be restricted to the owner');
 assert(!home.includes('public relay remains closed'), 'home must not retain the superseded owner-only copy');
-assert(home.includes('<SiteDirectory />'), 'home must render the complete public destination collection');
-assert(!home.includes('runtime ready') && !home.includes('release verified'), 'home must not make unsupported runtime or release claims');
+assert(hub.includes('<SiteDirectory />'), 'the hub (/hub) must render the complete public destination collection');
+assert(home.includes('<ApocryphaPage'), 'the front door (/) is Apocrypha (owner decision 2026-09-25)');
+assert(!home.includes('runtime ready') && !home.includes('release verified') && !hub.includes('runtime ready') && !hub.includes('release verified'), 'home and hub must not make unsupported runtime or release claims');
 assert(home.includes('consumeAuthCallbackFromLocation'), 'home simplification must preserve auth callback consumption');
 assert(home.includes('location.replace(returnTo)'), 'home simplification must preserve the normalized post-auth return path');
 assert(membership.includes('https://chaos-tarot.com/pricing'), 'membership must expose the usable Chaos product path');

@@ -78,7 +78,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }): 
       <a className="apx-skip-link" href="#main-content">Skip to main content</a>
       <header>
         <nav className="apx-nav" aria-label="Primary navigation">
-          <Link href="/hub" className="apx-brand" aria-label="Apocky hub">
+          <Link href="/" className="apx-brand" aria-label="Apocky home">
             <span className="apx-brand-mark" aria-hidden="true" />
             <span>APOCKY</span>
           </Link>

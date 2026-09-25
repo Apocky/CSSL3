@@ -14,7 +14,7 @@ import styles from '@/styles/AccountChat.module.css';
 export const ACCOUNT_JOURNAL_RESOLUTION_DEADLINE_MS = 4_000;
 export const ACCOUNT_SESSION_VISIBLE_DEADLINE_MS = 4_000;
 
-interface ApocryphaPageProps { readonly ownerConversation: boolean }
+interface ApocryphaPageProps { readonly ownerConversation: boolean; readonly frontDoor?: boolean }
 
 export const getServerSideProps: GetServerSideProps<ApocryphaPageProps> = async ({ req, res }) => {
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
@@ -24,6 +24,18 @@ export const getServerSideProps: GetServerSideProps<ApocryphaPageProps> = async 
   res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
   const owner = await requireBrainOwner(req as NextApiRequest);
   return { props: { ownerConversation: owner.ok && usesOwnerRuntime(owner.user) } };
+};
+
+// The same page as apocky.com's front door (pages/index.tsx): the conversation is the site, so
+// the front door is indexable and self-canonical while /apocrypha stays a private alias.
+export const getFrontDoorServerSideProps: GetServerSideProps<ApocryphaPageProps> = async (context) => {
+  const result = await getServerSideProps(context);
+  context.res.setHeader('X-Robots-Tag', 'index, follow');
+  if ('props' in result) {
+    const props = await result.props;
+    return { props: { ...props, frontDoor: true } };
+  }
+  return result;
 };
 
 function loadPendingAccountTurn(account: string): Promise<unknown> {
@@ -53,7 +65,7 @@ function AccountResolutionUnavailable(): JSX.Element {
   </main>;
 }
 
-export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps): JSX.Element {
+export default function ApocryphaPage({ ownerConversation, frontDoor = false }: ApocryphaPageProps): JSX.Element {
   const session = useSiteSession();
   const [sessionTimedOut, setSessionTimedOut] = useState(false);
   const displayOwner = session.ownerConversation === true
@@ -95,10 +107,21 @@ export default function ApocryphaPage({ ownerConversation }: ApocryphaPageProps)
   };
   return <>
     <Head>
-      <title>Apocrypha · Apocky</title>
+      {frontDoor ? <title>Apocky · Apocrypha</title> : <title>Apocrypha · Apocky</title>}
       <meta name="description" content="Chat with Apocrypha from your browser. Sign in to your Apocky account to keep your own conversations together." />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-      <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
+      {frontDoor
+        ? <>
+          <meta name="robots" content="index,follow" />
+          <link rel="canonical" href="https://www.apocky.com/" />
+          <meta property="og:title" content="Apocky · Apocrypha" />
+          <meta property="og:description" content="A conversation. Room to think. Chat with Apocrypha, then explore the rest of Apocky at /hub." />
+          <meta property="og:type" content="website" />
+          <meta property="og:url" content="https://www.apocky.com/" />
+          <meta property="og:site_name" content="Apocky" />
+          <link rel="alternate" type="text/plain" href="/llms.txt" title="Apocky for language models and digital intelligences" />
+        </>
+        : <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />}
       <meta name="referrer" content="no-referrer" />
       <meta name="theme-color" content="#05060b" />
     </Head>

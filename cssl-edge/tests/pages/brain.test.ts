@@ -18,6 +18,7 @@ const app = read('pages/_app.tsx');
 const document = read('pages/_document.tsx');
 const consent = read('components/AkashicConsent.tsx');
 const home = read('pages/index.tsx');
+const hub = read('pages/hub.tsx');
 const shell = read('components/SiteShell.tsx');
 const siteDirectory = read('components/site/SiteDirectory.tsx');
 const publicSurfaceGraph = read('lib/public-surface-graph.ts');
@@ -85,7 +86,8 @@ assert.match(consent, /if \(blackout \|\| compactSurface\) return null/, 'teleme
 assert.match(app, /pathname === '\/apocrypha'/, 'primary private alias must render without the public site shell');
 assert.match(app, /privateBrainSurface[\s\S]*?href="\/manifest\.json"/, 'the public manifest must be route-aware across client navigation');
 assert.doesNotMatch(document, /rel="manifest"/, 'the fixed document head must not pin the public manifest onto the private PWA');
-assert.match(home, /<SiteDirectory \/>/, 'home must render the public destination directory');
+assert.match(hub, /<SiteDirectory \/>/, 'the hub must render the public destination directory');
+assert.match(home, /<ApocryphaPage\b/, 'the front door is Apocrypha');
 assert.match(siteDirectory, /FEATURED = \[[^\]]*'apocrypha'/, 'home directory must feature Apocrypha');
 assert.match(publicSurfaceGraph, /"id": "apocrypha"[\s\S]*?"href": "\/apocrypha"/, 'Apocrypha directory entry must open the canonical route');
 assert.doesNotMatch(home, /OWNER-PRIVATE|public relay remains closed/, 'home must not retain the superseded owner-only promise');

@@ -38,7 +38,8 @@ const membershipPage = read('pages/membership.tsx');
 const membershipFallback = read('public/commons/membership.html');
 const principlesPage = read('pages/principles.tsx');
 const principlesFallback = read('public/commons/principles.html');
-const homePage = read('pages/index.tsx');
+const frontDoor = read('pages/index.tsx');
+const homePage = read('pages/hub.tsx');
 const siteShell = read('components/SiteShell.tsx');
 const apocryphaPage = read('pages/apocrypha.tsx');
 const chatAlias = read('pages/chat.tsx');
@@ -51,7 +52,9 @@ const sortedIds = (nodes: ReadonlyArray<{ id: string }>) => nodes.map((node) => 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;',
 })[character]!);
-assert.match(homePage, /<SiteDirectory\s*\/>/, 'home renders the shared destination panels');
+assert.match(frontDoor, /<ApocryphaPage\b/, 'the front door (/) is Apocrypha (owner decision 2026-09-25)');
+assert.match(frontDoor, /consumeAuthCallbackFromLocation/, 'the front door still consumes the OAuth callback that lands on /');
+assert.match(homePage, /<SiteDirectory\s*\/>/, 'the hub (/hub) renders the shared destination panels');
 assert.deepEqual(sortedIds(DIRECTORY_NODES), sortedIds(publicDestinations), 'every non-home public destination enters the home directory');
 assert.deepEqual(sortedIds(findDirectoryItems('')), sortedIds(publicDestinations), 'default search includes every destination');
 assert.deepEqual(sortedIds(panels), sortedIds(publicDestinations), 'actual default rendering gives every destination exactly one full panel');
@@ -128,7 +131,7 @@ for (const [surface, source] of Object.entries(activePublicSurfaces)) {
 }
 assert.match(homePanels, /href="\/apocrypha"/, 'rendered home links the exact existing account conversation route');
 assert.match(siteShell, /href:\s*'\/apocrypha'/, 'shell links the exact existing account conversation route');
-assert.doesNotMatch(`${homePage}\n${homePanels}\n${siteShell}`, /href=["']\/apocrypha\//, 'public navigation must not revive an Apocrypha descendant');
+assert.doesNotMatch(`${frontDoor}\n${homePage}\n${homePanels}\n${siteShell}`, /href=["']\/apocrypha\//, 'public navigation must not revive an Apocrypha descendant');
 assert.doesNotMatch(homePanels, /href="\/(?:apoc|apx|chat)(?:[?"/])|href="\/(?:admin|api|content|shawn)(?:[?"/])/, 'home panels preserve route retirement and private publication boundaries');
 
 const entryPoints = JSON.stringify(manifest['entry_points']);

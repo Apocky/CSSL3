@@ -15,6 +15,7 @@ const indexSource = read('pages/akashic-records/index.tsx');
 const detailSource = read('pages/akashic-records/[slug].tsx');
 const shellSource = read('components/SiteShell.tsx');
 const homeSource = read('pages/index.tsx');
+const hubSource = read('pages/hub.tsx');
 const docsDetailSource = read('pages/docs/[slug].tsx');
 const sitemap = read('public/sitemap.xml');
 
@@ -117,7 +118,8 @@ async function run(): Promise<void> {
   assert.match(detailSource, /aria-label=\{`\$\{block\.role\} message`\}/, 'transcript turns must retain role semantics');
   assert.match(detailSource, /availability unverified|may be unavailable/, 'original links must disclose uncertainty');
   assert.match(shellSource, /href: '\/akashic-records'/, 'global navigation must expose the archive');
-  assert.match(homeSource, /<SiteDirectory\s*\/>/, 'homepage renders the shared destination panels');
+  assert.match(hubSource, /<SiteDirectory\s*\/>/, 'the hub renders the shared destination panels');
+  assert.match(homeSource, /<ApocryphaPage\b/, 'the front door is Apocrypha');
   assert.match(renderSiteDirectory(), /href="\/akashic-records"/, 'rendered homepage must expose a direct archive link');
   assert.match(docsDetailSource, /spec\.slug === '18_AKASHIC_RECORDS'/, 'legacy qualifier must target only the existing technical document');
   assert.match(

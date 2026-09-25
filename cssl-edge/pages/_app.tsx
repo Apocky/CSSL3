@@ -31,6 +31,7 @@ import { SiteSessionProvider } from '@/components/hub/SiteSession';
 // Everything else gets the global nav + footer so the whole site is navigable.
 function isBare(pathname: string): boolean {
   return (
+    pathname === '/' || // the front door is Apocrypha (owner decision 2026-09-25): its own chrome
     pathname === '/login' ||
     pathname === '/register' ||
     pathname.startsWith('/auth') ||
