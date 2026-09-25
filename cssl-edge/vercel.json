@@ -22,6 +22,9 @@
     "pages/api/admin/apocrypha/inspect.ts": {
       "maxDuration": 120
     },
+    "pages/api/apocrypha/runner/run.ts": {
+      "maxDuration": 300
+    },
     "pages/api/**/*.ts": {
       "maxDuration": 30
     },
@@ -31,6 +34,7 @@
   },
   "crons": [
     { "path": "/api/cron/heartbeat", "schedule": "* * * * *" },
+    { "path": "/api/cron/apocrypha-runner", "schedule": "* * * * *" },
     { "path": "/api/cron/playtest-cycle", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/mycelium-relay", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/hotfix-manifest-refresh", "schedule": "*/30 * * * *" },

@@ -200,7 +200,7 @@ assert.doesNotMatch(nextConfig, /source:\s*'\/auth\/callback'/, 'public redirect
 assert.match(contentPage, /notFound:\s*true/);
 assert.doesNotMatch(contentPage, /destination:\s*['"]\/apoc/);
 
-assert.equal(vercel.crons?.some((cron) => /apocrypha/i.test(cron.path)), false, 'retired worker must not be scheduled');
+assert.deepEqual((vercel.crons ?? []).filter((cron) => /apocrypha/i.test(cron.path)).map((cron) => cron.path), ['/api/cron/apocrypha-runner'], 'the only scheduled Apocrypha job is the flagship runner sweep; the retired worker stays unscheduled');
 assert.equal(
   Object.keys(vercel.functions ?? {}).some((route) => /apocrypha/i.test(route) && route !== 'pages/api/admin/apocrypha/inspect.ts'),
   false,

@@ -448,6 +448,8 @@ export function ChatThread() {
       window.localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(record));
       setCurrentConv(conversationId);
       setActiveJob(record);
+      // Wake the flagship runner on Vercel; the job is durable either way (cron sweeps every minute).
+      void authFetch('/api/apocrypha/runner/run', { method: 'POST', credentials: 'include', keepalive: true }).catch(() => undefined);
       setStreamingPhase('Accepted. Waiting for the local Qwen node…');
     } catch (sendError) {
       setStreaming(false);

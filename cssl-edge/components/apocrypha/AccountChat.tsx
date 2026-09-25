@@ -330,6 +330,8 @@ export default function AccountChat(
       try { saveMemberChatPending(account, localStorage, accepted); } catch { /* original pending receipt remains */ }
       retainPending(accepted);
       setNotice('Message saved. Waiting for Apocrypha…');
+      // Wake the flagship runner on Vercel; the job is durable either way (cron sweeps every minute).
+      void authFetch('/api/apocrypha/runner/run', { method: 'POST', keepalive: true }).catch(() => undefined);
       await followJob(account, receipt.job_id, rev, controller);
     } catch (error) {
       if (subjectRef.current !== account || generation.current !== rev) return;
