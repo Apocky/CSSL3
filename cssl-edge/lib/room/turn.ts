@@ -138,13 +138,19 @@ const VISION_LINK_SECONDS = 24 * 60 * 60;
 async function loadAttachments(speaker: Speaker, ids: readonly string[], client: SupabaseClient): Promise<AttachmentForJob[]> {
   if (ids.length === 0) return [];
   if (!speaker.authUserId) throw new RoomError(403, 'ATTACHMENTS_NEED_SIGN_IN', 'Sign in to attach files.');
-  const { data: principal, error: principalError } = await client.rpc('apocrypha_ensure_member_principal', {
-    p_verified_auth_user_id: speaker.authUserId,
-  });
-  const owner = (Array.isArray(principal) ? principal[0] : principal) as { tenant_id?: string; principal_id?: string } | null;
-  if (principalError || !owner?.tenant_id || !owner.principal_id) {
+  // apocrypha_ensure_member_principal is internal (no service_role EXECUTE), so calling it here
+  // failed on every turn with an attachment. The principal row is what ownership means; read it.
+  const { data: principals, error: principalError } = await client
+    .from('apocrypha_principal')
+    .select('id,tenant_id')
+    .eq('auth_user_id', speaker.authUserId)
+    .eq('principal_kind', 'member')
+    .eq('status', 'active');
+  const owners = (Array.isArray(principals) ? principals : []) as Array<{ id: string; tenant_id: string }>;
+  if (principalError || owners.length === 0) {
     throw new RoomError(503, 'ATTACHMENTS_UNAVAILABLE', 'Attachments could not be read right now.');
   }
+  const owner = { tenant_id: owners[0]!.tenant_id, principal_id: owners[0]!.id };
   const { data, error } = await client
     .from('apocrypha_member_chat_attachment')
     .select('id,file_name,mime_type,byte_size,extracted_text,storage_path')

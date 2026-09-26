@@ -343,6 +343,8 @@ export class ApocryphaWorker {
       const engine = requestedLane === 'flagship' && this.hosted ? this.hosted : this.qwen;
       const lane: EngineLane = engine === this.hosted && this.hosted ? 'flagship' : 'local';
       const laneFallback = requestedLane === 'flagship' && lane === 'local' ? 'hosted lane is not enabled on this worker' : null;
+      const images = attachedImageUrls(claim.request);
+      if (images.length > 0) log('info', 'worker.images.attached', { job_id: claim.jobId, count: images.length, lane, sent: lane === 'flagship' });
       // Engine-facing limits come from config, not the client: test doubles carry no config.
       const engineConfig = (lane === 'flagship' ? hostedEngineConfig(this.config) : null) ?? this.config;
       if (laneFallback) log('warn', 'worker.lane.fallback', { job_id: claim.jobId, requested: requestedLane, detail: laneFallback });
