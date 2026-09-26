@@ -5,7 +5,7 @@
 // Enter breaks the line and only the button sends). Locked options stay visible with a lock and
 // say why, rather than disappearing.
 
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 
 import {
   CameraIcon, ChevronIcon, CloseIcon, FileIcon, GlobeIcon, ImageGenIcon, LockIcon, PhotoIcon, PlusIcon, SendIcon,
@@ -40,6 +40,7 @@ export default function Composer({
   const [sending, setSending] = useState(false);
   const [menu, setMenu] = useState<'none' | 'plus' | 'model'>('none');
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const uid = useId().replace(/:/gu, '');
   useEffect(() => {
     if (inject?.text) setText((t) => (t ? `${t} ${inject.text}` : inject.text));
   }, [inject?.n]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -114,14 +115,16 @@ export default function Composer({
   const modelName = lane === 'flagship' ? 'Apocrypha+' : 'Local';
 
   return <div className={styles.composer} ref={wrap}>
-    <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={picked} />
-    <input ref={photos} type="file" accept="image/*" multiple hidden onChange={picked} />
-    <input ref={files} type="file" multiple hidden onChange={picked} />
+    {/* Opened by <label htmlFor>, not input.click(): phone browsers ignore a scripted click on a
+        display:none file input, which left Camera/Photos/Files doing nothing (owner report 2026-09-26). */}
+    <input ref={camera} id={`${uid}-camera`} className={styles.fileInput} type="file" accept="image/*" capture="environment" tabIndex={-1} onChange={picked} disabled={!signedIn} />
+    <input ref={photos} id={`${uid}-photos`} className={styles.fileInput} type="file" accept="image/*" multiple tabIndex={-1} onChange={picked} disabled={!signedIn} />
+    <input ref={files} id={`${uid}-files`} className={styles.fileInput} type="file" multiple tabIndex={-1} onChange={picked} disabled={!signedIn} />
 
     {menu === 'plus' ? <div className={styles.menu} role="menu" aria-label="Add to your message">
-      <MenuItem icon={<CameraIcon />} label="Camera" hint={attachHint ?? 'Take a photo and attach it'} disabled={!signedIn} onClick={() => camera.current?.click()} />
-      <MenuItem icon={<PhotoIcon />} label="Photos" hint={attachHint ?? 'Attach photos from your library'} disabled={!signedIn} onClick={() => photos.current?.click()} />
-      <MenuItem icon={<FileIcon />} label="Files" hint={attachHint ?? 'Attach files: Apocrypha reads text files; other files arrive by name'} disabled={!signedIn} onClick={() => files.current?.click()} />
+      <MenuItem icon={<CameraIcon />} label="Camera" hint={attachHint ?? 'Take a photo and attach it'} disabled={!signedIn} htmlFor={`${uid}-camera`} onClick={() => undefined} />
+      <MenuItem icon={<PhotoIcon />} label="Photos" hint={attachHint ?? 'Attach photos from your library'} disabled={!signedIn} htmlFor={`${uid}-photos`} onClick={() => undefined} />
+      <MenuItem icon={<FileIcon />} label="Files" hint={attachHint ?? 'Attach files: Apocrypha reads text files; other files arrive by name'} disabled={!signedIn} htmlFor={`${uid}-files`} onClick={() => undefined} />
       <div className={styles.menuRule} role="separator" />
       <MenuItem icon={<ImageGenIcon />} label={TOOL_LABEL.image} hint={toolHint ?? 'Ask Apocrypha to make an image with this message'} locked={toolHint !== null} checked={tools.includes('image')} onClick={() => toggleTool('image')} />
       <MenuItem icon={<GlobeIcon />} label={TOOL_LABEL.web} hint={toolHint ?? 'Let Apocrypha search the web for this message'} locked={toolHint !== null} checked={tools.includes('web')} onClick={() => toggleTool('web')} />
@@ -188,7 +191,7 @@ export default function Composer({
   </div>;
 }
 
-function MenuItem({ icon, label, sub, hint, disabled = false, locked = false, checked, onClick }: {
+function MenuItem({ icon, label, sub, hint, disabled = false, locked = false, checked, onClick, htmlFor }: {
   readonly icon?: JSX.Element;
   readonly label: string;
   readonly sub?: string;
@@ -197,8 +200,20 @@ function MenuItem({ icon, label, sub, hint, disabled = false, locked = false, ch
   readonly locked?: boolean;
   readonly checked?: boolean;
   readonly onClick: () => void;
+  /** Make this item a label for a file input, so the browser opens the picker natively. */
+  readonly htmlFor?: string;
 }): JSX.Element {
   const off = disabled || locked;
+  const inner = <>
+    {icon ? <span className={styles.menuIcon}>{icon}</span> : null}
+    <span className={styles.menuText}><span>{label}</span>{sub ? <small>{sub}</small> : null}</span>
+    {locked ? <LockIcon size={15} /> : checked ? <span className={styles.menuCheck} aria-hidden="true">✓</span> : null}
+  </>;
+  if (htmlFor && !off) {
+    return <Tip label={hint} align="start" side="top">
+      <label htmlFor={htmlFor} role="menuitem" className={styles.menuItem}>{inner}</label>
+    </Tip>;
+  }
   return <Tip label={hint} align="start" side="top">
     <button
       type="button"
