@@ -60,6 +60,8 @@ Severity: P0 broken for the user / P1 wrong or silent / P2 quality / P3 cleanup.
 Status: [ ] open, [x] fixed (commit), [~] in progress, [-] won't fix (reason).
 
 ### apocky.com (W = web)
+- [x] **W0 P0** Camera/Photos/Files did nothing on phones: scripted click on a display:none input. Native labels (dbfe417, live).
+- [x] **W0b P0** Every upload failed: DB 42702 `tenant_id` ambiguous in apocrypha_ensure_member_principal. Migration 0065 (6e4a6b5, applied to hub, upload verified).
 - [ ] **W1 P0** Create image tool is a stub (`lib/apocrypha/vercel-runner.ts:83,192`; worker ignores `request.tools`). Implement or hide.
 - [ ] **W2 P0** Web search tool is a stub (same path). Implement or hide.
 - [ ] **W3 P0** Camera/Photos: no vision path; model sees filename only (`lib/room/turn.ts:128-158`). Send images to the flagship as image parts; local lane says plainly it cannot see images.
@@ -121,7 +123,7 @@ Each phase ends deployed and verified live. Order is by user impact per unit of 
 ### Phase 1: Every button works (W1-W13)
 - [ ] W3 vision: images reach Apocrypha+ as image parts; local lane says it cannot see them.
 - [ ] W2 web search: gateway web-search tool on the flagship; local lane hides the option.
-- [ ] W1 create image: gateway image model -> stored attachment -> shown in the bubble.
+- [ ] W1 create image: Apocrypha+ writes SVG (no new spend), sanitized + rendered via the LoA SVG tools, shown in the bubble.
 - [ ] W4-W13 error paths and small fixes.
 - [ ] Human-journey tests for every control (see 5). Deploy + live check.
 
@@ -194,7 +196,7 @@ also run once against a deliberately broken build to prove it can fail).
 2. Transcripts shard licence: admit to training or not?
 3. Opus 5.5 reliability: add your Anthropic key as BYOK in the Vercel AI Gateway, or ask Vercel to
    raise the team limit?
-4. Image generation budget: which image model and per-image cost ceiling for Apocrypha+?
+4. ANSWERED 2026-09-26: free, or what we already pay for (Claude), or train Apocrypha. Plan: Apocrypha+ writes SVG (Claude, no extra cost), rendered with the LoA SVG tools; later a local model.
 
 ## 9. Working rules
 
@@ -205,3 +207,4 @@ also run once against a deliberately broken build to prove it can fail).
 ## 10. Log
 
 - 2026-09-26: audit done; services restored; plan written.
+- 2026-09-26: W0 picker fix live (dbfe417); W0b DB fix 0065 applied (6e4a6b5); direct launcher no longer dies on stderr.
