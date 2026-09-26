@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { getApocryphaServiceClient } from '@/lib/apocrypha/job-control';
 import { presentable } from '@/lib/apocrypha/deliberation';
 import { hostedEffort } from '@/lib/apocrypha/hosted-effort';
+import { attachedImageUrls, withImages } from '@/lib/apocrypha/image-parts';
 import { attemptFields, hostedAttempts, noteAttempt, retryableStatus } from '@/lib/apocrypha/hosted-route';
 
 export const RUNNER_MODEL = process.env.APOCRYPHA_FLAGSHIP_MODEL?.trim() || 'anthropic/claude-opus-5.5';
@@ -136,7 +137,7 @@ async function runJob(client: Rpc, nodeIdentity: { id: string; token: string }, 
         headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}`, accept: 'text/event-stream' },
         body: JSON.stringify({
           ...attemptFields(attempt),
-          messages,
+          messages: imagesIn(messages, attachedImageUrls(job.request)),
           stream: true,
           stream_options: { include_usage: true },
           max_tokens: MAX_OUTPUT_TOKENS,
@@ -233,3 +234,9 @@ export async function runQueuedJobs(options: { budgetMs?: number; maxJobs?: numb
 }
 
 export function resetRunnerNodeForTests(): void { node = null; }
+
+function imagesIn(messages: Array<{ role: string; content: string }>, urls: readonly string[]): Array<{ role: string; content: unknown }> {
+  if (urls.length === 0) return messages;
+  const last = messages.map((m) => m.role).lastIndexOf('user');
+  return messages.map((m, i) => (i === last ? { ...m, content: withImages(m.content, urls) } : m));
+}

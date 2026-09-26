@@ -3,6 +3,7 @@ import { AttemptJournal } from './journal';
 import { log } from './log';
 import { composeQwenRequest } from './prompt';
 import { QwenClient, QwenError, hostedEngineConfig, type QwenMessage } from './qwen';
+import { attachedImageUrls } from '../../lib/apocrypha/image-parts';
 import { MEMORY_TOOLS, TOOL_GUIDANCE, runTool } from './tools';
 
 const MAX_TOOL_ROUNDS = 3;
@@ -510,7 +511,7 @@ export class ApocryphaWorker {
           messages = [{ role: 'system', content: TOOL_GUIDANCE }, ...messages];
           for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
             const held: string[] = [];
-            const step = await engine.generate(messages, { ...request.generation, tools: MEMORY_TOOLS as unknown as ReadonlyArray<Record<string, unknown>> }, (delta) => { held.push(delta); }, abortController.signal);
+            const step = await engine.generate(messages, { ...request.generation, images: attachedImageUrls(claim.request), tools: MEMORY_TOOLS as unknown as ReadonlyArray<Record<string, unknown>> }, (delta) => { held.push(delta); }, abortController.signal);
             if (!step.toolCalls?.length) {
               for (const delta of held) await onDelta(delta);
               return step;
@@ -527,7 +528,7 @@ export class ApocryphaWorker {
             ];
           }
         }
-        return engine.generate(messages, request.generation, onDelta, abortController.signal);
+        return engine.generate(messages, { ...request.generation, images: attachedImageUrls(claim.request) }, onDelta, abortController.signal);
       };
       let result: QwenResult;
       try {

@@ -703,7 +703,9 @@ export function renderAttachments(request: Record<string, unknown>, maximumChars
     const name = (stringValue(item.name) ?? 'attachment').replace(/[\r\n"<>]/gu, ' ').slice(0, 160);
     const mime = (stringValue(item.mime) ?? 'application/octet-stream').slice(0, 80);
     const text = stringValue(item.text) ?? '';
-    const body = text ? utf8Prefix(text, perItem) : '(no extractable text; the file was received but its bytes are not readable as text)';
+    const body = text ? utf8Prefix(text, perItem) : typeof item.image_url === 'string'
+      ? '(an image. Apocrypha+ sees images; if you cannot see it here, say so plainly and suggest switching to Apocrypha+)'
+      : '(no extractable text; the file was received but its bytes are not readable as text)';
     return `<attachment name="${name}" mime="${mime}">\n${body}\n</attachment>`;
   });
   return [

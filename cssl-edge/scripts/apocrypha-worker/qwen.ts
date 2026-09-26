@@ -2,6 +2,7 @@ import { log } from './log';
 import type { QwenResult, QwenUsage, WorkerConfig } from './types';
 import { presetById } from '../../lib/apocrypha/sampling';
 import { hostedEffort } from '../../lib/apocrypha/hosted-effort';
+import { withImages } from '../../lib/apocrypha/image-parts';
 import { attemptFields, hostedAttempts, noteAttempt, retryableStatus, type HostedAttempt } from '../../lib/apocrypha/hosted-route';
 
 const BALANCED = presetById('balanced').profile;
@@ -43,6 +44,8 @@ export interface QwenGenerationOptions {
   seed?: number;
   /** Tools the model may call this round; tool calls come back in QwenResult.toolCalls. */
   tools?: ReadonlyArray<Record<string, unknown>>;
+  /** Image links for the final user turn (hosted lane only; the local model cannot see). */
+  images?: readonly string[];
 }
 
 export class QwenError extends Error {
@@ -302,7 +305,7 @@ export class QwenClient {
     try {
       const body = {
         model: this.config.modelAlias,
-        messages,
+        messages: this.hosted && options.images?.length ? withImagesOnLastUser(messages, options.images) : messages,
         ...(options.tools && options.tools.length > 0 ? { tools: options.tools, tool_choice: 'auto' } : {}),
         stream: true,
         stream_options: { include_usage: true },
@@ -490,4 +493,9 @@ export class QwenClient {
       signal?.removeEventListener('abort', abort);
     }
   }
+}
+
+function withImagesOnLastUser(messages: QwenMessage[], urls: readonly string[]): Array<Omit<QwenMessage, 'content'> & { content: unknown }> {
+  const last = messages.map((m) => m.role).lastIndexOf('user');
+  return messages.map((m, i) => (i === last ? { ...m, content: withImages(m.content, urls) } : m));
 }

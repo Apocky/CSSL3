@@ -11,6 +11,7 @@ import type { NextApiRequest } from 'next';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { getAdminAuthorization } from '@/lib/admin-auth';
+import { MEMBER_CHAT_ATTACHMENT_BUCKET } from '@/lib/apocrypha/member-chat';
 import { directOwnerUserId, directViewer } from '@/lib/direct/mode';
 import { presentable } from '@/lib/apocrypha/deliberation';
 import { guestCookie, guestSubjectHash, newGuestId, readGuestCookie } from '@/lib/apocrypha/guest-chat';
@@ -125,7 +126,13 @@ export function roomHistory(rows: readonly RoomEvent[], shared: boolean): Turn[]
   return turns;
 }
 
-interface AttachmentForJob { id: string; name: string; mime: string; bytes: number; text: string }
+interface AttachmentForJob { id: string; name: string; mime: string; bytes: number; text: string; image_url?: string }
+
+// Images Apocrypha+ can look at (owner report 2026-09-26: a photo arrived as its filename only).
+// A signed link, valid for a day, travels with the job; the flagship fetches the image itself.
+const VISION_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const VISION_MAX_BYTES = 8 * 1024 * 1024;
+const VISION_LINK_SECONDS = 24 * 60 * 60;
 
 /** A signed-in speaker's own attachments, by id, with the text the model may read. */
 async function loadAttachments(speaker: Speaker, ids: readonly string[], client: SupabaseClient): Promise<AttachmentForJob[]> {
@@ -140,19 +147,29 @@ async function loadAttachments(speaker: Speaker, ids: readonly string[], client:
   }
   const { data, error } = await client
     .from('apocrypha_member_chat_attachment')
-    .select('id,file_name,mime_type,byte_size,extracted_text')
+    .select('id,file_name,mime_type,byte_size,extracted_text,storage_path')
     .eq('tenant_id', owner.tenant_id)
     .eq('principal_id', owner.principal_id)
     .in('id', [...ids]);
   if (error) throw new RoomError(503, 'ATTACHMENTS_UNAVAILABLE', 'Attachments could not be read right now.');
   const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
   if (rows.length !== ids.length) throw new RoomError(403, 'ATTACHMENT_NOT_YOURS', 'An attachment does not belong to you.');
-  return rows.map((row) => ({
-    id: String(row.id),
-    name: String(row.file_name ?? 'file'),
-    mime: String(row.mime_type ?? 'application/octet-stream'),
-    bytes: Number(row.byte_size ?? 0),
-    text: typeof row.extracted_text === 'string' ? row.extracted_text.slice(0, 32_768) : '',
+  return Promise.all(rows.map(async (row) => {
+    const mime = String(row.mime_type ?? 'application/octet-stream').toLowerCase();
+    const bytes = Number(row.byte_size ?? 0);
+    let image_url: string | undefined;
+    if (VISION_MIME.has(mime) && bytes <= VISION_MAX_BYTES && typeof row.storage_path === 'string') {
+      const { data: signed } = await client.storage.from(MEMBER_CHAT_ATTACHMENT_BUCKET).createSignedUrl(row.storage_path, VISION_LINK_SECONDS);
+      image_url = signed?.signedUrl ?? undefined;
+    }
+    return {
+      id: String(row.id),
+      name: String(row.file_name ?? 'file'),
+      mime,
+      bytes,
+      text: typeof row.extracted_text === 'string' ? row.extracted_text.slice(0, 32_768) : '',
+      ...(image_url ? { image_url } : {}),
+    };
   }));
 }
 

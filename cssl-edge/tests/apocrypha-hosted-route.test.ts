@@ -88,6 +88,16 @@ async function main(): Promise<void> {
   try { await new QwenClient(config, broken.fetchImpl, { hosted: true }).generate(ask, {}, () => undefined); } catch (error) { code = error instanceof QwenError ? error.code : 'other'; }
   assert(code === 'QWEN_UPSTREAM_ERROR', `stream error: ${code}`);
 
+  // 6. images ride on the final user turn as image_url parts, hosted lane only.
+  type Seen = { messages: Array<{ role: string; content: unknown }> };
+  const eyes: Seen[] = [];
+  const see = (async (_u: string, init?: RequestInit) => { eyes.push(JSON.parse(String(init?.body)) as Seen); return sse([{ choices: [{ delta: { content: 'Red.' } }] }]); }) as unknown as typeof fetch;
+  await new QwenClient(config, see, { hosted: true }).generate([{ role: 'system', content: 's' }, ...ask], { images: ['https://x.test/a.png'] }, () => undefined);
+  const lastHosted = eyes[0]!.messages.at(-1)!.content as Array<{ type: string }>;
+  assert(Array.isArray(lastHosted) && lastHosted.some((p) => p.type === 'image_url') && typeof eyes[0]!.messages[0]!.content === 'string', 'hosted: image parts on the last user turn only');
+  await new QwenClient({ ...config, qwenBaseUrl: 'http://127.0.0.1:1/v1' }, see, {}).generate(ask, { images: ['https://x.test/a.png'] }, () => undefined).catch(() => undefined);
+  assert(typeof eyes.at(-1)!.messages.at(-1)!.content === 'string', 'local lane never sends image parts');
+
   console.log('apocrypha-hosted-route.test : OK · provider ring before fallback models, sticky on success, least effort, named thinking/stream failures');
 }
 
