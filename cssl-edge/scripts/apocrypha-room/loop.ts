@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { dirname } from 'node:path';
+import { splitTurn, stripThink } from './turn';
 
 type Room = 'lobby' | 'owner';
 const ROOMS: readonly Room[] = ['lobby', 'owner'];
@@ -54,7 +55,7 @@ for (const [name, url] of [['APOCRYPHA_ROOM_ENGINE', ENGINE], ['APOCRYPHA_ROOM_M
   const host = new URL(url).hostname;
   if (!['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)) throw new Error(`${name} must be local (unprompted speech never uses a paid model): ${host}`);
 }
-const CURSOR_PATH = process.env.APOCRYPHA_ROOM_CURSOR_PATH ?? 'D:\\Apocrypha\\rooms\\site-room.cursor.json';
+const CURSOR_PATH = process.env.APOCRYPHA_ROOM_CURSOR_PATH ?? 'C:\\Apocrypha\\rooms\\site-room.cursor.json';
 const HEALTH_PORT = Number(process.env.APOCRYPHA_ROOM_LOOP_PORT ?? 19134);
 
 const TICK_MS = 1_500;
@@ -245,36 +246,33 @@ async function inventory(): Promise<string> {
 
 interface Turn { reasoning: string; content: string; recall: string }
 
-function stripThink(text: string): { reasoning: string; content: string } {
-  const match = /^\s*<think>([\s\S]*?)<\/think>\s*/u.exec(text);
-  // An unterminated <think> means the token budget ran out mid-thought: that is a thought, never an
-  // utterance (row 275 in the lobby on 2026-09-24 was a raw thinking dump for exactly this reason).
-  if (!match && /^\s*<think>/u.test(text)) return { reasoning: text.replace(/^\s*<think>/u, '').trim(), content: '' };
-  if (!match) return { reasoning: '', content: text.trim() };
-  return { reasoning: (match[1] ?? '').trim(), content: text.slice(match[0].length).trim() };
-}
-
-/** One token from the raw engine, reasoning off. */
+/** One token from the raw engine, reasoning off. Retried once: a wedged slot answers '/' (NaN
+ *  logits, observed 2026-09-26 21:34Z--27 04:01Z, 490 rows) and a single glitch must not cost the
+ *  turn; a wedge fails twice and degrades as before. */
 async function decide(messages: ChatMessage[]): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('engine timeout')), DECISION_TIMEOUT_MS);
   try {
-    const response = await fetch(`${ENGINE}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: 'resident',
-        messages,
-        stream: false,
-        temperature: 0,
-        max_tokens: 1,
-        chat_template_kwargs: { enable_thinking: false },
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`engine HTTP ${response.status}`);
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    return stripThink(payload.choices?.[0]?.message?.content ?? '').content;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch(`${ENGINE}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'resident',
+          messages,
+          stream: false,
+          temperature: 0,
+          max_tokens: 1,
+          chat_template_kwargs: { enable_thinking: false },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`engine HTTP ${response.status}`);
+      const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const decision = stripThink(payload.choices?.[0]?.message?.content ?? '').content;
+      if (/[a-z]/i.test(decision) || attempt === 1) return decision;
+    }
+    return '';
   } finally {
     clearTimeout(timer);
   }
@@ -371,7 +369,7 @@ async function mindStream(
     }
     if (buffer.trim() !== '') await consume(buffer.trim());
 
-    const split = reasoning === '' ? stripThink(content) : { reasoning: reasoning.trim(), content: content.trim() };
+    const split = splitTurn(reasoning, content);
     if (!announced && split.reasoning !== '') await options.onReasoningDone(split.reasoning);
     return { ...split, recall: recalls.join('\n\n').slice(0, 12_000) };
   } finally {
