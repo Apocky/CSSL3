@@ -20,7 +20,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { dirname } from 'node:path';
-import { splitTurn, stripThink } from './turn';
+import { stripThink } from './turn';
+import { consumeEngineStream, foldSystems, prepareTurn } from '../apocrypha-mind/turn-core';
 
 type Room = 'lobby' | 'owner';
 const ROOMS: readonly Room[] = ['lobby', 'owner'];
@@ -49,6 +50,13 @@ const TOKEN = required('APOCRYPHA_WORKER_TOKEN');
 const NODE_ID = required('APOCRYPHA_WORKER_NODE_ID');
 const ENGINE = (process.env.APOCRYPHA_ROOM_ENGINE ?? 'http://127.0.0.1:19128').replace(/\/+$/, '');
 const MIND = (process.env.APOCRYPHA_ROOM_MIND ?? 'http://127.0.0.1:19132').replace(/\/+$/, '');
+// Phase 1 (R02-1b): the per-turn mind hop above is dead -- the loop assembles via turn-core
+// in-process below. MIND stays for the health display and the local-only guard.
+const RECALL_URL = process.env.APOCRYPHA_MIND_RECALL ?? 'http://127.0.0.1:19129/recall';
+const RECALL_TIMEOUT_MS = Number(process.env.APOCRYPHA_MIND_RECALL_TIMEOUT_MS ?? 4000);
+const PROFILE_DB = process.env.APOCRYPHA_PROFILE_DB_PATH ?? 'C:/Apocrypha/profile/apocrypha-profile.db';
+const ANAMNESIS_DB = process.env.APOCRYPHA_ANAMNESIS_DB_PATH
+  ?? 'C:/Users/Apocky/source/repos/anamnesis/anamnesis.db';
 // Owner rule 2026-09-25: unprompted speech never uses the paid frontier model. The loop speaks only
 // through the local engine and mind; a non-loopback address is refused at startup, not trusted.
 for (const [name, url] of [['APOCRYPHA_ROOM_ENGINE', ENGINE], ['APOCRYPHA_ROOM_MIND', MIND]] as const) {
@@ -278,20 +286,12 @@ async function decide(messages: ChatMessage[]): Promise<string> {
   }
 }
 
-function recallText(value: unknown): string {
-  if (typeof value === 'string') return value.trim();
-  if (Array.isArray(value)) return value.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join('\n').trim();
-  if (value && typeof value === 'object') return JSON.stringify(value, null, 1).trim();
-  return '';
-}
-
 /**
- * A streamed turn through the mind. Reasoning arrives either as `reasoning_content` deltas or as
- * an inline <think> block the mind writes into content; both end up in `reasoning`. `onFirstFrame`
- * fires when the mind starts answering (recall is done, the engine is generating); `onReasoningDone`
- * fires once, the moment the first answer token follows the reasoning -- the thought is complete
- * and can be posted while the answer is still being written. Any recall/evidence the mind attaches
- * (top-level frame fields or an x-apocrypha-recall header) is collected for a 'recall' row.
+ * A streamed turn through the in-process mind (phase 1: no :19132 hop).
+ * Same contract as the old HTTP path: reasoning fires onReasoningDone the
+ * moment the first answer token follows it, recall carries the evidence
+ * summary for the 'recall' row. Identical engine request the mind server
+ * sends (folded systems, thinking by default, no template kwargs).
  */
 async function mindStream(
   messages: ChatMessage[],
@@ -305,73 +305,28 @@ async function mindStream(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('mind timeout')), MIND_TIMEOUT_MS);
   try {
-    const response = await fetch(`${MIND}/v1/chat/completions`, {
+    const prepared = await prepareTurn(messages, {
+      recallUrl: RECALL_URL, recallTimeoutMs: RECALL_TIMEOUT_MS,
+      profileDb: PROFILE_DB, anamnesisDb: ANAMNESIS_DB,
+    });
+    const response = await fetch(`${ENGINE}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'apocrypha-mind',
-        messages,
+        messages: foldSystems(prepared.messages),
         stream: true,
         temperature: options.temperature,
         max_tokens: options.maxTokens,
-        chat_template_kwargs: { enable_thinking: true },
       }),
       signal: controller.signal,
     });
-    if (!response.ok || response.body === null) throw new Error(`mind HTTP ${response.status}`);
-
-    const recalls: string[] = [];
-    const headerRecall = response.headers.get('x-apocrypha-recall');
-    if (headerRecall) recalls.push(headerRecall);
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let reasoning = '';
-    let content = '';
-    let started = false;
-    let announced = false;
-
-    const consume = async (frame: string): Promise<void> => {
-      if (!frame.startsWith('data:')) return;
-      const data = frame.slice(5).trim();
-      if (data === '' || data === '[DONE]') return;
-      let parsed: Record<string, unknown> & { choices?: Array<{ delta?: { reasoning_content?: string; content?: string } }> };
-      try { parsed = JSON.parse(data) as typeof parsed; } catch { return; }
-      if (!started) { started = true; await options.onFirstFrame(); }
-      for (const key of ['recall', 'evidence', 'memory']) {
-        const text = recallText(parsed[key]);
-        if (text !== '') recalls.push(text);
-      }
-      const delta = parsed.choices?.[0]?.delta ?? {};
-      if (typeof delta.reasoning_content === 'string' && delta.reasoning_content !== '') reasoning += delta.reasoning_content;
-      if (typeof delta.content === 'string' && delta.content !== '') {
-        content += delta.content;
-        if (reasoning === '' && content.includes('</think>')) {
-          const split = stripThink(content);
-          reasoning = split.reasoning;
-          content = split.content;
-        }
-        if (!announced && reasoning !== '' && content.trim() !== '' && !content.trimStart().startsWith('<think>')) {
-          announced = true;
-          await options.onReasoningDone(reasoning.trim());
-        }
-      }
-    };
-
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split('\n\n');
-      buffer = frames.pop() ?? '';
-      for (const frame of frames) await consume(frame.trim());
-    }
-    if (buffer.trim() !== '') await consume(buffer.trim());
-
-    const split = splitTurn(reasoning, content);
-    if (!announced && split.reasoning !== '') await options.onReasoningDone(split.reasoning);
-    return { ...split, recall: recalls.join('\n\n').slice(0, 12_000) };
+    if (!response.ok || response.body === null) throw new Error(`engine HTTP ${response.status}`);
+    const turn = await consumeEngineStream(response.body, {
+      onFirstFrame: options.onFirstFrame,
+      onReasoningDone: options.onReasoningDone,
+    });
+    return { ...turn, recall: prepared.recall.summary };
   } finally {
     clearTimeout(timer);
   }
