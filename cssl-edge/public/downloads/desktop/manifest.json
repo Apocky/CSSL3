@@ -1,0 +1,9 @@
+{
+  "schema": "apocky.desktop-feed.v1",
+  "version": "1.18.34",
+  "url": "https://apocky.com/downloads/desktop/latest.yml",
+  "sha256": "70dc70cadf2fb4d3f73d0d4a4dc042fada7cec7e31e155269ebb97be0af29783",
+  "bytes": 183315729,
+  "signed": false,
+  "published_at": "2026-09-30T22:46:46Z"
+}
