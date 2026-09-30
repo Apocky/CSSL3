@@ -485,7 +485,7 @@ async function awareness(): Promise<void> {
   }
 }
 
-async function tick(): Promise<void> {
+export async function tick(): Promise<void> {
   if (state.busy) return;
   state.busy = true;
   try {
@@ -587,7 +587,13 @@ async function main(): Promise<void> {
   void run();
 }
 
-main().catch((error) => {
-  log('room-loop.fatal', { error: (error as Error).message });
-  process.exit(1);
-});
+// Phase 2 (R02-2b): one.ts imports tick() to host the loop in-process.
+// Importing must not start the split loop; only run main() when executed
+// directly (same behavior as before for the split process).
+const invokedAs = (process.argv[1] ?? '').replace(/\\/g, '/');
+if (invokedAs.endsWith('scripts/apocrypha-room/loop.ts')) {
+  main().catch((error) => {
+    log('room-loop.fatal', { error: (error as Error).message });
+    process.exit(1);
+  });
+}
