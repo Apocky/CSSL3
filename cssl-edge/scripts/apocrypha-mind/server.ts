@@ -28,6 +28,9 @@ const ANAMNESIS_DB = process.env.APOCRYPHA_ANAMNESIS_DB_PATH
   ?? 'C:/Users/Apocky/source/repos/anamnesis/anamnesis.db';
 const STREAM_REASONING = process.env.APOCRYPHA_MIND_REASONING !== '0';
 const MAX_BODY_BYTES = 2_000_000;
+// Hard ceiling per turn. Nothing legitimate on the room/chat path runs this
+// long; anything that does is a wedged slot and must be cut loose.
+const TURN_CEILING_MS = Number(process.env.APOCRYPHA_MIND_TURN_CEILING_MS ?? 240_000);
 
 let turns = 0;
 let failures = 0;
@@ -119,21 +122,35 @@ async function handleCompletions(request: IncomingMessage, response: ServerRespo
     // this template" whenever it is present; the engine thinks by default and the rewrite below routes it.
   };
 
+  // Queue discipline (Apocky 2026-09-30): a caller that hangs up MUST free
+  // the engine slot. Without this, an abandoned turn keeps prefilling for
+  // minutes on the single slot and every later caller queues behind a ghost.
+  // llama.cpp cancels the task when the HTTP connection closes; we forward
+  // the caller's close as an abort. Belt: a hard ceiling aborts regardless.
+  const upstreamAbort = new AbortController();
+  const onClientGone = () => upstreamAbort.abort(new Error('caller hung up'));
+  request.once('close', onClientGone);
+  response.once('close', onClientGone);
+  const ceiling = setTimeout(() => upstreamAbort.abort(new Error('turn ceiling')), TURN_CEILING_MS);
+
   let engineResponse: Response;
   try {
     engineResponse = await fetch(`${ENGINE}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(upstream),
+      signal: upstreamAbort.signal,
     });
   } catch (error) {
+    clearTimeout(ceiling);
     failures += 1;
     lastError = (error as Error).message.slice(0, 200);
-    json(response, 502, { error: { message: `engine unreachable: ${lastError}`, type: 'upstream_error' } });
+    if (!response.headersSent) json(response, 502, { error: { message: `engine unreachable: ${lastError}`, type: 'upstream_error' } });
     return;
   }
 
   if (!engineResponse.ok || engineResponse.body === null) {
+    clearTimeout(ceiling);
     failures += 1;
     lastError = `engine HTTP ${engineResponse.status}`;
     json(response, 502, { error: { message: lastError, type: 'upstream_error' } });
@@ -141,9 +158,17 @@ async function handleCompletions(request: IncomingMessage, response: ServerRespo
   }
 
   if (!wantsStream) {
-    const body = await engineResponse.text();
-    response.writeHead(200, { 'content-type': 'application/json', 'x-apocrypha-recall': recall.summary });
-    response.end(body);
+    try {
+      const body = await engineResponse.text();
+      response.writeHead(200, { 'content-type': 'application/json', 'x-apocrypha-recall': recall.summary });
+      response.end(body);
+    } catch (error) {
+      failures += 1;
+      lastError = (error as Error).message.slice(0, 200);
+      if (!response.headersSent) json(response, 502, { error: { message: lastError, type: 'upstream_error' } });
+    } finally {
+      clearTimeout(ceiling);
+    }
     return;
   }
 
@@ -210,6 +235,7 @@ async function handleCompletions(request: IncomingMessage, response: ServerRespo
     failures += 1;
     lastError = (error as Error).message.slice(0, 200);
   } finally {
+    clearTimeout(ceiling);
     response.end();
   }
 }
