@@ -16,9 +16,15 @@ import { ApocryphaWorker } from '../apocrypha-worker/worker';
 import { configureLogFile } from '../apocrypha-worker/log';
 import { join } from 'node:path';
 import { tick as loopTick } from '../apocrypha-room/loop';
+import { createAdapters } from '../apocrypha-memory-gateway/adapters';
+import { loadGatewayConfig } from '../apocrypha-memory-gateway/config';
+import { createGatewayServer } from '../apocrypha-memory-gateway/gateway';
 
 const LOOP_ON = process.env.APOCRYPHA_ONE_LOOP === 'on';
 const LOOP_MS = 1_500;
+// Parity port for phase-3b: host serves memgw on :19137 while split :19127
+// still runs; same token, same adapters. Cutover (3c) moves it to :19127.
+const MEMGW_PARITY_PORT = Number(process.env.APOCRYPHA_ONE_MEMGW_PORT ?? 19137);
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -62,6 +68,19 @@ async function main(): Promise<void> {
 
   void workerLoop();
   if (LOOP_ON) void roomLoop();
+
+  // Phase-3 memgw mount (read-only, same token+limits as split).
+  const gwConfig = loadGatewayConfig({
+    ...process.env, APOCRYPHA_MEMORY_GATEWAY_PORT: String(MEMGW_PARITY_PORT),
+  });
+  const gwServer = createGatewayServer(gwConfig, createAdapters(gwConfig));
+  await new Promise<void>((resolve, reject) => {
+    gwServer.on('error', reject);
+    gwServer.listen(gwConfig.port, gwConfig.host, () => {
+      log('info', 'one.memgw.listening', { port: gwConfig.port });
+      resolve();
+    });
+  });
   try {
     await new Promise(() => { /* runs until signal */ });
   } finally {
