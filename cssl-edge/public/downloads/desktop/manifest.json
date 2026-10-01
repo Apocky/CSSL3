@@ -1,9 +1,12 @@
 {
   "schema": "apocky.desktop-feed.v1",
-  "version": "1.18.34",
-  "url": "https://apocky.com/downloads/desktop/latest.yml",
-  "sha256": "70dc70cadf2fb4d3f73d0d4a4dc042fada7cec7e31e155269ebb97be0af29783",
-  "bytes": 183315729,
+  "version": "1.18.35",
+  "tag": "v1.18.35",
+  "feed": "https://apocky.com/downloads/desktop/latest.yml",
+  "asset": "https://github.com/Apocky/apocrypha-desktop/releases/download/v1.18.35/apocrypha-desktop-win-x64.exe",
+  "via_proxy": "https://apocky.com/api/desktop/download/apocrypha-desktop-win-x64.exe?v=v1.18.35",
+  "sha256": "d121f892cfc5dfa520cf267868ccc72be79465fad69456d3b6ca6320114ff362",
+  "bytes": 183340506,
   "signed": false,
-  "published_at": "2026-09-30T22:46:46Z"
+  "published_at": "2026-10-01T01:17:47Z"
 }
