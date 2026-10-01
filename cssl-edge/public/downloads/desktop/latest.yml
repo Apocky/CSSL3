@@ -1,8 +1,8 @@
-version: 1.18.35
+version: 1.18.36
 files:
-  - url: https://apocky.com/api/desktop/download/v1.18.35/apocrypha-desktop-win-x64.exe
-    sha512: g9BrruKz29gBMlYa6vrBUDNx5Iw/zuVP5E3K9FXqVxfyGUSQd9YsKTEFhFdrw1rzl1ejoN1kZI3hR/TB87ZSoQ==
-    size: 183340506
+  - url: https://apocky.com/api/desktop/download/v1.18.36/apocrypha-desktop-win-x64.exe
+    sha512: FekhBQS9V2pHRH78ZKyjqYirNUqa72V/8aydda3iGAWgcVETfFPtDS4IbvctIp3eQrLG+38Q9OT+Wc/+fhhYRw==
+    size: 183355286
 path: apocrypha-desktop-win-x64.exe
-sha512: g9BrruKz29gBMlYa6vrBUDNx5Iw/zuVP5E3K9FXqVxfyGUSQd9YsKTEFhFdrw1rzl1ejoN1kZI3hR/TB87ZSoQ==
-releaseDate: '2026-10-01T01:17:27.390Z'
+sha512: FekhBQS9V2pHRH78ZKyjqYirNUqa72V/8aydda3iGAWgcVETfFPtDS4IbvctIp3eQrLG+38Q9OT+Wc/+fhhYRw==
+releaseDate: '2026-10-01T01:44:48.674Z'
