@@ -1,8 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "_ignoreCommand_note": "REMOVED 2026-09-30. The old value exited 1 in production and 0 elsewhere; Vercel treats exit 0 as SKIP BUILD and cancels the deployment ('The deployment was canceled because the Ignored Build Step command returned exit code 0'). Every non-production deploy was therefore cancelling itself, which is what made the desktop update feed look undeployable. Delete this note with the next vercel.json cleanup.",
-  "ignoreCommand": "exit 0",
+  "_ignoreCommand_note": "REMOVED 2026-09-30. Vercel ignoreCommand semantics: exit 0 SKIPS the build, exit 1 builds. The old value (production->1, else->0) meant every preview deployment exited 0, got skipped, and was then canceled with 'The deployment was canceled because the Ignored Build Step command returned exit code 0'. With the Vercel production branch unset, pushes to main were treated as previews, so nothing built at all. Do not reintroduce an ignoreCommand that can exit 0 here; if a skip is ever wanted, gate it on an explicit opt-in variable. Delete this note with the next vercel.json cleanup.",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
