@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then exit 1; else exit 0; fi",
+  "_ignoreCommand_note": "REMOVED 2026-09-30. The old value exited 1 in production and 0 elsewhere; Vercel treats exit 0 as SKIP BUILD and cancels the deployment ('The deployment was canceled because the Ignored Build Step command returned exit code 0'). Every non-production deploy was therefore cancelling itself, which is what made the desktop update feed look undeployable. Delete this note with the next vercel.json cleanup.",
+  "ignoreCommand": "exit 0",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
