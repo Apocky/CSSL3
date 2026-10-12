@@ -39,7 +39,7 @@ try {
     if ($probe.StatusCode -ne 200) { throw "engine health HTTP $($probe.StatusCode)" }
 } catch {
     Write-Log "ABORT: engine unreachable on 19128 -- $($_.Exception.Message)"
-    exit 0
+    exit 2
 }
 
 Write-Log 'step 1: indexing new transcripts'
@@ -61,12 +61,17 @@ foreach ($root in @("$env:USERPROFILE\.claude\projects", "$env:USERPROFILE\.code
 }
 
 Write-Log 'step 2: distilling forward from the last finished watermark'
+# The scheduler sees this script's exit code, so the distiller's code must become ours: 1 when it
+# aborted or every batch failed (distil.ts, 2026-10-12), 1 when it could not even be started.
+$distilExit = 1
 Push-Location $Edge
 try {
     & node --import tsx 'scripts/apocrypha-profile/distil.ts' 2>&1 | ForEach-Object { Write-Log "  $_" }
-    $distilExit = $LASTEXITCODE; Write-Log "distil exit code: $LASTEXITCODE"
+    $distilExit = [int]$LASTEXITCODE
+    Write-Log "distil exit code: $distilExit"
 } catch {
     Write-Log "ERROR distilling: $($_.Exception.Message)"
+    $distilExit = 1
 } finally {
     Pop-Location
 }
