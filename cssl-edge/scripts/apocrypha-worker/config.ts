@@ -257,10 +257,13 @@ export function loadConfig(
     throw new Error('configured model profile hash differs from worker manifest');
   }
   if (config.runtimeProfilePath) {
-    if (!existsSync(config.runtimeProfilePath)) throw new Error(`Qwen runtime profile not found: ${config.runtimeProfilePath}`);
+    if (!existsSync(config.runtimeProfilePath)) throw new Error(`runtime profile not found: ${config.runtimeProfilePath}`);
+    // The local engine fingerprint is separate from the control-plane contract hash: the server pins
+    // profile_hash in heartbeats, while the resident engine (gpt-oss since 2026-10-08) changes under it.
+    const expectedRuntimeHash = env.APOCRYPHA_RUNTIME_PROFILE_HASH?.trim().toLowerCase() || config.profileHash;
     const actualProfileHash = sha256(readFileSync(config.runtimeProfilePath)).toLowerCase();
-    if (actualProfileHash !== config.profileHash) {
-      throw new Error(`Qwen runtime profile hash mismatch: expected ${config.profileHash}, received ${actualProfileHash}`);
+    if (actualProfileHash !== expectedRuntimeHash) {
+      throw new Error(`runtime profile hash mismatch: expected ${expectedRuntimeHash}, received ${actualProfileHash}`);
     }
   }
   if (config.leaseRenewIntervalMs >= config.claimLeaseSeconds * 1_000 - config.leaseExpiryGraceMs) {
