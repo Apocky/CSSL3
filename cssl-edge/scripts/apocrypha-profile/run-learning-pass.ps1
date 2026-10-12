@@ -64,7 +64,7 @@ Write-Log 'step 2: distilling forward from the last finished watermark'
 Push-Location $Edge
 try {
     & node --import tsx 'scripts/apocrypha-profile/distil.ts' 2>&1 | ForEach-Object { Write-Log "  $_" }
-    Write-Log "distil exit code: $LASTEXITCODE"
+    $distilExit = $LASTEXITCODE; Write-Log "distil exit code: $LASTEXITCODE"
 } catch {
     Write-Log "ERROR distilling: $($_.Exception.Message)"
 } finally {
@@ -72,3 +72,5 @@ try {
 }
 
 Write-Log '=== learning pass done ==='
+if ($distilExit -ne 0) { Write-Log "learning pass FAILED (distil exit $distilExit)"; exit $distilExit }
+exit 0
