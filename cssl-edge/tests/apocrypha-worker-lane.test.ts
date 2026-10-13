@@ -147,7 +147,7 @@ async function main(): Promise<void> {
 
   const localSeen: Array<Record<string, unknown>> = [];
   const hostedSeen: Array<Record<string, unknown>> = [];
-  const local = await engine('qwen35-35b-a3b-q4', 'The note says the launch moved to the 14th.', localSeen);
+  const local = await engine('apocrypha', 'The note says the launch moved to the 14th.', localSeen);
   const hosted = await engine('anthropic/claude-opus-5.5', '<think>reading the note</think>The attached note moves the launch to the 14th.', hostedSeen, 1_000_000);
   const dir = await mkdtemp(join(tmpdir(), 'apocrypha-worker-lane-'));
   try {

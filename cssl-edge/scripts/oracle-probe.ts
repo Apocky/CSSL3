@@ -69,7 +69,7 @@ async function ask(engine: string, messages: Array<{ role: string; content: stri
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
     body: JSON.stringify({
-      model: 'qwen35-35b-a3b-q4',
+      model: 'apocrypha',
       messages,
       max_tokens: 700,
       temperature: 0.7,

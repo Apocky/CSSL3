@@ -12,13 +12,13 @@ const config: WorkerConfig = {
   nodeToken: 'test-token',
   qwenBaseUrl: 'http://127.0.0.1:19127/v1',
   runtimeProfilePath: null,
-  modelAlias: 'qwen35-35b-a3b-q4',
+  modelAlias: 'apocrypha',
   profileHash: 'profile-hash',
   toolRegistryVersion: 'apocrypha-readonly-v1',
   memoryManifestHash: 'memory-manifest-hash',
   manifest: {
     schema: 'apocrypha.worker-manifest.v1',
-    model: { alias: 'qwen35-35b-a3b-q4', profileHash: 'profile-hash', endpointEnv: 'APOCRYPHA_QWEN_BASE_URL' },
+    model: { alias: 'apocrypha', profileHash: 'profile-hash', endpointEnv: 'APOCRYPHA_QWEN_BASE_URL' },
     tools: { registryVersion: 'apocrypha-readonly-v1', mode: 'read-only' },
     memory: {
       manifestVersion: 'test-memory-v1',

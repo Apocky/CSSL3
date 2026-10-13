@@ -28,7 +28,7 @@ function job(alias: string, capability = 'apocky_member_chat'): ClaimedJob {
   } as unknown as ClaimedJob;
 }
 
-const ALIAS = 'qwen35-35b-a3b-q4';
+const ALIAS = 'apocrypha';
 const prompt = baseSystem(job(ALIAS));
 
 // -- 1. it knows what it runs on -------------------------------------------------------------------
